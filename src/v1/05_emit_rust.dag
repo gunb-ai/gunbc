@@ -231,7 +231,7 @@ import v1.compiler.emit {
   module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node,
   emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items,
   order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
-  tco_reassign_core, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport,
+  tco_reassign_core, tco_loop_slot_name, tco_loop_iteration_lets, is_tco_identity_passthrough, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
   emit_typed_let_shared,
@@ -14396,9 +14396,18 @@ fn expr_references_var(node: Node, var_name: String, source_indices: Map<String,
 fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let arg_values = args |> map(a => arg_value(n: a))
+  let identity_params = params |> enumerate |> fold(init: empty_map(), f: (m, pair) =>
+    let pname = param_node_name_at(n: pair.second, source_indices: si)
+    let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
+    if is_tco_identity_passthrough(arg_val: av, param_name: pname, si: si) {
+      map_insert(m, pname, true)
+    } else { m }
+  )
   let filtered_arg_values = params |> enumerate
+    |> filter(pair => match map_get(identity_params, param_node_name_at(n: pair.second, source_indices: si)) { Present { value: _ } => false  Absent => true })
     |> map(pair => match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second })
   let filtered_params = params
+    |> filter(p => match map_get(identity_params, param_node_name_at(n: p, source_indices: si)) { Present { value: _ } => false  Absent => true })
   let tco_movable = filtered_params |> fold(acc: emit_info.movable, f: (m, p) =>
     let pname = param_node_name_at(n: p, source_indices: si)
     let ref_count = filtered_arg_values |> fold(acc: 0, f: (n, av) =>

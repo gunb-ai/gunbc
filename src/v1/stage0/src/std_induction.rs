@@ -1127,14 +1127,10 @@ pub fn ceil_log_iter(
     mut __tco_loop_power: i64,
 ) -> Option<i64> {
     loop {
-        #[allow(unused_mut)]
-        let mut base = __tco_loop_base.clone();
-        #[allow(unused_mut)]
-        let mut argument = __tco_loop_argument.clone();
-        #[allow(unused_mut)]
-        let mut k = __tco_loop_k.clone();
-        #[allow(unused_mut)]
-        let mut power = __tco_loop_power.clone();
+        #[allow(unused_mut)] let mut base = __tco_loop_base.clone();
+        #[allow(unused_mut)] let mut argument = __tco_loop_argument.clone();
+        #[allow(unused_mut)] let mut k = __tco_loop_k.clone();
+        #[allow(unused_mut)] let mut power = __tco_loop_power.clone();
         if (power.clone() >= argument.clone()) {
             break Some(k.clone());
         } else {
@@ -1152,14 +1148,10 @@ pub fn ceil_log_iter(
                             break std::option::Option::None;
                         }
                         Some(k1) => {
-                            let __tco_0 = base;
-                            let __tco_1 = argument;
-                            let __tco_2 = k1.clone();
-                            let __tco_3 = next_power.clone();
-                            __tco_loop_base = __tco_0;
-                            __tco_loop_argument = __tco_1;
-                            __tco_loop_k = __tco_2;
-                            __tco_loop_power = __tco_3;
+                            let __tco_0 = k1.clone();
+                            let __tco_1 = next_power.clone();
+                            __tco_loop_k = __tco_0;
+                            __tco_loop_power = __tco_1;
                             continue;
                         }
                     }

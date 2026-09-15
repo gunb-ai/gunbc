@@ -3381,8 +3381,7 @@ pub fn expr_literal_symbol_optional(expr: Rc<Node>) -> Option<String> {
 
 pub fn expr_is_any_literal(mut __tco_loop_expr: Rc<Node>) -> bool {
     loop {
-        #[allow(unused_mut)]
-        let mut expr = __tco_loop_expr.clone();
+        #[allow(unused_mut)] let mut expr = __tco_loop_expr.clone();
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
                 LiteralValue::LitNull => {

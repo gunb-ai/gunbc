@@ -148,16 +148,11 @@ pub fn kahn_cycle_drain(
     mut __tco_loop_fuel: i64,
 ) -> Rc<KahnState> {
     loop {
-        #[allow(unused_mut)]
-        let mut queue = __tco_loop_queue.clone();
-        #[allow(unused_mut)]
-        let mut in_degree = __tco_loop_in_degree.clone();
-        #[allow(unused_mut)]
-        let mut reverse_adj = __tco_loop_reverse_adj.clone();
-        #[allow(unused_mut)]
-        let mut removed_count = __tco_loop_removed_count.clone();
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)] let mut queue = __tco_loop_queue.clone();
+        #[allow(unused_mut)] let mut in_degree = __tco_loop_in_degree.clone();
+        #[allow(unused_mut)] let mut reverse_adj = __tco_loop_reverse_adj.clone();
+        #[allow(unused_mut)] let mut removed_count = __tco_loop_removed_count.clone();
+        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
         if ((queue.clone().len() as i64) == 0) {
             return Rc::new(KahnState {
                 in_degree: in_degree.clone(),
@@ -220,14 +215,12 @@ pub fn kahn_cycle_drain(
         {
             let __tco_0 = next_queue.clone();
             let __tco_1 = result.in_degree.clone();
-            let __tco_2 = reverse_adj;
-            let __tco_3 = result.removed_count.clone();
-            let __tco_4 = (fuel - 1);
+            let __tco_2 = result.removed_count.clone();
+            let __tco_3 = (fuel - 1);
             __tco_loop_queue = __tco_0;
             __tco_loop_in_degree = __tco_1;
-            __tco_loop_reverse_adj = __tco_2;
-            __tco_loop_removed_count = __tco_3;
-            __tco_loop_fuel = __tco_4;
+            __tco_loop_removed_count = __tco_2;
+            __tco_loop_fuel = __tco_3;
             continue;
         }
     }

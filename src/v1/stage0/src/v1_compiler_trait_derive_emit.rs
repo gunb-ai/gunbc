@@ -472,15 +472,9 @@ pub fn v1_map_key_fixpoint_loop(
             } else {
                 {
                     let __tco_0 = next.clone();
-                    let __tco_1 = declared_type_names;
-                    let __tco_2 = type_decl_items;
-                    let __tco_3 = (remaining - 1);
-                    let __tco_4 = source_indices;
+                    let __tco_1 = (remaining - 1);
                     __tco_loop_round = __tco_0;
-                    __tco_loop_declared_type_names = __tco_1;
-                    __tco_loop_type_decl_items = __tco_2;
-                    __tco_loop_remaining = __tco_3;
-                    __tco_loop_source_indices = __tco_4;
+                    __tco_loop_remaining = __tco_1;
                     continue;
                 }
             }
@@ -3835,16 +3829,10 @@ pub fn v1_clone_bound_fixpoint_loop(
                 break round.bounds.clone();
             } else {
                 {
-                    let __tco_0 = generic_type_names;
-                    let __tco_1 = type_decl_items;
-                    let __tco_2 = round.bounds.clone();
-                    let __tco_3 = (remaining - 1);
-                    let __tco_4 = source_indices;
-                    __tco_loop_generic_type_names = __tco_0;
-                    __tco_loop_type_decl_items = __tco_1;
-                    __tco_loop_bounds = __tco_2;
-                    __tco_loop_remaining = __tco_3;
-                    __tco_loop_source_indices = __tco_4;
+                    let __tco_0 = round.bounds.clone();
+                    let __tco_1 = (remaining - 1);
+                    __tco_loop_bounds = __tco_0;
+                    __tco_loop_remaining = __tco_1;
                     continue;
                 }
             }

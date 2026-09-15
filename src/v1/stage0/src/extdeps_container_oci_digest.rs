@@ -66,10 +66,8 @@ pub fn oci_encoded_digest_syntax_valid(
     mut __tco_loop_index: i64,
 ) -> bool {
     loop {
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text.clone();
-        #[allow(unused_mut)]
-        let mut index = __tco_loop_index.clone();
+        #[allow(unused_mut)] let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)] let mut index = __tco_loop_index.clone();
         if (index.clone() >= v1_rt::string_length(&text)) {
             break (v1_rt::string_length(&text) > 0);
         } else {
@@ -79,10 +77,8 @@ pub fn oci_encoded_digest_syntax_valid(
                 (index.clone() + 1),
             ))) {
                 {
-                    let __tco_0 = text;
-                    let __tco_1 = (index + 1);
-                    __tco_loop_text = __tco_0;
-                    __tco_loop_index = __tco_1;
+                    let __tco_0 = (index + 1);
+                    __tco_loop_index = __tco_0;
                     continue;
                 }
             } else {
@@ -114,12 +110,9 @@ pub fn oci_digest_algorithm_syntax_valid(
     mut __tco_loop_in_component: bool,
 ) -> bool {
     loop {
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text.clone();
-        #[allow(unused_mut)]
-        let mut index = __tco_loop_index.clone();
-        #[allow(unused_mut)]
-        let mut in_component = __tco_loop_in_component.clone();
+        #[allow(unused_mut)] let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)] let mut index = __tco_loop_index.clone();
+        #[allow(unused_mut)] let mut in_component = __tco_loop_in_component.clone();
         if (index.clone() >= v1_rt::string_length(&text)) {
             break in_component.clone();
         } else {
@@ -127,23 +120,19 @@ pub fn oci_digest_algorithm_syntax_valid(
             if in_component.clone() {
                 if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                     {
-                        let __tco_0 = text;
-                        let __tco_1 = (index + 1);
-                        let __tco_2 = true;
-                        __tco_loop_text = __tco_0;
-                        __tco_loop_index = __tco_1;
-                        __tco_loop_in_component = __tco_2;
+                        let __tco_0 = (index + 1);
+                        let __tco_1 = true;
+                        __tco_loop_index = __tco_0;
+                        __tco_loop_in_component = __tco_1;
                         continue;
                     }
                 } else {
                     if oci_digest_algorithm_separator_char_allowed(cp.clone()) {
                         {
-                            let __tco_0 = text;
-                            let __tco_1 = (index + 1);
-                            let __tco_2 = false;
-                            __tco_loop_text = __tco_0;
-                            __tco_loop_index = __tco_1;
-                            __tco_loop_in_component = __tco_2;
+                            let __tco_0 = (index + 1);
+                            let __tco_1 = false;
+                            __tco_loop_index = __tco_0;
+                            __tco_loop_in_component = __tco_1;
                             continue;
                         }
                     } else {
@@ -153,12 +142,10 @@ pub fn oci_digest_algorithm_syntax_valid(
             } else {
                 if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                     {
-                        let __tco_0 = text;
-                        let __tco_1 = (index + 1);
-                        let __tco_2 = true;
-                        __tco_loop_text = __tco_0;
-                        __tco_loop_index = __tco_1;
-                        __tco_loop_in_component = __tco_2;
+                        let __tco_0 = (index + 1);
+                        let __tco_1 = true;
+                        __tco_loop_index = __tco_0;
+                        __tco_loop_in_component = __tco_1;
                         continue;
                     }
                 } else {
