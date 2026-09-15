@@ -1053,6 +1053,9 @@ type DashboardApplyFold {
   refused_detail: String
 }
 
+// Plans that cannot contain DashboardEnsureService pass none. The revision is not an empty
+// CommitSha: that spelling was a validator over a dummy, and ensure-service would have treated it
+// as a launch identity. Apply-after-preflight passes Present with the admitted source revision.
 fn dashboard_apply_plan(
   instance: HostDashboardInstance,
   plan: List<DashboardInstanceProvisionOp>,
