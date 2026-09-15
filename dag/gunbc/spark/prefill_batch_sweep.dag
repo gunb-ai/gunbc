@@ -576,7 +576,7 @@ data spark_group_a_depth_rate_subject: ServingPerformanceSubjectStanding = Subje
     runtime: GunbcSparkrunVllmDs4Gb10,
     topology: SparkPairTp2,
     context_ceiling: token_count(count: 1048576),
-    max_num_batched_tokens: 2048,
+    max_num_batched_tokens: token_count(count: 2048),
     kv_cache_dtype: KvFp8,
     collective_transport: NcclTransportUnread {
       because: "this acquisition never read NCCL's `Using network` verdict line; the launch's NCCL_IB_* environment was not captured either, and a requested transport is not a realized one" as NonEmptyStr,

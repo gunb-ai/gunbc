@@ -3,9 +3,9 @@ module gunbc.spark.serving_performance_subject
 import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, vllm_kv_cache_dtype_wire }
-import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
+import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire, nccl_transport_is_unread }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
@@ -47,7 +47,7 @@ type ServingPerformanceSubject sole_constructor {
   runtime: ServingRuntime
   topology: ServingTopology
   context_ceiling: TokenCount
-  max_num_batched_tokens: Nat
+  max_num_batched_tokens: TokenCount
   kv_cache_dtype: VllmKvCacheDtypeRequest
   collective_transport: NcclRealizedTransport
 }
@@ -62,7 +62,7 @@ fn serving_performance_subject(
   runtime: ServingRuntime,
   topology: ServingTopology,
   context_ceiling: TokenCount,
-  max_num_batched_tokens: Nat,
+  max_num_batched_tokens: TokenCount,
   kv_cache_dtype: VllmKvCacheDtypeRequest,
   collective_transport: NcclRealizedTransport,
 ) -> ServingPerformanceSubject {
@@ -116,7 +116,7 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
     AxisRuntime => serving_runtime_wire(r: s.runtime)
     AxisTopology => serving_topology_wire(t: s.topology)
     AxisContextCeiling => to_string(token_count_value(t: s.context_ceiling)) as NonEmptyStr
-    AxisBatchBudget => to_string(s.max_num_batched_tokens) as NonEmptyStr
+    AxisBatchBudget => to_string(token_count_value(t: s.max_num_batched_tokens)) as NonEmptyStr
     AxisKvCacheDtype => vllm_kv_cache_dtype_wire(request: s.kv_cache_dtype)
     AxisCollectiveTransport => nccl_realized_transport_wire(t: s.collective_transport)
   }
@@ -156,17 +156,26 @@ fn serving_subject_axes_wire(axes: List<ServingSubjectAxis>) -> String {
 // hurts: read as Same, an unread transport silently licenses quoting a socket number for an RDMA
 // arm, which is precisely the comparison the live throughput question turns on.
 //
-// THE UNREAD ARM IS REACHED FROM THE PROJECTION, NOT FROM A SECOND MATCH. NcclTransportUnread
-// projects to a sentinel no verdict line can produce, so it compares unequal to everything
-// including itself -- and `serving_subject_reads` promotes that inequality to Incomparable rather
-// than to Different, because "I did not look" and "these differ" are different facts.
+// THE GUARD IS LOAD-BEARING AND THE PROJECTION IS NOT ENOUGH, which is worth stating exactly
+// because an earlier revision of this comment got it wrong in the direction that makes the guard
+// look redundant. NcclTransportUnread projects to a sentinel no verdict line can produce, so an
+// unread transport never compares equal to a READ one. It does compare equal to ITSELF -- two
+// subjects nobody looked at have the same projection -- so nothing in the axis fold would refuse
+// them. The explicit guard in `serving_subject_reads` is what turns that case into Incomparable,
+// and it asks extdeps.nvidia.nccl rather than reading the spelling back.
 type ServingSubjectJoin
   = SameSubject
   | DifferentSubject { axes: NonEmptyStr, left: NonEmptyStr, right: NonEmptyStr }
   | SubjectIncomparable { because: NonEmptyStr }
 
+// UNREADNESS IS ASKED OF THE OWNING MODULE. An earlier revision of this predicate compared the
+// projection against the sentinel literal, which was a second copy of a spelling authored in
+// extdeps.nvidia.nccl -- re-spell it there and this wall silently stops firing, with no type error,
+// and the unread arm starts comparing equal to a read one. That is the exact collapse the three-
+// valued join below exists to prevent, held up by the one construct that could drift out from under
+// it.
 fn subject_transport_is_unread(s: ServingPerformanceSubject) -> Bool {
-  (nccl_realized_transport_wire(t: s.collective_transport) as String) == "<transport-unread>"
+  nccl_transport_is_unread(t: s.collective_transport)
 }
 
 fn serving_subject_reads(measurement_subject: ServingPerformanceSubject, decision_subject: ServingPerformanceSubject) -> ServingSubjectJoin {

@@ -47,7 +47,7 @@ data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
   runtime: GunbcSparkrunVllmDs4Gb10,
   topology: FourSparkTp4,
   context_ceiling: token_count(count: 131072),
-  max_num_batched_tokens: 2048,
+  max_num_batched_tokens: token_count(count: 2048),
   kv_cache_dtype: KvFp8,
   collective_transport: fx_socket
     )
@@ -59,7 +59,7 @@ data fx_glm_group_b: ServingPerformanceSubject = serving_performance_subject(
   runtime: Gitcommit90Sm121Exl3,
   topology: FourSparkTp4,
   context_ceiling: token_count(count: 262144),
-  max_num_batched_tokens: 2048,
+  max_num_batched_tokens: token_count(count: 2048),
   kv_cache_dtype: KvFp8,
   collective_transport: fx_socket
     )
@@ -152,7 +152,7 @@ test fn w_moving_the_batch_budget_alone_is_detected_and_named() -> Bool {
     runtime: fx_deepseek_tp4.runtime,
     topology: fx_deepseek_tp4.topology,
     context_ceiling: fx_deepseek_tp4.context_ceiling,
-    max_num_batched_tokens: 16384,
+    max_num_batched_tokens: token_count(count: 16384),
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     collective_transport: fx_deepseek_tp4.collective_transport
     )
@@ -300,13 +300,37 @@ test fn w_the_batch_arms_subject_is_unestablished_on_topology() -> Bool {
 }
 
 // THE MODULE HOLDS TWO SUBJECTS, AND THIS IS THE ROW THAT SAYS SO. The depth law and the batch arms
-// may not be read as one population: the join refuses, and it refuses for the stated reason rather
-// than by accident of some other axis.
+// may not be read as one population.
+//
+// THE CLAIM NAMES WHICH REFUSAL FIRED, AND AN EARLIER VERSION DID NOT -- which is the whole reason
+// this comment exists. Asserting only `join_is_incomparable` made the row OVER-DETERMINED: two
+// independent guards produce that answer here (the batch arms' unestablished standing, and the
+// depth rate's unread transport), so a plant that broke either one left the row green on the
+// strength of the other. A conjunct that no discriminating input can red is an inert wall, however
+// true it is. Pinning the CAUSE to the standing makes exactly one mechanism answerable for this row:
+// promote the batch arms' bet to an established subject and the cause becomes the transport instead,
+// and this reds.
 test fn w_the_depth_law_does_not_read_for_the_batch_arms() -> Bool {
-  join_is_incomparable(
-    j: serving_subject_standing_reads(
-      measurement: spark_group_a_depth_rate_subject,
-      decision: spark_group_a_batch_arm_subject))
+  match serving_subject_standing_reads(
+    measurement: spark_group_a_depth_rate_subject,
+    decision: spark_group_a_batch_arm_subject) {
+    SubjectIncomparable { because: b } => (b as String).contains("unestablished on tensor-parallel topology")
+    SameSubject => false
+    DifferentSubject { axes: _, left: _, right: _ } => false
+  }
+}
+
+// THE TRANSPORT GUARD IS THE OTHER MECHANISM, PINNED SEPARATELY so each is answerable for its own
+// row. The depth rate read against ITSELF has nothing unestablished about it and still refuses,
+// because nobody read its NCCL verdict line -- so this row can only be green by way of the transport.
+test fn w_the_depth_law_does_not_even_read_for_itself_while_its_transport_is_unread() -> Bool {
+  match serving_subject_standing_reads(
+    measurement: spark_group_a_depth_rate_subject,
+    decision: spark_group_a_depth_rate_subject) {
+    SubjectIncomparable { because: b } => (b as String).contains("collective transport was never read")
+    SameSubject => false
+    DifferentSubject { axes: _, left: _, right: _ } => false
+  }
 }
 
 // THE TOPOLOGY CUT IS NOT YET A CONTROLLED CUT, and the module says so rather than claiming the
@@ -338,5 +362,6 @@ test fn w_all_serving_performance_subject_claims_hold() -> Bool {
     && w_the_axis_roster_covers_every_field_of_the_subject()
     && w_the_batch_arms_subject_is_unestablished_on_topology()
     && w_the_depth_law_does_not_read_for_the_batch_arms()
+    && w_the_depth_law_does_not_even_read_for_itself_while_its_transport_is_unread()
     && w_the_topology_cut_is_not_possible_while_the_transport_is_unread()
 }

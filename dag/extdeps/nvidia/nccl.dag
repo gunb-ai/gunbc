@@ -115,13 +115,37 @@ type NcclRealizedTransport
   | NcclTransportUnread { because: NonEmptyStr }
 
 // THE PROJECTION IS THE EQUALITY, as everywhere else a coproduct is compared. The unread arm
-// projects to a name no verdict line can produce, so an unread transport can never compare EQUAL to
-// a read one: two subjects whose transport nobody looked at are not thereby the same subject.
+// projects to a name no verdict line can produce, so an unread transport never compares equal to a
+// READ one. It does compare equal to ITSELF, which is why the projection cannot be the whole wall:
+// two subjects whose transport nobody looked at are not thereby the same subject, and only a
+// predicate over the ARM can say so. That predicate is `nccl_transport_is_unread`, below.
 fn nccl_realized_transport_wire(t: NcclRealizedTransport) -> NonEmptyStr {
   match t {
     NcclTransportIbVerbs { network_name: n, read_from: _ } => n
     NcclTransportSocket { network_name: n, read_from: _ } => n
-    NcclTransportUnread { because: _ } => "<transport-unread>" as NonEmptyStr
+    NcclTransportUnread { because: _ } => nccl_network_name_unread
+  }
+}
+
+// UNREADNESS IS DECIDED BY THE ARM, NOT BY THE SPELLING OF ITS PROJECTION. A consumer that asked
+// this question by comparing the wire against the sentinel literal would be a SECOND authority on
+// what "unread" means: re-spell the sentinel here and that consumer silently starts answering false
+// for every unread transport, its caller stops refusing, and an unread transport begins comparing
+// equal to a read one -- the absorbing-fallback collapse, reached with no type error anywhere. So
+// the question is answered once, by the module that declares the variants.
+fn nccl_transport_is_unread(t: NcclRealizedTransport) -> Bool {
+  match t {
+    NcclTransportIbVerbs { network_name: _, read_from: _ } => false
+    NcclTransportSocket { network_name: _, read_from: _ } => false
+    NcclTransportUnread { because: _ } => true
+  }
+}
+
+fn nccl_transport_unread_cause(t: NcclRealizedTransport) -> NonEmptyStr {
+  match t {
+    NcclTransportIbVerbs { network_name: n, read_from: _ } => n
+    NcclTransportSocket { network_name: n, read_from: _ } => n
+    NcclTransportUnread { because: b } => b
   }
 }
 
@@ -129,3 +153,8 @@ fn nccl_realized_transport_wire(t: NcclRealizedTransport) -> NonEmptyStr {
 // the log line does not have to guess which spelling the verdict uses.
 data nccl_network_name_socket: NonEmptyStr = "Socket" as NonEmptyStr
 data nccl_network_name_ib: NonEmptyStr = "IB" as NonEmptyStr
+
+// THE UNREAD ARM'S PROJECTION IS A ROW LIKE THE OTHER TWO, not a literal spelled at its use site.
+// It is deliberately not a name any NCCL verdict line can emit, so it cannot collide with a real
+// network; deciding unreadness from it is still wrong, and `nccl_transport_is_unread` is the way.
+data nccl_network_name_unread: NonEmptyStr = "<transport-unread>" as NonEmptyStr
