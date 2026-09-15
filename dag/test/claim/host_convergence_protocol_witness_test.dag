@@ -1,6 +1,6 @@
 module test.claim.host_convergence_protocol_witness
 
-import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.goal_assessment {
   ObservationAttempt,
@@ -32,8 +32,11 @@ import gunbc.host_convergence_protocol {
   PhasesBound,
   SelectionLeakedIntoObservation,
   SelectionLeakedIntoAssessment,
-  production_census_protocol_is_bound,
   bind_canonical_protocol,
+  CanonicalProtocolBound,
+  CanonicalLayersUnbound,
+  CensusProtocolUnbound,
+  HostEffectFrontierUnbound,
   reconcile_from_read_attempt,
   inspect_via_host_effect_projection,
   HostEffectDomainProjection,
@@ -41,8 +44,9 @@ import gunbc.host_convergence_protocol {
   canonical_protocol_bindings,
   required_canonical_layers,
   canonical_layer_join,
-  canonical_layer_join_covered,
   CanonicalLayerMissing,
+  CanonicalLayersCovered,
+  CanonicalLayerDuplicated,
   ProtocolDeclaredFrontier,
   frontier_names_a_distinct_consumer,
   frontier_trigger_is_not_declaration,
@@ -63,66 +67,11 @@ import gunbc.readback_independence {
   systemd_show_property_probe,
   readback_evidence_verdict,
 }
-import tools.multi_module_compile_fixture {
-  MultiModuleCompileFixture,
-  MultiModuleCompileFixtureOutcome,
-  FixtureInstrumentRefused,
-  FixtureCompileRefused,
-  FixtureCompileCompleted,
-  fixture_source,
-  compile_fixture,
-  fixture_has_class,
-  fixture_blocking_rows,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data same: Bool = true
 data trigger: Bool = true
-
-fn fixture_run(source: String) -> MultiModuleCompileFixtureOutcome {
-  compile_fixture(MultiModuleCompileFixture {
-    sources: [fixture_source("ta/entry.dag", source)],
-    entry: "ta/entry.dag"
-  })
-}
-
-fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
-  match o {
-    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
-    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
-    FixtureInstrumentRefused { cause: c } => false
-  }
-}
-
-fn refused_type_mismatch_or_missing_field(o: MultiModuleCompileFixtureOutcome) -> Bool {
-  refused_with_class(o: o, wanted: "TypeMismatch")
-    || refused_with_class(o: o, wanted: "MissingField")
-}
-
-fn completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
-  match o {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      count(rows) == 0 && count(files) > 0 && n > 0,
-    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
-    FixtureInstrumentRefused { cause: c } => false
-  }
-}
-
-data observer_with_goal_source: String = "module ta.entry\nfn observe(subject: Int, request: Int) -> Int { subject }\nfn entry() -> Int { observe(subject: 1, request: 2, goal: 3) }\n"
-
-data observer_goal_blind_source: String = "module ta.entry\nfn observe(subject: Int, request: Int) -> Int { subject }\nfn entry() -> Int { observe(subject: 1, request: 2) }\n"
-
-data readiness_as_converged_source: String = "module ta.entry\ntype RuntimeReadiness { evidence: Int }\ntype ReconciledEffect { decision: Int, classified_grounding: Int }\nfn take_reconciled(v: ReconciledEffect) -> Int { v.decision }\nfn feed_ready(r: RuntimeReadiness) -> Int { take_reconciled(v: r) }\n"
-
-data readiness_stays_ready_source: String = "module ta.entry\ntype RuntimeReadiness { evidence: Int }\nfn take_ready(v: RuntimeReadiness) -> Int { v.evidence }\nfn feed_ready(r: RuntimeReadiness) -> Int { take_ready(v: r) }\n"
-
-test fn control_1_observer_receiving_desired_state_refuses() -> Bool {
-  refused_with_class(o: fixture_run(observer_with_goal_source), wanted: "CallArgumentNameUnknown")
-    && completed_clean(o: fixture_run(observer_goal_blind_source))
-}
 
 fn attempt_is_established_absence(
   attempt: ObservationAttempt<ShowEffectiveRead<String>, String>,
@@ -225,11 +174,6 @@ test fn control_7_reused_pre_apply_reading_is_caught_by_independence() -> Bool {
       Converged => true
       _ => false
     }
-}
-
-test fn control_8_readiness_cannot_inhabit_convergence_verdict() -> Bool {
-  refused_type_mismatch_or_missing_field(o: fixture_run(readiness_as_converged_source))
-    && completed_clean(o: fixture_run(readiness_stays_ready_source))
 }
 
 test fn control_9_selection_cannot_occur_inside_observation_or_assessment() -> Bool {
@@ -336,7 +280,8 @@ test fn canonical_layer_join_missing_required_layer_is_red() -> Bool {
     bindings: [],
   ) {
     CanonicalLayerMissing { layer: _ } => true
-    _ => false
+    CanonicalLayersCovered => false
+    CanonicalLayerDuplicated { layer: _ } => false
   }
 }
 
@@ -379,25 +324,21 @@ test fn frontier_self_trigger_is_red() -> Bool {
 }
 
 test fn canonical_protocol_binds() -> Bool {
-  bind_canonical_protocol()
-    && production_census_protocol_is_bound()
-    && canonical_layer_join_covered(
-      j: canonical_layer_join(
-        required: required_canonical_layers,
-        bindings: canonical_protocol_bindings,
-      ),
-    )
+  match bind_canonical_protocol() {
+    CanonicalProtocolBound => true
+    CanonicalLayersUnbound { join: _ } => false
+    CensusProtocolUnbound { standing: _ } => false
+    HostEffectFrontierUnbound { standing: _ } => false
+  }
 }
 
 test fn host_convergence_protocol_keystone_holds() -> Bool {
-  control_1_observer_receiving_desired_state_refuses()
-    && control_2_observation_refusal_is_not_established_absence()
+  control_2_observation_refusal_is_not_established_absence()
     && control_3_divergence_names_a_deviation()
     && control_4_noop_cannot_carry_an_application()
     && control_5_refused_decision_cannot_carry_an_application()
     && control_6_apply_cannot_converge_without_post_apply_readback()
     && control_7_reused_pre_apply_reading_is_caught_by_independence()
-    && control_8_readiness_cannot_inhabit_convergence_verdict()
     && control_9_selection_cannot_occur_inside_observation_or_assessment()
     && host_effect_domain_projection_inspects_without_selection()
     && ensure_observation_is_a_projection_of_the_canonical_attempt()

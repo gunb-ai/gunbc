@@ -33,6 +33,7 @@ import gunbc.host_convergence_census {
   fleet_plan,
   fleet_apply,
   live_readiness,
+  HostConvergenceCensusRefusal,
 }
 
 // CONVERGENCE-ONE C1. Binds the C0 census to the canonical stack without host actuation.
@@ -45,6 +46,11 @@ import gunbc.host_convergence_census {
 // (the production route that must call inspect_via_host_effect_projection).
 // C0 left ensure_decide and observe_executable as inline cites; those two
 // have no named census accessor, so the bind holds one decl_ref each.
+// NEXT-RUNG (controls 1 and 8): a compile instrument that can import
+// std.goal_assessment inspect_goal and the live RuntimeReadiness /
+// ReconciledEffect types, so extra Goal on observe and readiness-as-
+// ReconciledEffect are authorable against those authorities. Isolated
+// compile_fixture cannot import them; lookalike local types are not evidence.
 
 data ensure_decide_id: DeclarationRef = decl_ref(
   module_path: "gunbc.ensure",
@@ -170,14 +176,6 @@ fn canonical_layer_join(
   })
 }
 
-fn canonical_layer_join_covered(j: CanonicalLayerJoin) -> Bool {
-  match j {
-    CanonicalLayersCovered => true
-    CanonicalLayerMissing { layer: _ } => false
-    CanonicalLayerDuplicated { layer: _ } => false
-  }
-}
-
 type ProtocolPhaseBinding
   = PhasesBound { phases: ProtocolPhases }
   | SelectionLeakedIntoObservation { phases: ProtocolPhases }
@@ -195,27 +193,55 @@ fn admit_protocol_phases(phases: ProtocolPhases) -> ProtocolPhaseBinding {
   }
 }
 
-fn census_protocol_phases_are_bound(census: HostConvergenceCensus) -> Bool {
+type CensusPhaseStanding
+  = CensusPhasesBound
+  | CensusStandingMalformed { cause: HostConvergenceCensusRefusal }
+  | CensusSelectionLeaked { identity: DeclarationRef, leak: ProtocolPhaseBinding }
+
+fn bind_census_protocol_phases(census: HostConvergenceCensus) -> CensusPhaseStanding {
   match census {
-    CensusMalformed { cause: _ } => false
+    CensusMalformed { cause: c } => CensusStandingMalformed { cause: c }
     CensusWellFormed { rows: rows } =>
-      fold(rows, init: true, f: fn(ok, row) {
-        if ok {
-          match admit_protocol_phases(phases: row.phases) {
-            PhasesBound { phases: _ } => true
-            SelectionLeakedIntoObservation { phases: _ } => false
-            SelectionLeakedIntoAssessment { phases: _ } => false
-          }
-        } else {
-          false
+      fold(rows, init: CensusPhasesBound, f: fn(acc, row) {
+        match acc {
+          CensusStandingMalformed { cause: c } => CensusStandingMalformed { cause: c }
+          CensusSelectionLeaked { identity: i, leak: l } =>
+            CensusSelectionLeaked { identity: i, leak: l }
+          CensusPhasesBound =>
+            match admit_protocol_phases(phases: row.phases) {
+              PhasesBound { phases: _ } => CensusPhasesBound
+              SelectionLeakedIntoObservation { phases: p } =>
+                CensusSelectionLeaked {
+                  identity: row.identity,
+                  leak: SelectionLeakedIntoObservation { phases: p },
+                }
+              SelectionLeakedIntoAssessment { phases: p } =>
+                CensusSelectionLeaked {
+                  identity: row.identity,
+                  leak: SelectionLeakedIntoAssessment { phases: p },
+                }
+            }
         }
       })
   }
 }
 
-fn production_census_protocol_is_bound() -> Bool {
-  census_protocol_phases_are_bound(census: host_convergence_census_standing)
+type ProtocolDeclaredFrontier {
+  declaration: DeclarationRef
+  named_consumer: DeclarationRef
+  trigger_capability: DeclarationRef
 }
+
+type FrontierStanding
+  = FrontierHonest
+  | FrontierConsumerIsDeclaration { frontier: ProtocolDeclaredFrontier }
+  | FrontierTriggerIsDeclaration { frontier: ProtocolDeclaredFrontier }
+
+type CanonicalProtocolStanding
+  = CanonicalProtocolBound
+  | CanonicalLayersUnbound { join: CanonicalLayerJoin }
+  | CensusProtocolUnbound { standing: CensusPhaseStanding }
+  | HostEffectFrontierUnbound { standing: FrontierStanding }
 
 type RuntimeReadiness<E> {
   evidence: E
@@ -241,12 +267,6 @@ fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence
     observe: projection.observe,
     assess: projection.assess,
   )
-}
-
-type ProtocolDeclaredFrontier {
-  declaration: DeclarationRef
-  named_consumer: DeclarationRef
-  trigger_capability: DeclarationRef
 }
 
 data host_effect_domain_projection_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
@@ -289,14 +309,41 @@ fn reconcile_from_read_attempt<P, R, E>(
   }
 }
 
-fn bind_canonical_protocol() -> Bool {
-  production_census_protocol_is_bound()
-    && canonical_layer_join_covered(
-      j: canonical_layer_join(
+fn admit_frontier(f: ProtocolDeclaredFrontier) -> FrontierStanding {
+  if frontier_names_a_distinct_consumer(f: f) {
+    if frontier_trigger_is_not_declaration(f: f) {
+      FrontierHonest
+    } else {
+      FrontierTriggerIsDeclaration { frontier: f }
+    }
+  } else {
+    FrontierConsumerIsDeclaration { frontier: f }
+  }
+}
+
+fn bind_canonical_protocol() -> CanonicalProtocolStanding {
+  match bind_census_protocol_phases(census: host_convergence_census_standing) {
+    CensusStandingMalformed { cause: c } =>
+      CensusProtocolUnbound { standing: CensusStandingMalformed { cause: c } }
+    CensusSelectionLeaked { identity: i, leak: l } =>
+      CensusProtocolUnbound { standing: CensusSelectionLeaked { identity: i, leak: l } }
+    CensusPhasesBound =>
+      match canonical_layer_join(
         required: required_canonical_layers,
         bindings: canonical_protocol_bindings,
-      ),
-    )
-    && frontier_names_a_distinct_consumer(f: host_effect_domain_projection_frontier)
-    && frontier_trigger_is_not_declaration(f: host_effect_domain_projection_frontier)
+      ) {
+        CanonicalLayerMissing { layer: m } =>
+          CanonicalLayersUnbound { join: CanonicalLayerMissing { layer: m } }
+        CanonicalLayerDuplicated { layer: d } =>
+          CanonicalLayersUnbound { join: CanonicalLayerDuplicated { layer: d } }
+        CanonicalLayersCovered =>
+          match admit_frontier(f: host_effect_domain_projection_frontier) {
+            FrontierHonest => CanonicalProtocolBound
+            FrontierConsumerIsDeclaration { frontier: f } =>
+              HostEffectFrontierUnbound { standing: FrontierConsumerIsDeclaration { frontier: f } }
+            FrontierTriggerIsDeclaration { frontier: f } =>
+              HostEffectFrontierUnbound { standing: FrontierTriggerIsDeclaration { frontier: f } }
+          }
+      }
+  }
 }
