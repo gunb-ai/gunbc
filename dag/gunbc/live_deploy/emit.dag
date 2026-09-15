@@ -1813,6 +1813,18 @@ fn step_membership_effects(
 // the decision to the boundary makes the gap a signature rather than a comment -- the withheld
 // default now lives at exactly one visible call site, and supplying a real decision means changing
 // an argument rather than finding a literal.
+// THE APPLY FOLD'S TAIL, DECLARED ONCE SO A CLAIM CAN READ IT WITHOUT RENDERING THE PROGRAM.
+//
+// The convergence receipt is the last thing the apply emits and it is FRAME rather than step: it is
+// appended after the per-step effects, so a projection over `spec.steps` cannot see it. The claim
+// that the apply emits a receipt for THIS host under THIS fold therefore had no cheap seam, and
+// asserting it meant rendering the whole program. Naming the tail gives it one, and the assertion
+// stays discriminating rather than tautological: the host and the fold are derived independently on
+// the reading side, so a tail built for the wrong host, or labelled `retract`, still reds.
+fn deploy_apply_receipt_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "apply"))]
+}
+
 fn apply_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
@@ -1837,9 +1849,7 @@ fn apply_intent_from_effects(
           deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
           concat(
             flat_map(spec.steps, step => apply_step_effects(step: step, effects: effects, spec: spec, plan: plan)),
-            [
-              deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "apply")),
-            ]
+            deploy_apply_receipt_steps(spec: spec)
           )
         )
       )
@@ -1882,6 +1892,27 @@ fn retract_unobserved_client_poison(reason: String) -> String {
   )
 }
 
+
+// THE RETRACT FRAME'S COMMENT BLOCK, DECLARED ONCE SO A CLAIM CAN READ IT WITHOUT RENDERING THE
+// WHOLE PROGRAM.
+//
+// These six lines are the only place the retract fold explains itself to whoever reads the emitted
+// script -- that ensured dependencies are deliberately not purged, that retract may itself be the
+// run that installs the sudoers drop-in, and that the worktree teardown is the empty-dir refusal
+// wall rather than a recursive delete. `witness_retract_preamble_acknowledges_shared_sudoers_install`
+// asserts on the fourth of them, and asserting on it used to mean rendering the entire retract
+// program: 86,034 eval steps against a per-claim ceiling of 72,300 (required floor run 34927164902).
+// Naming the block makes the same fact readable at its producer.
+fn deploy_retract_frame_comments(spec: DeploymentSpec) -> List<PipelineStep> {
+  [
+  Comment { text: concat("GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
+  Comment { text: "owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged" },
+  Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes" },
+  Comment { text: "/etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)." },
+  Comment { text: "Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm," },
+  Comment { text: "empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall." },
+  ]
+}
 fn retract_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
@@ -1889,17 +1920,16 @@ fn retract_intent_from_effects(
 ) -> Pipeline {
   Pipeline {
     steps: concat(
-      [
-        deploy_raw(command: deploy_shell_strict_options_command),
-        Comment { text: concat("GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
-        Comment { text: "owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged" },
-        Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes" },
-        Comment { text: "/etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)." },
-        Comment { text: "Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm," },
-        Comment { text: "empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall." },
-        deploy_stage_directory_let_step(),
-        deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
-      ],
+      concat(
+        [deploy_raw(command: deploy_shell_strict_options_command)],
+        concat(
+          deploy_retract_frame_comments(spec: spec),
+          [
+            deploy_stage_directory_let_step(),
+            deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
+          ]
+        )
+      ),
       concat(
         deploy_apply_preamble_steps(access: access, spec: spec),
         concat(

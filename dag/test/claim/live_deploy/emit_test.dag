@@ -87,6 +87,8 @@ import gunbc.live_deploy.effect_leaf {
 }
 import gunbc.live_deploy.emit {
   emit_release_member_effects,
+  deploy_retract_frame_comments,
+  deploy_apply_receipt_steps,
   deploy_receipt_command,
   install_d_shared_mode,
   path_parent_dir,
@@ -309,12 +311,25 @@ test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
 }
 
+// THE TWO HALVES THIS CLAIM JOINS ARE NOW READ AT THEIR OWN PRODUCERS.
+//
+// The acknowledgement is a line in the retract fold's comment block; the sudoers install is a step in
+// the preamble. Rendering the whole retract program to find both cost 86,034 eval steps against a
+// per-claim ceiling of 72,300 (required floor run 34927164902), and the program carries nothing else
+// this claim names.
+//
+// THE PREAMBLE IS LITERALLY SHARED, which is what makes the two absence conjuncts hold at this grain
+// rather than merely cost less: `live_deploy_retract_intent` concatenates
+// `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so a bootstrap preflight or
+// a tailscale sudo probe creeping back in would appear in exactly the text read here. The retract's
+// own remaining steps are artifact teardowns, which carry neither.
 test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
-  let sh = witness_retract_script()
-  string_contains(s: sh, pattern: "first retract-after-flip may be the dropin install")
-    && !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
-    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
+  let frame = pipeline_steps_text(steps: deploy_retract_frame_comments(spec: deployment_spec_srv1()))
+  let preamble = witness_apply_preamble_text()
+  string_contains(s: frame, pattern: "first retract-after-flip may be the dropin install")
+    && !string_contains(s: preamble, pattern: "deploy-access-bootstrap-preflight")
+    && !string_contains(s: preamble, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
+    && string_contains(s: preamble, pattern: "sudo -n /usr/sbin/visudo -cf")
 }
 
 // THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
@@ -377,7 +392,10 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: deploy_effect_command(inv: apt_install_effect(package: package_tailscale)))
     && string_contains(s: sh, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)))
     && string_contains(s: sh, pattern: deploy_effect_command(inv: apt_install_effect(package: package_tmux)))
-    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "apply"))
+    && string_contains(
+      s: pipeline_steps_text(steps: deploy_apply_receipt_steps(spec: spec)),
+      pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: spec), fold: "apply"),
+    )
 }
 
 // THE CAP WIRING IS ASSERTED AT ITS OWN SEAM, NOT BY RENDERING THE WHOLE DEPLOY.
@@ -1292,4 +1310,5 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
     && !string_contains(s: text, pattern: "actions-runner@srv1-02.service")
     && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
 }
+
 
