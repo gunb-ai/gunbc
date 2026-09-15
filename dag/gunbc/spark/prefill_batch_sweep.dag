@@ -97,10 +97,10 @@ type PredictedBatchArm sole_constructor {
 // tensor-parallel degree, so every arm's standing is Unestablished on that axis, carrying the belief
 // and the one command that would settle it. When the invocation is read, this one function changes
 // and all three arms become established together.
-fn batch_arm_subject(budget: Nat) -> ServingPerformanceSubjectStanding {
+fn batch_arm_subject(budget: TokenCount) -> ServingPerformanceSubjectStanding {
   SubjectUnestablished {
     missing: "tensor-parallel topology" as NonEmptyStr,
-    believed: join(["FourSparkTp4: the sweep ran on the group A head whose production topology is TP=4, and the 2048 arm's ~1.076 ms per computed token agrees to about 1% with tensor_parallel_comparison's TP=4 arm (1.0662) against its TP=2 arm (0.9838). Budget on this arm: ", to_string(budget)], "") as NonEmptyStr,
+    believed: join(["FourSparkTp4: the sweep ran on the group A head whose production topology is TP=4, and the 2048 arm's ~1.076 ms per computed token agrees to about 1% with tensor_parallel_comparison's TP=4 arm (1.0662) against its TP=2 arm (0.9838). Budget on this arm: ", to_string(token_count_value(t: budget))], "") as NonEmptyStr,
     would_settle: "read --tensor-parallel-size off the recorded systemd invocation 794afae389e44952a9049452c0619620 for the 2048 control arm (arm_2048_binding), which is the one arm whose invocation was captured" as NonEmptyStr,
   }
 }
@@ -137,7 +137,7 @@ data arm_16384_binding: ArmLaunchBinding = ArmLaunchDiscriminatedByReadback {
 // co-tenant pair taken on the same launch minutes later.
 data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
   MeasuredBatchArm {
-    subject: batch_arm_subject(budget: 2048),
+    subject: batch_arm_subject(budget: token_count(count: 2048)),
     max_num_batched_tokens: 2048,
     probe_computed_tokens: token_count(count: 16510),
     probe_wall_micros: 17759300,
@@ -148,7 +148,7 @@ data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
     binding: arm_2048_binding,
   },
   MeasuredBatchArm {
-    subject: batch_arm_subject(budget: 8192),
+    subject: batch_arm_subject(budget: token_count(count: 8192)),
     max_num_batched_tokens: 8192,
     probe_computed_tokens: token_count(count: 16463),
     probe_wall_micros: 16652100,
@@ -159,7 +159,7 @@ data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
     binding: arm_8192_binding,
   },
   MeasuredBatchArm {
-    subject: batch_arm_subject(budget: 16384),
+    subject: batch_arm_subject(budget: token_count(count: 16384)),
     max_num_batched_tokens: 16384,
     probe_computed_tokens: token_count(count: 16508),
     probe_wall_micros: 16327100,

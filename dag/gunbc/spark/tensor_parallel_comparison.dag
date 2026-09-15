@@ -103,7 +103,7 @@ type TopologyArm sole_constructor {
 // consumable, so an arm claiming TP=4 with two ranks got a FourSparkTp4 subject and the
 // fleet-normalisation path still read the other number. Both are axes; an inconsistent pair is a
 // difference the join can see rather than one the subject silently resolves.
-fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: Nat) -> ServingPerformanceSubjectStanding {
+fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: TokenCount) -> ServingPerformanceSubjectStanding {
   match serving_topology_of_rank_count(ranks: degree) {
     Absent => SubjectUnestablished {
       missing: "tensor-parallel topology" as NonEmptyStr,
@@ -120,7 +120,7 @@ fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: Na
         topology: resolved_topology,
         rank_population: ranks,
         context_ceiling: ceiling,
-        max_num_batched_tokens: token_count(count: budget),
+        max_num_batched_tokens: budget,
         max_num_seqs: 32,
         kv_cache_dtype: KvFp8,
         speculative: none,
@@ -132,7 +132,7 @@ fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: Na
 
 // 1,066.2 micros per token at ~16k depth. Reciprocal 938 tokens per second, derived, never stored.
 data spark_group_a_tp4_arm: TopologyArm = TopologyArm {
-  subject: topology_arm_subject(degree: 4, ranks: 4, ceiling: token_count(count: 131072), budget: 2048),
+  subject: topology_arm_subject(degree: 4, ranks: 4, ceiling: token_count(count: 131072), budget: token_count(count: 2048)),
   tensor_parallel_size: 4,
   rank_population: 4,
   context_ceiling: token_count(count: 131072),
@@ -145,7 +145,7 @@ data spark_group_a_tp4_arm: TopologyArm = TopologyArm {
 }
 
 data spark_group_a_tp2_arm: TopologyArm = TopologyArm {
-  subject: topology_arm_subject(degree: 2, ranks: 2, ceiling: token_count(count: 131072), budget: 2048),
+  subject: topology_arm_subject(degree: 2, ranks: 2, ceiling: token_count(count: 131072), budget: token_count(count: 2048)),
   tensor_parallel_size: 2,
   rank_population: 2,
   context_ceiling: token_count(count: 131072),
