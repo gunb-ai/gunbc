@@ -268,15 +268,15 @@ mod compiler_tests {
             "fn add(\n",
             "  a: Int,\n",
             "  b: Int\n",
-            ") -> Int {{\n",
+            ") -> Int {\n",
             "  a\n",
-            "}}\n",
-            "fn use_add() -> Int {{\n",
+            "}\n",
+            "fn use_add() -> Int {\n",
             "  add(\n",
             "    1,\n",
             "    2\n",
             "  )\n",
-            "}}\n",
+            "}\n",
         );
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::Builder::new()
@@ -533,12 +533,12 @@ mod compiler_tests {
             );
             let src = concat!(
                 "module tco_slot_fixture\n",
-                "fn walk(acc: Int, n: Int) -> Int {{\n",
-                "  if n == 0 {{ acc }} else {{\n",
+                "fn walk(acc: Int, n: Int) -> Int {\n",
+                "  if n == 0 { acc } else {\n",
                 "    let acc = acc + 1\n",
                 "    walk(acc, n - 1)\n",
-                "  }}\n",
-                "}}\n",
+                "  }\n",
+                "}\n",
             );
             let compiled = crate::v1_compiler_compile::compile_sources(
                 std::rc::Rc::new(im::vector![std::rc::Rc::new(
