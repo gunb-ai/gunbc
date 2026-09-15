@@ -69,7 +69,7 @@ data tool_pin_fixture: Pin<CliTool> = Pin {
   subject: CliTool {
     name: "cargo",
     min_version: Absent,
-    installable_via: [SourceApt],
+    installable_via: [SourceApt { package: "cargo" }],
   },
   version: "1.93.0" as VersionIdentity,
   expected_identity: content_hash_of_value(value: "cargo-structural-identity" as NonEmptyStr),
