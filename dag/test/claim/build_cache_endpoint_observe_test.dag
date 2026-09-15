@@ -589,7 +589,7 @@ test fn witness_stat_type_word_decodes_socket_and_absence() -> Bool {
 fn owner_start_time_of(text: String) -> String {
   match gunbc.build_cache_endpoint_observe.owner_identity(
     pid: 3975946,
-    currency: gunbc.build_cache_endpoint_observe.ObservationCurrent { observed_at_boot: "boot" as NonEmptyStr },
+    currency: ObservationCurrent { observed_at_boot: "boot" as NonEmptyStr },
     proc_stat: gunbc.build_cache_endpoint_observe.HostReadText { text: text },
   ) {
     gunbc.build_cache_endpoint_observe.OwnerIdentityObserved { identity: id } => id.start_time as String
