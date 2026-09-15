@@ -16,7 +16,7 @@ use std::rc::Rc;
 pub fn content_hash_family_grounding_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ContentHash is grounded on hash family (feature:content-hash-family-grounded). Fnv1a64Structural is the fnv1a64 structural-fingerprint family minted only by content_hash_* and atom_identity_hash pipelines. Sha256Digest, Sha1Digest, and Sha512Digest are cited cryptographic digest families: Sha256Digest via sha256_hex_digest / extdeps.crypto.hash bridges; Sha1Digest via sha1_hex_digest / extdeps.crypto.hash and extdeps.git.object_store git_object_id_content_hash (Git SHA-1 object ids — cited upstream in extdeps/git/object_store.dag, not minted here); Sha512Digest via sha512_hex_digest, extdeps.crypto.hash sha512_digest / sha512_digest_content_hash (FIPS 180-4), and extdeps.npm npm_decode_integrity (npm package-lock SRI wire → typed NpmIntegrityDecode; canonical internal form is lowercase hex). OCI OciSha512Digest now carries Sha512Digest directly — OciSha512DigestHex/OciSha512DigestBody dissolved once npm became the second validated SHA-512 consumer. ContentHash is their coproduct — Fnv1a64 | Sha256Hash | Sha1Hash | Sha512Hash. CLAIM SCOPE (reviews 45353/45359): Phase A makes cross-family comparison unwritable at family-specific carrier construction walls and at union-carrier integrity paths (admit_pin_integrity CrossFamilyIdentityIncomparable) and refuses bare union `==`/`!=` at R0 eval; substrate typecheck still permits authoring cross-family ContentHash == ContentHash until Phase B. PHASE A (this PR, lands dissolve-on carrier half): union-level eq/combine helpers deleted; per-family eq/combine only; OciDescriptor.digest requires OciContentDigest (algorithm-qualified, extdeps.container.oci.digest); GateRosterHash and v2.std.node.Hash require Fnv1a64Structural; GitObjectId for tree hashes; extdeps.pin admit_pin_integrity routes cross-family to CrossFamilyIdentityIncomparable (typed refusal, not silent false). PHASE B (dissolve-on remainder, DESIGN §3 ContentHash row): substrate refuses union-level `==`/`!=` at typecheck so cross-family comparison is structurally unwritable — not landed here. Until Phase B, R0 interpreter backstop only (content_hash_cross_family_eq_v1_seed_bridge_note; same guarantee-recovery class as numeric-tower CrossRepresentationEquality). UNION CARRIERS: extdeps.pin Pin.expected_identity and extdeps.realization.emit_on_demand_host ObservedToolIdentity.observed_identity hold ContentHash because Pin<Subject> is generic. content_hash_of_value mints structural ContentHash only through content_hash_atom. Rehydrate an observed fnv1a64 digest with as_content_hash_structural(structural: structural_content_hash(digest: …)), never by labeling arbitrary text. Wire serialization (sha256:<hex> for Sha256Hash; sha512:<hex> for Sha512Hash; raw hex for Sha1Hash and Fnv1a64) lives in serialize_content_hash.".to_string()
+            "ContentHash is grounded on hash family (feature:content-hash-family-grounded). Fnv1a64Structural is the fnv1a64 structural-fingerprint family minted only by content_hash_* and atom_identity_hash pipelines. Sha256Digest, Sha1Digest, and Sha512Digest are cited cryptographic digest families: Sha256Digest via sha256_hex_digest / extdeps.crypto.hash bridges; Sha1Digest via sha1_hex_digest / extdeps.crypto.hash and extdeps.git.object_store git_object_id_content_hash (Git SHA-1 object ids — cited upstream in extdeps/git/object_store.dag, not minted here); Sha512Digest via sha512_hex_digest, extdeps.crypto.hash sha512_digest / sha512_digest_content_hash (FIPS 180-4), and extdeps.npm npm_decode_integrity (npm package-lock SRI wire → typed NpmIntegrityDecode; canonical internal form is lowercase hex). OCI OciSha512Digest now carries Sha512Digest directly — OciSha512DigestHex/OciSha512DigestBody dissolved once npm became the second validated SHA-512 consumer. ContentHash is their coproduct — Fnv1a64 | Sha256Hash | Sha1Hash | Sha512Hash. CLAIM SCOPE (reviews 45353/45359): Phase A makes cross-family comparison unwritable at family-specific carrier construction walls and at union-carrier integrity paths (admit_pin_integrity CrossFamilyIdentityIncomparable) and refuses bare union `==`/`!=` at R0 eval; substrate typecheck still permits authoring cross-family ContentHash == ContentHash until Phase B. PHASE A (this PR, lands dissolve-on carrier half): union-level eq/combine helpers deleted; per-family eq/combine only; OciDescriptor.digest requires OciContentDigest (algorithm-qualified, extdeps.container.oci.digest); GateRosterHash and v2.std.node.Hash require Fnv1a64Structural; GitObjectId for tree hashes; extdeps.pin admit_pin_integrity routes cross-family to CrossFamilyIdentityIncomparable (typed refusal, not silent false). PHASE B (dissolve-on remainder, DESIGN §3 ContentHash row): substrate refuses union-level `==`/`!=` at typecheck so cross-family comparison is structurally unwritable — not landed here. Until Phase B, R0 interpreter backstop only (content_hash_cross_family_eq_v1_seed_bridge_note; same guarantee-recovery class as numeric-tower CrossRepresentationEquality). UNION CARRIERS: extdeps.pin Pin.expected_identity and extdeps.realization.emit_on_demand_host ObservedToolIdentity.observed_identity hold ContentHash because Pin<Subject> is generic. content_hash_of_value mints structural ContentHash only through content_hash_atom. Rehydrate an observed fnv1a64 digest with as_content_hash_structural(structural: structural_content_hash(digest: …)), never by labeling arbitrary text. Wire serialization AND its inverse live in serialize_content_hash / parse_content_hash_wire (sha256:<hex> for Sha256Hash; sha512:<hex> for Sha512Hash; raw hex for Sha1Hash and Fnv1a64).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -288,6 +288,14 @@ pub fn compare_content_hash(
     }
 }
 
+pub fn content_hash_sha256_wire_tag() -> String {
+    "sha256:".to_string()
+}
+
+pub fn content_hash_sha512_wire_tag() -> String {
+    "sha512:".to_string()
+}
+
 pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
     match (*hash.clone()).clone() {
         ContentHash::Fnv1a64(s) => s.digest.clone(),
@@ -297,12 +305,50 @@ pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
     }
 }
 
+pub fn content_hash_wire_after_prefix(wire: String, prefix: String) -> Option<String> {
+    if v1_rt::starts_with(wire.clone(), prefix.clone()) {
+        Some(v1_rt::substring(
+            &wire,
+            v1_rt::string_length(&prefix),
+            v1_rt::string_length(&wire),
+        ))
+    } else {
+        std::option::Option::None
+    }
+}
+
+pub fn parse_content_hash_wire(wire: String) -> Option<Rc<ContentHash>> {
+    match content_hash_wire_after_prefix(wire.clone(), content_hash_sha256_wire_tag()) {
+        Some(hex) => match sha256_hex_digest(hex.clone()) {
+            Some(d) => Some(as_content_hash_cryptographic(d.clone())),
+            std::option::Option::None => std::option::Option::None,
+        },
+        std::option::Option::None => {
+            match content_hash_wire_after_prefix(wire.clone(), content_hash_sha512_wire_tag()) {
+                Some(hex) => match sha512_hex_digest(hex.clone()) {
+                    Some(d) => Some(as_content_hash_sha512(d.clone())),
+                    std::option::Option::None => std::option::Option::None,
+                },
+                std::option::Option::None => match sha1_hex_digest(wire.clone()) {
+                    Some(d) => Some(as_content_hash_sha1(d.clone())),
+                    std::option::Option::None => {
+                        match fnv1a64_structural_hex_digest(wire.clone()) {
+                            Some(s) => Some(as_content_hash_structural(s.clone())),
+                            std::option::Option::None => std::option::Option::None,
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
 pub fn sha256_digest_wire_form(digest: Rc<Sha256Digest>) -> String {
-    Rc::new(vec!["sha256:".to_string(), digest.hex.clone()]).join(&"".to_string())
+    Rc::new(vec![content_hash_sha256_wire_tag(), digest.hex.clone()]).join(&"".to_string())
 }
 
 pub fn sha512_digest_wire_form(digest: Rc<Sha512Digest>) -> String {
-    Rc::new(vec!["sha512:".to_string(), digest.hex.clone()]).join(&"".to_string())
+    Rc::new(vec![content_hash_sha512_wire_tag(), digest.hex.clone()]).join(&"".to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
