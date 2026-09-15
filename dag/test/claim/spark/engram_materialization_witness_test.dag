@@ -1812,6 +1812,54 @@ test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -
   }
 }
 
+// A SCOPED MEMBERSHIP CANNOT CONCLUDE A TRANSFORM IS FAITHFUL, AND THAT IS THE ONE ARM IT TOUCHES. The
+// live Engram subject closes its membership against the twelve rows that were READ, not against the
+// revision's 96085-name index, so a thirteenth Engram tensor would be absent from the reading, absent from
+// any transform built over it, and -- before this gate -- pronounced faithful anyway. The first conjunct is
+// that refusal.
+//
+// THE SECOND AND THIRD CONJUNCTS ARE WHAT KEEP IT FROM BEING A BLANKET REFUSAL, which is the whole design
+// of the gate. IdenticalToPublishedEncoding still concludes over the same scoped subject, because its
+// claim is that the artifact's identity IS the published SHARD-SET identity -- a statement about two files
+// whose set is fully known, which a residual about tensor membership does not reach. And a relation that
+// is genuinely defective still reports Unfaithful rather than being masked as evidence-missing: the
+// residual removes the ability to conclude faithfulness, never the ability to detect its absence.
+test fn a_scoped_membership_blocks_only_the_faithful_transform_arm() -> Bool {
+  (match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: repacked_artifact(),
+    evidence: StructurePreservingTransform {
+      relation: relation_with_target(t: repacked_artifact().identity),
+    })) {
+    RealizationStandingOpen => true
+    RealizationSettledFaithful => false
+    RealizationSettledUnfaithful => false
+  })
+    && (match component_realization_standing(r: realize_component(
+      standing: engram_component_standing,
+      artifact: artifact_with_identity(i: engram_published_identity),
+      evidence: IdenticalToPublishedEncoding)) {
+      RealizationSettledFaithful => true
+      RealizationSettledUnfaithful => false
+      RealizationStandingOpen => false
+    })
+    && (match component_realization_standing(r: realize_component(
+      standing: engram_component_standing,
+      artifact: repacked_artifact(),
+      evidence: StructurePreservingTransform {
+        relation: faithfulness_relation(
+          relation: fixture_relation(), subject: fixture_relation(),
+          source_encoding: engram_published_encoding, source_identity: engram_published_identity,
+          target_encoding: repacked_encoding(), target_identity: repacked_artifact().identity,
+          preserved: [PreservesTensorNames, PreservesDeclaredShapes, PreservesElementValues],
+          ground: fixture_proven_ground()),
+      })) {
+      RealizationSettledUnfaithful => true
+      RealizationSettledFaithful => false
+      RealizationStandingOpen => false
+    })
+}
+
 // A RELATION MUST NAME BOTH ENDS AND PRESERVE THE REQUIRED PROPERTIES. Each clause is its own red,
 // because a relation that is merely well formed used to be accepted.
 test fn a_relation_about_another_subject_or_encoding_or_too_little_is_refused() -> Bool {
