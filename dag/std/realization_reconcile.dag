@@ -210,11 +210,13 @@ type Application
 // it never observes an effect. A receipt asserting effect history would mislead whoever acts on the
 // refusal, which is a live hazard rather than a wording preference.
 
-fn reconcile_effect<P, R, E>(
+// THE APPLICATION-CONSISTENCY TABLE, ONE COPY. reconcile_effect supplies a classified
+// established read as when_consistent; reconcile_effect_without_read supplies DoesNotGround
+// because no established ShowEffectiveRead exists. Observation refusal is not ReadAbsent.
+fn reconcile_application_then_ground<P, E>(
   decision: UpsertDecision<P>,
   application: Application,
-  show_read: ShowEffectiveRead<R>,
-  grounding: Grounding<E>,
+  when_consistent: Grounding<E>,
 ) -> ReconciledEffect<P, E> {
   match decision {
     Refuse { reason: why } =>
@@ -237,7 +239,7 @@ fn reconcile_effect<P, R, E>(
         NotApplied =>
           ReconciledEffect {
             decision: decision,
-            classified_grounding: classify_reported_grounding(show_read: show_read, grounding: grounding),
+            classified_grounding: when_consistent,
           }
         Applied =>
           ReconciledEffect {
@@ -259,10 +261,37 @@ fn reconcile_effect<P, R, E>(
         Applied =>
           ReconciledEffect {
             decision: decision,
-            classified_grounding: classify_reported_grounding(show_read: show_read, grounding: grounding),
+            classified_grounding: when_consistent,
           }
       }
   }
+}
+
+fn reconcile_effect<P, R, E>(
+  decision: UpsertDecision<P>,
+  application: Application,
+  show_read: ShowEffectiveRead<R>,
+  grounding: Grounding<E>,
+) -> ReconciledEffect<P, E> {
+  reconcile_application_then_ground(
+    decision: decision,
+    application: application,
+    when_consistent: classify_reported_grounding(show_read: show_read, grounding: grounding),
+  )
+}
+
+// No usable observation was established, so there is no ShowEffectiveRead to classify.
+// DoesNotGround is not ReadAbsent: absence is an established read of emptiness.
+fn reconcile_effect_without_read<P, E>(
+  decision: UpsertDecision<P>,
+  application: Application,
+  reason: String,
+) -> ReconciledEffect<P, E> {
+  reconcile_application_then_ground(
+    decision: decision,
+    application: application,
+    when_consistent: DoesNotGround { reason: reason },
+  )
 }
 
 // NO Bool PREDICATE OVER THE OUTCOME. classify_reconciled / ReconciledOutcome is the canonical

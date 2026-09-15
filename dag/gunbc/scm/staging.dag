@@ -10,14 +10,17 @@ module gunbc.scm.staging
 // section 3), owing its own identity rule, its own codec, its own duplicate-path law and its own
 // version axis -- four authorities to keep in step with the four this reuses.
 //
-// THIS MODULE IS THE OBSERVATION HALF, AND THE VERBS THAT MOVE THE SELECTION ARE NOT HERE. `add` and
-// `commit` are transitions over a repository that must then be PUBLISHED, and publication over a
-// document another writer may be changing is an unsolved obligation in this tree: extdeps.filesystem
-// declares Write, WriteOwnerOnly, WriteCreateNew, Read, Delete and List and NO rename, so the
-// atomic-replace a conditional publication needs cannot be spelled at all. Landing the transitions
-// with no safe publisher would put a lost update behind a success report. They land with that
-// capability, and what lands here is what the read path can already answer truthfully about any
-// document it admits: the effective candidate, its entries, and its standing against the base.
+// THIS MODULE IS THE OBSERVATION HALF, AND THE VERBS THAT MOVE THE SELECTION LIVE NEXT DOOR.
+// `gunbc.scm.write_spine` holds `add` and `commit`; they consume `effective_candidate` and
+// `stage_standing` from here and are published through `gunbc.scm.repository_slot`, which binds the
+// store's failure-atomic create-only publication. When this paragraph was first written none of that
+// existed and it said so; it is replaced rather than annotated, because a premise that has been
+// overtaken is not context for a reader, it is a false statement about the tree.
+//
+// WHAT STAYS HERE IS THE READ PATH, and the split is not arbitrary: this module answers what the
+// effective candidate IS, its entries, and its standing against the base, for any document the
+// decoder admits. Deciding to MOVE the selection needs a publisher that can refuse a lost update,
+// which is a host boundary and belongs where the host is.
 //
 // WHAT THAT REUSE IS AND IS NOT, because the first draft of this header overclaimed it. Reusing the
 // manifest type means the store's existing idempotent insertion collapses an equal canonical record
@@ -65,6 +68,17 @@ import gunbc.scm.repository_envelope {
   RepositoryCommit,
   commit_at_reference,
 }
+import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom }
+import gunbc.scm.repository_envelope {
+  AdmittedCommitBasis,
+  BaseAdmission, BaseAdmitted, BaseAbsentInRepository,
+  admit_root_basis, admit_base_in,
+  RepositoryManifestRoot, RepositoryManifestRootResolution,
+  RepositoryManifestRootResolved, RepositoryManifestRootMissing,
+  RepositoryManifestRootIsAuthoredSource, RepositoryManifestRootIsSemanticNode,
+  repository_root_by_resolving,
+}
+import gunbc.scm.object_store { CorpusManifestTarget }
 
 // EVERY REFUSAL NAMES WHAT IT REFUSED ON, and the wrong-kind arms stay separate from the missing one
 // for the reason every wrong-kind population in this stack does: a locator occupied by a source or a
@@ -121,9 +135,54 @@ type StagingRefusal
 // empty corpus when the base cannot be read reintroduces the deletion through the failure arm, which
 // is the absorbing fallback DESIGN section 5 names -- a failure widening to the superset instead of
 // refusing.
+// THE PRESENT ARMS CARRY THE RECORD, NOT A REFERENCE BESIDE A LIST. Both fields came from ONE
+// `CorpusManifestRecord` and splitting them threw away the fact that they did -- so a consumer holding
+// the pair could no longer tell that the entries were a path-unique set that the store's one manifest
+// constructor had already admitted -- `insert_canonical_manifest`, reachable only through an
+// `AdmittedManifestEntries` -- and had to re-ask a question the value's own provenance had settled.
+// This sentence used to name `store_corpus_manifest` as that admitter, which stopped covering the
+// whole population once the native `add` began reaching the constructor through
+// `store_path_unique_manifest`. Found by external review. Carrying
+// the record keeps the provenance attached, which is what lets `gunbc.scm.write_spine` derive a
+// `PathUniqueManifestEntries` and stop matching a duplicate arm it cannot reach.
+// THE CANDIDATE IS BOUND TO THE STORE IT WAS FOUND IN, AND THE 64-BIT LOCATOR IS WHY.
+//
+// An earlier revision carried a bare `CorpusManifestRecord` here and let `stage_standing_against_base`
+// take it beside a repository as two independently obtained values. I argued that pair was safe because
+// the root is resolved FROM `record.identity.locator`, so content-addressing made them agree. THAT
+// ARGUMENT WAS FALSE, and external review falsified it with the fact the model states about itself:
+// `ObjectId` is a 64-BIT NONCRYPTOGRAPHIC locator, and a store refuses unequal records at one locator
+// only WITHIN itself. Two stores share no such admission. So:
+//
+//   store A holds manifest MA at locator L, sources complete
+//   store B holds a DIFFERENT manifest MB at the same L, one source absent, but does hold MA's sources
+//   stage_standing_against_base(repository: B, record: MA)
+//     -> resolves L in B, obtaining the root for MB
+//     -> carries MA's entries into the change
+//     -> completeness vouches for MA's entries against B, which holds them
+//     -> the basis freezes MB, whose own sources were never observed
+//
+// The completeness observation vouches for one manifest while the basis freezes another. Resolving from
+// the record's own locator establishes that SOMETHING of manifest kind sits there; it does not establish
+// that what sits there IS this record. `repository_root_by_resolving` returns a root branded from the
+// record it FOUND and does not carry that found record forward, which is exactly the fact my argument
+// assumed away.
+//
+// So the binding happens where it is actually known: `effective_candidate` reads the record OUT OF this
+// repository's store, so at that instant the pair is true by observation rather than by inference. The
+// carrier freezes that instant. What no longer gets re-derived or independently assembled is the
+// RELATION between the repository and the record -- downstream still resolves that record's root within
+// the same carried repository, which is a different act and a legitimate one. The first writing of this
+// line said "nothing downstream re-derives it", which overstated the claim past what the carrier
+// actually guarantees; external review narrowed it.
+type ResolvedCandidateManifest sole_constructor {
+  repository: RepositoryEnvelope
+  record: CorpusManifestRecord
+}
+
 type EffectiveCandidate
-  = CandidateFromStage { manifest: CorpusManifestObjectRef, entries: List<CorpusManifestEntry> }
-  | CandidateInheritedFromBase { manifest: CorpusManifestObjectRef, entries: List<CorpusManifestEntry> }
+  = CandidateFromStage { candidate: ResolvedCandidateManifest }
+  | CandidateInheritedFromBase { candidate: ResolvedCandidateManifest }
   | CandidateEmptyCorpus
   | CandidateRefused { cause: StagingRefusal }
 
@@ -132,7 +191,9 @@ fn effective_candidate(repository: RepositoryEnvelope) -> EffectiveCandidate {
     Present { value: reference } =>
       match find_corpus_manifest_record(store: repository.store, identity: reference.locator) {
         CorpusManifestFound(record) =>
-          CandidateFromStage { manifest: record.identity, entries: record.entries }
+          CandidateFromStage {
+            candidate: ResolvedCandidateManifest { repository: repository, record: record },
+          }
         CorpusManifestAbsent { identity: r } =>
           CandidateRefused { cause: StageManifestMissingFromStore { staged: r } }
         CorpusManifestIsAuthoredSource { identity: r } =>
@@ -153,7 +214,9 @@ fn candidate_inherited_from_base(repository: RepositoryEnvelope) -> EffectiveCan
         Present { value: commit } =>
           match find_corpus_manifest_record(store: repository.store, identity: commit.root.locator) {
             CorpusManifestFound(record) =>
-              CandidateInheritedFromBase { manifest: record.identity, entries: record.entries }
+              CandidateInheritedFromBase {
+                candidate: ResolvedCandidateManifest { repository: repository, record: record },
+              }
             CorpusManifestAbsent { identity: r } =>
               CandidateRefused { cause: StageBaseManifestMissingFromStore { root: r } }
             CorpusManifestIsAuthoredSource { identity: r } =>
@@ -176,8 +239,10 @@ fn staged_entries(repository: RepositoryEnvelope) -> StagedEntries {
   match effective_candidate(repository: repository) {
     CandidateRefused { cause: c } => StagedEntriesRefused { cause: c }
     CandidateEmptyCorpus => StagedEntries { entries: [] }
-    CandidateFromStage { manifest: _, entries: entries } => StagedEntries { entries: entries }
-    CandidateInheritedFromBase { manifest: _, entries: entries } => StagedEntries { entries: entries }
+    CandidateFromStage { candidate: candidate } =>
+      StagedEntries { entries: candidate.record.entries }
+    CandidateInheritedFromBase { candidate: candidate } =>
+      StagedEntries { entries: candidate.record.entries }
   }
 }
 
@@ -185,17 +250,22 @@ fn staged_entries(repository: RepositoryEnvelope) -> StagedEntries {
 // which snapshot the candidate is being compared against, and both must distinguish "no base" from
 // "a base that cannot be resolved" -- so the resolution is named rather than performed twice.
 type BaseSnapshot
-  = BaseAtCommit { reference: RepositoryCommitRef, root: CorpusManifestObjectRef }
+  = BaseAtCommit { basis: AdmittedCommitBasis, root: CorpusManifestObjectRef }
   | NoBaseSelected
   | BaseRefused { cause: StagingRefusal }
 
-fn base_snapshot(repository: RepositoryEnvelope) -> BaseSnapshot {
-  match repository.checked_out {
+// THE SUBJECT IS THE PARAMETER, NOT THE REPOSITORY, because the basis this returns must be evidence
+// about the very root that will be committed. Taking the repository separately is what let admitted
+// evidence and a subject come from two different repositories.
+fn base_snapshot(subject: RepositoryManifestRoot) -> BaseSnapshot {
+  match subject.repository.checked_out {
     Absent => NoBaseSelected
     Present { value: reference } =>
-      match commit_at_reference(commits: repository.commits, reference: reference) {
-        Absent => BaseRefused { cause: StageBaseUnresolved { reference: reference } }
-        Present { value: commit } => BaseAtCommit { reference: reference, root: commit.root }
+      match admit_base_in(subject: subject, reference: reference) {
+        BaseAbsentInRepository { reference: r } =>
+          BaseRefused { cause: StageBaseUnresolved { reference: r } }
+        BaseAdmitted { basis: b, committed: committed } =>
+          BaseAtCommit { basis: b, root: committed }
       }
   }
 }
@@ -218,10 +288,46 @@ fn base_snapshot(repository: RepositoryEnvelope) -> BaseSnapshot {
 // on disk after being staged is invisible to it -- reporting unstaged changes needs a working-tree
 // observation this layer does not have, exactly as status.dag's header already states for branches
 // and modified files.
+// THE TWO FREEZABLE ARMS CARRY THE ANCESTRY THEY ALREADY ESTABLISHED, rather than leaving a commit
+// verb to re-derive it from `repository.checked_out` and ask again whether that parent exists.
+// `base_snapshot` reaches `BaseAtCommit` only through `admit_base_in`, which resolves the selected
+// commit ONCE and hands back the admitted ancestry beside the root it committed, so by the time
+// `StageDiffersFromBase` is constructed the parent has been FOUND in this repository's commits;
+// `StageWithNoBase` is reached only from `NoBaseSelected`, where there is no parent to find. Carrying
+// an `AdmittedCommitBasis` -- sole-constructed by the repository envelope, never by a caller, and
+// naming the very subject it is evidence about --
+// hands that established fact forward, so the mint downstream consumes it instead
+// of re-asking a question whose answer this type already knows -- and the parent-missing arm it used
+// to need disappears from `gunbc.scm.write_spine` rather than being carried as an unreachable cause.
+// Found by external review.
+// THE FREEZABLE CHANGE -- ONE VALUE, NOT TWO PEERS.
+//
+// The basis names the subject a commit would freeze; the entries are that subject's manifest contents,
+// already read here. An earlier revision carried them as two separate FIELDS and then handed them to
+// the commit as two separate ARGUMENTS, which reopened, on the commit path, exactly the seam the merge
+// path had just closed: `.dag` has no module privacy, so a public helper taking
+// `(repository, entries, basis)` lets a caller supply an EMPTY or unrelated entry population beside a
+// real basis, pass the completeness observation trivially, and mint the unrecoverable candidate the
+// observation exists to refuse. The wall was bypassable by the sibling next to it. Found by external
+// review, which named the rule this type now obeys: do not compare independently supplied peers; carry
+// the relationship as one value.
+//
+// `sole_constructor` puts the only constructor in this module, at the one place that has just resolved
+// the manifest and read its entries -- so a basis and an entry list that do not belong together is not
+// a case the commit has to detect. It cannot be written.
+type FreezableChange sole_constructor {
+  basis: AdmittedCommitBasis
+  entries: List<CorpusManifestEntry>
+}
+
 type StageStanding
   = StageMatchesBase { candidate: CorpusManifestObjectRef }
-  | StageDiffersFromBase { candidate: CorpusManifestObjectRef, committed: CorpusManifestObjectRef }
-  | StageWithNoBase { candidate: CorpusManifestObjectRef }
+  | StageDiffersFromBase {
+      candidate: RepositoryManifestRoot,
+      committed: CorpusManifestObjectRef,
+      change: FreezableChange
+    }
+  | StageWithNoBase { candidate: RepositoryManifestRoot, change: FreezableChange }
   | NoCandidateAndNoBase
   | StageStandingRefused { cause: StagingRefusal }
 
@@ -229,25 +335,101 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
   match effective_candidate(repository: repository) {
     CandidateRefused { cause: c } => StageStandingRefused { cause: c }
     CandidateEmptyCorpus => NoCandidateAndNoBase
-    CandidateInheritedFromBase { manifest: manifest, entries: _ } =>
-      stage_standing_against_base(repository: repository, candidate: manifest)
-    CandidateFromStage { manifest: manifest, entries: _ } =>
-      stage_standing_against_base(repository: repository, candidate: manifest)
+    CandidateInheritedFromBase { candidate: candidate } =>
+      stage_standing_against_base(candidate: candidate)
+    CandidateFromStage { candidate: candidate } =>
+      stage_standing_against_base(candidate: candidate)
   }
 }
 
-fn stage_standing_against_base(
-  repository: RepositoryEnvelope,
-  candidate: CorpusManifestObjectRef,
-) -> StageStanding {
-  match base_snapshot(repository: repository) {
-    BaseRefused { cause: c } => StageStandingRefused { cause: c }
-    NoBaseSelected => StageWithNoBase { candidate: candidate }
-    BaseAtCommit { reference: _, root: root } =>
-      if root.locator == candidate.locator {
-        StageMatchesBase { candidate: candidate }
-      } else {
-        StageDiffersFromBase { candidate: candidate, committed: root }
+// THE STANDING CARRIES THE ENTRIES; IT DOES NOT JUDGE THEM. THE PUBLICATION QUESTION IS THE COMMIT'S.
+//
+// A first repair put the source-completeness check HERE, inside `stage_standing`, because this is where
+// `effective_candidate`'s record is already in hand. That was a cost analysis attached to the wrong
+// operation, and review caught it before it landed: this
+// function is not the commit path. `gunbc.scm.status` reads it to REPORT a stage, and
+// `gunbc.scm.checkout` reads it to decide whether a checkout would discard staged work. Refusing here
+// made a partial repository unREADABLE -- status could no longer say what was staged -- and it MASKED
+// checkout's own located cause, returning `CheckoutCandidateUnreadable` about the candidate when the
+// real fact was an unrecoverable TARGET snapshot, which `CheckoutCorpusUnrecoverable` exists to name.
+// A wall that converts a read into a refusal is not a safer read.
+//
+// The sharper counterexample is review's, and it needs no stage at all: take a selected commit whose
+// manifest is present but one of whose sources is absent, with nothing explicitly staged. The effective
+// candidate is that commit's own manifest, so the truthful standing is `StageMatchesBase` -- there is no
+// pending change, and missing bytes do not make two locators harder to compare. Refusing there made
+// source unavailability an ABSORBING WORKSPACE STATE: the workspace could not even check out a
+// different, complete commit to escape it, because the refusal fired before checkout could ask its own
+// question. That is DESIGN section 5's absorbing fallback wearing a wall's clothing.
+//
+// So this function stays RELATIONAL -- it answers only whether the candidate differs from the base --
+// and the entries travel on the two committable arms to the one operation that publishes. Carrying them
+// saves that operation a repeat manifest read; it does not make its per-entry source check free, and the
+// note in `gunbc.scm.write_spine` states that cost honestly.
+
+// THE CANDIDATE IS RESOLVED ONCE, HERE, AND THE SEALED ROOT IS WHAT TRAVELS.
+//
+// The three wrong-kind refusals have a real producer at THIS resolution: the stage is a locator an
+// envelope carries, and a decoded repository can name one its object table does not hold as a
+// manifest. What they do not have is a second producer downstream -- an earlier revision had
+// `gunbc.scm.write_spine` re-resolve the same locator at freeze time and answer all three again, above
+// an annotation saying they could not fire there. Carrying the `RepositoryManifestRoot` makes the
+// second question absent instead of unreachable-but-answered. Found by external review.
+// THE REPOSITORY AND THE RECORD ARRIVE ALREADY RELATED, AND THAT IS THE ONLY THING SEALED HERE.
+//
+// `effective_candidate` binds the repository to the exact manifest record observed in ITS OWN store.
+// This function resolves that record's root within that same carried repository to obtain a
+// `RepositoryManifestRoot`; the re-resolution is fine, because what can no longer be independently
+// assembled is the RELATION between the repository and the record. No caller can substitute another
+// repository, or another record, beside it.
+//
+// TWO EARLIER ANNOTATIONS STOOD HERE AND BOTH WERE WRONG, which is why this one is deliberately short.
+// The first described a `stage_standing_with_root(repository, record, root)` sibling that no longer
+// exists. The second argued the then-current `(repository, record)` pair was safe because a locator is
+// a content hash, so a manifest found at that locator in any store must have the record's entries.
+// That is false: `ObjectId` is a 64-BIT NONCRYPTOGRAPHIC locator, and a store refuses unequal records
+// at one locator only within itself, so two stores can hold different manifests at the same locator --
+// which let completeness vouch for one manifest while the basis froze another. Both were removed by
+// external review; the second one twice, because the edit that was supposed to delete it duplicated a
+// neighbouring block instead and I reported the deletion without reading the file back.
+//
+// The lesson worth keeping is about annotations rather than about this function: an argument written
+// beside the code is inherited by whoever reads it next, so a wrong one is more expensive than none.
+fn stage_standing_against_base(candidate: ResolvedCandidateManifest) -> StageStanding {
+  let repository = candidate.repository
+  let record = candidate.record
+  match repository_root_by_resolving(
+    repository: repository,
+    root: CorpusManifestTarget { locator: record.identity.locator },
+  ) {
+    RepositoryManifestRootMissing { root: r } =>
+      StageStandingRefused { cause: StageManifestMissingFromStore { staged: r } }
+    RepositoryManifestRootIsAuthoredSource { root: r } =>
+      StageStandingRefused { cause: StageManifestIsAuthoredSource { staged: r } }
+    RepositoryManifestRootIsSemanticNode { root: r } =>
+      StageStandingRefused { cause: StageManifestIsSemanticNode { staged: r } }
+    RepositoryManifestRootResolved(root) =>
+      match base_snapshot(subject: root) {
+        BaseRefused { cause: c } => StageStandingRefused { cause: c }
+        NoBaseSelected =>
+          StageWithNoBase {
+            candidate: root,
+            change: FreezableChange {
+              basis: admit_root_basis(subject: root),
+              entries: record.entries,
+            },
+          }
+        BaseAtCommit { basis: admitted, root: committed } =>
+          if committed.locator == record.identity.locator {
+            StageMatchesBase { candidate: record.identity }
+          } else {
+            StageDiffersFromBase {
+              candidate: root,
+              committed: committed,
+              change: FreezableChange { basis: admitted, entries: record.entries },
+            }
+          }
       }
   }
 }
+

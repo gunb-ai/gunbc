@@ -89,3 +89,42 @@ fn nccl_roce_gid_selection_env(s: NcclRoceGidSelection) -> List<NcclEnvAssignmen
     ]
   }
 }
+
+// ── WHICH TRANSPORT A COMMUNICATOR ACTUALLY BUILT, WHICH NCCL ITSELF ANNOUNCES ──────────────────
+//
+// WHY THIS IS A SEPARATE FACT FROM THE ENVIRONMENT THAT ASKED FOR IT. The env assignments above --
+// and gunbc.spark.pair_serving_observed's CollectiveTransportEnvObserved -- record what the launch
+// REQUESTED. They do not record what NCCL BUILT, and the gap between the two is the whole reason
+// this type exists: NCCL falls back to Socket silently whenever the IB path is unavailable, and a
+// launch whose NCCL_IB_* variables are all set correctly still runs on TCP if the container carries
+// no /dev/infiniband node or no CAP_IPC_LOCK. Reading the request and reporting the transport is the
+// authority substitution extdeps.vllm.server refuses for version strings, in a second place.
+//
+// NCCL PUBLISHES THE VERDICT ITSELF, once per communicator init, as the `NCCL INFO ... Using network
+// <name>` line. That line is the producer, and it is the only thing here entitled to answer.
+//
+// EVERY ARM IS A TRANSPORT THAT WAS READ, AND THAT IS THE TYPE'S NAME BEING TRUE. An earlier
+// revision carried a third arm, `NcclTransportUnread`, so a value of a type called RealizedTransport
+// could assert that no transport had been realized -- and consumers then needed a bespoke guard to
+// notice. Absence of a reading is not a kind of reading; it is the absence of this value, spelled by
+// the optional at the use site, so the guard, the sentinel row and the special case all dissolve.
+//
+// THE NETWORK NAME IS DERIVED FROM THE ARM AND IS NOT A FIELD. It was one, on both read arms, and
+// the projection returned the caller's string -- so `NcclTransportSocket { network_name: "IB" }` was
+// writable and compared EQUAL to a genuine IB read, licensing exactly the substitution this type
+// exists to refuse. The identity is the arm; a second copy of it is the one that lies.
+type NcclRealizedTransport
+  = NcclTransportIbVerbs { read_from: NonEmptyStr }
+  | NcclTransportSocket { read_from: NonEmptyStr }
+
+fn nccl_realized_transport_wire(t: NcclRealizedTransport) -> NonEmptyStr {
+  match t {
+    NcclTransportIbVerbs { read_from: _ } => nccl_network_name_ib
+    NcclTransportSocket { read_from: _ } => nccl_network_name_socket
+  }
+}
+
+// The literal NCCL emits for each of the two networks it builds on this fleet, so a reader that has
+// the log line does not have to guess which spelling the verdict uses.
+data nccl_network_name_socket: NonEmptyStr = "Socket" as NonEmptyStr
+data nccl_network_name_ib: NonEmptyStr = "IB" as NonEmptyStr

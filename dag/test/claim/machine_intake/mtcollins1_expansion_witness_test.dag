@@ -75,6 +75,27 @@ data zero_risers_fixture: MtCollinsExpansionOperatorObservation = MtCollinsExpan
   ocp_bay_occupancy: OcpBayOccupancyUnobserved { settled_by: "fixture" as NonEmptyStr },
 }
 
+// THE APERTURE-IS-NOT-A-RISER FIXTURE. This used to be the live observation itself: while the held
+// unit's riser positions were unreported, the discriminating control could run directly on it. The
+// operator reported the interior on 2026-09-14 and the live observation now answers Offered, so a
+// control asserting Unobserved on it would have had to be deleted -- and deleting it would have
+// retired the wall along with the gap it was watching. DESIGN section 4b(4) rules the other way:
+// the production handling dissolves on a climb, the EVIDENCE does not. So the control is re-pointed
+// at a fixture that holds the exact shape it always guarded -- two apertures reported, risers not --
+// and it now discriminates permanently rather than only until this one machine was opened.
+data apertures_without_riser_report_fixture: MtCollinsExpansionOperatorObservation = MtCollinsExpansionOperatorObservation {
+  unit: observed_unit,
+  chassis_height: rack_unit(count: 1),
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 14 },
+  observer: "witness fixture",
+  relay_message: "Constructed by this witness. Not a relayed report." as NonEmptyStr,
+  method: "Constructed by this witness to hold two reported rear apertures beside an unreported riser occupancy. Not a report about any machine." as NonEmptyStr,
+  rear_apertures: fixture_apertures,
+  riser_occupancy: RiserPositionsUnobserved { settled_by: "fixture: the interior has not been reported" as NonEmptyStr },
+  ocp_physical_variant: OcpPhysicalVariantUnresolved { settled_by: "fixture" as NonEmptyStr },
+  ocp_bay_occupancy: OcpBayOccupancyUnobserved { settled_by: "fixture: the bay has not been reported" as NonEmptyStr },
+}
+
 // REPAIR CONTROL (quiet-swift-866's review of this PR). The fitted branch used to return
 // Offered { positions: 0 } for a report of zero fitted risers, because zero is Less than the
 // platform bound of two. An offer of zero is not an offer -- the same shape as a populated bay
@@ -123,7 +144,7 @@ test fn a_riser_report_beyond_the_platform_bound_refuses() -> Bool {
 // arm precisely so that a reader gets the capacity and the open question together instead of one
 // standing in for the other.
 test fn two_rear_apertures_do_not_establish_two_fitted_risers() -> Bool {
-  match pcie_attachment_standing(observation: mtcollins1_expansion_observation) {
+  match pcie_attachment_standing(observation: apertures_without_riser_report_fixture) {
     AttachmentPointOffered { positions: _, basis: _ } => false
     AttachmentPointOccupied { basis: _ } => false
     AttachmentPointAbsent { basis: _ } => false
@@ -135,7 +156,7 @@ test fn two_rear_apertures_do_not_establish_two_fitted_risers() -> Bool {
 // The OCP bay is a platform fact and its OCCUPANCY is not. The brief establishes the slot; nobody
 // has reported whether a card sits in it, so this must answer unobserved rather than offered.
 test fn ocp_bay_presence_does_not_establish_its_occupancy() -> Bool {
-  match ocp_attachment_standing(observation: mtcollins1_expansion_observation) {
+  match ocp_attachment_standing(observation: apertures_without_riser_report_fixture) {
     AttachmentPointOffered { positions: _, basis: _ } => false
     AttachmentPointOccupied { basis: _ } => false
     AttachmentPointAbsent { basis: _ } => false
@@ -144,20 +165,33 @@ test fn ocp_bay_presence_does_not_establish_its_occupancy() -> Bool {
   }
 }
 
+// THE POSITIVE CONTROL FOR THE 2026-09-14 INTERIOR REPORT, and it is the arm that would have stayed
+// silent. The three controls above are all FIXTURE-driven, so every one of them would pass unchanged
+// if the operator's report never reached the live observation at all -- a green suite over a
+// declaration nobody updated. This asserts the live unit's own answer and the two counts, so the
+// report has to actually be in the carrier for the witness to pass.
+//
+// TWO FITTED PCIe POSITIONS, AND THIS CONTROL IS THE RECEIPT FOR HOW THAT NUMBER WAS FIXED. It first
+// read one, from a reading of the operator's sentence rather than from the operator; he corrected it to
+// two on direct inspection the same day. The count is asserted here rather than left to the evidence
+// string because a consumer prices a card against it: two fitted positions is the platform's full upper
+// bound, so this chassis reaches it rather than falling one short. The OCP count stays 1 - that fold
+// offers a single mezzanine bay and is a different question from the rear positions.
 test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
   match expansion_evidence_for_unit(unit: observed_unit) {
     NoExpansionObservationForUnit { requested_unit: _ } => false
     UnitExpansionEvidence { observation: _, pcie: pcie, ocp: ocp } =>
       match pcie {
-        AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } =>
+        AttachmentPointOffered { positions: pcie_positions, basis: _ } =>
           match ocp {
-            AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => true
-            AttachmentPointOffered { positions: _, basis: _ } => false
+            AttachmentPointOffered { positions: ocp_positions, basis: _ } =>
+              pcie_positions == 2 && ocp_positions == 1
+            AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => false
             AttachmentPointOccupied { basis: _ } => false
             AttachmentPointAbsent { basis: _ } => false
             AttachmentPointReportExceedsPlatform { reported: _, platform_upper_bound: _ } => false
           }
-        AttachmentPointOffered { positions: _, basis: _ } => false
+        AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => false
         AttachmentPointOccupied { basis: _ } => false
         AttachmentPointAbsent { basis: _ } => false
         AttachmentPointReportExceedsPlatform { reported: _, platform_upper_bound: _ } => false

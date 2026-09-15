@@ -1,0 +1,5 @@
+module test.fixture.complexity_accumulator_copy.planted_copy_arrow
+
+fn planted_quadratic_arrow(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (acc, x) => list_append(left: x, right: acc))
+}

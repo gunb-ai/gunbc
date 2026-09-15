@@ -26,6 +26,9 @@ import std.durable_compare_and_set {
   CasUnreadableMalformed,
   CasUnreadableContentMissing,
   CasUnreadableReadRefused,
+  CasUnreadableObservationBoundExceeded,
+  CasSlotObservationRefused,
+  CasGenerationPublicationRefused,
 }
 import gunbc.fleet_observation_collector_ownership { CollectorSessionId }
 
@@ -311,13 +314,24 @@ fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
           observed: cas_race_observation(observed: observed)
         }
       }
-    CasStoreRefused { cause: cause } =>
-      match cause {
-        CasUnreadableMalformed { detail: detail } =>
-          LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
-        CasUnreadableContentMissing { referenced: referenced } =>
-          LocalCommitFailed { cause: ChunkReferenceMissing { referenced: referenced } }
-        CasUnreadableReadRefused { detail: detail } =>
+    CasStoreRefused { cause: failure } =>
+      match failure {
+        CasSlotObservationRefused { cause: cause } =>
+          match cause {
+            CasUnreadableMalformed { detail: detail } =>
+              LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
+            CasUnreadableContentMissing { referenced: referenced } =>
+              LocalCommitFailed { cause: ChunkReferenceMissing { referenced: referenced } }
+            CasUnreadableReadRefused { detail: detail } =>
+              LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
+            CasUnreadableObservationBoundExceeded { bound: bound } =>
+              LocalCommitFailed {
+                cause: ChunkCommitRefused {
+                  detail: join(["slot observation exceeded its probe bound of ", bound as String, " generations"], "") as NonEmptyStr
+                }
+              }
+          }
+        CasGenerationPublicationRefused { detail: detail } =>
           LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
       }
   }

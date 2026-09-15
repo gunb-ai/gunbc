@@ -53,6 +53,16 @@ data lambda_before_binder_source: String = "module probe_generic_lambda_before_b
 
 data lambda_field_access_source: String = "module probe_generic_lambda_field_access\nimport std.types { Int }\ntype Point {\n  px: Int\n}\nfn apply_to<R>(f: fn(R) -> Int, v: R) -> Int {\n  f(v)\n}\nfn asks() -> Int {\n  apply_to(f: p => p.px, v: Point { px: 7 })\n}\n"
 
+data lambda_field_access_shared_generic_spelling_source: String = "module probe_generic_lambda_field_access_shared_spelling\nimport std.types { Int }\ntype Point {\n  px: Int\n}\nfn apply_to<T>(f: fn(T) -> Int, v: T) -> Int {\n  f(v)\n}\nfn asks<T>() -> Int {\n  apply_to(f: p => p.px, v: Point { px: 7 })\n}\n"
+
+data lambda_field_access_nested_call_source: String = "module probe_generic_lambda_field_access_nested_call\nimport std.types { Int }\ntype Point {\n  px: Int\n}\nfn apply_to<T>(f: fn(T) -> Int, v: T) -> Int {\n  f(v)\n}\nfn inner<U>(g: fn(U) -> Int, w: U) -> Int {\n  g(w)\n}\nfn asks<T>() -> Int {\n  apply_to(f: p => inner(g: q => p.px, w: Point { px: 1 }), v: Point { px: 7 })\n}\n"
+
+data enclosing_field_miss_under_callee_generic_homonymy_source: String = "module probe_enclosing_field_miss_under_callee_generic_homonymy\nimport std.types { Int }\nfn only_fn<T>(f: fn(T) -> Int) -> Int {\n  0\n}\nfn asks<T>(item: T) -> Int {\n  only_fn(f: ignored => item.no_such_field)\n}\n"
+
+data enclosing_field_miss_via_let_alias_under_callee_generic_homonymy_source: String = "module probe_enclosing_field_miss_via_let_alias\nimport std.types { Int }\nfn only_fn<T>(f: fn(T) -> Int) -> Int {\n  0\n}\nfn asks<T>(item: T) -> Int {\n  let x = item\n  only_fn(f: ignored => x.no_such_field)\n}\n"
+
+data lambda_param_shadowing_enclosing_value_param_still_binds_source: String = "module probe_lambda_param_shadows_enclosing_item\nimport std.types { Int }\ntype Point {\n  px: Int\n}\nfn apply_to<T>(f: fn(T) -> Int, v: T) -> Int {\n  f(v)\n}\nfn asks<T>(item: T) -> Int {\n  apply_to(f: item => item.px, v: Point { px: 7 })\n}\n"
+
 data lambda_absent_method_source: String = "module probe_generic_lambda_absent_method\nimport std.types { Int, List }\nfn apply_to<R>(f: fn(R) -> Int, v: R) -> Int {\n  f(v)\n}\nfn asks() -> Int {\n  apply_to(f: xs => xs |> to_upper, v: [1, 2, 3])\n}\n"
 
 test fn a_lambda_field_of_a_generic_record_binds_the_type_its_sibling_field_determines() -> Bool {
@@ -74,6 +84,26 @@ test fn a_lambda_argument_binds_a_type_variable_a_later_argument_determines() ->
 // It is carried as InternalError because that is the class an inference_error mints.
 test fn a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields() -> Bool {
   blocking_count_for(source: lambda_field_access_source, wanted: "InternalError") == 0
+}
+
+test fn a_lambda_field_access_still_binds_when_caller_and_callee_share_a_generic_spelling() -> Bool {
+  blocking_count_for(source: lambda_field_access_shared_generic_spelling_source, wanted: "InternalError") == 0
+}
+
+test fn a_lambda_field_access_still_binds_through_a_nested_generic_call() -> Bool {
+  blocking_count_for(source: lambda_field_access_nested_call_source, wanted: "InternalError") == 0
+}
+
+test fn an_enclosing_value_param_field_miss_refuses_when_a_callee_generic_shares_the_spelling() -> Bool {
+  blocking_count_for(source: enclosing_field_miss_under_callee_generic_homonymy_source, wanted: "InternalError") >= 1
+}
+
+test fn an_enclosing_let_alias_field_miss_refuses_when_a_callee_generic_shares_the_spelling() -> Bool {
+  blocking_count_for(source: enclosing_field_miss_via_let_alias_under_callee_generic_homonymy_source, wanted: "InternalError") >= 1
+}
+
+test fn a_lambda_param_that_shadows_an_enclosing_value_param_still_binds_its_fields() -> Bool {
+  blocking_count_for(source: lambda_param_shadowing_enclosing_value_param_still_binds_source, wanted: "InternalError") == 0
 }
 
 test fn a_method_absent_from_the_bound_type_still_refuses_and_refuses_as_absent() -> Bool {
