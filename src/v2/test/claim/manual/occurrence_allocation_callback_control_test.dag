@@ -1,0 +1,26 @@
+module v2.test.manual.occurrence_allocation_callback_control
+
+import std.algebra { FreeMonoid }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Positional, TypeNode, node_synthetic }
+
+// The generic callback probe consumes this bounded edge population. Synthetic
+// nodes are fixture data here; the probe performs no production or binding.
+fn allocation_callback_probe_edges() -> FreeMonoid<Edge> {
+  [Edge {
+    label: Positional,
+    target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^allocation_callback_target } }, children: [])
+  }]
+}
+
+// This concrete callback is the positive control for the same field access in
+// occurrence_allocation_fold's generic callback at its Edge instantiation.
+fn allocation_callback_concrete_edge(edge: Edge) -> Int {
+  1 + count(edge.target.children)
+}
+
+test fn concrete_edge_callback_reads_target() -> Bool {
+  fold(allocation_callback_probe_edges(), init: 0, f: fn(total, edge) {
+    total + allocation_callback_concrete_edge(edge: edge)
+  }) == 1
+}

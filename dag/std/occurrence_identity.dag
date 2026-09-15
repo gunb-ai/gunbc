@@ -331,8 +331,14 @@ type OccurrenceIdAllocator {
   next_id: Int
 }
 
-type OccurrenceIdAllocResult {
-  id: OccurrenceId
+// An allocation carries its produced value and the remaining occurrence allocator.
+// alloc_occurrence_id produces one OccurrenceId; v2 body_lowering_fold, normalize
+// and namespace_graft produce node structures using the same state carrier.
+// Generic T preserves their Optional/Outcome distinctions without a second
+// allocator-result type. A producer receives its causing ScopedOccurrenceRef
+// explicitly; the state is threaded between children, never recovered afterward.
+type OccurrenceAllocation<T> {
+  value: T
   alloc: OccurrenceIdAllocator
 }
 
@@ -340,11 +346,31 @@ fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
   OccurrenceIdAllocator { next_id: 0 }
 }
 
-fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
-  OccurrenceIdAllocResult {
-    id: OccurrenceId { value: alloc.next_id },
+fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceAllocation<OccurrenceId> {
+  OccurrenceAllocation {
+    value: OccurrenceId { value: alloc.next_id },
     alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 },
   }
+}
+
+// Sequencing for normalize, body_lowering_fold and namespace_graft: the next
+// production receives the allocator left by the previous one, including when
+// the produced value is an Optional or Outcome with its own refusal semantics.
+fn occurrence_allocation_bind<T, U>(
+  production: OccurrenceAllocation<T>,
+  f: fn(T, OccurrenceIdAllocator) -> OccurrenceAllocation<U>
+) -> OccurrenceAllocation<U> {
+  f(production.value, production.alloc)
+}
+
+// Ordered child production used by lowering and grafting. Each child's input
+// allocator is the preceding child's output; a sibling cannot restart it.
+fn occurrence_allocation_fold<T, U>(
+  xs: FreeMonoid<T>,
+  init: OccurrenceAllocation<U>,
+  f: fn(U, T, OccurrenceIdAllocator) -> OccurrenceAllocation<U>
+) -> OccurrenceAllocation<U> {
+  fold(xs, init: init, f: fn(state, item) { f(state.value, item, state.alloc) })
 }
 
 fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {

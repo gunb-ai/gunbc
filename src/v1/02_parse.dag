@@ -61,7 +61,7 @@ import std.occurrence_identity {
   OccurrenceSynthetic,
   OccurrenceId,
   OccurrenceIdAllocator,
-  OccurrenceIdAllocResult,
+  OccurrenceAllocation,
   OccurrenceContainmentPath,
   OccurrenceIndex,
   OccurrenceIndexEntry,
@@ -207,7 +207,7 @@ fn mint_parsed_node_identity(ctx: ParseContext) -> ParsedNodeIdentityMint {
     alloc: ctx.occurrence_allocator
   )
   ParsedNodeIdentityMint {
-    identity: node_occurrence_identity_minted(id: allocated.id),
+    identity: node_occurrence_identity_minted(id: allocated.value),
     ctx: parse_context_with_occurrence_state(
       ctx: ctx,
       occurrence_allocator: allocated.alloc,

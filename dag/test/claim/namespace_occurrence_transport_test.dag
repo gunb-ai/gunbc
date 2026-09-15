@@ -99,9 +99,9 @@ test fn namespace_occurrence_allocator_scope_is_explicit_holds() -> Bool {
   let isolated = alloc_occurrence_id(
     alloc: occurrence_id_allocator_initial()
   )
-  first.id.value == 0 &&
-  second.id.value == 1 &&
-  isolated.id.value == 0
+  first.value.value == 0 &&
+  second.value.value == 1 &&
+  isolated.value.value == 0
 }
 
 test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool {
@@ -110,12 +110,12 @@ test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool {
   )
   let second = alloc_occurrence_id(alloc: first.alloc)
   let first_entry = fixture_index_entry(
-    occurrence: first.id,
+    occurrence: first.value,
     authored_name: "same",
     span: fixture_span(file: "a.dag", start: 1, end: 5)
   )
   let second_entry = fixture_index_entry(
-    occurrence: second.id,
+    occurrence: second.value,
     authored_name: "same",
     span: fixture_span(file: "b.dag", start: 40, end: 44)
   )
@@ -548,79 +548,79 @@ test fn w_namespace_occurrence_transport_mints_distinct_equal_text() -> Bool {
     index: OccurrenceIndex {
       entries: [
         fixture_index_entry(
-          occurrence: left_decl.id,
+          occurrence: left_decl.value,
           authored_name: "left",
-          span: equal_text_span(occurrence: left_decl.id)
+          span: equal_text_span(occurrence: left_decl.value)
         ),
         fixture_index_entry(
-          occurrence: left_param.id,
+          occurrence: left_param.value,
           authored_name: "x",
-          span: equal_text_span(occurrence: left_param.id)
+          span: equal_text_span(occurrence: left_param.value)
         ),
         fixture_index_entry(
-          occurrence: left_body.id,
+          occurrence: left_body.value,
           authored_name: "x",
-          span: equal_text_span(occurrence: left_body.id)
+          span: equal_text_span(occurrence: left_body.value)
         ),
         fixture_index_entry(
-          occurrence: right_decl.id,
+          occurrence: right_decl.value,
           authored_name: "right",
-          span: equal_text_span(occurrence: right_decl.id)
+          span: equal_text_span(occurrence: right_decl.value)
         ),
         fixture_index_entry(
-          occurrence: right_param.id,
+          occurrence: right_param.value,
           authored_name: "x",
-          span: equal_text_span(occurrence: right_param.id)
+          span: equal_text_span(occurrence: right_param.value)
         ),
         fixture_index_entry(
-          occurrence: right_callee.id,
+          occurrence: right_callee.value,
           authored_name: "left",
-          span: equal_text_span(occurrence: right_callee.id)
+          span: equal_text_span(occurrence: right_callee.value)
         ),
         fixture_index_entry(
-          occurrence: right_arg.id,
+          occurrence: right_arg.value,
           authored_name: "x",
-          span: equal_text_span(occurrence: right_arg.id)
+          span: equal_text_span(occurrence: right_arg.value)
         )
       ],
     },
     declarations: [
       fixture_declaration(
-        occurrence: left_decl.id,
+        occurrence: left_decl.value,
         category: CallableOccurrence,
-        span: equal_text_span(occurrence: left_decl.id)
+        span: equal_text_span(occurrence: left_decl.value)
       ),
       fixture_declaration(
-        occurrence: left_param.id,
+        occurrence: left_param.value,
         category: LexicalValueOccurrence,
-        span: equal_text_span(occurrence: left_param.id)
+        span: equal_text_span(occurrence: left_param.value)
       ),
       fixture_declaration(
-        occurrence: right_decl.id,
+        occurrence: right_decl.value,
         category: CallableOccurrence,
-        span: equal_text_span(occurrence: right_decl.id)
+        span: equal_text_span(occurrence: right_decl.value)
       ),
       fixture_declaration(
-        occurrence: right_param.id,
+        occurrence: right_param.value,
         category: LexicalValueOccurrence,
-        span: equal_text_span(occurrence: right_param.id)
+        span: equal_text_span(occurrence: right_param.value)
       )
     ],
     references: [
       fixture_reference(
-        occurrence: left_body.id,
+        occurrence: left_body.value,
         category: LexicalValueOccurrence,
-        span: equal_text_span(occurrence: left_body.id)
+        span: equal_text_span(occurrence: left_body.value)
       ),
       fixture_reference(
-        occurrence: right_callee.id,
+        occurrence: right_callee.value,
         category: CallableOccurrence,
-        span: equal_text_span(occurrence: right_callee.id)
+        span: equal_text_span(occurrence: right_callee.value)
       ),
       fixture_reference(
-        occurrence: right_arg.id,
+        occurrence: right_arg.value,
         category: LexicalValueOccurrence,
-        span: equal_text_span(occurrence: right_arg.id)
+        span: equal_text_span(occurrence: right_arg.value)
       )
     ],
   }
@@ -655,12 +655,12 @@ test fn w_namespace_occurrence_transport_preserves_graph_allocator() -> Bool {
     min_next: authored_token_ordinal_space_from_allocator(alloc: first_b.alloc)
   )
   occurrence_id_values_all_distinct(values: [
-    first_a.id.value,
-    first_b.id.value,
-    second_a.id.value,
-    second_b.id.value
+    first_a.value.value,
+    first_b.value.value,
+    second_a.value.value,
+    second_b.value.value
   ]) &&
-  second_a.id.value == first_b.alloc.next_id &&
+  second_a.value.value == first_b.alloc.next_id &&
   already_ahead.next_id == second_b.alloc.next_id
 }
 

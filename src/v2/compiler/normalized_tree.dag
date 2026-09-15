@@ -1,5 +1,7 @@
 module v2.compiler.normalized_tree
 
+import std.content_hash { Fnv1a64Structural }
+
 import v2.compiler.body_lowering_fold { body_lowering_diagnostics_carry_wrapper_retention }
 import v2.std.diagnostic {
   Accepted,
@@ -21,8 +23,13 @@ import v2.std.node { Node }
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
 // behind. It was an alias for Node until BL-1, which is why retention evidence reached resolve as a
 // bare Node and was dropped there. Sealing the carrier makes the drop unwritable.
+// scope addresses the resulting occurrence-bearing graph for symbol_index_fill.
+// Parse and normalized graphs are distinct domains sharing one threaded allocator;
+// projected nodes retain their causing parse-graph scope in OccurrenceProjected.
+// node_occurrence_graph_scope computes both graph addresses before publication.
 type NormalizedTree sole_constructor {
   root: Node,
+  scope: Fnv1a64Structural,
 }
 
 // Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state

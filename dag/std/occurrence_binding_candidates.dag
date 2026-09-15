@@ -35,7 +35,7 @@ import std.occurrence_identity {
   authored_token_ordinal_before,
   authored_token_ordinal_eq,
   OccurrenceIdAllocator,
-  OccurrenceIdAllocResult,
+  OccurrenceAllocation,
   alloc_occurrence_id,
   occurrence_id_allocator_initial,
 }
@@ -1803,10 +1803,10 @@ fn remap_occurrence_id(
     Absent =>
       let allocated = alloc_occurrence_id(alloc: state.allocator)
       OccurrenceIdRemapResult {
-        id: allocated.id,
+        id: allocated.value,
         state: OccurrenceIdRemapState {
           allocator: allocated.alloc,
-          remap: map_insert(state.remap, id.value, allocated.id),
+          remap: map_insert(state.remap, id.value, allocated.value),
         },
       }
   }
