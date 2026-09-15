@@ -57,7 +57,7 @@ type ServingPerformanceSubject sole_constructor {
   rank_population: Nat?
   context_ceiling: TokenCount
   max_num_batched_tokens: TokenCount
-  max_num_seqs: Nat
+  max_num_seqs: Nat?
   kv_cache_dtype: VllmKvCacheDtypeRequest
   speculative: VllmSpeculativePolicy?
   collective_transport: NcclRealizedTransport?
@@ -77,7 +77,7 @@ fn serving_performance_subject(
   rank_population: Nat?,
   context_ceiling: TokenCount,
   max_num_batched_tokens: TokenCount,
-  max_num_seqs: Nat,
+  max_num_seqs: Nat?,
   kv_cache_dtype: VllmKvCacheDtypeRequest,
   speculative: VllmSpeculativePolicy?,
   collective_transport: NcclRealizedTransport?,
@@ -167,7 +167,11 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
       }
     AxisContextCeiling => to_string(token_count_value(t: s.context_ceiling)) as NonEmptyStr
     AxisBatchBudget => to_string(token_count_value(t: s.max_num_batched_tokens)) as NonEmptyStr
-    AxisMaxNumSeqs => to_string(s.max_num_seqs) as NonEmptyStr
+    AxisMaxNumSeqs =>
+      match s.max_num_seqs {
+        Absent => axis_value_unread_marker
+        Present { value: n } => to_string(n) as NonEmptyStr
+      }
     AxisKvCacheDtype => vllm_kv_cache_dtype_wire(request: s.kv_cache_dtype)
     AxisSpeculativePolicy =>
       match s.speculative {
@@ -251,7 +255,8 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
       match s.rank_population { Absent => true, Present { value: _ } => false }
     AxisContextCeiling => false
     AxisBatchBudget => false
-    AxisMaxNumSeqs => false
+    AxisMaxNumSeqs =>
+      match s.max_num_seqs { Absent => true, Present { value: _ } => false }
     AxisKvCacheDtype => false
   }
 }

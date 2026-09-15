@@ -91,6 +91,15 @@ type TopologyArm sole_constructor {
 // all -- the exact unbound path this type exists to close. The subject is now a field, so a consumer
 // holding a rate is holding the profile it was measured against.
 //
+// THE SCHEDULER'S SEQUENCE LIMIT IS ABSENT FOR THE SAME REASON, and it is worth saying why the
+// obvious citation is refused. gunbc.spark.serving_deployment_selection carries
+// `spark_host_max_num_seqs: Nat = 32`, and reaching for it here would look like single-authority
+// hygiene while being the opposite: that row is a DESIRED launch parameter for a deployment
+// decision, not a reading of what these 2026-09-07 launches actually ran with. Binding it would put
+// a number under a subject that claims to describe a measurement, which is exactly the shape
+// gunbc.recurring_failure_mode.a_constructor_asserts_a_provenance_its_value_does_not_have files --
+// and whose own receipt is a `max_num_seqs: 32` asserting a provenance its value did not have.
+//
 // THE SPECULATIVE POLICY IS ABSENT HERE AND THAT IS NOT THE SAME AS OFF. Nothing in this module
 // states whether a draft model was proposing tokens, and answering "off" because it probably was
 // would be the fabricated default the policy type's own comment forbids. The sibling module
@@ -114,7 +123,7 @@ fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: To
       rank_population: Present { value: ranks },
       context_ceiling: ceiling,
       max_num_batched_tokens: budget,
-      max_num_seqs: 32,
+      max_num_seqs: Absent,
       kv_cache_dtype: KvFp8,
       speculative: none,
       collective_transport: none

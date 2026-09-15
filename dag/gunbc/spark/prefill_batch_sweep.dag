@@ -102,7 +102,16 @@ type PredictedBatchArm sole_constructor {
 // bites here: under-asserting is not humility, and a fact you decline to state is a wall that does
 // not exist.
 //
-// SO THE DEGREE AND THE RANK COUNT ARE ABSENT AND EVERYTHING ELSE IS PRESENT. The standing comes out
+// THE SCHEDULER'S SEQUENCE LIMIT IS ABSENT TOO, and a first version of this binding wrote 32 there
+// because that is what the fleet generally runs. Nothing in this module read it for these launches,
+// so it was a fabricated default on a MANDATORY axis -- which is worse than one on an optional axis,
+// because two subjects that both guessed it would have silently AGREED on that axis and the join
+// would have named one fewer difference than it should. The axis is optional now, and the existing
+// `spark_host_max_num_seqs` row is deliberately not cited: it is a desired launch parameter, not a
+// reading of these launches, and binding it would be the provenance overclaim
+// gunbc.recurring_failure_mode.a_constructor_asserts_a_provenance_its_value_does_not_have files.
+//
+// SO THE DEGREE, THE RANK COUNT AND THE SEQUENCE LIMIT ARE ABSENT AND EVERYTHING ELSE IS PRESENT. The standing comes out
 // Partial, the known axes fence, and the belief about the degree rides beside it as a bet rather
 // than inside the subject as a fact. When the invocation is read, this one function changes and all
 // three arms become Established together.
@@ -117,7 +126,7 @@ fn batch_arm_subject(budget: TokenCount) -> ServingPerformanceSubjectStanding {
       rank_population: Absent,
       context_ceiling: token_count(count: 1048576),
       max_num_batched_tokens: budget,
-      max_num_seqs: 32,
+      max_num_seqs: Absent,
       kv_cache_dtype: KvFp8,
       speculative: Present { value: SpeculativeDecodingOff },
       collective_transport: none
@@ -535,7 +544,7 @@ data spark_group_a_depth_rate: DepthDependentRate = DepthDependentRate {
       rank_population: 2,
       context_ceiling: token_count(count: 1048576),
       max_num_batched_tokens: token_count(count: 2048),
-      max_num_seqs: 32,
+      max_num_seqs: Absent,
       kv_cache_dtype: KvFp8,
       speculative: Present { value: SpeculativeDecodingOff },
       collective_transport: none
