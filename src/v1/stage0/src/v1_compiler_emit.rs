@@ -637,6 +637,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
+        in_flight_lambda_param_names: Rc::new(vec![]),
     })
 }
 
@@ -655,6 +656,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         item_registry: typed_module.item_registry.clone(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
+        in_flight_lambda_param_names: Rc::new(vec![]),
     })
 }
 

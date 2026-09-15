@@ -367,6 +367,7 @@ fn empty_infer_scope() -> Rc<InferScope> {
         item_registry: Rc::new(im::HashMap::new()),
         lambda_param_provenance: Rc::new(im::HashMap::new()),
         caller_decl_name: "".to_string(),
+        in_flight_lambda_param_names: Rc::new(vec![]),
     })
 }
 

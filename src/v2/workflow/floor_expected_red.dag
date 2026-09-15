@@ -955,16 +955,15 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 //      A WALL LANDED, NOT BECAUSE THE HOLE IS OPEN. They assert a hole is still open; it is
 //      not. The discriminating evidence: BOTH of that hole's controls PASS
 //      (`floor_generic_instantiation_monomorphic_control_refuses`,
-//      `floor_generic_instantiation_green_control_is_clean`) and the SIBLING hole probe
-//      `floor_field_through_generics_is_still_silently_accepted` also passes -- so the harness
-//      reached the judgment and the other hole is genuinely still open; a harness that saw
-//      nothing would have taken the sibling down too. That module's own
-//      `guarantee_floor_class_probe_scope_note` prescribes the remedy verbatim: such a probe
-//      "flip[s] RED on the day the wall lands, which is the signal to rewrite the row as
-//      `ExpectBlockingRefusal` rather than to delete the probe" -- DESIGN 4b(4)'s rule that a
-//      greened expecting-red probe becomes a permanent regression control. Enrolment holds them
-//      honestly (they do fail) while recording nothing about WHY, so the rewrite is owed and the
-//      stale-quarantine arm will demand it.
+//      `floor_generic_instantiation_green_control_is_clean`). The sibling field-through-generics
+//      hole has already taken that module's prescribed remedy: it is
+//      `ExpectBlockingRefusal` / `floor_field_through_generics_type_variable_refuses`, not a
+//      remaining silent hole, so it no longer discriminates "harness reached a judgment" by
+//      staying open. That module's own `guarantee_floor_class_probe_scope_note` still names the
+//      rewrite — DESIGN 4b(4)'s rule that a greened expecting-red probe becomes a permanent
+//      regression control. Enrolment holds the generic-instantiation rows honestly (they do fail)
+//      while recording nothing about WHY, so the rewrite is owed and the stale-quarantine arm
+//      will demand it.
 //
 //   2. THE FOUR `sole_constructor_completeness_audit_probe_test` f10 ROWS ANSWERED AN OPEN QUESTION
 //      THE FIRST TIME THEY RAN. Their block annotation states a question rather than a marked
