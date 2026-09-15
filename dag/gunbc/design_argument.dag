@@ -102,11 +102,11 @@ data conformance_domains: List<ConformanceDomain> = [
       ],
     },
     tells: [
-      "a hand-rolled map, memo flag or scratch directory keyed by something other than declared-input content",
+      "a handler that substitutes, truncates or bypasses the admitted key",
       "a shell or host call that executes what a realization handler already binds",
       "an output attached to a request that did not succeed, or a cache read that cannot say what produced the hit"
     ],
-    narrative: "caching and execution are one concept, keyed by content hash. This row owns whether a handler, provider or placement faithfully realizes an admitted identity and result contract (completeness, readback, retention, transport, refusal, binding obligations) without substituting, truncating or bypassing the admitted key. Cache purity is one discriminator across that boundary, not the whole domain. Key RELATION -- what relation, what scope, what complete canonical preimage, equality and collision disposition, and whether declared inputs are complete -- is owned by conformance-identity",
+    narrative: "materialization and realization are separate interfaces with admissible handlers: materialization presents and stores an admitted identity and result contract; realization orders, places and transports work. This row owns whether a handler, provider or placement faithfully realizes that admitted identity and result contract (completeness, readback, retention, transport, refusal, binding obligations) without substituting, truncating or bypassing the admitted key. Cache purity is one discriminator across that boundary, not the whole domain. Key RELATION -- what relation, what scope, what complete canonical preimage, equality and collision disposition, and whether declared inputs are complete -- is owned by conformance-identity",
   },
   ConformanceDomain {
     key: "conformance-leasing",
@@ -192,10 +192,10 @@ data conformance_domains: List<ConformanceDomain> = [
       ],
     },
     tells: [
-      "a key authored by hand, from a position, a path, a rendered string or a display name, for a subject whose identity is derivable from declared inputs",
+      "a locator, path or rendering substituted for another identity relation without an upstream addressing relation establishing it",
       "a digest with a lossy or out-of-range arm that maps distinct inputs to one value, or an encoding that is not shown injective over its domain",
       "a structural fingerprint used as identity across a run, host or store boundary where a collision would silently serve the wrong artifact",
-      "a second key derivation for a subject that already has a key authority, or a key under one relation substituted for another (occurrence identity read as computation identity, a request key read as an artifact key, a locator read as entity identity)",
+      "a second derivation of the same named relation in the same declared scope, or one relation substituted for another (occurrence identity read as computation identity, a request key read as an artifact key, a locator read as entity identity) -- one subject may lawfully carry entity, demand, evaluation, result-content, occurrence, revision and locator keys",
       "a cache or memo key that omits a declared input the result depends on"
     ],
     narrative: "the row's scope today is the three keying relations that have a consumed home: structural node identity (v2.std.node content_hash over std.content_hash HashFamily), the request and artifact keys of std.materialization_provider (request_key, artifact_request_key), and occurrence identity within one source graph (std.occurrence_identity). This row owns the key RELATION -- what relation, what scope, what complete canonical preimage derives it, what equality and collision disposition govern it -- and whether the declared inputs are complete. Faithful realization of an admitted identity and result contract (completeness, readback, retention, transport, refusal, binding; cache purity as one discriminator) is owned by conformance-realization. Two further relations -- demand identity (the question asked) and the dependency read set an answer consumed -- are a declared frontier, not members: they have no home authority yet, are modeled by docs/plans/demand-engine-program.md, and enter this row when M1 of that program lands their carriers; until then a reviewer asks nothing about them under this row (DESIGN §3b: a home that owns only part of a claimed scope is a scope mismatch, so the scope is stated at what the homes own). Each member is a named keying relation within a named scope, derived rather than authored; the relation model is docs/plans/keying-relation-design.md",
