@@ -10,7 +10,7 @@ import std.goal_assessment {
   inspect_goal,
   GoalInspection,
 }
-import std.upsert_decision { UpsertDecision, ObservationVerdict }
+import std.upsert_decision { UpsertDecision }
 import std.realization_reconcile {
   ShowEffectiveRead,
   Grounding,
@@ -34,10 +34,6 @@ import gunbc.host_convergence_census {
   fleet_apply,
   live_readiness,
   live_member_identity,
-}
-import gunbc.readback_independence {
-  ReadBackProbe,
-  readback_evidence_verdict,
 }
 
 // CONVERGENCE-ONE C1. Binds the C0 census to the canonical stack without host actuation.
@@ -280,20 +276,6 @@ fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence
   )
 }
 
-fn decide_from_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>(
-  assessment: GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
-  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>,
-) -> UpsertDecision<Plan> {
-  projection.decide(assessment)
-}
-
-fn readiness_from_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>(
-  observed: Observed,
-  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>,
-) -> RuntimeReadiness<ReadyEvidence> {
-  projection.readiness(observed)
-}
-
 type ProtocolDeclaredFrontier {
   declaration: DeclarationRef
   named_consumer: DeclarationRef
@@ -367,13 +349,6 @@ fn reconcile_from_read_attempt<P, R, E>(
         reason: cause,
       )
   }
-}
-
-fn admit_independent_readback(
-  probe: ReadBackProbe,
-  observed: ObservationVerdict,
-) -> ObservationVerdict {
-  readback_evidence_verdict(p: probe, observed: observed)
 }
 
 fn bind_canonical_protocol() -> Bool {

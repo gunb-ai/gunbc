@@ -39,10 +39,7 @@ import gunbc.host_convergence_protocol {
   OwnershipUnobservable,
   Foreign,
   reconcile_from_read_attempt,
-  admit_independent_readback,
   inspect_via_host_effect_projection,
-  decide_from_host_effect_projection,
-  readiness_from_host_effect_projection,
   HostEffectDomainProjection,
   RuntimeReadiness,
   canonical_protocol_bindings,
@@ -65,7 +62,11 @@ import gunbc.ensure {
   EnsurePlanAvailable,
   ensure_reconcile,
 }
-import gunbc.readback_independence { sccache_show_stats_probe, systemd_show_property_probe }
+import gunbc.readback_independence {
+  sccache_show_stats_probe,
+  systemd_show_property_probe,
+  readback_evidence_verdict,
+}
 import tools.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
@@ -215,11 +216,11 @@ test fn control_6_apply_cannot_converge_without_post_apply_readback() -> Bool {
 }
 
 test fn control_7_reused_pre_apply_reading_is_caught_by_independence() -> Bool {
-  match admit_independent_readback(probe: sccache_show_stats_probe, observed: Converged) {
+  match readback_evidence_verdict(p: sccache_show_stats_probe, observed: Converged) {
     UnknownRefused => true
     _ => false
   }
-    && match admit_independent_readback(probe: systemd_show_property_probe, observed: Converged) {
+    && match readback_evidence_verdict(p: systemd_show_property_probe, observed: Converged) {
       Converged => true
       _ => false
     }
@@ -282,11 +283,11 @@ test fn host_effect_domain_projection_inspects_without_selection() -> Bool {
     projection: projection,
   ) {
     GoalInspected { subject: s, goal: _, request: _, observed: o, assessment: a } =>
-      match decide_from_host_effect_projection(assessment: a, projection: projection) {
+      match projection.decide(a) {
         Noop =>
           s == "host"
             && o == "host"
-            && readiness_from_host_effect_projection(observed: o, projection: projection).evidence == "host"
+            && projection.readiness(o).evidence == "host"
         _ => false
       }
     GoalObservationRefused { subject: _, goal: _, request: _, cause: _ } => false
