@@ -1916,19 +1916,8 @@ const C5_OBSERVE_SPLIT_LABEL: &str =
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     // gunbc#11445 C5: probe/exec types and helpers moved from apply into
     // gunbc.roadmap_dashboard_instance_observe; serve binds dashboard_provider_readiness_json
-    // on that module rather than apply. Exact TargetChanged (and one NewUnresolvedness for
-    // dashboard_provider_device_login_command, which left apply) enumerated from the floor
+    // on that module rather than apply. Exact TargetChanged enumerated from the floor
     // receipt on 561d121ecd. Delete after merge when the base already binds these leaves.
-    TransitionAdmission {
-        label: C5_OBSERVE_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.roadmap_dashboard_instance_apply",
-            in_declaration: "dashboard_instance_apply_preflight",
-            spelling: "dashboard_provider_device_login_command",
-            expected_candidates: &[],
-        },
-        disposition: NamespaceDeltaDisposition::NewUnresolvedness,
-    },
     TransitionAdmission {
         label: C5_OBSERVE_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
