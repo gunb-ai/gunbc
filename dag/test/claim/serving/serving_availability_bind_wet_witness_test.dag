@@ -21,6 +21,7 @@ import gunbc.spark.serving_offer {
   ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
   spark_serving_incarnation_unobserved_obligation,
 }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_declared_digest }
 import gunbc.harness.harness_seat {
   HarnessCandidates, harness_bind_candidate, harness_serving_route, AnyAdmittedModel,
 }
@@ -52,12 +53,13 @@ fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
 // verdict. harness_bind_candidate and harness_serving_route both execute that wire.
 test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path() -> Bool {
   let launch = w_launch(field: "1789300000.12")
+  let declared_unit = spark_pair_head_unit_declared_digest(group: FabricGroupA)
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
   let bound = harness_bind_candidate(
     acc: HarnessCandidates { candidates: [], notes: [], retryable: false },
     group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
     readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
-    requirement: AnyAdmittedModel, seats: 4, now: 1789400000,
+    requirement: AnyAdmittedModel, seats: 4, now: 1789400000, declared_unit: declared_unit,
   )
   length(bound.candidates) == 0
     && any(bound.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
@@ -65,6 +67,7 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
       group: FabricGroupA,
       launch: launch,
       readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
+      declared_unit: declared_unit,
     ) {
       ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
         match c {
