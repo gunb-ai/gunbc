@@ -49,19 +49,6 @@ fn ensure_observation_as_attempt<E>(
   }
 }
 
-fn ensure_observation_from_attempt<E>(
-  attempt: ObservationAttempt<ShowEffectiveRead<E>, String>,
-) -> EnsureObservation<E> {
-  match attempt {
-    ObservationEstablished { observed: ReadObserved { value: evidence } } =>
-      EnsureObserved { evidence: evidence }
-    ObservationEstablished { observed: ReadAbsent { reason: reason } } =>
-      EnsureAbsent { reason: reason }
-    ObservationRefused { cause: reason } =>
-      EnsureInaccessible { reason: reason }
-  }
-}
-
 type EnsurePlan<P>
   = EnsurePlanAvailable { plan: P }
   | EnsurePlanUnavailable { reason: String }

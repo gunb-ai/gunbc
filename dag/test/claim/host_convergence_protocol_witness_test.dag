@@ -40,7 +40,6 @@ import gunbc.host_convergence_protocol {
   reconcile_from_read_attempt,
   inspect_via_host_effect_projection,
   HostEffectDomainProjection,
-  RuntimeReadiness,
   canonical_protocol_bindings,
   required_canonical_layers,
   canonical_layer_join,
@@ -53,11 +52,9 @@ import gunbc.host_convergence_protocol {
 }
 import gunbc.host_convergence_census { protocol_phases }
 import gunbc.ensure {
-  EnsureObserved,
   EnsureAbsent,
   EnsureInaccessible,
   ensure_observation_as_attempt,
-  ensure_observation_from_attempt,
   EnsureMayApply,
   EnsurePlanAvailable,
   ensure_reconcile,
@@ -202,24 +199,10 @@ fn fixture_assess(goal: String, observed: String) -> GoalAssessment<String, Stri
   )
 }
 
-fn fixture_decide(a: GoalAssessment<String, String, String, String>) -> UpsertDecision<String> {
-  match a {
-    GoalSatisfied { evidence: _ } => Noop
-    GoalDiverged { deviations: _ } => Apply { plan: "repair" }
-    _ => Refuse { reason: "indeterminate" as NonEmptyStr }
-  }
-}
-
-fn fixture_readiness(observed: String) -> RuntimeReadiness<String> {
-  RuntimeReadiness { evidence: observed }
-}
-
 test fn host_effect_domain_projection_inspects_without_selection() -> Bool {
   let projection = HostEffectDomainProjection {
     observe: fixture_observe,
     assess: fixture_assess,
-    decide: fixture_decide,
-    readiness: fixture_readiness,
   }
   match inspect_via_host_effect_projection(
     subject: "host",
@@ -228,11 +211,8 @@ test fn host_effect_domain_projection_inspects_without_selection() -> Bool {
     projection: projection,
   ) {
     GoalInspected { subject: s, goal: _, request: _, observed: o, assessment: a } =>
-      match projection.decide(a) {
-        Noop =>
-          s == "host"
-            && o == "host"
-            && projection.readiness(o).evidence == "host"
+      match a {
+        GoalSatisfied { evidence: e } => s == "host" && o == "host" && e == "host"
         _ => false
       }
     GoalObservationRefused { subject: _, goal: _, request: _, cause: _ } => false
@@ -240,15 +220,9 @@ test fn host_effect_domain_projection_inspects_without_selection() -> Bool {
 }
 
 test fn ensure_observation_is_a_projection_of_the_canonical_attempt() -> Bool {
-  match ensure_observation_from_attempt(
+  !attempt_is_established_absence(
     attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
-  ) {
-    EnsureInaccessible { reason: r } => r == "down"
-    _ => false
-  }
-    && !attempt_is_established_absence(
-      attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
-    )
+  )
     && attempt_is_established_absence(
       attempt: ensure_observation_as_attempt(observation: EnsureAbsent { reason: "missing" }),
     )
