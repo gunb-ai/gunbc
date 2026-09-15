@@ -190,13 +190,6 @@ fn component_subject_declared_bytes(s: ComponentSubjectStanding) -> ByteSize? {
   }
 }
 
-fn component_subject_identity(s: ComponentSubjectStanding) -> DeclarationRef {
-  match s {
-    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _, residual: _ } => sub.identity
-    ComponentSubjectPopulationIncomplete { identity: i, obligation: _ } => i
-    ComponentSubjectRefused { identity: i, defects: _ } => i
-  }
-}
 
 fn component_subject_obligations(s: ComponentSubjectStanding) -> List<NonEmptyStr> {
   match s {
@@ -1560,13 +1553,6 @@ fn route_evidence_lookup_obligations(l: RouteEvidenceLookup) -> List<NonEmptyStr
   }
 }
 
-// ── THE AXES, WITH EVERY COST DIMENSION PRESENT AND THE UNMEASURED ONES AS GAPS ────────────────
-//
-// A route cannot win by having fewer dimensions than its rivals, so every term that could change
-// this choice is declared here and the ones with no measurement produce an `AxisGap`. The intended
-// consequence is that this subject answers `SelectionNeedsEvidence` today and keeps doing so until
-// the measurements exist. That is the answer, not a failure to reach one.
-data id_route_subject: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_question")
 data id_route_var_route: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "var_materialization_route")
 data id_route_var_context: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "var_consumer_context")
 data id_route_term_serving_cost: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "term_total_serving_cost")

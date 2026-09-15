@@ -56,26 +56,6 @@ type SafetensorsDtype
   | SafeU64
   | SafeF64
 
-fn safetensors_dtype_wire(d: SafetensorsDtype) -> NonEmptyStr {
-  match d {
-    SafeBool => "BOOL" as NonEmptyStr
-    SafeU8 => "U8" as NonEmptyStr
-    SafeI8 => "I8" as NonEmptyStr
-    SafeF8E5M2 => "F8_E5M2" as NonEmptyStr
-    SafeF8E4M3 => "F8_E4M3" as NonEmptyStr
-    SafeF8E8M0 => "F8_E8M0" as NonEmptyStr
-    SafeI16 => "I16" as NonEmptyStr
-    SafeU16 => "U16" as NonEmptyStr
-    SafeF16 => "F16" as NonEmptyStr
-    SafeBf16 => "BF16" as NonEmptyStr
-    SafeI32 => "I32" as NonEmptyStr
-    SafeU32 => "U32" as NonEmptyStr
-    SafeF32 => "F32" as NonEmptyStr
-    SafeI64 => "I64" as NonEmptyStr
-    SafeU64 => "U64" as NonEmptyStr
-    SafeF64 => "F64" as NonEmptyStr
-  }
-}
 
 fn safetensors_dtype_byte_width(d: SafetensorsDtype) -> ByteSize {
   match d {
@@ -362,9 +342,6 @@ fn safetensors_index_has_name(members: List<SafetensorsIndexMember>, name: NonEm
   any(members, m => safetensors_entry_name_eq(a: m.name, b: name))
 }
 
-fn safetensors_spans_overlap(a: SafetensorsEntry, b: SafetensorsEntry) -> Bool {
-  a.begin_offset < b.end_offset && b.begin_offset < a.end_offset
-}
 
 // OVERLAP IS A WITHIN-SHARD QUESTION, SO THE SCAN IS PARTITIONED BY SHARD FIRST. A first cut scanned
 // the WHOLE population for every entry and discarded the other shards' rows inside the predicate, so a
@@ -414,6 +391,13 @@ fn safetensors_overlap_defects_within(
   }
 }
 
+// THE ONE-SIDED TEST IS CORRECT ONLY BECAUSE `ordered` IS SORTED BY begin_offset, and that precondition
+// is stated here because it is invisible at the comparison. `se.begin_offset < w.end_offset` decides
+// overlap without also testing `w.begin_offset < se.end_offset`, which the sort makes redundant: every
+// entry reached has begin_offset at or after the widest one's. A SYMMETRIC predicate over an unsorted
+// pair is a different function, and one existed here unread until review 66425 swept it -- deleted
+// rather than wired in, because wiring it would add a comparison the sort already settles and would
+// invite a reader to conclude the sort was unnecessary. Reorder the caller and this fold is wrong.
 fn safetensors_overlap_sweep(
   shard: NonEmptyStr,
   ordered: List<SafetensorsShardedEntry>,
