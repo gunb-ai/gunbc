@@ -13,11 +13,12 @@ import extdeps.github.rulesets {
   RulesetBypassActor,
   RulesetActive,
   BranchTarget,
-  MergeQueueRule,
+  PullRequestRule,
   ThisReaderCannotBypass,
-  NoMergeQueueRule,
+  MergeQueueConfigured,
   BypassActorRosterObservation,
 }
+import v2.std.collection { Present }
 import gunbc.repo_ruleset {
   RulesetObservation,
   RulesetObserved,
@@ -27,8 +28,10 @@ import gunbc.repo_ruleset {
   desired_ruleset_rule_types,
   desired_ruleset_rules,
   desired_merge_queue_policy,
-  gunbc_merge_queue_proposal,
+  desired_merge_queue_standing,
+  desired_bypass_actors,
   gunbc_passing_ci_ruleset_name,
+  merge_queue_floor_aligned_policy,
   required_status_check_standing,
   merge_queue_desire_unknowns,
   observation_unknowns,
@@ -36,6 +39,7 @@ import gunbc.repo_ruleset {
   render_unknowns,
   ruleset_assess,
   desired_repo_ruleset_goal,
+  ruleset_observation_satisfies_goal,
 }
 
 
@@ -55,12 +59,12 @@ fn fixture_observed(
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: if rule_types_extra {
-      append(desired_ruleset_rule_types(), items: [MergeQueueRule])
+      append(desired_ruleset_rule_types(), items: [PullRequestRule])
     } else {
       desired_ruleset_rule_types()
     },
     standing: required_status_check_standing(rules: desired_ruleset_rules()),
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
     bypass_roster: roster,
   }
 }
@@ -133,7 +137,7 @@ test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
     ),
   ) {
     GoalDiverged { deviations: ds } =>
-      string_contains(s: render_divergences(ds: non_empty_to_list(xs: ds)), pattern: "merge_queue")
+      string_contains(s: render_divergences(ds: non_empty_to_list(xs: ds)), pattern: "pull_request")
     _ => false
   }
 }
@@ -146,7 +150,10 @@ test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
 // the same value. Without this claim every claim above is satisfied by an assessor that refuses
 // everything identically.
 test fn a_clean_observed_ruleset_satisfies_the_goal() -> Bool {
-  match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed_clean(roster: BypassRosterObserved { actors: [] })) {
+  match ruleset_assess(
+    goal: desired_repo_ruleset_goal(),
+    observed: observed_clean(roster: BypassRosterObserved { actors: desired_bypass_actors() }),
+  ) {
     GoalSatisfied { evidence: e } => e.writes_applied == 0 && e.removals_applied == 0
     _ => false
   }
@@ -161,6 +168,7 @@ test fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unkn
     cause: RulesetReadTransportRefused { cause: "fixture transport refusal" as NonEmptyStr },
   }
   length(observation_unknowns(observation: unreadable)) == 0
+    && !ruleset_observation_satisfies_goal(observed: unreadable)
 }
 
 // DISCRIMINATING RED FOR THE SECOND SHORT-CIRCUIT, found by review 62287 after the first was fixed.
@@ -171,10 +179,10 @@ test fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unkn
 // live drift of every other, which is the same ordering harm the actuation holds were deleted for.
 //
 // The claim is stated over the CURRENT desire rather than over a fixture, because that is the thing
-// that would regress: this repository's merge queue is unsigned today, so the gap is Absent and the
-// assessment must reach a comparison. If someone signs the policy without wiring the projection,
-// this witness holds only if the gap became an unknown on that dimension -- and the drift claim
-// above still proves the rest of the comparison survives an unknown.
+// that would regress: the desire is SignedOff and the projection carries merge_queue, so the gap
+// is empty and the assessment reaches a comparison. If someone signs a policy without wiring the
+// projection, this witness holds only if that gap became an unknown -- the RED below proves the
+// rest of the comparison survives an unknown.
 test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
   length(merge_queue_desire_unknowns(
     policy: desired_merge_queue_policy(),
@@ -184,23 +192,21 @@ test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
 
 // THE DISCRIMINATING RED THE POSITIVE CONTROL ABOVE CANNOT BE, found by review 62379.
 //
-// The arm this reaches is unreachable through the repository's own declarations: the merge queue is
-// unsigned today, so a fold reading the desire row alone answers Absent on every input and the
-// Present arm -- and the RulesetMergeQueueDesireSelfInconsistent renderer it feeds -- would be
-// permanently green by construction. DESIGN section 4b: a check whose RED is unauthorable is a
-// decoration, and the boundary that decides it is whether the forbidden state is authorable AS A
-// FIXTURE, not whether it exists in the accepted corpus. It is, so the seam is a parameter: this
-// claim hands merge_queue_desire_unknowns a SIGNED policy against a projection that carries no
-// merge_queue rule, which is precisely the state that would ship silently if someone signed the
-// policy without wiring the projection.
+// The arm this reaches is unreachable through the repository's own declarations: the desire is
+// SignedOff and the projection carries merge_queue, so a fold reading those rows answers Present
+// with a complete rule. The Present arm -- and the RulesetMergeQueueDesireSelfInconsistent
+// renderer it feeds -- would be permanently green if this claim only read the corpus. DESIGN
+// section 4b: a check whose RED is unauthorable is a decoration; the seam is a parameter. This
+// claim hands merge_queue_desire_unknowns a signed policy against a projection that carries no
+// merge_queue rule.
 //
 // This restores the seam the deleted repo_ruleset_observed_actuation_admission carried for the same
 // reason -- it was unreachability that let an inversion sit in that arm undetected -- so the
 // replacement preserves the required refusal rather than erasing the distinction.
 test fn RED_a_signed_policy_the_projection_does_not_carry_is_an_unknown_on_that_dimension() -> Bool {
   let us = merge_queue_desire_unknowns(
-    policy: Present { value: gunbc_merge_queue_proposal },
-    rules: desired_ruleset_rules(),
+    policy: Present { value: merge_queue_floor_aligned_policy() },
+    rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
   )
   length(us) == 1
     && string_contains(s: render_unknowns(us: us), pattern: "WHICH ONE IS THE DESIRE is undetermined")

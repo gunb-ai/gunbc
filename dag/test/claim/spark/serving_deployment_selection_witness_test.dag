@@ -6,12 +6,13 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, de
 import std.measure { token_count, token_count_value, basis_point, byte_size, byte_size_count }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
-import std.pareto { LowerIsBetter, SelectionAxis }
-import std.decision { HardConstraint }
+import std.pareto { AxisGap, AxisReading, LowerIsBetter, SelectionAxis }
+import std.decision { HardConstraint, SelectionEvidenceNeed, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
 import std.roster_frontier {
   FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
 }
-import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey, keyed_roster_build }
 import gunbc.spark.v41_published_image_observation {
   v41_published_arm64_reference,
   v41_published_distribution_name,
@@ -81,11 +82,32 @@ import gunbc.spark.serving_deployment_selection {
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
   kv_layout_policy_matching_wire, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
+  ax_component_route, constraint_component_route,
+  ArtifactComponent, artifact_component, ArtifactComponentPlacement, ComponentResident, ComponentPlacedByRoute,
+  v4_1_artifact_components, legacy_undecomposed_artifact,
+  artifact_decomposition_defect, candidate_resident_footprint, sum_component_footprints,
+  artifact_upstream_agreement_defect,
+  artifact_decomposition_digest, artifact_component_digest, candidate_combination, combination_key_eq,
+  footprint_bytes, component_route_reading,
+  route_obligation_marker, route_obligation_cause, route_obligation_prefix, id_route_consumer,
+  candidate_route_context, CandidateComponentRoutes,
+  routed_candidates, RoutedCandidate, candidate_component_route_standings,
+  FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
   VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
   v4_1_selection_frontier, kv_layout_wire,
 }
+import gunbc.fabric.engram_materialization {
+  ax_route_per_rank_resident_lower_bound,
+  engram_component_identity,
+  component_route_standing_component, component_route_standing_context, route_subject_key_eq,
+  ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority,
+  ComponentRouteDecided,
+  ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementNotThisSubject,
+  ComponentPlacementExcluded, ComponentPlacementOpen, component_route_placement_standing,
+}
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_safetensors_index_total_size }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
   v41_sm12_kv_cache_dtype_admitted,
@@ -101,21 +123,14 @@ import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
 // would mean the whole question turned on one measurement.
 test fn the_real_deepseek_subject_returns_obligations_rather_than_a_topology() -> Bool {
   match select_serving_deployment(input: deepseek_decision_input) {
-    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
     _ => false
   }
 }
 
 test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
   match select_serving_deployment(input: glm_decision_input) {
-    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
-    _ => false
-  }
-}
-
-test fn the_real_deepseek_v4_1_subject_returns_obligations_rather_than_a_topology() -> Bool {
-  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
     _ => false
   }
 }
@@ -131,8 +146,10 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
       }
     Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
   }
-    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "sm12_designed")) {
+      NoFeasibleServingDeployment { causes: cs } =>
+        causes_name_axis(cs: cs, axis: ax_component_route)
+          && !causes_name_axis(cs: cs, axis: ax_host_fit)
       _ => false
     }
     && decision_snapshot_key(input: deepseek_v4_1_decision_input)
@@ -142,11 +159,60 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
       ))
 }
 
+// THE DESIGNED NARROWING THIS REPLACES WAS FALSIFIED BY ITS OWN PREMISE EXPIRING, and the record is
+// kept here because the narrowing had been measured and reasoned about rather than guessed.
+//
+// WHAT IT WAS. The runtime is this claim's discriminator, not the field, so the field enumerated two
+// designed topologies -- tp4 x 2 replicas and tp8 x 1 -- rather than the twenty `fleet_admitted_topologies`
+// yielded over eight hosts. The cost that motivated it was real and measured: 393,216 eval_steps and 508ms
+// CPU, over the ceiling, with the cost in per-candidate route-standing production rather than in the
+// selection fold.
+//
+// WHY IT CANNOT STAND. Both designed shapes consume EIGHT ranks. #11308 made the host fit a HARD
+// CONSTRAINT over a subject-relative admissible set, and V4.1's subject holds one fabric group, so a
+// shape needing eight hosts is now excluded before Pareto on host fit. The field would have reached its
+// answer through host-fit exclusion and never through the runtime exclusion it exists to exercise -- a
+// fixture that still returns the expected verdict for a reason the claim is not about.
+//
+// SO THE FIELD IS DERIVED FROM THE ADMISSIBLE SET, which cannot be wrong about host fit by construction,
+// and the enumeration it yields is bounded by that set rather than by a hand-picked pair. The cost this
+// re-enrols is an obligation to MEASURE from `required_floor_claim_cost` rather than to predict: the host
+// set shrank at the same time, so the field is smaller than the twenty measured above, and by how much is
+// not something to arithmetic here. If it lands over the ceiling again, the narrowing gets redesigned
+// with shapes that FIT the admissible set, established by execution and not by inspection.
+// THE DESIGNED FIELD, REBUILT TO INHABIT THE ADMISSIBLE SET RATHER THAN TO IGNORE IT. Both shapes
+// consume AT MOST the four ranks the subject's admissible host set holds, so neither can be excluded
+// on host fit -- which is the failure the previous hand-picked pair had, both consuming eight.
+//
+// tp4 x 1 IS THE SHAPE CLOSEST TO FEASIBLE, and that is why it is the one kept: it is the only
+// topology whose per-rank Engram share comes within 2 GiB of the budget, so a claim over it
+// exercises the real margin and reds if the memory screen ever stops excluding. A field of
+// comfortably-infeasible shapes would be excluded by a wider margin and would say less.
+//
+// ONE TOPOLOGY, NOT TWO, AND THE SECOND ONE'S REASON DID NOT SURVIVE MEASUREMENT. A tp2 x 1 shape
+// was carried alongside so the assertion would not rest on a single candidate. That rationale is
+// sound where the FIELD is the claim's subject -- and it is not, for either consumer here: their
+// subjects are runtime admission and the extdeps roster, and the field is incidental to both. It
+// cost 14,000-odd eval steps per topology to assert nothing either claim is about, which put
+// `unauthorized_v4_1_runtime_is_excluded_before_unread_axes` 7.5% over the new-witness budget at
+// 77,755 against 72,300. Measured, not estimated: 163,305 steps over eight topologies, 77,755 over
+// two.
+//
+// WHAT THIS IS NOT: a return to hand-picked topologies. The lesson of the falsified pair was that a
+// designed narrowing must INHABIT its subject, not that narrowing is forbidden -- and inhabitance
+// here is CHECKED BY EXECUTION rather than asserted, because each consuming claim must still reach
+// its verdict through the mechanism it exists to exercise rather than through host fit. That check
+// is the `ax_host_fit` conjunct in both consumers, and it is a standing control rather than
+// something an author did once.
+data v4_1_designed_topologies: List<TopologyShape> = [
+  topology_shape(tensor_parallel_degree: 4, replica_count: 1),
+]
+
 fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDeploymentDecisionInput {
   let standings = [v4_1_profile_from_standing(runtime: runtime, standing: v4_1_gb10_kv_layout)]
   let domain = serving_deployment_domain_over_standings(
     artifacts: [artifact_deepseek_v4_1_flash_native],
-    topologies: fleet_admitted_topologies(fleet: pair_unit_a_fleet_snapshot),
+    topologies: v4_1_designed_topologies,
     standings: standings,
   )
   serving_decision_input(
@@ -164,25 +230,27 @@ fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDepl
   )
 }
 
-fn causes_name_authorized_runtime(cs: List<NonEmptyStr>) -> Bool {
-  any(cs, s => string_contains(s: s as String, pattern: declaration_ref_display_key(ref: ax_authorized_runtime)))
+// ONE FOLD OVER EXCLUSION CAUSES, KEYED BY THE AXIS ASKED ABOUT. The previous shape hard-coded
+// ax_authorized_runtime, and the moment a second axis had to be asked about the honest move was to
+// generalise the existing fold rather than mint a parallel `causes_name_component_route` beside it.
+fn causes_name_axis(cs: List<NonEmptyStr>, axis: DeclarationRef) -> Bool {
+  any(cs, s => string_contains(s: s as String, pattern: declaration_ref_display_key(ref: axis)))
 }
 
 test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
   match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_vllm_gb10_lead, stem: "plant_gb10_lead")) {
-    NoFeasibleServingDeployment { causes: cs } => causes_name_authorized_runtime(cs: cs)
+    NoFeasibleServingDeployment { causes: cs } => causes_name_axis(cs: cs, axis: ax_authorized_runtime)
     _ => false
   }
     && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: spark_runtime, stem: "plant_spark_runtime")) {
-      NoFeasibleServingDeployment { causes: cs } => causes_name_authorized_runtime(cs: cs)
+      NoFeasibleServingDeployment { causes: cs } => causes_name_axis(cs: cs, axis: ax_authorized_runtime)
       _ => false
     }
     && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "plant_published_arm64")) {
-      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
-      _ => false
-    }
-    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+      NoFeasibleServingDeployment { causes: cs } =>
+        causes_name_axis(cs: cs, axis: ax_component_route)
+          && !causes_name_axis(cs: cs, axis: ax_authorized_runtime)
+          && !causes_name_axis(cs: cs, axis: ax_host_fit)
       _ => false
     }
     && match v4_1_runtime_published_arm64.vllm_source {
@@ -493,6 +561,63 @@ data settled_field: ServingDeploymentCandidateField = serving_candidate_field(
   candidates: [native_tp4_x2],
 )
 
+// ── A DESIGNED FOUR-CANDIDATE V4.1 FIELD, FOR THE CLAIMS WHOSE SUBJECT IS NOT THE FIELD ────────
+//
+// MEASURED, not guessed (CI run 34794567396, required_floor_claim_cost.tsv): six claims in this suite
+// and its Engram sibling carry 75.8% of their 2,947,650 eval_steps, then a 5.2x cliff, and every one of
+// the six drives the LIVE V4.1 field. The cross-subject control is what identifies the cause -- the same
+// claim shape costs 438,272 steps for V4.1, 46,261 for GLM and 34,956 for V4-Flash, 9.5x to 12.5x apart
+// on identical assertions -- because V4.1 alone enumerates `fleet_admitted_topologies` (twenty topologies
+// over eight hosts) where the others use the four-element covering cartesian.
+//
+// AND THE COST IS IN `routed_candidates`, NOT IN THE SELECTION FOLD. Two of the six call
+// `select_serving_deployment` zero times and still cost 239k and 325k steps, because route-standing
+// production runs per candidate per component either way. So only a SMALLER FIELD helps; avoiding the
+// selection call does not.
+//
+// THIS FIELD IS DESIGNED TO DISCRIMINATE, NOT TRUNCATED. Each property the claims below assert has a way
+// to fail against it:
+//   FOUR candidates over TWO distinct execution contexts (tp4 and tp8, two replica counts each), so
+//     `count(demands) < count(candidates)` is a real assertion -- candidates SHARE a demand rather than
+//     the inequality holding trivially. A single-context field would make it vacuous; a field of one
+//     would make it false.
+//   the V4.1 artifact, so every candidate carries the Engram component `ComponentPlacedByRoute` and
+//     `count(rc.route_standings) == count(components)` has something to align.
+//   DISTINCT identities, so the keyed-roster build can actually report a duplicate if the producer ever
+//     emits one.
+// What it deliberately does NOT carry is the twenty-topology enumeration, because none of these claims
+// is about how many topologies the fleet admits.
+// WHY THERE IS NO HAND-BUILT V4.1 INPUT HERE, recorded because two successive attempts at one built it
+// wrong and a third reader would try again.
+//
+// A V4.1 DECISION NEEDS MORE THAN A FIELD OF V4.1 CANDIDATES. First attempt used `input_with`, which
+// supplies V4-FLASH axes, constraints and quality -- and the axes and constraints ARE part of the decision
+// identity (DESIGN 3d), so that is a DIFFERENT decision, not a cheaper one. Second attempt supplied the
+// V4.1 axes but built candidates with `cand`, which defaults `profile: serving_parameters_current` -- so
+// the candidates carried a V4-Flash execution profile while the V4.1 axes read V4.1 profile facts.
+//
+// BOTH FAILURES COMPILED CLEAN AND WERE CAUGHT ONLY BY RUNNING. The lesson is in the construction that
+// works: a V4.1 candidate must come from `derived_candidates_for` over a domain built from V4.1 PROFILE
+// STANDINGS, which is what `v4_1_input_for_runtime` does. So the claims below reuse that builder -- now
+// narrowed to two designed topologies -- rather than assembling an input from parts.
+fn v4_1_fixture_candidate(name: String, tp: Nat, replicas: Nat) -> DeploymentCandidate {
+  cand(name: name, art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: tp, replica_count: replicas))
+}
+
+data v4_1_designed_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "v4_1_designed_field"),
+  domain: serving_deployment_domain(
+    artifacts: [artifact_deepseek_v4_1_flash_native],
+    topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2), topology_shape(tensor_parallel_degree: 8, replica_count: 1)],
+    parameters: serving_parameters_current),
+  candidates: [
+    v4_1_fixture_candidate(name: "designed_tp4_x2", tp: 4, replicas: 2),
+    v4_1_fixture_candidate(name: "designed_tp4_x1", tp: 4, replicas: 1),
+    v4_1_fixture_candidate(name: "designed_tp8_x1", tp: 8, replicas: 1),
+    v4_1_fixture_candidate(name: "designed_tp2_x4", tp: 2, replicas: 4),
+  ],
+)
+
 data no_redundancy_goal_flip_constraints: List<HardConstraint> = concat(serving_selection_constraints, [
   HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 1 },
 ])
@@ -531,6 +656,8 @@ test fn changing_weight_treatment_changes_the_decision_identity() -> Bool {
     label: artifact_deepseek_v4_flash_native.label,
     footprint: artifact_deepseek_v4_flash_native.footprint,
     weight_treatment: RequantisedWeights { distinction: "identity-collision-probe" as NonEmptyStr },
+    components: artifact_deepseek_v4_flash_native.components,
+    upstream_total: artifact_deepseek_v4_flash_native.upstream_total,
   }
   let requant_field = serving_candidate_field(
     identity: settled_field.identity,
@@ -618,7 +745,7 @@ test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool {
             SelectionAxis { identity: a.identity, goal: LowerIsBetter }
           } else { a }),
       )) {
-        ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+        ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
         _ => false
       }
     _ => false
@@ -659,7 +786,7 @@ test fn funded_axes_are_carried_not_inferred_from_constraint_authority() -> Bool
 // its own hard-bounded axis so it cannot hide behind whichever other evidence is missing first.
 test fn an_unestablished_workload_alone_keeps_the_decision_at_needs_evidence() -> Bool {
   match select_serving_deployment(input: input_with(field: settled_field, w: unestablished_demand)) {
-    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
     _ => false
   }
 }
@@ -669,7 +796,7 @@ test fn an_unestablished_workload_alone_keeps_the_decision_at_needs_evidence() -
 // the row that stops a future selection going green on a narrow question.
 test fn a_passing_quality_and_established_demand_still_need_the_performance_evidence() -> Bool {
   match select_serving_deployment(input: input_with(field: settled_field, w: established_demand)) {
-    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
     _ => false
   }
 }
@@ -1025,9 +1152,9 @@ fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List
     }
     && match select_serving_deployment(input: v4_1_decision_input_from_sm12(wire: wire, admitted: admitted)) {
       ServingDeploymentSelectionRefused { defects: ds } => any(ds, d => names_sm12_kv_join(s: d))
-      ServingDeploymentNeedsEvidence { needs: _ } => false
+      ServingDeploymentNeedsEvidence { needs: _, component_routes: _ } => false
       ServingDeploymentSelected { selected: _ } => false
-      ServingDeploymentNeedsPolicy { survivors: _ } => false
+      ServingDeploymentNeedsPolicy { survivors: _, component_routes: _ } => false
       NoFeasibleServingDeployment { causes: _ } => false
     }
 }
@@ -1052,9 +1179,31 @@ test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool
   }
 }
 
-test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> Bool {
-  let empty_admit: List<NonEmptyStr> = []
+// ONE WITNESS PER PLANTED WIRE, BECAUSE THREE FIELD CONSTRUCTIONS IN ONE CLAIM IS THREE CLAIMS
+// WEARING A CONJUNCTION. Each of these drives `v4_1_candidate_field_from_sm12` once, and the previous
+// single claim drove it three times for 110,408 eval steps against a 72,300 new-witness budget. The
+// split loses no coverage -- every conjunct survives, attached to the wire it is about -- which is the
+// difference between splitting and dropping a case. Operator ruling 2026-09-14: a witness
+// discriminates at ONE interface, not over cases.
+test fn a_planted_unadmitted_wire_keeps_a_named_join_standing() -> Bool {
   let unadmitted = kv_layout_wire(k: KvAutoLayout)
+  !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
+    && match kv_layout_policy_matching_wire(wire: unadmitted) {
+      Present { value: k } =>
+        match k { KvAutoLayout => true, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+      Absent => false
+    }
+    && planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && match sm12_kv_layout_standing(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
+      Sm12KvLayoutAdmitted { policy: _ } => false
+    }
+}
+
+// A WIRE THE ROSTER ADMITS BUT NO POLICY MATCHES is the case the unadmitted one cannot reach: admission
+// and policy matching are two joins, and a wire can pass the first and fail the second.
+test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool {
   let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
     match kv_layout_policy_matching_wire(wire: d) {
       Absent => true
@@ -1064,60 +1213,111 @@ test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> 
     Absent => false
     Present { value: nomatch } =>
       v41_sm12_kv_cache_dtype_admitted(dtype: nomatch)
-        && !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
-        && match kv_layout_policy_matching_wire(wire: unadmitted) {
-          Present { value: k } =>
-            match k { KvAutoLayout => true, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
-          Absent => false
-        }
         && match kv_layout_policy_matching_wire(wire: nomatch) {
           Absent => true
           Present { value: _ } => false
         }
-        && planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
         && planted_join_is_named_failure(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-        && planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
-        && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
         && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-        && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
-        && match sm12_kv_layout_standing(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
-          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
-          Sm12KvLayoutAdmitted { policy: _ } => false
-        }
         && match sm12_kv_layout_standing(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes) {
           Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
           Sm12KvLayoutAdmitted { policy: _ } => false
         }
-        && match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
-          ServingFieldEstablished => true
-          ServingFieldUnestablished { causes: _ } => false
-        }
-        && match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
-          Sm12KvLayoutAdmitted { policy: k } =>
-            match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
-          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
-        }
   }
 }
 
-fn v4_1_frontier_keys_contain(decl_name: String) -> Bool {
-  let want = declaration_ref_display_key(ref: DeclarationRef {
+// AN EMPTY ADMITTED ROSTER FAILS THE JOIN FOR A WIRE THAT IS OTHERWISE THE REAL ONE, which is what
+// separates "this wire is wrong" from "there is nothing to join against". The positive controls ride
+// here because they are about the same real wire: the live field IS established, and the real wire
+// against the real roster IS admitted as fp8_ds_mla -- so the three negatives above are failing for
+// the planted reason rather than because this join never succeeds.
+test fn an_empty_admitted_roster_keeps_a_named_join_standing() -> Bool {
+  let empty_admit: List<NonEmptyStr> = []
+  planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
+    && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
+}
+
+// THE POSITIVE CONTROL FOR THE PLANTED FAMILY. The three planted claims assert that a BROKEN join is
+// named; this asserts the join SUCCEEDS for the real wire against the real roster. Without it all
+// three negatives could be passing because that join never succeeds at all.
+//
+// THE LIVE FIELD'S ESTABLISHMENT IS SUPPLIED HERE AND EXECUTED THERE, which is the strengthened
+// obligation applied rather than evaded: a boundary may be supplied in any number of claims so long as
+// SOME claim still runs it for real, and the execution that may never be removed is the product root.
+//
+// THE IMPLICATION IS EXACT AND CHECKABLE FROM TWO BODIES, not asserted. This claim used to call
+// `establish_serving_candidate_field(field: deepseek_v4_1_candidate_field)` for ~98,000 of its 108,443
+// eval steps. That function IS `establish_serving_candidate_field_over(field, routed_candidates(field))`
+// -- and `select_over_routed` makes THAT SAME CALL WITH THE SAME ARGUMENTS as its first act, returning
+// `ServingDeploymentSelectionRefused` on `ServingFieldUnestablished`. So
+// `the_live_v4_1_serving_decision_excludes_every_admissible_candidate`, which asserts
+// `NoFeasibleServingDeployment` and returns FALSE on the refused arm, cannot pass unless the live field
+// is established. The establishment was being computed twice and asserted twice.
+//
+// WHY THIS IS NOT THE MISTAKE MADE EARLIER ON THIS BRANCH. A previous decomposition supplied BOTH
+// halves -- behaviour over a designed field, inhabitance with no decision -- and left ZERO executions
+// of the live decision, which a reviewer caught. Here one execution survives BY CONSTRUCTION: the
+// product root is untouched, and if it is ever deleted this claim's supplied boundary loses its
+// warrant. That is the pairing the rule requires, and the execution that carries it is the claim
+// `the_live_v4_1_serving_decision_excludes_every_admissible_candidate` in this module.
+//
+// NAMED AS A SYMBOL RATHER THAN AS A GREP, AND THAT IS NOT PEDANTRY -- THE GREP DOES NOT WORK. Two
+// annotations in this file, including this one, discuss that call by quoting it, so a count of the
+// pattern reports THREE where one execution exists, and it would still report TWO if the product root
+// were deleted. A guard fooled by prose about the guard cannot detect the regression it exists for,
+// which is section 3's cite-the-symbol rule earning its keep: the claim's name is reachable from the
+// namespace tree and a quoted string in a comment is not.
+test fn the_real_sm12_wire_joins_as_fp8_ds_mla() -> Bool {
+  match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+    Sm12KvLayoutAdmitted { policy: k } =>
+      match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+    Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
+  }
+}
+
+// THE ASSERTION IS AN IDENTITY JOIN, NOT A CARDINALITY. A first cut asserted `count(built) == 3`
+// beside three `contains` checks, and when the frontier grew to five subjects the three it named were
+// all still present while the count no longer described the producer -- so the witness went red on the
+// one thing about it that carried no meaning. Replacing 3 with 5 would have been worse: a count that
+// tracks whatever the producer happens to hold is a derivation compared with itself, which DESIGN §5
+// names exactly ("if automating the literal's update collapses the assertion to measure() == measure()").
+//
+// So the expected POPULATION is declared here, and the join is in BOTH directions: every expected
+// subject is built, and every built subject is expected. Adding a frontier row without declaring it
+// here reds the second direction; dropping one reds the first. Neither can be satisfied by editing a
+// number, and the roster build still has to be duplicate-free for either direction to mean anything.
+// candidate_component_budget IS ENROLLED HERE because the declaration it defers is this module's. It
+// was briefly filed in the route authority's roster instead and that roster refused -- its expected
+// subjects are all built with the route module's path, so a row pointing at a serving declaration had
+// no counterpart. The join that caught it is the reason both rosters check membership in both
+// directions at identity grain rather than comparing counts.
+data v4_1_expected_frontier_subjects: List<String> = [
+  "fleet_admitted_topologies",
+  "v4_1_gb10_kv_bytes_obligation",
+  "engram_standing",
+  "component_route_gap_over",
+  "execution_profile_of",
+  "candidate_component_budget",
+]
+
+fn v4_1_frontier_subject_key(decl_name: String) -> String {
+  declaration_ref_display_key(ref: DeclarationRef {
     module_path: "gunbc.spark.serving_deployment_selection" as NonEmptyStr,
     decl_name: decl_name as NonEmptyStr,
     field: WholeDeclaration,
   })
-  any(frontier_path_subjects(rows: v4_1_selection_frontier), k => k == want)
 }
 
 test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_facts() -> Bool {
+  let expected = map(v4_1_expected_frontier_subjects, n => v4_1_frontier_subject_key(decl_name: n))
+  let actual = frontier_path_subjects(rows: v4_1_selection_frontier)
   frontier_rows_well_formed(rows: v4_1_selection_frontier)
     && match frontier_rows_keyed_roster_build(rows: v4_1_selection_frontier) {
-      KeyedRosterBuilt { rows: built } => count(built) == 3
+      KeyedRosterBuilt { rows: built } => count(built) == count(actual)
       KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
     }
-    && v4_1_frontier_keys_contain(decl_name: "fleet_admitted_topologies")
-    && v4_1_frontier_keys_contain(decl_name: "v4_1_gb10_kv_bytes_obligation")
-    && v4_1_frontier_keys_contain(decl_name: "engram_standing")
+    && all(expected, e => any(actual, a => a == e))
+    && all(actual, a => any(expected, e => e == a))
 }
 
 test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {
@@ -1143,16 +1343,38 @@ test fn v4_1_selection_policy_is_not_the_quality_requirement() -> Bool {
   !declaration_ref_eq(a: deepseek_v4_1_selection_policy, b: deepseek_v4_1_quality_requirement.identity)
 }
 
+// THE EXPECTED CONSTRAINT AUTHORITIES ARE NAMED, AND THE JOIN RUNS BOTH WAYS. A first cut asserted
+// `count(v41_ids) == 4` beside three `any` checks; adding `constraint_component_route` made it five, and
+// the three named identities were all still present, so the witness failed on the assertion that said
+// the least. The identities are declared here as a population and joined in both directions, so a new
+// constraint authority on either input must be declared here to pass -- and no edit to a number can
+// satisfy it. The GLM roster is asserted the same way, which is what keeps V4.1's additions from
+// silently widening the shared subject.
+data expected_glm_constraint_authorities: List<DeclarationRef> = [
+  id_constraint_authority,
+  constraint_native_quality,
+]
+
+data expected_v4_1_constraint_authorities: List<DeclarationRef> = [
+  id_constraint_authority,
+  constraint_native_quality,
+  constraint_no_redundancy,
+  constraint_authorized_runtime,
+  constraint_component_route,
+]
+
+fn identity_populations_agree(actual: List<DeclarationRef>, expected: List<DeclarationRef>) -> Bool {
+  all(expected, e => any(actual, a => declaration_ref_eq(a: a, b: e)))
+    && all(actual, a => any(expected, e => declaration_ref_eq(a: a, b: e)))
+}
+
 test fn assessment_dispositions_join_the_constraint_identities_on_the_input() -> Bool {
   let glm_ids = unique_constraint_identities(cs: glm_decision_input.constraints)
   let v41_ids = unique_constraint_identities(cs: deepseek_v4_1_decision_input.constraints)
-  count(glm_ids) == 2
-    && any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_native_quality))
+  identity_populations_agree(actual: glm_ids, expected: expected_glm_constraint_authorities)
+    && identity_populations_agree(actual: v41_ids, expected: expected_v4_1_constraint_authorities)
     && !any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_no_redundancy))
-    && count(v41_ids) == 4
-    && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_native_quality))
-    && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_no_redundancy))
-    && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_authorized_runtime))
+    && !any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_component_route))
 }
 
 // THE COVERING CARTESIAN IS OVER THE SUBJECT'S ADMISSIBLE SET. GLM covers the canary's four hosts,
@@ -1193,4 +1415,633 @@ test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bo
     QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
     _ => false
   }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// DSV41-10: THE ENGRAM ROUTE INTEGRATION, CHECKED AT THE PRODUCT ROOT
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+// THE CONTROL THAT REDS IF THE INTEGRATION IS REMOVED. This is not a fixture calling an unused
+// function: it is the live V4.1 serving decision -- the same `deepseek_v4_1_decision_input` the
+// product declares -- and it asserts that the evidence it reports back includes the component-route
+// axis. Delete the axis from `v4_1_selection_axes`, or stop `candidate_gaps` from carrying the
+// route standing, and this goes red rather than quietly returning the same answer for other reasons.
+fn needs_name_axis(needs: List<SelectionEvidenceNeed>, axis: DeclarationRef) -> Bool {
+  any(needs, n => match n {
+    UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: axis)
+    CandidateStandingIncomplete { candidate: _, cause: _ } => false
+    SubjectClosureIncomplete { subject: _, obligation: _ } => false
+  })
+}
+
+// OBSERVING AN AXIS NAME IS NOT EVIDENCE THE ROUTE'S RESULT REACHED THE ROOT. A first cut asserted
+// only that some UnfundedAxis named ax_component_route -- and `std.decision` `unread_axis_gaps`
+// synthesises exactly that on any hard-constrained axis with no reading. So removing the route
+// contribution from candidate_gaps, while keeping the funded axis, its constraint and the open
+// placement's absent reading, left the selector fabricating a gap on the same axis and the control
+// accepted it identically: it could not distinguish the connected path from the disconnected one.
+//
+// The oracle now requires a ROUTE-PRODUCED obligation -- marked with the component identity and the
+// exact serving context it was decided under, neither of which the selector's fallback knows. The
+// negative below is the disconnection itself, expressed as the selector's own generic gap, and it is
+// rejected.
+// THE THREE THINGS A ROUTE-PRODUCED OBLIGATION CARRIES AND THE SELECTOR'S FALLBACK CANNOT: the
+// marker, the component SUBJECT the route authority decided about, and the consumer that derived the
+// serving context. Each is computed from the same declaration production uses, so this oracle carries
+// no transcribed string that could drift away from what the code emits.
+// THE THREE DISCRIMINATORS ARE COMPUTED ONCE, not once per need. The needs list for the live V4.1
+// decision runs to hundreds, and recomputing two declaration keys inside the scan was the same
+// copied-accumulator shape the production fold had -- in a control whose whole problem is that it must
+// afford to render a verdict.
+data expected_route_component_key: String = declaration_ref_display_key(ref: engram_component_identity)
+data expected_route_consumer_key: String = declaration_ref_display_key(ref: id_route_consumer)
+
+// THE CONTEXT DIGEST IS PART OF THE DISCRIMINATOR, NOT JUST THE CONSUMER. A first cut asked for the
+// marker, the component key and the consumer key, and a cause naming this component and this consumer
+// under a DIFFERENT execution profile satisfied all three -- so the oracle would have accepted a route
+// obligation decided for another topology, which is precisely the foreign-profile reuse the route model
+// refuses. The exact prefixes production can emit for THIS field are derived here, once, from the same
+// two folds production uses, and the cause must carry one of them whole.
+data expected_route_prefixes: List<String> = map(
+  deepseek_v4_1_candidate_field.candidates,
+  k => route_obligation_prefix(
+    component: engram_component_identity,
+    context: candidate_route_context(c: k, p: k.profile)))
+
+fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr> {
+  flat_map(needs, n => match n {
+    UnfundedAxis { gap: g } =>
+      if declaration_ref_eq(a: g.axis, b: ax_component_route)
+        && string_contains(s: g.cause as String, pattern: route_obligation_marker as String)
+        && string_contains(s: g.cause as String, pattern: expected_route_component_key)
+        && string_contains(s: g.cause as String, pattern: expected_route_consumer_key)
+        && any(expected_route_prefixes, px => string_contains(s: g.cause as String, pattern: px)) {
+        [g.cause]
+      } else { [] }
+    CandidateStandingIncomplete { candidate: _, cause: _ } => []
+    SubjectClosureIncomplete { subject: _, obligation: _ } => []
+  })
+}
+
+// ── THE FIELD SURVIVES, AND THE SHARING ITSELF IS NOT OBSERVABLE FROM HERE ────────────────────
+//
+// THE EXACTLY-ONCE CHECK WAS QUADRATIC IN THIS WITNESS'S OWN ARITHMETIC, which DESIGN section 6 says
+// is always fixed regardless of the realized n. It ran one `filter` over the routed rows PER candidate
+// -- about 3600 `declaration_ref_eq` calls at sixty candidates -- and that cost was the INSTRUMENT's,
+// not the subject's, so it inflated the only completing full-field measurement this cut has.
+//
+// AND MOST OF WHAT IT ASSERTED WAS TRUE BY CONSTRUCTION. `routed_candidates` is `map(field.candidates,
+// k => RoutedCandidate { candidate: k, ... })`, so each row CARRIES THE CANDIDATE VALUE ITSELF rather
+// than a key that has to be resolved back: "every routed candidate belongs to the field" cannot fail,
+// and "every field candidate appears in routed" follows from `map` together with the count equality
+// below. What remains at risk is a producer that drops one candidate and duplicates another, which
+// count equality alone would not see -- so uniqueness is the whole residual content, and
+// `std.keyed_roster` is its authority, the same one this cut consumed for the safetensors rosters.
+//
+// WHAT THIS ESTABLISHES, and the claim is deliberately narrower than the one it replaces. It checks
+// that the parent population is preserved -- every candidate returns exactly once, each with a
+// standings list positionally aligned to its own artifact's component list -- and that this field
+// genuinely CONTAINS candidates sharing a (component, context) demand, which is the precondition that
+// makes sharing possible at all. Both are facts about values this entry point returns.
+//
+// WHAT IT DOES NOT ESTABLISH, corrected from a claim I made and should not have. It does NOT show that
+// removing the sharing would red it. An earlier version asserted `count(demands) < count(candidates)`
+// and called that a wall against reverting to per-candidate production -- but the witness computes
+// `resolved_route_demands` ITSELF, separately from `routed_candidates`. Restore the per-candidate
+// implementation and the returned candidate values and cardinalities are identical while the witness's
+// own independent demand census still returns fewer, so every assertion stays true with production no
+// longer sharing. Checking the right helper independently does not prove the claimed path uses it.
+//
+// AND THE DEEPER REASON NO OUTPUT-LEVEL CONTROL CAN DO BETTER: the reduction is answer-preserving BY
+// CONSTRUCTION -- `engram_route_standing` reads only the component and the context, so two candidates
+// with an equal pair cannot differ in any returned value. That property is exactly why the reuse is
+// safe and exactly why its removal is invisible to any assertion over outputs. What would detect it is
+// a cost measurement, and at this head the full-field controls are censored at the floor's ceiling, so
+// that instrument is unavailable. The honest position is that the sharing is currently unwitnessed,
+// stated here rather than implied by a control that reads as a wall and is not one.
+// THIS CLAIM'S SUBJECT IS THE PRODUCER, NOT THE FIELD. It asserts that route production preserves the
+// candidate population, that the roster it builds is duplicate-free, that standings align positionally
+// with each artifact's components, and that candidates SHARE demands rather than each minting its own.
+// Every one of those is a property of `routed_candidates` and `distinct_route_demands`, and none of them
+// is a property of how many topologies the fleet admits -- so it runs on the designed four-candidate
+// field. It cost 239,298 eval_steps on the live field with ZERO select_serving_deployment calls, which is
+// what located the cost in route-standing production rather than in the selection.
+test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> Bool {
+  let field = v4_1_designed_field
+  let routed = routed_candidates(field: field)
+  let demands = distinct_route_demands(routed: routed)
+  count(routed) == count(field.candidates)
+    && match keyed_roster_build(
+      incomings: map(routed, rc => KeyedRow { row_key: rc.candidate.identity, value: rc }),
+      key_eq: declaration_ref_eq,
+    ) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && all(routed, rc => count(rc.route_standings) == count(rc.candidate.artifact.components))
+    && count(demands) > 0
+    && count(demands) < count(field.candidates)
+    && all(demands, d => declaration_ref_eq(a: component_route_standing_component(s: d), b: engram_component_identity))
+}
+
+// THE DEMAND POPULATION IS READ OFF THE ROWS ALREADY PRODUCED, NOT COMPUTED A SECOND TIME. A first
+// cut called `routed_candidates(field)` AND `resolved_route_demands(field)` -- and `routed_candidates`
+// computes the demand table internally, so the expensive half ran TWICE: sixteen route selections where
+// eight suffice. That is the authored duplication with a shared-state ancestor that DESIGN section 2
+// says to rewire rather than cache, committed inside the instrument that measures the repair of exactly
+// that defect in production.
+//
+// The distinct (component, context) pairs are folded out of the standings the rows already carry. The
+// accumulator holds one entry per distinct demand -- eight, not sixty -- so this is roughly sixty short
+// scans of a very small list rather than a second full route analysis.
+//
+// AND THE RESIDENT COMPONENTS ARE EXCLUDED, WHICH IS NOT A DETAIL. `resolved_route_demands` accumulates
+// only components declared `ComponentPlacedByRoute`; this artifact ALSO carries a `ComponentResident`
+// backbone, whose standing is `ComponentRouteNotThisSubject` with `no_routed_component` as its subject.
+// A first cut of this fold read every standing and so admitted that one, which silently changed the
+// POPULATION rather than only how it was computed -- nine entries instead of eight, one of them naming
+// no component at all. The arm is discriminated here so the two definitions agree.
+fn routed_demand_standings(routed: List<RoutedCandidate>) -> List<ComponentRouteStanding> {
+  filter(flat_map(routed, rc => rc.route_standings), st => match st {
+    ComponentRouteNotThisSubject => false
+    ComponentRouteSubjectHasNoAuthority { component: _, context: _ } => true
+    ComponentRouteDecided { component: _, context: _, result: _, routes: _, evidence: _ } => true
+  })
+}
+
+fn distinct_route_demands(routed: List<RoutedCandidate>) -> List<ComponentRouteStanding> {
+  fold(routed_demand_standings(routed: routed), init: [], f: (acc, st) =>
+    if any(acc, a =>
+      declaration_ref_eq(
+        a: component_route_standing_component(s: a),
+        b: component_route_standing_component(s: st))
+        && route_subject_key_eq(
+          a: component_route_standing_context(s: a),
+          b: component_route_standing_context(s: st))) {
+      acc
+    } else {
+      concat(acc, [st])
+    })
+}
+
+// ── THE PRODUCT ROOT: THE LIVE FIELD IS EMPTY, AND WHY ────────────────────────────────────────
+//
+// THIS CLAIM ASSERTED NEEDS-EVIDENCE UNTIL 2026-09-14 AND THE EXPECTATION MOVED BECAUSE THE FIELD
+// DID, NOT BECAUSE THE CLAIM WAS WRONG WHEN WRITTEN. It was authored while the V4.1 domain was
+// generated over an EIGHT-host scalar. #11308 replaced that with the subject's admissible host SET,
+// and V4.1's subject holds one fabric group -- so tp5 through tp8 correctly ceased to exist, and
+// with them every shape whose per-rank Engram share was small enough to fit.
+//
+// THE DISCRIMINATOR, STATED HERE BECAUSE "INFEASIBLE" INVITES EXACTLY ONE QUESTION -- would more
+// hosts help? Yes, and this is the margin:
+//
+//   ranks=8   engram needs 23.64 GiB per rank against an 81.14 GiB budget   fits, with room
+//   ranks=4   engram needs 47.28 GiB per rank against a  45.42 GiB budget   SHORT BY 1.86 GiB
+//
+// The budget is what is left of an observed 116.85 GiB idle-free rank reading after the artifact's
+// OTHER THREE components -- backbone, vision tower and aligner, and the DSpark draft model. The
+// last two are 7.89 GiB that a two-component reading of this problem omits, and they are the
+// difference between a two-component sum saying +0.113 GiB of headroom and the fold saying -1.86.
+// Corroborated by a second instrument on a different path: the Group A rollout lane, reading the
+// published checkpoint index and dividing rather than running this decision, reported 118.81 GiB
+// per rank against 116.9 free. Two derivations sharing no method, 0.1 GiB apart.
+//
+// SO THE ANSWER IS A SCOPED NEGATIVE AND THE MODEL IS RIGHT. Route A is excluded on the per-rank
+// resident lower bound; routes B, C and D are excluded on ESTABLISHED mechanism absence, because
+// the published image offers a memory-backed Engram placement only. Nothing here is an evidence
+// gap dressed as a refusal.
+//
+// WHAT THIS CLAIM LOST, SAID PLAINLY RATHER THAN QUIETLY DROPPED. It used to assert over
+// `component_routes` -- that every candidate carried a typed standing, and that some standing named
+// the Engram component under this consumer's context. `NoFeasibleServingDeployment` CARRIES CAUSES
+// AND NOTHING ELSE, so those assertions have no arm to stand on and are gone. That is the
+// `component_route_gap_over` frontier row's prediction arriving: the exclusion line carries
+// identities, not the child's reasons. The claim compensates as far as the arm allows by requiring
+// EVERY candidate identity to appear among the causes, which keeps a shrinking field from passing
+// silently -- but the typed standings are genuinely not checked on this path, and the row's trigger
+// is what restores them.
+test fn the_v4_1_aggregation_returns_no_feasible_naming_every_candidate() -> Bool {
+  let input = v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "aggregation_behaviour")
+  match select_serving_deployment(input: input) {
+    NoFeasibleServingDeployment { causes: cs } =>
+      count(cs) > 0
+        && causes_name_axis(cs: cs, axis: ax_component_route)
+        && !causes_name_axis(cs: cs, axis: ax_host_fit)
+        && all(input.field.candidates, k => causes_name_axis(cs: cs, axis: k.identity))
+    ServingDeploymentNeedsEvidence { needs: _, component_routes: _ } => false
+    ServingDeploymentSelected { selected: _ } => false
+    ServingDeploymentNeedsPolicy { survivors: _, component_routes: _ } => false
+    ServingDeploymentSelectionRefused { defects: _ } => false
+  }
+}
+
+// THE INHABITANCE HALF, AND IT IS NOT OPTIONAL. Supplying a claim's inputs at an interface is only
+// honest while something establishes that the REAL producer emits that shape; without this the pair
+// above is a fast green suite testing a fixture, which is DESIGN section 5's
+// specification-without-execution at layer granularity rather than at function granularity.
+//
+// THE FAILURE THIS CATCHES IS ONE THIS FILE ALREADY SUFFERED. An earlier designed field carried two
+// topologies that both consumed EIGHT ranks against a four-host admissible set, so every candidate was
+// excluded on HOST FIT and the claim reached its expected verdict through a mechanism it was not about.
+// The behaviour claim could not see that; only a statement about what the live input actually contains
+// can. So: the live input's field is the live candidate field BY IDENTITY, its population is non-empty,
+// and every candidate names the real V4.1 artifact -- and NO DECISION IS RUN here, which is the whole
+// point of splitting it out.
+// WHY candidate_component_budget MAY READ GROUP A FOR EVERY CANDIDATE TODAY, DERIVED OVER THE
+// POPULATION THAT CAN ACTUALLY REACH IT RATHER THAN OVER NAMED ARTIFACTS.
+//
+// THE PREVIOUS SHAPE OF THIS GUARD WAS THE CLASS THIS PR ITSELF FILES. It hand-enumerated four
+// artifact declarations and was named "only one artifact is decomposed", while what executed was
+// "these four named ones are not" -- so a FIFTH decomposed artifact, precisely the change the guard
+// exists to intercept, would have left it green. A hand-picked fixture frozen against the population
+// that existed when it was chosen, which is `a_designed_narrowing_stops_inhabiting_the_subject_it_
+// narrowed`, and a name claiming more than the execution, which is section 4b rung honesty. Review
+// 66350 found it in the guard written to answer review 66293 -- the repair reintroduced the class it
+// was repairing.
+//
+// WHAT IS DERIVED NOW: the fold reaches an artifact ONLY through a candidate in a field, so the
+// candidates of the live fields are the population, not the artifacts. Every candidate in all three
+// live fields whose artifact carries components must be the V4.1 artifact. Add a decomposed artifact
+// to any of these fields and this reds, however it is declared and whatever it is called.
+//
+// THE RESIDUAL LIMIT, STATED RATHER THAN NAMED AWAY: this enumerates the three live FIELDS. A fourth
+// field would sit outside it. That is one level up from where the defect was and it is not derivable
+// without a field roster this module does not have -- so it is named here as the limit, and the claim
+// is named for what it executes.
+test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> Bool {
+  let live = concat(
+    concat(deepseek_v4_1_candidate_field.candidates, glm_candidate_field.candidates),
+    deepseek_candidate_field.candidates)
+  count(legacy_undecomposed_artifact) == 0
+    && count(live) > 0
+    && any(live, k => count(k.artifact.components) > 0)
+    && all(live, k =>
+         if count(k.artifact.components) > 0 {
+           declaration_ref_eq(a: k.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity)
+         } else {
+           true
+         })
+}
+
+// THE PRODUCT ROOT, SPLIT INTO ITS TWO JOBS -- operator ruling 2026-09-15. The single claim that
+// replaced these did TWO things in one body, and only one of them is a wall.
+//
+// JOB ONE, THE WIRING, IS STRUCTURAL AND PERMANENT: serving selection must obtain Engram route
+// standings for a real candidate through the route integration. Delete the integration and this must
+// fail. That is `a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration`.
+//
+// JOB TWO, TODAY'S ANSWER, IS CURRENT-STATE and correctly goes red when the fleet changes: the closest
+// shape to feasible is excluded on the per-rank resident floor. That is
+// `the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor`.
+//
+// WHY THIS IS LIGHTER WITHOUT BECOMING A FIXTURE. Both run on a candidate taken FROM THE LIVE FIELD --
+// the real artifact, its four real components, the real observed idle-free reading. What they do not do
+// is the 24-candidate select fold, which is where substantially all of 191,441 eval steps went. The
+// field-wide verdict is a fold over per-candidate exclusions, so asserting the exclusion on the real
+// candidate that matters is the same data path at one candidate's cost.
+//
+// WHAT COVERS THE AGGREGATION IS A DIFFERENT CLAIM, and it already exists:
+// `the_v4_1_aggregation_returns_no_feasible_naming_every_candidate` runs the real
+// `select_serving_deployment` over a designed field whose candidates are the REAL artifact with its
+// REAL components -- only the topology enumeration is narrowed, and `ax_host_fit` keeps that field
+// inhabiting the admissible set so it reds for the right mechanism. Aggregation over a designed field
+// plus exclusion over real data covers what one heavy claim covered.
+//
+// THE CONSEQUENCE I AM NOT HIDING: the non-comment count of select_serving_deployment on
+// `deepseek_v4_1_decision_input` is now ZERO, and that is the same count whose going to zero was a
+// defect last time. It is admissible here and was not then, for a reason that was PROVEN BY EXECUTION
+// rather than asserted -- #11383 requires that SOME claim fail when the integration is removed, and
+// last time none did.
+//
+// THE DELETION WAS RUN. In a scratch checkout with `candidate_component_route_standings` returning `[]`
+// -- the wiring severed, the program still well-formed:
+//
+//   a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration   false  (true intact)
+//   the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor                 false  (true intact)
+//   the_v4_1_aggregation_returns_no_feasible_naming_every_candidate                   TRUE   (true intact)
+//
+// AND THE THIRD LINE IS THE REASON THIS SPLIT EXISTS RATHER THAN A FOOTNOTE. The aggregation claim DOES
+// NOT DETECT THE REMOVAL. It asserts `ax_component_route` among the causes, and that axis is still named
+// with no route standings at all, because exclusion reaches it through `component_resident_footprint`'s
+// unread path. So it passes for a reason that survives the deletion, and anything relying on it as the
+// product-root control would let the integration be deleted with everything green. The wall rests
+// ENTIRELY on the first claim above. That is measured, not reasoned: both directions were executed, and
+// a claim that reds on a broken tree without greening on the intact one is a decoration, not a wall.
+fn v4_1_live_candidate_at(tp: Nat, replicas: Nat) -> DeploymentCandidate? {
+  (filter(deepseek_v4_1_candidate_field.candidates,
+    k => k.topology.tensor_parallel_degree == tp && k.topology.replica_count == replicas)).first()
+}
+
+fn engram_standing_of(c: DeploymentCandidate) -> ComponentRouteStanding? {
+  (filter(candidate_component_route_standings(c: c, p: c.profile),
+    st => declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity))).first()
+}
+
+test fn a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration() -> Bool {
+  match v4_1_live_candidate_at(tp: 4, replicas: 1) {
+    Absent => false
+    Present { value: c } =>
+      count(candidate_component_route_standings(c: c, p: c.profile)) > 0
+        && match engram_standing_of(c: c) {
+          Absent => false
+          Present { value: st } =>
+            declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity)
+              && declaration_ref_eq(a: component_route_standing_context(s: st).consumer, b: id_route_consumer)
+        }
+  }
+}
+
+test fn the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor() -> Bool {
+  match v4_1_live_candidate_at(tp: 4, replicas: 1) {
+    Absent => false
+    Present { value: c } =>
+      match engram_standing_of(c: c) {
+        Absent => false
+        Present { value: st } =>
+          match component_route_placement_standing(s: st) {
+            ComponentPlacementExcluded { causes: cs } =>
+              count(cs) > 0
+                && any(cs, x => string_contains(s: x as String,
+                     pattern: declaration_ref_display_key(ref: ax_route_per_rank_resident_lower_bound)))
+            _ => false
+          }
+      }
+  }
+}
+
+test fn the_live_v4_1_decision_input_inhabits_the_real_subject() -> Bool {
+  let f = deepseek_v4_1_decision_input.field
+  declaration_ref_eq(a: f.identity, b: deepseek_v4_1_candidate_field.identity)
+    && count(f.candidates) > 0
+    && count(f.candidates) == count(deepseek_v4_1_candidate_field.candidates)
+    && all(f.candidates, k =>
+         declaration_ref_eq(a: k.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity))
+    && all(f.candidates, k => k.topology.tensor_parallel_degree * k.topology.replica_count
+         <= count(pair_unit_a_fleet_snapshot.admissible_hosts))
+}
+
+// ── THE MEMORY SCREEN IS PER-CANDIDATE, AND THE DISCRIMINATING PAIR PROVES IT ──────────────────
+//
+// THIS IS THE CONTROL THE BRIEF'S "DO NOT PICK ONE GLOBAL ENGRAM ROUTE" REQUIREMENT NEEDS, and it is a
+// pair rather than a single assertion because either half alone is satisfiable by a defect. A
+// TP4 exclusion alone is satisfied by a screen that excludes unconditionally; a TP8 non-exclusion alone
+// is satisfied by a screen that never fires. Only the pair establishes that the verdict is a function of
+// the candidate.
+//
+// WHY THE TWO TOPOLOGIES DISAGREE, stated so a reader does not have to re-derive it: the component's
+// resident FLOOR is divided by the ranks that share it, while the bytes free on a rank are not. At TP4
+// the Engram floor per rank exceeds what the artifact's other components leave free on a rank, and at
+// TP8 it does not. That is the whole reason topology is part of this question, and it is why the
+// operator's TP4 Group A verdict is NOT a fact about the checkpoint in general.
+//
+// WHAT THIS PARAGRAPH USED TO SAY, AND WHY IT IS NOW FALSE. It read: the product-root witness still
+// reports an EVIDENCE NEED rather than an infeasible field, because the live domain enumerates every tp
+// from 1 to the fleet host count and candidates at TP5 and above survive the memory screen on their own
+// arithmetic -- what would exclude THEM is host admissibility, separately outstanding.
+//
+// THAT HOST-ADMISSIBILITY INTEGRATION LANDED (#11308) AND THIS BRANCH MERGED IT. The domain is now the
+// subject's ADMISSIBLE host set, which holds four hosts, so TP5 through TP8 do not exist to survive
+// anything. Every shape that remains is excluded, and the product-root witness reports
+// NoFeasibleServingDeployment rather than an evidence need. The anticipated exclusion became the actual
+// one, which is the outcome the old text predicted -- and kept asserting the prediction after it came
+// true. Review 66368 found it; it is the same expired-premise class this branch filed twice.
+fn v41_candidate_at_tp(tp: Nat, replicas: Nat, name: String) -> DeploymentCandidate {
+  cand(name: name, art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: tp, replica_count: replicas))
+}
+
+fn engram_placements_of(c: DeploymentCandidate) -> List<ComponentRoutePlacementStanding> {
+  map(
+    filter(candidate_component_route_standings(c: c, p: c.profile),
+      st => declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity)),
+    st => component_route_placement_standing(s: st))
+}
+
+fn any_placement_excluded(ps: List<ComponentRoutePlacementStanding>) -> Bool {
+  any(ps, pl => match pl {
+    ComponentPlacementExcluded { causes: _ } => true
+    ComponentPlacementOpen { remedy: _ } => false
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+  })
+}
+
+fn any_placement_open(ps: List<ComponentRoutePlacementStanding>) -> Bool {
+  any(ps, pl => match pl {
+    ComponentPlacementOpen { remedy: _ } => true
+    ComponentPlacementExcluded { causes: _ } => false
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+  })
+}
+
+test fn the_engram_memory_screen_excludes_the_tp4_candidate_and_not_the_tp8_one() -> Bool {
+  let tp4 = engram_placements_of(c: v41_candidate_at_tp(tp: 4, replicas: 2, name: "screen_tp4"))
+  let tp8 = engram_placements_of(c: v41_candidate_at_tp(tp: 8, replicas: 1, name: "screen_tp8"))
+  count(tp4) == 1
+    && count(tp8) == 1
+    && any_placement_excluded(ps: tp4)
+    && !any_placement_excluded(ps: tp8)
+    && any_placement_open(ps: tp8)
+}
+
+// THE DISCONNECTION NEGATIVE. This is what the field looks like when the route contribution is gone
+// but the axis, the constraint and the absent reading remain: the selector still reports a gap on
+// ax_component_route, and the oracle above must NOT accept it. Without this arm the positive control
+// is satisfied by the very state it is supposed to detect.
+fn disconnected_route_gap() -> AxisGap {
+  AxisGap {
+    axis: ax_component_route,
+    cause: "required funded-axis reading absent" as NonEmptyStr,
+  }
+}
+
+test fn the_selectors_generic_missing_axis_gap_does_not_satisfy_the_route_oracle() -> Bool {
+  count(route_produced_causes(needs: [UnfundedAxis { gap: disconnected_route_gap() }])) == 0
+    && needs_name_axis(needs: [UnfundedAxis { gap: disconnected_route_gap() }], axis: ax_component_route)
+    && count(route_produced_causes(needs: [UnfundedAxis {
+      gap: AxisGap {
+        axis: ax_component_route,
+        cause: join([route_obligation_marker as String, "[some.other.component@some.other.context] open"], "") as NonEmptyStr,
+      },
+    }])) == 0
+    && count(route_produced_causes(needs: [UnfundedAxis {
+      gap: AxisGap {
+        axis: ax_component_route,
+        cause: route_obligation_cause(
+          component: engram_component_identity,
+          context: route_subject_key(consumer: id_route_consumer, context_digest: "a-profile-this-field-does-not-contain"),
+          cause: "open" as NonEmptyStr),
+      },
+    }])) == 0
+}
+
+// AND THE ROUTE AXIS IS THIS SUBJECT'S, NOT EVERY SUBJECT'S. GLM and V4-Flash declare no components,
+// so neither the axis nor its hard constraint appears in their populations and their results are
+// reached exactly as before.
+test fn the_component_route_axis_and_constraint_are_v4_1_only() -> Bool {
+  any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_component_route))
+    && !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_component_route))
+    && any(v4_1_selection_constraints, c => declaration_ref_eq(a: c.axis, b: ax_component_route))
+    && !any(serving_selection_constraints, c => declaration_ref_eq(a: c.axis, b: ax_component_route))
+    && count(artifact_glm_53_flash_native.components) == 0
+    && count(artifact_deepseek_v4_flash_native.components) == 0
+    && count(artifact_glm_53_flash_2bit.components) == 0
+    && count(artifact_deepseek_v4_1_flash_native.components) == 4
+}
+
+// THE DECOMPOSITION AGREES WITH AN INDEPENDENT UPSTREAM FIGURE, and that is the only version of this
+// check worth running. A first cut compared the component sum against the artifact's own footprint --
+// which IS that sum, so the assertion was an identity -- and pinned it to a transcribed literal
+// 510286023000 beside it. Both halves were wrong in the way DESIGN section 6 names: the oracle has to
+// be an independent referent, and it is named rather than copied.
+test fn the_v4_1_decomposition_agrees_with_the_cited_upstream_total() -> Bool {
+  match artifact_deepseek_v4_1_flash_native.upstream_total {
+    Absent => false
+    Present { value: upstream } =>
+      byte_size_count(b: upstream) == byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
+        && match footprint_bytes(f: sum_component_footprints(cps: v4_1_artifact_components)) {
+          Absent => false
+          Present { value: parts } => byte_size_count(b: parts) == byte_size_count(b: upstream)
+        }
+  } && match artifact_decomposition_defect(art: artifact_deepseek_v4_1_flash_native) {
+    Absent => true
+    Present { value: _ } => false
+  } && count(v4_1_artifact_components) == 4
+}
+
+// AND A DECOMPOSITION THAT DISAGREES WITH ITS CITED UPSTREAM TOTAL REFUSES. This is the red the
+// identity-comparison could never produce: the components sum correctly to the artifact's own derived
+// footprint and still contradict the publisher's figure for the same population.
+fn artifact_with_wrong_upstream_total() -> ModelArtifact {
+  ModelArtifact {
+    identity: artifact_deepseek_v4_1_flash_native.identity,
+    label: artifact_deepseek_v4_1_flash_native.label,
+    footprint: sum_component_footprints(cps: v4_1_artifact_components),
+    weight_treatment: PublishedNativeWeights,
+    components: v4_1_artifact_components,
+    upstream_total: Present { value: byte_size(count: 1 + byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)) },
+  }
+}
+
+// ── ONE FIELD CHANGES, AND THE COMBINATION IS A DIFFERENT DECISION ────────────────────────────
+//
+// `upstream_total` is read by `artifact_upstream_agreement_defect`, so it decides admission -- and it
+// was absent from `artifact_decomposition_digest` and therefore from the combination key and the
+// snapshot key. Two artifacts identical in every other field would have shared a key, so a result
+// computed under one would have carried across the change with nothing able to notice. These two
+// differ ONLY in that field; dropping it from the digest reds this.
+test fn changing_only_the_upstream_total_changes_the_combination_identity() -> Bool {
+  let sound = artifact_deepseek_v4_1_flash_native
+  let shifted = artifact_with_wrong_upstream_total()
+  count(shifted.components) == count(sound.components)
+    && artifact_component_digest(art: shifted) == artifact_component_digest(art: sound)
+    && artifact_decomposition_digest(art: shifted) != artifact_decomposition_digest(art: sound)
+    && !combination_key_eq(
+      a: candidate_combination(c: cand(name: "identity_probe", art: sound, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))),
+      b: candidate_combination(c: cand(name: "identity_probe", art: shifted, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))))
+}
+
+test fn a_decomposition_disagreeing_with_its_upstream_total_refuses() -> Bool {
+  match artifact_decomposition_defect(art: artifact_with_wrong_upstream_total()) {
+    Present { value: d } => string_contains(s: d as String, pattern: "different tensor populations")
+    Absent => false
+  } && match establish_serving_candidate_field(field: serving_candidate_field(
+    identity: fixture_upstream_mismatch_field_id(),
+    domain: serving_deployment_domain(
+      artifacts: [artifact_with_wrong_upstream_total()],
+      topologies: [topology_shape(tensor_parallel_degree: 8, replica_count: 1)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "upstream_mismatch", art: artifact_with_wrong_upstream_total(), t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))])) {
+    ServingFieldUnestablished { causes: cs } => count(cs) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// AND A DECOMPOSITION THAT DOES NOT SUM IS A STRUCTURAL REFUSAL, not a rounding note. The field
+// carrying such an artifact is unestablished, which the product root turns into
+// `ServingDeploymentSelectionRefused` rather than a decision over a quantity nobody can name.
+fn mismatched_artifact() -> ModelArtifact {
+  ModelArtifact {
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_artifact"),
+    label: "fixture: components that do not sum to the whole" as NonEmptyStr,
+    footprint: FootprintObservedOnFleet { bytes: byte_size(count: 1000), how: "fixture" as NonEmptyStr },
+    weight_treatment: PublishedNativeWeights,
+    components: [
+      artifact_component(
+        identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_artifact"),
+        label: "fixture part" as NonEmptyStr,
+        footprint: FootprintObservedOnFleet { bytes: byte_size(count: 999), how: "fixture" as NonEmptyStr },
+        placement: ComponentResident),
+    ],
+    upstream_total: none,
+  }
+}
+
+test fn a_decomposition_that_does_not_sum_refuses_at_the_product_root() -> Bool {
+  match artifact_decomposition_defect(art: mismatched_artifact()) {
+    Present { value: _ } => true
+    Absent => false
+  } && match establish_serving_candidate_field(field: serving_candidate_field(
+    identity: fixture_mismatched_sum_field_id(),
+    domain: serving_deployment_domain(
+      artifacts: [mismatched_artifact()],
+      topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "mismatched", art: mismatched_artifact(), t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))])) {
+    ServingFieldUnestablished { causes: cs } => count(cs) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// LEGACY BEHAVIOUR IS UNCHANGED OUTSIDE THE NEW SUBJECT. An artifact with no components has a
+// resident footprint that IS its whole-artifact footprint, arm for arm and byte for byte, so the
+// screen divides exactly what it divided before this change.
+test fn an_undecomposed_artifact_divides_exactly_what_it_divided_before() -> Bool {
+  let v4 = cand(name: "legacy_v4", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
+  match candidate_resident_footprint(c: v4, p: serving_parameters_current) {
+    FootprintObservedOnFleet { bytes: b, how: _ } => byte_size_count(b: b) == 168683720987
+    FootprintReportedExternally { bytes: _, source: _ } => false
+    FootprintUnread { obligation: _ } => false
+  } && match weight_fit_of(c: v4, fleet: pair_unit_a_fleet_snapshot, p: serving_parameters_current) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => false
+    WeightFitUnderivable { because: _ } => false
+  } && match candidate_resident_footprint(
+    c: cand(name: "legacy_glm", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)),
+    p: serving_parameters_current) {
+    FootprintUnread { obligation: _ } => true
+    FootprintObservedOnFleet { bytes: _, how: _ } => false
+    FootprintReportedExternally { bytes: _, source: _ } => false
+  } && match component_route_reading(route_standings: []) {
+    Present { value: r } => r.interval_micro.low == 1
+    Absent => false
+  }
+}
+
+// AND THE V4.1 CANDIDATE'S RESIDENT FOOTPRINT IS UNREAD RATHER THAN SMALLER. With no route selected,
+// the Engram component contributes an obligation, so the sum is `FootprintUnread` and the fit stays
+// underivable. That is the arm that would be a silent zero if the route's working set were assumed
+// away -- and a zero here is exactly what would make a narrow topology look feasible.
+test fn a_routed_component_leaves_the_resident_footprint_unread_rather_than_zero() -> Bool {
+  let v41 = cand(name: "v41_routed", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
+  match candidate_resident_footprint(c: v41, p: serving_parameters_current) {
+    FootprintUnread { obligation: o } => count(o as String) > 0
+    FootprintObservedOnFleet { bytes: _, how: _ } => false
+    FootprintReportedExternally { bytes: _, source: _ } => false
+  } && match weight_fit_of(c: v41, fleet: pair_unit_a_fleet_snapshot, p: serving_parameters_current) {
+    WeightFitUnderivable { because: _ } => true
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => false
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => false
+  }
+}
+
+// FIXTURE FIELD IDENTITIES CITE A DECLARATION THAT EXISTS -- a decl_ref naming nothing is a §3
+// citation defect the floor's declarations phase reports as CITED-DECLARATION-ABSENT.
+fn fixture_upstream_mismatch_field_id() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_upstream_mismatch_field_id")
+}
+
+fn fixture_mismatched_sum_field_id() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_mismatched_sum_field_id")
 }

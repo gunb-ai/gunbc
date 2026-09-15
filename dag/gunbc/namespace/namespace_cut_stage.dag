@@ -41,7 +41,7 @@ fn namespace_cut_stage_label(s: NamespaceCutStage) -> NonEmptyStr {
   match s {
     StageF0 => "F-0: truthful namespace control plane -- stage chain, subject roster, derived wave-wall enrolment" as NonEmptyStr
     StageXL0Denominator => "XL-0: repair-input origin denominator -- source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition" as NonEmptyStr
-    StageXL1BaselineCapture => "XL-1: complete baseline capture -- what the legacy resolver actually selected over one exact base, persisted before anything is deleted" as NonEmptyStr
+    StageXL1BaselineCapture => "XL-1: capture capability -- the capture transaction can mint a joint binding+repair observation over one exact base; persistence against a named base is the baseline milestone, not this stage" as NonEmptyStr
     StageXL2RootDeletionRehearsal => "XL-2: root-deletion rehearsal -- the cut executed in a throwaway tree, its failure roster captured as the census" as NonEmptyStr
     StageXL3DeclaringIdentitySpelling => "XL-3: declaring-identity spelling -- every reference spelled as the fully qualified declaring identity" as NonEmptyStr
     StageXL4ReferenceDerivedGraph => "XL-4: reference-derived graph -- dependency edges derived from resolved reference targets, never declared" as NonEmptyStr
