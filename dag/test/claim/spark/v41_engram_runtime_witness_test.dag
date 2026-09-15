@@ -433,7 +433,7 @@ test fn the_live_storage_backed_patches_are_not_minted_from_transcribed_hex() ->
     V41PatchesObserved { patches: _, partition: _ } => false
     V41PatchesAbsentByObservation => false
     V41PatchesUnestablished { obligation: o } =>
-      (o as String).contains("DigestFile") && (o as String).contains("engram_file_backed.py")
+      (o as String).contains("DigestFile") && (o as String).contains("upsert_decision")
   }
 }
 

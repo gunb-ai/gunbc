@@ -709,26 +709,13 @@ fn v41_candidate() -> V41CandidateVerdict {
   v41_candidate_standing(c: v41_candidate_inputs)
 }
 
-// THE STORAGE-BACKED LOOKUP PATCH, ORDERED. Overlay bytes first, then the hook that imports them
-// into engram.py. Partition is launch configuration: the runtime takes an exact local path and an
-// expected identity rather than hard-coding which tensors are storage-backed.
-//
-// THE DIGEST IS THE FILE, AND A HEX LITERAL IS NOT A READING OF IT. The hermetic claim route has
-// no mock_response for sha256sum.Sha256.DigestFile, so this fold must not mint V41PatchesObserved
-// from transcribed hex (that would stay green after the files change). Observed is produced only
-// by DigestFile over these paths, on a route that can actually run that operation.
-data v41_engram_file_backed_overlay_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py" as NonEmptyStr
-data v41_engram_storage_hook_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr
-
+// THE STORAGE-BACKED LOOKUP PATCH POPULATION IS NOT IN THIS CHANGE. Overlay bytes and the hook
+// that imports them are the desired state of the next PR's source converge (revision R + ordered
+// population P via std.upsert_decision), not files sitting here with no DigestFile and no apply.
+// A hex literal is not that producer.
 fn v41_storage_backed_patch_population() -> V41PatchPopulation {
   V41PatchesUnestablished {
-    obligation: join([
-      "patch identity is sha256sum.Sha256.DigestFile over ",
-      v41_engram_file_backed_overlay_path as String,
-      " then ",
-      v41_engram_storage_hook_path as String,
-      "; a hex literal is not that producer, and the hermetic claim route has no DigestFile arm",
-    ], "") as NonEmptyStr,
+    obligation: "storage-backed Engram patches are Unestablished until the next-PR source converge: DigestFile over the declared population then std.upsert_decision Noop|Apply|Refuse against a readback of the tree at d2d649e6; this change has no executing consumer of those bytes, so they are not committed here" as NonEmptyStr,
   }
 }
 
