@@ -52,6 +52,7 @@ import gunbc.host_convergence_protocol {
   CanonicalLayerMissing,
   ProtocolDeclaredFrontier,
   frontier_names_a_distinct_consumer,
+  frontier_trigger_is_not_declaration,
 }
 import gunbc.host_convergence_census { protocol_phases }
 import gunbc.ensure {
@@ -373,6 +374,25 @@ test fn frontier_self_successor_is_red() -> Bool {
   )
 }
 
+test fn frontier_self_trigger_is_red() -> Bool {
+  !frontier_trigger_is_not_declaration(
+    f: ProtocolDeclaredFrontier {
+      declaration: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "same",
+      ),
+      named_consumer: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "trigger",
+      ),
+      trigger_capability: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "same",
+      ),
+    },
+  )
+}
+
 test fn canonical_protocol_binds() -> Bool {
   bind_canonical_protocol()
     && production_census_protocol_is_bound()
@@ -401,4 +421,5 @@ test fn host_convergence_protocol_keystone_holds() -> Bool {
     && canonical_protocol_binds()
     && canonical_layer_join_missing_required_layer_is_red()
     && frontier_self_successor_is_red()
+    && frontier_self_trigger_is_red()
 }

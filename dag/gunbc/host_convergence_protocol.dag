@@ -26,6 +26,14 @@ import gunbc.host_convergence_census {
   CensusWellFormed,
   CensusMalformed,
   host_convergence_census_standing,
+  std_decision,
+  std_goal_assessment,
+  std_upsert,
+  std_reconcile,
+  fleet_plan,
+  fleet_apply,
+  live_readiness,
+  live_member_identity,
 }
 import gunbc.readback_independence {
   ReadBackProbe,
@@ -38,12 +46,20 @@ import gunbc.readback_independence {
 // RUNG: mechanically preventable on the enrolled REDs; empty GoalDiverged remains
 // structurally impossible in std.goal_assessment.
 // HostEffectDomainProjection is a declared frontier: this cut must not rewrite hosts.
-// First consumer: gunbc.live_deploy.member_observe observe_executable.
-// Trigger: that observe route calling inspect_via_host_effect_projection.
+// Named consumer / trigger: gunbc.live_deploy.member_observe observe_executable
+// (the production route that must call inspect_via_host_effect_projection).
+// C0 left ensure_decide and observe_executable as inline cites; those two
+// have no named census accessor, so the bind holds one decl_ref each.
 
-fn cite(module_path: String, decl_name: String) -> DeclarationRef {
-  decl_ref(module_path: module_path, decl_name: decl_name)
-}
+data ensure_decide_id: DeclarationRef = decl_ref(
+  module_path: "gunbc.ensure",
+  decl_name: "ensure_decide",
+)
+
+data observe_executable_id: DeclarationRef = decl_ref(
+  module_path: "gunbc.live_deploy.member_observe",
+  decl_name: "observe_executable",
+)
 
 type CanonicalProtocolLayer
   = LayerSelect
@@ -64,39 +80,39 @@ type CanonicalLayerBinding {
 data canonical_protocol_bindings: List<CanonicalLayerBinding> = [
   CanonicalLayerBinding {
     layer: LayerSelect,
-    authority: cite(module_path: "std.decision", decl_name: "select_realization"),
+    authority: std_decision(),
   },
   CanonicalLayerBinding {
     layer: LayerObserveAssess,
-    authority: cite(module_path: "std.goal_assessment", decl_name: "inspect_goal"),
+    authority: std_goal_assessment(),
   },
   CanonicalLayerBinding {
     layer: LayerRemedy,
-    authority: cite(module_path: "std.upsert_decision", decl_name: "UpsertDecision"),
+    authority: std_upsert(),
   },
   CanonicalLayerBinding {
     layer: LayerReadback,
-    authority: cite(module_path: "std.realization_reconcile", decl_name: "reconcile_effect"),
+    authority: std_reconcile(),
   },
   CanonicalLayerBinding {
     layer: LayerEnsureAdapter,
-    authority: cite(module_path: "gunbc.ensure", decl_name: "ensure_decide"),
+    authority: ensure_decide_id,
   },
   CanonicalLayerBinding {
     layer: LayerFleetPlan,
-    authority: cite(module_path: "gunbc.fleet_converge_plan", decl_name: "fleet_converge_plan_artifact"),
+    authority: fleet_plan(),
   },
   CanonicalLayerBinding {
     layer: LayerFleetApply,
-    authority: cite(module_path: "gunbc.fleet_converge_apply", decl_name: "converge_apply_for_host"),
+    authority: fleet_apply(),
   },
   CanonicalLayerBinding {
     layer: LayerDeployObserve,
-    authority: cite(module_path: "gunbc.live_deploy.member_observe", decl_name: "observe_executable"),
+    authority: observe_executable_id,
   },
   CanonicalLayerBinding {
     layer: LayerDeployReadiness,
-    authority: cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once"),
+    authority: live_readiness(),
   },
 ]
 
@@ -285,19 +301,29 @@ type ProtocolDeclaredFrontier {
 }
 
 data host_effect_domain_projection_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
-  declaration: cite(module_path: "gunbc.host_convergence_protocol", decl_name: "HostEffectDomainProjection"),
-  named_consumer: cite(module_path: "gunbc.live_deploy.member_observe", decl_name: "observe_executable"),
-  trigger_capability: cite(module_path: "gunbc.host_convergence_protocol", decl_name: "inspect_via_host_effect_projection"),
+  declaration: decl_ref(
+    module_path: "gunbc.host_convergence_protocol",
+    decl_name: "inspect_via_host_effect_projection",
+  ),
+  named_consumer: observe_executable_id,
+  trigger_capability: observe_executable_id,
 }
 
 data ownership_interpretation_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
-  declaration: cite(module_path: "gunbc.host_convergence_protocol", decl_name: "interpret_ownership_from_attempt"),
-  named_consumer: cite(module_path: "gunbc.live_deploy.member_identity", decl_name: "decide_member"),
-  trigger_capability: cite(module_path: "gunbc.host_convergence_protocol", decl_name: "interpret_ownership_from_attempt"),
+  declaration: decl_ref(
+    module_path: "gunbc.host_convergence_protocol",
+    decl_name: "interpret_ownership_from_attempt",
+  ),
+  named_consumer: live_member_identity(),
+  trigger_capability: live_member_identity(),
 }
 
 fn frontier_names_a_distinct_consumer(f: ProtocolDeclaredFrontier) -> Bool {
   !declaration_ref_eq(a: f.declaration, b: f.named_consumer)
+}
+
+fn frontier_trigger_is_not_declaration(f: ProtocolDeclaredFrontier) -> Bool {
+  !declaration_ref_eq(a: f.declaration, b: f.trigger_capability)
 }
 
 type OwnershipStanding<E>
@@ -360,4 +386,6 @@ fn bind_canonical_protocol() -> Bool {
     )
     && frontier_names_a_distinct_consumer(f: host_effect_domain_projection_frontier)
     && frontier_names_a_distinct_consumer(f: ownership_interpretation_frontier)
+    && frontier_trigger_is_not_declaration(f: host_effect_domain_projection_frontier)
+    && frontier_trigger_is_not_declaration(f: ownership_interpretation_frontier)
 }
