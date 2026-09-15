@@ -195,21 +195,45 @@ test fn the_route_moves_the_engram_and_candidate_keys_but_not_the_runtime_key() 
     && w_refused_with(s: c, fragment: "engram_route_c_nfs_token_time")
 }
 
-// WHEN THE PATCH FIXES THE PARTITION, THE PARTITION IS PART OF THE RUNTIME.
-test fn a_partition_fixed_by_patch_enters_the_runtime_key() -> Bool {
-  let moved = V41EngramResidencyPartition {
-    storage_backed: ["layers.1.engram.embed.weight" as NonEmptyStr, "layers.1.engram.embed.scale" as NonEmptyStr, "layers.14.engram.embed.weight" as NonEmptyStr],
-    resident: ["layers.14.engram.embed.scale" as NonEmptyStr, "layers.1.engram.q_weight" as NonEmptyStr, "layers.1.engram.k_weight" as NonEmptyStr, "layers.1.engram.wkv.weight" as NonEmptyStr, "layers.1.engram.wkv.scale" as NonEmptyStr, "layers.14.engram.q_weight" as NonEmptyStr, "layers.14.engram.k_weight" as NonEmptyStr, "layers.14.engram.wkv.weight" as NonEmptyStr, "layers.14.engram.wkv.scale" as NonEmptyStr],
-  }
+// THE PARTITION AUTHORITY IS IN THE RUNTIME KEY, AND THE PARTITION ITSELF NO LONGER VARIES. A patch that
+// hard-codes the storage/resident split puts that split in the runtime's bytes, so the authority is keyed;
+// a runtime that takes it as launch configuration does not. Both arms still key differently because the
+// authority is an input to the key.
+//
+// WHAT THIS TEST USED TO ASSERT AND CANNOT ANY MORE, STATED RATHER THAN QUIETLY DROPPED: it varied the
+// partition under each authority and asserted the fixed arm's key moved while the configured arm's did
+// not. Its alternative partition kept layers.14.engram.embed.scale resident -- which is now refused,
+// because the role wall admits exactly one split of this population: every declared embedding tensor
+// storage-backed, every operator resident. So there is no second admissible partition to vary, and the
+// half of this claim that varied one was asserting a difference over a state the model now refuses to
+// construct. The consequence is real and worth knowing: for THIS checkpoint the partition is determined,
+// and PartitionFixedByPatch buys no key separation beyond the authority tag until a population arrives
+// where more than one split is admissible.
+test fn the_partition_authority_is_in_the_runtime_key() -> Bool {
   let fixed = w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "1" }], partition: PartitionFixedByPatch)
   let configured = w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "1" }], partition: PartitionByLaunchConfiguration)
   let fixed_a = v41_candidate_standing(c: w_default(patches: fixed))
-  let fixed_b = v41_candidate_standing(c: w_inputs(patches: fixed, partition: moved, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6))
   let conf_a = v41_candidate_standing(c: w_default(patches: configured))
-  let conf_b = v41_candidate_standing(c: w_inputs(patches: configured, partition: moved, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6))
-  w_key(s: fixed_a, which: "runtime") != w_key(s: fixed_b, which: "runtime")
-    && w_key(s: conf_a, which: "runtime") == w_key(s: conf_b, which: "runtime")
-    && w_key(s: conf_a, which: "engram") != w_key(s: conf_b, which: "engram")
+  w_key(s: fixed_a, which: "runtime") != w_key(s: conf_a, which: "runtime")
+    && w_key(s: fixed_a, which: "runtime") != "refused"
+    && w_key(s: conf_a, which: "runtime") != "refused"
+}
+
+// EXACTLY ONE SPLIT OF THIS POPULATION IS ADMISSIBLE, which is the fact the claim above now rests on, so
+// it is asserted rather than assumed: moving any single tensor across the line refuses.
+test fn the_role_wall_leaves_exactly_one_admissible_partition() -> Bool {
+  let moved_embed = V41EngramResidencyPartition {
+    storage_backed: map(filter(v41_candidate_partition.storage_backed, n => (n as String) != "layers.14.engram.embed.scale"), n => n),
+    resident: concat(v41_candidate_partition.resident, ["layers.14.engram.embed.scale" as NonEmptyStr]),
+  }
+  (match v41_admit_partition(p: v41_candidate_partition, standing: w_closed_population) {
+    V41PartitionAdmitted { partition: _ } => true
+    V41PartitionRefused { defects: _ } => false
+  })
+    && (match v41_admit_partition(p: moved_embed, standing: w_closed_population) {
+      V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.14.engram.embed.scale"))
+      V41PartitionAdmitted { partition: _ } => false
+    })
 }
 
 // THE LIVE PARTITION IS TOTAL AND DISJOINT OVER THE CITED POPULATION, AND ITS STORAGE-BACKED BYTES ARE
