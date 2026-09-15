@@ -1,30 +1,29 @@
 module test.claim.serving.serving_availability_bind_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
+import v2.std.optional { none }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.demand { ObservationReceiptRef }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_wire }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.serving.turn_admission {
+  BatchQualityTolerant, QueueDepthRead, RouteAdmittingMore, SeatStandingRead,
+}
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, vllm_endpoint_process_launch, LaunchObserved,
 }
-import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent }
-import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
+import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent, VllmModelsRouteReadbackStanding }
+import gunbc.fleet_ssh_locus { FleetSshContextRefused }
 import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_backend {
-  HarnessBackendStanding, HarnessBackendServing, harness_route_availability,
+  HarnessBackendStanding, HarnessBackendServing, HarnessEngineReading, harness_route_availability,
 }
-import gunbc.spark.serving_offer {
-  SparkServingRoute, ServingRouteServiceUnidentified, ServingRouteObserved, ServingRouteOperatorAsserted,
-  ServingRouteRegionUnobserved,
-  SparkServiceIdentityCause, ServiceIncarnationUnobserved, ServiceObservationNamesAnotherEndpoint,
-  ServiceIncarnationOutsideRealization, ServiceDeclaredUnitDigestUnavailable,
-  ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
-  spark_serving_incarnation_unobserved_obligation,
+import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
+import gunbc.spark.pair_serving_realization {
+  SparkPairDeclaredUnitDigest, spark_pair_declared_unit_digests, spark_pair_no_realization_names_group_obligation,
 }
-import gunbc.spark.pair_serving_realization { spark_pair_head_unit_declared_digest }
 import gunbc.harness.harness_seat {
-  HarnessCandidates, harness_bind_candidate, harness_serving_route, AnyAdmittedModel,
+  HarnessCandidates, harness_add_serving_candidate, AnyAdmittedModel,
   harness_turn_subject, harness_turn_request,
 }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
@@ -33,14 +32,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
 
+data w_model: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
+
 data w_now: String = "1789400000"
 
+fn w_readback() -> VllmModelsRouteReadbackStanding {
+  ModelsRouteEntryAbsent { served_model_id: w_model, unexaminable_entries: 0 }
+}
+
 fn w_serving_standing() -> HarnessBackendStanding {
-  HarnessBackendServing {
-    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
-    unit: DeepseekV4FlashOnVllm,
-    readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
-  }
+  HarnessBackendServing { model: w_model, unit: DeepseekV4FlashOnVllm, readback: w_readback() }
 }
 
 fn w_launch(field: String) -> VllmEndpointProcessLaunch {
@@ -51,44 +52,65 @@ fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
   LaunchObserved { launch: w_launch(field: field), receipt: "w" as ObservationReceiptRef }
 }
 
-// PRODUCT PATH, wet because harness_serving_route now reaches DigestStdin. The hermetic copy in
-// serving_availability_witness_test is deleted so discovery cannot refuse NoMockResponse before a
-// verdict. harness_bind_candidate and harness_serving_route both execute that wire.
-test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path() -> Bool {
-  let launch = w_launch(field: "1789300000.12")
-  let declared_unit = spark_pair_head_unit_declared_digest(group: FabricGroupA)
-  let incarnation = EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
-  let readback = ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 }
-  let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
-  let route = harness_serving_route(group: FabricGroupA, launch: launch, readback: readback, incarnation: incarnation, declared_unit: declared_unit)
-  let bound = harness_bind_candidate(
+fn w_subject() -> HarnessTurnSubject {
+  harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr)
+}
+
+// An idle engine: nothing waiting, nothing running, the route admitting more. Supplied, because the
+// claim is about what the placement fold does with a roster, not about reading a metrics endpoint.
+fn w_idle_engine(field: String) -> HarnessEngineReading {
+  HarnessEngineReading {
+    queue: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore },
+    launch: w_seen(field: field),
+    progress: none,
+  }
+}
+
+// THE ONE INTERFACE THIS CLAIM DISCRIMINATES AT is harness_add_serving_candidate: every observation it
+// consumes is supplied above, and the one value it reaches for itself is the declared-unit standing
+// it looks up in the roster it is handed. The roster is the PRODUCTION one -- spark_pair_declared_unit_digests,
+// the mint harness_collect_candidates takes once per turn, which digests the rendered head-unit
+// bytes by real sha256sum execution (why this file is on the wet lane). With it, the route verdict
+// stops at the incarnation frontier; withdraw it and the verdict is the declared-unit refusal
+// instead. Deleting the carry between the mint and this fold therefore turns this claim red, which
+// is the pairing obligation the digest witness alone cannot pay: that witness proves the mint, this
+// one proves the wire consumes what was minted.
+fn w_place(declared_units: List<SparkPairDeclaredUnitDigest>) -> HarnessCandidates {
+  let field = "1789300000.12"
+  harness_add_serving_candidate(
     acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] },
-    group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
-    readback: readback, incarnation: incarnation, route: route,
-    subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
-    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 4,
+    endpoint: w_endpoint,
+    class: BatchQualityTolerant,
+    requirement: AnyAdmittedModel,
+    subject: w_subject(),
+    availability: harness_route_availability(endpoint: w_endpoint, before: w_seen(field: field), standing: w_serving_standing(), after: w_seen(field: field), now: w_now),
+    launch: w_launch(field: field),
+    engine: w_idle_engine(field: field),
+    readback: w_readback(),
+    model: w_model,
+    unit: DeepseekV4FlashOnVllm,
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    now: 1789400000,
+    access: FleetSshContextRefused { cause: "wet witness supplies a refused fleet context so incarnation is unobserved" },
+    declared_units: declared_units,
   )
-  length(bound.candidates) == 0
-    && any(bound.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
-    && match harness_serving_route(
-      group: FabricGroupA,
-      launch: launch,
-      readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
-      incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
-      declared_unit: declared_unit,
-    ) {
-      ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
-        match c {
-          ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
-            (o as String) == (spark_serving_incarnation_unobserved_obligation as String)
-          ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } => false
-          ServiceIncarnationOutsideRealization { incarnation: _ } => false
-          ServiceDeclaredUnitDigestUnavailable { obligation: _ } => false
-          ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => false
-          ServiceConfigurationDisagrees { configuration: _ } => false
-        }
-      ServingRouteObserved { route: _ } => false
-      ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
-      ServingRouteRegionUnobserved { obligation: _ } => false
-    }
+}
+
+test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier() -> Bool {
+  let placed = w_place(declared_units: spark_pair_declared_unit_digests())
+  length(placed.candidates) == 0
+    && any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
+    && !any(placed.notes, note => note.contains(spark_pair_no_realization_names_group_obligation as String))
+}
+
+// RED CONTROL for the row above: the same fold with this group's row withdrawn from the production
+// roster refuses at the declared unit, so the verdict depends on the roster and not on the fold's
+// shape. The roster is still the minted one (so this row stays on the same wet schedule as its
+// pair); only the row for the group under placement is removed.
+test fn a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation() -> Bool {
+  let placed = w_place(declared_units: filter(spark_pair_declared_unit_digests(), row => (fabric_group_wire(g: row.group) as String) != (fabric_group_wire(g: FabricGroupA) as String)))
+  length(placed.candidates) == 0
+    && any(placed.notes, note => note.contains(spark_pair_no_realization_names_group_obligation as String))
+    && !any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
 }

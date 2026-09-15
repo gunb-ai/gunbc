@@ -387,7 +387,7 @@ fn spark_configuration_matches(identity: SparkRealizationIdentity) -> Bool {
   }
 }
 
-fn spark_service_from_observation(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, observation: EndpointIncarnationObservation) -> SparkServingRoute {
+fn spark_service_from_observation(realization: SparkServingRealization, declared: ContentHash, observation: EndpointIncarnationObservation) -> SparkServingRoute {
   let observed_key = vllm_endpoint_process_launch_key(launch: observation.endpoint)
   let answering_key = vllm_endpoint_process_launch_key(launch: realization.endpoint)
   if (observed_key as String) != (answering_key as String) {
@@ -396,32 +396,35 @@ fn spark_service_from_observation(realization: SparkServingRealization, declared
       || !any(realization.hosts, h => host_identity_eq(a: h, b: observation.launch.head)) {
     spark_service_unidentified(realization: realization, cause: ServiceIncarnationOutsideRealization { incarnation: launch_wire(i: observation.launch) as NonEmptyStr })
   } else {
-    match declared_unit {
-      DeclaredUnitDigestUnavailable { obligation: o } =>
-        spark_service_unidentified(realization: realization, cause: ServiceDeclaredUnitDigestUnavailable { obligation: o })
-      DeclaredUnitDigested { unit_name: _, digest: declared } =>
-        match launch_unit_provenance(launch: observation.launch, declared: declared) {
-          LaunchedFromDifferentUnit { observed: o, declared: d } =>
-            spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: o, declared: d } })
-          LaunchUnitDigestsIncomparable =>
-            spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable })
-          LaunchedFromDeclaredUnit { declared: _ } => {
-            let identity = spark_realization_identity(realization: realization)
-            if spark_configuration_matches(identity: identity) {
-              ServingRouteOperatorAsserted {
-                route: spark_first_party_route(),
-                allocation: spark_fleet_site_allocation.allocation,
-                answered_by: observation,
-              }
-            } else {
-              spark_service_unidentified(realization: realization, cause: ServiceConfigurationDisagrees { configuration: identity })
-            }
+    match launch_unit_provenance(launch: observation.launch, declared: declared) {
+      LaunchedFromDifferentUnit { observed: o, declared: d } =>
+        spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: o, declared: d } })
+      LaunchUnitDigestsIncomparable =>
+        spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable })
+      LaunchedFromDeclaredUnit { declared: _ } => {
+        let identity = spark_realization_identity(realization: realization)
+        if spark_configuration_matches(identity: identity) {
+          ServingRouteOperatorAsserted {
+            route: spark_first_party_route(),
+            allocation: spark_fleet_site_allocation.allocation,
+            answered_by: observation,
           }
+        } else {
+          spark_service_unidentified(realization: realization, cause: ServiceConfigurationDisagrees { configuration: identity })
         }
+      }
     }
   }
 }
 
+// THE DECLARED UNIT IS REFUSED BEFORE THE INCARNATION IS CONSULTED. Whether this repository could
+// render and digest its own head unit is decidable with no observation at all, and a route whose
+// declared digest is unavailable can never be identified however much is observed about it -- so
+// that refusal is reported first, and an observation is not spent on it. The consequence that
+// matters for evidence: the declared digest changes this fold's answer TODAY, while the incarnation
+// is still unobserved (EndpointIncarnationUnobserved on every production realization), so a wire
+// that drops the digest between its mint and this fold is red at ServiceDeclaredUnitDigestUnavailable
+// rather than green by coincidence at ServiceIncarnationUnobserved.
 fn spark_serving_route_standing(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding) -> SparkServingRoute {
   let hosts = realization.hosts
   if count(hosts) == 0 {
@@ -431,14 +434,19 @@ fn spark_serving_route_standing(realization: SparkServingRealization, declared_u
     if count(uncovered) > 0 {
       ServingRouteRegionUnobserved { obligation: spark_serving_route_uncovered_obligation(uncovered: uncovered) }
     } else {
-      match realization.incarnation {
-        EndpointIncarnationUnobserved { obligation: o } =>
-          spark_service_unidentified(realization: realization, cause: ServiceIncarnationUnobserved {
-            configuration: spark_realization_identity(realization: realization),
-            obligation: o,
-          })
-        EndpointIncarnationObserved { observation: obs } =>
-          spark_service_from_observation(realization: realization, declared_unit: declared_unit, observation: obs)
+      match declared_unit {
+        DeclaredUnitDigestUnavailable { obligation: o } =>
+          spark_service_unidentified(realization: realization, cause: ServiceDeclaredUnitDigestUnavailable { obligation: o })
+        DeclaredUnitDigested { unit_name: _, digest: declared } =>
+          match realization.incarnation {
+            EndpointIncarnationUnobserved { obligation: o } =>
+              spark_service_unidentified(realization: realization, cause: ServiceIncarnationUnobserved {
+                configuration: spark_realization_identity(realization: realization),
+                obligation: o,
+              })
+            EndpointIncarnationObserved { observation: obs } =>
+              spark_service_from_observation(realization: realization, declared: declared, observation: obs)
+          }
       }
     }
   }
