@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.tco_rewrite_assigns_into_a_shadowing_pattern_binding
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data tco_rewrite_assigns_into_a_shadowing_pattern_binding: RecurringFailureMode = RecurringFailureMode {
+  identity: "tco_rewrite_assigns_into_a_shadowing_pattern_binding" as NonEmptyStr,
+
+  receipts: [
+    "**A SELF-RECURSIVE CALL REWRITTEN AS A LOOP ASSIGNS INTO WHATEVER BINDING CURRENTLY OWNS THE PARAMETER'S NAME, NOT INTO THE LOOP PARAMETER.** INVALID STATE: a TCO-eligible function whose body, in a tail-call's enclosing match (or let), binds a field or local with the SAME NAME as a parameter. The rewrite emits `name = __tco_N`. In the target that is an assignment to the INNER binding.",
+
+    "MEASURED SPECIMEN (2026-09-15, gunbc#11422 PREPARED-CHOICE-0, srv1 native emit of 1917390c). `v2.compiler.parse` `parse_choice_ordered_backtrack` declares `table: ParseTable` and matches `ParseExprRejected { diagnostics: _, table: table1 }` then recursively calls with `table: table1`. Emission of a sibling arm still bound `ParseExprRejected { ref table, .. }` (the Rc-pattern lowering) inside that self-recursive function. rustc `error[E0308]` at emitted `src/v2_compiler_parse.rs:2233`: `table = __tco_1` expected `&Box<Rc<ParseTableRealization>>` (the pattern) found `Rc<ParseTableRealization>` (the parameter). `claim_executor --v2-native-route` refused `EmittedCompilerBuildFailed`. The pre-cutover parent at e2735ef4 built. Log: srv1 `~/fierce-seal-607/ab/pc-build.log` lines 129-148.",
+
+    "DISTINGUISHING FACTS versus `tco_rewrite_binds_named_arguments_positionally`: that class loses ARGUMENT LABELS and binds by position. This class can keep labels and still miss the SLOT, because the left-hand side of the rewrite is a NAME looked up in the current Rust scope. Recognition rule: a TCO function, a match/let that binds a parameter name, and a `__tco_N` block whose assignment uses that name. The tell in the emitted artifact is `ref <param>` (or `let <param>`) in the same block as `<param> = __tco_`.",
+
+    "WHAT MADE IT LOUD HERE. The pattern was `ref table` so the inner binding's type was a reference, the parameter's type was `Rc<_>`, and rustc refused. PREDICTED, NOT MEASURED: a shadowing `let table = ...` of the SAME type would compile and silently write the inner binding; the next loop iteration would keep the old parameter. That is DESIGN section 5 silent wrongness.",
+
+    "NOT A REASON TO RENAME THE .dag BINDING. Noticing a workaround (rename `table` in the production) IS the line-stop: the authored name is legal, and every TCO function that reuses a field name of a result type it threads would be one rename away from the same refuse-or-silent pair.",
+
+    "RUNG FOUND AT: mitigatable for the differently-typed shadow (target compiler refuses the emitted crate); below the floor for the same-typed shadow (predicted silent). CEILING: structurally guaranteed for the assignment target -- the loop slot is a name that is not in the authored binding set, so a pattern cannot capture it. NEXT-RUNG TRIGGER: TCO reassignment writes only `tco_loop_slot_name` bindings on EVERY emission route that uses `tco_reassign_core` (Rust `emit_typed_tco_reassign` and shared `emit_typed_tco_reassign_shared`), and each iteration rebinds the authored parameter names from those slots -- sufficient that the #11422 native crate compiles, and that a fixture whose match binds the same name as a parameter still threads the parameter through the loop.",
+  ],
+
+  evidence: [],
+}

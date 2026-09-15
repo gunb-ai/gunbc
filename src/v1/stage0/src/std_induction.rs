@@ -1120,8 +1120,17 @@ pub fn ceil_log(base: i64, argument: i64) -> Option<i64> {
     }
 }
 
-pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i64) -> Option<i64> {
+pub fn ceil_log_iter(
+    mut __tco_loop_base: i64,
+    mut __tco_loop_argument: i64,
+    mut __tco_loop_k: i64,
+    mut __tco_loop_power: i64,
+) -> Option<i64> {
     loop {
+        #[allow(unused_mut)] let mut base = __tco_loop_base.clone();
+        #[allow(unused_mut)] let mut argument = __tco_loop_argument.clone();
+        #[allow(unused_mut)] let mut k = __tco_loop_k.clone();
+        #[allow(unused_mut)] let mut power = __tco_loop_power.clone();
         if (power.clone() >= argument.clone()) {
             break Some(k.clone());
         } else {
@@ -1141,8 +1150,8 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
                         Some(k1) => {
                             let __tco_0 = k1.clone();
                             let __tco_1 = next_power.clone();
-                            k = __tco_0;
-                            power = __tco_1;
+                            __tco_loop_k = __tco_0;
+                            __tco_loop_power = __tco_1;
                             continue;
                         }
                     }

@@ -19,17 +19,17 @@ pub use crate::v1_compiler_emit::{
     emit_inferred_shared, emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding,
     emit_list_lit_expr, emit_literal, emit_map_type, emit_node_type, emit_null_coalesce,
     emit_param_shared, emit_params_shared, emit_return, emit_shared_expr, emit_simple_expr,
-    emit_string_literal, emit_tco_unified, emit_typed_block_join, emit_typed_call_unified,
-    emit_typed_cast_shared, emit_typed_first_arg_shared, emit_typed_for_each_shared,
-    emit_typed_if_shared, emit_typed_index_shared, emit_typed_let_shared, emit_typed_match_unified,
-    emit_typed_method_call_unified, emit_typed_record_lit_unified, emit_typed_slice_shared,
-    emit_typed_string_interp_unified, emit_unary_op, emit_unified_init_block_stmts,
-    emit_unified_operation_method, emit_unified_pattern, emit_unified_service_def,
-    emit_unified_transport_dispatch, emit_unified_typed_expr, emit_unified_typed_func_body,
-    empty_emit_scope, escape_go_interp_text, extract_string_interp_parts, has_nested_records_node,
-    is_null_coalesce, is_tco_eligible, lookup_item_by_identity, module_emit_scope,
-    order_typed_call_args, scope_after_expr, seed_bindings, service_fallback_transport,
-    service_field_decls, test_file_path,
+    emit_string_literal, emit_tco_params_shared, emit_tco_unified, emit_typed_block_join,
+    emit_typed_call_unified, emit_typed_cast_shared, emit_typed_first_arg_shared,
+    emit_typed_for_each_shared, emit_typed_if_shared, emit_typed_index_shared,
+    emit_typed_let_shared, emit_typed_match_unified, emit_typed_method_call_unified,
+    emit_typed_record_lit_unified, emit_typed_slice_shared, emit_typed_string_interp_unified,
+    emit_unary_op, emit_unified_init_block_stmts, emit_unified_operation_method,
+    emit_unified_pattern, emit_unified_service_def, emit_unified_transport_dispatch,
+    emit_unified_typed_expr, emit_unified_typed_func_body, empty_emit_scope, escape_go_interp_text,
+    extract_string_interp_parts, has_nested_records_node, is_null_coalesce, is_tco_eligible,
+    lookup_item_by_identity, module_emit_scope, order_typed_call_args, scope_after_expr,
+    seed_bindings, service_fallback_transport, service_field_decls, test_file_path,
 };
 pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{
@@ -1179,16 +1179,6 @@ pub fn emit_go_fn_def(
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let params_str = crate::v1_compiler_emit::emit_params_shared(
-            params.clone(),
-            RenderTarget::Go,
-            si.clone(),
-        );
-        let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
-            inferred.clone(),
-            RenderTarget::Go,
-            si.clone(),
-        );
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         let use_tco = crate::v1_compiler_emit::is_tco_eligible(
@@ -1198,6 +1188,24 @@ pub fn emit_go_fn_def(
             }),
             body.clone(),
             registry.clone(),
+            si.clone(),
+        );
+        let params_str = if use_tco.clone() {
+            crate::v1_compiler_emit::emit_tco_params_shared(
+                params.clone(),
+                RenderTarget::Go,
+                si.clone(),
+            )
+        } else {
+            crate::v1_compiler_emit::emit_params_shared(
+                params.clone(),
+                RenderTarget::Go,
+                si.clone(),
+            )
+        };
+        let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
+            inferred.clone(),
+            RenderTarget::Go,
             si.clone(),
         );
         if use_tco.clone() {

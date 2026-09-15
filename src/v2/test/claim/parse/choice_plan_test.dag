@@ -1,0 +1,113 @@
+module v2.test.parse.choice_plan
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PRE-CUTOVER INTERPRETER, restated as the oracle: ordered try-left-then-right.
+// One parse of the choice vs one-or-two parses of the authored branches. Small hand
+// grammars only — new identities are judged against the 72,300 eval-step budget.
+
+type ChoiceParseObservation
+  = ObservedAccepted { remaining: Int, captured: Hash }
+  | ObservedRejected
+
+fn pcp_token(token_class: Symbol) -> Token {
+  Token { class: token_class, lexeme: "", file: ^pcp_file, start: 0, end: 1 }
+}
+
+fn pcp_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^pcp_start,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^pcp_start,
+        expression: Terminal { token_class: ^pcp_a, stamp: StampClass },
+        emitted: grammar_atom(identity: ^pcp_start)
+      },
+      tail: std.algebra.Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn pcp_observe(expr: GrammarExpr, tokens: List<Token>) -> ChoiceParseObservation {
+  match parse_expr(
+    expr: expr,
+    tokens: tokens,
+    all_tokens: tokens,
+    root: pcp_root(),
+    table: parse_table_empty(),
+    prov: parse_prov_initial()
+  ) {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>
+      ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured) }
+    ParseExprRejected { diagnostics: _, table: _ } =>
+      ObservedRejected
+  }
+}
+
+fn oracle_parse_choice(left: GrammarExpr, right: GrammarExpr, tokens: List<Token>) -> ChoiceParseObservation {
+  match parse_expr(
+    expr: left,
+    tokens: tokens,
+    all_tokens: tokens,
+    root: pcp_root(),
+    table: parse_table_empty(),
+    prov: parse_prov_initial()
+  ) {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>
+      ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured) }
+    ParseExprRejected { diagnostics: _, table: _ } =>
+      match parse_expr(
+        expr: right,
+        tokens: tokens,
+        all_tokens: tokens,
+        root: pcp_root(),
+        table: parse_table_empty(),
+        prov: parse_prov_initial()
+      ) {
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>
+          ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured) }
+        ParseExprRejected { diagnostics: _, table: _ } =>
+          ObservedRejected
+      }
+  }
+}
+
+fn term(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn seq(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn opt(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+// Flattened [aa, b?, b?]: two nullable alts. Token a is only in aa's FIRST; C3
+// still backtracked because the outer choice was both-nullable. aa rejects one
+// a; a nullable sibling must accept empty (review 66500).
+test fn prepared_choice_plan_agrees_with_the_inline_dispatch_rule() -> Bool {
+  let left = term(token_class: ^pcp_a)
+  let right = term(token_class: ^pcp_b)
+  let expr = Choice { left: left, right: right }
+  let tokens_a = [pcp_token(token_class: ^pcp_a)]
+  let tokens_b = [pcp_token(token_class: ^pcp_b)]
+  let two_a = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_a)]
+  let a_then_b = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_b)]
+  let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
+  let ab = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_b))
+  let bb = seq(left: term(token_class: ^pcp_b), right: term(token_class: ^pcp_b))
+  let both_nullable = Choice {
+    left: aa,
+    right: Choice { left: opt(element: term(token_class: ^pcp_b)), right: opt(element: term(token_class: ^pcp_b)) }
+  }
+  let shared_prefix = Choice { left: ab, right: aa }
+  let token_prefix = Choice { left: aa, right: bb }
+  (pcp_observe(expr: expr, tokens: tokens_a) == oracle_parse_choice(left: left, right: right, tokens: tokens_a))
+    && ((pcp_observe(expr: expr, tokens: tokens_a) == pcp_observe(expr: expr, tokens: tokens_b)) == false)
+    && (pcp_observe(expr: both_nullable, tokens: tokens_a) == oracle_parse_choice(left: aa, right: opt(element: term(token_class: ^pcp_b)), tokens: tokens_a))
+    && (pcp_observe(expr: shared_prefix, tokens: a_then_b) == oracle_parse_choice(left: ab, right: aa, tokens: a_then_b))
+    && (pcp_observe(expr: token_prefix, tokens: two_a) == oracle_parse_choice(left: aa, right: bb, tokens: two_a))
+}
