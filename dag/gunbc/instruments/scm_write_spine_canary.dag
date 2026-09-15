@@ -64,7 +64,7 @@ import gunbc.scm.squash_merge {
   SquashMergeAllocatorInvalid,
 }
 import gunbc.scm.repository_envelope {
-  MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
+  MergeBaseRefusal, MergeBaseSourceAlreadyConsumed,
   MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint,
   MergeBaseSourceIsAncestorOfTarget,
   MergeBaseSide, MergeBaseTargetSide, MergeBaseSourceSide,
@@ -823,9 +823,8 @@ fn squash_outcome_wire(outcome: SquashMergeOutcome) -> String {
   }
 }
 
-fn merge_base_refusal_wire(refusal: MergeBaseOutcome) -> String {
+fn merge_base_refusal_wire(refusal: MergeBaseRefusal) -> String {
   match refusal {
-    MergeBaseDerived { anchors: _ } => "derived"
     MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } =>
       "source-already-consumed"
     MergeBaseHistoryUnwalkable { side: side, walk: walk } =>

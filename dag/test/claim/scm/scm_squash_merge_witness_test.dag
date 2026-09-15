@@ -39,7 +39,7 @@ import gunbc.scm.repository_envelope {
 }
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
 import gunbc.scm.repository_envelope {
-  MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
+  MergeBaseRefusal, MergeBaseSourceAlreadyConsumed,
   MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint, MergeBaseSourceIsAncestorOfTarget,
 }
 import gunbc.scm.manifest_merge { ManifestPathConflict, PathState, PathAbsent, PathPresent }
@@ -271,7 +271,6 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
                     MergeBaseSourceAlreadyConsumed { recorded_at: rec, consumed: cons, source: _ } =>
                       repository_commit_ref_eq(left: rec, right: at)
                         && repository_commit_ref_eq(left: cons, right: source)
-                    MergeBaseDerived { anchors: _ } => false
                     MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
                     MergeBaseHistoriesDisjoint { target: _, source: _ } => false
                     MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false

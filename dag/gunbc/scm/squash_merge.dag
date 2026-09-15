@@ -32,11 +32,9 @@ import gunbc.scm.repository_envelope {
   MergeSideName,
   MergeSubjectSourceUnrecoverable,
   MergeBaseOutcome,
+  MergeBaseRefusal,
   MergeBaseDerived,
-  MergeBaseSourceAlreadyConsumed,
-  MergeBaseHistoryUnwalkable,
-  MergeBaseHistoriesDisjoint,
-  MergeBaseSourceIsAncestorOfTarget,
+  MergeBaseNotDerived,
   merge_base,
 }
 import gunbc.scm.manifest_merge { ManifestPathConflict }
@@ -98,7 +96,7 @@ import gunbc.scm.repository_envelope {
 type SquashMergeOutcome
   = SquashMerged { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
 
-  | SquashMergeBaseRefused { refusal: MergeBaseOutcome }
+  | SquashMergeBaseRefused { refusal: MergeBaseRefusal }
 
   | SquashMergeConflicted { conflicts: List<ManifestPathConflict> }
 
@@ -234,16 +232,7 @@ fn squash_merge(
   message: String,
 ) -> SquashMergeOutcome {
   match merge_base(repository: repository, target: target, source: source) {
-    MergeBaseSourceAlreadyConsumed { recorded_at: a, consumed: b, source: c } =>
-      SquashMergeBaseRefused {
-        refusal: MergeBaseSourceAlreadyConsumed { recorded_at: a, consumed: b, source: c },
-      }
-    MergeBaseHistoryUnwalkable { side: s, walk: w } =>
-      SquashMergeBaseRefused { refusal: MergeBaseHistoryUnwalkable { side: s, walk: w } }
-    MergeBaseHistoriesDisjoint { target: t, source: s } =>
-      SquashMergeBaseRefused { refusal: MergeBaseHistoriesDisjoint { target: t, source: s } }
-    MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
-      SquashMergeBaseRefused { refusal: MergeBaseSourceIsAncestorOfTarget { target: t, source: s } }
+    MergeBaseNotDerived { refusal: refusal } => SquashMergeBaseRefused { refusal: refusal }
     MergeBaseDerived { anchors: anchors } =>
       match admit_merge_subject(anchors: anchors) {
         MergeSubjectSideRootMissing { side: sd, root: r } =>

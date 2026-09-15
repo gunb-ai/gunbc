@@ -2987,9 +2987,15 @@ type ResolvedMergeAnchors sole_constructor {
   target: CommitPresence
 }
 
-type MergeBaseOutcome
-  = MergeBaseDerived { anchors: ResolvedMergeAnchors }
-  | MergeBaseSourceIsAncestorOfTarget {
+// THE REFUSALS ARE THEIR OWN TYPE BECAUSE A CONSUMER DOWNSTREAM OF THE DERIVATION CARRIES ONLY THEM.
+// `squash_merge` runs the derived arm itself and re-wraps only the four refusals, so a
+// `SquashMergeBaseRefused` carrying the whole outcome admitted `MergeBaseDerived`, a state no
+// execution of that verb constructs -- the `callee_arm_carried_past_its_exclusion` shape, found by
+// external review on this stack for the sixth time. Splitting the derivation's ANSWER from its
+// REFUSALS is what makes the downstream arm unconstructible rather than merely unreachable
+// (DESIGN 4b rung 4), and it is not a duplication: the four arms have one home, here.
+type MergeBaseRefusal
+  = MergeBaseSourceIsAncestorOfTarget {
       target: RepositoryCommitRef,
       source: RepositoryCommitRef,
     }
@@ -3000,6 +3006,10 @@ type MergeBaseOutcome
     }
   | MergeBaseHistoryUnwalkable { side: MergeBaseSide, walk: AncestryWalk }
   | MergeBaseHistoriesDisjoint { target: RepositoryCommitRef, source: RepositoryCommitRef }
+
+type MergeBaseOutcome
+  = MergeBaseDerived { anchors: ResolvedMergeAnchors }
+  | MergeBaseNotDerived { refusal: MergeBaseRefusal }
 
 // WHICH SIDE FAILED IS PART OF THE FACT, not a detail a renderer may add. "The target history is
 // broken" and "the source history is broken" send an operator to different repositories.
@@ -3125,32 +3135,43 @@ fn merge_base(
             source_chain: source_chain,
           ) {
             ConsumedJoinFound { recorded_at: r, consumed: c } =>
-              MergeBaseSourceAlreadyConsumed { recorded_at: r, consumed: c, source: source }
+              MergeBaseNotDerived {
+                refusal:
+                  MergeBaseSourceAlreadyConsumed { recorded_at: r, consumed: c, source: source },
+              }
             ConsumedJoinNone =>
               match nearest_common_ancestor(target_chain: target_chain, source_chain: source_chain) {
                 Present { value: base } =>
                   if repository_commit_ref_eq(left: base, right: source) {
-                    MergeBaseSourceIsAncestorOfTarget { target: target, source: source }
+                    MergeBaseNotDerived {
+                      refusal: MergeBaseSourceIsAncestorOfTarget { target: target, source: source },
+                    }
                   } else {
                     match admit_commit_presence(repository: repository, reference: base) {
                       Absent =>
-                        MergeBaseHistoryUnwalkable {
-                          side: MergeBaseTargetSide,
-                          walk: AncestryStartNotInHistory { start: base },
+                        MergeBaseNotDerived {
+                          refusal: MergeBaseHistoryUnwalkable {
+                            side: MergeBaseTargetSide,
+                            walk: AncestryStartNotInHistory { start: base },
+                          },
                         }
                       Present { value: base_at } =>
                         match admit_commit_presence(repository: repository, reference: source) {
                           Absent =>
-                            MergeBaseHistoryUnwalkable {
-                              side: MergeBaseSourceSide,
-                              walk: AncestryStartNotInHistory { start: source },
+                            MergeBaseNotDerived {
+                              refusal: MergeBaseHistoryUnwalkable {
+                                side: MergeBaseSourceSide,
+                                walk: AncestryStartNotInHistory { start: source },
+                              },
                             }
                           Present { value: source_at } =>
                             match admit_commit_presence(repository: repository, reference: target) {
                               Absent =>
-                                MergeBaseHistoryUnwalkable {
-                                  side: MergeBaseTargetSide,
-                                  walk: AncestryStartNotInHistory { start: target },
+                                MergeBaseNotDerived {
+                                  refusal: MergeBaseHistoryUnwalkable {
+                                    side: MergeBaseTargetSide,
+                                    walk: AncestryStartNotInHistory { start: target },
+                                  },
                                 }
                               Present { value: target_at } =>
                                 MergeBaseDerived {
@@ -3165,11 +3186,20 @@ fn merge_base(
                         }
                     }
                   }
-                Absent => MergeBaseHistoriesDisjoint { target: target, source: source }
+                Absent =>
+                  MergeBaseNotDerived {
+                    refusal: MergeBaseHistoriesDisjoint { target: target, source: source },
+                  }
               }
           }
-        other => MergeBaseHistoryUnwalkable { side: MergeBaseSourceSide, walk: other }
+        other =>
+          MergeBaseNotDerived {
+            refusal: MergeBaseHistoryUnwalkable { side: MergeBaseSourceSide, walk: other },
+          }
       }
-    other => MergeBaseHistoryUnwalkable { side: MergeBaseTargetSide, walk: other }
+    other =>
+      MergeBaseNotDerived {
+        refusal: MergeBaseHistoryUnwalkable { side: MergeBaseTargetSide, walk: other },
+      }
   }
 }
