@@ -40,11 +40,14 @@ This mirrors the structure/runtime split exactly, so neither side duplicates the
 
 ### 0. v1 → v2: WHAT A ctrl-SIDE READER MUST DO (read this first)
 
-**If your consumer pins `roadmap-spawn-request/v1` or `roadmap-dispatch/v1`, it will now REFUSE
-the payload outright — it will not see a v1 object with two fields missing.** That refusal is
-deliberate and is the whole point of the bump: a v1 consumer is entitled by this document to read
-`intricacy` and `volume`, so handing it an object without them under the v1 name would be a silent
-contract change. Refusing is loud; a missing field read as an absent tier is not.
+**If your consumer pins `roadmap-spawn-request/v1` or `roadmap-dispatch/v1`, the payload it now
+receives is labelled v2, and v1's obligation is withdrawn.** A v1 consumer is entitled by this
+document to read `intricacy` and `volume`, so handing it an object without them under the v1 name
+would be a silent contract change; the bump is what prevents that. What the bump does NOT do is
+decide what your consumer does next: whether a v1-pinned reader refuses, ignores the schema string,
+or never reads it is a property of that consumer, and nothing on this side of the wire observes it.
+A consumer that checks the schema string has what it needs to refuse a v2 payload rather than read
+an absent tier; making sure yours does is the ctrl-side action this section asks for.
 
 **What changed:** sizing stopped being a field an author types on a roadmap node and became a fact
 derived from the task (`gunbc.roadmap_sizing`). Its deriver is a stub that currently refuses for
