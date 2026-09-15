@@ -217,6 +217,11 @@ type GrammarExpr
   | Choice { left: GrammarExpr, right: GrammarExpr }
   | Optional { element: GrammarExpr }
   | Repeat { element: GrammarExpr }
+  | Lookahead { pattern: GrammarExpr }
+
+fn grammar_expr_lookahead(pattern: GrammarExpr) -> GrammarExpr {
+  Lookahead { pattern: pattern }
+}
 
 fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
   Optional { element: element }
@@ -259,6 +264,7 @@ type GrammarExprFold<R> {
   choice: fn(R, R) -> R
   optional: fn(R) -> R
   repeat: fn(R) -> R
+  lookahead: fn(R) -> R
 }
 
 fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
@@ -280,6 +286,8 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
       algebra.optional(fold_grammar_expr(expr: element, algebra: algebra))
     Repeat { element: element } =>
       algebra.repeat(fold_grammar_expr(expr: element, algebra: algebra))
+    Lookahead { pattern: pattern } =>
+      algebra.lookahead(fold_grammar_expr(expr: pattern, algebra: algebra))
   }
 }
 
@@ -1633,6 +1641,11 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
       repeat: fn(element_node) {
         grammar_expr_node(children: [
           grammar_named_edge(name: ^grammar_repeat_element_node_projection, target: element_node)
+        ])
+      },
+      lookahead: fn(pattern_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_lookahead_pattern_node_projection, target: pattern_node)
         ])
       }
     }

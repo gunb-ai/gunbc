@@ -1,0 +1,188 @@
+module v2.test.parse.choice_plan
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PRE-CUTOVER INTERPRETER, restated as the oracle: ordered try-left-then-right on the
+// authored alternatives, each branch parsed through parse_expr. The plan is the production
+// path. Hand grammars, one per plan arm; a mutation that should disagree is part of each check.
+
+type ChoiceParseObservation
+  = ObservedAccepted { remaining: Int, captured: Hash, diagnostics: List<Diagnostic> }
+  | ObservedRejected { diagnostics: List<Diagnostic> }
+
+fn pcp_token(token_class: Symbol) -> Token {
+  Token { class: token_class, lexeme: "", file: ^pcp_file, start: 0, end: 1 }
+}
+
+fn pcp_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^pcp_start,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^pcp_start,
+        expression: Terminal { token_class: ^pcp_a, stamp: StampClass },
+        emitted: grammar_atom(identity: ^pcp_start)
+      },
+      tail: std.algebra.Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn pcp_observe(expr: GrammarExpr, tokens: List<Token>) -> ChoiceParseObservation {
+  match parse_expr(
+    expr: expr,
+    tokens: tokens,
+    all_tokens: tokens,
+    root: pcp_root(),
+    table: parse_table_empty(),
+    prov: parse_prov_initial()
+  ) {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diagnostics, prov: _, table: _ } =>
+      ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured), diagnostics: diagnostics }
+    ParseExprRejected { diagnostics: diagnostics, table: _ } =>
+      ObservedRejected { diagnostics: diagnostics }
+  }
+}
+
+fn oracle_parse_choice(left: GrammarExpr, right: GrammarExpr, tokens: List<Token>) -> ChoiceParseObservation {
+  match parse_expr(
+    expr: left,
+    tokens: tokens,
+    all_tokens: tokens,
+    root: pcp_root(),
+    table: parse_table_empty(),
+    prov: parse_prov_initial()
+  ) {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diagnostics, prov: _, table: _ } =>
+      ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured), diagnostics: diagnostics }
+    ParseExprRejected { diagnostics: _, table: _ } =>
+      match parse_expr(
+        expr: right,
+        tokens: tokens,
+        all_tokens: tokens,
+        root: pcp_root(),
+        table: parse_table_empty(),
+        prov: parse_prov_initial()
+      ) {
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diagnostics, prov: _, table: _ } =>
+          ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured), diagnostics: diagnostics }
+        ParseExprRejected { diagnostics: diagnostics, table: _ } =>
+          ObservedRejected { diagnostics: diagnostics }
+      }
+  }
+}
+
+fn term(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn seq_class_then(a: Symbol, b: Symbol) -> GrammarExpr {
+  Sequence {
+    left: Terminal { token_class: a, stamp: StampClass },
+    right: Terminal { token_class: b, stamp: StampClass }
+  }
+}
+
+fn seq_lexeme_then(a: Symbol, b: Symbol) -> GrammarExpr {
+  Sequence {
+    left: Terminal { token_class: a, stamp: StampLexeme },
+    right: Terminal { token_class: b, stamp: StampClass }
+  }
+}
+
+fn seq2(a: Symbol, b: Symbol) -> GrammarExpr {
+  seq_class_then(a: a, b: b)
+}
+
+fn binary_terminal_choice() -> GrammarExpr {
+  Choice { left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_b) }
+}
+
+fn agrees(expr: GrammarExpr, left: GrammarExpr, right: GrammarExpr, tokens: List<Token>) -> Bool {
+  pcp_observe(expr: expr, tokens: tokens) == oracle_parse_choice(left: left, right: right, tokens: tokens)
+}
+
+test fn prepared_choice_plan_agrees_with_the_inline_dispatch_rule() -> Bool {
+  let expr = binary_terminal_choice()
+  let left = term(token_class: ^pcp_a)
+  let right = term(token_class: ^pcp_b)
+  agrees(expr: expr, left: left, right: right, tokens: [pcp_token(token_class: ^pcp_a)])
+    && agrees(expr: expr, left: left, right: right, tokens: [pcp_token(token_class: ^pcp_b)])
+    && agrees(expr: expr, left: left, right: right, tokens: [pcp_token(token_class: ^pcp_d)])
+    && (pcp_observe(expr: expr, tokens: [pcp_token(token_class: ^pcp_a)])
+      == pcp_observe(expr: expr, tokens: [pcp_token(token_class: ^pcp_b)])) == false
+}
+
+test fn choice_plan_shared_prefix_agrees_with_oracle() -> Bool {
+  let left = seq2(a: ^pcp_a, b: ^pcp_b)
+  let right = seq2(a: ^pcp_a, b: ^pcp_c)
+  let expr = Choice { left: left, right: right }
+  let tokens_ab = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_b)]
+  let tokens_ac = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_c)]
+  agrees(expr: expr, left: left, right: right, tokens: tokens_ab)
+    && agrees(expr: expr, left: left, right: right, tokens: tokens_ac)
+    && (pcp_observe(expr: expr, tokens: tokens_ab) == pcp_observe(expr: expr, tokens: tokens_ac)) == false
+}
+
+test fn choice_plan_flatten_narrows_only_alts_that_can_start() -> Bool {
+  let expr = Choice {
+    left: term(token_class: ^pcp_a),
+    right: Choice { left: term(token_class: ^pcp_b), right: term(token_class: ^pcp_c) }
+  }
+  let tokens_b = [pcp_token(token_class: ^pcp_b)]
+  let tokens_a = [pcp_token(token_class: ^pcp_a)]
+  (pcp_observe(expr: expr, tokens: tokens_b) == pcp_observe(expr: term(token_class: ^pcp_b), tokens: tokens_b))
+    && (pcp_observe(expr: expr, tokens: tokens_a) == pcp_observe(expr: expr, tokens: tokens_b)) == false
+}
+
+test fn choice_plan_overlap_is_ordered_backtrack() -> Bool {
+  let left = seq2(a: ^pcp_a, b: ^pcp_b)
+  let right = term(token_class: ^pcp_a)
+  let expr = Choice { left: left, right: right }
+  let tokens = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_b)]
+  agrees(expr: expr, left: left, right: right, tokens: tokens)
+    && (pcp_observe(expr: expr, tokens: [pcp_token(token_class: ^pcp_a)])
+      == pcp_observe(expr: expr, tokens: tokens)) == false
+}
+
+test fn choice_plan_token_prefix_agrees_with_oracle() -> Bool {
+  let left = seq_class_then(a: ^pcp_a, b: ^pcp_b)
+  let right = seq_lexeme_then(a: ^pcp_a, b: ^pcp_c)
+  let expr = Choice { left: left, right: right }
+  let tokens_ab = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_b)]
+  let tokens_ac = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_c)]
+  agrees(expr: expr, left: left, right: right, tokens: tokens_ab)
+    && (pcp_observe(expr: expr, tokens: tokens_ab) == pcp_observe(expr: expr, tokens: tokens_ac)) == false
+}
+
+test fn grammar_lookahead_consumes_no_token_and_mints_no_frame() -> Bool {
+  let tokens = [pcp_token(token_class: ^pcp_a)]
+  match parse_expr(
+    expr: Lookahead { pattern: term(token_class: ^pcp_a) },
+    tokens: tokens,
+    all_tokens: tokens,
+    root: pcp_root(),
+    table: parse_table_empty(),
+    prov: parse_prov_initial()
+  ) {
+    ParseExprRejected { diagnostics: _, table: _ } => false
+    ParseExprAccepted { remaining: remaining, captured: _, diagnostics: _, prov: prov, table: _ } =>
+      (length(xs: remaining) == 1) && (parse_prov_frame_len(prov: prov) == 0)
+  }
+}
+
+test fn grammar_lookahead_wrong_class_rejects() -> Bool {
+  let tokens = [pcp_token(token_class: ^pcp_a)]
+  match parse_expr(
+    expr: Lookahead { pattern: term(token_class: ^pcp_b) },
+    tokens: tokens,
+    all_tokens: tokens,
+    root: pcp_root(),
+    table: parse_table_empty(),
+    prov: parse_prov_initial()
+  ) {
+    ParseExprRejected { diagnostics: _, table: _ } => true
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: _ } => false
+  }
+}
