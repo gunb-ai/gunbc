@@ -2,14 +2,19 @@ module v2.test.tokenize.lex_rule_dispatch
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// FIRST-CHARACTER DISPATCH MUST CHOOSE WHAT TRYING EVERY RULE CHOSE. At every suffix of the specimen
+// FIRST-CHARACTER DISPATCH MUST CHOOSE WHAT TRYING EVERY RULE CHOSE. At the head of each specimen
 // the longest-match fold over the dispatched candidates is compared with the same fold over every
 // compiled rule in declared order -- the pre-dispatch behaviour, which lex_try_rules still computes
-// when handed the full list. The specimen is .dag text chosen to reach each kind of FIRST set: keyword
-// rules against identifiers that begin with a keyword, one- and two-character operators that share a
-// first character, the empty scrutinee literal (nullable), character-class rules (whitespace, digits,
-// identifiers), a string literal with an escape and non-ASCII text, a line comment and an atom.
-data lex_rule_dispatch_specimen: String = "module m.spec\n\n// a comment -> not => tokens\nfn iffy(fnord: Int, in_x: Int) -> Int {\n  let s = \"esc \\\" λμ done\"\n  if fnord >= 10 && in_x != 0 || fnord <= 2 { fnord |> g } else { match in_x { 0 => ^atom_a  _ => fnord % 3 } }\n}\n"
+// when handed the full list. One short specimen per kind of FIRST set, rather than every suffix of a
+// long one (which cost ~831k eval steps and was refused at enrolment): a keyword against an
+// identifier that begins with it; operators that share a first character with a shorter one; the
+// empty scrutinee literal, which is nullable and so reachable from every character; the character
+// classes (identifier, digits, whitespace); a string literal carrying non-ASCII text; a line
+// comment; an atom; a character no rule starts on; and the empty source, where every rule is tried.
+data lex_rule_dispatch_specimens: List<String> = [
+  "iffy", "if x", "fnord", "->", "-1", "=>", "==", "= ", "|>", "||", "| ", "!=", "!x",
+  "\"λ\"", "// c", "^a", "42", " \n", "{", "λ", ""
+]
 
 type LexDispatchCensus {
   positions: Int
@@ -30,35 +35,14 @@ fn lex_dispatch_census_step(census: LexDispatchCensus, dispatch: LexRuleDispatch
   }
 }
 
-type LexDispatchWalk {
-  census: LexDispatchCensus
-  suffix: String
-}
-
-fn lex_dispatch_census(dispatch: LexRuleDispatch, source: String) -> LexDispatchCensus {
-  let walked = fold_list(
-    xs: source,
-    empty: LexDispatchWalk {
-      census: LexDispatchCensus { positions: 0, pruned_positions: 0, disagreements: 0 },
-      suffix: source
-    },
-    cons: fn(acc, _) {
-      LexDispatchWalk {
-        census: lex_dispatch_census_step(census: acc.census, dispatch: dispatch, suffix: acc.suffix),
-        suffix: match string_tail(s: acc.suffix) {
-          TailFound { tail: rest } => rest
-          TailAbsent => acc.suffix
-        }
-      }
+fn lex_dispatch_census_dag_specimens() -> LexDispatchCensus {
+  let dispatch = lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: dag_lex_rules().rules))
+  fold_list(
+    xs: lex_rule_dispatch_specimens,
+    empty: LexDispatchCensus { positions: 0, pruned_positions: 0, disagreements: 0 },
+    cons: fn(acc, specimen) {
+      lex_dispatch_census_step(census: acc, dispatch: dispatch, suffix: specimen)
     }
-  )
-  walked.census
-}
-
-fn lex_dispatch_census_dag_specimen() -> LexDispatchCensus {
-  lex_dispatch_census(
-    dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: dag_lex_rules().rules)),
-    source: lex_rule_dispatch_specimen
   )
 }
 
@@ -74,11 +58,11 @@ fn lex_dispatch_census_disagreements(census: LexDispatchCensus) -> Int {
   census.disagreements
 }
 
-// Non-vacuous: every character position was checked, and dispatch actually removed candidates at
-// some of them -- a dispatch that returned every rule everywhere would agree trivially.
+// Non-vacuous: every specimen was checked, and dispatch actually removed candidates at some of them --
+// a dispatch that returned every rule everywhere would agree trivially.
 test fn lex_rule_dispatch_agrees_with_trying_every_rule() -> Bool {
-  let census = lex_dispatch_census_dag_specimen()
-  (lex_dispatch_census_positions(census: census) == length(xs: lex_rule_dispatch_specimen))
+  let census = lex_dispatch_census_dag_specimens()
+  (lex_dispatch_census_positions(census: census) == length(xs: lex_rule_dispatch_specimens))
     && (lex_dispatch_census_pruned_positions(census: census) > 0)
     && (lex_dispatch_census_disagreements(census: census) == 0)
 }

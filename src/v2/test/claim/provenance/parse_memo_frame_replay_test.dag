@@ -8,40 +8,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // that mechanism: the same tokens under the same prepared grammar, once with the table's
 // materialization Memoize (hits happen) and once with Recompute (the door refuses every store, so
 // no hit can happen), must give every minted node in the tree a span-index entry, and the
-// pre-order list of their textual-locus resolutions must be identical. A replay that drops an id the returned subtree
-// references reds on the entry check; one that adopts the wrong event reds on the comparison.
+// pre-order list of their textual-locus resolutions must be identical. A replay that drops an id the
+// returned subtree references reds on the entry check; one that adopts the wrong event reds on the
+// comparison.
 //
-// The specimen is real .dag under the real .dag grammar so the parser backtracks through choices,
-// optionals and repeats with memo entries surviving the rollback -- the shape a hand grammar with
-// one production cannot reach.
-data parse_memo_frame_replay_source: String = "module c2.specimen\n\nfn f(a: Int, b: Int) -> Int {\n  if a < b {\n    g(x: a, y: [a, b])\n  } else {\n    match b {\n      0 => a\n      _ => h(z: b)\n    }\n  }\n}\n\nfn g(x: Int, y: List<Int>) -> Int { x }\nfn h(z: Int) -> Int { z }\n"
+// Both specimens are hand grammars small enough for the floor's per-witness step budget. The first
+// was a real .dag specimen under the real .dag grammar, which cost ~489k eval steps and was refused
+// at enrolment; what it uniquely exercised -- a memo hit whose frame holds a NESTED memoized frame --
+// is built directly below.
 
 type ParseMemoFrameReplayRun {
   tree: Node
   index: SpanIndex
   hits: Int
-}
-
-fn parse_memo_frame_replay_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
-  let lm = dag_language_model()
-  match tokenize(text: parse_memo_frame_replay_source, file: ^parse_memo_frame_replay_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: stream, diagnostics: _ } =>
-      match prepare_grammar(grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: prepared, diagnostics: _ } =>
-          match prepared {
-            PreparedVoidGrammar => optional_absent()
-            PreparedModeled { modeled: modeled } =>
-              parse_memo_frame_replay_run_modeled(
-                tokens: token_stream_remaining(stream: stream),
-                validated: modeled.validated,
-                analysis: modeled.analysis,
-                materialization: materialization
-              )
-          }
-      }
-  }
 }
 
 fn parse_memo_frame_replay_run_modeled(
@@ -134,28 +113,6 @@ fn parse_memo_frame_replay_loci(run: ParseMemoFrameReplayRun) -> Optional<List<O
   )
 }
 
-test fn parse_memo_hit_resolves_every_node_like_a_memo_free_parse() -> Bool {
-  match parse_memo_frame_replay_run(materialization: Memoize) {
-    Absent => false
-    Present { value: warm } =>
-      match parse_memo_frame_replay_run(materialization: Recompute) {
-        Absent => false
-        Present { value: cold } =>
-          match parse_memo_frame_replay_loci(run: warm) {
-            Absent => false
-            Present { value: warm_loci } =>
-              match parse_memo_frame_replay_loci(run: cold) {
-                Absent => false
-                Present { value: cold_loci } =>
-                  (parse_memo_frame_replay_hits(run: warm) > 0)
-                    && (parse_memo_frame_replay_hits(run: cold) == 0)
-                    && (length(xs: warm_loci) > 0)
-                    && (warm_loci == cold_loci)
-              }
-          }
-      }
-  }
-}
 
 // THE ACCEPTED ARTIFACT CARRIES ONLY ACCEPTED-PATH PROVENANCE. A memo-free parse discards a failed
 // branch's provenance with the branch, so its index holds exactly the entries minted on the accepted
@@ -269,6 +226,95 @@ test fn parse_memo_hit_carries_no_abandoned_path_provenance() -> Bool {
                     && (parse_memo_frame_replay_hits(run: free_run) == 0)
                     && (memo_loci == free_loci)
                     && (parse_memo_frame_replay_entry_count(run: memo_run) == parse_memo_frame_replay_entry_count(run: free_run))
+              }
+          }
+      }
+  }
+}
+
+// A HIT WHOSE FRAME HOLDS A NESTED MEMOIZED FRAME.
+//
+//   S = X z | X y      X = W b      W = a      tokens: a b y
+//
+// Alternative one parses X at position 0 -- a memo miss, inside which W is a memo miss too, so X's
+// stored frame holds W's frame as a FrameNested -- and fails at z. Alternative two starts again from
+// the rolled-back provenance and hits X's entry; the ids of W's nodes are reachable only through the
+// nested frame. A replay that skips nested frames loses them and reds on the entry check.
+fn nested_frame_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^nested_frame_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^nested_frame_s,
+        expression: Choice {
+          left: Sequence {
+            left: Nonterminal { production: ^nested_frame_x },
+            right: abandoned_terminal(token_class: ^nested_tok_z)
+          },
+          right: Sequence {
+            left: Nonterminal { production: ^nested_frame_x },
+            right: abandoned_terminal(token_class: ^nested_tok_y)
+          }
+        },
+        emitted: grammar_atom(identity: ^nested_frame_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^nested_frame_x,
+        expression: Sequence {
+          left: Nonterminal { production: ^nested_frame_w },
+          right: abandoned_terminal(token_class: ^nested_tok_b)
+        },
+        emitted: grammar_atom(identity: ^nested_frame_x)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^nested_frame_w,
+        expression: abandoned_terminal(token_class: ^nested_tok_a),
+        emitted: grammar_atom(identity: ^nested_frame_w)
+      },
+      tail: Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn nested_frame_tokens() -> List<Token> {
+  Cons { head: abandoned_token(token_class: ^nested_tok_a, offset: 0),
+  tail: Cons { head: abandoned_token(token_class: ^nested_tok_b, offset: 1),
+  tail: Cons { head: abandoned_token(token_class: ^nested_tok_y, offset: 2),
+  tail: Empty } } }
+}
+
+fn nested_frame_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
+  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^nested_frame_grammar_contract)
+  match grammar_validate_for_parse(root: nested_frame_root(), at: contract_locus) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: validated, diagnostics: _ } =>
+      parse_memo_frame_replay_run_modeled(
+        tokens: nested_frame_tokens(),
+        validated: validated,
+        analysis: compute_grammar_first_analysis(root: validated.root),
+        materialization: materialization
+      )
+  }
+}
+
+test fn parse_memo_hit_replays_nested_frames_like_a_memo_free_parse() -> Bool {
+  match nested_frame_run(materialization: Memoize) {
+    Absent => false
+    Present { value: warm } =>
+      match nested_frame_run(materialization: Recompute) {
+        Absent => false
+        Present { value: cold } =>
+          match parse_memo_frame_replay_loci(run: warm) {
+            Absent => false
+            Present { value: warm_loci } =>
+              match parse_memo_frame_replay_loci(run: cold) {
+                Absent => false
+                Present { value: cold_loci } =>
+                  (parse_memo_frame_replay_hits(run: warm) > 0)
+                    && (parse_memo_frame_replay_hits(run: cold) == 0)
+                    && (length(xs: warm_loci) > 0)
+                    && (warm_loci == cold_loci)
               }
           }
       }
