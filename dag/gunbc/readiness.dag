@@ -9,38 +9,9 @@ module gunbc.readiness
 // to the transaction caller.
 // CONSUMERS: gunbc.live_deploy.readiness live_deploy_service_ready_once,
 // gunbc.dashboard_provider_readiness observe_dashboard_provider_readiness.
+// Callers match the coproduct; this module does not re-project arms to Bool.
 
 type Readiness<Evidence, PendingCause, RefusalCause>
   = Ready { evidence: Evidence }
   | Pending { cause: PendingCause }
   | Refused { cause: RefusalCause }
-
-fn readiness_is_ready<Evidence, PendingCause, RefusalCause>(
-  r: Readiness<Evidence, PendingCause, RefusalCause>,
-) -> Bool {
-  match r {
-    Ready { evidence: _ } => true
-    Pending { cause: _ } => false
-    Refused { cause: _ } => false
-  }
-}
-
-fn readiness_is_pending<Evidence, PendingCause, RefusalCause>(
-  r: Readiness<Evidence, PendingCause, RefusalCause>,
-) -> Bool {
-  match r {
-    Ready { evidence: _ } => false
-    Pending { cause: _ } => true
-    Refused { cause: _ } => false
-  }
-}
-
-fn readiness_is_refused<Evidence, PendingCause, RefusalCause>(
-  r: Readiness<Evidence, PendingCause, RefusalCause>,
-) -> Bool {
-  match r {
-    Ready { evidence: _ } => false
-    Pending { cause: _ } => false
-    Refused { cause: _ } => true
-  }
-}

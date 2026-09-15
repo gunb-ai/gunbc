@@ -56,9 +56,9 @@ import gunbc.host_convergence_census {
 // Control 8 is structurally impossible on the production observers: they
 // return gunbc.readiness Readiness, which has no inhabitant in
 // Reconciliation or ReconciledEffect and no conversion between them.
-// DISSOLVED with the climb (§4b(4)): holding the wall only at
-// live_deploy_service_ready_once type arguments ServiceReadyApplyEffect /
-// ServiceReadyEvidence, and expressing provider readiness in the launcher
+// DISSOLVED with the climb (§4b(4)): holding the wall only by spelling the
+// observer as a Reconciliation whose type arguments were a readiness
+// effect and evidence, and expressing provider readiness in the launcher
 // as a five-arm status coproduct beside apply. Discriminating REDs remain
 // enrolled (test.claim.readiness_algebra_witness; live_deploy readiness
 // pending-vs-refused). Isolated compile_fixture still cannot import live

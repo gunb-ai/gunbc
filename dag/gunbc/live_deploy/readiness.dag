@@ -20,9 +20,7 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_cadence,
   live_deploy_service_ready_poll_max_attempts,
   live_deploy_service_ready_endpoint_authority,
-  UnitDiagnosis,
   UnitDiagnosisUnavailable,
-  UnitDiagnosisCaptured,
 }
 import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
@@ -83,18 +81,6 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type ServiceReadyEvidence {
   body: String
-}
-
-type ServiceReadyApplyEffect {
-  unit: NonEmptyStr
-  endpoint: NonEmptyStr
-}
-
-fn service_ready_apply_effect_for_deploy(spec: DeploymentSpec) -> ServiceReadyApplyEffect {
-  ServiceReadyApplyEffect {
-    unit: spec.service.unit_name,
-    endpoint: live_deploy_service_ready_endpoint_authority,
-  }
 }
 
 type ServiceReadinessPending

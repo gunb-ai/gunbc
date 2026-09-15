@@ -8,7 +8,7 @@ import gunbc.roadmap_site_surface_expect {
   healthz_surface_tolerates_transport_trailing_lf,
   healthz_route_json_ok,
 }
-import gunbc.readiness { readiness_is_ready }
+import gunbc.readiness { Ready, Pending, Refused }
 import std.realization_reconcile { ReadObserved, ReadAbsent }
 import gunbc.live_deploy.readiness {
   HealthzBodyRead,
@@ -107,14 +107,16 @@ fn reconcile_grounds_healthy_fixture_read_for_bundle(
 ) -> Bool {
   match show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision) {
     ReadObserved { value: read } =>
-      readiness_is_ready(
-        r: observe_service_readiness_from_healthz(
-          read: read,
-          bundle: bundle,
-          expected_revision: release_revision,
-          expected_surface_identity: bundle.bundle_identity,
-        )
-      )
+      match observe_service_readiness_from_healthz(
+        read: read,
+        bundle: bundle,
+        expected_revision: release_revision,
+        expected_surface_identity: bundle.bundle_identity,
+      ) {
+        Ready { evidence: _ } => true
+        Pending { cause: _ } => false
+        Refused { cause: _ } => false
+      }
     ReadAbsent { reason: _ } => false
   }
 }
@@ -123,12 +125,14 @@ fn service_ready_once_converges_on_healthy_fixture_for_bundle(
   bundle: RoadmapSiteSurfaceBundle,
   release_revision: CommitSha,
 ) -> Bool {
-  readiness_is_ready(
-    r: live_deploy_service_ready_once_for_bundle(
-      bundle: bundle,
-      release_revision: release_revision,
-    )
-  )
+  match live_deploy_service_ready_once_for_bundle(
+    bundle: bundle,
+    release_revision: release_revision,
+  ) {
+    Ready { evidence: _ } => true
+    Pending { cause: _ } => false
+    Refused { cause: _ } => false
+  }
 }
 
 // The revision arrives from the caller, and that is why this module declares no sha. Readiness compares
