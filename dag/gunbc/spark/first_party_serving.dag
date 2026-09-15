@@ -653,23 +653,43 @@ fn spark_telemetry_unread_obligation(cause: SparkTelemetryUnreadCause) -> NonEmp
   }
 }
 
+// THE IDENTITY JOIN PRECEDES INSPECT ATTRIBUTION. Inspect of a container_id is not a reading of
+// which declared configuration answered: a GLM engine and a pair-serving engine can share a
+// container Id in a fixture, and attributing pair-serving telemetry to the GLM readback is the
+// inheritance this module withdrew. spark_serving_usage_stats_unread_cause must refuse
+// TelemetryReportedPathDiffers (and the other unresolved identity arms) before
+// spark_serving_usage_stats_from_inspect may Absent the path.
 fn spark_serving_usage_stats_standing(
   realization: SparkServingRealization,
   inspect: ServingContainerInspectStdout,
 ) -> VllmUsageStatsLaunchStanding {
-  match inspect {
-    InspectStdoutUnread { obligation: o } =>
-      UsageStatsLaunchUnread { obligation: o }
-    InspectStdoutRead { stdout: stdout } =>
-      match realization.incarnation {
-        EndpointIncarnationUnobserved { obligation: o } =>
+  let cause = spark_serving_usage_stats_unread_cause(realization: realization)
+  match cause {
+    TelemetryReadbackUnresolved =>
+      UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+    TelemetryDeclaredPathUnpinned =>
+      UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+    TelemetryReportedPathDiffers { reported: _, declared: _ } =>
+      UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+    TelemetryNoHostMembership =>
+      UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+    TelemetryHostsWithoutObservedLanes =>
+      UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } =>
+      match inspect {
+        InspectStdoutUnread { obligation: o } =>
           UsageStatsLaunchUnread { obligation: o }
-        EndpointIncarnationObserved { observation: obs } =>
-          spark_serving_usage_stats_from_inspect(
-            launch: obs.launch,
-            inspect_stdout: stdout,
-            marker: spark_usage_stats_marker_unread(),
-          )
+        InspectStdoutRead { stdout: stdout } =>
+          match realization.incarnation {
+            EndpointIncarnationUnobserved { obligation: o } =>
+              UsageStatsLaunchUnread { obligation: o }
+            EndpointIncarnationObserved { observation: obs } =>
+              spark_serving_usage_stats_from_inspect(
+                launch: obs.launch,
+                inspect_stdout: stdout,
+                marker: spark_usage_stats_marker_unread(),
+              )
+          }
       }
   }
 }

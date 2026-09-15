@@ -28,7 +28,7 @@ import gunbc.spark.vllm_serving_launch {
 }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
 import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.provider_admission { ProviderUseAdmitted, ProviderUseDenied }
+import product.fabric.provider_admission { ProviderUseAdmitted, ProviderUseDenied, refusal_reason }
 import product.fabric.provider_route { ProviderPathAbsent, ProviderPathUnread, ProviderPathLocated }
 import gunbc.spark.serving_usage_stats_observe {
   spark_serving_usage_stats_from_inspect, spark_usage_stats_inspect_unread,
@@ -393,6 +393,35 @@ fn t_realization_observed() -> SparkServingRealization {
   }
 }
 
+fn t_foreign_realization_observed() -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: ModelsRouteRead {
+      readback: vllm_models_route_readback(
+        served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+        configured_model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+        max_model_len: token_count(count: 1048576),
+      ),
+    },
+    endpoint: vllm_endpoint_process_launch(
+      group: FabricGroupA,
+      endpoint: "http://10.0.0.1:8000" as NonEmptyStr,
+      process_start_field: "1" as NonEmptyStr,
+    ),
+    incarnation: EndpointIncarnationObserved {
+      observation: endpoint_incarnation_observation(
+        endpoint: vllm_endpoint_process_launch(
+          group: FabricGroupA,
+          endpoint: "http://10.0.0.1:8000" as NonEmptyStr,
+          process_start_field: "1" as NonEmptyStr,
+        ),
+        launch: t_launch(),
+        receipt: "test.claim.spark.spark_serving_usage_stats_observe_witness_test" as ObservationReceiptRef,
+      ),
+    },
+  }
+}
+
 test fn disabled_launch_is_an_absent_telemetry_path() -> Bool {
   match spark_usage_stats_telemetry_path(
     realization: t_realization_observed(),
@@ -429,6 +458,20 @@ test fn first_party_admission_reaches_admitted_when_usage_stats_are_disabled() -
   ) {
     ProviderUseAdmitted { permit: _ } => true
     ProviderUseDenied { decision: _, cause: _ } => false
+  }
+}
+
+test fn a_foreign_readback_does_not_admit_on_a_disabled_inspect() -> Bool {
+  match spark_first_party_admission(
+    realization: t_foreign_realization_observed(),
+    inspect: InspectStdoutRead {
+      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
+    },
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+  ) {
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "route facts incomplete"
   }
 }
 
@@ -510,6 +553,7 @@ fn observe_witness_main() -> ProcessExit {
     && empty_env_list_is_valid_empty()
     && disabled_launch_is_an_absent_telemetry_path()
     && first_party_admission_reaches_admitted_when_usage_stats_are_disabled()
+    && a_foreign_readback_does_not_admit_on_a_disabled_inspect()
     && marker_unread_without_disable_is_unread_never_located()
     && canonical_enabled_is_refused_never_located()
     && non_default_destination_cannot_use_default_enrollment()
