@@ -13,7 +13,7 @@ import std.measure { token_count_value, millisecond_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire, vllm_memory_request_argv, vllm_prefix_caching_argv, ChunkedPrefillRequested, ChunkedPrefillNotRequested }
+import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire, vllm_memory_request_argv, vllm_memory_request_key, vllm_prefix_caching_argv, ChunkedPrefillRequested, ChunkedPrefillNotRequested }
 import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory_name }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned,
@@ -379,19 +379,30 @@ type DeclaredUnitDigestStanding
 
 fn spark_pair_snapshot_inputs_wire(snapshot: ModelSnapshotDesired) -> NonEmptyStr {
   match snapshot {
-    ModelSnapshotPinned { identity: i, repo: _, revision: r, placement: _, revision_provenance: _ } =>
-      join([i as String, "@", r as String], "") as NonEmptyStr
-    ModelSnapshotUnpinned { identity: i, repo: _, cause: c } =>
-      join([i as String, ":unpinned:", c as String], "") as NonEmptyStr
+    ModelSnapshotPinned { identity: i, repo: r, revision: rev, placement: _, revision_provenance: _ } =>
+      join([i as String, "@", rev as String, "/", hub_repo_cache_directory_name(repo: r) as String], "") as NonEmptyStr
+    ModelSnapshotUnpinned { identity: i, repo: r, cause: c } =>
+      join([i as String, ":unpinned:", c as String, "/", hub_repo_cache_directory_name(repo: r) as String], "") as NonEmptyStr
   }
 }
 
+// THE IDENTITY IS EVERY DECLARED INPUT THE HEAD UNIT TEXT READS, not a subset of convenient
+// knobs. Lookup treats a stored identity equal to this value as "the bytes still match current
+// desire"; omitting a field that the renderer consults would keep a stale artifact looking current
+// (DESIGN §5: refuse, never widen). Serve argv reads executor backend, kv dtype, memory request,
+// prefix caching, and prefill scheduling; create/lifecycle reads the lane's netdev, RDMA device,
+// and rail address. Those belong here with tp/seqs/len and the snapshot path.
 fn spark_pair_engine_inputs_wire(args: VllmEngineArgs) -> NonEmptyStr {
   join([
     "tp", to_string(args.tensor_parallel_size),
-    "seqs", to_string(args.max_num_seqs),
-    "len", to_string(token_count_value(t: args.max_model_len)),
-  ], ":") as NonEmptyStr
+    "|seqs", to_string(args.max_num_seqs),
+    "|len", to_string(token_count_value(t: args.max_model_len)),
+    "|backend", vllm_distributed_executor_backend_wire(backend: args.distributed_executor_backend) as String,
+    "|kv", vllm_kv_cache_dtype_wire(request: args.kv_cache_dtype) as String,
+    "|mem", vllm_memory_request_key(r: args.memory_request),
+    "|prefix", join(vllm_prefix_caching_argv(r: args.prefix_caching_request), ","),
+    "|prefill", join(spark_pair_prefill_scheduling_argv(args: args), ","),
+  ], "") as NonEmptyStr
 }
 
 fn spark_pair_lane_inputs_wire(lane: FabricLaneObserved) -> NonEmptyStr {
@@ -399,6 +410,9 @@ fn spark_pair_lane_inputs_wire(lane: FabricLaneObserved) -> NonEmptyStr {
     lane.spark_hostname as String,
     ":cage", to_string(lane.cage),
     ":lane", to_string(lane.lane),
+    ":netdev", lane.leg_netdev as String,
+    ":rdma", lane.leg_rdma_device as String,
+    ":rail", render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String,
   ], "") as NonEmptyStr
 }
 
