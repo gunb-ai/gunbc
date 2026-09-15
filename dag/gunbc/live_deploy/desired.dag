@@ -1,9 +1,9 @@
 module gunbc.live_deploy.desired
 
 import std.types { String, NonEmptyStr, List, Bool }
-import std.dissolution { DissolutionCondition, retires_dissolution, bound_dissolution }
+import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 import std.keyed_row { KeyedRow, keyed_row_find }
 import std.keyed_roster {
   keyed_roster_build,
@@ -283,27 +283,22 @@ data srv1_production_wrapper_frontier: FrontierRow = frontier_row_decl(
   dissolution: srv1_production_wrapper_dissolution,
 )
 
-// APPLY-SCRIPT PATH DISCRIMINATION IS NOT PROVEN AT THE FLOOR. Two independent
-// witnesses that emit an apply script both measured ~200k eval steps against a
-// 72300 new-witness budget (run 34941358064: selecting_lab_changes_emitted_apply_bytes
-// 227829, apply_script_stays_within_ci_runner_grants 205688). Emission itself is
-// the cost; shrinking the plan does not close a 3x gap, and widening the budget
-// to green this program is widening a check. The consumer that closes it is
-// CONVERGENCE-ONE C8: a wet lab apply that runs real apply scripts on a real host.
-data apply_script_path_discrimination_unproven_dissolution: DissolutionCondition = bound_dissolution(
-  ref: DeclarationRef {
-    module_path: "gunbc.live_deploy.apply",
-    decl_name: "live_deploy_apply_lab_wet",
-    field: WholeDeclaration,
-  }
+// RESIDUAL, NOT THE WHOLE PATH CLAIM. selecting_lab_changes_emitted_unit_bytes
+// discriminates every path the serve unit names (WorkingDirectory repo_root, slice,
+// systemd unit path, and the negative that the lab unit does not name production's
+// dispatch-worktree root). What the floor cannot emit is the apply script, so the
+// unproven class is only paths that appear in that script and never in the unit:
+// CreateRoot owned directory roots (dispatch worktree, attempt-state, compute,
+// fabric event-log) and the other install paths the script writes (source tree,
+// tree-remote unit, publication spool, tailscale route member, credential env,
+// belt/publication timers). Apply-script emission exceeds the new-witness eval
+// budget (run 34941358064); widening that budget is not this cut.
+data apply_script_only_path_discrimination_unproven_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a CONVERGENCE-ONE C8 wet receipt that exhibits lab and production apply-script paths as disjoint on the residual class — the CreateRoot owned directory roots and other install paths the serve unit never names. The capability is that receipt, not a wet entry point. A declaration named live_deploy_apply_lab_wet, a dispatch of a lab apply, or any apply that does not compare those script paths against production's, is not this trigger and does not retire this row. SUFFICIENT FOR: an executed C8 receipt whose evidence is the two apply scripts, or the host paths they created, showing those residual path classes pairwise disjoint. Nothing less is sufficient." as NonEmptyStr
 )
 
-data apply_script_path_discrimination_unproven: FrontierRow = frontier_row_decl(
-  ref: DeclarationRef {
-    module_path: "gunbc.live_deploy.apply",
-    decl_name: "live_deploy_apply_lab_wet",
-    field: WholeDeclaration,
-  },
-  reason: "apply-script path discrimination is unproven at the floor because emission exceeds the new-witness eval budget; the wet C8 lab proof is the consumer that closes it",
-  dissolution: apply_script_path_discrimination_unproven_dissolution,
+data apply_script_only_path_discrimination_unproven: FrontierRow = frontier_row_path(
+  path: "gunbc.live_deploy.emit.live_deploy_apply_script_for",
+  reason: "paths that appear in the apply script but not in the serve unit are unproven at the floor; every path the unit names is already discriminated there",
+  dissolution: apply_script_only_path_discrimination_unproven_dissolution,
 )

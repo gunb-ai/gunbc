@@ -3,6 +3,7 @@ module test.claim.live_deploy.desired_roster
 import std.types { Bool, String, Int, List }
 import std.dissolution {
   dissolution_status,
+  dissolution_description,
   DissolutionPending,
   DissolutionFired,
   DissolutionUnbound,
@@ -28,8 +29,8 @@ import gunbc.live_deploy.desired {
   spec_owned_identities,
   srv1_production_wrapper_dissolution,
   srv1_production_wrapper_frontier,
-  apply_script_path_discrimination_unproven,
-  apply_script_path_discrimination_unproven_dissolution,
+  apply_script_only_path_discrimination_unproven,
+  apply_script_only_path_discrimination_unproven_dissolution,
 }
 import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path_for }
 import gunbc.live_deploy.spec {
@@ -141,11 +142,10 @@ test fn same_host_production_and_lab_do_not_share_port_unit_or_handler() -> Bool
     && !(live.service.repo_root == lab.service.repo_root)
 }
 
-// UNIT BYTES, NOT APPLY-SCRIPT BYTES. Apply-script emission exceeds the new-witness
-// eval budget (~200k steps vs 72300); this claim does not pretend it proved the script.
-// What it does prove: lab and production emit different serve units, lab names a different
-// handler and WorkingDirectory, and the lab unit does not name production's handler,
-// unit path, slice, repo root, or dispatch-worktree root.
+// UNIT BYTES. Every path the serve unit names is discriminated here, including
+// WorkingDirectory, slice, systemd unit path, and the negative that the lab unit
+// does not name production's dispatch-worktree root. Residual apply-script-only
+// paths live on apply_script_only_path_discrimination_unproven, not in this claim.
 test fn selecting_lab_changes_emitted_unit_bytes() -> Bool {
   let live_row = srv1_production_desired_deployment()
   let lab_row = srv1_lab_desired_deployment()
@@ -188,14 +188,6 @@ fn production_wrapper_ref() -> DeclarationRef {
   }
 }
 
-fn c8_lab_wet_ref() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "gunbc.live_deploy.apply",
-    decl_name: "live_deploy_apply_lab_wet",
-    field: WholeDeclaration,
-  }
-}
-
 test fn srv1_production_wrapper_dissolution_is_pending_while_the_wet_entry_exists() -> Bool {
   match dissolution_status(condition: srv1_production_wrapper_dissolution, present_decls: [production_wrapper_ref()]) {
     DissolutionPending => true
@@ -210,18 +202,16 @@ test fn srv1_production_wrapper_dissolution_is_pending_while_the_wet_entry_exist
     && !(srv1_production_wrapper_frontier.reason as String == "")
 }
 
-test fn apply_script_path_discrimination_is_unproven_until_c8_lab_wet_appears() -> Bool {
-  match dissolution_status(condition: apply_script_path_discrimination_unproven_dissolution, present_decls: []) {
-    DissolutionPending => true
+test fn apply_script_only_path_discrimination_stays_unbound_until_a_disjoint_script_receipt() -> Bool {
+  let desc = dissolution_description(condition: apply_script_only_path_discrimination_unproven_dissolution)
+  match dissolution_status(condition: apply_script_only_path_discrimination_unproven_dissolution, present_decls: []) {
+    DissolutionUnbound => true
+    DissolutionPending => false
     DissolutionFired => false
-    DissolutionUnbound => false
   }
-    && match dissolution_status(condition: apply_script_path_discrimination_unproven_dissolution, present_decls: [c8_lab_wet_ref()]) {
-      DissolutionFired => true
-      DissolutionPending => false
-      DissolutionUnbound => false
-    }
-    && !(apply_script_path_discrimination_unproven.reason as String == "")
+    && !(apply_script_only_path_discrimination_unproven.reason as String == "")
+    && string_contains(s: desc, pattern: "SUFFICIENT FOR")
+    && string_contains(s: desc, pattern: "apply-script paths as disjoint")
 }
 
 test fn production_and_lab_receipt_paths_and_instance_ids_differ() -> Bool {
