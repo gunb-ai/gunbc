@@ -555,10 +555,6 @@ fn spark_pair_head_unit_declared_digest_among(roster: List<SparkPairDeclaredUnit
   }
 }
 
-fn spark_pair_head_unit_declared_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
-  spark_pair_head_unit_declared_digest_among(roster: spark_pair_declared_unit_digests(), group: group)
-}
-
 // Which unit a host carries, from the realized pairs: the head unit on a head, the worker unit on a
 // worker, nothing on a host no realized pair names.
 fn spark_pair_unit_name_for_host(host: HostIdentity) -> NonEmptyStr? {
