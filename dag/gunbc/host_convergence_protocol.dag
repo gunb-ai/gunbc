@@ -52,11 +52,11 @@ import gunbc.host_convergence_census {
 // provider readiness through this projection.
 // C0 left ensure_decide and observe_executable as inline cites; those two
 // have no named census accessor, so the bind holds one decl_ref each.
-// NEXT-RUNG (controls 1 and 8): a compile instrument that can import
-// std.goal_assessment inspect_goal and std.realization_reconcile
-// ReconciledEffect against live_deploy readiness, so extra Goal on
-// observe and readiness-as-ReconciledEffect are authorable against those
-// authorities. Isolated compile_fixture cannot import them.
+// NEXT-RUNG (control 1): a compile instrument that imports inspect_goal.
+// Control 8 holds only at live_deploy_service_ready_once, by type
+// arguments ServiceReadyApplyEffect / ServiceReadyEvidence. The generic
+// projection has no readiness field; C5 owns the Ready/Pending/Refused
+// algebra. Isolated compile_fixture cannot import live types.
 
 data ensure_decide_id: DeclarationRef = decl_ref(
   module_path: "gunbc.ensure",
