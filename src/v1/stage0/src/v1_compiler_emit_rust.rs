@@ -19857,9 +19857,11 @@ pub fn emit_tco_param(
                 v1_rt::concat(
                     "mut ".to_string(),
                     crate::v1_compiler_emit::emit_ident(
-                        crate::v1_std_core::param_node_name_at(
-                            param.clone(),
-                            source_indices.clone(),
+                        crate::v1_compiler_emit::tco_loop_slot_name(
+                            crate::v1_std_core::param_node_name_at(
+                                param.clone(),
+                                source_indices.clone(),
+                            ),
                         ),
                         RenderTarget::Rust,
                     ),
@@ -32489,7 +32491,15 @@ pub fn emit_typed_tco_body(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    "loop {\n".to_string(),
+                    v1_rt::concat(
+                        "loop {\n".to_string(),
+                        crate::v1_compiler_emit::tco_loop_iteration_lets(
+                            params.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            (depth.clone() + 1),
+                            RenderTarget::Rust,
+                        ),
+                    ),
                     crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 ),
                 inner.clone(),
@@ -33596,7 +33606,9 @@ pub fn emit_typed_tco_reassign(
             let mut __result = Vec::new();
             for p in filtered_params.iter().cloned() {
                 __result.push(crate::v1_compiler_emit::emit_ident(
-                    crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
+                    crate::v1_compiler_emit::tco_loop_slot_name(
+                        crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
+                    ),
                     RenderTarget::Rust,
                 ));
             }

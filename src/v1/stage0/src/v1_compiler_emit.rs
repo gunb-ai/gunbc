@@ -3600,6 +3600,42 @@ pub fn tco_reassign_core(
     }
 }
 
+pub fn tco_loop_slot_name(param_name: String) -> String {
+    v1_rt::concat("__tco_loop_".to_string(), param_name)
+}
+
+pub fn tco_loop_iteration_lets(
+    params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    depth: i64,
+    target: RenderTarget,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in params.iter().cloned() {
+            let n = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
+            __result.push(v1_rt::concat(
+                crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
+                v1_rt::concat(
+                    "let ".to_string(),
+                    v1_rt::concat(
+                        emit_ident(n.clone(), target.clone()),
+                        v1_rt::concat(
+                            " = ".to_string(),
+                            v1_rt::concat(
+                                emit_ident(tco_loop_slot_name(n.clone()), target.clone()),
+                                ".clone();\n".to_string(),
+                            ),
+                        ),
+                    ),
+                ),
+            ));
+        }
+        __result
+    })
+    .join(&"".to_string())
+}
+
 pub fn emit_shared_tco_expr(
     mut frame: Rc<TcoFrame>,
     mut fn_name: String,
