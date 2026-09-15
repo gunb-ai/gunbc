@@ -1,4 +1,4 @@
-module test.claim.tco_tail_call_assigns_every_loop_slot_witness
+module v1.tests.claim.tco_tail_call_assigns_every_loop_slot_witness
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go }
 import v1.compiler.emit {
@@ -8,11 +8,21 @@ import v1.compiler.emit {
 import v1.compiler.emit_core_support { language_spec }
 import v2.std.logic { Bool }
 
-// Floor control for tco_identity_passthrough_elision_after_slot_local_split. The Rust #[test]
-// tco_tail_call_assigns_every_loop_slot is local diligence (cargo test is off the merge path).
-// Restoring the identity filter in production must red tco_rust_emit_assigns_every_loop_slot
-// (missing __tco_loop_acc dest). tco_identity_elision_mutant_drops_same_named_slot is the
-// discriminator that keeps the filter out of production.
+// LOCAL DILIGENCE for tco_identity_passthrough_elision_after_slot_local_split. It lives here
+// because the required floor's source roots are `dag` and `src/v2` only (witnesses.yml), and
+// v1.compiler.emit is not in that closure — a dag/test/claim import of it refuses unresolved.
+// Widening the floor to import v1 is a job-roster change and is not this file.
+//
+// THIS FILE IS NOT THE ENROLLED WALL. The merge-path wall for this class is the required build
+// lane compiling the regenerated seed and running it over the corpus: a restored identity
+// elision hangs parse_*_acc and is caught as a timeout (rung 1, mitigatable). The Rust #[test]
+// tco_tail_call_assigns_every_loop_slot is the same standing (cargo test is off the merge path).
+// Next-rung trigger is a CI lane that executes v1.compiler witnesses, named as a capability;
+// today that lane is a declared gap.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag \
+//     --function tco_shared_reassign_writes_every_slot_in_param_order
 
 fn tco_slot_acc() -> String {
   tco_loop_slot_name(param_name: "acc")
