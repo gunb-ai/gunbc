@@ -64,6 +64,13 @@ type ParsedImportStatements
       cause: ImportStatementParseCause
     }
 
+// One acquired lexical stream and the import parser's observation of that stream. The token
+// parameter lets the seed carry its existing tokens to the transport boundary; consumers receive
+// v2.std.compilers.lexing.Token there. This does not authorize another lexical acquisition.
+type ParsedImportObservation<LexicalToken> {
+  tokens: List<LexicalToken>
+  imports: ParsedImportStatements
+}
 type ImportStripRefusal
   = ImportSpanNamesAnotherFile {
       span_file: FilePath
