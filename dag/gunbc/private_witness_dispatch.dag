@@ -17,7 +17,7 @@ import extdeps.github.actions {
   Step, RunStep,
   github_event_name_push
 }
-import extdeps.github.expressions { Equals, ContextAccess, Github, StringLiteral, serialize_expression }
+import extdeps.github.expressions { Equals, ContextAccess, Github, Secrets, StringLiteral, serialize_expression, interpolate }
 import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
 
@@ -103,6 +103,9 @@ fn public_sha() -> String? {
   }
 }
 
+// The Absent arm of associated_pull_number exits success on the reading that an empty list means
+// no PR behind this push. Outside the modeled guarantee, a token that lost scope may answer 200
+// with an empty list rather than 4xx, and this function cannot tell those apart.
 fn dispatch_to(target: PrivateWitnessDispatchTarget, sha: String) -> ProcessExit {
   let pulls = github.Commits.ListAssociatedPulls(
     auth_token: "",
@@ -114,8 +117,6 @@ fn dispatch_to(target: PrivateWitnessDispatchTarget, sha: String) -> ProcessExit
     Present { value: why } => exit_failure(reason: why)
     Absent =>
       match associated_pull_number(pulls: pulls.pulls) {
-        // Outside the modeled guarantee: an empty list is read as "no PR behind this push", but a
-        // token that lost scope may answer 200 with [] instead of 4xx, and this arm cannot tell.
         Absent => ExitSuccess
         Present { value: pr_number } => {
           let sent = github.RepositoryDispatch.Create(
@@ -161,11 +162,11 @@ fn private_witness_dispatch_script() -> String {
 }
 
 fn github_actions_secret_expression(secret_name: NonEmptyStr) -> String {
-  concat("${", concat("{ secrets.", concat(secret_name as String, " }}")))
+  interpolate(expression: ContextAccess { context: Secrets, path: [secret_name as String] })
 }
 
 fn github_sha_gha_expression() -> String {
-  concat("${", "{ github.sha }}")
+  interpolate(expression: ContextAccess { context: Github, path: ["sha"] })
 }
 
 fn private_witness_dispatch_if() -> String {
@@ -175,6 +176,8 @@ fn private_witness_dispatch_if() -> String {
   })
 }
 
+data github_token_name: NonEmptyStr = "GITHUB_TOKEN"
+
 fn private_witness_dispatch_step_env() -> List<YamlKeyValue> {
   [
     kv(
@@ -182,8 +185,8 @@ fn private_witness_dispatch_step_env() -> List<YamlKeyValue> {
       value: yaml_string(s: github_actions_secret_expression(secret_name: private_witness_dispatch_token.secret))
     ),
     kv(
-      key: "GITHUB_TOKEN",
-      value: yaml_string(s: github_actions_secret_expression(secret_name: "GITHUB_TOKEN" as NonEmptyStr))
+      key: github_token_name as String,
+      value: yaml_string(s: github_actions_secret_expression(secret_name: github_token_name))
     ),
     kv(
       key: public_sha_env_name() as String,

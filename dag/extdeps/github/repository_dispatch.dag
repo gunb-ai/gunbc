@@ -49,7 +49,7 @@ service github.RepositoryDispatch {
   config {
     endpoint: default_api_base
     auth: Bearer
-    auth_source: EnvVar { name: "GITHUB_REPOSITORY_DISPATCH_TOKEN" }
+    auth_source: EnvVar { name: repository_dispatch_auth_env }
   }
 
   operation Create {
