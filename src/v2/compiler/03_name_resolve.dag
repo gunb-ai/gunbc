@@ -146,6 +146,11 @@ type AdmissionState
     }
   | AdmissionRejected { diagnostics: NonEmptyDiagnostics }
 
+type ValidatedModuleRoots {
+  roots: FreeMonoid<NormalizedTree>
+  by_name: Map<QualifiedName, NormalizedTree>
+}
+
 type ModuleRootValidateState
   = ModuleRootsValid { seen: Map<QualifiedName, NormalizedTree>, diagnostics: Diagnostics }
   | ModuleRootsDuplicate { diagnostics: Diagnostics }

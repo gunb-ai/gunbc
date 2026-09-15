@@ -194,10 +194,49 @@ pub fn record_use(
 }
 
 pub fn max_usage_by_fan_out(a: Rc<BindingUsage>, b: Rc<BindingUsage>) -> Rc<BindingUsage> {
-    if (binding_fan_out(b.clone()) > binding_fan_out(a.clone())) {
-        b.clone()
-    } else {
-        a.clone()
+    {
+        let b_is_larger = (binding_fan_out(b.clone()) > binding_fan_out(a.clone()));
+        let selected = if b_is_larger.clone() {
+            b.clone()
+        } else {
+            a.clone()
+        };
+        let other = if b_is_larger.clone() {
+            a.clone()
+        } else {
+            b.clone()
+        };
+        let missing_reads = Rc::new({
+            let mut __result = Vec::new();
+            for edge in other.consumers.clone().iter().cloned() {
+                if match edge.kind.clone() {
+                    EdgeKind::Read => {
+                        ({
+                            let mut __found = false;
+                            for existing in selected.consumers.clone().iter().cloned() {
+                                if (((existing.kind.clone() == EdgeKind::Read)
+                                    && (existing.span_start.clone() == edge.span_start.clone()))
+                                    && (existing.site.clone() == edge.site.clone()))
+                                {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } == false)
+                    }
+                    _ => false,
+                } {
+                    __result.push(edge);
+                }
+            }
+            __result
+        });
+        Rc::new(BindingUsage {
+            name: selected.name.clone(),
+            binding_kind: selected.binding_kind.clone(),
+            consumers: v1_rt::concat(selected.consumers.clone(), missing_reads.clone()),
+        })
     }
 }
 
@@ -983,13 +1022,14 @@ pub fn collect_callable_refs(
     })
 }
 
-pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
+pub fn fold_terminal_expr(mut __tco_loop_body: Rc<Node>) -> Rc<Node> {
     loop {
+        let body = __tco_loop_body.clone();
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
                 Some(inner) => {
                     let __tco_0 = inner.clone();
-                    body = __tco_0;
+                    __tco_loop_body = __tco_0;
                     continue;
                 }
                 std::option::Option::None => {
@@ -999,7 +1039,7 @@ pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
             ExprData::ExprBlock => match body.children.clone().last().cloned() {
                 Some(last_child) => {
                     let __tco_0 = last_child.clone();
-                    body = __tco_0;
+                    __tco_loop_body = __tco_0;
                     continue;
                 }
                 std::option::Option::None => {

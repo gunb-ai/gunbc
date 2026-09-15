@@ -341,8 +341,9 @@ pub fn graph_reverse_reachable_members(
     }
 }
 
-pub fn is_lexicographic_descent(mut evidence: Rc<Vec<DescentEvidence>>) -> bool {
+pub fn is_lexicographic_descent(mut __tco_loop_evidence: Rc<Vec<DescentEvidence>>) -> bool {
     loop {
+        let evidence = __tco_loop_evidence.clone();
         match evidence.clone().first().cloned() {
             std::option::Option::None => {
                 break false;
@@ -359,7 +360,7 @@ pub fn is_lexicographic_descent(mut evidence: Rc<Vec<DescentEvidence>>) -> bool 
                             .skip(1 as usize)
                             .collect::<Vec<_>>(),
                     );
-                    evidence = __tco_0;
+                    __tco_loop_evidence = __tco_0;
                     continue;
                 }
                 DescentEvidence::DescentUnknown => {

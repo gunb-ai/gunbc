@@ -46,16 +46,23 @@ pub fn nat_range_inclusive(lo: Nat, hi: Nat) -> Rc<Vec<i64>> {
     nat_range_accumulate(lo.clone(), hi.clone(), Rc::new(vec![]))
 }
 
-pub fn nat_range_accumulate(mut lo: Nat, mut hi: Nat, mut acc: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
+pub fn nat_range_accumulate(
+    mut __tco_loop_lo: Nat,
+    mut __tco_loop_hi: Nat,
+    mut __tco_loop_acc: Rc<Vec<i64>>,
+) -> Rc<Vec<i64>> {
     loop {
+        let lo = __tco_loop_lo.clone();
+        let hi = __tco_loop_hi.clone();
+        let acc = __tco_loop_acc.clone();
         if (lo.clone() > hi.clone()) {
-            break acc;
+            break acc.clone();
         } else {
             {
                 let __tco_0 = (lo.clone() + 1);
                 let __tco_1 = v1_rt::concat(acc, Rc::new(vec![lo.clone()]));
-                lo = __tco_0;
-                acc = __tco_1;
+                __tco_loop_lo = __tco_0;
+                __tco_loop_acc = __tco_1;
                 continue;
             }
         }

@@ -379,6 +379,7 @@ pub struct InferScope {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pub caller_decl_name: String,
+    pub in_flight_lambda_param_names: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -396,15 +397,22 @@ pub struct BlockInferState {
 }
 
 pub fn infer_block_stmts(
-    mut remaining: Rc<Vec<Rc<Node>>>,
-    mut remaining_count: i64,
-    mut scope: Rc<InferScope>,
-    mut typed_stmts: Rc<Vec<Rc<Node>>>,
-    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
-    mut last_type: Rc<Node>,
-    mut expected: Option<Rc<Node>>,
+    mut __tco_loop_remaining: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_remaining_count: i64,
+    mut __tco_loop_scope: Rc<InferScope>,
+    mut __tco_loop_typed_stmts: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    mut __tco_loop_last_type: Rc<Node>,
+    mut __tco_loop_expected: Option<Rc<Node>>,
 ) -> Rc<BlockInferState> {
     loop {
+        let remaining = __tco_loop_remaining.clone();
+        let remaining_count = __tco_loop_remaining_count.clone();
+        let scope = __tco_loop_scope.clone();
+        let typed_stmts = __tco_loop_typed_stmts.clone();
+        let diag_chunks = __tco_loop_diag_chunks.clone();
+        let last_type = __tco_loop_last_type.clone();
+        let expected = __tco_loop_expected.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(BlockInferState {
@@ -440,12 +448,12 @@ pub fn infer_block_stmts(
                     let __tco_3 = v1_rt::rc_list_push(typed_stmts, stmt_typed.clone());
                     let __tco_4 = v1_rt::rc_list_push(diag_chunks, stmt_diags.clone());
                     let __tco_5 = stmt_rt.clone();
-                    remaining = __tco_0;
-                    remaining_count = __tco_1;
-                    scope = __tco_2;
-                    typed_stmts = __tco_3;
-                    diag_chunks = __tco_4;
-                    last_type = __tco_5;
+                    __tco_loop_remaining = __tco_0;
+                    __tco_loop_remaining_count = __tco_1;
+                    __tco_loop_scope = __tco_2;
+                    __tco_loop_typed_stmts = __tco_3;
+                    __tco_loop_diag_chunks = __tco_4;
+                    __tco_loop_last_type = __tco_5;
                     continue;
                 }
             }
@@ -528,13 +536,18 @@ pub struct LocalContributionState {
 }
 
 pub fn merge_scope_from_imports(
-    mut remaining: Rc<Vec<Rc<ResolvedImport>>>,
-    mut parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
-    mut env: Rc<TypeEnv>,
-    mut svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    mut svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    mut __tco_loop_remaining: Rc<Vec<Rc<ResolvedImport>>>,
+    mut __tco_loop_parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    mut __tco_loop_svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<InferScopeComponents> {
     loop {
+        let remaining = __tco_loop_remaining.clone();
+        let parent_index = __tco_loop_parent_index.clone();
+        let env = __tco_loop_env.clone();
+        let svc_registry = __tco_loop_svc_registry.clone();
+        let svc_locals = __tco_loop_svc_locals.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(InferScopeComponents {
@@ -584,9 +597,9 @@ Rc::new(InferScopeComponents {
                         );
                         let __tco_1 = parent_result.svc_registry.clone();
                         let __tco_2 = parent_result.svc_locals.clone();
-                        remaining = __tco_0;
-                        svc_registry = __tco_1;
-                        svc_locals = __tco_2;
+                        __tco_loop_remaining = __tco_0;
+                        __tco_loop_svc_registry = __tco_1;
+                        __tco_loop_svc_locals = __tco_2;
                         continue;
                     }
                 }
@@ -598,7 +611,7 @@ Rc::new(InferScopeComponents {
                             .skip(1 as usize)
                             .collect::<Vec<_>>(),
                     );
-                    remaining = __tco_0;
+                    __tco_loop_remaining = __tco_0;
                     continue;
                 }
             },
@@ -3158,12 +3171,13 @@ pub fn where_refinement_diags_for_predicate(
     }
 }
 
-pub fn where_refinement_value_under_cast(mut value_expr: Rc<Node>) -> Rc<Node> {
+pub fn where_refinement_value_under_cast(mut __tco_loop_value_expr: Rc<Node>) -> Rc<Node> {
     loop {
+        let value_expr = __tco_loop_value_expr.clone();
         match (*value_expr.expr_data.clone()).clone() {
             ExprData::ExprCast => {
                 let __tco_0 = crate::v1_std_core::cast_expr(value_expr);
-                value_expr = __tco_0;
+                __tco_loop_value_expr = __tco_0;
                 continue;
             }
             _ => {
@@ -3612,14 +3626,20 @@ pub fn kernel_value_declared_type_mismatch(
 }
 
 pub fn kernel_value_declared_type_mismatch_bounded(
-    mut formal: Rc<Node>,
-    mut actual: Rc<Node>,
-    mut type_env: Rc<TypeEnv>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut formal_name_override: String,
-    mut depth: i64,
+    mut __tco_loop_formal: Rc<Node>,
+    mut __tco_loop_actual: Rc<Node>,
+    mut __tco_loop_type_env: Rc<TypeEnv>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_formal_name_override: String,
+    mut __tco_loop_depth: i64,
 ) -> bool {
     loop {
+        let formal = __tco_loop_formal.clone();
+        let actual = __tco_loop_actual.clone();
+        let type_env = __tco_loop_type_env.clone();
+        let source_indices = __tco_loop_source_indices.clone();
+        let formal_name_override = __tco_loop_formal_name_override.clone();
+        let depth = __tco_loop_depth.clone();
         if (((formal.connective.clone() == Connective::Arrow)
             || (actual.connective.clone() == Connective::Arrow))
             || ((actual.children.clone().len() as i64) > 0))
@@ -3700,9 +3720,9 @@ pub fn kernel_value_declared_type_mismatch_bounded(
                                                 let __tco_0 = decl.clone();
                                                 let __tco_1 = decl.name.clone();
                                                 let __tco_2 = (depth + 1);
-                                                formal = __tco_0;
-                                                formal_name_override = __tco_1;
-                                                depth = __tco_2;
+                                                __tco_loop_formal = __tco_0;
+                                                __tco_loop_formal_name_override = __tco_1;
+                                                __tco_loop_depth = __tco_2;
                                                 continue;
                                             }
                                         }
@@ -4565,13 +4585,18 @@ pub fn application_type_names_compatible(
 }
 
 pub fn type_name_transparently_aliases_to(
-    mut alias_name: String,
-    mut target_name: String,
-    mut type_env: Rc<TypeEnv>,
-    mut module_name: String,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_alias_name: String,
+    mut __tco_loop_target_name: String,
+    mut __tco_loop_type_env: Rc<TypeEnv>,
+    mut __tco_loop_module_name: String,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
+        let alias_name = __tco_loop_alias_name.clone();
+        let target_name = __tco_loop_target_name.clone();
+        let type_env = __tco_loop_type_env.clone();
+        let module_name = __tco_loop_module_name.clone();
+        let source_indices = __tco_loop_source_indices.clone();
         match crate::v1_compiler_infer_env::lookup_type_by_name(
             type_env.clone(),
             alias_name.clone(),
@@ -4592,7 +4617,7 @@ pub fn type_name_transparently_aliases_to(
                     } else {
                         {
                             let __tco_0 = peeled_name.clone();
-                            alias_name = __tco_0;
+                            __tco_loop_alias_name = __tco_0;
                             continue;
                         }
                     }
@@ -5385,11 +5410,14 @@ pub fn applied_type_arguments_conflict(
 }
 
 pub fn applied_type_arguments_conflict_scan(
-    mut declared_args: Rc<Vec<Rc<Node>>>,
-    mut produced_args: Rc<Vec<Rc<Node>>>,
-    mut scope: Rc<InferScope>,
+    mut __tco_loop_declared_args: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_produced_args: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_scope: Rc<InferScope>,
 ) -> bool {
     loop {
+        let declared_args = __tco_loop_declared_args.clone();
+        let produced_args = __tco_loop_produced_args.clone();
+        let scope = __tco_loop_scope.clone();
         match declared_args.clone().first().cloned() {
             Some(d) => match produced_args.clone().first().cloned() {
                 Some(p) => {
@@ -5411,8 +5439,8 @@ pub fn applied_type_arguments_conflict_scan(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             );
-                            declared_args = __tco_0;
-                            produced_args = __tco_1;
+                            __tco_loop_declared_args = __tco_0;
+                            __tco_loop_produced_args = __tco_1;
                             continue;
                         }
                     }
@@ -6600,7 +6628,7 @@ pub fn borrowed_callable_call_type(
             source_indices.clone(),
         );
         if ((tp_names.clone().len() as i64) == 0) {
-            base
+            base.clone()
         } else {
             {
                 let value_params = Rc::new({
@@ -6669,7 +6697,7 @@ pub fn borrowed_callable_call_type(
                         }
                     },
                 );
-                substitute_generics(base, subst.clone(), source_indices.clone())
+                substitute_generics(base.clone(), subst.clone(), source_indices.clone())
             }
         }
     }
@@ -8366,6 +8394,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
             item_registry: scope.item_registry.clone(),
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+            in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
         })
     }
 }
@@ -8414,6 +8443,7 @@ pub fn extend_scope(
         item_registry: scope.item_registry.clone(),
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
+        in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
     })
 }
 
@@ -8446,6 +8476,7 @@ pub fn extend_scope_match_bound(
         item_registry: scope.item_registry.clone(),
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
+        in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
     })
 }
 
@@ -8480,6 +8511,7 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             item_registry: scope.item_registry.clone(),
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: scope.lambda_param_provenance.clone(),
+            in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
         })
     }
 }
@@ -8902,6 +8934,7 @@ let fold_scope = Rc::new(InferScope {
     item_registry: scope.item_registry.clone(),
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: prov_map.clone(),
+    in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
 });
 let ar = infer_expr(lam_value.clone(), fold_scope.clone(), Some(fold_callable.clone()));
 Rc::new(ArgInferResult {
@@ -8928,6 +8961,7 @@ let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
     item_registry: scope.item_registry.clone(),
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: nf_prov_map.clone(),
+    in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
 })
                         } else {
                             scope.clone()
@@ -9630,11 +9664,14 @@ pub struct BinopOperands {
 }
 
 pub fn operand_declaration_of_type(
-    mut rt: Rc<Node>,
-    mut scope: Rc<InferScope>,
-    mut fuel: i64,
+    mut __tco_loop_rt: Rc<Node>,
+    mut __tco_loop_scope: Rc<InferScope>,
+    mut __tco_loop_fuel: i64,
 ) -> Option<Rc<OperandDeclaration>> {
     loop {
+        let rt = __tco_loop_rt.clone();
+        let scope = __tco_loop_scope.clone();
+        let fuel = __tco_loop_fuel.clone();
         if ((fuel.clone() > 0) && is_where_refinement_type(rt.clone())) {
             match rt.children.clone().first().cloned() {
                 Some(base) => {
@@ -9648,8 +9685,8 @@ pub fn operand_declaration_of_type(
                     {
                         let __tco_0 = base_resolved.clone();
                         let __tco_1 = (fuel - 1);
-                        rt = __tco_0;
-                        fuel = __tco_1;
+                        __tco_loop_rt = __tco_0;
+                        __tco_loop_fuel = __tco_1;
                         continue;
                     }
                 }
@@ -10022,11 +10059,16 @@ Rc::new(InferResult {
                                     })
                                 }
                                 std::option::Option::None => {
-                                    let base_is_type_var = is_deferred_field_access_base(
+                                    let defer_field_miss = (is_deferred_field_access_base(
                                         resolved_base.clone(),
                                         scope.type_env.clone(),
-                                    );
-                                    if base_is_type_var.clone() {
+                                    )
+                                        && !is_never_constrained_enclosing_generic_base(
+                                            resolved_base.clone(),
+                                            base_typed.clone(),
+                                            scope.clone(),
+                                        ));
+                                    if defer_field_miss.clone() {
                                         {
                                             let fa_texpr = crate::v1_std_core::make_named_expr_node(
                                                 texpr.occurrence_identity.clone(),
@@ -10069,7 +10111,7 @@ Rc::new(InferResult {
 })
 },
     std::option::Option::None => {
-                                let error_message = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no field '".to_string(), field_name.clone()), "' on type '".to_string()), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), resolved_base.clone())), "'".to_string());
+                                let error_message = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no field '".to_string(), field_name.clone()), "' on type '".to_string()), type_node_label(resolved_base.clone(), scope.type_env.clone().source_indices.clone())), "'".to_string());
 let fa_texpr = crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::SemanticExprError, error_message.clone(), span.clone());
 Rc::new(InferResult {
     typed: fa_texpr.clone(),
@@ -12352,6 +12394,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 item_registry: lam_scope.item_registry.clone(),
                 caller_decl_name: lam_scope.caller_decl_name.clone(),
                 lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+                in_flight_lambda_param_names: v1_rt::concat(
+                    lam_scope.in_flight_lambda_param_names.clone(),
+                    lam_params.clone(),
+                ),
             });
             let body_result =
                 infer_expr(lam_body.clone(), body_scope.clone(), body_expected.clone());
@@ -12928,10 +12974,86 @@ pub fn infer_variant_constructor_call(
     }
 }
 
+pub fn is_unconstrained_type_variable_base(n: Rc<Node>) -> bool {
+    match n.inferred.clone() {
+        Some(inf) => is_type_variable(inf.clone()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn enclosing_fn_generic_names(scope: Rc<InferScope>) -> Rc<Vec<String>> {
+    if (scope.caller_decl_name.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        match (*crate::v1_compiler_infer_lookup::lookup_func_sig(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            scope.caller_decl_name.clone(),
+        ))
+        .clone()
+        {
+            FuncSigLookup::FuncSigResolved { sig: s, .. } => split_sig_params(
+                s.params.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            )
+            .generic_names
+            .clone(),
+            _ => Rc::new(vec![]),
+        }
+    }
+}
+
+pub fn field_base_is_in_flight_lambda_param(base: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*base.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            let name = crate::v1_std_core::expr_var_name_at(
+                base.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            {
+                let mut __found = false;
+                for p in scope.in_flight_lambda_param_names.clone().iter().cloned() {
+                    if (p.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        }
+        _ => false,
+    }
+}
+
+pub fn is_never_constrained_enclosing_generic_base(
+    n: Rc<Node>,
+    base_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: id, .. }) => {
+            let names = enclosing_fn_generic_names(scope.clone());
+            let in_enclosing = {
+                let mut __found = false;
+                for g in names.iter().cloned() {
+                    if (g.clone() == id.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            (in_enclosing.clone()
+                && !field_base_is_in_flight_lambda_param(base_expr.clone(), scope.clone()))
+        }
+        _ => false,
+    }
+}
+
 pub fn is_deferred_field_access_base(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if ((n.inferred.clone() != std::option::Option::None)
-        && is_type_variable(n.inferred.clone().clone().unwrap()))
-    {
+    if is_unconstrained_type_variable_base(n.clone()) {
         true
     } else {
         if (((n.connective.clone() == Connective::NoConnective)
@@ -13312,9 +13434,9 @@ pub fn alias_chain_target_after_args(
 
 pub fn alias_chain_carrier(n: Rc<Node>) -> Rc<Node> {
     if ((n.connective.clone() == Connective::NoConnective) && (n.name.clone() != "".to_string())) {
-        n
+        n.clone()
     } else {
-        structural_from_expanded_type(n)
+        structural_from_expanded_type(n.clone())
     }
 }
 
@@ -14822,10 +14944,10 @@ pub fn maybe_insert_composed_field_relation(
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match composed.clone() {
         Some(rel) => match (*rel.clone()).clone() {
-            SubValueRelation::SubValueUnknown => acc,
-            _ => v1_rt::rc_map_insert(acc, fname.clone(), rel.clone()),
+            SubValueRelation::SubValueUnknown => acc.clone(),
+            _ => v1_rt::rc_map_insert(acc.clone(), fname.clone(), rel.clone()),
         },
-        std::option::Option::None => acc,
+        std::option::Option::None => acc.clone(),
     }
 }
 
@@ -15056,10 +15178,12 @@ pub fn build_per_field_for_let(
 }
 
 pub fn resolve_collection_field(
-    mut expr: Rc<Node>,
-    mut ctx: Rc<DescentContext>,
+    mut __tco_loop_expr: Rc<Node>,
+    mut __tco_loop_ctx: Rc<DescentContext>,
 ) -> Option<Rc<InductiveField>> {
     loop {
+        let expr = __tco_loop_expr.clone();
+        let ctx = __tco_loop_ctx.clone();
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 let base = crate::v1_std_core::field_access_base(expr.clone());
@@ -15190,7 +15314,7 @@ pub fn resolve_collection_field(
                 if is_collection_preserving.clone() {
                     {
                         let __tco_0 = crate::v1_std_core::method_receiver(expr);
-                        expr = __tco_0;
+                        __tco_loop_expr = __tco_0;
                         continue;
                     }
                 } else {
@@ -19661,6 +19785,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         item_registry: fn_scope.item_registry.clone(),
                         caller_decl_name: fn_decl_name.clone(),
                         lambda_param_provenance: fn_scope.lambda_param_provenance.clone(),
+                        in_flight_lambda_param_names: Rc::new(vec![]),
                     });
                     let fn_return_expected = if (item.inferred.clone() != std::option::Option::None)
                     {
@@ -20104,13 +20229,18 @@ pub fn param_is_generic_decl(
 }
 
 pub fn unify_generics(
-    mut formal: Rc<Node>,
-    mut actual: Rc<Node>,
-    mut generic_names: Rc<Vec<String>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut acc: Rc<HashMap<String, Rc<Node>>>,
+    mut __tco_loop_formal: Rc<Node>,
+    mut __tco_loop_actual: Rc<Node>,
+    mut __tco_loop_generic_names: Rc<Vec<String>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
     loop {
+        let formal = __tco_loop_formal.clone();
+        let actual = __tco_loop_actual.clone();
+        let generic_names = __tco_loop_generic_names.clone();
+        let source_indices = __tco_loop_source_indices.clone();
+        let acc = __tco_loop_acc.clone();
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
             && (formal.connective.clone() == Connective::NoConnective));
@@ -20147,8 +20277,8 @@ pub fn unify_generics(
                         Some(ac) => {
                             let __tco_0 = fc.clone();
                             let __tco_1 = ac.clone();
-                            formal = __tco_0;
-                            actual = __tco_1;
+                            __tco_loop_formal = __tco_0;
+                            __tco_loop_actual = __tco_1;
                             continue;
                         }
                         std::option::Option::None => {
@@ -20348,9 +20478,9 @@ pub fn substitute_generics(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if v1_rt::map_is_empty(&subst) {
-        n
+        n.clone()
     } else {
-        substitute_generics_apply(n, subst.clone(), source_indices.clone())
+        substitute_generics_apply(n.clone(), subst.clone(), source_indices.clone())
     }
 }
 
@@ -21552,11 +21682,14 @@ pub fn transparent_alias_direct_edges(
 }
 
 pub fn transparent_alias_chase(
-    mut edges: Rc<HashMap<String, String>>,
-    mut name: String,
-    mut fuel: i64,
+    mut __tco_loop_edges: Rc<HashMap<String, String>>,
+    mut __tco_loop_name: String,
+    mut __tco_loop_fuel: i64,
 ) -> String {
     loop {
+        let edges = __tco_loop_edges.clone();
+        let name = __tco_loop_name.clone();
+        let fuel = __tco_loop_fuel.clone();
         if (fuel.clone() <= 0) {
             break name.clone();
         } else {
@@ -21568,8 +21701,8 @@ pub fn transparent_alias_chase(
                         {
                             let __tco_0 = next.clone();
                             let __tco_1 = (fuel - 1);
-                            name = __tco_0;
-                            fuel = __tco_1;
+                            __tco_loop_name = __tco_0;
+                            __tco_loop_fuel = __tco_1;
                             continue;
                         }
                     }
@@ -21589,8 +21722,8 @@ pub fn transparent_alias_chase(
                                 {
                                     let __tco_0 = next.clone();
                                     let __tco_1 = (fuel - 1);
-                                    name = __tco_0;
-                                    fuel = __tco_1;
+                                    __tco_loop_name = __tco_0;
+                                    __tco_loop_fuel = __tco_1;
                                     continue;
                                 }
                             }
@@ -24359,16 +24492,24 @@ pub fn insert_item_by_identity(
 }
 
 pub fn fold_module_contributions(
-    mut remaining: Rc<Vec<Rc<ItemContribution>>>,
-    mut resolved_items: Rc<Vec<Rc<Node>>>,
-    mut func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    mut svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    mut svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-    mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_remaining: Rc<Vec<Rc<ItemContribution>>>,
+    mut __tco_loop_resolved_items: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    mut __tco_loop_svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    mut __tco_loop_svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    mut __tco_loop_item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut __tco_loop_diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<LocalContributionState> {
     loop {
+        let remaining = __tco_loop_remaining.clone();
+        let resolved_items = __tco_loop_resolved_items.clone();
+        let func_sigs = __tco_loop_func_sigs.clone();
+        let svc_registry = __tco_loop_svc_registry.clone();
+        let svc_locals = __tco_loop_svc_locals.clone();
+        let item_registry = __tco_loop_item_registry.clone();
+        let diag_chunks = __tco_loop_diag_chunks.clone();
+        let source_indices = __tco_loop_source_indices.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(LocalContributionState {
@@ -24424,13 +24565,13 @@ pub fn fold_module_contributions(
                         insert_item_by_identity(item_registry, contribution.item_info.clone());
                     let __tco_6 =
                         v1_rt::rc_list_push(diag_chunks, contribution.resolve_diagnostics.clone());
-                    remaining = __tco_0;
-                    resolved_items = __tco_1;
-                    func_sigs = __tco_2;
-                    svc_registry = __tco_3;
-                    svc_locals = __tco_4;
-                    item_registry = __tco_5;
-                    diag_chunks = __tco_6;
+                    __tco_loop_remaining = __tco_0;
+                    __tco_loop_resolved_items = __tco_1;
+                    __tco_loop_func_sigs = __tco_2;
+                    __tco_loop_svc_registry = __tco_3;
+                    __tco_loop_svc_locals = __tco_4;
+                    __tco_loop_item_registry = __tco_5;
+                    __tco_loop_diag_chunks = __tco_6;
                     continue;
                 }
             }
@@ -25310,6 +25451,7 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             caller_decl_name: "".to_string(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+            in_flight_lambda_param_names: Rc::new(vec![]),
         });
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
         let typed_items = Rc::new({
@@ -25553,15 +25695,22 @@ pub fn resolve_env_bindings(
 }
 
 pub fn topo_resolve_types(
-    mut remaining: Rc<Vec<String>>,
-    mut env: Rc<TypeEnv>,
-    mut module_name: String,
-    mut diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    mut local_names: Rc<HashMap<i64, bool>>,
-    mut deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
-    mut fuel: i64,
+    mut __tco_loop_remaining: Rc<Vec<String>>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_module_name: String,
+    mut __tco_loop_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    mut __tco_loop_local_names: Rc<HashMap<i64, bool>>,
+    mut __tco_loop_deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut __tco_loop_fuel: i64,
 ) -> Rc<EnvResolveResult> {
     loop {
+        let remaining = __tco_loop_remaining.clone();
+        let env = __tco_loop_env.clone();
+        let module_name = __tco_loop_module_name.clone();
+        let diagnostics = __tco_loop_diagnostics.clone();
+        let local_names = __tco_loop_local_names.clone();
+        let deps_map = __tco_loop_deps_map.clone();
+        let fuel = __tco_loop_fuel.clone();
         if ((remaining.clone().len() as i64) == 0) {
             return Rc::new(EnvResolveResult {
                 env: env.clone(),
@@ -25734,10 +25883,10 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);
-            remaining = __tco_0;
-            env = __tco_1;
-            diagnostics = __tco_2;
-            fuel = __tco_3;
+            __tco_loop_remaining = __tco_0;
+            __tco_loop_env = __tco_1;
+            __tco_loop_diagnostics = __tco_2;
+            __tco_loop_fuel = __tco_3;
             continue;
         }
     }

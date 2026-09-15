@@ -73,7 +73,7 @@ test fn method_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
 
 test fn v4_bridge_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
   let rows = v1_interpreter_authored_roster_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == FreeCall)
-  rows |> any(r => r.authored_spelling == "resolve_type_node")
+  rows |> any(r => r.authored_spelling == "coproduct_nullary_inhabitants")
     && rows |> all(r => r.enumeration == AuthoredInRoster)
 }
 

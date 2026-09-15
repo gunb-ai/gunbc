@@ -202,10 +202,15 @@ pub fn to_string(value: i64) -> String {
     })
 }
 
-pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn to_string_helper(
+    mut __tco_loop_value: i64,
+    mut __tco_loop_acc: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
     loop {
+        let value = __tco_loop_value.clone();
+        let acc = __tco_loop_acc.clone();
         if (value.clone() == 0) {
-            break acc;
+            break acc.clone();
         } else {
             let rest = (value.clone() / 10);
             let digit = (value.clone() - (rest.clone() * 10));
@@ -250,8 +255,8 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
             {
                 let __tco_0 = rest.clone();
                 let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
-                value = __tco_0;
-                acc = __tco_1;
+                __tco_loop_value = __tco_0;
+                __tco_loop_acc = __tco_1;
                 continue;
             }
         }
@@ -538,7 +543,7 @@ pub fn apply_named_template_nested(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match keys.clone().first().cloned() {
-            std::option::Option::None => template,
+            std::option::Option::None => template.clone(),
             Some(key) => {
                 let rest = Rc::new(
                     keys.clone()
@@ -553,6 +558,7 @@ pub fn apply_named_template_nested(
                     Some(val) => {
                         let parts = Rc::new(
                             template
+                                .clone()
                                 .split(&placeholder.clone())
                                 .map(|s| s.to_string())
                                 .collect::<Vec<_>>(),

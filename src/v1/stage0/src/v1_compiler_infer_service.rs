@@ -642,11 +642,14 @@ pub fn unjoinable_callee_edges(
 }
 
 pub fn expand_transitive_services_loop(
-    mut module_callees: Rc<Vec<Rc<ModuleCallees>>>,
-    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut remaining_passes: i64,
+    mut __tco_loop_module_callees: Rc<Vec<Rc<ModuleCallees>>>,
+    mut __tco_loop_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut __tco_loop_remaining_passes: i64,
 ) -> Rc<ServiceEffectAnalysis> {
     loop {
+        let module_callees = __tco_loop_module_callees.clone();
+        let registry = __tco_loop_registry.clone();
+        let remaining_passes = __tco_loop_remaining_passes.clone();
         let before = total_service_count(registry.clone());
         let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
         let after = total_service_count(next.clone());
@@ -668,8 +671,8 @@ pub fn expand_transitive_services_loop(
                 {
                     let __tco_0 = next.clone();
                     let __tco_1 = (remaining_passes - 1);
-                    registry = __tco_0;
-                    remaining_passes = __tco_1;
+                    __tco_loop_registry = __tco_0;
+                    __tco_loop_remaining_passes = __tco_1;
                     continue;
                 }
             }

@@ -304,7 +304,7 @@ fn coproduct_type_item_with_variant_children(
     Some((node, importing_module))
 }
 
-fn module_path_for_type_decl_node(
+pub(crate) fn module_path_for_type_decl_node(
     ctx: &InterpContext,
     type_item: &Rc<Node>,
     si: &SourceIndices,

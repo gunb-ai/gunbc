@@ -232,10 +232,12 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
 }
 
 pub fn expand_scrut_type_for_variant_lookup(
-    mut scrut_node: Rc<Node>,
-    mut env: Rc<TypeEnv>,
+    mut __tco_loop_scrut_node: Rc<Node>,
+    mut __tco_loop_env: Rc<TypeEnv>,
 ) -> Rc<Node> {
     loop {
+        let scrut_node = __tco_loop_scrut_node.clone();
+        let env = __tco_loop_env.clone();
         let name =
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
@@ -247,7 +249,7 @@ pub fn expand_scrut_type_for_variant_lookup(
             match scrut_node.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
                     let __tco_0 = target.clone();
-                    scrut_node = __tco_0;
+                    __tco_loop_scrut_node = __tco_0;
                     continue;
                 }
                 _ => {
@@ -1109,11 +1111,11 @@ pub fn render_constructor_witness(
             },
         );
         if ((parts.clone().len() as i64) == 0) {
-            ctor
+            ctor.clone()
         } else {
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(ctor, " { ".to_string()),
+                    v1_rt::concat(ctor.clone(), " { ".to_string()),
                     parts.clone().join(&", ".to_string()),
                 ),
                 " }".to_string(),

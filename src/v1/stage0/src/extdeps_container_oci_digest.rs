@@ -61,8 +61,13 @@ pub fn oci_encoded_digest_char_allowed(cp: i64) -> bool {
         || (cp.clone() == 45))
 }
 
-pub fn oci_encoded_digest_syntax_valid(mut text: String, mut index: i64) -> bool {
+pub fn oci_encoded_digest_syntax_valid(
+    mut __tco_loop_text: String,
+    mut __tco_loop_index: i64,
+) -> bool {
     loop {
+        let text = __tco_loop_text.clone();
+        let index = __tco_loop_index.clone();
         if (index.clone() >= v1_rt::string_length(&text)) {
             break (v1_rt::string_length(&text) > 0);
         } else {
@@ -73,7 +78,7 @@ pub fn oci_encoded_digest_syntax_valid(mut text: String, mut index: i64) -> bool
             ))) {
                 {
                     let __tco_0 = (index + 1);
-                    index = __tco_0;
+                    __tco_loop_index = __tco_0;
                     continue;
                 }
             } else {
@@ -100,22 +105,25 @@ pub fn oci_digest_algorithm_separator_char_allowed(cp: i64) -> bool {
 }
 
 pub fn oci_digest_algorithm_syntax_valid(
-    mut text: String,
-    mut index: i64,
-    mut in_component: bool,
+    mut __tco_loop_text: String,
+    mut __tco_loop_index: i64,
+    mut __tco_loop_in_component: bool,
 ) -> bool {
     loop {
+        let text = __tco_loop_text.clone();
+        let index = __tco_loop_index.clone();
+        let in_component = __tco_loop_in_component.clone();
         if (index.clone() >= v1_rt::string_length(&text)) {
-            break in_component;
+            break in_component.clone();
         } else {
             let cp = v1_rt::code_point(v1_rt::substring(&text, index.clone(), (index.clone() + 1)));
-            if in_component {
+            if in_component.clone() {
                 if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                     {
                         let __tco_0 = (index + 1);
                         let __tco_1 = true;
-                        index = __tco_0;
-                        in_component = __tco_1;
+                        __tco_loop_index = __tco_0;
+                        __tco_loop_in_component = __tco_1;
                         continue;
                     }
                 } else {
@@ -123,8 +131,8 @@ pub fn oci_digest_algorithm_syntax_valid(
                         {
                             let __tco_0 = (index + 1);
                             let __tco_1 = false;
-                            index = __tco_0;
-                            in_component = __tco_1;
+                            __tco_loop_index = __tco_0;
+                            __tco_loop_in_component = __tco_1;
                             continue;
                         }
                     } else {
@@ -136,8 +144,8 @@ pub fn oci_digest_algorithm_syntax_valid(
                     {
                         let __tco_0 = (index + 1);
                         let __tco_1 = true;
-                        index = __tco_0;
-                        in_component = __tco_1;
+                        __tco_loop_index = __tco_0;
+                        __tco_loop_in_component = __tco_1;
                         continue;
                     }
                 } else {

@@ -10277,6 +10277,9 @@ pub enum WitnessRuntimeCause {
     StringRealizationStraddle,
     PoolRootContributesNothing,
     PatternMatchFailure,
+    /// A REST response value did not inhabit its declared coproduct (see
+    /// `v1_interpreter::RestResponseDecodeRefusal`).
+    RestResponseUndecodable,
     DivisionByZero,
     IntegerOverflow,
     Unimplemented,
@@ -10311,6 +10314,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
+            WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
             WitnessRuntimeCause::DivisionByZero => "division-by-zero",
             WitnessRuntimeCause::IntegerOverflow => "integer-overflow",
             WitnessRuntimeCause::Unimplemented => "unimplemented",
@@ -10345,6 +10349,7 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
+            E::RestResponseUndecodable { .. } => WitnessRuntimeCause::RestResponseUndecodable,
             E::DivisionByZero => WitnessRuntimeCause::DivisionByZero,
             E::IntegerOverflow { .. } => WitnessRuntimeCause::IntegerOverflow,
             E::Unimplemented { .. } => WitnessRuntimeCause::Unimplemented,

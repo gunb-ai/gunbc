@@ -2085,8 +2085,9 @@ pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
+pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
     loop {
+        let n = __tco_loop_n.clone();
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
             && has_structure.clone())
@@ -2098,7 +2099,7 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
         match unwrapped.clone() {
             Some(base) => {
                 let __tco_0 = base.clone();
-                n = __tco_0;
+                __tco_loop_n = __tco_0;
                 continue;
             }
             std::option::Option::None => {
@@ -2124,10 +2125,10 @@ pub fn node_type_shape_argument_list(
                         .collect::<Vec<_>>(),
                 );
                 if ((rest.clone().len() as i64) == 0) {
-                    head
+                    head.clone()
                 } else {
                     v1_rt::concat(
-                        head,
+                        head.clone(),
                         v1_rt::concat(
                             ",".to_string(),
                             node_type_shape_argument_list(rest.clone(), source_indices.clone()),
@@ -2291,11 +2292,14 @@ pub fn node_type_shape(
 }
 
 pub fn node_type_compatible(
-    mut left: Rc<Node>,
-    mut right: Rc<Node>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_left: Rc<Node>,
+    mut __tco_loop_right: Rc<Node>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
+        let left = __tco_loop_left.clone();
+        let right = __tco_loop_right.clone();
+        let source_indices = __tco_loop_source_indices.clone();
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
@@ -2359,8 +2363,8 @@ pub fn node_type_compatible(
                                                     {
                                                         let __tco_0 = left_el.clone();
                                                         let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
+                                                        __tco_loop_left = __tco_0;
+                                                        __tco_loop_right = __tco_1;
                                                         continue;
                                                     }
                                                 }
@@ -2416,8 +2420,8 @@ pub fn node_type_compatible(
                                                     {
                                                         let __tco_0 = left_el.clone();
                                                         let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
+                                                        __tco_loop_left = __tco_0;
+                                                        __tco_loop_right = __tco_1;
                                                         continue;
                                                     }
                                                 }
@@ -2446,8 +2450,8 @@ pub fn node_type_compatible(
                                         {
                                             let __tco_0 = left_inner.clone();
                                             let __tco_1 = right_inner.clone();
-                                            left = __tco_0;
-                                            right = __tco_1;
+                                            __tco_loop_left = __tco_0;
+                                            __tco_loop_right = __tco_1;
                                             continue;
                                         }
                                     }
@@ -3031,17 +3035,17 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n)
+            crate::v1_std_core::with_required_cardinality(n.clone())
         } else {
             if ((n.name.clone() == "Optional".to_string())
                 && ((n.children.clone().len() as i64) == 1))
             {
                 match n.children.clone().first().cloned() {
                     Some(inner) => inner.clone(),
-                    std::option::Option::None => n,
+                    std::option::Option::None => n.clone(),
                 }
             } else {
-                n
+                n.clone()
             }
         }
     }
@@ -3089,11 +3093,14 @@ pub struct AlgebraFieldMatch {
 }
 
 pub fn first_matching_algebra_field(
-    mut n: Rc<Node>,
-    mut candidates: Rc<Vec<AlgebraFieldKind>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_n: Rc<Node>,
+    mut __tco_loop_candidates: Rc<Vec<AlgebraFieldKind>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
+        let n = __tco_loop_n.clone();
+        let candidates = __tco_loop_candidates.clone();
+        let source_indices = __tco_loop_source_indices.clone();
         match candidates.clone().first().cloned() {
             std::option::Option::None => {
                 break std::option::Option::None;
@@ -3118,7 +3125,7 @@ pub fn first_matching_algebra_field(
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         );
-                        candidates = __tco_0;
+                        __tco_loop_candidates = __tco_0;
                         continue;
                     }
                 }
