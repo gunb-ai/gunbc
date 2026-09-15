@@ -1,7 +1,7 @@
 module test.claim.machine_intake.mtcollins1_sixteen_module_restore_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String, list_length }
-import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import std.process { exit_ok }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
@@ -40,13 +40,6 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
 // same reason. A swapped or truncated artifact refuses on the count; a same-length edit does not,
 // and that residue is stated rather than papered.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
-
-fn exit_ok(e: ProcessExit) -> Bool {
-  match e {
-    ExitSuccess => true
-    ExitFailure { code: _, reason: _ } => false
-  }
-}
 
 // A SERIAL CONSOLE ENDS ITS LINES IN CR LF, AND THE CAPTURE RENDERS THE CR AS THE TWO CHARACTERS
 // `^M`: the wrapper that recorded the session wrote the control character in caret notation, so
