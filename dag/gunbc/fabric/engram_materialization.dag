@@ -400,6 +400,48 @@ type FaithfulComponentRealization
   | RealizationUnfaithful { subject: DeclarationRef, defects: List<NonEmptyStr> }
   | RealizationEvidenceMissing { subject: DeclarationRef, obligation: NonEmptyStr }
 
+// THE RESIDUAL BITES ON THE TRANSFORM ARM AND NOT ON THE IDENTITY ARM, and the asymmetry is the whole
+// content of this fold's membership handling. IdenticalToPublishedEncoding claims that this artifact's
+// identity IS the subject's published shard-set identity -- a claim about the two shard FILES, whose set
+// is fully known -- so a membership residual about which TENSORS are Engram members does not reach it.
+// StructurePreservingTransform claims a per-element correspondence between a source population and a
+// produced one, and that claim is exactly as complete as the population it ranges over. A subject whose
+// membership closes against the rows that were READ rather than against the revision's index can be
+// missing a member entirely, and a transform that never saw that member would be pronounced faithful.
+//
+// SO THE ARM REFUSES RATHER THAN RANKING. The route layer already honours this residual --
+// membership_closure_reading turns a non-empty obligation list into no reading, and the axis gap follows
+// -- so the gap this closes was confined to the faithfulness verdict, where a reader holding
+// RealizationFaithful could not tell which population it was faithful over. Found by review while
+// gunbc.spark.v41_engram_row_store was being built against this very arm.
+// THE GATE DOWNGRADES A FAITHFUL VERDICT AND NEVER MASKS AN UNFAITHFUL ONE. Refusing on the residual
+// BEFORE the relation is examined would be the easier fold and the wrong one: a relation about another
+// subject, or one preserving too little, is a defect that holds whatever the population's closure is, and
+// reporting it as "evidence missing" would hide a found defect behind an unfound one. So the relation is
+// judged first and only its Faithful arm is gated -- the residual removes the ability to CONCLUDE
+// faithfulness, not the ability to detect its absence.
+fn gate_transform_on_membership(
+  verdict: FaithfulComponentRealization,
+  subject: DeclarationRef,
+  residual: List<NonEmptyStr>,
+) -> FaithfulComponentRealization {
+  if length(residual) == 0 { verdict } else {
+    match verdict {
+      RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } =>
+        RealizationEvidenceMissing { subject: subject, obligation: transform_membership_obligation(residual: residual) }
+      RealizationUnfaithful { subject: u, defects: d } => RealizationUnfaithful { subject: u, defects: d }
+      RealizationEvidenceMissing { subject: m, obligation: o } => RealizationEvidenceMissing { subject: m, obligation: o }
+    }
+  }
+}
+
+fn transform_membership_obligation(residual: List<NonEmptyStr>) -> NonEmptyStr {
+  join([
+    "this artifact is judged by a structure-preserving transform over a subject whose membership is scoped rather than closed, so a member absent from the reading would be absent from the transform and still pronounced faithful: ",
+    join(map(residual, o => o as String), "; "),
+  ], "") as NonEmptyStr
+}
+
 // THE ONLY PRODUCER OF A FAITHFUL REALIZATION, and every arm of it is a COMPARISON.
 fn realize_component(
   standing: ComponentSubjectStanding,
@@ -410,7 +452,7 @@ fn realize_component(
     ComponentSubjectRefused { identity: i, defects: ds } => RealizationUnfaithful { subject: i, defects: ds }
     ComponentSubjectPopulationIncomplete { identity: i, obligation: o } =>
       RealizationEvidenceMissing { subject: i, obligation: o }
-    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _, residual: _ } =>
+    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _, residual: rs } =>
       if !declaration_ref_eq(a: artifact.subject, b: sub.identity) {
         RealizationUnfaithful {
           subject: sub.identity,
@@ -420,7 +462,11 @@ fn realize_component(
         match evidence {
           FaithfulnessUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
           IdenticalToPublishedEncoding => realize_by_identity(sub: sub, artifact: artifact)
-          StructurePreservingTransform { relation: r } => realize_by_relation(sub: sub, artifact: artifact, r: r)
+          StructurePreservingTransform { relation: r } =>
+            gate_transform_on_membership(
+              verdict: realize_by_relation(sub: sub, artifact: artifact, r: r),
+              subject: sub.identity,
+              residual: rs)
         }
       }
   }
