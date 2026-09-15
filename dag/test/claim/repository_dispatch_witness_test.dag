@@ -14,7 +14,6 @@ import extdeps.github.commits { CommitAssociatedPull }
 import gunbc.repository { gunbc_private_repository }
 import gunbc.private_witness_dispatch {
   associated_pull_number,
-  dispatch_target_of,
   private_witness_dispatch_effect,
   private_witness_dispatch_step_name,
   private_witness_dispatch_step,
@@ -174,11 +173,3 @@ test fn the_first_associated_pull_request_is_the_one_dispatched() -> Bool {
   }
 }
 
-test fn dispatch_target_is_read_from_the_declared_effect() -> Bool {
-  match dispatch_target_of(effect: private_witness_dispatch_effect) {
-    Present { value: t } =>
-      t.repository.full_name == gunbc_private_repository.full_name
-        && (t.event_type as String) == (public_main_dispatch_event_type as String)
-    Absent => false
-  }
-}

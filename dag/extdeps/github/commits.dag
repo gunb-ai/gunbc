@@ -98,11 +98,15 @@ type CommitAssociatedPull {
 // shape the path segment actually takes. Splitting it here would invent a structure the endpoint
 // does not have and would then need re-joining at the transport, which is exactly where a
 // separator gets lost.
+// The env var this service reads its token from. One authority: the workflow step that sets the
+// env and the client that reads it consume this row, so the two cannot drift.
+data commits_auth_env: NonEmptyStr = "GITHUB_TOKEN"
+
 service github.Commits {
   config {
     endpoint: default_api_base
     auth: Bearer
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+    auth_source: EnvVar { name: commits_auth_env }
   }
 
   operation Get {

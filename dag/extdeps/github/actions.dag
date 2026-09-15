@@ -101,6 +101,15 @@ type WorkflowPermissions {
 
 type PermissionLevel = PermRead | PermWrite | PermNone
 
+// DECLARED FRONTIER, NOT A DANGLING ARM (DESIGN 3c). Nothing in THIS tree emits a workflow
+// carrying RepositoryDispatch, and that is by construction rather than by omission: the trigger
+// models what the RECEIVING repository declares, and the receiver here is gunbc-private, a
+// separate tree. gunbc.private_witness_dispatch is the sender; the consumer is the private
+// repository workflow that answers the dispatched event.
+// TRIGGER: the arm stops being a frontier and owes a consumer the moment any workflow emitted
+// FROM THIS TREE is triggered by repository_dispatch. If that never happens, the arm stays a
+// faithful model of the upstream trigger vocabulary, which extdeps owns whether or not we emit
+// every member -- the coproduct is GitHub's, not ours to prune to our current usage.
 type WorkflowTrigger
   = Push { branches: List<String>, paths: List<String> }
   | PullRequest { branches: List<String>, types: List<PullRequestActivity> }

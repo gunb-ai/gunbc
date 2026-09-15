@@ -10,7 +10,7 @@ import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.repository { gunbc_repository, gunbc_private_repository }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.github.github { Repository }
-import extdeps.github.commits { CommitAssociatedPull }
+import extdeps.github.commits { CommitAssociatedPull, commits_auth_env }
 import extdeps.github.effect { GitHubEffect, DispatchRepository, github_effect_required_permissions, contents_write }
 import extdeps.github.repository_dispatch { repository_dispatch_auth_env }
 import extdeps.github.actions {
@@ -30,28 +30,27 @@ data private_witness_dispatch_token: SecretRef = SecretRef {
   hash_state: HashPending,
 }
 
-// The one statement of WHAT this workflow does: dispatch one event type to one repository.
-// The executing route below reads its target from here rather than restating either field.
-data private_witness_dispatch_effect: GitHubEffect = DispatchRepository {
-  repository: gunbc_private_repository,
-  event_type: public_main_dispatch_event_type
-}
-
 type PrivateWitnessDispatchTarget {
   repository: Repository
   event_type: NonEmptyStr
 }
 
-fn dispatch_target_of(effect: GitHubEffect) -> PrivateWitnessDispatchTarget? {
-  match effect {
-    DispatchRepository { repository, event_type } =>
-      Present { value: PrivateWitnessDispatchTarget { repository: repository, event_type: event_type } }
-    AdvanceRepositoryBranch { repository: _, branch: _, changed_paths: _ } => none
-    DispatchWorkflow { repository: _, workflow: _, subject: _ } => none
-    RegisterOrganizationRunner { organization: _ } => none
-    GenerateOrganizationJitConfig { organization: _ } => none
-  }
+// The one statement of WHAT this workflow does: dispatch one event type to one repository.
+// THE TARGET IS THE AUTHORITY AND THE EFFECT IS DERIVED FROM IT, not the reverse. Declaring the
+// effect first and narrowing back to the target made the narrowing a runtime refusal over a wide
+// coproduct, and since the effect was a DispatchRepository literal that refusal could never fire --
+// DESIGN 5's tell, a check satisfiable by editing the declaration while the realization still lies.
+// Deriving the effect removes the arm rather than guarding it.
+data private_witness_dispatch_target: PrivateWitnessDispatchTarget = PrivateWitnessDispatchTarget {
+  repository: gunbc_private_repository,
+  event_type: public_main_dispatch_event_type
 }
+
+data private_witness_dispatch_effect: GitHubEffect = DispatchRepository {
+  repository: private_witness_dispatch_target.repository,
+  event_type: private_witness_dispatch_target.event_type
+}
+
 
 fn private_witness_dispatch_uses_contents_write() -> Bool {
   let perms = github_effect_required_permissions(effect: private_witness_dispatch_effect)
@@ -130,13 +129,9 @@ fn dispatch_to(target: PrivateWitnessDispatchTarget, sha: String) -> ProcessExit
 
 // The executing route: `gunbc run --entry dag/gunbc/private_witness_dispatch.dag --function dispatch`.
 fn dispatch() -> ProcessExit {
-  match dispatch_target_of(effect: private_witness_dispatch_effect) {
-    Absent => exit_failure(reason: "private_witness_dispatch_effect is not a DispatchRepository effect")
-    Present { value: target } =>
-      match public_sha() {
-        Absent => exit_failure(reason: concat(public_sha_env_name() as String, " is unset or empty"))
-        Present { value: sha } => dispatch_to(target: target, sha: sha)
-      }
+  match public_sha() {
+    Absent => exit_failure(reason: concat(public_sha_env_name() as String, " is unset or empty"))
+    Present { value: sha } => dispatch_to(target: private_witness_dispatch_target, sha: sha)
   }
 }
 
@@ -168,7 +163,6 @@ fn private_witness_dispatch_if() -> String {
   })
 }
 
-data github_token_name: NonEmptyStr = "GITHUB_TOKEN"
 
 fn private_witness_dispatch_step_env() -> List<YamlKeyValue> {
   [
@@ -177,8 +171,8 @@ fn private_witness_dispatch_step_env() -> List<YamlKeyValue> {
       value: yaml_string(s: github_actions_secret_expression(secret_name: private_witness_dispatch_token.secret))
     ),
     kv(
-      key: github_token_name as String,
-      value: yaml_string(s: github_actions_secret_expression(secret_name: github_token_name))
+      key: commits_auth_env as String,
+      value: yaml_string(s: github_actions_secret_expression(secret_name: commits_auth_env))
     ),
     kv(
       key: public_sha_env_name() as String,
