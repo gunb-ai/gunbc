@@ -1,7 +1,6 @@
 module test.claim.serving.serving_availability_bind_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
-import v2.std.optional { none }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_wire }
