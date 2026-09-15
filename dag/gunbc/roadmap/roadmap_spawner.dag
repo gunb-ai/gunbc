@@ -13,6 +13,7 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   roadmap_authority, authored_merged_prs,
   roadmap_authority_projection,
   RoadmapAuthorityProjection,
@@ -435,5 +436,5 @@ fn roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjection
 }
 
 fn roadmap_dispatch_file_content() -> String {
-  roadmap_dispatch_file_content_for_projection(proj: roadmap_authority_projection())
+  roadmap_dispatch_file_content_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
 }

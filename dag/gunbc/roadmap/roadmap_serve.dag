@@ -42,7 +42,7 @@ import gunbc.roadmap_launch_admission {
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
 }
 import gunbc.roadmap_page { roadmap_page_for_projection_launch, roadmap_fleet_page }
-import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
+import gunbc.roadmap_authority { roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
@@ -466,7 +466,7 @@ fn serve_dispatch_handler_response_for_instance(
 ) -> ServeHttpResponse {
   serve_dispatch_handler_response_over(
     instance: instance,
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     params: params,
   )
 }
@@ -738,7 +738,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
     instance: instance,
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     handler: handler,
     params: params,
@@ -937,7 +937,7 @@ fn roadmap_serve_selection_response_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
     instance: instance,
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     sel: sel,
     request: request,
@@ -1016,7 +1016,7 @@ fn roadmap_serve_respond_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: instance,
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method_label: method_label,
     path: path,
@@ -1102,7 +1102,7 @@ fn roadmap_serve_handle(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1128,7 +1128,7 @@ fn roadmap_serve_handle_macbook_local(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1147,7 +1147,7 @@ fn roadmap_serve_handle_srv1_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1166,7 +1166,7 @@ fn roadmap_serve_handle_srv2_preview(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1188,7 +1188,7 @@ fn roadmap_serve_handle_srv2_deploy(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1207,7 +1207,7 @@ fn roadmap_serve_handle_srv2_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
