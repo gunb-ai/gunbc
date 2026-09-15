@@ -35,7 +35,7 @@ import gunbc.fleet_converge_receipt {
 }
 import gunbc.fleet_converge_plan_cli { observe_host_short_wet }
 import gunbc.live_deploy.apply_receipt {
-  live_deploy_apply_receipt_artifact_path,
+  live_deploy_apply_receipt_artifact_path_for,
   read_live_deploy_apply_receipt_at, LiveDeployApplyReceiptDecoded, LiveDeployApplyReceiptUnreadable,
   rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
@@ -522,7 +522,7 @@ fn rlm_launch_deployment_receipt_bound(
     FleetConvergeApplyReceiptDecoded { receipt: a } => ApplyReceiptRead { receipt: a }
     FleetConvergeApplyReceiptUnreadable { reason: why } => ApplyReceiptUnreadable { reason: why }
   }
-  let dashboard = match read_live_deploy_apply_receipt_at(path: live_deploy_apply_receipt_artifact_path) {
+  let dashboard = match read_live_deploy_apply_receipt_at(path: live_deploy_apply_receipt_artifact_path_for(instance_id: instance.instance_id as String)) {
     LiveDeployApplyReceiptDecoded { receipt: d } => DashboardReceiptRead { receipt: d }
     LiveDeployApplyReceiptUnreadable { reason: why } => DashboardReceiptUnreadable { reason: why }
   }

@@ -92,7 +92,7 @@ import gunbc.live_deploy.apply_receipt {
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
-  live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir, live_deploy_apply_receipt_artifact_path,
+  live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir_for, live_deploy_apply_receipt_artifact_path_for,
 }
 import gunbc.roadmap_site_surface_types { HealthzBodyRead, HealthzProbeRefused }
 import gunbc.running_release_identity {
@@ -640,13 +640,15 @@ fn live_deploy_post_apply_readiness(spec: DeploymentSpec, access: DeployAccess) 
   }
 }
 
-fn live_deploy_write_transaction_receipt(receipt: LiveDeployApplyReceipt, exit: ProcessExit) -> ProcessExit {
-  match run_shell_commands(commands: [mkdir_parents_command(path: live_deploy_apply_receipt_dir)], transport: LocalExec) {
+fn live_deploy_write_transaction_receipt(spec: DeploymentSpec, receipt: LiveDeployApplyReceipt, exit: ProcessExit) -> ProcessExit {
+  let dir = live_deploy_apply_receipt_dir_for(instance_id: spec.instance_id as String)
+  let path = live_deploy_apply_receipt_artifact_path_for(instance_id: spec.instance_id as String)
+  match run_shell_commands(commands: [mkdir_parents_command(path: dir)], transport: LocalExec) {
     ExitFailure { code: _, reason: why } => exit_failure(reason: join(["live_deploy transaction: receipt dir refused: ", why], ""))
     ExitSuccess => {
-      let wrote = Filesystem.Write(path: live_deploy_apply_receipt_artifact_path, content: serialize_json(v: live_deploy_apply_receipt_json(r: receipt)))
+      let wrote = Filesystem.Write(path: path, content: serialize_json(v: live_deploy_apply_receipt_json(r: receipt)))
       if !wrote.success {
-        exit_failure(reason: join(["live_deploy transaction: receipt write refused at ", live_deploy_apply_receipt_artifact_path, ": ", wrote.error], ""))
+        exit_failure(reason: join(["live_deploy transaction: receipt write refused at ", path, ": ", wrote.error], ""))
       } else {
         exit
       }
@@ -667,6 +669,7 @@ fn live_deploy_transaction_receipt_for(
   LiveDeployApplyReceipt {
     run: run,
     target: deployment_plan_host_identity(spec: spec),
+    instance_id: spec.instance_id as String,
     expected_revision: expected,
     candidate_revision: candidate.revision as String,
     candidate_surface_identity: candidate.expected_surface_identity.digest as String,
@@ -690,6 +693,7 @@ fn live_deploy_transaction_decided(
       let preflight = live_deploy_access_preflight_for(access: access)
       if !reconciliation_converged(r: preflight) {
         live_deploy_write_transaction_receipt(
+          spec: spec,
           receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: preflight),
         )
@@ -700,6 +704,7 @@ fn live_deploy_transaction_decided(
           NotConverged { reason: why, applied: _ } => LiveDeployApplyNotConverged { reason: why }
         }
         live_deploy_write_transaction_receipt(
+          spec: spec,
           receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, readiness: live_deploy_post_apply_readiness(spec: spec, access: access), provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: applied),
         )

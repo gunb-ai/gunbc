@@ -816,6 +816,7 @@ fn unmeasured_client_target() -> DeploymentHostTarget {
     tailnet_domain: t.tailnet_domain,
     os_package_manager: t.os_package_manager,
     tailscale_client: ScopedRemovalUnobserved { reason: "host never probed for a tailscale client version" },
+    ensured_directories: t.ensured_directories,
   }
 }
 
@@ -830,6 +831,7 @@ fn preserve_removal_client_target() -> DeploymentHostTarget {
     tailscale_client: tailscale_scoped_removal_capability(
       observed: SemVerVersion { major: 1, minor: 40, patch: 0, pre_release: [], build: [] },
     ),
+    ensured_directories: t.ensured_directories,
   }
 }
 

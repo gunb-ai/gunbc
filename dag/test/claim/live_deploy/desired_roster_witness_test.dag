@@ -1,6 +1,13 @@
 module test.claim.live_deploy.desired_roster
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, List }
+import std.dissolution {
+  dissolution_status,
+  DissolutionPending,
+  DissolutionFired,
+  DissolutionUnbound,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   DesiredRosterAdmitted,
@@ -12,7 +19,10 @@ import gunbc.live_deploy.desired {
   srv1_lab_desired_deployment,
   srv2_deploy_desired_deployment,
   spec_owned_identities,
+  srv1_production_wrapper_dissolution,
+  srv1_production_wrapper_frontier,
 }
+import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path_for }
 import gunbc.live_deploy.spec {
   deployment_plan_host_identity,
   deployment_plan_listen_port,
@@ -102,4 +112,39 @@ test fn srv2_deploy_is_not_the_srv1_host() -> Bool {
   let srv2 = selected_deployment_spec(row: srv2_deploy_desired_deployment())
   deployment_plan_host_identity(spec: srv2) == "srv2"
     && !(deployment_plan_host_identity(spec: selected_deployment_spec(row: srv1_production_desired_deployment())) == "srv2")
+}
+
+fn production_wrapper_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.live_deploy.apply",
+    decl_name: "live_deploy_apply_srv1_wet",
+    field: WholeDeclaration,
+  }
+}
+
+test fn srv1_production_wrapper_dissolution_is_pending_while_the_wet_entry_exists() -> Bool {
+  match dissolution_status(condition: srv1_production_wrapper_dissolution, present_decls: [production_wrapper_ref()]) {
+    DissolutionPending => true
+    DissolutionFired => false
+    DissolutionUnbound => false
+  }
+    && match dissolution_status(condition: srv1_production_wrapper_dissolution, present_decls: []) {
+      DissolutionFired => true
+      DissolutionPending => false
+      DissolutionUnbound => false
+    }
+    && !(srv1_production_wrapper_frontier.reason as String == "")
+}
+
+test fn production_and_lab_receipt_paths_and_instance_ids_differ() -> Bool {
+  let live = selected_deployment_spec(row: srv1_production_desired_deployment())
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  live.instance_id != lab.instance_id
+    && live_deploy_apply_receipt_artifact_path_for(instance_id: live.instance_id as String)
+      != live_deploy_apply_receipt_artifact_path_for(instance_id: lab.instance_id as String)
+}
+
+test fn srv2_target_states_empty_ensured_directories() -> Bool {
+  srv2_deploy_desired_deployment().target.ensured_directories == []
+    && count(srv1_production_desired_deployment().target.ensured_directories) > 0
 }

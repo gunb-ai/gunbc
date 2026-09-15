@@ -3,6 +3,7 @@ module gunbc.live_deploy.desired
 import std.types { String, NonEmptyStr, List, Bool }
 import std.dissolution { DissolutionCondition, retires_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.tailscale.serve { ScopedRemovalUnobserved }
 import gunbc.fleet_intent { srv2_host }
 import gunbc.fleet_intent_network {
@@ -25,7 +26,7 @@ import gunbc.live_deploy.spec {
   deployment_srv1_target,
   srv1_live_deployment_names,
   derived_deployment_names,
-  srv1_os_package_manager,
+  ubuntu_noble_os_package_manager,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
@@ -74,10 +75,11 @@ fn deployment_srv2_target() -> DeploymentHostTarget {
     ssh_host: operator_host_srv2 as NonEmptyStr,
     tailscale_endpoint: srv2_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: srv1_os_package_manager(),
+    os_package_manager: ubuntu_noble_os_package_manager(),
     tailscale_client: ScopedRemovalUnobserved {
       reason: "srv2 tailscale Serve scoped-removal capability has not been observed",
     },
+    ensured_directories: [],
   }
 }
 
@@ -182,10 +184,23 @@ fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStandi
 // Their deletion consumer is CONVERGENCE-ONE C8: the first wet action, which must select a
 // DesiredDeployment from this roster and therefore cannot keep a production-only entry as
 // the executing route. The wrappers retire by deletion; that absence is the discharge.
+// The trigger names the wet production entry that still exists, not deployment_spec_srv1
+// (moved into this module in this change — a DeclarationRetires on the old spec-module name
+// would fire on merge while the wrappers still run).
 data srv1_production_wrapper_dissolution: DissolutionCondition = retires_dissolution(
   ref: DeclarationRef {
-    module_path: "gunbc.live_deploy.spec",
-    decl_name: "deployment_spec_srv1",
+    module_path: "gunbc.live_deploy.apply",
+    decl_name: "live_deploy_apply_srv1_wet",
     field: WholeDeclaration,
   }
+)
+
+data srv1_production_wrapper_frontier: FrontierRow = frontier_row_decl(
+  ref: DeclarationRef {
+    module_path: "gunbc.live_deploy.apply",
+    decl_name: "live_deploy_apply_srv1_wet",
+    field: WholeDeclaration,
+  },
+  reason: "production live_deploy_apply_srv1_wet wrapper is a typed scaffold until C8 selects a DesiredDeployment",
+  dissolution: srv1_production_wrapper_dissolution,
 )

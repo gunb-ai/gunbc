@@ -226,6 +226,7 @@ type DeploymentHostTarget {
   tailnet_domain: NonEmptyStr?
   os_package_manager: OsPackageManager
   tailscale_client: TailscaleServeCapability
+  ensured_directories: List<DeploymentDependencyStep>
 }
 
 // serve_function WAS DROPPED HERE AND THE EMITTER FELL BACK TO A LITERAL. HostDashboardInstance
@@ -708,7 +709,7 @@ fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-fn srv1_os_package_manager() -> OsPackageManager {
+fn ubuntu_noble_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
@@ -717,6 +718,7 @@ type DeploymentSpec {
   steps: List<DeploymentStep>
   service: DeploymentServiceConfig
   names: DeploymentNames
+  instance_id: NonEmptyStr
 }
 
 // TWO CONSUMERS, ONE SCOPE-FREE ROUTE LABEL (KEYING-0 follow-on, node://adhoc-907f1da5-c20):
@@ -861,11 +863,7 @@ fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> 
 }
 
 fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDependencyStep> {
-  if target.host.identity == srv1_host.identity {
-    concat(deployment_ensured_packages(), deployment_ensured_srv1_host_directories())
-  } else {
-    deployment_ensured_packages()
-  }
+  concat(deployment_ensured_packages(), target.ensured_directories)
 }
 
 // Apply order is dependency-honest: the binary lands before the tree, because the tree is published
@@ -946,8 +944,9 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
     ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: srv1_os_package_manager(),
+    os_package_manager: ubuntu_noble_os_package_manager(),
     tailscale_client: srv1_observed_tailscale_client(),
+    ensured_directories: deployment_ensured_srv1_host_directories(),
   }
 }
 
@@ -1009,6 +1008,7 @@ fn deployment_spec_for(
       names: names,
     ),
     names: names,
+    instance_id: instance.instance_id,
   }
 }
 

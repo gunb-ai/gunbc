@@ -48,8 +48,17 @@ import gunbc.actions_run_binding {
 // (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
 // the same way.
 data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v1"
-data live_deploy_apply_receipt_dir: String = "target/live-deploy-srv1-receipt"
-data live_deploy_apply_receipt_artifact_path: String = "target/live-deploy-srv1-receipt/live_deploy_receipt.json"
+
+fn live_deploy_apply_receipt_dir_for(instance_id: String) -> String {
+  join(["target/live-deploy-", instance_id, "-receipt"], "")
+}
+
+fn live_deploy_apply_receipt_artifact_path_for(instance_id: String) -> String {
+  join([live_deploy_apply_receipt_dir_for(instance_id: instance_id), "/live_deploy_receipt.json"], "")
+}
+
+data live_deploy_apply_receipt_dir: String = live_deploy_apply_receipt_dir_for(instance_id: "srv1-live")
+data live_deploy_apply_receipt_artifact_path: String = live_deploy_apply_receipt_artifact_path_for(instance_id: "srv1-live")
 
 data rlm_plan_run_id_env_name: String = "RLM_PLAN_RUN_ID"
 data rlm_apply_run_id_env_name: String = "RLM_APPLY_RUN_ID"
@@ -112,6 +121,7 @@ type LiveDeployReadinessOutcome
 type LiveDeployApplyReceipt {
   run: ActionsRunBinding
   target: String
+  instance_id: String
   expected_revision: String
   candidate_revision: String
   candidate_surface_identity: String
@@ -138,7 +148,7 @@ fn live_deploy_readiness_text(o: LiveDeployReadinessOutcome) -> String {
 
 fn live_deploy_apply_receipt_identity_text(r: LiveDeployApplyReceipt) -> String {
   join([
-    actions_run_binding_identity_text(binding: r.run), "|", r.target, "|", r.expected_revision, "|",
+    actions_run_binding_identity_text(binding: r.run), "|", r.target, "|", r.instance_id, "|", r.expected_revision, "|",
     r.candidate_revision, "|", r.candidate_surface_identity, "|", r.candidate_tree_oid, "|",
     live_deploy_apply_outcome_text(o: r.apply_outcome), "|",
     live_deploy_readiness_text(o: r.readiness), "|",
@@ -187,6 +197,7 @@ fn live_deploy_apply_receipt_json(r: LiveDeployApplyReceipt) -> JsonValue {
     json_kv(key: "schema", value: json_string(s: live_deploy_apply_receipt_schema)),
     json_kv(key: "run", value: actions_run_binding_json(binding: r.run)),
     json_kv(key: "target", value: json_string(s: r.target)),
+    json_kv(key: "instance_id", value: json_string(s: r.instance_id)),
     json_kv(key: "expected_revision", value: json_string(s: r.expected_revision)),
     json_kv(key: "candidate_revision", value: json_string(s: r.candidate_revision)),
     json_kv(key: "candidate_surface_identity", value: json_string(s: r.candidate_surface_identity)),
@@ -326,6 +337,9 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
                 match json_required_string_member(doc: doc, key: "target") {
                   JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
                   JsonStringMemberFound { value: target } =>
+                    match json_required_string_member(doc: doc, key: "instance_id") {
+                      JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                      JsonStringMemberFound { value: instance_id } =>
                     match json_required_string_member(doc: doc, key: "expected_revision") {
                       JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
                       JsonStringMemberFound { value: expected } =>
@@ -353,6 +367,7 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
                                                         let receipt = LiveDeployApplyReceipt {
                                                           run: run,
                                                           target: target,
+                                                          instance_id: instance_id,
                                                           expected_revision: expected,
                                                           candidate_revision: candidate,
                                                           candidate_surface_identity: surface,
@@ -379,6 +394,7 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
