@@ -2334,6 +2334,9 @@ fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> Local
     match outcome {
         O::Pass => LocalRepoWetObserved::Passed,
         O::Fail => LocalRepoWetObserved::Failed,
+        // A TYPED REFUSAL IS A FAILED VERDICT, same class as `Fail`: the claim reached its
+        // subject and the subject said no.
+        O::ExitFailure { .. } => LocalRepoWetObserved::Failed,
         // NO VERDICT WAS REACHED. The claim was stopped or never started, which is not the same
         // as reaching a verdict this lane disagrees with.
         O::BudgetInterrupted { .. } => LocalRepoWetObserved::Nonterminal("budget".to_string()),
@@ -3708,6 +3711,17 @@ pub(crate) fn run_discovery_rows(
                 append_witness_verdict_diagnostic_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
+            // A GATE-CLASS ROW'S REASON IS ITS OWN RECEIPT. The companion-loudness appends the
+            // `Fail` arm makes are for Bool witnesses whose verdict carries nothing; a typed
+            // `ExitFailure` refusal already carries the `.dag`-authored reason, so appending a
+            // second, derived receipt beside it would be two authorities over one fact.
+            ClaimOutcome::ExitFailure { code, reason } => summary.failures.push(format!(
+                "{} ({}) returned ProcessExit::ExitFailure (code {}): {}",
+                row.function,
+                row.entry,
+                code,
+                reason.unwrap_or_else(|| "(no reason)".to_string())
+            )),
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
                 "{} ({}) returned `{}`, not Bool",
                 row.function, row.entry, got
@@ -8347,6 +8361,14 @@ pub fn run_required_floor(
             ClaimOutcome::Fail => outcome
                 .failures
                 .push(format!("{} returned Bool(false)", claim.qualified)),
+            // Same fact as `Fail` — a failing verdict — with its reason carried instead of
+            // collapsed: this line is the floor's per-claim record of a gate-class refusal.
+            ClaimOutcome::ExitFailure { code, reason } => outcome.failures.push(format!(
+                "{} returned ProcessExit::ExitFailure (code {}): {}",
+                claim.qualified,
+                code,
+                reason.unwrap_or_else(|| "(no reason)".to_string())
+            )),
             // Every non-pass arm is reported with the fact that distinguishes it. A
             // collapsed "failed" would make a budget refusal, a runtime error and a
             // witness that answered false read alike, and those three have different

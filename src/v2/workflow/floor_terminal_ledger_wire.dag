@@ -735,6 +735,12 @@ fn readback_digest_agrees(readback: LedgerReadback) -> Bool {
 // An unrecognised tag refuses. It does not fall through to a default disposition: a ledger
 // written by a newer format and read by this one must say "I cannot read this", never "everything
 // I could not parse passed".
+//
+// THE TYPED-REFUSAL TAG, mirroring `cli_run.rs claim_terminal_tag`'s `ExitFailure` arm. It reads
+// back to the SAME dispositions as "returned-false" — a typed `ProcessExit::ExitFailure` is a
+// failing verdict, and the refusal reason it carries is the detail field's payload, not a
+// different disposition. The seed's vocabulary distinguishes the return shape; this arm keeps
+// that distinction readable here instead of refusing a ledger the seed can now produce.
 fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == "runtime-errored" {
     Present { value: RuntimeErroredBeforeVerdict }
@@ -784,8 +790,14 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
       ExpectedRed => Present { value: KnownRedHeld }
     }
   } else {
+  if row.terminal_tag == "exit-failure" {
+    match row.expectation {
+      ExpectedToHold => Present { value: Failed }
+      ExpectedRed => Present { value: KnownRedHeld }
+    }
+  } else {
     none
-  }}}}}}}}}}}}}
+  }}}}}}}}}}}}}}
 }
 
 // ── THE SEED-FACING SURFACE, AND THE MIRROR COMPARATOR THAT COMES WITH IT ──────────────────
