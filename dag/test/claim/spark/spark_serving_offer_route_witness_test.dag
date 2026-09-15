@@ -149,8 +149,12 @@ fn t_unit_unavailable() -> DeclaredUnitDigestStanding {
   DeclaredUnitDigestUnavailable { obligation: t_declared_unit_unavailable_obligation }
 }
 
+// The standing under test here carries a fixture digest, because the declared unit is refused
+// BEFORE the incarnation is consulted: an unavailable digest would answer every row below with
+// ServiceDeclaredUnitDigestUnavailable and the incarnation and region arms they exist to exercise
+// would never be reached. the_declared_unit_is_refused_before_the_incarnation is the row for that.
 fn t_standing(realization: SparkServingRealization) -> SparkServingRoute {
-  spark_serving_route_standing(realization: realization, declared_unit: t_unit_unavailable())
+  spark_serving_route_standing(realization: realization, declared_unit: t_declared(hex: t_unit_hex))
 }
 
 fn t_unobserved_configuration(cause: SparkServiceIdentityCause) -> SparkRealizationIdentity? {
@@ -624,7 +628,19 @@ test fn an_incarnation_on_another_host_refuses() -> Bool {
   }
 }
 
-// RED -- THE DECLARED UNIT DIGEST IS UNAVAILABLE, which is production's second absence.
+// RED, AND THE ORDER IS THE CLAIM. With the incarnation unobserved AND the declared digest
+// unavailable, the digest is the refusal reported: it is decidable with no observation, and it is
+// what lets a harness wire that drops the digest between mint and fold go red today rather than
+// after an incarnation observer lands. The same realization with a fixture digest reports the
+// incarnation instead (an_agreeing_unit_digest_without_an_observation_refuses).
+test fn the_declared_unit_is_refused_before_the_incarnation() -> Bool {
+  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_unit_unavailable())) {
+    Present { value: ServiceDeclaredUnitDigestUnavailable { obligation: _ } } => true
+    _ => false
+  }
+}
+
+// RED -- THE DECLARED UNIT DIGEST IS UNAVAILABLE, with the incarnation observed.
 test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),

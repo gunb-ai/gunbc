@@ -1007,10 +1007,16 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
             },
             tail: Cons {
               head: FloorRouteGapExpectation {
-                identity: "test.claim.serving.serving_availability_bind_wet_witness.a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path",
+                identity: "test.claim.serving.serving_availability_bind_wet_witness.the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier",
                 operation: "DigestStdin", ground: NoMockResponse {}
               },
-              tail: Empty {}
+              tail: Cons {
+                head: FloorRouteGapExpectation {
+                  identity: "test.claim.serving.serving_availability_bind_wet_witness.a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation",
+                  operation: "DigestStdin", ground: NoMockResponse {}
+                },
+                tail: Empty {}
+              }
             }
           }
         }
