@@ -722,10 +722,6 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
   list_append(left: [ned.head], right: ned.tail)
 }
 
-fn parse_prov_frame_len(prov: ParseProvenanceState) -> Int {
-  length(xs: prov.frame)
-}
-
 fn parse_prov_initial() -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: occurrence_id_allocator_initial(),

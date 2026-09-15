@@ -1798,8 +1798,16 @@ fn tco_loop_iteration_lets(params: List<Node>, source_indices: Map<String, Newli
         slot,
         ".clone();\n"
       )
-      Python => concat(make_indent(level: depth), authored, " = ", slot, "\n")
-      Go => concat(make_indent(level: depth), authored, " = ", slot, "\n")
+      Python => concat(
+        make_indent(level: depth),
+        emit_let_binding(name: n, value: slot, target: Python),
+        "\n"
+      )
+      Go => concat(
+        make_indent(level: depth),
+        emit_let_binding(name: n, value: slot, target: Go),
+        "\n"
+      )
       Dag => ""
     }
   ) |> join(separator: "")

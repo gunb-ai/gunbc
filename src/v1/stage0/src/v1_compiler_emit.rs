@@ -3650,31 +3650,15 @@ pub fn tco_loop_iteration_lets(
                     ),
                     RenderTarget::Python => v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    crate::v1_compiler_emit_core_support::make_indent(
-                                        depth.clone(),
-                                    ),
-                                    authored.clone(),
-                                ),
-                                " = ".to_string(),
-                            ),
-                            slot.clone(),
+                            crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
+                            emit_let_binding(n.clone(), slot.clone(), RenderTarget::Python),
                         ),
                         "\n".to_string(),
                     ),
                     RenderTarget::Go => v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    crate::v1_compiler_emit_core_support::make_indent(
-                                        depth.clone(),
-                                    ),
-                                    authored.clone(),
-                                ),
-                                " = ".to_string(),
-                            ),
-                            slot.clone(),
+                            crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
+                            emit_let_binding(n.clone(), slot.clone(), RenderTarget::Go),
                         ),
                         "\n".to_string(),
                     ),
