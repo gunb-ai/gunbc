@@ -1,0 +1,68 @@
+module v2.test.tokenize.lex_rule_dispatch
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// FIRST-CHARACTER DISPATCH MUST CHOOSE WHAT TRYING EVERY RULE CHOSE. At the head of each specimen
+// the longest-match fold over the dispatched candidates is compared with the same fold over every
+// compiled rule in declared order -- the pre-dispatch behaviour, which lex_try_rules still computes
+// when handed the full list. One short specimen per kind of FIRST set, rather than every suffix of a
+// long one (which cost ~831k eval steps and was refused at enrolment): a keyword against an
+// identifier that begins with it; operators that share a first character with a shorter one; the
+// empty scrutinee literal, which is nullable and so reachable from every character; the character
+// classes (identifier, digits, whitespace); a string literal carrying non-ASCII text; a line
+// comment; an atom; a character no rule starts on; and the empty source, where every rule is tried.
+data lex_rule_dispatch_specimens: List<String> = [
+  "iffy", "if x", "->", "-1", "=>", "==", "= ", "|>", "||", "| ", "!=",
+  "\"λ\"", "// c", "^a", "42", " \n", "{", "λ", ""
+]
+
+type LexDispatchCensus {
+  positions: Int
+  pruned_positions: Int
+  disagreements: Int
+}
+
+fn lex_dispatch_census_step(census: LexDispatchCensus, dispatch: LexRuleDispatch, suffix: String) -> LexDispatchCensus {
+  let candidates = lex_dispatch_candidates(dispatch: dispatch, source: suffix)
+  LexDispatchCensus {
+    positions: census.positions + 1,
+    pruned_positions: if length(xs: candidates) < length(xs: dispatch.all) { census.pruned_positions + 1 } else { census.pruned_positions },
+    disagreements: if lex_try_rules(rules: candidates, source: suffix) == lex_try_rules(rules: dispatch.all, source: suffix) {
+      census.disagreements
+    } else {
+      census.disagreements + 1
+    }
+  }
+}
+
+fn lex_dispatch_census_dag_specimens() -> LexDispatchCensus {
+  let dispatch = lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: dag_lex_rules().rules))
+  fold_list(
+    xs: lex_rule_dispatch_specimens,
+    empty: LexDispatchCensus { positions: 0, pruned_positions: 0, disagreements: 0 },
+    cons: fn(acc, specimen) {
+      lex_dispatch_census_step(census: acc, dispatch: dispatch, suffix: specimen)
+    }
+  )
+}
+
+fn lex_dispatch_census_positions(census: LexDispatchCensus) -> Int {
+  census.positions
+}
+
+fn lex_dispatch_census_pruned_positions(census: LexDispatchCensus) -> Int {
+  census.pruned_positions
+}
+
+fn lex_dispatch_census_disagreements(census: LexDispatchCensus) -> Int {
+  census.disagreements
+}
+
+// Non-vacuous: every specimen was checked, and dispatch actually removed candidates at some of them --
+// a dispatch that returned every rule everywhere would agree trivially.
+test fn lex_rule_dispatch_agrees_with_trying_every_rule() -> Bool {
+  let census = lex_dispatch_census_dag_specimens()
+  (lex_dispatch_census_positions(census: census) == length(xs: lex_rule_dispatch_specimens))
+    && (lex_dispatch_census_pruned_positions(census: census) > 0)
+    && (lex_dispatch_census_disagreements(census: census) == 0)
+}
