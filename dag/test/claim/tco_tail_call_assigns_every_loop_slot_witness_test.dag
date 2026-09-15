@@ -1,0 +1,80 @@
+module test.claim.tco_tail_call_assigns_every_loop_slot_witness
+
+import v1.compiler.artifact { RenderTarget, Rust, Python, Go }
+import v1.compiler.emit {
+  shared_tco_reassign,
+  tco_reassign_identity_elision_mutant,
+  tco_loop_slot_name
+}
+import v1.compiler.emit_core_support { language_spec }
+import v2.std.logic { Bool }
+
+// Floor control for tco_identity_passthrough_elision_after_slot_local_split. The Rust #[test]
+// tco_tail_call_assigns_every_loop_slot is local diligence (cargo test is off the merge path).
+// Restoring the identity filter in production must red tco_rust_emit_assigns_every_loop_slot
+// (missing __tco_loop_acc dest). tco_identity_elision_mutant_drops_same_named_slot is the
+// discriminator that keeps the filter out of production.
+
+fn tco_slot_acc() -> String {
+  tco_loop_slot_name(param_name: "acc")
+}
+
+fn tco_slot_n() -> String {
+  tco_loop_slot_name(param_name: "n")
+}
+
+fn tco_fixture_args() -> List<String> {
+  ["acc", "(n - 1)"]
+}
+
+fn tco_fixture_slots() -> List<String> {
+  [tco_slot_acc(), tco_slot_n()]
+}
+
+fn tco_reassign_block(target: RenderTarget) -> String {
+  shared_tco_reassign(
+    ordered_args: tco_fixture_args(),
+    param_names: tco_fixture_slots(),
+    spec: language_spec(target: target)
+  )
+}
+
+fn tco_slot_dests_once_in_order(block: String) -> Bool {
+  string_contains(s: block, pattern: concat(tco_slot_acc(), " = __tco_0;\n", tco_slot_n(), " = __tco_1"))
+    && string_contains(s: block, pattern: "continue")
+}
+
+fn tco_rust_emit_assigns_every_loop_slot_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module tco_slot_floor\n\nimport std.types { Int }\n\nfn walk(acc: Int, n: Int) -> Int {\n  if n == 0 { acc } else {\n    let acc = acc + 1\n    walk(acc, n - 1)\n  }\n}\n",
+    "src/tco_slot_floor.rs",
+    ["__tco_loop_acc = __tco_0", "__tco_loop_n = __tco_1"],
+    []
+  )
+}
+
+test fn tco_rust_emit_assigns_every_loop_slot() -> Bool {
+  tco_rust_emit_assigns_every_loop_slot_body()
+}
+
+fn tco_has_both_slot_dests(block: String) -> Bool {
+  string_contains(s: block, pattern: concat(tco_slot_acc(), " ="))
+    && string_contains(s: block, pattern: concat(tco_slot_n(), " ="))
+}
+
+test fn tco_shared_reassign_writes_every_slot_in_param_order() -> Bool {
+  tco_slot_dests_once_in_order(block: tco_reassign_block(target: Rust))
+    && tco_has_both_slot_dests(block: tco_reassign_block(target: Python))
+    && tco_has_both_slot_dests(block: tco_reassign_block(target: Go))
+}
+
+test fn tco_identity_elision_mutant_drops_same_named_slot() -> Bool {
+  let mutant = tco_reassign_identity_elision_mutant(
+    ordered_args: tco_fixture_args(),
+    param_names: tco_fixture_slots(),
+    identity_mask: [true, false],
+    spec: language_spec(target: Rust)
+  )
+  !string_contains(s: mutant, pattern: concat(tco_slot_acc(), " ="))
+    && string_contains(s: mutant, pattern: concat(tco_slot_n(), " ="))
+}
