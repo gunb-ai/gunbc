@@ -1,6 +1,6 @@
 module test.fixture.decl_facts_reflection.specimens
 
-import std.types { String, Int }
+import std.types { String, Int, List }
 import std.disposition {
   Disposition,
   Terminal,
@@ -101,6 +101,8 @@ data planted_named_field_ref_specimen: DeclarationRef = DeclarationRef {
 data planted_plain_int_specimen: Int = 42
 
 data planted_plain_string_specimen: String = "hello"
+
+data planted_string_list_specimen: List<String> = ["list-alpha", "list-beta"]
 
 fn uses_param_only(x: Int) -> Int {
   x

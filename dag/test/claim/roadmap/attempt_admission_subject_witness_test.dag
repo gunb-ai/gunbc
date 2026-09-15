@@ -1,13 +1,13 @@
 module test.claim.attempt_admission_subject_witness_test
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.content_hash { Sha1Digest, Sha1DigestHex, content_hash_eq_structural }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_eq }
 import gunbc.merge_admission_subject { parse_git_object_id_wire }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 import gunbc.roadmap_execution_contract {
-  ExecutionContract, ExecutionContractUnspecified, PathsUnrestricted, CargoFmtValidation,
-  PublicWorktreeLayout, PinnedPublicPlusLocalRoot,
+  ExecutionContract, ExecutionContractUnspecified, PathsUnrestricted, PathsAllowed, CargoFmtValidation,
+  CargoTestValidation, CargoCapability, PublicWorktreeLayout, PinnedPublicPlusLocalRoot,
 }
 import gunbc.roadmap_dispatch_destination {
   AttemptAdmissionSubject, AttemptSubjectAdmission, AttemptSubjectAdmitted, AttemptSubjectRefused,
@@ -65,7 +65,9 @@ fn fixture_admission(change: String) -> AttemptSubjectAdmission {
     public_standing: standing,
     execution: if change == "missing_execution" { ExecutionContractUnspecified }
       else { ExecutionContract {
-        validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted,
+        validations: if change == "validations" { [CargoTestValidation { filter: "fixture" }] } else { [CargoFmtValidation] },
+        extra_capabilities: if change == "extra_capabilities" { [CargoCapability] } else { [] },
+        path_scope: if change == "path_scope" { PathsAllowed { prefixes: ["dag" as FilePath] } } else { PathsUnrestricted },
         source_roots: if change == "source_roots" { PublicWorktreeLayout }
           else { PinnedPublicPlusLocalRoot { public_prefix: "public" } },
       } },
@@ -154,6 +156,18 @@ test fn each_other_sealed_axis_moves_identity_and_refuses() -> Bool {
     && fixture_stale(change: "source_roots", expected: "source_roots")
 }
 
+test fn changed_validations_moves_identity_and_refuses() -> Bool {
+  fixture_stale(change: "validations", expected: "validations")
+}
+
+test fn changed_path_scope_moves_identity_and_refuses() -> Bool {
+  fixture_stale(change: "path_scope", expected: "path_scope")
+}
+
+test fn changed_extra_capabilities_moves_identity_and_refuses() -> Bool {
+  fixture_stale(change: "extra_capabilities", expected: "extra_capabilities")
+}
+
 test fn missing_inputs_refuse_at_the_node_and_field() -> Bool {
   fixture_missing(change: "missing_base", expected: "base_revision")
     && fixture_missing(change: "invalid_base", expected: "base_revision")
@@ -205,6 +219,9 @@ fn raw_revision_subject(subject: AttemptAdmissionSubject, raw: GitObjectId, publ
     public_revision: AdmittedPublicRevision {
       revision: if public { raw } else { subject.public_revision.revision }, standing: subject.public_revision.standing,
     },
+    sealed_validations: subject.sealed_validations,
+    sealed_extra_capabilities: subject.sealed_extra_capabilities,
+    sealed_path_scope: subject.sealed_path_scope,
     sealed_source_roots: subject.sealed_source_roots,
   }
 }
@@ -219,7 +236,12 @@ fn raw_revision_refuses(text: String, public: Bool) -> Bool {
         node: forged.node, destination: DispatchDestinationResolved { identity: forged.destination },
         base: Present { value: forged.base }, public_revision: Present { value: forged.public_revision.revision },
         public_standing: Present { value: forged.public_revision.standing },
-        execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: forged.sealed_source_roots },
+        execution: ExecutionContract {
+          validations: forged.sealed_validations,
+          extra_capabilities: forged.sealed_extra_capabilities,
+          path_scope: forged.sealed_path_scope,
+          source_roots: forged.sealed_source_roots,
+        },
       )
       all([minted, join_attempt_subject(sealed: subject, current: current), join_attempt_subject(sealed: forged, current: current)], result =>
         match result {

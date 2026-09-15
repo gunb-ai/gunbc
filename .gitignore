@@ -1,6 +1,9 @@
-# gunbc .gitignore — generated from gunbc.repo_workspace via gunbc.gitignore_emit — do not hand-edit.
+# gunbc .gitignore — generated via gunbc.gitignore_emit from gunbc.repo_workspace, gunbc.workspace_repository_materialisation and gunbc.generated_artifact — do not hand-edit.
 #
-# Every pattern is declared by its producer (an extdeps product's workspace footprint, or a repo tool's own declaration) with its meaning and a typed ignore reason; the trailing section is derived from gunbc.generated_artifact commit policy.
+# THREE ARMS, each with its own producer and its own reason for being untracked.
+# 1. Workspace footprints, from gunbc.repo_workspace: an extdeps product's own declaration or a repo tool's, each artifact carrying its meaning and a typed std.workspace_artifact IgnoreReason.
+# 2. Material from a repository that is not world-readable, from gunbc.workspace_repository_materialisation joined with each source repository's visibility in gunbc.repository: the pattern is the row's root-anchored prefix and the reason text is DERIVED from that visibility, never authored per row.
+# 3. Generated artifacts, derived from gunbc.generated_artifact commit policy.
 
 # --- Cargo build artifacts [cited: doc.rust-lang.org/cargo/] ---
 # regenerable from committed source — cargo build output tree (compiled artifacts, incremental state)
@@ -163,6 +166,18 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /gunbc-planning/
 # superseded; canonical home: docs/plans/ (generated PlanArtifact) and DESIGN.md — pre-plan-carrier fixture scratch
 /scripts/fixtures/
+
+# --- Material from a repository that is not world-readable (derived from gunbc.workspace_repository_materialisation and each source repository's visibility) ---
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by gitlink (160000): a commit sha and a path, with a warning — nested clone of the private repository beside the public checkout
+/private_repo
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy made by the private-witness step (cp -a of the private dag tree)
+/private_overlay
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy under the first observed recipe argument
+/base_overlay
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy under a third observed recipe argument, which is why this roster is a list of spellings
+/wb62_overlay
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — private .dag source root materialised beside the public one
+/privdag
 
 # --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).

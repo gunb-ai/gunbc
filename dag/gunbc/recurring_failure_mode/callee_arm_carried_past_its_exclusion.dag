@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.callee_arm_carried_past_its_exclusion
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data callee_arm_carried_past_its_exclusion: RecurringFailureMode = RecurringFailureMode {
+  identity: "callee_arm_carried_past_its_exclusion" as NonEmptyStr,
+
+  receipts: [
+    "**AN OPERATION'S OUTCOME CARRIES A REFUSAL ARM OF A GENERIC CALLEE THAT THE OPERATION'S OWN ROUTE HAS ALREADY EXCLUDED.** The route answered the question before reaching the callee -- found the parent, traced both merge sides, computed the digest over the value it proposes -- and then invoked a construction that asks the question again, so the operation's type admits a state its route cannot produce. It is honest about the CALLEE's domain and dishonest about the OPERATION's.",
+
+    "INVALID STATE: an outcome coproduct with an arm no execution of that operation can construct, whose consumers must still match it. HARM: each consumer either matches a state it cannot reach, or closes the match by inventing a cause -- the unreachable arm translated into a neighbouring real one, which is a fabricated diagnostic (DESIGN section 5). The milder form, keeping the arm and admitting in an annotation that it cannot arise, is a signature that lies with a footnote.",
+
+    "Named `carry_mint` while it recurred, after the first specimen: a generic commit mint's refusal arms carried into a verb that could not reach them. That name is retired in favour of this identity so the class has one name.",
+
+    "SPECIMENS, all gunbc#10729, the native SCM write spine, 2026-09-07 to 2026-09-10, each found by external review. (i) `gunbc.scm.ordinary_commit` carried the mint's integration-source arm and its first draft re-reported it as parent-missing -- the fabricated-cause form. (ii) `gunbc.scm.write_spine` carried the mint's parent-missing and integration-source arms, and a duplicate-path arm owned by `store_corpus_manifest`, none reachable from the staging route. (iii) `gunbc.scm.squash_merge` asked the generic mint to look up target and source that `ancestry_walk` had already traced, producing two unreachable arms. (iv) the same module carried a commit-missing arm for a base whose presence the base derivation had just proven. (v) `gunbc.scm.repository_slot` carried `RepositoryPublicationDigestDisagreed` for a digest it computed over its own value, comparing f(x) to f(x).",
+
+    "SIXTH SPECIMEN, REPAIRED BEFORE LANDING: `gunbc.scm.squash_merge` `SquashMergeBaseRefused { refusal: MergeBaseOutcome }` carried `MergeBaseDerived`, which the squash route never constructs because it ran the derived arm itself and rebuilt only the four refusals. Found by external review after the five above were repaired. The repair is the class's own repair and not a translation: `gunbc.scm.repository_envelope` now splits `MergeBaseRefusal` (the four refusal arms, one home) out of `MergeBaseOutcome` (`MergeBaseDerived` | `MergeBaseNotDerived { refusal }`), the squash outcome carries the refusal-only type, and the derived arm is unconstructible downstream rather than merely unreachable. It also collapsed the four-arm re-wrap in `squash_merge` to one forward and deleted the `\"derived\"` wire arm the canary was forced to invent.",
+
+    "DISTINGUISHING FACTS: the arm is reachable from the callee in general and unreachable from THIS caller specifically, so reading either module alone shows nothing wrong; the tell is a route that establishes a fact and then calls a construction whose outcome includes the negation of that fact. Neighbour, and not this class: `bool_projection_over_a_typed_carrier` collapses arms that ARE reachable into one answer; this class keeps arms that are NOT.",
+
+    "THE REPAIR, applied at every specimen and not a translation: make the question ABSENT downstream. Either hand the established fact forward so the callee need not ask (`MergeBaseDerived` returns the three resolved rows; `admit_commit_subject_from_basis` has only the allocator refusal), or invoke a narrower construction that never asks (`mint_ancestral_commit` takes an already-admitted basis, so it asks neither the parent nor the integration question; `store_path_unique_manifest` has no duplicate-path arm; the slot derives its digest rather than accepting one). The generic construction answers its single success (`MintedCommit`), and each admission route widens it to exactly the coproduct its own questions make reachable.",
+
+    "RUNG FOUND AT: MITIGATABLE -- review of finished diffs, six times on one branch. CEILING: STRUCTURALLY GUARANTEED is plausible, since reachability of an arm from a route is a flow fact over modeled structure, but it is not established here. NEXT-RUNG TRIGGER, A CAPABILITY: an analysis that relates the facts a route has established to the refusal arms of the constructions it invokes, sufficient to refuse an outcome arm that no path through the operation constructs. Until then this is authoring diligence: before carrying a callee's arm, ask whether this route can produce it."
+  ],
+
+  evidence: [],
+}

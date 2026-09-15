@@ -38,10 +38,9 @@ data mtcollins1_first_own_image_boot: FirstBootReceipt = FirstBootReceipt {
 
 // ── the discharged predictions ──────────────────────────────────────────────────────────────────
 
-// THE DRIVER BOUND THE FUNCTIONS THE ENUMERATION NAMED. The UEFI capture predicted igb from vendor
-// 8086 device 1521 at 02:02:00.00 and .01; Linux bound igb at 0002:02:00.0 and .1 -- the same two
-// functions in Linux's domain-prefixed spelling. The qualification held, and it is now a reading
-// rather than an inference.
+// Linux recorded igb at the following domain-prefixed addresses. Joining these
+// to the UEFI enumeration remains unestablished: the rostered
+// pci_address_rendering_equivalence_stall owns the missing executable join.
 type DriverBindingObservation {
   driver: NonEmptyStr
   bound_addresses: List<PciAddress>

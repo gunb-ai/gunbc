@@ -12,7 +12,7 @@ import std.durable_compare_and_set {
   CasSlotVersion,
   CasReadablePresent,
   ExpectSlotAbsent,
-  CasUnreadableReadRefused,
+  CasGenerationPublicationRefused,
   cas_generation_first,
 }
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -90,7 +90,7 @@ fn transport_of_origin_put(slot: NonEmptyStr, manifest_digest: Sha256Digest, put
         outcome: CasCommitted { committed: first_version(digest: manifest_digest) },
       }
     OriginPutRefused { key: _, cause: c } =>
-      StoreAnswered { slot: slot, outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: c } } }
+      StoreAnswered { slot: slot, outcome: CasStoreRefused { cause: CasGenerationPublicationRefused { detail: c } } }
     OriginPutOutcomeUnknown { key: _, cause: c } => StoreDidNotAnswer { slot: slot, cause: c }
     OriginObjectAlreadyPresent { key: _ } =>
       match fetch {

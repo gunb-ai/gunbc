@@ -144,6 +144,42 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "test.claim.floor_eval_step_budget_witness_test.the_grounding_refuses_a_budget_out_of_band_in_either_direction" as NonEmptyStr,
     deleted_in: "the two-tier fold: the two-sided band it exercised no longer exists. Its subject -- that both refusing arms of the grounding are authorable and both refuse -- survives inside the_pinned_rate_is_the_floored_ratio_of_its_own_sample and its RateAboveMeasuredRatio / RateBelowMeasuredRatio arms, so this is a deletion of the fixture and not of the coverage" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.a_clean_report_states_the_coverage_it_does_not_have" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.an_empty_fact_population_refuses_too" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.a_subject_that_contributed_no_declarations_refuses_rather_than_reading_clean" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.a_subject_with_one_forked_name_among_several_reports_only_that_one" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.both_refusing_verdicts_fail_the_gate_and_the_clean_one_passes" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.every_peer_declarer_is_reported_and_repeats_are_collapsed" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.one_name_declared_in_two_files_is_a_fork_that_names_both" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.the_same_two_files_declaring_different_names_are_not_a_fork" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_fork_lens_witness_test.two_declarations_of_one_name_inside_the_subject_are_not_a_fork_with_itself" as NonEmptyStr,
+    deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

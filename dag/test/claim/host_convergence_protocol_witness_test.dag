@@ -1,0 +1,373 @@
+module test.claim.host_convergence_protocol_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+  GoalAssessment,
+  GoalInspected,
+  GoalObservationRefused,
+  GoalSatisfied,
+  GoalDiverged,
+  assess_by_deviations,
+}
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, Converged, UnknownRefused }
+import std.realization_reconcile {
+  ReconciledEffect,
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounds,
+  Applied,
+  NotApplied,
+  classify_reconciled,
+  EffectConverged,
+  EffectNotConverged,
+}
+import std.decl_ref { decl_ref }
+import gunbc.host_convergence_protocol {
+  admit_protocol_phases,
+  PhasesBound,
+  SelectionLeakedIntoObservation,
+  SelectionLeakedIntoAssessment,
+  bind_canonical_protocol,
+  CanonicalProtocolBound,
+  CanonicalFrontiersUnbound,
+  CanonicalLayersUnbound,
+  CensusProtocolUnbound,
+  admit_frontier,
+  FrontierStanding,
+  FrontierTriggerIsTheConsumer,
+  FrontierHonest,
+  FrontierConsumerIsDeclaration,
+  FrontierTriggerIsDeclaration,
+  host_effect_observe_frontier,
+  host_effect_decide_plan_frontier,
+  host_effect_decide_apply_frontier,
+  reconcile_from_read_attempt,
+  inspect_via_host_effect_projection,
+  HostEffectDomainProjection,
+  canonical_protocol_bindings,
+  required_canonical_layers,
+  canonical_layer_join,
+  CanonicalLayerMissing,
+  CanonicalLayersCovered,
+  CanonicalLayerDuplicated,
+  ProtocolDeclaredFrontier,
+  frontier_names_a_distinct_consumer,
+  frontier_trigger_is_not_declaration,
+  frontier_trigger_is_not_the_consumer,
+}
+import gunbc.host_convergence_census { protocol_phases }
+import gunbc.ensure {
+  EnsureAbsent,
+  EnsureInaccessible,
+  ensure_observation_as_attempt,
+  EnsureMayApply,
+  EnsurePlanAvailable,
+  ensure_reconcile,
+}
+import gunbc.readback_independence {
+  sccache_show_stats_probe,
+  systemd_show_property_probe,
+  readback_evidence_verdict,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data same: Bool = true
+data trigger: Bool = true
+
+fn attempt_is_established_absence(
+  attempt: ObservationAttempt<ShowEffectiveRead<String>, String>,
+) -> Bool {
+  match attempt {
+    ObservationEstablished { observed: ReadAbsent { reason: _ } } => true
+    ObservationEstablished { observed: ReadObserved { value: _ } } => false
+    ObservationRefused { cause: _ } => false
+  }
+}
+
+test fn control_2_observation_refusal_is_not_established_absence() -> Bool {
+  !attempt_is_established_absence(
+    attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
+  )
+    && attempt_is_established_absence(
+      attempt: ensure_observation_as_attempt(observation: EnsureAbsent { reason: "missing" }),
+    )
+}
+
+test fn control_3_divergence_names_a_deviation() -> Bool {
+  match assess_by_deviations(evidence: "snap", deviations: ["enforcement"]) {
+    GoalDiverged { deviations: ds } => ds.head == "enforcement"
+    _ => false
+  }
+    && match assess_by_deviations(evidence: "snap", deviations: []) {
+      GoalSatisfied { evidence: e } => e == "snap"
+      _ => false
+    }
+}
+
+fn classify_converged(r: ReconciledEffect<String, String>) -> Bool {
+  match classify_reconciled(r: r) {
+    EffectConverged { converged: _ } => true
+    EffectNotConverged { reason: _, attempt: _ } => false
+  }
+}
+
+test fn control_4_noop_cannot_carry_an_application() -> Bool {
+  !classify_converged(
+    r: reconcile_from_read_attempt(
+      decision: Noop,
+      application: Applied,
+      after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+      grounding: Grounds { evidence: "same" },
+    ),
+  )
+    && classify_converged(
+      r: reconcile_from_read_attempt(
+        decision: Noop,
+        application: NotApplied,
+        after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+        grounding: Grounds { evidence: "same" },
+      ),
+    )
+}
+
+test fn control_5_refused_decision_cannot_carry_an_application() -> Bool {
+  !classify_converged(
+    r: reconcile_from_read_attempt(
+      decision: Refuse { reason: "policy" as NonEmptyStr },
+      application: Applied,
+      after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+      grounding: Grounds { evidence: "same" },
+    ),
+  )
+    && !classify_converged(
+      r: reconcile_from_read_attempt(
+        decision: Refuse { reason: "policy" as NonEmptyStr },
+        application: NotApplied,
+        after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+        grounding: Grounds { evidence: "same" },
+      ),
+    )
+}
+
+test fn control_6_apply_cannot_converge_without_post_apply_readback() -> Bool {
+  !classify_converged(
+    r: reconcile_from_read_attempt(
+      decision: Apply { plan: "install" },
+      application: Applied,
+      after: ObservationRefused { cause: "no post-apply read" },
+      grounding: Grounds { evidence: "fabricated" },
+    ),
+  )
+    && classify_converged(
+      r: reconcile_from_read_attempt(
+        decision: Apply { plan: "install" },
+        application: Applied,
+        after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+        grounding: Grounds { evidence: "same" },
+      ),
+    )
+}
+
+test fn control_7_reused_pre_apply_reading_is_caught_by_independence() -> Bool {
+  match readback_evidence_verdict(p: sccache_show_stats_probe, observed: Converged) {
+    UnknownRefused => true
+    _ => false
+  }
+    && match readback_evidence_verdict(p: systemd_show_property_probe, observed: Converged) {
+      Converged => true
+      _ => false
+    }
+}
+
+test fn control_9_selection_cannot_occur_inside_observation_or_assessment() -> Bool {
+  match admit_protocol_phases(phases: protocol_phases(true, true, false, false, false, false, false)) {
+      SelectionLeakedIntoObservation { phases: _ } => true
+      _ => false
+    }
+    && match admit_protocol_phases(phases: protocol_phases(true, false, true, false, false, false, false)) {
+      SelectionLeakedIntoAssessment { phases: _ } => true
+      _ => false
+    }
+    && match admit_protocol_phases(phases: protocol_phases(true, false, false, false, false, false, false)) {
+      PhasesBound { phases: p } => p.selects && !p.observes && !p.assesses
+      _ => false
+    }
+}
+
+fn fixture_observe(subject: String, request: String) -> ObservationAttempt<String, String> {
+  ObservationEstablished { observed: subject }
+}
+
+fn fixture_assess(goal: String, observed: String) -> GoalAssessment<String, String, String, String> {
+  assess_by_deviations(
+    evidence: observed,
+    deviations: if goal == observed { [] } else { ["drift"] },
+  )
+}
+
+fn fixture_decide(a: GoalAssessment<String, String, String, String>) -> UpsertDecision<String> {
+  match a {
+    GoalSatisfied { evidence: _ } => Noop
+    GoalDiverged { deviations: _ } => Apply { plan: "repair" }
+    _ => Refuse { reason: "indeterminate" as NonEmptyStr }
+  }
+}
+
+test fn host_effect_domain_projection_inspects_without_selection() -> Bool {
+  let projection = HostEffectDomainProjection {
+    observe: fixture_observe,
+    assess: fixture_assess,
+    decide: fixture_decide,
+  }
+  match inspect_via_host_effect_projection(
+    subject: "host",
+    goal: "host",
+    request: "identity",
+    projection: projection,
+  ) {
+    GoalInspected { subject: s, goal: _, request: _, observed: o, assessment: a } =>
+      match a {
+        GoalSatisfied { evidence: e } => s == "host" && o == "host" && e == "host"
+        _ => false
+      }
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: _ } => false
+  }
+}
+
+test fn ensure_inaccessible_after_cannot_converge() -> Bool {
+  match classify_reconciled(
+    r: ensure_reconcile(
+      policy: EnsureMayApply,
+      before: EnsureAbsent { reason: "missing" },
+      before_satisfies: false,
+      mismatch_reason: "missing",
+      plan: EnsurePlanAvailable { plan: "install" },
+      application: Applied,
+      after: EnsureInaccessible { reason: "probe refused" },
+      after_satisfies: false,
+      after_mismatch_reason: "unused",
+    ),
+  ) {
+    EffectNotConverged { reason: why, attempt: _ } =>
+      string_contains(s: why, pattern: "probe refused")
+    EffectConverged { converged: _ } => false
+  }
+}
+
+test fn canonical_layer_join_missing_required_layer_is_red() -> Bool {
+  match canonical_layer_join(
+    required: required_canonical_layers,
+    bindings: [],
+  ) {
+    CanonicalLayerMissing { layer: _ } => true
+    CanonicalLayersCovered => false
+    CanonicalLayerDuplicated { layer: _ } => false
+  }
+}
+
+test fn frontier_self_successor_is_red() -> Bool {
+  !frontier_names_a_distinct_consumer(
+    f: ProtocolDeclaredFrontier {
+      declaration: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "same",
+      ),
+      named_consumer: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "same",
+      ),
+      trigger_capability: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "trigger",
+      ),
+    },
+  )
+}
+
+test fn frontier_self_trigger_is_red() -> Bool {
+  !frontier_trigger_is_not_declaration(
+    f: ProtocolDeclaredFrontier {
+      declaration: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "same",
+      ),
+      named_consumer: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "trigger",
+      ),
+      trigger_capability: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "same",
+      ),
+    },
+  )
+}
+
+test fn canonical_protocol_binds() -> Bool {
+  match bind_canonical_protocol() {
+    CanonicalFrontiersUnbound { frontiers: fs } =>
+      frontier_standings_await_routing(ss: fs)
+    CanonicalProtocolBound { frontiers: _ } => false
+    CanonicalLayersUnbound { join: _ } => false
+    CensusProtocolUnbound { standing: _ } => false
+  }
+}
+
+fn frontier_standings_await_routing(ss: List<FrontierStanding>) -> Bool {
+  fold(ss, init: true, f: fn(ok, s) {
+    if ok {
+      match s {
+        FrontierTriggerIsTheConsumer { frontier: _ } => true
+        FrontierHonest => false
+        FrontierConsumerIsDeclaration { frontier: _ } => false
+        FrontierTriggerIsDeclaration { frontier: _ } => false
+      }
+    } else {
+      false
+    }
+  })
+}
+
+test fn decide_frontiers_do_not_claim_routing_exists() -> Bool {
+  match admit_frontier(f: host_effect_observe_frontier) {
+    FrontierTriggerIsTheConsumer { frontier: _ } => true
+    FrontierHonest => false
+    FrontierConsumerIsDeclaration { frontier: _ } => false
+    FrontierTriggerIsDeclaration { frontier: _ } => false
+  }
+    && match admit_frontier(f: host_effect_decide_plan_frontier) {
+      FrontierTriggerIsTheConsumer { frontier: _ } => true
+      FrontierHonest => false
+      FrontierConsumerIsDeclaration { frontier: _ } => false
+      FrontierTriggerIsDeclaration { frontier: _ } => false
+    }
+    && match admit_frontier(f: host_effect_decide_apply_frontier) {
+      FrontierTriggerIsTheConsumer { frontier: _ } => true
+      FrontierHonest => false
+      FrontierConsumerIsDeclaration { frontier: _ } => false
+      FrontierTriggerIsDeclaration { frontier: _ } => false
+    }
+}
+
+test fn host_convergence_protocol_keystone_holds() -> Bool {
+  control_2_observation_refusal_is_not_established_absence()
+    && control_3_divergence_names_a_deviation()
+    && control_4_noop_cannot_carry_an_application()
+    && control_5_refused_decision_cannot_carry_an_application()
+    && control_6_apply_cannot_converge_without_post_apply_readback()
+    && control_7_reused_pre_apply_reading_is_caught_by_independence()
+    && control_9_selection_cannot_occur_inside_observation_or_assessment()
+    && host_effect_domain_projection_inspects_without_selection()
+    && ensure_inaccessible_after_cannot_converge()
+    && canonical_protocol_binds()
+    && decide_frontiers_do_not_claim_routing_exists()
+    && canonical_layer_join_missing_required_layer_is_red()
+    && frontier_self_successor_is_red()
+    && frontier_self_trigger_is_red()
+}

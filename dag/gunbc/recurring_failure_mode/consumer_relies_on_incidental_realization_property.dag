@@ -1,24 +1,37 @@
 module gunbc.recurring_failure_mode.consumer_relies_on_incidental_realization_property
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data consumer_relies_on_incidental_realization_property: RecurringFailureMode = RecurringFailureMode {
   identity: "consumer_relies_on_incidental_realization_property" as NonEmptyStr,
 
   receipts: [
-    "INVALID STATE: a consumer relies on a property of its provider's current implementation that the provider's contract does not promise. HARM: a contract-preserving provider change can invalidate the consumer, and even the current implementation may establish only part of the property the consumer assumes. Agreement on happy-path output conceals the missing guarantee; reviewing the implementation alone cannot repair the dependency contract.",
+    "INVALID STATE: a consumer relies on a property of its provider's current implementation that the provider's contract does not promise. DISTINGUISHING FACT, the class that recurs: OwnerOnly's O_EXCL is incidental to MODE, not its contract. Complete exclusive publication is WriteCreateNew, published via extdeps.filesystem.rust_realization (complete content then hard_link). A consumer that treats OwnerOnly as exclusive complete publication is leaning on a disclaimed property; the next instance need not be a CAS writer. HARM: a contract-preserving provider change can invalidate the consumer, and even the current implementation may establish only part of the property the consumer assumes. Agreement on happy-path output conceals the missing guarantee; reviewing the implementation alone cannot repair the dependency contract.",
 
-    "SOURCE-VERIFIED SPECIMEN, NOT AN EXECUTED REPRODUCTION: gunbc.durable_cas_file_store cas_commit_at uses extdeps.filesystem.filesystem_io Filesystem.WriteOwnerOnly as the publication primitive for a CAS generation. v1_compiler.v1_interpreter write_file_owner_only opens the FINAL path with create_new and then calls write_all. A post-open failure can leave partial slot bytes visible. The adjacent write_file_create_new contract explicitly says owner-only O_EXCL is incidental to creation-time permissions, not a create-only contract. Its complete-content-before-publication realization is owned by extdeps.filesystem.rust_realization. No partial-write perturbation was executed for this finding.",
+    "SPECIMEN, REPAIRED AT THE REALIZATION HOME (silent-stag-307): gunbc.durable_cas_file_store cas_commit_at previously used Filesystem.WriteOwnerOnly, whose v1 interpreter realization opens the FINAL path then write_all. cas_commit_at now publishes through Filesystem.WriteCreateNew. WriteOwnerOnly remains the owner-only MODE operation. This receipt records that repair; it does not redefine the class as 'CAS now uses WriteCreateNew'.",
 
-    "DISTINGUISHING FACT: the class is consumer reliance on an incidental realization property, not merely a partial-write bug. Owner-only permission and exclusive complete publication are different obligations. The CAS consumer borrows the first operation's current exclusion behavior while needing the second contract. Persisting and verifying immutable objects upstream cannot repair a torn generation file at the mutable target's publication point. Correctly classifying a failed write also cannot restore that file's integrity.",
+    "EXECUTED, filesystem publication layer (BuildBuddy amd64): cargo test --release -p v1-compiler --lib write_file_create_new (11 tests), including a_write_failure_after_creation_leaves_no_target_behind (post-staging RLIMIT_FSIZE) and direct_final_path_open_then_write_leaves_a_target_when_the_write_fails.",
 
-    "RUNG FOUND AT: silent wrongness for the unsupported publication guarantee, outside the ladder. CEILING: structurally guaranteed for the internal contract-to-consumer binding once required publication capabilities are modeled and checked by acceptance; external crash durability still requires observation at its declared boundary and is not made true by a type. NEXT TRIGGER: the CAS consumer binds to an explicit exclusive, complete, durable publication contract at the existing realization home, with acceptance refusing an insufficient provider and executed publication evidence distinguishing failed preparation from a visible complete generation. A renamed helper, corrected error arm, or isolated O_EXCL contention test is insufficient.",
+    "EXECUTED, COMPOSED PATH (floor run 34800475614, local-repo wet lane, standing hermetic-route-gap-held-and-wet-passed): test.claim.durable_cas_file_store_wet_witness commit_then_independent_read_back_agrees_by_real_execution, a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution, an_advance_after_commit_lands_generation_two_by_real_execution, a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution. These are the only cells that run file_compare_and_set against a real filesystem. The same four already ran in 34797864081 D0-MEASURE.",
 
-    "DISPOSITION: contractual publication precedes refusal repair in the Phase 1 cut. Repairs belong to extdeps.filesystem.rust_realization and gunbc.durable_cas_file_store, not an SCM-local safe-write helper. gunbc.fabric_control_plane already consumes this CAS realization; the absence of an SCM consumer today limits SCM exposure, not the existing defect. The repair lane owes the discriminating RED.",
+    "NUANCE, not a retraction: floor_route_gap_expectation_chunk_12 makes the HERMETIC floor silent about those four by construction, so a green hermetic floor is not what establishes them -- the [local-repo-wet] receipt lines are. Session claim_batch OOM at about 7GiB explains why THIS SESSION has no local receipt; it is not an absence of one.",
 
-    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster, consumed by gunbc.design_ledgers and checked by the required parse-phase rostered-row join. Its concrete downstream planning consumer is docs/plans/native-scm-cas-fit-and-consumer-cut.md. This source-verified finding is not an execution receipt.",
+    "RUNG FOUND AT BY EXECUTION: mechanically preventable for exclusive complete VISIBILITY of a generation file, at the grain of the rust suite and the composed-path wet receipt together, and no higher. Crash-durable directory metadata is NOT claimed: rust_realization fsyncs the staging file and does not fsync the parent directory after hard_link.",
+
+    "CEILING: structurally guaranteed for the internal bind of CAS to WriteCreateNew once acceptance refuses a consumer of WriteOwnerOnly for exclusive complete publication; external crash durability remains outside the modeled guarantee. NEXT TRIGGER: a publication contract that includes parent-directory sync, with executed evidence, or acceptance that refuses WriteOwnerOnly as a CAS publication primitive.",
+
+    "DISPOSITION: production CAS publication uses WriteCreateNew. The discriminating RED stays enrolled (DESIGN 4b(4)); the retired construction is a #[cfg(test)] specimen in the rust suite, not a production declaration. gunbc.fabric_control_plane still consumes file_compare_and_set; successful CellReserved and race ReservationLost are unchanged in meaning. Torn generations at the slot path are no longer a WriteOwnerOnly leftover wearing a commit.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster.",
   ],
 
-  evidence: [],
+  evidence: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_commit_at"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_outcome_from_create"),
+    decl_ref(module_path: "extdeps.filesystem.rust_realization", decl_name: "rust_file_write_create_new_fn_def"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "commit_then_independent_read_back_agrees_by_real_execution"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution"),
+  ],
 }
