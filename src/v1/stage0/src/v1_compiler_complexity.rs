@@ -1472,12 +1472,18 @@ pub fn infer_parser_always_advancing_members_worklist(
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, bool>> {
     loop {
-        let queue = __tco_loop_queue.clone();
-        let func_index = __tco_loop_func_index.clone();
-        let parser_name_set = __tco_loop_parser_name_set.clone();
-        let reverse_graph = __tco_loop_reverse_graph.clone();
-        let proven = __tco_loop_proven.clone();
-        let si = __tco_loop_si.clone();
+        #[allow(unused_mut)]
+        let mut queue = __tco_loop_queue.clone();
+        #[allow(unused_mut)]
+        let mut func_index = __tco_loop_func_index.clone();
+        #[allow(unused_mut)]
+        let mut parser_name_set = __tco_loop_parser_name_set.clone();
+        #[allow(unused_mut)]
+        let mut reverse_graph = __tco_loop_reverse_graph.clone();
+        #[allow(unused_mut)]
+        let mut proven = __tco_loop_proven.clone();
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si.clone();
         match queue.clone().first().cloned() {
             Some(name) => {
                 let rest = Rc::new(
@@ -2460,9 +2466,12 @@ pub fn expr_descending_witness_source(
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     loop {
-        let expr = __tco_loop_expr.clone();
-        let descending_witness_names = __tco_loop_descending_witness_names.clone();
-        let si = __tco_loop_si.clone();
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr.clone();
+        #[allow(unused_mut)]
+        let mut descending_witness_names = __tco_loop_descending_witness_names.clone();
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si.clone();
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: _, ..
@@ -2788,10 +2797,14 @@ pub fn is_children_of_param(
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let expr = __tco_loop_expr.clone();
-        let param_name = __tco_loop_param_name.clone();
-        let vars = __tco_loop_vars.clone();
-        let si = __tco_loop_si.clone();
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr.clone();
+        #[allow(unused_mut)]
+        let mut param_name = __tco_loop_param_name.clone();
+        #[allow(unused_mut)]
+        let mut vars = __tco_loop_vars.clone();
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si.clone();
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprFieldAccess { .. } => {
                 let base = crate::v1_std_core::field_access_base(expr.clone());
@@ -3107,10 +3120,14 @@ pub fn is_tokens_input_expr(
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let expr = __tco_loop_expr.clone();
-        let param_name = __tco_loop_param_name.clone();
-        let vars = __tco_loop_vars.clone();
-        let si = __tco_loop_si.clone();
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr.clone();
+        #[allow(unused_mut)]
+        let mut param_name = __tco_loop_param_name.clone();
+        #[allow(unused_mut)]
+        let mut vars = __tco_loop_vars.clone();
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si.clone();
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: _, ..
@@ -4264,7 +4281,8 @@ pub fn all_self_calls_descend_inc(
 
 pub fn unwrap_to_match(mut __tco_loop_body: Rc<Node>) -> Option<Rc<Node>> {
     loop {
-        let body = __tco_loop_body.clone();
+        #[allow(unused_mut)]
+        let mut body = __tco_loop_body.clone();
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprMatch => {
                 break Some(body.clone());
@@ -5944,7 +5962,8 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
 
 pub fn extract_unknown_reason(mut __tco_loop_expr: Rc<CostExpr>) -> String {
     loop {
-        let expr = __tco_loop_expr.clone();
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr.clone();
         match (*expr.clone()).clone() {
             CostExpr::CostUnknown { reason: r, .. } => {
                 break r.clone();
@@ -8080,8 +8099,10 @@ pub fn receiver_size_var(
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SizeExpr> {
     loop {
-        let recv = __tco_loop_recv.clone();
-        let si = __tco_loop_si.clone();
+        #[allow(unused_mut)]
+        let mut recv = __tco_loop_recv.clone();
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si.clone();
         match (*recv.expr_data.clone()).clone() {
             ExprData::ExprVar { .. } => {
                 break Rc::new(SizeExpr::SizeLen {

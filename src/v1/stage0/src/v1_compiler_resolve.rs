@@ -913,11 +913,11 @@ pub fn kahn_drain(
     mut __tco_loop_fuel: i64,
 ) -> Rc<KahnDrainState> {
     loop {
-        let queue = __tco_loop_queue.clone();
-        let sorted = __tco_loop_sorted.clone();
-        let in_degree_map = __tco_loop_in_degree_map.clone();
-        let adjacency = __tco_loop_adjacency.clone();
-        let fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)] let mut queue = __tco_loop_queue.clone();
+        #[allow(unused_mut)] let mut sorted = __tco_loop_sorted.clone();
+        #[allow(unused_mut)] let mut in_degree_map = __tco_loop_in_degree_map.clone();
+        #[allow(unused_mut)] let mut adjacency = __tco_loop_adjacency.clone();
+        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
         if ((queue.clone().len() as i64) == 0) {
             return Rc::new(KahnDrainState {
                 sorted: sorted.clone(),

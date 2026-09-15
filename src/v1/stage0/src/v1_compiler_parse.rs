@@ -688,10 +688,10 @@ pub fn mint_parsed_string_part_nodes(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParsedNodesResult> {
     loop {
-        let parts = __tco_loop_parts.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let span = __tco_loop_span.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut parts = __tco_loop_parts.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut span = __tco_loop_span.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         match parts.clone().first().cloned() {
             Some(part) => {
                 let minted = mint_parsed_node_identity(ctx.clone());
@@ -2088,7 +2088,7 @@ pub fn is_name_keyword(token: Rc<Token>, env: Rc<ParseEnvironment>) -> bool {
 
 pub fn skip_newlines(mut __tco_loop_tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
         match token_stream_first(tokens.clone()) {
             Some(t) => {
                 if is_newline_shape(t.shape.clone()) {
@@ -2613,10 +2613,10 @@ pub fn parse_dotted_ident_rest(
     mut __tco_loop_env: Rc<ParseEnvironment>,
 ) -> Rc<NameResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let acc = __tco_loop_acc.clone();
-        let span = __tco_loop_span.clone();
-        let env = __tco_loop_env.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut span = __tco_loop_span.clone();
+        #[allow(unused_mut)] let mut env = __tco_loop_env.clone();
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectDot))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = expect_name(__ec.clone(), env.clone());
@@ -3742,9 +3742,9 @@ pub fn parse_imports_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ImportsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
             let r = parse_import(tokens.clone(), ctx.clone());
@@ -3783,10 +3783,10 @@ pub fn last_consumed_token_end(
     mut __tco_loop_end: Option<i64>,
 ) -> Option<i64> {
     loop {
-        let all = __tco_loop_all.clone();
-        let from = __tco_loop_from.clone();
-        let until = __tco_loop_until.clone();
-        let end = __tco_loop_end.clone();
+        #[allow(unused_mut)] let mut all = __tco_loop_all.clone();
+        #[allow(unused_mut)] let mut from = __tco_loop_from.clone();
+        #[allow(unused_mut)] let mut until = __tco_loop_until.clone();
+        #[allow(unused_mut)] let mut end = __tco_loop_end.clone();
         if (from.clone() >= until.clone()) {
             break end.clone();
         } else {
@@ -3824,9 +3824,9 @@ pub fn parse_import_statement_extents_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<ParsedImportStatement>>>,
 ) -> Rc<ParsedImportStatements> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
             let before = tokens.pos.clone();
@@ -3942,9 +3942,9 @@ pub fn parse_items_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ItemsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ItemsResult {
@@ -4108,9 +4108,9 @@ pub fn parse_import_names_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<NamesResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if tok_is_rbrace(token_stream_first(tokens.clone())) {
             break Rc::new(NamesResult {
@@ -5555,9 +5555,9 @@ pub fn parse_predicates_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<PredsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         let r = parse_single_predicate(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(PredsResult {
@@ -6247,9 +6247,9 @@ pub fn parse_more_variants_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<VariantsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectPipe))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
@@ -6545,9 +6545,9 @@ pub fn parse_callable_param_types(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParamsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         let r = parse_type_expr(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
@@ -6725,9 +6725,9 @@ pub fn collect_type_param_names(
     mut __tco_loop_params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TypeParamsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let params = __tco_loop_params.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut params = __tco_loop_params.clone();
         if tok_is_ident(token_stream_first(tokens.clone())) {
             let r = expect_ident(tokens.clone());
             let span = r.span.clone();
@@ -6786,9 +6786,9 @@ pub fn collect_type_args(
     mut __tco_loop_args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TypeArgsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let args = __tco_loop_args.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut args = __tco_loop_args.clone();
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_type_angle_arg(__ec.clone(), ctx.clone());
@@ -6878,9 +6878,9 @@ pub fn parse_field_list_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<FieldsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if ((tok_is_rbrace(tok.clone()) || tok_is_rparen(tok.clone())) || tok_is_eof(tok.clone())) {
@@ -7476,9 +7476,9 @@ pub fn parse_uses_list_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<UsesResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         let r = parse_uses_entry(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(UsesResult {
@@ -7649,9 +7649,9 @@ pub fn parse_resource_config_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ResConfigResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         if tok_is_rparen(token_stream_first(tokens.clone())) {
             return Rc::new(ResConfigResult {
                 fields: acc.clone(),
@@ -7970,11 +7970,11 @@ pub fn parse_service_entries(
     mut __tco_loop_operations: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ServiceBodyResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let config = __tco_loop_config.clone();
-        let transport = __tco_loop_transport.clone();
-        let operations = __tco_loop_operations.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut config = __tco_loop_config.clone();
+        #[allow(unused_mut)] let mut transport = __tco_loop_transport.clone();
+        #[allow(unused_mut)] let mut operations = __tco_loop_operations.clone();
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_rbrace(tok.clone()) || tok_is_eof(tok.clone())) {
@@ -8168,13 +8168,13 @@ pub fn parse_config_fields(
     mut __tco_loop_rate_limit: Option<Rc<Node>>,
 ) -> Rc<ConfigResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let endpoint = __tco_loop_endpoint.clone();
-        let auth = __tco_loop_auth.clone();
-        let auth_input = __tco_loop_auth_input.clone();
-        let auth_source = __tco_loop_auth_source.clone();
-        let rate_limit = __tco_loop_rate_limit.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut endpoint = __tco_loop_endpoint.clone();
+        #[allow(unused_mut)] let mut auth = __tco_loop_auth.clone();
+        #[allow(unused_mut)] let mut auth_input = __tco_loop_auth_input.clone();
+        #[allow(unused_mut)] let mut auth_source = __tco_loop_auth_source.clone();
+        #[allow(unused_mut)] let mut rate_limit = __tco_loop_rate_limit.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -8503,15 +8503,15 @@ pub fn parse_rest_fields(
     mut __tco_loop_headers: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TransportResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let base_url = __tco_loop_base_url.clone();
-        let method = __tco_loop_method.clone();
-        let path_template = __tco_loop_path_template.clone();
-        let query = __tco_loop_query.clone();
-        let request_body = __tco_loop_request_body.clone();
-        let response_format = __tco_loop_response_format.clone();
-        let headers = __tco_loop_headers.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut base_url = __tco_loop_base_url.clone();
+        #[allow(unused_mut)] let mut method = __tco_loop_method.clone();
+        #[allow(unused_mut)] let mut path_template = __tco_loop_path_template.clone();
+        #[allow(unused_mut)] let mut query = __tco_loop_query.clone();
+        #[allow(unused_mut)] let mut request_body = __tco_loop_request_body.clone();
+        #[allow(unused_mut)] let mut response_format = __tco_loop_response_format.clone();
+        #[allow(unused_mut)] let mut headers = __tco_loop_headers.clone();
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -8708,10 +8708,10 @@ pub fn parse_shell_fields(
     mut __tco_loop_stdin: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let argv = __tco_loop_argv.clone();
-        let stdin = __tco_loop_stdin.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut argv = __tco_loop_argv.clone();
+        #[allow(unused_mut)] let mut stdin = __tco_loop_stdin.clone();
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -8862,10 +8862,10 @@ pub fn parse_file_fields(
     mut __tco_loop_verb: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let base_path = __tco_loop_base_path.clone();
-        let verb = __tco_loop_verb.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut base_path = __tco_loop_base_path.clone();
+        #[allow(unused_mut)] let mut verb = __tco_loop_verb.clone();
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -9257,15 +9257,15 @@ pub fn parse_op_body_entries(
     mut __tco_loop_mock_props: Rc<Vec<Rc<Node>>>,
 ) -> Rc<OpBodyResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let inputs = __tco_loop_inputs.clone();
-        let outputs = __tco_loop_outputs.clone();
-        let modifier_props = __tco_loop_modifier_props.clone();
-        let transport = __tco_loop_transport.clone();
-        let exit_props = __tco_loop_exit_props.clone();
-        let response_props = __tco_loop_response_props.clone();
-        let mock_props = __tco_loop_mock_props.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut inputs = __tco_loop_inputs.clone();
+        #[allow(unused_mut)] let mut outputs = __tco_loop_outputs.clone();
+        #[allow(unused_mut)] let mut modifier_props = __tco_loop_modifier_props.clone();
+        #[allow(unused_mut)] let mut transport = __tco_loop_transport.clone();
+        #[allow(unused_mut)] let mut exit_props = __tco_loop_exit_props.clone();
+        #[allow(unused_mut)] let mut response_props = __tco_loop_response_props.clone();
+        #[allow(unused_mut)] let mut mock_props = __tco_loop_mock_props.clone();
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let span = token_span(tok.clone());
@@ -9764,8 +9764,8 @@ pub fn int_to_string_acc(
     mut __tco_loop_acc: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
     loop {
-        let value = __tco_loop_value.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut value = __tco_loop_value.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         if (value.clone() == 0) {
             break acc.clone();
         } else {
@@ -9923,9 +9923,9 @@ pub fn parse_exit_entries_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ExitEntriesResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -10021,9 +10021,9 @@ pub fn parse_operation_modifiers_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ModsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         let kw = tok_keyword_text(token_stream_first(tokens.clone()));
         if (kw.clone() == "idempotent".to_string()) {
             let minted = mint_parsed_bool_property(
@@ -10295,9 +10295,9 @@ pub fn parse_response_entries_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<RespEntriesResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -10452,9 +10452,9 @@ pub fn parse_mock_response_entries_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<MockEntriesResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -10708,10 +10708,10 @@ pub fn parse_resource_entries(
     mut __tco_loop_capabilities: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ResPropResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let properties = __tco_loop_properties.clone();
-        let capabilities = __tco_loop_capabilities.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut properties = __tco_loop_properties.clone();
+        #[allow(unused_mut)] let mut capabilities = __tco_loop_capabilities.clone();
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let span = token_span(tok.clone());
@@ -11140,10 +11140,10 @@ pub fn parse_io_blocks_acc(
     mut __tco_loop_outputs: Rc<Vec<Rc<Node>>>,
 ) -> Rc<IOResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let inputs = __tco_loop_inputs.clone();
-        let outputs = __tco_loop_outputs.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut inputs = __tco_loop_inputs.clone();
+        #[allow(unused_mut)] let mut outputs = __tco_loop_outputs.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -11629,9 +11629,9 @@ pub fn parse_param_list_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParamsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         let r = parse_param(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
@@ -11813,12 +11813,12 @@ pub fn heads_skip_data_value_tokens_at(
     mut __tco_loop_seen: bool,
 ) -> Rc<HeadsDataValueSkipResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let offset = __tco_loop_offset.clone();
-        let braces = __tco_loop_braces.clone();
-        let parens = __tco_loop_parens.clone();
-        let brackets = __tco_loop_brackets.clone();
-        let seen = __tco_loop_seen.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut offset = __tco_loop_offset.clone();
+        #[allow(unused_mut)] let mut braces = __tco_loop_braces.clone();
+        #[allow(unused_mut)] let mut parens = __tco_loop_parens.clone();
+        #[allow(unused_mut)] let mut brackets = __tco_loop_brackets.clone();
+        #[allow(unused_mut)] let mut seen = __tco_loop_seen.clone();
         let tok = token_stream_peek(tokens.clone(), offset.clone());
         if tok_is_eof(tok.clone()) {
             if (((seen.clone() && (braces.clone() == 0)) && (parens.clone() == 0))
@@ -11951,8 +11951,8 @@ pub fn heads_skip_block_tokens(
     mut __tco_loop_depth: i64,
 ) -> Rc<HeadsBlockSkipResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let depth = __tco_loop_depth.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut depth = __tco_loop_depth.clone();
         if (depth.clone() == 0) {
             return Rc::new(HeadsBlockSkipResult {
                 tokens: tokens.clone(),
@@ -12133,9 +12133,9 @@ pub fn parse_stmts_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -12496,10 +12496,10 @@ pub fn parse_expr_loop(
     mut __tco_loop_min_bp: i64,
 ) -> Rc<ExprResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let lhs = __tco_loop_lhs.clone();
-        let min_bp = __tco_loop_min_bp.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut lhs = __tco_loop_lhs.clone();
+        #[allow(unused_mut)] let mut min_bp = __tco_loop_min_bp.clone();
         ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ExprResult {
@@ -12745,11 +12745,11 @@ pub fn parse_pipe_callee_rest(
     mut __tco_loop_name_span: Rc<SourceSpan>,
 ) -> Rc<PipeCalleeResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let spine = __tco_loop_spine.clone();
-        let name = __tco_loop_name.clone();
-        let name_span = __tco_loop_name_span.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut spine = __tco_loop_spine.clone();
+        #[allow(unused_mut)] let mut name = __tco_loop_name.clone();
+        #[allow(unused_mut)] let mut name_span = __tco_loop_name_span.clone();
         if tok_is_dot(token_stream_first(tokens.clone())) {
             let r = expect_name(token_stream_advance(tokens.clone(), 1), ctx.env.clone());
             if has_err(r.err.clone()) {
@@ -13346,9 +13346,9 @@ pub fn parse_lambda_stmts(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if ((tok_is_rparen(tok.clone()) || tok_is_rbrace(tok.clone())) || tok_is_eof(tok.clone())) {
@@ -13799,9 +13799,9 @@ pub fn parse_constraint_list(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ConstraintsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let is_constraint_kw = match tok.clone() {
@@ -14068,9 +14068,9 @@ pub fn parse_arg_list_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ArgsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         let r = parse_single_arg(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -14381,10 +14381,10 @@ pub fn parse_expr_loop_no_brace(
     mut __tco_loop_min_bp: i64,
 ) -> Rc<ExprResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let lhs = __tco_loop_lhs.clone();
-        let min_bp = __tco_loop_min_bp.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut lhs = __tco_loop_lhs.clone();
+        #[allow(unused_mut)] let mut min_bp = __tco_loop_min_bp.clone();
         ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_eof(tok.clone()) || tok_is_lbrace(tok.clone())) {
@@ -14654,9 +14654,9 @@ pub fn parse_match_arms_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ArmsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -14815,9 +14815,9 @@ pub fn parse_match_arm_stmts(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -14865,8 +14865,8 @@ pub fn arm_start_after_qualified_path(
     mut __tco_loop_offset: i64,
 ) -> bool {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let offset = __tco_loop_offset.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut offset = __tco_loop_offset.clone();
         if !peek_is_expected_at(
             tokens.clone(),
             offset.clone(),
@@ -14980,8 +14980,8 @@ pub fn scan_for_fat_arrow_after_braces(
     mut __tco_loop_depth: i64,
 ) -> bool {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let depth = __tco_loop_depth.clone();
+        #[allow(unused_mut)] let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)] let mut depth = __tco_loop_depth.clone();
         if (depth.clone() <= 0) {
             match token_stream_first(remaining.clone()) {
                 Some(t) => {
@@ -15294,9 +15294,9 @@ pub fn parse_variant_bindings_brace_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<BindingsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -15865,9 +15865,9 @@ pub fn parse_field_init_list_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<FieldInitsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -16118,10 +16118,10 @@ pub fn parse_expr_list_until_acc(
     mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ExprsResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let end_expected = __tco_loop_end_expected.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut end_expected = __tco_loop_end_expected.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         let at_end_tag = match token_stream_first(tokens.clone()) {
             Some(t) => token_matches_expected(t.clone(), end_expected.clone()),
@@ -16337,9 +16337,9 @@ pub fn collect_fn_lambda_params(
     mut __tco_loop_acc: Rc<Vec<Rc<ParserParam>>>,
 ) -> Rc<IdentCollectResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         tokens = skip_newlines(tokens.clone());
         if tok_is_rparen(token_stream_first(tokens.clone())) {
             break Rc::new(IdentCollectResult {
@@ -16453,9 +16453,9 @@ pub fn collect_lambda_idents(
     mut __tco_loop_acc: Rc<Vec<Rc<ParserParam>>>,
 ) -> Rc<IdentCollectResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         if tok_is_ident(token_stream_first(tokens.clone())) {
             let tok = token_stream_first(tokens.clone());
             let minted = mint_parsed_node_identity(ctx.clone());
@@ -16565,10 +16565,10 @@ pub fn parse_interp_parts(
     mut __tco_loop_span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
     loop {
-        let tokens = __tco_loop_tokens.clone();
-        let ctx = __tco_loop_ctx.clone();
-        let parts = __tco_loop_parts.clone();
-        let span = __tco_loop_span.clone();
+        #[allow(unused_mut)] let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut parts = __tco_loop_parts.clone();
+        #[allow(unused_mut)] let mut span = __tco_loop_span.clone();
         let r = parse_expr(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {

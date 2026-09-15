@@ -445,11 +445,16 @@ pub fn v1_map_key_fixpoint_loop(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     loop {
-        let round = __tco_loop_round.clone();
-        let declared_type_names = __tco_loop_declared_type_names.clone();
-        let type_decl_items = __tco_loop_type_decl_items.clone();
-        let remaining = __tco_loop_remaining.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut round = __tco_loop_round.clone();
+        #[allow(unused_mut)]
+        let mut declared_type_names = __tco_loop_declared_type_names.clone();
+        #[allow(unused_mut)]
+        let mut type_decl_items = __tco_loop_type_decl_items.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         if (remaining.clone() <= 0) {
             break round.names.clone();
         } else {
@@ -3788,11 +3793,16 @@ pub fn v1_clone_bound_fixpoint_loop(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     loop {
-        let generic_type_names = __tco_loop_generic_type_names.clone();
-        let type_decl_items = __tco_loop_type_decl_items.clone();
-        let bounds = __tco_loop_bounds.clone();
-        let remaining = __tco_loop_remaining.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut generic_type_names = __tco_loop_generic_type_names.clone();
+        #[allow(unused_mut)]
+        let mut type_decl_items = __tco_loop_type_decl_items.clone();
+        #[allow(unused_mut)]
+        let mut bounds = __tco_loop_bounds.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         if (remaining.clone() <= 0) {
             break bounds.clone();
         } else {

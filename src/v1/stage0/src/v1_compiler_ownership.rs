@@ -1024,7 +1024,7 @@ pub fn collect_callable_refs(
 
 pub fn fold_terminal_expr(mut __tco_loop_body: Rc<Node>) -> Rc<Node> {
     loop {
-        let body = __tco_loop_body.clone();
+        #[allow(unused_mut)] let mut body = __tco_loop_body.clone();
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
                 Some(inner) => {

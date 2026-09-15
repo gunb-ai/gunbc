@@ -148,11 +148,11 @@ pub fn kahn_cycle_drain(
     mut __tco_loop_fuel: i64,
 ) -> Rc<KahnState> {
     loop {
-        let queue = __tco_loop_queue.clone();
-        let in_degree = __tco_loop_in_degree.clone();
-        let reverse_adj = __tco_loop_reverse_adj.clone();
-        let removed_count = __tco_loop_removed_count.clone();
-        let fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)] let mut queue = __tco_loop_queue.clone();
+        #[allow(unused_mut)] let mut in_degree = __tco_loop_in_degree.clone();
+        #[allow(unused_mut)] let mut reverse_adj = __tco_loop_reverse_adj.clone();
+        #[allow(unused_mut)] let mut removed_count = __tco_loop_removed_count.clone();
+        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
         if ((queue.clone().len() as i64) == 0) {
             return Rc::new(KahnState {
                 in_degree: in_degree.clone(),

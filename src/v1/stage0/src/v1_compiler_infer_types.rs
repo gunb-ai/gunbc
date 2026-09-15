@@ -2087,7 +2087,7 @@ pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
 
 pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
     loop {
-        let n = __tco_loop_n.clone();
+        #[allow(unused_mut)] let mut n = __tco_loop_n.clone();
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
             && has_structure.clone())
@@ -2297,9 +2297,9 @@ pub fn node_type_compatible(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let left = __tco_loop_left.clone();
-        let right = __tco_loop_right.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)] let mut left = __tco_loop_left.clone();
+        #[allow(unused_mut)] let mut right = __tco_loop_right.clone();
+        #[allow(unused_mut)] let mut source_indices = __tco_loop_source_indices.clone();
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
@@ -3098,9 +3098,9 @@ pub fn first_matching_algebra_field(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
-        let n = __tco_loop_n.clone();
-        let candidates = __tco_loop_candidates.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)] let mut n = __tco_loop_n.clone();
+        #[allow(unused_mut)] let mut candidates = __tco_loop_candidates.clone();
+        #[allow(unused_mut)] let mut source_indices = __tco_loop_source_indices.clone();
         match candidates.clone().first().cloned() {
             std::option::Option::None => {
                 break std::option::Option::None;

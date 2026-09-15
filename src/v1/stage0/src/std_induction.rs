@@ -1127,10 +1127,10 @@ pub fn ceil_log_iter(
     mut __tco_loop_power: i64,
 ) -> Option<i64> {
     loop {
-        let base = __tco_loop_base.clone();
-        let argument = __tco_loop_argument.clone();
-        let k = __tco_loop_k.clone();
-        let power = __tco_loop_power.clone();
+        #[allow(unused_mut)] let mut base = __tco_loop_base.clone();
+        #[allow(unused_mut)] let mut argument = __tco_loop_argument.clone();
+        #[allow(unused_mut)] let mut k = __tco_loop_k.clone();
+        #[allow(unused_mut)] let mut power = __tco_loop_power.clone();
         if (power.clone() >= argument.clone()) {
             break Some(k.clone());
         } else {

@@ -141,9 +141,12 @@ pub fn source_scan_while(
     mut __tco_loop_pred: impl Fn(i64) -> bool + Clone,
 ) -> i64 {
     loop {
-        let source = __tco_loop_source.clone();
-        let start = __tco_loop_start.clone();
-        let pred = __tco_loop_pred.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut start = __tco_loop_start.clone();
+        #[allow(unused_mut)]
+        let mut pred = __tco_loop_pred.clone();
         if (start.clone() >= source_len(source.clone())) {
             break source_len(source.clone());
         } else {
@@ -162,8 +165,10 @@ pub fn source_scan_while(
 
 pub fn source_skip_ws(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_start: i64) -> i64 {
     loop {
-        let source = __tco_loop_source.clone();
-        let start = __tco_loop_start.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut start = __tco_loop_start.clone();
         if (start.clone() >= source_len(source.clone())) {
             break start.clone();
         } else {
@@ -183,8 +188,10 @@ pub fn source_skip_ws(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_start
 
 pub fn source_scan_to_eol(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_start: i64) -> i64 {
     loop {
-        let source = __tco_loop_source.clone();
-        let start = __tco_loop_start.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut start = __tco_loop_start.clone();
         if (start.clone() >= source_len(source.clone())) {
             break source_len(source.clone());
         } else {
@@ -257,8 +264,10 @@ pub fn v1_line_prefix_note() -> String {
 
 pub fn source_line_start(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_pos: i64) -> i64 {
     loop {
-        let source = __tco_loop_source.clone();
-        let pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
         if (pos.clone() <= 0) {
             break 0;
         } else {
@@ -308,9 +317,12 @@ pub fn tokenize_line_first_content_pos(
     mut __tco_loop_end: i64,
 ) -> i64 {
     loop {
-        let source = __tco_loop_source.clone();
-        let pos = __tco_loop_pos.clone();
-        let end = __tco_loop_end.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut end = __tco_loop_end.clone();
         if (pos.clone() >= end.clone()) {
             break end.clone();
         } else {
@@ -470,12 +482,18 @@ pub fn tokenize_loop(
     mut __tco_loop_env: Rc<ParseEnvironment>,
 ) -> Rc<TokenizerState> {
     loop {
-        let source = __tco_loop_source.clone();
-        let tokens = __tco_loop_tokens.clone();
-        let annotations = __tco_loop_annotations.clone();
-        let pos = __tco_loop_pos.clone();
-        let fuel = __tco_loop_fuel.clone();
-        let env = __tco_loop_env.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)]
+        let mut annotations = __tco_loop_annotations.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env.clone();
         let s = skip_spaces(source.clone(), pos.clone());
         if (s.pos.clone() >= source_len(source.clone())) {
             return Rc::new(TokenizerState {
@@ -1058,9 +1076,12 @@ pub fn scan_string_body(
     mut __tco_loop_acc: Rc<Vec<i64>>,
 ) -> Rc<StringScanResult> {
     loop {
-        let source = __tco_loop_source.clone();
-        let pos = __tco_loop_pos.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc.clone();
         if (pos.clone() >= source_len(source.clone())) {
             break Rc::new(StringScanResult::UnterminatedString {
                 content: acc.clone(),
@@ -1219,10 +1240,14 @@ pub fn unicode_escape_at(
     mut __tco_loop_value: i64,
 ) -> Option<UnicodeEscape> {
     loop {
-        let source = __tco_loop_source.clone();
-        let pos = __tco_loop_pos.clone();
-        let digit_count = __tco_loop_digit_count.clone();
-        let value = __tco_loop_value.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut digit_count = __tco_loop_digit_count.clone();
+        #[allow(unused_mut)]
+        let mut value = __tco_loop_value.clone();
         if (pos.clone() >= (source.clone().len() as i64)) {
             break std::option::Option::None;
         } else {
@@ -1268,9 +1293,12 @@ pub fn process_escapes_loop(
     mut __tco_loop_acc: Rc<Vec<i64>>,
 ) -> Rc<EscapeProcessResult> {
     loop {
-        let source = __tco_loop_source.clone();
-        let pos = __tco_loop_pos.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc.clone();
         if (pos.clone() >= (source.clone().len() as i64)) {
             break Rc::new(EscapeProcessResult::EscapesProcessed {
                 text: v1_rt::chars_to_string(&acc, 0, (acc.clone().len() as i64)),
@@ -1442,9 +1470,12 @@ pub fn all_hex_upper_in_range(
     mut __tco_loop_end: i64,
 ) -> bool {
     loop {
-        let text = __tco_loop_text.clone();
-        let pos = __tco_loop_pos.clone();
-        let end = __tco_loop_end.clone();
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut end = __tco_loop_end.clone();
         if (pos.clone() >= end.clone()) {
             break true;
         } else {
@@ -1469,10 +1500,14 @@ pub fn sentinel_prefix_matches(
     mut __tco_loop_len: i64,
 ) -> bool {
     loop {
-        let text = __tco_loop_text.clone();
-        let prefix = __tco_loop_prefix.clone();
-        let pos = __tco_loop_pos.clone();
-        let len = __tco_loop_len.clone();
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut prefix = __tco_loop_prefix.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut len = __tco_loop_len.clone();
         if (pos.clone() >= len.clone()) {
             break true;
         } else {
@@ -1499,11 +1534,16 @@ pub fn sentinel_suffix_matches(
     mut __tco_loop_text_start: i64,
 ) -> bool {
     loop {
-        let text = __tco_loop_text.clone();
-        let suffix = __tco_loop_suffix.clone();
-        let pos = __tco_loop_pos.clone();
-        let sfx_len = __tco_loop_sfx_len.clone();
-        let text_start = __tco_loop_text_start.clone();
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut suffix = __tco_loop_suffix.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut sfx_len = __tco_loop_sfx_len.clone();
+        #[allow(unused_mut)]
+        let mut text_start = __tco_loop_text_start.clone();
         if (pos.clone() >= sfx_len.clone()) {
             break true;
         } else {

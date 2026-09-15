@@ -685,15 +685,15 @@ pub fn topo_resolve_loop(
     mut __tco_loop_fuel: i64,
 ) -> Rc<ResolveFuncSigsResult> {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let resolved = __tco_loop_resolved.clone();
-        let declared_sigs = __tco_loop_declared_sigs.clone();
-        let call_edges = __tco_loop_call_edges.clone();
-        let local_func_set = __tco_loop_local_func_set.clone();
-        let module_name = __tco_loop_module_name.clone();
-        let diagnostics = __tco_loop_diagnostics.clone();
-        let parent_envs = __tco_loop_parent_envs.clone();
-        let fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)] let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)] let mut resolved = __tco_loop_resolved.clone();
+        #[allow(unused_mut)] let mut declared_sigs = __tco_loop_declared_sigs.clone();
+        #[allow(unused_mut)] let mut call_edges = __tco_loop_call_edges.clone();
+        #[allow(unused_mut)] let mut local_func_set = __tco_loop_local_func_set.clone();
+        #[allow(unused_mut)] let mut module_name = __tco_loop_module_name.clone();
+        #[allow(unused_mut)] let mut diagnostics = __tco_loop_diagnostics.clone();
+        #[allow(unused_mut)] let mut parent_envs = __tco_loop_parent_envs.clone();
+        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
         if ((remaining.clone().len() as i64) == 0) {
             {
                 let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))

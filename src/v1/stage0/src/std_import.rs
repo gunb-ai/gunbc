@@ -170,9 +170,9 @@ pub fn import_module_start(
     mut __tco_loop_limit: i64,
 ) -> i64 {
     loop {
-        let statement_text = __tco_loop_statement_text.clone();
-        let at = __tco_loop_at.clone();
-        let limit = __tco_loop_limit.clone();
+        #[allow(unused_mut)] let mut statement_text = __tco_loop_statement_text.clone();
+        #[allow(unused_mut)] let mut at = __tco_loop_at.clone();
+        #[allow(unused_mut)] let mut limit = __tco_loop_limit.clone();
         if (at.clone() >= limit.clone()) {
             break at.clone();
         } else {

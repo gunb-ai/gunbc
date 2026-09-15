@@ -1438,8 +1438,10 @@ pub fn rust_peel_all_rc_type_node(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     loop {
-        let type_node = __tco_loop_type_node.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut type_node = __tco_loop_type_node.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         let seg = crate::v1_std_core::qualified_last_segment(type_node.name.clone());
         if ((seg.clone() == "Rc".to_string()) || (seg.clone() == "Arc".to_string())) {
             {
@@ -3300,18 +3302,30 @@ pub fn render_rust_alias_rhs_type(
     mut __tco_loop_variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
     loop {
-        let n = __tco_loop_n.clone();
-        let generic_param_names = __tco_loop_generic_param_names.clone();
-        let shared_types = __tco_loop_shared_types.clone();
-        let source_indices = __tco_loop_source_indices.clone();
-        let scope = __tco_loop_scope.clone();
-        let imports = __tco_loop_imports.clone();
-        let registry = __tco_loop_registry.clone();
-        let module_name = __tco_loop_module_name.clone();
-        let export_sets = __tco_loop_export_sets.clone();
-        let typed_modules = __tco_loop_typed_modules.clone();
-        let module_index = __tco_loop_module_index.clone();
-        let variant_to_enum = __tco_loop_variant_to_enum.clone();
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n.clone();
+        #[allow(unused_mut)]
+        let mut generic_param_names = __tco_loop_generic_param_names.clone();
+        #[allow(unused_mut)]
+        let mut shared_types = __tco_loop_shared_types.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)]
+        let mut imports = __tco_loop_imports.clone();
+        #[allow(unused_mut)]
+        let mut registry = __tco_loop_registry.clone();
+        #[allow(unused_mut)]
+        let mut module_name = __tco_loop_module_name.clone();
+        #[allow(unused_mut)]
+        let mut export_sets = __tco_loop_export_sets.clone();
+        #[allow(unused_mut)]
+        let mut typed_modules = __tco_loop_typed_modules.clone();
+        #[allow(unused_mut)]
+        let mut module_index = __tco_loop_module_index.clone();
+        #[allow(unused_mut)]
+        let mut variant_to_enum = __tco_loop_variant_to_enum.clone();
         if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
             match n.children.clone().first().cloned() {
                 Some(base_te) => {
@@ -3810,9 +3824,12 @@ pub fn rust_fold_rendered_type_has_spurious_from_pos(
     mut __tco_loop_generic_param_names: Rc<Vec<String>>,
 ) -> bool {
     loop {
-        let type_str = __tco_loop_type_str.clone();
-        let search_from = __tco_loop_search_from.clone();
-        let generic_param_names = __tco_loop_generic_param_names.clone();
+        #[allow(unused_mut)]
+        let mut type_str = __tco_loop_type_str.clone();
+        #[allow(unused_mut)]
+        let mut search_from = __tco_loop_search_from.clone();
+        #[allow(unused_mut)]
+        let mut generic_param_names = __tco_loop_generic_param_names.clone();
         if ((type_str.clone() == "_".to_string()) || (type_str.clone() == "".to_string())) {
             break false;
         } else {
@@ -4634,11 +4651,16 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
     mut __tco_loop_fuel: i64,
 ) -> Rc<RustEnumWireSerde> {
     loop {
-        let wire_contract_item = __tco_loop_wire_contract_item.clone();
-        let source_indices = __tco_loop_source_indices.clone();
-        let data_items = __tco_loop_data_items.clone();
-        let seen_aliases = __tco_loop_seen_aliases.clone();
-        let fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)]
+        let mut wire_contract_item = __tco_loop_wire_contract_item.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut data_items = __tco_loop_data_items.clone();
+        #[allow(unused_mut)]
+        let mut seen_aliases = __tco_loop_seen_aliases.clone();
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel.clone();
         if (fuel.clone() <= 0) {
             break rust_serde_error_policy(
                 "wire_contract: VariantEncoding alias chain exceeded recursion limit".to_string(),
@@ -5723,13 +5745,20 @@ pub fn emit_rust_block_stmts(
     mut __tco_loop_emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let text = __tco_loop_text.clone();
-        let scope = __tco_loop_scope.clone();
-        let registry = __tco_loop_registry.clone();
-        let depth = __tco_loop_depth.clone();
-        let shared_types = __tco_loop_shared_types.clone();
-        let emit_info = __tco_loop_emit_info.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)]
+        let mut registry = __tco_loop_registry.clone();
+        #[allow(unused_mut)]
+        let mut depth = __tco_loop_depth.clone();
+        #[allow(unused_mut)]
+        let mut shared_types = __tco_loop_shared_types.clone();
+        #[allow(unused_mut)]
+        let mut emit_info = __tco_loop_emit_info.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(BlockEmitState {
@@ -5779,13 +5808,20 @@ pub fn emit_rust_init_block_stmts(
     mut __tco_loop_emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let text = __tco_loop_text.clone();
-        let scope = __tco_loop_scope.clone();
-        let registry = __tco_loop_registry.clone();
-        let depth = __tco_loop_depth.clone();
-        let shared_types = __tco_loop_shared_types.clone();
-        let emit_info = __tco_loop_emit_info.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)]
+        let mut registry = __tco_loop_registry.clone();
+        #[allow(unused_mut)]
+        let mut depth = __tco_loop_depth.clone();
+        #[allow(unused_mut)]
+        let mut shared_types = __tco_loop_shared_types.clone();
+        #[allow(unused_mut)]
+        let mut emit_info = __tco_loop_emit_info.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(BlockEmitState {
@@ -11801,13 +11837,20 @@ pub fn reexport_source_module_name_with_visited(
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
     loop {
-        let name = __tco_loop_name.clone();
-        let import_module = __tco_loop_import_module.clone();
-        let visited = __tco_loop_visited.clone();
-        let typed_modules = __tco_loop_typed_modules.clone();
-        let export_sets = __tco_loop_export_sets.clone();
-        let source_indices = __tco_loop_source_indices.clone();
-        let module_index = __tco_loop_module_index.clone();
+        #[allow(unused_mut)]
+        let mut name = __tco_loop_name.clone();
+        #[allow(unused_mut)]
+        let mut import_module = __tco_loop_import_module.clone();
+        #[allow(unused_mut)]
+        let mut visited = __tco_loop_visited.clone();
+        #[allow(unused_mut)]
+        let mut typed_modules = __tco_loop_typed_modules.clone();
+        #[allow(unused_mut)]
+        let mut export_sets = __tco_loop_export_sets.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut module_index = __tco_loop_module_index.clone();
         if {
             let mut __found = false;
             for v in visited.iter().cloned() {
@@ -12195,13 +12238,20 @@ pub fn variant_defining_module_filename_for_import(
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> String {
     loop {
-        let variant_name = __tco_loop_variant_name.clone();
-        let import_module = __tco_loop_import_module.clone();
-        let typed_modules = __tco_loop_typed_modules.clone();
-        let export_sets = __tco_loop_export_sets.clone();
-        let source_indices = __tco_loop_source_indices.clone();
-        let fallback = __tco_loop_fallback.clone();
-        let module_index = __tco_loop_module_index.clone();
+        #[allow(unused_mut)]
+        let mut variant_name = __tco_loop_variant_name.clone();
+        #[allow(unused_mut)]
+        let mut import_module = __tco_loop_import_module.clone();
+        #[allow(unused_mut)]
+        let mut typed_modules = __tco_loop_typed_modules.clone();
+        #[allow(unused_mut)]
+        let mut export_sets = __tco_loop_export_sets.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut fallback = __tco_loop_fallback.clone();
+        #[allow(unused_mut)]
+        let mut module_index = __tco_loop_module_index.clone();
         match find_variant_parent_in_module(
             variant_name.clone(),
             import_module.clone(),
@@ -12421,14 +12471,22 @@ pub fn reexport_variant_parent_in_import_module(
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
     loop {
-        let variant_name = __tco_loop_variant_name.clone();
-        let import_module = __tco_loop_import_module.clone();
-        let registry = __tco_loop_registry.clone();
-        let type_summaries = __tco_loop_type_summaries.clone();
-        let typed_modules = __tco_loop_typed_modules.clone();
-        let export_sets = __tco_loop_export_sets.clone();
-        let source_indices = __tco_loop_source_indices.clone();
-        let module_index = __tco_loop_module_index.clone();
+        #[allow(unused_mut)]
+        let mut variant_name = __tco_loop_variant_name.clone();
+        #[allow(unused_mut)]
+        let mut import_module = __tco_loop_import_module.clone();
+        #[allow(unused_mut)]
+        let mut registry = __tco_loop_registry.clone();
+        #[allow(unused_mut)]
+        let mut type_summaries = __tco_loop_type_summaries.clone();
+        #[allow(unused_mut)]
+        let mut typed_modules = __tco_loop_typed_modules.clone();
+        #[allow(unused_mut)]
+        let mut export_sets = __tco_loop_export_sets.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut module_index = __tco_loop_module_index.clone();
         match reexport_source_module_name(
             variant_name.clone(),
             import_module.clone(),
@@ -12901,16 +12959,26 @@ pub fn rhs_base_has_rust_type_authority_in_module(
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> bool {
     loop {
-        let rhs_name = __tco_loop_rhs_name.clone();
-        let def_mod_filename = __tco_loop_def_mod_filename.clone();
-        let module_name = __tco_loop_module_name.clone();
-        let imports = __tco_loop_imports.clone();
-        let scope = __tco_loop_scope.clone();
-        let registry = __tco_loop_registry.clone();
-        let typed_modules = __tco_loop_typed_modules.clone();
-        let export_sets = __tco_loop_export_sets.clone();
-        let source_indices = __tco_loop_source_indices.clone();
-        let module_index = __tco_loop_module_index.clone();
+        #[allow(unused_mut)]
+        let mut rhs_name = __tco_loop_rhs_name.clone();
+        #[allow(unused_mut)]
+        let mut def_mod_filename = __tco_loop_def_mod_filename.clone();
+        #[allow(unused_mut)]
+        let mut module_name = __tco_loop_module_name.clone();
+        #[allow(unused_mut)]
+        let mut imports = __tco_loop_imports.clone();
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)]
+        let mut registry = __tco_loop_registry.clone();
+        #[allow(unused_mut)]
+        let mut typed_modules = __tco_loop_typed_modules.clone();
+        #[allow(unused_mut)]
+        let mut export_sets = __tco_loop_export_sets.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut module_index = __tco_loop_module_index.clone();
         if is_phantom_unit_variant_type_arg(scope.type_env.clone(), rhs_name.clone()) {
             break true;
         } else {
@@ -15884,10 +15952,14 @@ pub fn needs_box_wrapping(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let n = __tco_loop_n.clone();
-        let recursive_types = __tco_loop_recursive_types.clone();
-        let shared_types = __tco_loop_shared_types.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n.clone();
+        #[allow(unused_mut)]
+        let mut recursive_types = __tco_loop_recursive_types.clone();
+        #[allow(unused_mut)]
+        let mut shared_types = __tco_loop_shared_types.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         let name = crate::v1_std_core::qualified_last_segment(authored.clone());
         if v1_rt::set_contains(&shared_types, name.clone()) {
@@ -17737,9 +17809,12 @@ pub fn string_index_of_from(
     mut __tco_loop_pos: i64,
 ) -> Option<i64> {
     loop {
-        let haystack = __tco_loop_haystack.clone();
-        let needle = __tco_loop_needle.clone();
-        let pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut haystack = __tco_loop_haystack.clone();
+        #[allow(unused_mut)]
+        let mut needle = __tco_loop_needle.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
         if ((pos.clone() + v1_rt::string_length(&needle)) > v1_rt::string_length(&haystack)) {
             break std::option::Option::None;
         } else {
@@ -20364,9 +20439,12 @@ pub fn collect_pattern_string_guards(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     loop {
-        let pattern = __tco_loop_pattern.clone();
-        let path_prefix = __tco_loop_path_prefix.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut pattern = __tco_loop_pattern.clone();
+        #[allow(unused_mut)]
+        let mut path_prefix = __tco_loop_path_prefix.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         match (*pattern.clone()).clone() {
             MatchPattern::VariantPattern {
                 name: n,
@@ -23015,9 +23093,12 @@ pub fn type_needs_rc_seen(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let type_node = __tco_loop_type_node.clone();
-        let seen = __tco_loop_seen.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut type_node = __tco_loop_type_node.clone();
+        #[allow(unused_mut)]
+        let mut seen = __tco_loop_seen.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node.clone());
         let is_product = crate::v1_compiler_infer_types::is_product_type(normed.clone());
         let is_coproduct = crate::v1_compiler_infer_types::is_coproduct_type(normed.clone());
@@ -25507,9 +25588,12 @@ pub fn emit_nested_rt_concat(
     mut __tco_loop_shared_types: Rc<BTreeSet<String>>,
 ) -> String {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let acc = __tco_loop_acc.clone();
-        let shared_types = __tco_loop_shared_types.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)]
+        let mut shared_types = __tco_loop_shared_types.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break acc.clone();
@@ -31834,9 +31918,12 @@ pub fn rust_operand_realization_of_type(
     mut __tco_loop_fuel: i64,
 ) -> Rc<OperandRealization> {
     loop {
-        let rt = __tco_loop_rt.clone();
-        let scope = __tco_loop_scope.clone();
-        let fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)]
+        let mut rt = __tco_loop_rt.clone();
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel.clone();
         let provenance = crate::v1_std_core::type_reference_provenance(rt.clone());
         let authored = crate::v1_std_core::authored_name_at(
             scope.type_env.clone().source_indices.clone(),
@@ -32450,14 +32537,22 @@ pub fn emit_tco_init_block_stmts(
     mut __tco_loop_params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<BlockEmitState> {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let text = __tco_loop_text.clone();
-        let scope = __tco_loop_scope.clone();
-        let registry = __tco_loop_registry.clone();
-        let depth = __tco_loop_depth.clone();
-        let shared_types = __tco_loop_shared_types.clone();
-        let emit_info = __tco_loop_emit_info.clone();
-        let params = __tco_loop_params.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)]
+        let mut registry = __tco_loop_registry.clone();
+        #[allow(unused_mut)]
+        let mut depth = __tco_loop_depth.clone();
+        #[allow(unused_mut)]
+        let mut shared_types = __tco_loop_shared_types.clone();
+        #[allow(unused_mut)]
+        let mut emit_info = __tco_loop_emit_info.clone();
+        #[allow(unused_mut)]
+        let mut params = __tco_loop_params.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(BlockEmitState {

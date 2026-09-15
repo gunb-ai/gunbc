@@ -88,8 +88,10 @@ pub fn semver_compare_identifiers(
     mut __tco_loop_b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
     loop {
-        let a = __tco_loop_a.clone();
-        let b = __tco_loop_b.clone();
+        #[allow(unused_mut)]
+        let mut a = __tco_loop_a.clone();
+        #[allow(unused_mut)]
+        let mut b = __tco_loop_b.clone();
         if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
             break Ordering::Equal;
         } else {

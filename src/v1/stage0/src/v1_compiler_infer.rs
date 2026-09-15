@@ -406,13 +406,13 @@ pub fn infer_block_stmts(
     mut __tco_loop_expected: Option<Rc<Node>>,
 ) -> Rc<BlockInferState> {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let remaining_count = __tco_loop_remaining_count.clone();
-        let scope = __tco_loop_scope.clone();
-        let typed_stmts = __tco_loop_typed_stmts.clone();
-        let diag_chunks = __tco_loop_diag_chunks.clone();
-        let last_type = __tco_loop_last_type.clone();
-        let expected = __tco_loop_expected.clone();
+        #[allow(unused_mut)] let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)] let mut remaining_count = __tco_loop_remaining_count.clone();
+        #[allow(unused_mut)] let mut scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)] let mut typed_stmts = __tco_loop_typed_stmts.clone();
+        #[allow(unused_mut)] let mut diag_chunks = __tco_loop_diag_chunks.clone();
+        #[allow(unused_mut)] let mut last_type = __tco_loop_last_type.clone();
+        #[allow(unused_mut)] let mut expected = __tco_loop_expected.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(BlockInferState {
@@ -543,11 +543,11 @@ pub fn merge_scope_from_imports(
     mut __tco_loop_svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<InferScopeComponents> {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let parent_index = __tco_loop_parent_index.clone();
-        let env = __tco_loop_env.clone();
-        let svc_registry = __tco_loop_svc_registry.clone();
-        let svc_locals = __tco_loop_svc_locals.clone();
+        #[allow(unused_mut)] let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)] let mut parent_index = __tco_loop_parent_index.clone();
+        #[allow(unused_mut)] let mut env = __tco_loop_env.clone();
+        #[allow(unused_mut)] let mut svc_registry = __tco_loop_svc_registry.clone();
+        #[allow(unused_mut)] let mut svc_locals = __tco_loop_svc_locals.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(InferScopeComponents {
@@ -3173,7 +3173,7 @@ pub fn where_refinement_diags_for_predicate(
 
 pub fn where_refinement_value_under_cast(mut __tco_loop_value_expr: Rc<Node>) -> Rc<Node> {
     loop {
-        let value_expr = __tco_loop_value_expr.clone();
+        #[allow(unused_mut)] let mut value_expr = __tco_loop_value_expr.clone();
         match (*value_expr.expr_data.clone()).clone() {
             ExprData::ExprCast => {
                 let __tco_0 = crate::v1_std_core::cast_expr(value_expr);
@@ -3634,12 +3634,12 @@ pub fn kernel_value_declared_type_mismatch_bounded(
     mut __tco_loop_depth: i64,
 ) -> bool {
     loop {
-        let formal = __tco_loop_formal.clone();
-        let actual = __tco_loop_actual.clone();
-        let type_env = __tco_loop_type_env.clone();
-        let source_indices = __tco_loop_source_indices.clone();
-        let formal_name_override = __tco_loop_formal_name_override.clone();
-        let depth = __tco_loop_depth.clone();
+        #[allow(unused_mut)] let mut formal = __tco_loop_formal.clone();
+        #[allow(unused_mut)] let mut actual = __tco_loop_actual.clone();
+        #[allow(unused_mut)] let mut type_env = __tco_loop_type_env.clone();
+        #[allow(unused_mut)] let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)] let mut formal_name_override = __tco_loop_formal_name_override.clone();
+        #[allow(unused_mut)] let mut depth = __tco_loop_depth.clone();
         if (((formal.connective.clone() == Connective::Arrow)
             || (actual.connective.clone() == Connective::Arrow))
             || ((actual.children.clone().len() as i64) > 0))
@@ -4592,11 +4592,11 @@ pub fn type_name_transparently_aliases_to(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let alias_name = __tco_loop_alias_name.clone();
-        let target_name = __tco_loop_target_name.clone();
-        let type_env = __tco_loop_type_env.clone();
-        let module_name = __tco_loop_module_name.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)] let mut alias_name = __tco_loop_alias_name.clone();
+        #[allow(unused_mut)] let mut target_name = __tco_loop_target_name.clone();
+        #[allow(unused_mut)] let mut type_env = __tco_loop_type_env.clone();
+        #[allow(unused_mut)] let mut module_name = __tco_loop_module_name.clone();
+        #[allow(unused_mut)] let mut source_indices = __tco_loop_source_indices.clone();
         match crate::v1_compiler_infer_env::lookup_type_by_name(
             type_env.clone(),
             alias_name.clone(),
@@ -5415,9 +5415,9 @@ pub fn applied_type_arguments_conflict_scan(
     mut __tco_loop_scope: Rc<InferScope>,
 ) -> bool {
     loop {
-        let declared_args = __tco_loop_declared_args.clone();
-        let produced_args = __tco_loop_produced_args.clone();
-        let scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)] let mut declared_args = __tco_loop_declared_args.clone();
+        #[allow(unused_mut)] let mut produced_args = __tco_loop_produced_args.clone();
+        #[allow(unused_mut)] let mut scope = __tco_loop_scope.clone();
         match declared_args.clone().first().cloned() {
             Some(d) => match produced_args.clone().first().cloned() {
                 Some(p) => {
@@ -9669,9 +9669,9 @@ pub fn operand_declaration_of_type(
     mut __tco_loop_fuel: i64,
 ) -> Option<Rc<OperandDeclaration>> {
     loop {
-        let rt = __tco_loop_rt.clone();
-        let scope = __tco_loop_scope.clone();
-        let fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)] let mut rt = __tco_loop_rt.clone();
+        #[allow(unused_mut)] let mut scope = __tco_loop_scope.clone();
+        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
         if ((fuel.clone() > 0) && is_where_refinement_type(rt.clone())) {
             match rt.children.clone().first().cloned() {
                 Some(base) => {
@@ -15182,8 +15182,8 @@ pub fn resolve_collection_field(
     mut __tco_loop_ctx: Rc<DescentContext>,
 ) -> Option<Rc<InductiveField>> {
     loop {
-        let expr = __tco_loop_expr.clone();
-        let ctx = __tco_loop_ctx.clone();
+        #[allow(unused_mut)] let mut expr = __tco_loop_expr.clone();
+        #[allow(unused_mut)] let mut ctx = __tco_loop_ctx.clone();
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 let base = crate::v1_std_core::field_access_base(expr.clone());
@@ -20236,11 +20236,11 @@ pub fn unify_generics(
     mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
     loop {
-        let formal = __tco_loop_formal.clone();
-        let actual = __tco_loop_actual.clone();
-        let generic_names = __tco_loop_generic_names.clone();
-        let source_indices = __tco_loop_source_indices.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut formal = __tco_loop_formal.clone();
+        #[allow(unused_mut)] let mut actual = __tco_loop_actual.clone();
+        #[allow(unused_mut)] let mut generic_names = __tco_loop_generic_names.clone();
+        #[allow(unused_mut)] let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
             && (formal.connective.clone() == Connective::NoConnective));
@@ -21687,9 +21687,9 @@ pub fn transparent_alias_chase(
     mut __tco_loop_fuel: i64,
 ) -> String {
     loop {
-        let edges = __tco_loop_edges.clone();
-        let name = __tco_loop_name.clone();
-        let fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)] let mut edges = __tco_loop_edges.clone();
+        #[allow(unused_mut)] let mut name = __tco_loop_name.clone();
+        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
         if (fuel.clone() <= 0) {
             break name.clone();
         } else {
@@ -24502,14 +24502,14 @@ pub fn fold_module_contributions(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<LocalContributionState> {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let resolved_items = __tco_loop_resolved_items.clone();
-        let func_sigs = __tco_loop_func_sigs.clone();
-        let svc_registry = __tco_loop_svc_registry.clone();
-        let svc_locals = __tco_loop_svc_locals.clone();
-        let item_registry = __tco_loop_item_registry.clone();
-        let diag_chunks = __tco_loop_diag_chunks.clone();
-        let source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)] let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)] let mut resolved_items = __tco_loop_resolved_items.clone();
+        #[allow(unused_mut)] let mut func_sigs = __tco_loop_func_sigs.clone();
+        #[allow(unused_mut)] let mut svc_registry = __tco_loop_svc_registry.clone();
+        #[allow(unused_mut)] let mut svc_locals = __tco_loop_svc_locals.clone();
+        #[allow(unused_mut)] let mut item_registry = __tco_loop_item_registry.clone();
+        #[allow(unused_mut)] let mut diag_chunks = __tco_loop_diag_chunks.clone();
+        #[allow(unused_mut)] let mut source_indices = __tco_loop_source_indices.clone();
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(LocalContributionState {
@@ -25704,13 +25704,13 @@ pub fn topo_resolve_types(
     mut __tco_loop_fuel: i64,
 ) -> Rc<EnvResolveResult> {
     loop {
-        let remaining = __tco_loop_remaining.clone();
-        let env = __tco_loop_env.clone();
-        let module_name = __tco_loop_module_name.clone();
-        let diagnostics = __tco_loop_diagnostics.clone();
-        let local_names = __tco_loop_local_names.clone();
-        let deps_map = __tco_loop_deps_map.clone();
-        let fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)] let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)] let mut env = __tco_loop_env.clone();
+        #[allow(unused_mut)] let mut module_name = __tco_loop_module_name.clone();
+        #[allow(unused_mut)] let mut diagnostics = __tco_loop_diagnostics.clone();
+        #[allow(unused_mut)] let mut local_names = __tco_loop_local_names.clone();
+        #[allow(unused_mut)] let mut deps_map = __tco_loop_deps_map.clone();
+        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
         if ((remaining.clone().len() as i64) == 0) {
             return Rc::new(EnvResolveResult {
                 env: env.clone(),

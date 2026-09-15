@@ -52,9 +52,9 @@ pub fn nat_range_accumulate(
     mut __tco_loop_acc: Rc<Vec<i64>>,
 ) -> Rc<Vec<i64>> {
     loop {
-        let lo = __tco_loop_lo.clone();
-        let hi = __tco_loop_hi.clone();
-        let acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)] let mut lo = __tco_loop_lo.clone();
+        #[allow(unused_mut)] let mut hi = __tco_loop_hi.clone();
+        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
         if (lo.clone() > hi.clone()) {
             break acc.clone();
         } else {
