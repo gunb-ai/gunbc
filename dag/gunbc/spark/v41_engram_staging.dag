@@ -16,8 +16,13 @@ import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRu
 //
 // This module may create verified content-addressed files in a bounded staging area. It may not
 // start or stop processes, consume GPU memory, alter units, withdraw an incumbent, or claim seats.
-// V4 Flash keeps serving. Fabric/storage selection decides which provider holds the bytes; this
+// Fabric/storage selection decides which provider holds the bytes; this
 // request names exact image X and exact rank-local stores R0..R3 and does not pick the copy source.
+//
+// THE INCUMBENT ON GROUP A IS AN OBSERVATION, NOT THIS MODULE'S ASSUMPTION. The corpus has treated
+// V4 Flash as still serving there. Session proud-deer-538 (2026-09-15) read a Ray/gunbc-spark-pair
+// cluster holding most of each rank's pool with no listener on :8000. Until the operator says that
+// occupancy is disposable, this cut does not write. The live standing names that reading.
 //
 // Prefer route D when admitted: durable origin -> fill each rank's local NVMe. Route B may become
 // equivalent once the local artifact exists. A missing local store still refuses at token time
@@ -113,5 +118,5 @@ fn v41_stage(
 // request and the receipt shape. Minting a verified receipt without a readback would be
 // specification-without-execution.
 data v41_group_a_staging_standing: V41StagingReceipt = V41StagingUnestablished {
-  obligation: "Group A staging is admitted as artifact-only mutation; the published Engram shards have not been transformed into rank-local stores in this change, so no verified fill receipt is minted. V4 Flash is not displaced." as NonEmptyStr,
+  obligation: "Group A staging is not run: door 3 is not cleared. Occupancy cited from session proud-deer-538 (2026-09-15), not taken by this lane: spark-a3ee, spark-3bd5, spark-c2b1, spark-ac79 each run a gunbc-spark-pair container ~42h holding ~100.7 GiB; free reports 107-109 GiB used of 121 with 12-14 GiB available; nothing answers on :8000. That is not a V4 Flash incumbent serving an endpoint, so Cut D drain-and-rollback has no observed V4 Flash subject on those ranks. Node total 121 GiB agrees with spark_unified_memory_per_host 130663231488 bytes. Published Engram shards are not filled here." as NonEmptyStr,
 }

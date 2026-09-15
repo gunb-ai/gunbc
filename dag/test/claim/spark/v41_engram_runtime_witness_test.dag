@@ -413,7 +413,7 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
             V41StagingUnestablished { obligation: _ } => false
           })
           && (match v41_group_a_staging_standing {
-            V41StagingUnestablished { obligation: o } => (o as String).contains("V4 Flash")
+            V41StagingUnestablished { obligation: o } => (o as String).contains("proud-deer-538") && (o as String).contains("not a V4 Flash incumbent")
             V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
             V41StagingRefused { defects: _ } => false
           })

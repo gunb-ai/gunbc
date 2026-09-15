@@ -629,14 +629,14 @@ fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
 
 // ── THE CANDIDATE AS IT STANDS TODAY ────────────────────────────────────────────────────────────
 
-// UPSTREAM'S aarch64 RELEASE RECIPE AT d2d649e6 WITH THE FLEET'S DECLARED OVERRIDES: the 12.1 arch list
-// the GB10 needs and the build parallelism gunbc.spark.vllm_runtime_image_build already chose.
+// UPSTREAM'S aarch64 RELEASE RECIPE AT d2d649e6 WITH THE FLEET'S DECLARED ARCH OVERRIDE (12.1).
+// Parallelism on a dedicated builder is upstream's own max_jobs (16), not the Spark-sharing cap of 6.
 fn v41_candidate_recipe() -> VllmContainerBuildRecipe {
   vllm_recipe_targeting(
     base: vllm_d2d649e6_aarch64_release_recipe,
     torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
     install_kv_connectors: vllm_d2d649e6_aarch64_release_recipe.install_kv_connectors,
-    max_jobs: v41_build_max_jobs,
+    max_jobs: vllm_d2d649e6_aarch64_release_recipe.max_jobs,
     nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
   )
 }
