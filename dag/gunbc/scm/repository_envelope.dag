@@ -1220,7 +1220,7 @@ fn admit_base_in(
 
 // THE BASIS-TAKING ADMISSION, FOR CALLERS WHOSE FACTS THIS MODULE ALREADY ESTABLISHED.
 //
-// `admit_ordinary_commit_subject` asks two questions and can refuse on either. A caller that reached
+// `admit_commit_subject` asks two questions and can refuse on either. A caller that reached
 // its subject through a route which ALREADY found the parent in that subject's repository -- the
 // staging standing does exactly that, via `admit_base_in` inside `base_snapshot` -- would then carry a
 // parent-missing arm it cannot reach, and would have to invent a cause or explain in a comment that
@@ -1260,35 +1260,6 @@ fn admit_commit_subject_from_basis(
       )
   }
 }
-
-type OrdinaryCommitSubjectAdmission
-  = OrdinaryCommitSubjectAdmitted(AdmittedCommitSubject)
-  | OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: Int }
-  | OrdinaryCommitSubjectParentMissing { parent: RepositoryCommitRef }
-
-fn admit_ordinary_commit_subject(
-  subject: RepositoryManifestRoot,
-  parent: RepositoryCommitRef?,
-) -> OrdinaryCommitSubjectAdmission {
-  let repository = subject.repository
-  match admit_commit_allocator(repository: repository) {
-    CommitAllocatorInvalid { next_ordinal: n } =>
-      OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: n }
-    CommitAllocatorAdmitted =>
-      match admit_commit_parent(repository: repository, parent: parent) {
-        CommitParentAbsent { parent: p } => OrdinaryCommitSubjectParentMissing { parent: p }
-        CommitParentAdmitted { ancestry: ancestry } =>
-          OrdinaryCommitSubjectAdmitted(
-            AdmittedCommitSubject {
-              subject: subject,
-              ancestry: ancestry,
-              integration: NoSquashIntegration,
-            }
-          )
-      }
-  }
-}
-
 fn mint_repository_commit_admitted(
   admitted: AdmittedCommitSubject,
   message: String,
@@ -3136,8 +3107,11 @@ fn merge_base(
           ) {
             ConsumedJoinFound { recorded_at: r, consumed: c } =>
               MergeBaseNotDerived {
-                refusal:
-                  MergeBaseSourceAlreadyConsumed { recorded_at: r, consumed: c, source: source },
+                refusal: MergeBaseSourceAlreadyConsumed {
+                  recorded_at: r,
+                  consumed: c,
+                  source: source,
+                },
               }
             ConsumedJoinNone =>
               match nearest_common_ancestor(target_chain: target_chain, source_chain: source_chain) {

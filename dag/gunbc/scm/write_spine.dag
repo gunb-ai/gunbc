@@ -218,8 +218,8 @@ fn stage_into(
 // INTEGRATION SOURCE. An earlier revision carried one and admitted in its own comment that it could
 // not arise -- the `callee_arm_carried_past_its_exclusion` error this stack has already paid for once: honest about the callee's
 // domain and dishonest about this operation's. The repair is not to re-report it or to translate it,
-// but to invoke a construction from which the question is ABSENT: `mint_ordinary_commit` takes no
-// integration argument, so there is no source that could be missing.
+// but to invoke a construction from which the question is ABSENT: `mint_ancestral_commit` takes an
+// already-admitted basis carrying `NoSquashIntegration`, so there is no source that could be missing.
 //
 // SOURCE COMPLETENESS IS THE COMMIT'S OUTCOME, NOT THE STAGE'S REFUSAL. `StagingRefusal` answers one
 // relational question -- can this candidate be compared against its base -- and status and checkout
