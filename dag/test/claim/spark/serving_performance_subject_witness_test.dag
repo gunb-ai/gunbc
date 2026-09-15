@@ -25,6 +25,7 @@ import gunbc.spark.serving_performance_subject {
   serving_subject_known_differing_axes,
   serving_subject_axes, serving_subject_axis_wire, serving_subject_reads,
   serving_subject_standing_reads, serving_subject_axis_delta, serving_subject_differing_axes,
+  serving_subject_axis_list_contains,
 }
 import gunbc.spark.prefill_batch_sweep {
   MeasuredBatchArm, batch_arm_subject, spark_group_a_measured_arms, spark_group_a_depth_rate,
@@ -106,7 +107,7 @@ fn join_is_incomparable(j: ServingSubjectJoin) -> Bool {
 fn join_names_axis(j: ServingSubjectJoin, a: ServingSubjectAxis) -> Bool {
   match j {
     DifferentSubject { axes: axes, left: _, right: _ } =>
-      (axes as String).contains(serving_subject_axis_wire(a: a) as String)
+      serving_subject_axis_list_contains(axes: axes, a: a)
     SameSubject => false
     SubjectIncomparable { because: _ } => false
   }
@@ -259,7 +260,7 @@ test fn w_a_partial_standing_names_its_gap_and_the_remedy() -> Bool {
     believed: "fixture belief" as NonEmptyStr,
     would_settle: "fixture remedy" as NonEmptyStr) {
     SubjectPartial { subject: _, unknown_axes: axes, believed: b, would_settle: w } =>
-      (axes as String).contains("collective transport")
+      serving_subject_axis_list_contains(axes: axes, a: AxisCollectiveTransport)
         && (b as String).contains("fixture belief")
         && (w as String).contains("fixture remedy")
     SubjectEstablished { subject: _ } => false
@@ -310,7 +311,8 @@ test fn w_a_multi_axis_pair_is_uncontrolled_rather_than_attributed() -> Bool {
     left: SubjectEstablished { subject: fx_deepseek_tp4 },
     right: SubjectEstablished { subject: fx_glm_group_b }) {
     AxisDeltaOnManyAxes { axes: axes } =>
-      (axes as String).contains("checkpoint") && (axes as String).contains("runtime")
+      serving_subject_axis_list_contains(axes: axes, a: AxisCheckpoint)
+        && serving_subject_axis_list_contains(axes: axes, a: AxisRuntime)
     AxisDeltaOnOneAxis { axis: _ } => false
     AxisDeltaOnOneAxisWithUnreadAxes { axis: _, unread: _ } => false
     AxisDeltaNone => false
@@ -373,7 +375,7 @@ fn first_batch_arm_subject() -> ServingPerformanceSubjectStanding {
 fn arm_subject_is_partial_on_topology(arm: MeasuredBatchArm) -> Bool {
   match arm.subject {
     SubjectPartial { subject: sub, unknown_axes: axes, believed: b, would_settle: w } =>
-      (axes as String).contains("topology")
+      serving_subject_axis_list_contains(axes: axes, a: AxisTopology)
         && (w as String).contains(arm_launch_invocation(b: arm_2048_binding) as String)
         && (b as String).contains(to_string(arm.max_num_batched_tokens))
         && (serving_subject_axis_value(s: sub, a: AxisCheckpoint) as String) == (serving_checkpoint_wire(c: DeepseekV4FlashIq3sSplit) as String)
@@ -454,7 +456,8 @@ test fn w_the_depth_law_does_not_even_read_for_itself_while_its_transport_is_unr
 test fn w_the_topology_cut_moves_two_axes_rather_than_isolating_the_degree() -> Bool {
   match spark_group_a_topology_axis_delta {
     AxisDeltaOnManyAxes { axes: axes } =>
-      (axes as String).contains("topology") && (axes as String).contains("rank population")
+      serving_subject_axis_list_contains(axes: axes, a: AxisTopology)
+        && serving_subject_axis_list_contains(axes: axes, a: AxisRankPopulation)
     AxisDeltaUndecidable { because: _ } => false
     AxisDeltaOnOneAxis { axis: _ } => false
     AxisDeltaOnOneAxisWithUnreadAxes { axis: _, unread: _ } => false
@@ -633,7 +636,7 @@ test fn w_the_transport_wire_is_derived_from_the_variant() -> Bool {
 // provides for records.
 test fn w_a_subject_with_an_absent_axis_cannot_become_established() -> Bool {
   match serving_subject_standing(subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4), believed: "fixture belief" as NonEmptyStr, would_settle: "fixture remedy" as NonEmptyStr) {
-    SubjectPartial { subject: _, unknown_axes: axes } => (axes as String).contains("collective transport")
+    SubjectPartial { subject: _, unknown_axes: axes } => serving_subject_axis_list_contains(axes: axes, a: AxisCollectiveTransport)
     SubjectEstablished { subject: _ } => false
   }
 }
@@ -670,7 +673,7 @@ test fn w_a_one_axis_difference_over_unread_axes_is_not_a_clean_cut() -> Bool {
     right: serving_subject_standing(subject: b, believed: "fx" as NonEmptyStr, would_settle: "fx" as NonEmptyStr)) {
     AxisDeltaOnOneAxisWithUnreadAxes { axis: got, unread: u } =>
       (serving_subject_axis_wire(a: got) as String) == (serving_subject_axis_wire(a: AxisMaxNumSeqs) as String)
-        && (u as String).contains("collective transport")
+        && serving_subject_axis_list_contains(axes: u, a: AxisCollectiveTransport)
     AxisDeltaOnOneAxis { axis: _ } => false
     AxisDeltaNone => false
     AxisDeltaOnManyAxes { axes: _ } => false

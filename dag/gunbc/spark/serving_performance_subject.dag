@@ -224,6 +224,17 @@ fn serving_subject_differing_axes(left: ServingPerformanceSubject, right: Servin
   filter(serving_subject_axes, a => !serving_subject_axis_agrees(left: left, right: right, a: a))
 }
 
+// MEMBERSHIP IS ASKED OF THE LIST, NOT OF ITS RENDERING. The delta arms carry
+// List<ServingSubjectAxis> rather than a joined wire because the parts are modelled axes in this
+// module and flattening them to a String is DESIGN section 2's anemic leaf -- "a String leaf hiding
+// named parts". The cost showed up immediately in this change's own witness, which could only ask
+// `(u as String).contains("collective transport")`: a stringly read of a closed variant set that
+// keeps passing if an axis wire spelling ever changes. `serving_subject_axes_wire` stays, for
+// PRESENTATION only.
+fn serving_subject_axis_list_contains(axes: List<ServingSubjectAxis>, a: ServingSubjectAxis) -> Bool {
+  length(filter(axes, x => (serving_subject_axis_wire(a: x) as String) == (serving_subject_axis_wire(a: a) as String))) > 0
+}
+
 fn serving_subject_axes_wire(axes: List<ServingSubjectAxis>) -> String {
   join(map(axes, a => serving_subject_axis_wire(a: a) as String), ", ")
 }
@@ -291,14 +302,14 @@ fn serving_subject_known_differing_axes(left: ServingPerformanceSubject, right: 
 
 type ServingSubjectJoin
   = SameSubject
-  | DifferentSubject { axes: NonEmptyStr, left: NonEmptyStr, right: NonEmptyStr }
+  | DifferentSubject { axes: List<ServingSubjectAxis>, left: NonEmptyStr, right: NonEmptyStr }
   | SubjectIncomparable { because: NonEmptyStr }
 
 fn serving_subject_reads(measurement_subject: ServingPerformanceSubject, decision_subject: ServingPerformanceSubject) -> ServingSubjectJoin {
   let known = serving_subject_known_differing_axes(left: measurement_subject, right: decision_subject)
   if length(known) > 0 {
     DifferentSubject {
-      axes: serving_subject_axes_wire(axes: known) as NonEmptyStr,
+      axes: known,
       left: serving_performance_subject_wire(s: measurement_subject),
       right: serving_performance_subject_wire(s: decision_subject),
     }
@@ -344,7 +355,7 @@ type ServingPerformanceSubjectStanding
   = SubjectEstablished { subject: ServingPerformanceSubject }
   | SubjectPartial {
       subject: ServingPerformanceSubject,
-      unknown_axes: NonEmptyStr,
+      unknown_axes: List<ServingSubjectAxis>,
       believed: NonEmptyStr,
       would_settle: NonEmptyStr,
     }
@@ -371,7 +382,7 @@ fn serving_subject_standing(
   } else {
     SubjectPartial {
       subject: subject,
-      unknown_axes: serving_subject_axes_wire(axes: unknown) as NonEmptyStr,
+      unknown_axes: unknown,
       believed: believed,
       would_settle: would_settle,
     }
@@ -419,9 +430,9 @@ fn serving_subject_standing_reads(
 // experiment isolated a variable.
 type SubjectAxisDelta
   = AxisDeltaOnOneAxis { axis: ServingSubjectAxis }
-  | AxisDeltaOnOneAxisWithUnreadAxes { axis: ServingSubjectAxis, unread: NonEmptyStr }
+  | AxisDeltaOnOneAxisWithUnreadAxes { axis: ServingSubjectAxis, unread: List<ServingSubjectAxis> }
   | AxisDeltaNone
-  | AxisDeltaOnManyAxes { axes: NonEmptyStr }
+  | AxisDeltaOnManyAxes { axes: List<ServingSubjectAxis> }
   | AxisDeltaUndecidable { because: NonEmptyStr }
 
 fn serving_subject_axis_delta(
@@ -439,11 +450,11 @@ fn serving_subject_axis_delta(
         if length(unread) == 0 {
           AxisDeltaOnOneAxis { axis: only }
         } else {
-          AxisDeltaOnOneAxisWithUnreadAxes { axis: only, unread: serving_subject_axes_wire(axes: unread) as NonEmptyStr }
+          AxisDeltaOnOneAxisWithUnreadAxes { axis: only, unread: unread }
         }
     }
   } else if length(known) > 1 {
-    AxisDeltaOnManyAxes { axes: serving_subject_axes_wire(axes: known) as NonEmptyStr }
+    AxisDeltaOnManyAxes { axes: known }
   } else {
     if length(unread) > 0 {
       AxisDeltaUndecidable { because: join([
