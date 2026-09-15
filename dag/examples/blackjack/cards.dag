@@ -1,0 +1,8 @@
+module examples.blackjack.cards
+
+// FILE MARKER FOR THE ONBOARDING PROJECT. The model this module owns -- Rank, Card, the pip
+// value of a rank, the standard deck -- is specified in docs/plans/blackjack-onboarding.md
+// section 4.1 (authority gunbc.plans.blackjack_onboarding) and is written by the contributor
+// working that brief. This anchor is the one declaration given, so the file parses on day one
+// and shows the shape of a closed set of alternatives.
+type Suit = Clubs | Diamonds | Hearts | Spades
