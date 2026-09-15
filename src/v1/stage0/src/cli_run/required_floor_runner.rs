@@ -9096,6 +9096,58 @@ pub fn run_required_floor(
                 row.decl_site
             );
         }
+        // ── THE PARTIAL-CLASS SPLIT, WHICH IS THE WHOLE POINT OF KEYING THIS BUCKET ──────────
+        //
+        // Before the partial key, a declaration with ANY unkeyable argument produced exactly ONE
+        // census row however different its arguments were, because the absorb path keyed it as
+        // `args: Vec::new()`. `v2.std.diagnostic` `bind_outcome<T,U>(o, f)` takes a function
+        // argument, so every one of its calls landed there: one row reporting 609 claims, 67,674
+        // evaluations and 186s of "cross-claim" time that was a merge of every distinct call rather
+        // than a measurement of one fact re-derived.
+        //
+        // THIS ROLLUP IS THE READING THAT SEPARATES THE TWO. `prefixes` is how many DISTINCT keyable
+        // argument rows now stand where one row stood. A producer whose 67,674 evaluations split
+        // into tens of thousands of prefixes was never sharing a fact; a producer whose evaluations
+        // collapse onto a handful is re-deriving, and only that second shape is a carry candidate.
+        //
+        // THE TIME IS AN UPPER BOUND AND THE LINE SAYS SO. Two calls agreeing on every keyed
+        // position may still differ in an unkeyable one, so a partial row's cross-claim figure
+        // bounds recoverable duplication from above rather than measuring it.
+        // `v2.workflow.floor_pure_producer_share` may not carry a producer on this number.
+        let mut partial_rollup: std::collections::BTreeMap<
+            (String, String),
+            (usize, u64, u64, u128),
+        > = std::collections::BTreeMap::new();
+        for row in shared.iter().filter(|r| r.arg_shape == "partial") {
+            let e = partial_rollup
+                .entry((row.producer.clone(), row.decl_site.clone()))
+                .or_insert((0, 0, 0, 0));
+            e.0 += 1;
+            e.1 += row.claims;
+            e.2 += row.evals;
+            e.3 += row.cross_claim_wasted_ns();
+        }
+        let mut partial_ranked: Vec<_> = partial_rollup.into_iter().collect();
+        partial_ranked.sort_by(|a, b| b.1 .3.cmp(&a.1 .3));
+        const PARTIAL_ROLLUP_PRINT_LIMIT: usize = 10;
+        for ((producer, site), (prefixes, claims, evals, ns)) in
+            partial_ranked.iter().take(PARTIAL_ROLLUP_PRINT_LIMIT)
+        {
+            eprintln!(
+                "[cross-claim-demand] partial-split producer={producer} prefixes={prefixes} \
+                 claims={claims} evals={evals} cross_claim_ms_upper_bound={} @{site} (UPPER BOUND: \
+                 rows agreeing on every KEYED argument may still differ in an unkeyable one, so this \
+                 is not a recoverable figure and is not carry-eligible)",
+                ns / 1_000_000
+            );
+        }
+        if partial_ranked.len() > PARTIAL_ROLLUP_PRINT_LIMIT {
+            eprintln!(
+                "[cross-claim-demand] ... and {} further partial-class producer identit(ies), not \
+                 printed",
+                partial_ranked.len() - PARTIAL_ROLLUP_PRINT_LIMIT
+            );
+        }
         if shared.len() > CROSS_CLAIM_DEMAND_PRINT_LIMIT {
             eprintln!(
                 "[cross-claim-demand] ... and {} further shared producer identit(ies), not \

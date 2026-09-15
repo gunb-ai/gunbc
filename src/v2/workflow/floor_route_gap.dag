@@ -1019,8 +1019,31 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// The four test.claim.durable_cas_file_store_wet_witness identities: CAS publication read-back,
+// sequential loser naming the winner, generation-two advance, and a non-contention store refusal.
+// First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment: this
+// expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the
+// gunbc.ci_layer_roots witness_exclusion_frontier LocalRepoWetLane row for
+// durable_cas_file_store_wet_witness_test.dag. Floor run 34797864081 measured the unenrolled
+// DirWithTemplate / NoMockResponse gap on each identity.
+fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.commit_then_independent_read_back_agrees_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.an_advance_after_commit_lands_generation_two_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Empty {} } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Empty {} } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
