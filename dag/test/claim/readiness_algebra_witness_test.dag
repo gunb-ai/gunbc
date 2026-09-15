@@ -35,10 +35,6 @@ fn fail_probe(detail: String) -> DashboardExecResult {
   DashboardExecResult { success: false, stdout: "not empty", stderr: detail }
 }
 
-fn refused_probe(reason: String) -> DashboardExecResult {
-  DashboardExecResult { success: false, stdout: "", stderr: reason }
-}
-
 test fn witness_ready_pending_refused_are_distinct_arms() -> Bool {
   let ready: Readiness<String, String, String> = Ready { evidence: "e" }
   let pending: Readiness<String, String, String> = Pending { cause: "p" }
