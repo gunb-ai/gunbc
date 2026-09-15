@@ -1,0 +1,156 @@
+module v2.test.claim.namespace.cross_module_resolve_witness
+
+// Four-case executed witness: does the live v2 native-test resolve route bind
+// same-module vs cross-module names?
+//
+// Route: native_test_context_from_ingest -> native_test_resolve_module
+// (resolve_with_admission_grounded, default NamespaceOnlyY). Criterion is
+// resolve Accepted/Rejected on a module whose body or type position carries
+// the reference. One shared ingest so a cross-module red cannot collapse the
+// same-module control. Inline sources only (SubstrateInputsOnly). No
+// hand-built trees, no qualified_name_from_dotted_string keys, no pipeline
+// edits, no dot-access reader.
+
+import v2.compiler.compile {
+  native_test_context_from_ingest,
+  native_test_resolve_module,
+  NativeTestContext
+}
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data xmod_provider_source: String = "module xmod_provider\n\nimport v2.std.logic { Bool }\n\ntype Marker { ok: Bool }\n\nfn provided_value() -> Bool { true }\n\nfn uses_own_marker(m: Marker) -> Bool { true }\n"
+
+data xmod_case1_source: String = "module xmod_case1_same\n\nimport v2.std.logic { Bool }\n\nfn local_value() -> Bool { true }\n\nfn uses_local() -> Bool { local_value() }\n"
+
+data xmod_case2_source: String = "module xmod_case2_bare\n\nimport v2.std.logic { Bool }\n\nimport xmod_provider { provided_value }\n\nfn uses_imported() -> Bool { provided_value() }\n"
+
+data xmod_case3_source: String = "module xmod_case3_dot_body\n\nimport v2.std.logic { Bool }\n\nimport xmod_provider { provided_value }\n\nfn uses_dotted() -> Bool { xmod_provider.provided_value() }\n"
+
+data xmod_case4_source: String = "module xmod_case4_dot_type\n\nimport v2.std.logic { Bool }\n\nimport xmod_provider { Marker }\n\nfn takes_marker(m: xmod_provider.Marker) -> Bool { true }\n"
+
+fn xmod_read(text: String, path: String, id: Symbol, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: id,
+      file_path: path
+    },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+fn xmod_provider_read() -> DagSourceReadWitness {
+  xmod_read(
+    text: xmod_provider_source,
+    path: "src/v2/test/fixture/namespace/xmod_provider.dag",
+    id: ^xmod_provider_read,
+    unit: ^xmod_provider_cu
+  )
+}
+
+fn xmod_case1_read() -> DagSourceReadWitness {
+  xmod_read(
+    text: xmod_case1_source,
+    path: "src/v2/test/fixture/namespace/xmod_case1.dag",
+    id: ^xmod_case1_read,
+    unit: ^xmod_case1_cu
+  )
+}
+
+fn xmod_case2_read() -> DagSourceReadWitness {
+  xmod_read(
+    text: xmod_case2_source,
+    path: "src/v2/test/fixture/namespace/xmod_case2.dag",
+    id: ^xmod_case2_read,
+    unit: ^xmod_case2_cu
+  )
+}
+
+fn xmod_case3_read() -> DagSourceReadWitness {
+  xmod_read(
+    text: xmod_case3_source,
+    path: "src/v2/test/fixture/namespace/xmod_case3.dag",
+    id: ^xmod_case3_read,
+    unit: ^xmod_case3_cu
+  )
+}
+
+fn xmod_case4_read() -> DagSourceReadWitness {
+  xmod_read(
+    text: xmod_case4_source,
+    path: "src/v2/test/fixture/namespace/xmod_case4.dag",
+    id: ^xmod_case4_read,
+    unit: ^xmod_case4_cu
+  )
+}
+
+fn xmod_provider_module() -> QualifiedName { [^xmod_provider] }
+fn xmod_case1_module() -> QualifiedName { [^xmod_case1_same] }
+fn xmod_case2_module() -> QualifiedName { [^xmod_case2_bare] }
+fn xmod_case3_module() -> QualifiedName { [^xmod_case3_dot_body] }
+fn xmod_case4_module() -> QualifiedName { [^xmod_case4_dot_type] }
+
+// Shared prerequisite for the separate cross-module resolve claims. The warm
+// producer roster carries this nullary ingest across the floor's claim frames;
+// native_test_resolve_module remains inside each claim's measured execution.
+fn xmod_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(
+    ingest: [
+      xmod_provider_read(),
+      xmod_case1_read(),
+      xmod_case2_read(),
+      xmod_case3_read(),
+      xmod_case4_read()
+    ]
+  )
+}
+
+fn xmod_resolve(module: QualifiedName) -> Outcome<ResolvedTree> {
+  match xmod_context() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: context, diagnostics: _ } =>
+      native_test_resolve_module(context: context, module: module)
+  }
+}
+
+fn xmod_resolves(module: QualifiedName) -> Bool {
+  match xmod_resolve(module: module) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn case1_same_module_bare_reference_resolves() -> Bool {
+  xmod_resolves(module: xmod_case1_module())
+}
+
+test fn case2_bare_cross_module_reference_resolves() -> Bool {
+  xmod_resolves(module: xmod_case2_module())
+}
+
+test fn case3_dotted_cross_module_body_reference_resolves() -> Bool {
+  xmod_resolves(module: xmod_case3_module())
+}
+
+// These authored type positions are the discriminating RED for the missing
+// declaration binder. Keep the same-module control independent of qualification.
+test fn case4_dotted_cross_module_type_reference_resolves() -> Bool {
+  xmod_resolves(module: xmod_case4_module())
+}
+
+test fn case4_control_same_module_type_position_resolves() -> Bool {
+  xmod_resolves(module: xmod_provider_module())
+}

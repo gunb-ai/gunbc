@@ -2,6 +2,9 @@ module v2.std.symbol_index
 
 
 import std.algebra { Empty, FreeMonoid }
+import std.content_hash { Fnv1a64Structural }
+import std.occurrence_binding { BindingCandidate }
+import std.occurrence_identity { OccurrenceId, ScopedOccurrenceRef }
 import v2.std.algebra {
   HeadAbsent,
   HeadFound,
@@ -33,27 +36,55 @@ import v2.std.qualified_name {
   qualified_name_snoc
 }
 
+// symbol_index_fill derives this accelerator from SymbolIndex.entries. Resolve
+// projects the same candidate for bare and qualified references.
 type GlobalBareBindingState
-  = GlobalBareUnique { node: Node, path: QualifiedName }
+  = GlobalBareUnique { candidate: BindingCandidate<ScopedOccurrenceRef>, path: QualifiedName }
   | GlobalBareAmbiguous
 
+// Consumed by resolve's bare-reference binding through occurrence_binding_from_candidates.
 type GlobalBareLookup
-  = GlobalBareHit { node: Node, path: QualifiedName }
+  = GlobalBareHit { candidate: BindingCandidate<ScopedOccurrenceRef>, path: QualifiedName }
   | GlobalBareLookupAmbiguous
   | GlobalBareLookupUnbound
 
+// Qualified-name search evidence for symbol_index_lexical_lookup; containment
+// identity remains the existing BindingCandidate, not the searched spelling.
 type LexicalBindingCandidate {
   path: QualifiedName
-  node: Node
+  candidate: BindingCandidate<ScopedOccurrenceRef>
 }
 
+// Consumed by resolve's lexical-reference binding. All successful searches expose
+// the same candidate shape used by qualified lookup.
 type LexicalLookup
-  = LexicalHit { node: Node, path: QualifiedName }
+  = LexicalHit { candidate: BindingCandidate<ScopedOccurrenceRef>, path: QualifiedName }
   | LexicalAmbiguous { candidates: FreeMonoid<LexicalBindingCandidate> }
   | LexicalUnbound
 
+// A synthetic node cannot become an endpoint or ancestor of a binding path.
+// symbol_index_fill and resolve use one conversion to a resolve Diagnostic with
+// a resolve_reason symbol at node_locus, through the existing Rejected channel;
+// resolve consumers never match a second failure channel beside Rejected. The
+// known prefix locates the traversal without fabricating a terminal identity.
+// MissingAuthoredOccurrenceIdentity requires a SourceSpan, which an untracked
+// synthetic v2 node does not supply, so it cannot represent this boundary.
+type SymbolIndexIdentityRefusal
+  = SymbolIndexUntrackedSynthetic {
+      node: Node,
+      ancestors: FreeMonoid<ScopedOccurrenceRef>
+    }
+
+// The sole qualified-name candidate index, produced by symbol_index_fill and
+// consumed by resolve. Its node storage is addressed by occurrence, not spelling;
+// global_bare is a search projection of entries, not another binding authority.
+// occurrence_domains uses the scope type's map-key equality to select a domain
+// without scanning source files, then selects the ordinal within that domain.
+// Explicit cross-domain joins use scoped_occurrence_ref_same_scope; no consumer
+// compares raw digests. Containment paths store references, not ancestor subtrees.
 type SymbolIndex {
-  entries: Map<QualifiedName, Node>
+  entries: Map<QualifiedName, BindingCandidate<ScopedOccurrenceRef>>
+  occurrence_domains: Map<Fnv1a64Structural, Map<OccurrenceId, Node>>
   global_bare: Map<Symbol, GlobalBareBindingState>
 }
 
