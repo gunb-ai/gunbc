@@ -11,6 +11,7 @@ import gunbc.spark.v41_engram_row_store {
 }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
+import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
 
 // ── CUT C: ARTIFACT STAGING, NOT SERVICE MUTATION ──────────────────────────────────────────────
@@ -77,7 +78,7 @@ fn v41_staging_request(image: V41OciImageDigest, encoding: V41RowStoreEncoding) 
 type V41StagingReceipt
   = V41StagingVerified {
       request_key: ContentHash
-      image_readback: NonEmptyStr
+      image_readback: OciContentDigest
       ranks: List<V41StagedRankStore>
     }
   | V41StagingUnestablished { obligation: NonEmptyStr }
@@ -85,7 +86,7 @@ type V41StagingReceipt
 
 fn v41_stage(
   request: V41StagingRequest,
-  image_readback: NonEmptyStr,
+  image_readback: OciContentDigest,
   rank_readbacks: List<V41StagedRankStore>,
   provenance: VllmImageProvenance,
 ) -> V41StagingReceipt {
@@ -94,7 +95,7 @@ fn v41_stage(
       defects: ["staging a tag-only image is refused; the receipt must carry the produced digest" as NonEmptyStr],
     }
     BuiltByThisRun => {
-      let image_ok = (image_readback as String) == (request.image.manifest as String)
+      let image_ok = render_oci_content_digest_wire(d: image_readback) == render_oci_content_digest_wire(d: request.image.manifest)
       let count_ok = length(rank_readbacks) == length(request.ranks)
       let each_ok = all(enumerate(request.ranks), p => any(rank_readbacks, s =>
         s.rank == p.first && (serialize_content_hash(hash: s.identity) as String) == (serialize_content_hash(hash: p.second) as String)
@@ -107,8 +108,8 @@ fn v41_stage(
         V41StagingVerified {
           request_key: artifact_realization_digest(inputs: concat(
             [
-              v41_input(identity: "image.manifest", value: request.image.manifest as String),
-              v41_input(identity: "image.config", value: request.image.config as String),
+              v41_input(identity: "image.manifest", value: render_oci_content_digest_wire(d: request.image.manifest)),
+              v41_input(identity: "image.config", value: render_oci_content_digest_wire(d: request.image.config)),
             ],
             map(enumerate(request.ranks), p => v41_input(identity: join(["rank.", to_string(p.first)], ""), value: serialize_content_hash(hash: p.second) as String)))),
           image_readback: image_readback,

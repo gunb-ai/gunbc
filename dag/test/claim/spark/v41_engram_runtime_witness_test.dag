@@ -52,6 +52,7 @@ import gunbc.spark.v41_runtime_realized {
   V41CandidateRealized, V41CandidateRealizationUnestablished,
 }
 import gunbc.spark.vllm_runtime_image_build { BuiltByThisRun, AdoptedUnderExpectedTag }
+import extdeps.container.oci.digest { oci_content_digest_from_validated_sha256 }
 import gunbc.spark.v41_engram_staging {
   v41_staging_request, v41_stage, V41StagingVerified, V41StagingRefused, V41StagingUnestablished,
   v41_group_a_staging_standing, v41_staged_matching, v41_staged_with_readback,
@@ -147,8 +148,8 @@ fn w_identified() -> V41RowStoreEncoding? {
 
 fn w_image() -> V41OciImageDigest {
   v41_oci_image_digest(
-    manifest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr,
-    config: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr,
+    manifest: oci_content_digest_from_validated_sha256(digest: w_sha(c: "a")),
+    config: oci_content_digest_from_validated_sha256(digest: w_sha(c: "b")),
   )
 }
 
@@ -335,7 +336,7 @@ test fn realized_identity_requires_produced_image_digest_and_consumed_patches() 
   let spec = v41_candidate_standing(c: w_default(patches: w_two_patches()))
   match spec.standing {
     V41CandidateKeyed { runtime_artifact: rk, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } =>
-      match v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: AdoptedUnderExpectedTag, consumed: V41PatchesConsumedByImage { patch_digests: ["p" as NonEmptyStr] }) {
+      match v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: AdoptedUnderExpectedTag, consumed: V41PatchesConsumedByImage { patch_digests: [w_sha(c: "p")] }) {
         V41RuntimeRealizationRefused { defects: d } => any(d, x => (x as String).contains("tag"))
         V41RuntimeRealized { specification_runtime_key: _, image: _, consumed_patches: _, realized_runtime_key: _ } => false
         V41RuntimeRealizationUnestablished { obligations: _ } => false
@@ -352,7 +353,7 @@ test fn only_the_realized_candidate_is_selectable() -> Bool {
       match w_identified() {
         Absent => false
         Present { value: enc } => match v41_selectable(realized: v41_realized_candidate(
-          runtime: v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: BuiltByThisRun, consumed: V41PatchesConsumedByImage { patch_digests: ["p" as NonEmptyStr] }),
+          runtime: v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: BuiltByThisRun, consumed: V41PatchesConsumedByImage { patch_digests: [w_sha(c: "p")] }),
           row_store: enc,
           spec: spec,
         )) {

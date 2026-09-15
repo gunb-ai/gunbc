@@ -2,7 +2,7 @@ module gunbc.spark.v41_runtime_realized
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.content_hash { ContentHash, serialize_content_hash }
+import std.content_hash { ContentHash, Sha256Digest, serialize_content_hash }
 import std.artifact_store {
   ArtifactStore, ArtifactRow, StorePutAdmitted, StorePutDidNotFit,
   store_put, store_bytes_used, artifact_realization_digest,
@@ -14,6 +14,7 @@ import gunbc.spark.v41_runtime_candidate {
   V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_input,
 }
+import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
@@ -38,16 +39,16 @@ import gunbc.spark.v41_engram_row_store {
 // Unestablished (v41_patch_application_standing); do not mint Realized from a baseline digest plus
 // transcribed patch hex.
 type V41OciImageDigest sole_constructor {
-  manifest: NonEmptyStr
-  config: NonEmptyStr
+  manifest: OciContentDigest
+  config: OciContentDigest
 }
 
-fn v41_oci_image_digest(manifest: NonEmptyStr, config: NonEmptyStr) -> V41OciImageDigest {
+fn v41_oci_image_digest(manifest: OciContentDigest, config: OciContentDigest) -> V41OciImageDigest {
   V41OciImageDigest { manifest: manifest, config: config }
 }
 
 type V41PatchConsumptionEvidence
-  = V41PatchesConsumedByImage { patch_digests: List<NonEmptyStr> }
+  = V41PatchesConsumedByImage { patch_digests: List<Sha256Digest> }
   | V41PatchesAbsentFromImage { obligation: NonEmptyStr }
 
 type V41RealizedRuntime
@@ -79,9 +80,9 @@ fn v41_realized_runtime(
           consumed_patches: consumed,
           realized_runtime_key: artifact_realization_digest(inputs: concat([
             v41_input(identity: "specification_runtime", value: serialize_content_hash(hash: spec_runtime) as String),
-            v41_input(identity: "oci.manifest", value: image.manifest as String),
-            v41_input(identity: "oci.config", value: image.config as String),
-          ], map(enumerate(ds), p => v41_input(identity: join(["consumed_patch.", to_string(p.first)], ""), value: p.second as String)))),
+            v41_input(identity: "oci.manifest", value: render_oci_content_digest_wire(d: image.manifest)),
+            v41_input(identity: "oci.config", value: render_oci_content_digest_wire(d: image.config)),
+          ], map(enumerate(ds), p => v41_input(identity: join(["consumed_patch.", to_string(p.first)], ""), value: p.second.hex as String)))),
         }
     }
   }
