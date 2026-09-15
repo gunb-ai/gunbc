@@ -17,6 +17,7 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   corpus_paths,
   corpus_report,
   corpus_report_from_rows,
+  corpus_file_row,
   corpus_rows_for_paths
 }
 import std.algebra { Cons, Empty }
@@ -58,7 +59,16 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.witness { Holds, Violates }
 import v2.std.collection { List }
-import v2.std.integer { Int }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.lens.common.source_analysis_standing {
+  LanguageGrammarRejected,
+  LanguageGrammarUnavailable,
+  SourceAnalysisNotEstablishedCause,
+  SourceNormalizationRejected,
+  SourceParseRejected,
+  SourceTokenizationRejected,
+  SourceUnreadable
+}
 import v2.lens.complexity_accumulator_copy.roster_gate {
   GateClean,
   GateNotEstablished,
@@ -219,6 +229,43 @@ fn census_for_root(root: String) -> CorpusReport {
 
 fn census_for_paths(paths_csv: String) -> CorpusReport {
   corpus_report_from_rows(rows: corpus_rows_for_paths(paths: split(s: paths_csv, delimiter: ",")))
+}
+
+// ONE FILE, ONE LINE, READ FROM THE VALUE — NEVER FROM THE PROCESS EXIT CODE.
+// still-bee-353 encoded a suspect total in the exit status; that wraps at 256, so the
+// number is not a number. This entry returns a String. `gunbc run --function` prints a
+// non-ProcessExit return via classify_exit's format_value arm. The driver writes that
+// line to a file. One path per process: corpus_census already records that a multi-subject
+// fold dies with SIGSEGV and a silent truncation. The two-arm receipt is
+// corpus_gate.newly_red_difference: lockstep identity join, unmeasured listed and not red.
+fn not_established_cause_token(cause: SourceAnalysisNotEstablishedCause) -> String {
+  match cause {
+    LanguageGrammarUnavailable => "LanguageGrammarUnavailable"
+    LanguageGrammarRejected => "LanguageGrammarRejected"
+    SourceUnreadable => "SourceUnreadable"
+    SourceTokenizationRejected => "SourceTokenizationRejected"
+    SourceParseRejected => "SourceParseRejected"
+    SourceNormalizationRejected => "SourceNormalizationRejected"
+  }
+}
+
+fn census_tsv_line_for_path(path: String) -> String {
+  let row = corpus_file_row(path: path)
+  match row.standing {
+    CorpusFileScanned { suspects: s, refusals: r, causes: _ } =>
+      concat(
+        path,
+        concat(
+          "\tscanned\t",
+          concat(
+            integer_int_to_decimal_string(value: s),
+            concat("\t", integer_int_to_decimal_string(value: r))
+          )
+        )
+      )
+    CorpusFileNotEstablished { cause: cause } =>
+      concat(path, concat("\tnot_established\t", concat(not_established_cause_token(cause: cause), "\t0")))
+  }
 }
 
 fn subtree_gate() -> CorpusGateDisposition {

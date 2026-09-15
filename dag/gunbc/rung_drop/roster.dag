@@ -68,7 +68,10 @@ import gunbc.rung_drop.long_home_enrolment_margin_observed_only { long_home_enro
 import gunbc.rung_drop.native_lane_second_textual_production_reading { native_lane_second_textual_production_reading }
 import gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership { native_lane_closure_walk_unkeyed_membership }
 import gunbc.rung_drop.heal_healed_head_executed_verdict_without_human { heal_healed_head_executed_verdict_without_human }
+import gunbc.rung_drop.runner_host_file_apply_route_hermetic { runner_host_file_apply_route_hermetic }
 import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_cost_cpu_regression_at_constant_eval_steps }
+import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accumulator_copy_positive_controls_off_every_lane }
+import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -120,7 +123,10 @@ data rung_drop_roster: List<RungDrop> = [
   native_lane_second_textual_production_reading,
   native_lane_closure_walk_unkeyed_membership,
   heal_healed_head_executed_verdict_without_human,
+  runner_host_file_apply_route_hermetic,
   floor_cost_cpu_regression_at_constant_eval_steps,
+  accumulator_copy_positive_controls_off_every_lane,
+  seed_whole_corpus_demand_population_blind,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

@@ -1,0 +1,51 @@
+module gunbc.rung_drop.seed_whole_corpus_demand_population_blind
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-13 (session nimble-badger-98, direction vivid-bee-814 / fierce-lark-661). The
+// .dag authority gunbc.whole_corpus_compile_admission now keys demand on the root compiled --
+// WholeCorpusCompileDemand = MeasuredForRoot | UnmeasuredRoot, joined on repository, primary root and
+// ordered dependency pools -- and an unmeasured root refuses with its measurement recipe. The v1
+// seed, which is the only route that executes the admission before a compile, still realizes the
+// deleted population-blind constant: v1_compiler.memory_governor
+// DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES and whole_corpus_compile_admission compare
+// every whole-root compile's budget to the public root's peak.
+//
+// WHAT IS LOST ON THE SEED-MIRROR PATH. test.claim.seed_mirror_constant_lens_witness_test still
+// joins that constant's VALUE to the public root's row, and that equality still holds; what it no
+// longer establishes is that the seed realizes the authority, because the authority is now a join
+// the seed does not perform. So the seed ADMITS a root with no row (another repository, another
+// pool set) whose budget clears the public peak, and REFUSES a smaller root on the public root's
+// number -- both directions of the defect the model closed, still live at execution. The seed's
+// refusal stays typed and located, so the path sits at mitigation, not below the ladder.
+//
+// WHY A DROP AND NOT A SAME-PR FIX: the model and the seed mirror land separately because any
+// src/v1 landing stales every closure receipt taken before it, and the seed's landing is slotted by
+// v1 seed maintenance between receipt re-takes.
+
+data seed_whole_corpus_demand_population_blind_population: List<String> = [
+  "v1_compiler.memory_governor whole_corpus_compile_admission — every whole-root (PrimaryRoot) compile admitted or refused by v1_compiler.cli_run compile_emission",
+  "test.claim.seed_mirror_constant_lens_witness_test seed_mirror_constant_rows — the DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES row, whose authority_symbol still spells the deleted whole_corpus_compile_measured_peak_demand",
+]
+
+data seed_whole_corpus_demand_population_blind: RungDrop = RungDrop {
+  identity: "seed_whole_corpus_demand_population_blind" as NonEmptyStr,
+
+  subject: "The v1 seed's whole-corpus compile admission as a realization of gunbc.whole_corpus_compile_admission's per-root demand join",
+
+  declared: "2026-09-13",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the seed mirror of the per-root join in v1_compiler.memory_governor, with the lens row pinning the public root's MeasuredForRoot row rather than the retired bare constant",
+    },
+    population: seed_whole_corpus_demand_population_blind_population,
+    restoration_trigger: "THE SEED ADMITS ON THE ROOT'S OWN ROW: for every whole-root compile v1_compiler.cli_run compile_emission resolves the invocation's root identity (repository, primary root, ordered dependency pools) against the seed mirror of whole_corpus_compile_measured_root_demands, refuses a root with no MeasuredForRoot row with the recipe-naming UnmeasuredRoot refusal before indexing, and compares the budget only to that root's own peak -- executed by a discriminating red (an unmeasured root refused at a budget above the public peak) beside the positive control (the public root admitted at its peak and refused one byte below), and the seed-mirror lens joins the seed's row to whole_corpus_compile_public_root_demand by its current symbol. A seed change that renames the constant, or mirrors a row without performing the join, does not satisfy it",
+  }
+}

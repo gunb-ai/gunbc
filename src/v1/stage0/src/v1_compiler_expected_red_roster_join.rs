@@ -58,6 +58,10 @@ pub enum WitnessEvalVerdict {
         kind: String,
         completion: BudgetVerdictCompletion,
     },
+    ExitFailure {
+        code: i64,
+        reason: String,
+    },
 }
 
 #[derive(
@@ -365,6 +369,19 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
                     "ms EXACT — ran to completion. Stale roster ".to_string(),
                 ),
                 "row: prune enrollment, cost debt is separate".to_string(),
+            ),
+        }),
+        WitnessEvalVerdict::ExitFailure { code, reason, .. } => Rc::new(VerdictClassification {
+            disposition: Rc::new(ExpectedRedJoinDisposition::StillRed),
+            detail: v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "exit ".to_string(),
+                        crate::v1_compiler_emit_core_support::to_string(code.clone()),
+                    ),
+                    ": ".to_string(),
+                ),
+                reason.clone(),
             ),
         }),
     }

@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.unreadable_source_omitted_from_dependency_population
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unreadable_source_omitted_from_dependency_population: RecurringFailureMode = RecurringFailureMode {
+  identity: "unreadable_source_omitted_from_dependency_population" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a dependency-fact producer silently omits a source it cannot read, then returns an ordinary population over which a consumer decides that no forbidden dependency exists. HARM: unreadable source and successfully inspected source with no imports have the same representation. The consumer reports a clean boundary over a population the producer never established. This is DESIGN section 5's absence-of-observation narrow, a fail-open fallback inside population acquisition.",
+
+    "SOURCE-VERIFIED SPECIMEN, NOT AN EXECUTED REPRODUCTION: v2.std.layer_import_scan layer_import_facts_live invokes the host layer_import_facts. In v1_compiler.cli_run project_layer_import_syntax_facts, a failed std::fs::read_to_string takes continue; an unavailable root prints that it was skipped and returns. extract_import_paths reads lines rather than Nodes. The producer therefore cannot establish a Node-tree import wall or a complete source population. Existing consumers include v2.lens.realization_vocabulary_containment and v2.lens.meta_exec_confinement. No unreadable-source perturbation was executed for this finding.",
+
+    "DISTINGUISHING FACT: this is not a policy decision to exclude fixtures or a module whose admitted syntax contains no import. Acquisition failed before dependency membership could be answered. Nor is a typed finding returned for the caller to adjudicate: the ordinary fact list simply lacks the source. Adding a diagnostic inside the consumer cannot reconstruct what the producer silently omitted.",
+
+    "RUNG FOUND AT: silent wrongness for this acquisition-failure class, outside the guarantee ladder. CEILING: mechanically preventable at the external source boundary, because filesystem availability must be observed; the internal complete-versus-refused population representation can be enforced structurally once the observation exists. NEXT TRIGGER: the executing dependency producer accounts for every declared source and returns a typed, located refusal on unreadable source or unavailable root, and its real acceptance-path consumer refuses that result. Evidence must include an unreadable-source RED and a readable-source positive control, not a predicate over a hand-constructed fact list.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster, consumed by gunbc.design_ledgers and checked by the required parse-phase rostered-row join. It records why the Phase 0 native-SCM wall must not use the line scanner. It neither repairs the producer nor claims executed containment.",
+  ],
+
+  evidence: [],
+}

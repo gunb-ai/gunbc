@@ -94,6 +94,7 @@ import gunbc.roadmap_status {
   SupersededLine,
   TicketLine,
   TicketFields,
+  TicketUpdate,
   Signoff,
   Unsigned,
   SignedOff,
@@ -760,6 +761,26 @@ fn fields(
   }
 }
 
+// A dated status note goes on the ticket's updates thread, never into first_slice: the slice is
+// consumed as "next executable slice" by current_state and the dispatch brief, so a position
+// written there forks its meaning, and gunbc.roadmap_status's decomposition exists precisely so
+// updates stop concatenating into a field with no time axis. The page renders the thread.
+fn updated(t: TicketFields, on: String, note: String) -> TicketFields {
+  TicketFields {
+    headline: t.headline,
+    brief: t.brief,
+    displaced_cost: t.displaced_cost,
+    current_state: t.current_state,
+    first_slice: t.first_slice,
+    red_control: t.red_control,
+    out_of_scope: t.out_of_scope,
+    handback: t.handback,
+    updates: concat(t.updates, [TicketUpdate { on: on, note: note }]),
+    authored_on: t.authored_on,
+    last_verified_on: t.last_verified_on,
+  }
+}
+
 fn active_sized(
   identity: String,
   id: String,
@@ -879,6 +900,11 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   )
 }
 
+// 2-scm-native-authority-program records an OPERATOR-RULED PROGRAM (2026-09-13): native SCM becomes
+// the authority for authoring, proposals, integration and history; Git/GitHub become compatibility
+// projections. It was dispatched as six sequential dashboard tickets, and the 2026-09-14 wind-down
+// left it mid-stack, so the node carries what remains at the grain actually established. The ticket
+// briefs and rulings live on the dashboard and are not restated here.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
     active_sized(
@@ -981,6 +1007,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )
     ),
+    active_sized(
+      identity: "rn_ZYH1W8YWXYMSGA8SMYYWHWHMP2",
+      id: "2-scm-native-write-spine-acceptance",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Run the native add/commit/merge spine for real",
+        boundary: "The native write spine is on main: add, commit, and squash merge publishing over a conditional-publication store, with a committed wet acceptance driver, tools.scm_acceptance, that launches every step as a separate process. The driver resolves clean but has never executed to green: it builds the binary it spends, so build and run must share an architecture, and the authoring sessions dispatched builds to amd64 from arm64. This node closes that execution gap. Merge semantics are already ruled in docs/plans/scm-merge-design.md; this node consumes that design and does not re-author it.",
+        displaced_cost: "Until the driver executes, the spine's end-to-end claim is specification without execution: CI lanes compile and witness it but never run add, commit and merge as separate processes against a real store, so a regression across a process boundary lands silently.",
+        first_slice: "On a host whose cargo builds natively (CI's self-hosted ARM64 runner qualifies), run gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/scm_acceptance.dag --function scm_acceptance on main, from the exact full checked-out SHA in a CLEAN worktree, and record that SHA, the clean-worktree state, host, architecture, PATH-resolved cargo and toolchain identity, the canonical command and its exit code. The driver builds the binary it spends, so a dirty checkout would execute modified source while attributing the result to the recorded SHA; such a run is not a receipt. Exit 0 accepts the publication, merge and conflict scenarios; a nonzero exit is a located refusal and becomes the next work.",
+        red_control: "The corrupt-generation refusal and probe-bound exhaustion scenarios, observed so far only through session-local scripts, execute from the committed driver and refuse with their typed causes; a scenario that shares an in-memory repository across a step boundary is refused rather than counted.",
+        out_of_scope: "No Mercurial or Pijul write realization, hosted service, or change to the P0 landing-spine or P1 proof-kernel contracts.",
+        handback: "The exact-head acceptance receipt, the two migrated scenarios executing from the driver (fixture writes in one process, generation paths derived through the durable-CAS owner), and the section 9 evidence docs/plans/scm-merge-design.md owes for whatever merge behaviour gunbc#10729 does not yet carry, citing that document rather than restating it."
+      )
+    ),
     with_execution(active_sized(
       identity: "rn_D33CBEADA91C3E8C10D8515CC4",
       id: "2-scm-p1-proof-kernel",
@@ -998,6 +1041,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the modeled bounded fragment, one public reconciliation fold, data-driven invariant and certificate carriers, the executing discriminating scenario corpus, the closing validation bound and green, and the exact P2 capture and P3 effect work still absent."
       )
     ), e: scm_p1_proof_kernel_execution_contract()),
+    active_sized(
+      identity: "rn_Y7LUBUZ2A4MWRN2XJI5F4ZGBMY",
+      id: "2-scm-native-authority-program",
+      owner: "source-intent",
+      path: "docs/plans/native-scm-cas-fit-and-consumer-cut.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeLarge,
+      t: fields(
+        headline: "Finish the native-SCM authority program: the two CAS slot consumers, then the Git import wall and bridge cutover",
+        boundary: "Landed or queued at the 2026-09-14 wind-down: ticket 1 (gunbc#11317: git-use census ledger, typed bridge/native modes, CAS payload-fit ruling, the consumer cut) and ticket 2 (gunbc#11335: WriteCreateNew publication, CasPreconditionFailed/CasStoreRefused split, and at its current head the program-author ruling's two blockers already struck -- the widening fold deleted, FilesystemExactPathKindUnrecognized carried as ProbedReadKindUnrecognized and refused as CasUnreadableMalformed). What remains, in the cut's order: the repository-target generation slot and the workspace stage/base slot as consumers of std.durable_compare_and_set through gunbc.durable_cas_file_store admit_cas_attempt and file_compare_and_set with independent read-back; the Git import wall with an executing gate on a real lane; the bridge-mode cutover. The provider's honesty residual carries forward unchanged: exclusive complete VISIBILITY of a generation file is established, crash-durable directory metadata is outside the modeled guarantee, and the new unrecognized-read arm has a hermetic control and no wet receipt.",
+        displaced_cost: "While Git stays the hidden authority, every native refusal has a fallback that makes the PR the source of truth exactly when the native path is under stress, and the SCM domain model in gunbc.scm.* stays without a production authoring, submission or landing route.",
+        first_slice: "Declare the repository-target generation slot and drive it end to end on the local-repo wet lane: immutable object put-if-absent, durable independent verification of the referenced closure, slot payload encoding, admit_cas_attempt, file_compare_and_set, independent read-back, composed transition standing -- including a second writer against a stale generation.",
+        red_control: "A second writer against a stale generation names the observed winner and never commits; a store that cannot write is CasStoreRefused, never a lost race; an in-memory object-table insertion cannot stand in for put-if-absent publication; no SCM-local Applied/Stale/Missing sum restates CasOutcome; a git or GitHub import outside the named bootstrap, projector and declared legacy adapters refuses on the required lane.",
+        out_of_scope: "No Git removal before the import wall executes on a required lane; no SCM-local safe-write helper beside extdeps.filesystem.rust_realization; no equating a PR number or git SHA with native identity; no native Landed reportable in bridge mode before the GitHub merge is independently read back.",
+        handback: "Return the two slot consumer carriers with wet receipts for both subjects including contention and independent workspaces, the executing import wall with its discriminating RED, and the exact bridge-cutover work still absent."
+      )
+    ),
 
     active(
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
@@ -1175,7 +1235,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-import-deletion",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
-      t: fields(
+      t: updated(t: fields(
         headline: "Delete the import lines, and the grammar that allows them",
         boundary: "Every import line goes, and import stops being something the language can express at all: writing one becomes a parse error. What a file depends on is worked out from the names it actually mentions.",
         displaced_cost: "While import still parses, a file can declare one set of dependencies while its references need another, and the two can disagree. That is the second source of truth this whole chain exists to remove, and it survives every earlier step.",
@@ -1183,7 +1243,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A file that still needs an import to reach something is named and refused, never quietly left holding it. Once the grammar goes, a file containing an import line fails to parse rather than being ignored.",
         out_of_scope: "No new way of writing dependencies is introduced; this step only removes the old one. Deleting imports ahead of a proven reference-only closure is the failure this step exists to prevent, not a shortcut through it.",
         handback: "A corpus with no import lines, a grammar with no import production, and a run showing that an authored import is now a parse error."
-      )
+      ), on: "2026-09-14", note: "WIND-DOWN POSITION (operator: all work winding down; recorded on the dated updates thread so the chain resumes from it, not from memory). The chain's standing is a modeled fact: gunbc.namespace.namespace_cut_stage carries the per-stage standing and the empty held_stage_delivery_receipts and held_activation_receipts rosters, and gunbc.compiler_frontend_program_interlock orders SelfHostNativeRouteRequiredLane -> SelfHostSeedRetirement -> NamespaceFixForwardComplete -> NamespaceGrammarRetired (gunbc#11200), so XL-6 and XL-7 run on the native floor after the seed retires. Landed under the cut: gunbc#11200 (interlock) and gunbc#11207 (ledger: call expressions are erased at v2 body lowering before resolve, which makes any v2 strip census undercount calls). At the floor and going through the landing side chat: gunbc#11202 (XL-4, tools.reference_derived_graph over the XL-0 ingest route; v2.lens.module_graph reference_derived_resolution_facts is the XL-6 swap body, not yet swapped; HELD as class 1 because program_assembly_fold_ingest is reachable from v2.compiler.00_compile, so it owes the pre-landing M/T receipt), gunbc#11291 (bare resolve_type_node host seam deleted as a chain including the seed's TYPE_ITEM_BY_NAME; v2.std.decl_index type_declarer_qualified_names is the one keyed wire and stays SeamStanding DerivedNotExercised until the closure fold reaches it - pre-registered prediction: not reached, because its only consumer node_reflection is imported by no compile-closure module, and node_reflection appearing in the prepare-module set is the falsifier), gunbc#11301 (exhaustiveness coverage key at the three lookup_variant_in_type sites; the duplicate SubState variant in extdeps.systemd deleted; ledger row a_coproduct_declares_one_variant_twice), gunbc#11354 (B0 ownership branch-join root fix, source and mirrors in one commit), then gunbc#11201 (XL-0B/C/D denominator producer v2.compiler.repair_input_origin_roster, std.repair_input_origin SourceDeclarationCarrier), gunbc#11210 (XL-3 spelling census std.declaring_identity_spelling, stacked on #11201), gunbc#11203 and gunbc#11209 (XL-1 baseline capture via v2.workflow.legacy_repair_observation; #11209 is the one admitted seed arm emit_rust_reference_derived_rows_bridge, on the v1 deletion roster). XL-0 and XL-3 are NotDerivable BY DESIGN on the production route: qualified cross-module references, call contents and bare field-position types do not reach the collector (instruments: the v2.test.claim.namespace_xl0 witnesses and v2.test.claim.reference_derived_graph_production_ingest; the field-position class is deliberately unattributed between tree loss and binding loss). ROOT GAP and the resume trigger, in order: gunbc#11354 -> gunbc#11387 (Optional representation cut, draft) -> gunbc#11277 (List to FreeMonoid substitution, parked, regenerated at fixed point after B) -> gunbc#11267 (allocator threading into the body-lowering sites that mint node_synthetic; scaffold admitted for exactly one typed identity adapter at one call site, not introduced) -> gunbc#11264 (OccurrenceBinding<ScopedOccurrenceRef> as resolve's success projection, SymbolIndex entries as BindingCandidate, sealed ResolvedTree; model checkpoint signed at da608155074, implementation not started), which dissolves the spelling-derived carrier_declaration_ref and lets XL-0 derive, XL-3 answer and XL-4 carry type edges. XL-2 is not started as an instrument (prerequisites: the body-lowering repair that lets calls reach resolve, and the emitted-closure whole-tree census, which is a front-end-only undercount by construction). ACT-0 is not started: all four receipt kinds are outstanding and the pre-cut base pin (PreCutBaseUnpinned) is the operator's decision; the XL-1 capture must be taken BEFORE v1 deletion. Not started: the reference-grain bare-type-reference census instrument and the declaration-time duplicate-variant wall (row filed, owner unassigned; v2 04_infer has no coproduct exhaustiveness judgment). Census figures are cited only by producer: v2.test.claim.namespace_xl0, src/v2/test/claim/namespace/cross_module_resolve_witness_test.dag (fn-shaped binds, type-shaped unbound), gunbc.bare_name_fork_lens, the four reflection-cost probe claims on gunbc#11291, and the bounded-regen receipts on gunbc#11277 and gunbc#11354 (the standing runner-profile need for src/v1 generation-input changes). Not landing under wind-down, state in each body: gunbc#11387, gunbc#11277, gunbc#11267, gunbc#11264.")
     ),
 
     active_small(
@@ -1629,6 +1689,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       as_expected: true,
     )),
 
+    active_small(
+      identity: "rn_WFFTWNX4V60HN19BQ7YBYWWFQK",
+      id: "frontend-eval-training-program",
+      owner: "harness",
+      path: "dag/gunbc/frontend_eval/task.dag",
+      t: fields(
+        headline: "From the Demo 0 frontend eval to a training-worthy corpus: contrast set, disjoint corpus generator, carrier fold",
+        boundary: "gunbc#11330 landed the measured loop (20-task roster frozen as frontend-eval-v0, control instrument, cohort/treatment/attempt contract, syntax-projected card) and its side-chat ruling (2026-09-14): a useful evaluation and data-collection substrate, not yet a dataset or a result that says fine-tune. Three follow-ups, each its own PR: (1) a contrast roster whose answers turn on valid .dag composition and precedence -- `Bool && match`, nested match as an arm expression, pipeline precedence, record construction under boolean composition -- with minimally different invalid controls, held out beside v0; (2) a training-corpus generator applying the same mutation constructors to declarations OUTSIDE the four benchmark modules, split by declaration identity or later commit, targeting 500-1,000 SFT repairs and 100-300 preference pairs from real failed/recovered trajectories, every row carrying the cohort contract; (3) the JSON-to-EvalAttempt fold over the per-attempt carrier (or an independent verifier of context separation, tool events, patch scope, compiler verdict, tests and usage), so rows stop being driver-derived and trajectories become admissible labels. The terminal driver is the harness worker on a fleet host over an isolated closure (frontier declared in gunbc.frontend_eval.instrument).",
+        displaced_cost: "Reasoning tokens spent litigating the .dag frontend: max effort burned 33-46k tokens and ~2 h per cell on tasks low effort solved in tens of tokens; a fine-tune cannot be justified or refuted without a held-out set that exercises the disputed idiom and a corpus disjoint from it.",
+        first_slice: "The contrast roster with its control run green (RED authorable at parse or resolve, reference green on every test fn), consumed by the same control_run and report.",
+        red_control: "A contrast task whose valid form the frontend refuses, or whose invalid control it accepts, refuses the roster; a training row whose subject declaration is in frontend-eval-v0 refuses the corpus; a report over rows the carrier fold did not derive stays labeled driver-derived.",
+        out_of_scope: "No adapter training in this row; no GLM adapter path or student-vs-teacher decision -- that fork is the operator's after the matched tools-vs-card cohort is in.",
+        handback: "The contrast roster module, the generator and its split witness, the carrier fold with its standing change, each with executing controls; the decision packet for the post-D3 fork."
+      )
+    ),
+
     sign(    with_execution(active_small(
             identity: "rn_2XG8VDT4MJQ7BWN5HRC3PYE6KA",
             id: "roadmap-verify-to-publish-phase",
@@ -1954,7 +2030,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v1-verification-ledger",
       owner: "self-host",
       path: "dag/gunbc/v1/v1_deletion_plan.dag",
-      t: fields(
+      t: updated(t: fields(
         headline: "Prove old and new agree, by running them, not by waiting",
         boundary: "Run the whole test suite cold on both, compare compile results, check the self-rebuild, and record each family's outcome.",
         displaced_cost: "Confidence that comes from 'it has been fine for a while' is not evidence; this replaces it with runs someone chose to do.",
@@ -1962,7 +2038,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Any unexplained difference, skipped family, or listed-but-never-run check keeps this red.",
         out_of_scope: "No substituting elapsed time or a sample for the real thing.",
         handback: "The full list of runs, green, with every difference accounted for."
-      )
+      ), on: "2026-09-14", note: "WIND-DOWN POSITION (operator: all work winding down; recorded on the dated updates thread so the program resumes from it, not from memory). What executes this row today is the v2 native route: claim_executor --v2-native-route --source-root dag --source-root src/v2 builds the emitted v2 compiler crate (gunbc-emitted-closure-src-v2-compiler-00-compile-dag, mode adjudicate), which derives the v2.test.* universe itself and adjudicates it natively; a landing receipt is the keyed driver-rows.jsonl comparison (module, declaration identity, file-refusal path; producer tools/driver_rows_diff.py) between the fold at the merge-base main sha (M) and the fold at merge(M, head) (T), with both [native-cost-partition] lines refusing in the same class. Landed on this route: gunbc#10940 and gunbc#10990 (closure-scoped ingest, native adjudication over a seed-prepared universe), gunbc#10988, gunbc#10987 and gunbc#11036 (the seed cut out of the emitted closure's dependency graph), gunbc#10942 (obligation census: claimed vs route-covered vs seed-side escape), the grammar and pipeline repairs gunbc#10946, gunbc#10961, gunbc#10969, gunbc#10967 and gunbc#11058, and the floor cost tier gunbc#11195. LANDING PROTOCOL (landing side chat ruling be0a86fc, 2026-09-14): a change reachable from the emitted compiler (v2.compiler.00_compile closure including reachable v2.std and std), from closure construction or emission (src/v1/05_emit_rust.dag, stage0 mirrors, seed stages), from std.compiler_entry SourceRootEvalDriver, from the native observer (native_lane_runner.rs, driver-rows persistence), from the universe-selection producer or from the classifier owes the pre-landing exact-head M/T receipt; everything else lands on CI plus tally plus exact-head LAND with a post-landing native diagnostic against the last accepted baseline (M0 = b55fb521) and the revert rule for unexplained native deltas; a head move voids receipt and LAND; merge-queue enqueue with expectedHeadOid pinned is the landing action. COST, read only from the run's own [native-cost-partition] line (exclusive rows load, universe_derivation, context, prepare, eval, receipt_admission, row_serialization, module_release, relay_emit; parent_span_nanos, sum_exclusive_nanos, remainder_nanos, tolerance_nanos) and the per-module [native-prepare-split] lines: one fold is on the order of two hours, dominated by prepare (v2.compiler.00_compile native_test_resolve_module re-deriving the language model and re-validating every root per module through v2.compiler.03_name_resolve namespace_for_subject) and by context. The cost-fidelity gate NativeDriverCostRemainderExceedsTolerance refuses every full-corpus fold; the remainder is stable by ordered module-set identity, the allocator and clock-apparatus hypotheses are refuted by measurement, bisect_loop_setup and bisect_row_accumulation name part of it (fold bisect.Uqef6H on 7607ab49e6a7), and the next instrument is the per-module residual receipt [native-module-residual] (schedstat on-cpu and runqueue at module-parent grain, the meter in the account, a checked residual that refuses with no table; scratch/deep-cat-655-span-bisect at c69912992ca3, regen fixed point 07adbc48dc8b) - not landable as it stands because the landed guard emitted_driver_refuses_over_attribution in native_driver_cost_refusal_test is a text predicate on checked_sub( that cannot separate the partition remainder from a diagnostic in another scope; the rotation discriminator (move each heavy shard's exact module set to another index; does heaviness follow the modules or the index; compare within one run only) runs before any module-caused claim. Tolerance is never widened and folds are never re-run to sample a green. gunbc#11290 (relay_emit as a named exclusive row; the bisect line) LANDED 2026-09-14; gunbc#11374 (NativeDriverExclusiveRows as a total keyed collection over a closed key coproduct) is open and now conflicts with main. PERF SEQUENCE, approved by the performance side chat and stopped where it stands: gunbc#11224 controlled producer counts (OPEN, frozen head d5ae8121de9e; the controlled measurement never started - one pre-execution guard attempt aborted before driver launch and srv2 never presented a quiet window; the launcher was stopped at wind-down and the frozen head now conflicts with main after gunbc#11290 landed its std.compiler_entry rows, as do gunbc#11219, gunbc#11374, gunbc#11233 and gunbc#11295; the next owner's options are on the PR) -> counts confirm repetition -> gunbc#11233 shared accounting rows (OPEN draft, must not land as written: producer roster in std.compiler_entry is a layer inversion and the unconditional Mutex in the emitted crate has no dissolution) -> modeled selector plus nested resolver/context instrument -> fresh instrumented BEFORE with curves and context partition -> gunbc#11217 official AFTER (OPEN draft, ValidatedModuleRoots coupled carrier, waits on the counts; its two cost-shape fixes split out as gunbc#11367) -> prepare process sharding -> context map/reduce (program adhoc-a3b38a02-bd7: not started as code; Phase 1 model with four GO conditions in draft gunbc#11385 docs/plans/native-route-parallel-realization.md; homes std.realization_width process_memory_aware_spawn_width and std.decision select_realization; three-arm acceptance in-process serial / one child / N children) -> bounded-width, five-minute main measurement. Exploratory receipt, stated narrowly: under heavy competing load a naive process-per-shard run of the emitted binary (NATIVE_SHARD_COUNT and NATIVE_SHARD_INDEX on the module loop, srv1) rebuilt the entire context independently in every process; each of 32 shards took 53-57 minutes end to end, roughly 48-51 minutes of duplicated context plus about four minutes of shard-local prepare; the same-host serial result was projected at roughly three hours, not completed as a controlled comparison; 27 of 32 shards reconciled the cost gate. No fork-after-one-context realization was measured. MEMORY ENVELOPE for the parallel item's width axis (producer: the run's own floor line plus cgroup memory.events on gunbc#11343 run 34874099243, job 104076895674, srv4-13 at 16 GiB memory.high): strict preparation of a 2974-module subject alone reached the slot ceiling under host load and the floor refused before any claim executed, and that refusal shape is read by the environment classifier as a structural red rather than an environment stall - two facts the realization width must be chosen against. OPEN AND NOT LANDING at wind-down, state recorded in each body: gunbc#11322, gunbc#11284, gunbc#11370, gunbc#10943, gunbc#11366, gunbc#11368, gunbc#11379 (seed-witness harness, adhoc-babdd2de-8db), gunbc#11295, gunbc#11277 (parked: RED plus invariant re-establishment before regen).")
     ),
     active_large(
       identity: "rn_FWSQ19QP41ARPXBM0HFW4MFXGG",
@@ -2213,6 +2289,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The inventory with nothing unowned."
       )
     ),
+    active_small(
+      identity: "rn_4XK7P2WQ9BNF6RTH3VJD8MCZ5L",
+      id: "gate-refusal-reason-survives-wrapper",
+      owner: "shell",
+      path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
+      t: fields(
+        headline: "A gate's typed refusal reason survives the wrapper that reports it",
+        boundary: "A wrapper that reports whether a gate passed carries the gate's reason with it. Collapsing a typed outcome to yes-or-no at the wrapper boundary is the defect, wherever the wrapper lives.",
+        displaced_cost: "The gate already produces the reason and the wrapper discards it, so a consumer asking WHY a gate refused has to go back to the logs, and a ledger built on the wrapper cannot tell a subject refusal from an infrastructure failure. gunbc#11342 addresses exactly this shape one layer down -- an ExitFailure that collapses into a fabricated not-executed row -- and leaves the wrapper boundary standing.",
+        first_slice: "emit_host_gate_passes reduces exit_ok(...) to a Bool; dissolve that collapse so the typed outcome std.process already carries reaches the gate's wrapper consumers. tools.emit_host_gate emit_host_verdict_narration_scaffold shells out a per-smoke verdict line ONLY because this wrapper discards ProcessExit.reason, and its dissolve-on fires when the claim path carries typed refusal reasons to the executor surface -- which gunbc#11342 does, and that PR deletes the scaffold and its trigger together. Either way this row's subject is untouched: the narration is the compensation, the wrapper collapse is the cause, and dissolving the compensation removes the marker without removing the collapse. That is why the collapse needs a home that does not depend on the marker surviving.",
+        red_control: "A wrapper that reduces a typed outcome to a Bool is flagged, and a consumer asserting on the reason goes red when the collapse is reintroduced.",
+        out_of_scope: "The accounting of hand-written shell sites, which is shell-residue-zero's subject; this row is about the typed outcome, not the shell that produced it.",
+        handback: "No wrapper in the gate surface reduces a typed outcome to a Bool, with a consumer reading the reason green by execution. The handback is the collapse itself rather than a dissolution receipt, because the narration that compensated for it is retired by the same capability under DESIGN.md §4b(4) and cannot stand as evidence that the cause was addressed."
+      )
+    ),
 
     superseded(
       identity: "rn_E8Y0PHW82DNMMYZ6SB2KKX2K76",
@@ -2276,6 +2367,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An undeclared file, service, credential, or device refuses before anything is changed.",
         out_of_scope: "No inventory of everything on the machine for its own sake.",
         handback: "The classification plus one refusal on something unclassified."
+      )
+    ),
+    active_large(
+      identity: "rn_0J26ACBBJP5AD79QB78HAYGVQM",
+      id: "fleet-mtcollins1-first-host",
+      owner: "fleet",
+      path: "dag/gunbc/machine_intake/mtcollins1_expansion_observation.dag",
+      t: fields(
+        headline: "Bring Mt. Collins unit 1 into service as our first owned host, from observation rather than assumption",
+        boundary: "Every fact the unit's intake depends on is either bound to a git-tracked observation consumed at mint time, or stays in its typed unobserved arm and refuses. The remaining facts: OCP bay occupancy and riser fitment observed from the unit interior; the bring-up evidence captures bound onto an executing consumer rather than stored beside it; controller credential standing minted from a channel-census observation over every controller LAN address (the mtcollins1_bmc_secure_standing_frontier dissolution); one PCI identity authority with its superseded namespace admissions deleted; pre-OS assessment derived from SEL and captured inventory with its absence and indexed-replay controls executed; live pre-OS acquisition; supervision-to-envelope realization; PCI address cross-rendering equivalence between firmware and kernel renderings; and one meaning for AttachmentVerdict, since mtcollins1_expansion_attachment attachment_against_evidence discards the OCP standing (ocp: _) and so admits installability on the PCIe path but only interface compatibility on the OCP path (either match the OCP standing before the generation comparison with typed occupied and unobserved refusals, or split the verdict). Zero offers, over-reports and populated bays refuse rather than answer.",
+        displaced_cost: "Hardware bought against an assumed slot, riser or bay costs a returned part and a lost week; a credential believed rotated but readable on another controller address is a silent exposure.",
+        first_slice: "Settle OCP bay occupancy and riser fitment from the interior observation, with the zero-offer, over-report and populated-bay refusals.",
+        red_control: "An unobserved OCP variant, an unfitted riser, a populated bay, or a credential rotation evidenced on a single controller address refuses rather than reporting an attachment point or a secured controller.",
+        out_of_scope: "Not fleet-wide firmware or cooling policy (fleet-bmc-policy-convergence) and not classification of what we manage on machines generally (fleet-state-frontier).",
+        handback: "Each fact above is bound to a consumed artifact or refusing in its unobserved arm, and the unit mints a BmcSecureStanding."
       )
     ),
     active_large(
@@ -2450,6 +2556,38 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
+    active_large(
+      identity: "rn_G2BR1NCSAD24KP0TA14TA89PMV",
+      id: "serving-liveness-route-withdrawal",
+      owner: "fleet",
+      path: "dag/gunbc/serving/serving_availability.dag",
+      t: fields(
+        headline: "A serving route that has stopped serving stops being routable, and the seats held against it are freed",
+        boundary: "Whether a route can take new work is one reading, bound to the endpoint process that answered it, and every consumer projects from that reading rather than deciding separately. The reading covers three ways a route stops serving: the front door does not answer inside a bounded deadline; the endpoint process was replaced between observations; and the engine core is no longer advancing while requests are admitted. Seats and grants held against a launch that is gone become unusable rather than waiting out their term.",
+        displaced_cost: "Group A was dark for 43 hours in September 2026 and nothing in the repository could say so: the health probes had no deadline, so a wedged engine held the roster gate, dispatch selection and placement open with no refusal, and one harness POST was held open for over thirty minutes against a backend that would never answer. A stalled engine still answers its front door, so the route stayed offerable throughout.",
+        first_slice: "Cut 1 (merged): bounded probes with a caller-owned deadline, one sealed front-door availability verdict bracketed by two endpoint-process readings, endpoint-process continuity as its own sealed verdict for the seat fence, and model admission kept separate from availability. Cut 2: the engine-progress reading — the generation counter compared as exported text under one exporter, beside the running gauge, over an interval longer than a declared step bound — withholding a route only on an established stall. Cut 3: seats held against a replaced or stalled launch invalidated rather than held to term.",
+        red_control: "An idle engine is not a stalled one: a motionless counter with nothing running is healthy however long it stands still, and calling it a stall evicts a working route. An interval shorter than one uninterruptible step establishes nothing and must read unread rather than stall. A restarted exporter resets its counters, so stillness or an apparent decrease across a replacement is unread. An unread progress reading is never a wall. A progress reading does not establish that the engine core behind the exporter is the same core, which remains the declared exporter-grain rung drop.",
+        out_of_scope: "Cut 1 does not bound a POST already in flight, and a successful preflight read cannot: the request deadline belongs to the workload. Detecting a stall inside a running turn, which needs the endpoint on the turn configuration, is a later slice. Nothing here identifies the engine-core incarnation behind the exporter.",
+        handback: "A route that does not answer, whose exporter was replaced, or whose engine has stopped advancing is refused as a placement candidate with a typed located reason and a countable refusal; seats held against a launch that is gone are released; and each refusal has a discriminating control that goes red when the rule is removed."
+      )
+    ),
+
+    active_large(
+      identity: "rn_26RHG14DPAR08TJH8Y3051QW0N",
+      id: "serving-v41-first-party-runtime",
+      owner: "fleet",
+      path: "dag/gunbc/spark/v41_runtime_candidate.dag",
+      t: fields(
+        headline: "Serve DeepSeek V4.1 on four Sparks by building the runtime it needs, or say honestly that none exists",
+        boundary: "One exact runtime candidate whose identity is fixed before anything is built: the pinned public vLLM source and build recipe, the kernel wheels re-admitted against their acquisition, the ordered engine patches by digest, the checkpoint and tokenizer manifests, which Engram tensors are read from storage and which stay resident, the materialization route, the topology and the device. Identity is not permission: a keyed candidate still owes an exact, time-bounded operator authorization before any host runs it.",
+        displaced_cost: "The published V4.1 runtime cannot serve this checkpoint on four GB10s: the weights alone need about 118.8 GiB per rank against 121.7 GiB of unified memory per host, and every Engram placement that runtime offers — on device, pinned host memory over UVA, or a shared-memory file — draws on that same pool. Without a candidate identity, a build receipt, a probe and a launch can each be attributed to bytes that produced none of them, which is how a deployment comes to be described by evidence it never generated.",
+        first_slice: "V41-A (open, stacked): the five identities and their laws, with the live candidate honestly unestablished. Then the first-party build of that exact artifact, the rank-local Engram row store as an identified artifact, conformance before displacement, and one bounded replacement transaction on the existing Group A commitment with automatic restoration of its predecessor.",
+        red_control: "No key is minted for an unestablished axis, and the keyed verdict is sealed so a caller cannot write one with arbitrary hashes. A patch authored against another revision refuses. A wheel population missing a package, carrying two variants of one, or taken from a neighbouring release refuses. A route reference differing in module or field is not the admitted route. Reordering set-like populations does not change the identity; patch application order does. A candidate that has not been authorized may not displace a serving group.",
+        out_of_scope: "No capacity calibration before the first bounded request succeeds. No claim that the engine independently hashed accelerator-resident tensors. No eight-host topology and no relabelling of a provisional experimental route as a selected one. Group B and its own program stay untouched.",
+        handback: "Either the exact ranks agree on one runtime and one source, the engine answers a semantic request, the launch provenance binds the running incarnation, and a second convergence mutates nothing — or the candidate field is refused for the exact subject, with the reason carried rather than the attempt repeated."
+      )
+    ),
+
     ticket_row(
       identity: "rn_RPKBFCD41FZGDV48TJKRJYQ8J2",
       id: "confidence-semantic-impact-query",
@@ -2619,6 +2757,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
   ], guarantee_ladder_nodes())
 }
 
+// AN EDGE HOLDS A CHILD UNTIL ITS PARENT HAS AN ACCEPTANCE RECEIPT, so a parent is chosen for what
+// it OWES, never for what it historically preceded. `roadmap_program_view` puts a node in
+// ObligationDependencyHeld for every declared parent lacking a receipt, which is why
+// `2-scm-native-write-spine-acceptance` declares none: its only prerequisite was gunbc#10729
+// landing, a landed change is not a roadmap node, and the nearest node that WOULD carry it,
+// `2-scm-native-authority-program`, still owes the CAS slot consumers, the Git import wall and the
+// bridge cutover. Edging to it would hold an executable row behind an entire unfinished program --
+// the wrong dependency, made machine-readable, which is worse than the prose it replaced. Found by
+// external review after the edge was added on exactly that reasoning.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
@@ -2627,6 +2774,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
     edge(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine"),
+    edge(child: "2-scm-native-authority-program", parent: "2-scm-p0-landing-spine"),
 
     edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
@@ -2759,6 +2907,9 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "judgment-model-selection-and-specialization", parent: "judgment-mechanical-review-service"),
     edge(child: "judgment-model-selection-and-specialization", parent: "fleet-spark-inference-serving"),
     edge(child: "fleet-spark-inference-serving", parent: "fleet-spark-host-enrollment"),
+    edge(child: "serving-liveness-route-withdrawal", parent: "fleet-spark-inference-serving"),
+    edge(child: "serving-v41-first-party-runtime", parent: "fleet-spark-inference-serving"),
+    edge(child: "serving-v41-first-party-runtime", parent: "serving-liveness-route-withdrawal"),
 
     edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),

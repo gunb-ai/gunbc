@@ -8,7 +8,8 @@ import gunbc.spark.managed_access_bootstrap {
   spark_managed_grant_population,
   spark_managed_grant_sudoers_command,
 }
-import gunbc.spark.managed_grant_reconcile { spark_managed_grant_dropin_path, GrantInstallWithheld, GrantInstallStandingUnobserved }
+import gunbc.spark.managed_grant_reconcile { spark_managed_grant_dropin_path, GrantInstallWithheld, GrantInstallStandingUnobserved, GrantInstallAdmittedOnAcceptedRisk, spark_managed_grants_admitted_on_accepted_risk }
+import gunbc.spark.managed_access_bootstrap { GrantEnumerated, spark_managed_grant_install_basis }
 import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_inspect_grant_disclosure_unestablished_obligation }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
@@ -25,6 +26,7 @@ import gunbc.spark.managed_grant_install {
   SparkGrantInstallRun,
   SparkGrantInstallNotAttempted,
   spark_grant_install_run_succeeded,
+  spark_grant_install_run_leaves_obligation_outstanding,
   spark_grant_install_run_text,
   spark_grant_install_outcome_wire,
   spark_grant_credential_requirement,
@@ -348,6 +350,7 @@ test fn a_run_holding_a_not_attempted_outcome_refuses() -> Bool {
   !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [],
+    admitted_on_accepted_risk: [],
     withheld: [],
     outcomes: [SparkGrantInstallNotAttempted {
       host: "srv6",
@@ -363,6 +366,7 @@ test fn a_run_with_nothing_to_install_succeeds() -> Bool {
   spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=true\n",
     unobserved: [],
+    admitted_on_accepted_risk: [],
     withheld: [],
     outcomes: [],
   })
@@ -374,6 +378,7 @@ test fn the_run_text_carries_the_standing_and_each_outcome() -> Bool {
   let text = spark_grant_install_run_text(run: SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [],
+    admitted_on_accepted_risk: [],
     withheld: [],
     outcomes: [SparkGrantInstallNotAttempted {
       host: "srv6",
@@ -479,6 +484,7 @@ test fn the_root_of_trust_arm_still_refuses() -> Bool {
   !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [],
+    admitted_on_accepted_risk: [],
     withheld: [],
     outcomes: [SparkGrantInstallAwaitingOperatorCredential {
       host: "srv6",
@@ -507,6 +513,7 @@ test fn an_empty_install_set_from_a_withheld_grant_does_not_succeed() -> Bool {
   let withheld = SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=false\n",
     unobserved: [],
+    admitted_on_accepted_risk: [],
     withheld: [GrantInstallWithheld {
       grant: InspectServingContainer { container: spark_pair_container_name },
       obligation: spark_inspect_grant_disclosure_unestablished_obligation,
@@ -516,6 +523,7 @@ test fn an_empty_install_set_from_a_withheld_grant_does_not_succeed() -> Bool {
   let needed_nothing = SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=true\n",
     unobserved: [],
+    admitted_on_accepted_risk: [],
     withheld: [],
     outcomes: [],
   }
@@ -533,14 +541,46 @@ test fn an_empty_install_set_from_an_unobserved_standing_does_not_succeed() -> B
       cause: "the grant probe leg never ran: fixture" as NonEmptyStr,
     }],
     withheld: [],
+    admitted_on_accepted_risk: [],
     outcomes: [],
   }
   let needed_nothing = SparkGrantInstallRun {
     standing_report: "grant-standing host=srv6 converged=true\n",
     unobserved: [],
+    admitted_on_accepted_risk: [],
     withheld: [],
     outcomes: [],
   }
   !spark_grant_install_run_succeeded(run: unobserved)
     && spark_grant_install_run_succeeded(run: needed_nothing)
+}
+
+// THE OBLIGATION SURVIVES THE INSTALL BOUNDARY. A run whose only admission was on accepted risk
+// greens -- proceeding is what the operator decided -- but it is not a run with nothing outstanding:
+// the typed list carries the admission, the predicate says so, and the run text ends with the
+// obligation. The RED is the run without the list: same verdict, no way to tell them apart.
+test fn a_run_admitted_on_accepted_risk_greens_and_still_reports_the_obligation_outstanding() -> Bool {
+  let listing = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n"
+  let admitted = spark_managed_grants_admitted_on_accepted_risk(outcome: GrantEnumerated { listing: listing })
+  let run = SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=false\n",
+    outcomes: [],
+    withheld: [],
+    unobserved: [],
+    admitted_on_accepted_risk: admitted,
+  }
+  let clean = SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=true\n",
+    outcomes: [],
+    withheld: [],
+    unobserved: [],
+    admitted_on_accepted_risk: [],
+  }
+  admitted.length() == 1
+    && spark_grant_install_run_succeeded(run: run)
+    && spark_grant_install_run_leaves_obligation_outstanding(run: run)
+    && !spark_grant_install_run_leaves_obligation_outstanding(run: clean)
+    && string_contains(spark_grant_install_run_text(run: run), "outstanding-after-install grant=inspect the serving container only obligation=")
+    && string_contains(spark_grant_install_run_text(run: run), spark_inspect_grant_disclosure_unestablished_obligation as String)
+    && !string_contains(spark_grant_install_run_text(run: clean), "outstanding-after-install")
 }

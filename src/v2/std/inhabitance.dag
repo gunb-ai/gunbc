@@ -1,0 +1,276 @@
+module v2.std.inhabitance
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  Unavailable,
+  node_locus
+}
+import v2.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  UniqueOnly,
+  find_witness
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
+
+type DeclaredTypePosition
+  = PositionDirectCallArgument
+  | PositionDeclaredReturn
+
+type DeclaredTypeObligation {
+  position: DeclaredTypePosition
+  parameter_identity: Symbol
+  declared: Node
+  produced: Node
+  application: Node
+}
+
+type InhabitanceFormal {
+  parameter_identity: Symbol
+  declared: Node
+}
+
+type InhabitanceUndecidableReason
+  = UndecidableGenericFormal
+  | UndecidableOptionalCarrier
+  | UndecidableFormalUnresolved
+  | UndecidableArgumentTypeNotDerived
+
+type InhabitanceVerdict
+  = Inhabits { homomorphism: HomomorphismWitness }
+  | InhabitanceRefused { find_witness_reason: Symbol }
+  | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
+
+// PositionDeclaredReturn is the second coproduct arm so DeclaredTypePosition is not a one-arm
+// alias. This fold only constructs PositionDirectCallArgument. Declared frontier: a return-type
+// inhabitance obligation (produced body type vs declared return) at the same declared_type_inhabitance
+// consumer, trigger = that producer landing in v2.compiler.infer.
+fn position_direct_call_argument() -> DeclaredTypePosition {
+  PositionDirectCallArgument
+}
+
+fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
+  match position {
+    PositionDirectCallArgument => ^position_direct_call_argument
+    PositionDeclaredReturn => ^position_declared_return
+  }
+}
+
+fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
+  CandidateSet {
+    candidates: [declared],
+    closedness: StructuralPropertyWitness {
+      property: ^inhabitance_declared_singleton_closed,
+      evidence: declared
+    }
+  }
+}
+
+fn inhabitance_cardinality_type(inner: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      Edge { label: Positional, target: inner }
+    ]
+  )
+}
+
+fn inhabitance_node_undecidable_reason(
+  n: Node
+) -> Optional<InhabitanceUndecidableReason> {
+  match n.kind {
+    TypeNode { connective: Cardinality } =>
+      optional_present(value: UndecidableOptionalCarrier)
+    TypeNode { connective: Instantiation } =>
+      optional_present(value: UndecidableGenericFormal)
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    ComputationNode { behavior: _ } => Absent
+  }
+}
+
+fn inhabitance_pair_undecidable_reason(
+  declared: Node,
+  produced: Node
+) -> Optional<InhabitanceUndecidableReason> {
+  match inhabitance_node_undecidable_reason(n: declared) {
+    Present { value: reason } => optional_present(value: reason)
+    Absent => inhabitance_node_undecidable_reason(n: produced)
+  }
+}
+
+// DIVERGES FROM v2.std.coercion coercion_fold / coercion_fold_exact_structural (§3b).
+// Same procedure: find_witness over candidates with preservation_rule_exact_structural_equality_zip_fold
+// and HomomorphismWitness { rule: homomorphism_rule_exact_structural_equality }. Different question:
+// coercion_fold selects a target-language inhabitant spelling (CoercionCandidateSet, TargetSelectionPolicy,
+// CoercionMismatchKind, CanonicalGrounding source). This fold asks whether one produced type inhabits one
+// declared formal (UniqueOnly over the singleton {declared}). Routing through coercion_fold would nickname
+// target-selection as typechecking. Application refusal maps find_witness_reason_no_candidate to
+// application_argument_does_not_inhabit, not CoercionMismatchKind.NoTargetCandidate.
+// DIVERGES FROM v2.std.refinement_widening_predicate refinement_widening_preservation_holds (§3b, §4d).
+// That rule is realized in find_witness's roster, but it preserves a value-set algebra
+// (refinement_widening_predicate_algebra_for_value_sets), not a pair of application type nodes.
+// Calling it with algebra: produced would never hold, so it would not admit a widening-legal argument.
+// Rung, ceiling, and next-rung triggers live in
+// gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances.
+fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  match inhabitance_pair_undecidable_reason(
+    declared: obligation.declared,
+    produced: obligation.produced
+  ) {
+    Present { value: reason } => InhabitanceUndecidable { reason: reason }
+    Absent =>
+      match find_witness(
+        source_facts: obligation.produced,
+        candidates: inhabitance_declared_singleton(declared: obligation.declared),
+        predicate: PreservationPredicate {
+          algebra: obligation.produced,
+          preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+        },
+        multiplicity_policy: UniqueOnly
+      ) {
+        Accepted { value: fw, diagnostics: _ } =>
+          Inhabits {
+            homomorphism: HomomorphismWitness {
+              rule: ^homomorphism_rule_exact_structural_equality,
+              evidence: fw.witness.evidence
+            }
+          }
+        Rejected { diagnostics: r } =>
+          InhabitanceRefused { find_witness_reason: r.head.reason }
+      }
+  }
+}
+
+fn inhabitance_no_candidate_application_reason() -> Symbol {
+  ^application_argument_does_not_inhabit
+}
+
+fn inhabitance_application_refusal_reason(find_witness_reason: Symbol) -> Symbol {
+  if find_witness_reason == ^find_witness_reason_no_candidate {
+    inhabitance_no_candidate_application_reason()
+  } else {
+    find_witness_reason
+  }
+}
+
+fn undecidable_formal_unresolved() -> InhabitanceUndecidableReason {
+  UndecidableFormalUnresolved
+}
+
+fn undecidable_argument_type_not_derived() -> InhabitanceUndecidableReason {
+  UndecidableArgumentTypeNotDerived
+}
+
+
+fn inhabitance_undecidable_reason_symbol(
+  reason: InhabitanceUndecidableReason
+) -> Symbol {
+  match reason {
+    UndecidableGenericFormal => ^inhabitance_undecidable_generic_formal
+    UndecidableOptionalCarrier => ^inhabitance_undecidable_optional_carrier
+    UndecidableFormalUnresolved => ^inhabitance_undecidable_formal_unresolved
+    UndecidableArgumentTypeNotDerived => ^inhabitance_undecidable_argument_type_not_derived
+  }
+}
+
+fn inhabitance_undecidable_diagnostic(
+  application: Node,
+  reason: InhabitanceUndecidableReason
+) -> Diagnostic {
+  Diagnostic {
+    reason: inhabitance_undecidable_reason_symbol(reason: reason),
+    at: node_locus(node: application),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn application_positional_surplus_reason() -> Symbol {
+  ^application_positional_surplus
+}
+
+fn application_positional_deficit_reason() -> Symbol {
+  ^application_positional_deficit
+}
+
+fn application_positional_arity_reason(formal_count: Int, argument_count: Int) -> Symbol {
+  if argument_count > formal_count {
+    application_positional_surplus_reason()
+  } else {
+    application_positional_deficit_reason()
+  }
+}
+
+fn application_positional_arity_mismatch_diagnostic(
+  application: Node,
+  formal_count: Int,
+  argument_count: Int
+) -> Diagnostic {
+  Diagnostic {
+    reason: application_positional_arity_reason(
+      formal_count: formal_count,
+      argument_count: argument_count
+    ),
+    at: node_locus(node: application),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn application_argument_does_not_inhabit_diagnostic(
+  obligation: DeclaredTypeObligation,
+  find_witness_reason: Symbol
+) -> Diagnostic {
+  Diagnostic {
+    reason: inhabitance_application_refusal_reason(find_witness_reason: find_witness_reason),
+    at: node_locus(node: obligation.application),
+    correction: Suggested {
+      node: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: inhabitance_position_symbol(position: obligation.position) },
+            target: obligation.application
+          },
+          Edge {
+            label: Named { name: obligation.parameter_identity },
+            target: obligation.declared
+          },
+          Edge {
+            label: Named { name: ^inhabitance_produced_type },
+            target: obligation.produced
+          },
+          Edge {
+            label: Named { name: find_witness_reason },
+            target: obligation.produced
+          }
+        ],
+        occurrence_id: obligation.application.occurrence_id
+      }
+    }
+  }
+}

@@ -10277,6 +10277,9 @@ pub enum WitnessRuntimeCause {
     StringRealizationStraddle,
     PoolRootContributesNothing,
     PatternMatchFailure,
+    /// A REST response value did not inhabit its declared coproduct (see
+    /// `v1_interpreter::RestResponseDecodeRefusal`).
+    RestResponseUndecodable,
     DivisionByZero,
     IntegerOverflow,
     Unimplemented,
@@ -10311,6 +10314,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
+            WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
             WitnessRuntimeCause::DivisionByZero => "division-by-zero",
             WitnessRuntimeCause::IntegerOverflow => "integer-overflow",
             WitnessRuntimeCause::Unimplemented => "unimplemented",
@@ -10345,6 +10349,7 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
+            E::RestResponseUndecodable { .. } => WitnessRuntimeCause::RestResponseUndecodable,
             E::DivisionByZero => WitnessRuntimeCause::DivisionByZero,
             E::IntegerOverflow { .. } => WitnessRuntimeCause::IntegerOverflow,
             E::Unimplemented { .. } => WitnessRuntimeCause::Unimplemented,
@@ -10473,6 +10478,30 @@ pub enum ClaimOutcome {
     /// receipt and is not counted as an execution. It is a terminal row and nothing else.
     NotAttempted {
         halted_by: String,
+    },
+    /// THE CLAIM RETURNED `ProcessExit::ExitFailure` — the wet-gate convention's refusal, with
+    /// the reason its `.dag` author attached to it.
+    ///
+    /// This event used to be folded into `Fail`: `run_claim` matched
+    /// `ExitClass::Failure { .. } => ClaimOutcome::Fail` and destroyed the `reason`
+    /// `classify_exit` had just extracted — the typed value was in hand and discarded at the
+    /// seam, the same defect class the `RuntimeError` comment above documents. A gate refusal
+    /// then surfaced as bare `FAIL`, and `tools.emit_host_gate` carried a whole shell-out
+    /// narration scaffold (`emit_host_verdict_narration_scaffold`) whose only job was to print
+    /// the per-smoke verdict line the claim path had thrown away (receipt: the 2026-07-13 srv3
+    /// reprovisioning reds — five runs of forensics to name the failing toolchain).
+    /// `std.process exit_ok`'s comment names the narration scaffold and the Bool-typed claim
+    /// surface "two consequences of one gap".
+    ///
+    /// `Fail` stays what it was: a claim that answered `Bool(false)`. This arm is a claim that
+    /// returned a TYPED refusal — a verdict-bearing answer whose reason is data, so every
+    /// consumer renders the reason instead of guessing it back. The disposition vocabulary is
+    /// unchanged (this reads back to `Failed`/`KnownRedHeld` exactly as `Fail` does); what
+    /// becomes newly representable is the refusal reason itself, at the executor surface and in
+    /// the terminal ledger's detail field.
+    ExitFailure {
+        code: i32,
+        reason: Option<String>,
     },
 }
 
@@ -11097,6 +11126,7 @@ pub fn claim_terminality(
         },
         ClaimOutcome::Pass
         | ClaimOutcome::Fail
+        | ClaimOutcome::ExitFailure { .. }
         | ClaimOutcome::NotBool { .. }
         | ClaimOutcome::RuntimeError { .. }
         | ClaimOutcome::CompletedOverBudget { .. }
@@ -16923,6 +16953,11 @@ impl CiWitnessVerdict {
         match outcome {
             ClaimOutcome::Pass => CiWitnessVerdict::Passed,
             ClaimOutcome::Fail => CiWitnessVerdict::Failed,
+            // A TYPED REFUSAL IS A SEMANTIC VERDICT. The gate answered — its answer is
+            // "refused", and the reason travels on the outcome for the renderer that carries
+            // one. Not a route gap, not a refusal-before-verdict: the claim reached its
+            // subject and the subject said no.
+            ClaimOutcome::ExitFailure { .. } => CiWitnessVerdict::Failed,
             ClaimOutcome::NotBool { .. } => CiWitnessVerdict::NotBool,
             ClaimOutcome::RuntimeError { cause, .. } => CiWitnessVerdict::RuntimeError(*cause),
             // SITE 1 OF THE FIVE THAT DROPPED THE AXIS. `BudgetRefused` is true only of the
@@ -18272,11 +18307,12 @@ fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> String {
 }
 
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
-    // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure => Fail).
-    // NotProcessExit stays NotBool — fail-closed preserved for genuine type errors. Reuses
-    // pre-existing classify_exit. Required: emitted pre-push drift --wet gate runs through
-    // claim_batch -> run_claim; without this mapping ExitSuccess -> exit 1 false-blocks push
-    // (receipt: claim_batch rebuilt on reverted seed reproduced the false-block).
+    // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure =>
+    // ExitFailure carrying its typed reason). NotProcessExit stays NotBool — fail-closed
+    // preserved for genuine type errors. Reuses pre-existing classify_exit. Required: emitted
+    // pre-push drift --wet gate runs through claim_batch -> run_claim; without this mapping
+    // ExitSuccess -> exit 1 false-blocks push (receipt: claim_batch rebuilt on reverted seed
+    // reproduced the false-block).
     let evaluated = match run_claim_evaluation(ctx, function) {
         Ok(result) => result,
         Err(payload) => return ClaimOutcome::Panicked { payload },
@@ -18286,7 +18322,13 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
         Ok(v1_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
         Ok(other) => match classify_exit(&other, ctx) {
             ExitClass::Success => ClaimOutcome::Pass,
-            ExitClass::Failure { .. } => ClaimOutcome::Fail,
+            // THE REASON SURVIVES THE SEAM. This arm used to read
+            // `ExitClass::Failure { .. } => ClaimOutcome::Fail`, discarding the `reason`
+            // `classify_exit` had just extracted — the typed value was in hand and destroyed
+            // here, which is why `tools.emit_host_gate` once shelled its per-smoke verdict
+            // line out to printf for the executor's shell narration (the claim path could not
+            // carry it). `ClaimOutcome::ExitFailure` is the reason's carrier now.
+            ExitClass::Failure { code, reason } => ClaimOutcome::ExitFailure { code, reason },
             ExitClass::NotProcessExit { type_name } => ClaimOutcome::NotBool { got: type_name },
         },
         // THE WITNESS BOUNDARY. The kernel raises the caller-agnostic
@@ -18764,6 +18806,12 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
         (ClaimOutcome::Pass, true) => ClaimDisposition::KnownRedNowPassing,
         (ClaimOutcome::Fail, false) => ClaimDisposition::Failed,
         (ClaimOutcome::Fail, true) => ClaimDisposition::KnownRedHeld,
+        // SAME DISPOSITIONS AS `Fail`, AND DELIBERATELY SO. A typed `ExitFailure` reached its
+        // verdict — the subject said no — so enrollment holds it exactly as a `Bool(false)`
+        // would be held. The refusal reason travels in the row's detail field, not in the
+        // disposition: the disposition decides nothing the reason would change.
+        (ClaimOutcome::ExitFailure { .. }, false) => ClaimDisposition::Failed,
+        (ClaimOutcome::ExitFailure { .. }, true) => ClaimDisposition::KnownRedHeld,
         // EXPECTATION IS NOT CONSULTED FOR EITHER OF THESE, and it used to be. Both arms
         // returned `KnownRedHeld` when the row was enrolled, while the correct disposition sat
         // one line below for the unenrolled case. That was one state collapsed onto another
@@ -18815,6 +18863,14 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
     match outcome {
         ClaimOutcome::Pass => "returned-true",
         ClaimOutcome::Fail => "returned-false",
+        // A WIDENING, NOT A BEHAVIOUR CHANGE (the `route-gap-*` precedent below): the
+        // disposition every consumer decides on is unchanged — this reads back to
+        // `Failed`/`KnownRedHeld` exactly as `returned-false` does, in
+        // `v2.workflow.floor_terminal_ledger_wire readback_disposition` — and what becomes
+        // newly representable at the tag grain is the distinction between a claim that
+        // answered `Bool(false)` and one that returned a typed `ProcessExit::ExitFailure`
+        // refusal. The refusal's reason is the detail field's payload.
+        ClaimOutcome::ExitFailure { .. } => "exit-failure",
         ClaimOutcome::NotBool { .. } => "returned-unreadable",
         ClaimOutcome::RuntimeError { .. } => "runtime-errored",
         // SITE 3.
@@ -18847,9 +18903,14 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
 /// observation. `TimedOut` contributes the clock that raised it, matching the module's
 /// `SafetyInterrupted.raised_by`; its millisecond pair is deliberately not carried, because the
 /// wire's declared fidelity boundary excludes cost telemetry, which has its own receipts.
+/// `ExitFailure` is the one verdict-bearing arm WITH a payload: the `.dag`-authored refusal
+/// reason is the fact this arm exists to carry (its absence is exactly the bare-`FAIL` state the
+/// `tools.emit_host_gate` narration scaffold existed to paper over), so it contributes the reason
+/// and nothing else — an absent reason renders empty, the same honest nothing `Fail` renders.
 pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
     match outcome {
         ClaimOutcome::Pass | ClaimOutcome::Fail => String::new(),
+        ClaimOutcome::ExitFailure { reason, .. } => reason.clone().unwrap_or_default(),
         ClaimOutcome::NotBool { got } => got.clone(),
         ClaimOutcome::RuntimeError { message, .. } => message.clone(),
         ClaimOutcome::BudgetInterrupted { kind, .. }
@@ -18902,6 +18963,11 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
         ClaimOutcome::BudgetInterrupted { .. } => ExpectedRedArm::BudgetRefused,
         ClaimOutcome::CompletedOverBudget { .. } => ExpectedRedArm::PassedOverBudget,
         ClaimOutcome::Fail => ExpectedRedArm::Held,
+        // SAME ARM AS `Fail`, for the same reason: the enrollment predicts a failing verdict,
+        // and a typed `ExitFailure` refusal IS a failing verdict — the subject said no and the
+        // reason says which part. Not `RuntimeErrored` and not `ObservationUnreadable`: the
+        // claim produced a readable answer.
+        ClaimOutcome::ExitFailure { .. } => ExpectedRedArm::Held,
         // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the
         // enrollment predicts a failing verdict, and only a failing verdict can hold it.
         ClaimOutcome::RuntimeError { .. } => ExpectedRedArm::RuntimeErrored,
@@ -18911,6 +18977,112 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
         ClaimOutcome::Panicked { .. } | ClaimOutcome::NotAttempted { .. } => {
             ExpectedRedArm::Aborted
         }
+    }
+}
+
+#[cfg(test)]
+mod exit_failure_outcome_tests {
+    use super::*;
+
+    /// THE REASON SURVIVES EVERY PROJECTION, OR THE DISSOLVE IS FAKE. The whole point of the
+    /// `ExitFailure` arm is that a gate-class claim's refusal reason reaches each surface as
+    /// data instead of being flattened to bare `FAIL` — the defect that made
+    /// `tools.emit_host_gate` shell its per-smoke verdict line out to printf. Each assertion
+    /// below is one consumer's projection; losing the reason in any of them re-creates the
+    /// archaeology the arm exists to end.
+    #[test]
+    fn an_exit_failure_reason_reaches_every_projection() {
+        let outcome = ClaimOutcome::ExitFailure {
+            code: 1,
+            reason: Some("emit-host smoke verdicts: rust=pass go=FAIL".to_string()),
+        };
+        // The wire tag is its own token, NOT folded into `returned-false`: the return shape
+        // (typed refusal vs Bool(false)) is a fact the seed holds and the ledger publishes.
+        assert_eq!(claim_terminal_tag(&outcome), "exit-failure");
+        // The reason IS the detail payload; a missing reason renders honest empty, the same
+        // nothing `Fail` renders.
+        assert_eq!(
+            claim_terminal_detail(&outcome),
+            "emit-host smoke verdicts: rust=pass go=FAIL"
+        );
+        assert_eq!(
+            claim_terminal_detail(&ClaimOutcome::ExitFailure {
+                code: 1,
+                reason: None
+            }),
+            ""
+        );
+        // Disposition is unchanged from `Fail` — this is a widening, not a reclassification:
+        // unenrolled it failed; enrolled (expected-red) it is held.
+        let make_row = |expected_red: bool| ClaimTerminalRow {
+            qualified: "test.claim.example.gate".to_string(),
+            expected_red,
+            outcome: outcome.clone(),
+        };
+        assert!(matches!(
+            claim_disposition(&make_row(false)),
+            ClaimDisposition::Failed
+        ));
+        assert!(matches!(
+            claim_disposition(&make_row(true)),
+            ClaimDisposition::KnownRedHeld
+        ));
+        // Expected-red agreement, same arm as `Fail`: a typed refusal IS a failing verdict.
+        assert!(matches!(expected_red_arm(&outcome), ExpectedRedArm::Held));
+        // The witness verdict is Failed, with no invented cause text beside it.
+        assert!(matches!(
+            CiWitnessVerdict::from_outcome(&outcome, false),
+            CiWitnessVerdict::Failed
+        ));
+        // Terminality: the claim REACHED its verdict, so the fold does not stop on it.
+        let receipt = v1_interpreter::PerformanceReceipt {
+            opaque_host_call_reach: v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
+            subject_key: "subj-gate".to_string(),
+            work_shape: "claim".to_string(),
+            wall_nanos: 1_000,
+            cpu_nanos: 1_000,
+            eval_self_nanos: 1_000,
+            eval_steps: 0,
+            sample_count: 1,
+        };
+        assert!(matches!(
+            claim_terminality(&outcome, &receipt, WitnessSafetyPolicy { wall_ms: 1_000 },),
+            ClaimTerminality::VerdictReached { .. }
+        ));
+    }
+
+    /// THE NOT-BOOL FALSEHOOD THIS ARM REFUSES. The roster-join vocabulary now spells the typed
+    /// refusal as its own arm (regenerated from src/v1/expected_red_roster_join.dag with this
+    /// change), so the assertion is positive: the verdict arrives as `ExitFailure`, and the join
+    /// classifies it StillRed — the same verdict `expected_red_arm` already holds it under. It
+    /// must never arrive as `BoolFalse` (that publishes the specific claim that the function
+    /// returned a Bool) and never as `None` (that lets finalize_not_observed rewrite the row
+    /// into a fabricated "not_in_executed_manifest" for a claim that executed).
+    #[test]
+    fn an_exit_failure_is_never_reported_as_a_bool_false_in_the_roster_join() {
+        let verdict = witness_eval_verdict_from_claim_outcome(&ClaimOutcome::ExitFailure {
+            code: 1,
+            reason: Some("go=FAIL".to_string()),
+        });
+        assert_eq!(
+            verdict,
+            Some(
+                crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::ExitFailure {
+                    code: 1,
+                    reason: "go=FAIL".to_string(),
+                }
+            )
+        );
+        let classification = crate::v1_compiler_expected_red_roster_join::classify_verdict(
+            std::rc::Rc::new(verdict.unwrap()),
+        );
+        assert_eq!(
+            classification.disposition,
+            std::rc::Rc::new(
+                crate::v1_compiler_expected_red_roster_join::ExpectedRedJoinDisposition::StillRed
+            )
+        );
+        assert_eq!(classification.detail, "exit 1: go=FAIL");
     }
 }
 
@@ -22154,6 +22326,20 @@ pub fn project_witness_cost_receipt(
                     ));
                     "witness_cost_seed_failed_event"
                 }
+                // A TYPED REFUSAL IS A FAILED EVENT, like `Fail` and `RuntimeError`: the claim
+                // reached its subject and the verdict is "refused", with the `.dag`-authored
+                // reason as the error it reports.
+                ClaimOutcome::ExitFailure { code, reason } => {
+                    args.push((
+                        Some("error".to_string()),
+                        str_value(format!(
+                            "ProcessExit::ExitFailure (code {}): {}",
+                            code,
+                            reason.clone().unwrap_or_else(|| "(no reason)".to_string())
+                        )),
+                    ));
+                    "witness_cost_seed_failed_event"
+                }
                 ClaimOutcome::HostToolUnresolved { name, probed } => {
                     args.push((
                         Some("error".to_string()),
@@ -24766,7 +24952,10 @@ pub(crate) struct FloorDiffEdits {
     /// A wholly added file and a brand-new `test fn` in an existing file are new; a
     /// modified sibling whose name was already at the lookup path is not.
     enrolled_test_fns: HashSet<(String, String)>,
-    /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
+    /// `.dag` files with a non-data, non-test-fn declaration touched. Required-floor Strict
+    /// preparation seeds each file's authored module (`module_seeds_from_touched_entry_files`)
+    /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
+    /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
 }
 
@@ -39808,6 +39997,26 @@ pub struct PreparedSourceView {
     pub source: Rc<v1_compiler_compile::SourceFile>,
 }
 
+fn floor_source_inventory(index: &ModuleSourceIndex) -> Vec<PreparedSourceView> {
+    index
+        .iter()
+        .map(|(module_path, source)| PreparedSourceView {
+            module_path: module_path.clone(),
+            source: source.clone(),
+        })
+        .collect()
+}
+
+/// The same source ingress that feeds required-floor discovery, before closure selection.
+pub(crate) fn floor_discovery_source_inventory(
+    source_roots: &[String],
+) -> Result<Vec<PreparedSourceView>, String> {
+    if source_roots.is_empty() {
+        return Err("floor source ingress requires declared source roots".to_string());
+    }
+    try_build_module_index(source_roots).map(|index| floor_source_inventory(&index))
+}
+
 thread_local! {
     static FLOOR_PREPARED_AUTHORITY: std::cell::RefCell<Option<FloorPreparedAuthority>> =
         std::cell::RefCell::new(None);
@@ -39858,11 +40067,7 @@ pub fn run_floor_prepared_toll_receipt() {
     let index = build_module_index(&source_roots);
     let mut inventory = Vec::with_capacity(index.len());
     for (module_path, sf) in index.iter() {
-        let p = sf.path.replace('\\', "/");
-        if exclusions
-            .iter()
-            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
-        {
+        if prepared_subject_exclusion_row_for(&sf.path, module_path, &exclusions).is_some() {
             continue;
         }
         inventory.push(PreparedSourceView {
@@ -39994,23 +40199,26 @@ pub fn assemble_prepared_subject(
 /// The seed roster is the same `v2.workflow.required_floor.required_gate_prefixes` the site
 /// disposition reads: one authority decides both what is planned and what is prepared, which is
 /// what keeps a witness admitted by one and unresolvable by the other from being writable.
+///
+/// TWO SEED KINDS, BECAUSE THEY ARE MATCHED BY TWO RULES. `closure.1` is the PREFIX roster:
+/// textual, exactly as `first_module_prefix_match` reads it for site disposition (`v2.test.`
+/// and `test.claim.namespace_` are both rows there, and the second is not a segment). `closure.2`
+/// is a list of AUTHORED MODULE NAMES -- the touched-entry and arm-set-consumer seeds the
+/// required floor derives from the diff -- and a module name matches itself or a module it
+/// contains (`a.b` seeds `a.b` and `a.b.c`), never `a.bc`. Matching those by `starts_with`
+/// widened the subject by one character today and is the shape that narrows silently when
+/// someone later "fixes" it (review on gunbc#11256), so the rule is stated once, here.
 pub fn assemble_prepared_subject_closure(
     source_roots: &[String],
     exclude_substrings: &[String],
-    closure: Option<(&MultiEntryIndex, &[String])>,
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<PreparedSubject, String> {
     let full_index = build_module_index(source_roots);
-    let full_inventory: Vec<PreparedSourceView> = full_index
-        .iter()
-        .map(|(module_path, source)| PreparedSourceView {
-            module_path: module_path.clone(),
-            source: source.clone(),
-        })
-        .collect();
+    let full_inventory = floor_source_inventory(&full_index);
     let mut discovery_exclusions: HashMap<String, String> = HashMap::new();
     let index: ModuleSourceIndex = match closure {
         None => full_index,
-        Some((entry_index, prefixes)) => {
+        Some((entry_index, prefixes, module_seeds)) => {
             let started = std::time::Instant::now();
             // THE CLOSURE IS THE LOADER'S BOTH-CLOSURE, NOT THE IMPORT HEADERS. A module in
             // this corpus may carry no `import` line at all and still depend on another
@@ -40021,7 +40229,12 @@ pub fn assemble_prepared_subject_closure(
             // closure, to a fixpoint -- and it is reused here rather than re-derived.
             let seed_paths: Vec<String> = full_index
                 .iter()
-                .filter(|(m, _)| prefixes.iter().any(|p| m.starts_with(p.as_str())))
+                .filter(|(m, _)| {
+                    prefixes.iter().any(|p| m.starts_with(p.as_str()))
+                        || module_seeds
+                            .iter()
+                            .any(|seed| module_name_is_or_is_contained_by(m, seed))
+                })
                 .map(|(_, sf)| sf.path.replace('\\', "/"))
                 .collect();
             let seeds = seed_paths.len();
@@ -40128,9 +40341,10 @@ pub fn assemble_prepared_subject_closure(
             if seeds == 0 {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=GateClosureEmpty — no module under the source \
-                     roots carries any of the {} required-gate prefixes, so the prepared subject \
-                     would be empty",
-                    prefixes.len()
+                     roots carries any of the {} required-gate prefixes or is named by any of \
+                     the {} module seeds, so the prepared subject would be empty",
+                    prefixes.len(),
+                    module_seeds.len()
                 ));
             }
             eprintln!(
@@ -40154,10 +40368,8 @@ pub fn assemble_prepared_subject_closure(
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
     let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
-        let p = sf.path.replace('\\', "/");
-        if let Some(matched) = exclude_substrings
-            .iter()
-            .find(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        if let Some(matched) =
+            prepared_subject_exclusion_row_for(&sf.path, module_path, exclude_substrings)
         {
             discovery_exclusions.insert(module_path.clone(), matched.clone());
             continue;
@@ -40249,6 +40461,31 @@ pub fn assemble_prepared_subject_closure(
     })
 }
 
+/// THE ONE EXCLUSION PREDICATE: which row of a prepared-subject exclusion list drops a module,
+/// asked over the module's path and its authored name. Every consumer of an exclusion list --
+/// the closure assembly, the whole-tree strict resolve, the floor's inventory walk, and the
+/// planning receipt that names the row a seed will be dropped under -- reads this and nothing
+/// else, so a receipt cannot name a row the assembly did not honour (review 66411).
+pub(crate) fn prepared_subject_exclusion_row_for<'a>(
+    path: &str,
+    module_path: &str,
+    exclusions: &'a [String],
+) -> Option<&'a String> {
+    let p = path.replace('\\', "/");
+    exclusions
+        .iter()
+        .find(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+}
+
+/// Segment-bounded module-name containment: `module` is `seed` itself or a module `seed`
+/// contains by name (`seed.` is a proper prefix). `a.b` contains `a.b.c` and not `a.bc`.
+fn module_name_is_or_is_contained_by(module: &str, seed: &str) -> bool {
+    module == seed
+        || (module.len() > seed.len()
+            && module.starts_with(seed)
+            && module.as_bytes()[seed.len()] == b'.')
+}
+
 /// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
 /// typecheck gate, and returns everything a later consumer could want to know about the
 /// subject so that none of them reaches for the repository again.
@@ -40264,7 +40501,7 @@ pub fn prepare_repository_once(
 pub fn prepare_repository_closure(
     source_roots: &[String],
     exclude_substrings: &[String],
-    closure: Option<(&MultiEntryIndex, &[String])>,
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
     let subject = assemble_prepared_subject_closure(source_roots, exclude_substrings, closure)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
@@ -43500,11 +43737,14 @@ mod required_floor_disposition_and_storage_agreement_law {
     }
 }
 
-/// `None` for an outcome the roster-join's GENERATED verdict vocabulary cannot yet spell.
+/// `None` for an outcome the roster-join's GENERATED verdict vocabulary cannot spell.
 ///
 /// The option is not a convenience and it is not a default: `WitnessEvalVerdict` is emitted from
 /// `src/v1/expected_red_roster_join.dag`, so a new arm there is a regeneration rather than an edit
-/// here, and the two outcomes below have no honest existing arm to borrow. Returning `None` says
+/// here. `ExitFailure` has its own arm as of the regeneration this change carries — it IS a
+/// verdict: the claim reached its subject and the subject's process refused — and the join
+/// classifies it StillRed, the same verdict `expected_red_arm` already holds it under. The two
+/// outcomes below have no honest existing arm to borrow. Returning `None` says
 /// "this seed cannot state this verdict in that vocabulary", which the caller records by NOT
 /// recording — leaving the roster join's own `NotEvaluated { reason: "not_observed" }`, whose
 /// disposition is exactly right and whose reason is generic. Borrowing `RuntimeError` to carry a
@@ -43566,7 +43806,23 @@ fn witness_eval_verdict_from_claim_outcome(
             kind: kind.label().to_string(),
             completion: crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget,
         },
-        // NO ARM EXISTS FOR THESE IN THE GENERATED VOCABULARY — see this function's own comment.
+        // ITS OWN ARM, NOT A BORROWING. `ExitFailure` IS a verdict — the claim reached its
+        // subject and the subject's process refused — and the generated vocabulary now spells it
+        // (src/v1/expected_red_roster_join.dag, regenerated with this change), where the join
+        // classifies it StillRed with the reason in the detail. Returning `None` here instead
+        // would let finalize_not_observed rewrite the row into
+        // `NotEvaluated { reason: "not_in_executed_manifest" }` — a fabricated claim, since the
+        // claim executed and reached a verdict. The absent-reason spelling at this site is the
+        // same prose claim_batch prints: a statement about what the failing site authored, not
+        // an invented observation.
+        ClaimOutcome::ExitFailure { code, reason } => {
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::ExitFailure {
+                code: *code as i64,
+                reason: reason
+                    .clone()
+                    .unwrap_or_else(|| "no reason given".to_string()),
+            }
+        }
         ClaimOutcome::Panicked { .. } | ClaimOutcome::NotAttempted { .. } => return None,
     })
 }

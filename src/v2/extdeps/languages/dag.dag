@@ -103,7 +103,7 @@ import v2.std.node {
   TypeNode,
   is_empty_conj_root,
 }
-import v2.std.node_query { find_named_child }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   CanonicalOperation,
@@ -4557,9 +4557,10 @@ fn dag_round_trip_authorities_ready() -> Bool {
 }
 
 fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
-  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {
-    Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)
-    Rejected { diagnostics: _ } => Absent
+  match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
+    NamedChildFound { target: id_node } => node_atom_identity_optional(node: id_node)
+    NamedChildMissing => Absent
+    NamedChildAmbiguous => Absent
   }
 }
 
@@ -4571,9 +4572,10 @@ fn dag_node_is_fn_decl(node: Node) -> Bool {
 }
 
 fn parse_production_captured_child_optional(node: Node) -> Optional<Node> {
-  match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {
-    Accepted { value: captured, diagnostics: _ } => Present { value: captured }
-    Rejected { diagnostics: _ } => Absent
+  match named_child_lookup(root: node, name: ^grammar_production_captured_node_projection) {
+    NamedChildFound { target: captured } => Present { value: captured }
+    NamedChildMissing => Absent
+    NamedChildAmbiguous => Absent
   }
 }
 
@@ -4613,6 +4615,107 @@ fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseS
     Absent =>
       parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
   }
+}
+
+// THE NAMED-ARGUMENT SPINE, AND IT LIVES HERE BECAUSE THIS MODULE OWNS THE PRODUCTION IT
+// DECODES. dag_grammar_arg_expr is Choice(Seq(binding_name, Seq(colon, expr)), expr): a named
+// argument carries its NAME in the sequence left and its VALUE two rights in, past the colon; a
+// positional one is a bare expr with no name. That spine was being re-decoded by every stage
+// that needed it -- v2.lens.complexity_accumulator_copy.analyze arg_value_node reproduces it
+// step for step, and v2.compiler.body_lowering_fold body_lower_named_arg_value_optional carries
+// it fused with that stage's own operand lowering -- so a reader had to pick among three
+// spellings of one fact (DESIGN section 2: net concepts must not grow by re-invention).
+//
+// It CANNOT live in either of those: v2.compiler.body_lowering_fold imports
+// v2.compiler.fold_lowering, so a compiler stage consuming the body-lowering copy would close an
+// import cycle, and acyclicity is the import graph's only structural law (DESIGN section 3). The
+// decoder belongs at the layer below both, beside the grammar that declares the production.
+//
+// body_lower_named_arg_value_optional is NOT a redundant copy of this and is deliberately left
+// alone: it returns a LOWERED OPERAND rather than the raw value node, so it is this spine plus
+// body lowering's own read. Unfusing it is a body-lowering change, tracked as its own obligation
+// rather than performed from here.
+fn dag_named_arg_name_optional(arg_capture: Node) -> Optional<Symbol> {
+  match find_named_child(root: arg_capture, name: ^grammar_sequence_left_node_projection) {
+    Accepted { value: name_node, diagnostics: _ } => node_atom_identity_optional(node: name_node)
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn dag_named_arg_value_optional(arg_capture: Node) -> Optional<Node> {
+  match find_named_child(root: arg_capture, name: ^grammar_sequence_right_node_projection) {
+    Rejected { diagnostics: _ } => dag_named_arg_value_absent()
+    Accepted { value: after_name, diagnostics: _ } =>
+      match find_named_child(root: after_name, name: ^grammar_sequence_left_node_projection) {
+        Rejected { diagnostics: _ } => dag_named_arg_value_absent()
+        Accepted { value: separator, diagnostics: _ } =>
+          match node_atom_identity_optional(node: separator) {
+            Absent => dag_named_arg_value_absent()
+            Present { value: sep } =>
+              if sep == ^dag_token_colon {
+                match find_named_child(
+                  root: after_name,
+                  name: ^grammar_sequence_right_node_projection
+                ) {
+                  Accepted { value: value_node, diagnostics: _ } =>
+                    dag_named_arg_value_present(node: value_node)
+                  Rejected { diagnostics: _ } => dag_named_arg_value_absent()
+                }
+              } else {
+                dag_named_arg_value_absent()
+              }
+          }
+      }
+  }
+}
+
+// The DIRECT named arguments of one call. The walk stops at every ^dag_surface_arg it reaches
+// and never descends into one, so an argument belonging to a NESTED call inside an argument
+// value is unreachable from the outer call. That stopping rule is the correctness property, not
+// an optimisation: a plain recursive search finds a nested `f:` before the outer one whenever an
+// earlier argument carries a nested call, which is how a whole-subtree first-match comes to
+// answer about the wrong subject. Same stopping rule the lens direct-capture collectors use
+// (v2.lens.complexity_accumulator_copy.analyze collect_direct_captures and its sibling in
+// v2.lens.identity_captured_navigation.analyze), stated once here for the keyed lookup.
+fn dag_call_named_arg_value_optional(node: Node, name: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_arg {
+        match parse_production_captured_child_optional(node: node) {
+          Absent => dag_named_arg_value_absent()
+          Present { value: arg_capture } =>
+            match dag_named_arg_name_optional(arg_capture: arg_capture) {
+              Absent => dag_named_arg_value_absent()
+              Present { value: got } =>
+                if got == name {
+                  dag_named_arg_value_optional(arg_capture: arg_capture)
+                } else {
+                  dag_named_arg_value_absent()
+                }
+            }
+        }
+      } else {
+        dag_call_named_arg_value_under_children(node: node, name: name)
+      }
+    Absent => dag_call_named_arg_value_under_children(node: node, name: name)
+  }
+}
+
+fn dag_call_named_arg_value_under_children(node: Node, name: Symbol) -> Optional<Node> {
+  fold(node.children, init: dag_named_arg_value_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => dag_call_named_arg_value_optional(node: e.target, name: name)
+    }
+  })
+}
+
+fn dag_named_arg_value_absent() -> Optional<Node> {
+  Absent
+}
+
+fn dag_named_arg_value_present(node: Node) -> Optional<Node> {
+  Present { value: node }
 }
 
 fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {

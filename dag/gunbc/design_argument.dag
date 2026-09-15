@@ -179,6 +179,28 @@ data conformance_domains: List<ConformanceDomain> = [
     narrative: "a choice must remain attributable to its subject, candidate field, constraints, evidence and policy, and conformance exposes accidental forks of that authority; the hard selection laws -- no answer outrunning its evidence, no front standing as a winner -- stay with the §3d reviewer, and goal assessment (std.goal_assessment) is a boundary of this row, not a member of it",
   },
   ConformanceDomain {
+    key: "conformance-identity",
+    label: "keys / hashing",
+    question: "When this change defines, derives or consumes a key or a hash -- a computation identity, a cache or memo key, a store key, a structural fingerprint, a scoped entity or occurrence identity -- does it inhabit a named keying relation derived algorithmically from that relation's declared inputs through the existing key authority, with a canonical encoding injective over the domain and a hash family chosen for the key's sharing scope (structural fingerprints within one run, collision-resistant digests across a run, host or store boundary); and where it departs, does it state the departure and its reason?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
+      rest: [
+        decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
+        decl_ref(module_path: "v2.std.node", decl_name: "content_hash"),
+        decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator"),
+        decl_ref(module_path: "extdeps.realization.cache_purity", decl_name: "CachePurityVerdict"),
+      ],
+    },
+    tells: [
+      "a key authored by hand, from a position, a path, a rendered string or a display name, for a subject whose identity is derivable from declared inputs",
+      "a digest with a lossy or out-of-range arm that maps distinct inputs to one value, or an encoding that is not shown injective over its domain",
+      "a structural fingerprint used as identity across a run, host or store boundary where a collision would silently serve the wrong artifact",
+      "a second key derivation for a subject that already has a key authority, or a key under one relation substituted for another (occurrence identity read as computation identity, a request key read as an artifact key, a locator read as entity identity)",
+      "a cache or memo key that omits a declared input the result depends on"
+    ],
+    narrative: "the row's scope today is the three keying relations that have a consumed home: structural node identity (v2.std.node content_hash over std.content_hash HashFamily), the request and artifact keys of std.materialization_provider (request_key, artifact_request_key, judged by extdeps.realization.cache_purity), and occurrence identity within one source graph (std.occurrence_identity). Two further relations -- demand identity (the question asked) and the dependency read set an answer consumed -- are a declared frontier, not members: they have no home authority yet, are modeled by docs/plans/demand-engine-program.md, and enter this row when M1 of that program lands their carriers; until then a reviewer asks nothing about them under this row (DESIGN §3b: a home that owns only part of a claimed scope is a scope mismatch, so the scope is stated at what the homes own). Each member is a named keying relation within a named scope, derived rather than authored; the relation model is docs/plans/keying-relation-design.md",
+  },
+  ConformanceDomain {
     key: "conformance-observability",
     label: "process observability / reporting",
     question: "When this change reports process progress, an occurrence, a measurement or an outcome -- a progress line, a heartbeat, a receipt line, a refusal restated for a reader -- does it use the existing observation and presentation authorities: an ObservationEvent or RecordedObservation carrying the typed subject, transition and Measured readings, projected through the CI renderer's event line and rendered line; and where it departs (a seed mirror, a wire format, a transport), does it state the departure and its reason?",
