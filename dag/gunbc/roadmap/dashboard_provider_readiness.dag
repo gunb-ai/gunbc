@@ -77,6 +77,11 @@ fn dashboard_provider_device_login_command(
   )
 }
 
+// CONSUMER: observe_dashboard_provider_readiness always calls this once
+// with the gathered executable, path, runtime, and auth observations.
+// Witnesses that supply those observations are paired with that production
+// route: deleting this fold makes observe fail to compile.
+
 fn classify_dashboard_provider_readiness(
   executable: FilePath?,
   executable_refusal: String,
@@ -217,7 +222,7 @@ fn observe_dashboard_provider_readiness(
 
 fn dashboard_provider_readiness_json(instance: HostDashboardInstance) -> String {
   serialize_json(v: json_object(members: concat(
-    [json_kv(key: "schema", value: json_string(s: "roadmap-provider-readiness/v1"))],
+    [json_kv(key: "schema", value: json_string(s: "roadmap-provider-readiness/v2"))],
     match observe_dashboard_provider_readiness(instance: instance) {
       Ready { evidence } => [
         json_kv(key: "status", value: json_string(s: "ready")),
