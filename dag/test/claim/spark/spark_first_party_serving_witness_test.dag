@@ -305,19 +305,15 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "posture stale"
   }
 }
-// THE DROP'S POSITIVE CONTROL IS DELETED HERE, AND THE DELETION IS THE HONEST MOVE RATHER THAN A
-// GAP. It asserted that the launch leaves usage reporting ON, which is what
-// gunbc.rung_drop.provider_path_jurisdiction_unread_admits was declared against. That standing no
-// longer exists to assert: the deciding producer does not read the declared environment at all, so
-// there is no arm that concludes reporting is on or off for this launch, and the drop's population
-// is empty pending attribution evidence. A control whose subject has no producer is not a weak
-// control, it is a permanently green one, and DESIGN 4b is explicit that such a check is worse than
-// absent because it will be cited as coverage.
-//
-// WHAT REPLACES IT IS NOT NOTHING. The same input is now driven by the first control below, which
-// asserts the opposite and correct result -- that a matching readback establishes no telemetry
-// standing at all. The drop keeps its record in its own row; what it does not keep is a witness
-// claiming a live population it no longer has.
+// THE LOCATED DROP CONTROL IS NOT IN THIS FILE. This suite still drives unread inspect, which is
+// Unread rather than Located. The population
+// gunbc.rung_drop.provider_path_jurisdiction_unread_admits names -- enabled inspect, metadata-only,
+// ProviderPathLocated, admit via spark_first_party_posture's enrollment -- is executed in
+// test.claim.spark.spark_serving_usage_stats_observe_witness_test
+// enabled_inspect_is_a_located_telemetry_path,
+// enabled_inspect_admits_first_party_use_under_the_jurisdiction_drop, and the RED
+// enabled_inspect_refuses_when_the_jurisdiction_drop_is_not_enrolled. Restoring a Located control
+// here against unread inspect would be permanently green.
 
 
 // THE THREE RESULTS THIS REPAIR HAS TO ESTABLISH, each at the seam that owns it. They are separate
