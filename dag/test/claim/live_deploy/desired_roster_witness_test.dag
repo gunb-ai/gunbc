@@ -11,6 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   DesiredRosterAdmitted,
+  DesiredRosterRefused,
   DesiredRosterSameHostCollision,
   DesiredRosterDuplicateInstanceId,
   desired_deployment_roster,
@@ -58,7 +59,7 @@ test fn desired_deployment_for_instance_id_returns_the_matching_row() -> Bool {
   match desired_deployment_for_instance_id(instance_id: live_id) {
     DesiredDeploymentFound { row } => row.instance.instance_id == live.instance.instance_id
     DesiredDeploymentUnknownInstanceId { instance_id: _ } => false
-    DesiredDeploymentRosterRefused { standing: _ } => false
+    DesiredDeploymentRosterRefused { refusal: _ } => false
   }
 }
 
@@ -66,7 +67,7 @@ test fn desired_deployment_for_instance_id_is_absent_for_an_unknown_id() -> Bool
   match desired_deployment_for_instance_id(instance_id: "not-a-desired-deployment") {
     DesiredDeploymentUnknownInstanceId { instance_id } => instance_id == "not-a-desired-deployment"
     DesiredDeploymentFound { row: _ } => false
-    DesiredDeploymentRosterRefused { standing: _ } => false
+    DesiredDeploymentRosterRefused { refusal: _ } => false
   }
 }
 
@@ -75,8 +76,7 @@ test fn the_desired_roster_admits_three_disjoint_deployments() -> Bool {
   count(rows) == 3
     && match desired_roster_standing(rows: rows) {
       DesiredRosterAdmitted => true
-      DesiredRosterSameHostCollision { host: _ } => false
-      DesiredRosterDuplicateInstanceId { instance_id: _ } => false
+      DesiredRosterRefused { refusal: _ } => false
     }
 }
 
@@ -95,19 +95,25 @@ fn witness_colliding_same_host_roster() -> List<DesiredDeployment> {
 
 test fn a_same_host_roster_that_shares_production_names_is_a_collision_on_srv1() -> Bool {
   match desired_roster_standing(rows: witness_colliding_same_host_roster()) {
-    DesiredRosterSameHostCollision { host } => host == "srv1"
+    DesiredRosterRefused { refusal } =>
+      match refusal {
+        DesiredRosterSameHostCollision { host } => host == "srv1"
+        DesiredRosterDuplicateInstanceId { instance_id: _ } => false
+      }
     DesiredRosterAdmitted => false
-    DesiredRosterDuplicateInstanceId { instance_id: _ } => false
   }
 }
 
 test fn a_roster_with_a_repeated_instance_id_is_not_admitted() -> Bool {
   let live = srv1_production_desired_deployment()
   match desired_roster_standing(rows: [live, live]) {
-    DesiredRosterDuplicateInstanceId { instance_id } =>
-      instance_id == instance_id_text(id: live.instance.instance_id)
+    DesiredRosterRefused { refusal } =>
+      match refusal {
+        DesiredRosterDuplicateInstanceId { instance_id } =>
+          instance_id == instance_id_text(id: live.instance.instance_id)
+        DesiredRosterSameHostCollision { host: _ } => false
+      }
     DesiredRosterAdmitted => false
-    DesiredRosterSameHostCollision { host: _ } => false
   }
 }
 

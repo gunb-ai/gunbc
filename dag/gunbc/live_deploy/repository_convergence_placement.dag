@@ -67,7 +67,6 @@ import gunbc.live_deploy.desired {
   DesiredDeploymentRosterRefused,
   DesiredRosterSameHostCollision,
   DesiredRosterDuplicateInstanceId,
-  DesiredRosterAdmitted,
   selected_deployment_spec,
 }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
@@ -736,10 +735,8 @@ fn repository_converge_srv1_owner_wet(
       match desired_deployment_for_instance_id(instance_id: instance_id) {
         DesiredDeploymentUnknownInstanceId { instance_id: id } =>
           exit_failure(reason: join(["repository-convergence: instance_id is not a desired-deployment: ", id], ""))
-        DesiredDeploymentRosterRefused { standing } =>
-          match standing {
-            DesiredRosterAdmitted =>
-              exit_failure(reason: "repository-convergence: desired-deployment roster refused while admitted")
+        DesiredDeploymentRosterRefused { refusal } =>
+          match refusal {
             DesiredRosterSameHostCollision { host } =>
               exit_failure(reason: join(["repository-convergence: desired-deployment roster has a same-host collision on ", host], ""))
             DesiredRosterDuplicateInstanceId { instance_id: dup } =>

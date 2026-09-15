@@ -135,7 +135,12 @@ fn spec_owned_identities(spec: DeploymentSpec) -> List<String> {
   )
 }
 
-fn spec_same_host_surface_collision(a: DeploymentSpec, b: DeploymentSpec) -> Bool {
+fn spec_same_host_surface_collision(
+  a: DeploymentSpec,
+  b: DeploymentSpec,
+  a_owned: List<String>,
+  b_owned: List<String>,
+) -> Bool {
   if !(deployment_plan_host_identity(spec: a) == deployment_plan_host_identity(spec: b)) {
     false
   } else {
@@ -147,19 +152,37 @@ fn spec_same_host_surface_collision(a: DeploymentSpec, b: DeploymentSpec) -> Boo
       || a.names.tree_sync_unit_name == b.names.tree_sync_unit_name
       || a.names.tree_sync_env_path == b.names.tree_sync_env_path
       || a.names.tailscale_serve_endpoint == b.names.tailscale_serve_endpoint
-      || any(spec_owned_identities(spec: a), ia => any(spec_owned_identities(spec: b), ib => ia == ib))
+      || any(a_owned, ia => any(b_owned, ib => ia == ib))
   }
 }
 
+type DesiredDeploymentSurface {
+  row: DesiredDeployment
+  spec: DeploymentSpec
+  owned_identities: List<String>
+}
+
+fn desired_deployment_surface(row: DesiredDeployment) -> DesiredDeploymentSurface {
+  let spec = selected_deployment_spec(row: row)
+  DesiredDeploymentSurface {
+    row: row,
+    spec: spec,
+    owned_identities: spec_owned_identities(spec: spec),
+  }
+}
+
+type DesiredRosterRefusal
+  = DesiredRosterSameHostCollision { host: String }
+  | DesiredRosterDuplicateInstanceId { instance_id: String }
+
 type DesiredRosterStanding
   = DesiredRosterAdmitted
-  | DesiredRosterSameHostCollision { host: String }
-  | DesiredRosterDuplicateInstanceId { instance_id: String }
+  | DesiredRosterRefused { refusal: DesiredRosterRefusal }
 
 type DesiredDeploymentLookup
   = DesiredDeploymentFound { row: DesiredDeployment }
   | DesiredDeploymentUnknownInstanceId { instance_id: String }
-  | DesiredDeploymentRosterRefused { standing: DesiredRosterStanding }
+  | DesiredDeploymentRosterRefused { refusal: DesiredRosterRefusal }
 
 fn string_key_eq(a: String, b: String) -> Bool {
   a == b
@@ -170,33 +193,34 @@ fn desired_row_keyed(row: DesiredDeployment) -> KeyedRow<String, DesiredDeployme
 }
 
 fn desired_roster_surface_standing(rows: List<DesiredDeployment>) -> DesiredRosterStanding {
+  let surfaces = map(rows, r => desired_deployment_surface(row: r))
   fold(
-    rows,
+    surfaces,
     init: DesiredRosterAdmitted,
-    f: (acc, a_row) =>
+    f: (acc, a) =>
       match acc {
-        DesiredRosterSameHostCollision { host } => DesiredRosterSameHostCollision { host: host }
-        DesiredRosterDuplicateInstanceId { instance_id } =>
-          DesiredRosterDuplicateInstanceId { instance_id: instance_id }
+        DesiredRosterRefused { refusal } => DesiredRosterRefused { refusal: refusal }
         DesiredRosterAdmitted =>
           fold(
-            rows,
+            surfaces,
             init: DesiredRosterAdmitted,
-            f: (inner, b_row) =>
+            f: (inner, b) =>
               match inner {
-                DesiredRosterSameHostCollision { host } =>
-                  DesiredRosterSameHostCollision { host: host }
-                DesiredRosterDuplicateInstanceId { instance_id } =>
-                  DesiredRosterDuplicateInstanceId { instance_id: instance_id }
+                DesiredRosterRefused { refusal } => DesiredRosterRefused { refusal: refusal }
                 DesiredRosterAdmitted =>
-                  if a_row.instance.instance_id == b_row.instance.instance_id {
+                  if a.row.instance.instance_id == b.row.instance.instance_id {
                     DesiredRosterAdmitted
                   } else {
-                    let a = selected_deployment_spec(row: a_row)
-                    let b = selected_deployment_spec(row: b_row)
-                    if spec_same_host_surface_collision(a: a, b: b) {
-                      DesiredRosterSameHostCollision {
-                        host: deployment_plan_host_identity(spec: a),
+                    if spec_same_host_surface_collision(
+                      a: a.spec,
+                      b: b.spec,
+                      a_owned: a.owned_identities,
+                      b_owned: b.owned_identities,
+                    ) {
+                      DesiredRosterRefused {
+                        refusal: DesiredRosterSameHostCollision {
+                          host: deployment_plan_host_identity(spec: a.spec),
+                        },
                       }
                     } else {
                       DesiredRosterAdmitted
@@ -211,7 +235,9 @@ fn desired_roster_surface_standing(rows: List<DesiredDeployment>) -> DesiredRost
 fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStanding {
   match keyed_roster_build(incomings: map(rows, r => desired_row_keyed(row: r)), key_eq: string_key_eq) {
     KeyedRosterBuildDuplicateKey { key, first: _, duplicate: _ } =>
-      DesiredRosterDuplicateInstanceId { instance_id: key }
+      DesiredRosterRefused {
+        refusal: DesiredRosterDuplicateInstanceId { instance_id: key },
+      }
     KeyedRosterBuilt { rows: _ } => desired_roster_surface_standing(rows: rows)
   }
 }
@@ -219,14 +245,7 @@ fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStandi
 fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeploymentLookup {
   let rows = desired_deployment_roster()
   match desired_roster_standing(rows: rows) {
-    DesiredRosterSameHostCollision { host } =>
-      DesiredDeploymentRosterRefused {
-        standing: DesiredRosterSameHostCollision { host: host },
-      }
-    DesiredRosterDuplicateInstanceId { instance_id: dup } =>
-      DesiredDeploymentRosterRefused {
-        standing: DesiredRosterDuplicateInstanceId { instance_id: dup },
-      }
+    DesiredRosterRefused { refusal } => DesiredDeploymentRosterRefused { refusal: refusal }
     DesiredRosterAdmitted =>
       match keyed_row_find(
         rows: map(rows, r => desired_row_keyed(row: r)),
