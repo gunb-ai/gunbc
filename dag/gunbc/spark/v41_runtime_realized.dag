@@ -31,6 +31,12 @@ import gunbc.spark.v41_engram_row_store {
 //
 // ONLY the realized arm may be selected or authorized. A keyed specification remains readable as
 // what would be built; it cannot be read as executable.
+//
+// AN UNPATCHED BASELINE IMAGE IS NOT THE STORAGE-BACKED RUNTIME. BuiltByThisRun of a clean
+// d2d649e6 checkout establishes a content-addressed vanilla image. V41PatchesConsumedByImage is
+// only honest after a modeled apply of the declared population. Until then the patch axis stays
+// Unestablished (v41_patch_application_standing); do not mint Realized from a baseline digest plus
+// transcribed patch hex.
 type V41OciImageDigest sole_constructor {
   manifest: NonEmptyStr
   config: NonEmptyStr

@@ -23,6 +23,8 @@ import gunbc.spark.v41_runtime_candidate {
   V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
   v41_engram_population_of, v41_is_embedding_table,
+  V41PatchApplicationStanding, V41VanillaSourceAtRevision, V41PatchApplicationUnestablished, V41PatchApplicationRefused,
+  v41_patch_application_standing, v41_storage_patch_application_standing,
 }
 import extdeps.safetensors.format {
   SafetensorsPopulationStanding, safetensors_population_standing,
@@ -499,4 +501,27 @@ test fn an_empty_observed_patch_population_refuses_in_both_partition_authorities
   w_refused_with(s: v41_candidate_standing(c: empty_config), fragment: "is not the same claim as V41PatchesAbsentByObservation")
     && w_refused_with(s: v41_candidate_standing(c: empty_fixed), fragment: "no bytes for it to be fixed in")
     && (w_key(s: v41_candidate_standing(c: w_default(patches: V41PatchesAbsentByObservation)), which: "runtime") != "refused")
+}
+
+test fn observed_patches_do_not_mint_a_patched_source_tree() -> Bool {
+  (match v41_patch_application_standing(source: vllm_d2d649e6_revision, patches: V41PatchesAbsentByObservation) {
+    V41VanillaSourceAtRevision { revision: r } => (r.full_revision as String) == (vllm_d2d649e6_revision.full_revision as String)
+    V41PatchApplicationUnestablished { obligation: _ } => false
+    V41PatchApplicationRefused { defects: _ } => false
+  })
+    && (match v41_patch_application_standing(source: vllm_d2d649e6_revision, patches: w_two_patches()) {
+      V41PatchApplicationUnestablished { obligation: o } => (o as String).contains("no apply step")
+      V41VanillaSourceAtRevision { revision: _ } => false
+      V41PatchApplicationRefused { defects: _ } => false
+    })
+    && (match v41_patch_application_standing(source: vllm_d2d649e6_revision, patches: V41PatchesObserved { patches: concat(w_patch(path: "engram_storage.patch", c: "1"), w_patch_against(path: "engram_prefetch.patch", c: "2", applies_to: vllm_deepseek_v4_1_sm12_revision)), partition: PartitionByLaunchConfiguration }) {
+      V41PatchApplicationRefused { defects: d } => any(d, x => (x as String).contains("07b75534"))
+      V41VanillaSourceAtRevision { revision: _ } => false
+      V41PatchApplicationUnestablished { obligation: _ } => false
+    })
+    && (match v41_storage_patch_application_standing() {
+      V41PatchApplicationUnestablished { obligation: o } => (o as String).contains("DigestFile")
+      V41VanillaSourceAtRevision { revision: _ } => false
+      V41PatchApplicationRefused { defects: _ } => false
+    })
 }

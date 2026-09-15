@@ -259,6 +259,33 @@ fn v41_empty_observation_defects(patches: List<V41EnginePatch>, authority: V41En
   }
 }
 
+// PATCH IDENTITY IS NOT PATCH REALIZATION. The runtime key can name an ordered population. Nothing in
+// converge_vllm_source applies those bytes: a clean checkout at applies_to is the only admitted tree,
+// and a dirty tree is refused. Hand-applying on the builder would produce bytes no declaration owns.
+// Until a modeled apply step exists, an observed nonempty population cannot mint a patched-source
+// identity. Absent-by-observation is the vanilla tree, which is what an unpatched baseline image is.
+type V41PatchApplicationStanding
+  = V41VanillaSourceAtRevision { revision: VllmSourceRevision }
+  | V41PatchApplicationUnestablished { obligation: NonEmptyStr }
+  | V41PatchApplicationRefused { defects: List<NonEmptyStr> }
+
+fn v41_patch_application_standing(source: VllmSourceRevision, patches: V41PatchPopulation) -> V41PatchApplicationStanding {
+  match patches {
+    V41PatchesUnestablished { obligation: o } => V41PatchApplicationUnestablished { obligation: o }
+    V41PatchesAbsentByObservation => V41VanillaSourceAtRevision { revision: source }
+    V41PatchesObserved { patches: ps, partition: authority } => {
+      let defects = concat(v41_patch_applicability_defects(patches: ps, source: source), v41_empty_observation_defects(patches: ps, authority: authority))
+      if length(defects) != 0 {
+        V41PatchApplicationRefused { defects: defects }
+      } else {
+        V41PatchApplicationUnestablished {
+          obligation: "converge_vllm_source admits only a clean checkout at the recipe revision and has no apply step over V41EnginePatch; a patched source tree is not a modeled state yet, so this population does not mint a storage-backed image identity. Hand-applying on the builder is out of band." as NonEmptyStr,
+        }
+      }
+    }
+  }
+}
+
 fn v41_runtime_artifact_key(i: V41RuntimeArtifactInputs, partition: V41EngramResidencyPartition) -> V41IdentityStanding {
   let kernel_defects = v41_kernel_defects(i: i)
   if length(kernel_defects) != 0 {
@@ -703,4 +730,8 @@ fn v41_storage_backed_patch_population() -> V41PatchPopulation {
       "; a hex literal is not that producer, and the hermetic claim route has no DigestFile arm",
     ], "") as NonEmptyStr,
   }
+}
+
+fn v41_storage_patch_application_standing() -> V41PatchApplicationStanding {
+  v41_patch_application_standing(source: v41_candidate_recipe().source, patches: v41_storage_backed_patch_population())
 }
