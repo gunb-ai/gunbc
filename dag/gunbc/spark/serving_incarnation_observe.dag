@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
 import std.algebra { trim }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_multiply, checked_int_add, CheckedIntReady, CheckedIntOverflow }
-import std.measure { Hertz, hertz_count }
+import std.measure { Hertz, hertz, hertz_count }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
@@ -482,7 +482,8 @@ fn incarnation_after_unit(
           match clock_ticks_reading(stdout: tick_text) {
             ClockTicksUnparseable { field: f } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: join(["`", f, "` is not an integer"], "") } }
             ClockTicksNotPositive { value: v } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: join(["tick rate ", to_string(v), " is not positive"], "") } }
-            ClockTicksObserved { per_second: ticks } =>
+            ClockTicksObserved { per_second: n } =>
+              let ticks = hertz(count: n)
               match host_read_text(transport: transport, operation: ProcfsReadStat) {
                 HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: c } }
                 HostTextObserved { stdout: stat_text } =>

@@ -1,7 +1,6 @@
 module extdeps.posix.getconf
 
 import std.types { Bool, Int, Unit }
-import std.measure { Hertz, hertz }
 import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -54,7 +53,7 @@ service posix.Getconf {
 }
 
 type ClockTicksReading
-  = ClockTicksObserved { per_second: Hertz }
+  = ClockTicksObserved { per_second: Int }
   | ClockTicksUnparseable { field: String }
   | ClockTicksNotPositive { value: Int }
 
@@ -64,6 +63,6 @@ fn clock_ticks_reading(stdout: String) -> ClockTicksReading {
   let field = trim(s: stdout)
   match parse_int(s: field) {
     Absent => ClockTicksUnparseable { field: field }
-    Present { value: n } => if n <= 0 { ClockTicksNotPositive { value: n } } else { ClockTicksObserved { per_second: hertz(count: n) } }
+    Present { value: n } => if n <= 0 { ClockTicksNotPositive { value: n } } else { ClockTicksObserved { per_second: n } }
   }
 }
