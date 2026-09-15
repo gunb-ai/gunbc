@@ -13,6 +13,7 @@ import gunbc.live_deploy.desired {
   DesiredRosterAdmitted,
   DesiredRosterSameHostCollision,
   desired_deployment_roster,
+  desired_deployment_for_instance_id,
   desired_roster_standing,
   selected_deployment_spec,
   srv1_production_desired_deployment,
@@ -31,9 +32,25 @@ import gunbc.live_deploy.emit {
   live_deploy_systemd_unit_for,
   RevisionBoundAtEmission,
 }
+import v2.std.collection { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn desired_deployment_for_instance_id_returns_the_matching_row() -> Bool {
+  let live = srv1_production_desired_deployment()
+  match desired_deployment_for_instance_id(instance_id: live.instance.instance_id as String) {
+    Present { value } => value.instance.instance_id == live.instance.instance_id
+    Absent => false
+  }
+}
+
+test fn desired_deployment_for_instance_id_is_absent_for_an_unknown_id() -> Bool {
+  match desired_deployment_for_instance_id(instance_id: "not-a-desired-deployment") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
 
 test fn the_desired_roster_admits_three_disjoint_deployments() -> Bool {
   let rows = desired_deployment_roster()

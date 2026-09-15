@@ -17,6 +17,7 @@ import gunbc.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
 }
+import v2.std.collection { Present, Absent }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentHostTarget,
@@ -102,6 +103,23 @@ fn desired_deployment_roster() -> List<DesiredDeployment> {
     srv1_lab_desired_deployment(),
     srv2_deploy_desired_deployment(),
   ]
+}
+
+fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeployment? {
+  fold(
+    desired_deployment_roster(),
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value } => Present { value: value }
+        Absent =>
+          if row.instance.instance_id as String == instance_id {
+            Present { value: row }
+          } else {
+            none
+          }
+      },
+  )
 }
 
 fn deployment_owned_identity(spec: DeploymentSpec, step: DeploymentArtifactStep) -> String {

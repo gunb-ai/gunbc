@@ -61,7 +61,7 @@ import gunbc.live_deploy.spec {
   deployment_slice_unit_name, DeploymentSpec }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
-  desired_deployment_roster,
+  desired_deployment_for_instance_id,
   selected_deployment_spec,
 }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
@@ -527,6 +527,7 @@ fn convergence_exec_start(
     " --arg candidate=", candidate,
     " --arg object_source=", src,
     " --arg receipt=", receipt_path,
+    " --arg instance_id=", spec.instance_id as String,
   ], "")
 }
 
@@ -709,45 +710,34 @@ fn placement_converge_for_spec(
   }
 }
 
-// THE RECEIPT PATH IS AN ARGUMENT AND IS ALSO DERIVED, WHICH IS NOT A CONTRADICTION. The unit
-// renders it from the spec through convergence_receipt_path, so production never spells it; it
-// remains a parameter so the acceptance matrix can point one execution at a scratch location
-// without a second entry point that differs from the production one in any other way.
-fn desired_deployment_for_convergence_receipt(receipt: String) -> DesiredDeployment? {
-  fold(
-    desired_deployment_roster(),
-    init: none,
-    f: (acc, row) =>
-      match acc {
-        Present { value } => Present { value: value }
-        Absent =>
-          if convergence_receipt_path(instance_root: row.instance.instance_root as String) == receipt {
-            Present { value: row }
-          } else {
-            none
-          }
-      },
-  )
-}
-
+// THE RECEIPT PATH IS THE WRITE LOCATION, NOT THE SELECTOR. Production renders it from the spec
+// through convergence_receipt_path so the unit never spells a second identity; it remains a
+// parameter so the acceptance matrix can point one execution at a scratch location. Which
+// deployment is converged is a caller-supplied instance_id, resolved by
+// gunbc.live_deploy.desired desired_deployment_for_instance_id before this fold runs.
 fn repository_converge_srv1_owner_wet(
   candidate: String,
   object_source: String,
   receipt: String,
+  instance_id: String,
 ) -> ProcessExit {
   if trim(s: receipt) == "" {
     exit_failure(reason: "--arg receipt=<path> is required -- the transition's outcome is written, not returned, because the deploy that ordered it runs in a different process")
   } else {
-    match desired_deployment_for_convergence_receipt(receipt: receipt) {
-      Absent =>
-        exit_failure(reason: join(["repository-convergence: receipt path is not a desired-deployment receipts path: ", receipt], ""))
-      Present { value: row } =>
-        placement_converge_for_spec(
-          spec: selected_deployment_spec(row: row),
-          candidate: candidate,
-          object_source: object_source,
-          receipt_path: receipt,
-        )
+    if trim(s: instance_id) == "" {
+      exit_failure(reason: "--arg instance_id=<id> is required -- selection sits before this fold, and the receipt path is not the selector")
+    } else {
+      match desired_deployment_for_instance_id(instance_id: instance_id) {
+        Absent =>
+          exit_failure(reason: join(["repository-convergence: instance_id is not a desired-deployment: ", instance_id], ""))
+        Present { value: row } =>
+          placement_converge_for_spec(
+            spec: selected_deployment_spec(row: row),
+            candidate: candidate,
+            object_source: object_source,
+            receipt_path: receipt,
+          )
+      }
     }
   }
 }

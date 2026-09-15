@@ -354,6 +354,7 @@ test fn apply_script_stays_within_ci_runner_grants() -> Bool {
     && !string_contains(s: apply, pattern: "rsync")
     && string_contains(s: apply, pattern: "gunbc deployed-repository git-native convergence")
     && string_contains(s: apply, pattern: concat("--arg candidate=", deploy_witness_release_revision as String))
+    && string_contains(s: apply, pattern: concat("--arg instance_id=", deployment_spec_srv1().instance_id as String))
     && string_contains(s: apply, pattern: "--function repository_converge_srv1_owner_wet")
     && string_contains(s: apply, pattern: "repository_convergence_readback_wet")
     && string_contains(s: apply, pattern: "/opt/gunbc/receipts/repository-convergence.json")
