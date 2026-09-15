@@ -510,7 +510,7 @@ fn convergence_receipt_path(instance_root: String) -> String {
 // can be named by its MODULE rather than by its file.
 data convergence_placement_entry_path: String = "dag/gunbc/live_deploy/repository_convergence_placement.dag"
 
-data convergence_placement_entry_function: String = "repository_converge_srv1_owner_wet"
+data convergence_placement_entry_function: String = "repository_converge_owner_wet"
 
 // THE SOURCE-ROOT ROSTER IS THE SAME PAIR EVERY OTHER INVOCATION USES -- `dag` and `src/v2` -- and it
 // is spelled here against the runner checkout rather than against the target, which is the whole
@@ -720,7 +720,7 @@ fn placement_converge_for_spec(
 // parameter so the acceptance matrix can point one execution at a scratch location. Which
 // deployment is converged is a caller-supplied instance_id, resolved by
 // gunbc.live_deploy.desired desired_deployment_for_instance_id before this fold runs.
-fn repository_converge_srv1_owner_wet(
+fn repository_converge_owner_wet(
   candidate: String,
   object_source: String,
   receipt: String,

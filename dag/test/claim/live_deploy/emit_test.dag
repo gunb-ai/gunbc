@@ -355,7 +355,7 @@ test fn apply_script_stays_within_ci_runner_grants() -> Bool {
     && string_contains(s: apply, pattern: "gunbc deployed-repository git-native convergence")
     && string_contains(s: apply, pattern: concat("--arg candidate=", deploy_witness_release_revision as String))
     && string_contains(s: apply, pattern: concat("--arg instance_id=", deployment_spec_srv1().instance_id as String))
-    && string_contains(s: apply, pattern: "--function repository_converge_srv1_owner_wet")
+    && string_contains(s: apply, pattern: "--function repository_converge_owner_wet")
     && string_contains(s: apply, pattern: "repository_convergence_readback_wet")
     && string_contains(s: apply, pattern: "/opt/gunbc/receipts/repository-convergence.json")
     && !string_contains(s: apply, pattern: "--include=/HEAD")
@@ -409,7 +409,7 @@ fn three_markers_in_order(text: String, first: String, second: String, third: St
 // pair in the specimen proves this is an ordering assertion rather than two presence checks.
 test fn repository_convergence_is_ordered_after_binary_and_before_readback() -> Bool {
   let binary = "target/release/gunbc"
-  let converge = "--function repository_converge_srv1_owner_wet"
+  let converge = "--function repository_converge_owner_wet"
   let readback = "repository_convergence_readback_wet"
   let apply = witness_apply_script()
   three_markers_in_order(text: apply, first: binary, second: converge, third: readback)
@@ -1050,7 +1050,7 @@ type StepScan {
 test fn the_publication_member_emits_convergence_and_no_rsync() -> Bool {
   let spec = deployment_spec_srv1()
   let fragment = member_fragment_text(member: TreePublication, plan: deploy_witness_full_install_plan(spec: spec))
-  string_contains(s: fragment, pattern: "--function repository_converge_srv1_owner_wet")
+  string_contains(s: fragment, pattern: "--function repository_converge_owner_wet")
     && string_contains(s: fragment, pattern: "repository_convergence_readback_wet")
     && !string_contains(s: fragment, pattern: "rsync")
 }
@@ -1103,6 +1103,6 @@ test fn a_binary_only_plan_installs_and_restarts_without_publishing_the_tree() -
   ))
   string_contains(s: sh, pattern: "target/release/gunbc")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.service.unit_name)))
-    && !string_contains(s: sh, pattern: "--function repository_converge_srv1_owner_wet")
+    && !string_contains(s: sh, pattern: "--function repository_converge_owner_wet")
 }
 

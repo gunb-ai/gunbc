@@ -21,7 +21,7 @@ import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopul
 // DESIGN 4b(1) names -- citing a wall that does not run.
 //
 // THE POPULATION IS THE ADMITTED DESIRED-DEPLOYMENT ROSTER AT A FRESH ROOT, not one production
-// constructor. repository_converge_srv1_owner_wet takes a caller-supplied instance_id and
+// constructor. repository_converge_owner_wet takes a caller-supplied instance_id and
 // resolves it through gunbc.live_deploy.desired desired_deployment_for_instance_id; every
 // admitted DesiredDeployment can reach the empty-root bootstrap. The members are those three
 // constructors. A later roster row is a new member, not a silent inherit of a global binding.
