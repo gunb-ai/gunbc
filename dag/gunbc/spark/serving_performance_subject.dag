@@ -411,8 +411,15 @@ fn serving_subject_standing_reads(
 // protocol, exact producers and carriers, realized launch bindings, preserved-invariant evidence --
 // is a different type that does not exist yet, and calling this one by that name would have let a
 // reader believe the missing half was already built.
+// A ONE-AXIS DELTA REQUIRES THAT EVERY AXIS WAS READ, which an earlier version of this type did not
+// require and is the reason the fourth arm exists. `AxisDeltaOnOneAxis` was returned as soon as
+// exactly one KNOWN axis differed, without ever consulting the unread ones -- so a pair differing on
+// one axis with five axes nobody looked at reported as a clean one-axis cut. That is the overclaim
+// this module exists to prevent, sitting in the operation whose only job is to say whether an
+// experiment isolated a variable.
 type SubjectAxisDelta
   = AxisDeltaOnOneAxis { axis: ServingSubjectAxis }
+  | AxisDeltaOnOneAxisWithUnreadAxes { axis: ServingSubjectAxis, unread: NonEmptyStr }
   | AxisDeltaNone
   | AxisDeltaOnManyAxes { axes: NonEmptyStr }
   | AxisDeltaUndecidable { because: NonEmptyStr }
@@ -424,19 +431,24 @@ fn serving_subject_axis_delta(
   let ls = standing_subject(st: left)
   let rs = standing_subject(st: right)
   let known = serving_subject_known_differing_axes(left: ls, right: rs)
+  let unread = either_side_unknown_axes(left: ls, right: rs)
   if length(known) == 1 {
     match known.first() {
       Absent => AxisDeltaUndecidable { because: "unreachable: a one-element list has a first element" as NonEmptyStr }
-      Present { value: only } => AxisDeltaOnOneAxis { axis: only }
+      Present { value: only } =>
+        if length(unread) == 0 {
+          AxisDeltaOnOneAxis { axis: only }
+        } else {
+          AxisDeltaOnOneAxisWithUnreadAxes { axis: only, unread: serving_subject_axes_wire(axes: unread) as NonEmptyStr }
+        }
     }
   } else if length(known) > 1 {
     AxisDeltaOnManyAxes { axes: serving_subject_axes_wire(axes: known) as NonEmptyStr }
   } else {
-    let unknown = either_side_unknown_axes(left: ls, right: rs)
-    if length(unknown) > 0 {
+    if length(unread) > 0 {
       AxisDeltaUndecidable { because: join([
         "no axis both sides read differs, and these were never read on at least one side: ",
-        serving_subject_axes_wire(axes: unknown),
+        serving_subject_axes_wire(axes: unread),
       ], "") as NonEmptyStr }
     } else {
       AxisDeltaNone
