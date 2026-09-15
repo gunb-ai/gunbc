@@ -1139,6 +1139,11 @@ pub enum InterpError {
     PatternMatchFailure {
         value: String,
     },
+    /// A REST response value did not inhabit the coproduct its declared output type names.
+    /// Raised by `decode_json_by_declared_type`; see `RestResponseDecodeRefusal`.
+    RestResponseUndecodable {
+        refusal: RestResponseDecodeRefusal,
+    },
     DivisionByZero,
     /// A native `Int` binop's true result does not fit `i64` (`std/integer.dag`'s
     /// `Compose<Int, MachineWidth<64>>` row). Wrapping would answer a different number — the
@@ -1367,6 +1372,9 @@ impl fmt::Display for InterpError {
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
+            }
+            InterpError::RestResponseUndecodable { refusal } => {
+                write!(f, "REST response undecodable: {}", refusal)
             }
             InterpError::DivisionByZero => write!(f, "division by zero"),
             InterpError::IntegerOverflow { op, lhs, rhs } => write!(
@@ -4994,6 +5002,10 @@ pub struct InterpContext {
     // per DataItem row. See `data_initializer_identity::TypeDeclIndex` for what they cost before.
     type_decl_index:
         std::cell::RefCell<Option<Rc<crate::data_initializer_identity::TypeDeclIndex>>>,
+    // Every `CoproductWireContract` row in the loaded closure, keyed by the declaration identity
+    // its `coproduct` field names. Built once per ctx on the first REST response that reaches a
+    // coproduct-typed field; see `decode_json_by_declared_type`.
+    coproduct_wire_contract_index: std::cell::RefCell<Option<Rc<CoproductWireContractIndex>>>,
     // Parameter-name derivation is invariant per fn_node but was re-sliced from source spans
     // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
     // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
@@ -5163,6 +5175,19 @@ impl InterpContext {
                     &self.source_indices,
                 ));
                 *self.type_decl_index.borrow_mut() = Some(Rc::clone(&built));
+                built
+            }
+        }
+    }
+
+    /// The coproduct wire-contract index, built once per ctx on first ask.
+    fn coproduct_wire_contract_index(&self) -> Rc<CoproductWireContractIndex> {
+        let cached = self.coproduct_wire_contract_index.borrow().clone();
+        match cached {
+            Some(index) => index,
+            None => {
+                let built = Rc::new(build_coproduct_wire_contract_index(self));
+                *self.coproduct_wire_contract_index.borrow_mut() = Some(Rc::clone(&built));
                 built
             }
         }
@@ -5426,6 +5451,7 @@ impl InterpContext {
             typed_module_by_path: std::cell::RefCell::new(None),
             typed_module_by_path_fills: std::cell::Cell::new(0),
             type_decl_index: std::cell::RefCell::new(None),
+            coproduct_wire_contract_index: std::cell::RefCell::new(None),
             param_name_cache: std::cell::RefCell::new(HashMap::new()),
             param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
@@ -12796,10 +12822,105 @@ fn subject_module_value(
     }
 }
 
-/// Encode one source's parsed import statements: the parser's delimited spans, or the typed
-/// refusal. A source that did not parse and a source with no imports are different values here
-/// because they are different facts, and a caller that stripped nothing from the first would
-/// report a clean rewrite of a file it never read.
+/// Project the acquired seed tokens into the canonical lexical carrier. Shape identity is
+/// unchanged. Raw lexemes come from the acquired scalar coordinates, never cooked token text.
+fn acquired_source_tokens_value(
+    tokens: &RrbVector<Rc<crate::v1_std_core::Token>>,
+    source_index: &crate::v1_std_core::NewlineIndex,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let mut projected = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        let span = &token.span;
+        if span.start < 0
+            || span.end < span.start
+            || span.end as usize > source_index.char_codes.len()
+        {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "acquired token span outside source: {} [{}..{}]",
+                    span.file, span.start, span.end
+                ),
+            });
+        }
+        let mut lexeme = String::new();
+        for offset in span.start as usize..span.end as usize {
+            let scalar = source_index.char_codes[offset];
+            let ch = u32::try_from(scalar)
+                .ok()
+                .and_then(char::from_u32)
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "acquired source contains an invalid scalar at {}:{}",
+                        span.file, offset
+                    ),
+                })?;
+            lexeme.push(ch);
+        }
+        // Preserve v1.std.core.TokenShape constructor identities at this seed boundary.
+        // shape_display_name is a diagnostic label, not this identity projection.
+        // No wildcard: a changed constructor must stop compilation, never shrink a census.
+        let class = match token.shape {
+            crate::v1_std_core::TokenShape::ShKeyword => "ShKeyword",
+            crate::v1_std_core::TokenShape::ShLBrace => "ShLBrace",
+            crate::v1_std_core::TokenShape::ShRBrace => "ShRBrace",
+            crate::v1_std_core::TokenShape::ShLParen => "ShLParen",
+            crate::v1_std_core::TokenShape::ShRParen => "ShRParen",
+            crate::v1_std_core::TokenShape::ShLBracket => "ShLBracket",
+            crate::v1_std_core::TokenShape::ShRBracket => "ShRBracket",
+            crate::v1_std_core::TokenShape::ShLt => "ShLt",
+            crate::v1_std_core::TokenShape::ShGt => "ShGt",
+            crate::v1_std_core::TokenShape::ShLe => "ShLe",
+            crate::v1_std_core::TokenShape::ShGe => "ShGe",
+            crate::v1_std_core::TokenShape::ShFatArrow => "ShFatArrow",
+            crate::v1_std_core::TokenShape::ShArrow => "ShArrow",
+            crate::v1_std_core::TokenShape::ShColon => "ShColon",
+            crate::v1_std_core::TokenShape::ShComma => "ShComma",
+            crate::v1_std_core::TokenShape::ShDot => "ShDot",
+            crate::v1_std_core::TokenShape::ShDotDot => "ShDotDot",
+            crate::v1_std_core::TokenShape::ShEq => "ShEq",
+            crate::v1_std_core::TokenShape::ShEqEq => "ShEqEq",
+            crate::v1_std_core::TokenShape::ShNe => "ShNe",
+            crate::v1_std_core::TokenShape::ShPlus => "ShPlus",
+            crate::v1_std_core::TokenShape::ShMinus => "ShMinus",
+            crate::v1_std_core::TokenShape::ShStar => "ShStar",
+            crate::v1_std_core::TokenShape::ShSlash => "ShSlash",
+            crate::v1_std_core::TokenShape::ShPercent => "ShPercent",
+            crate::v1_std_core::TokenShape::ShBang => "ShBang",
+            crate::v1_std_core::TokenShape::ShAnd => "ShAnd",
+            crate::v1_std_core::TokenShape::ShOr => "ShOr",
+            crate::v1_std_core::TokenShape::ShQuestion => "ShQuestion",
+            crate::v1_std_core::TokenShape::ShNullCoalesce => "ShNullCoalesce",
+            crate::v1_std_core::TokenShape::ShCaret => "ShCaret",
+            crate::v1_std_core::TokenShape::ShPipe => "ShPipe",
+            crate::v1_std_core::TokenShape::ShPipeArrow => "ShPipeArrow",
+            crate::v1_std_core::TokenShape::ShLitStr => "ShLitStr",
+            crate::v1_std_core::TokenShape::ShLitInt => "ShLitInt",
+            crate::v1_std_core::TokenShape::ShLitFloat => "ShLitFloat",
+            crate::v1_std_core::TokenShape::ShIdent => "ShIdent",
+            crate::v1_std_core::TokenShape::ShStrBegin => "ShStrBegin",
+            crate::v1_std_core::TokenShape::ShStrMid => "ShStrMid",
+            crate::v1_std_core::TokenShape::ShStrEnd => "ShStrEnd",
+            crate::v1_std_core::TokenShape::ShNewline => "ShNewline",
+            crate::v1_std_core::TokenShape::ShEof => "ShEof",
+            crate::v1_std_core::TokenShape::ShUnknown => "ShUnknown",
+        };
+        projected.push(Value::Record {
+            type_name: ctx.sym("Token"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("class"), str_value(class.to_owned())),
+                (ctx.sym("lexeme"), str_value(lexeme)),
+                (ctx.sym("file"), str_value(span.file.clone())),
+                (ctx.sym("start"), Value::Int(span.start)),
+                (ctx.sym("end"), Value::Int(span.end)),
+            ])),
+        });
+    }
+    Ok(list_value(projected))
+}
+
+/// Encode the parser's import extents or its typed refusal without conflating a refused parse
+/// with a successful parse that found no imports.
 fn parsed_import_statements_value(
     outcome: &crate::std_import::ParsedImportStatements,
     ctx: &InterpContext,
@@ -16093,7 +16214,25 @@ fn decide_rest_exchange(
                 };
             }
         };
-        map_response_to_value_json(&json, op_node, ctx)?
+        match map_response_to_value_json(&json, op_node, ctx) {
+            Ok(mapped) => mapped,
+            Err(refusal) => {
+                return match outcome_field {
+                    Some(field) => Ok(attach_rest_outcome(
+                        None,
+                        op_node,
+                        field,
+                        rest_body_undecodable_value(
+                            ctx,
+                            status,
+                            format!("body did not inhabit the declared output: {}", refusal),
+                        ),
+                        ctx,
+                    )),
+                    None => Err(InterpError::RestResponseUndecodable { refusal }),
+                };
+            }
+        }
     };
     if let Some(missing) = rest_payload_null_fields(&mapped, op_node, outcome_field, ctx) {
         let cause = format!(
@@ -16783,17 +16922,17 @@ fn map_response_root_into_payload_field(
     json: &serde_json::Value,
     child: &Rc<Node>,
     ctx: &InterpContext,
-) -> Value {
+) -> Result<Value, RestResponseDecodeRefusal> {
     if rest_output_child_is_list(child, ctx) {
         if json.is_array() {
-            json_to_value(json)
+            decode_json_by_declared_field(json, child, ctx)
         } else {
-            Value::Null
+            Ok(Value::Null)
         }
     } else if json.is_array() {
-        Value::Null
+        Ok(Value::Null)
     } else {
-        json_to_value(json)
+        decode_json_by_declared_field(json, child, ctx)
     }
 }
 
@@ -16801,7 +16940,7 @@ fn map_response_to_value_json(
     json: &serde_json::Value,
     op_node: &Rc<Node>,
     ctx: &InterpContext,
-) -> InterpResult<Value> {
+) -> Result<Value, RestResponseDecodeRefusal> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => return Ok(json_to_value(json)),
@@ -16826,14 +16965,14 @@ fn map_response_to_value_json(
             Some(path) => {
                 let pointer = format!("/{}", path);
                 match json.pointer(&pointer) {
-                    Some(v) => json_to_value(v),
+                    Some(v) => decode_json_by_declared_field(v, child, ctx)?,
                     None => Value::Null,
                 }
             }
             None => match json.get(&field_name) {
-                Some(v) => json_to_value(v),
+                Some(v) => decode_json_by_declared_field(v, child, ctx)?,
                 None if payload_count == 1 => {
-                    map_response_root_into_payload_field(json, child, ctx)
+                    map_response_root_into_payload_field(json, child, ctx)?
                 }
                 None => Value::Null,
             },
@@ -16846,6 +16985,420 @@ fn map_response_to_value_json(
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(fields),
     })
+}
+
+// TYPE-DIRECTED REST RESPONSE DECODE.
+//
+// `json_to_value` alone is type-blind: a JSON string lands as `Value::Str` whatever the declared
+// output field says, so a field declared as a nullary coproduct (`status: WorkflowRunStatus`)
+// carried the wire spelling "completed" into a program that matches on `Completed`. Every such
+// match took its wildcard arm or refused non-exhaustively -- silent wrongness at the language
+// layer, measured live on gunbc.fleet_desired_admission's merge-queue route, which refused every
+// real landing as RequiredCiMergeGroupRunUnconcluded while its fold witness, fed constructed
+// records, stayed green (gunbc.recurring_failure_mode
+// rest_response_coproduct_decoded_type_blind).
+//
+// The walk follows the declared output type the compiler already resolved onto the operation
+// node. A nullary coproduct is decoded through the ONE authority for its wire spelling: the
+// `std.serialization` `CoproductWireContract` row naming its declaration, read with the same
+// readers the Rust emitter uses (`coproduct_wire_contract_encoding`, `naming_policy_node`).
+// Every failure arm refuses; none widens back to the raw string.
+
+/// Why a REST response value could not inhabit its declared coproduct. Located by `field_path`
+/// (the dotted/indexed path from the operation output) and by the coproduct's declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RestResponseDecodeRefusal {
+    pub field_path: String,
+    pub coproduct: String,
+    pub cause: RestResponseDecodeCause,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RestResponseDecodeCause {
+    /// The coproduct's declaration identity (module path) could not be established, so no
+    /// contract can be selected for it.
+    DeclarationUnresolved,
+    /// No `CoproductWireContract` row names this coproduct and its declaring module has no
+    /// `wire_contract` encoding: its wire spelling is undeclared.
+    NoWireContract,
+    /// The declaring module's `wire_contract` does not resolve to an encoding.
+    ModuleWireContractUnresolved { cause: String },
+    /// More than one contract row names this coproduct.
+    AmbiguousWireContract { count: usize },
+    /// The contract's encoding is not `StringVariant`, the only encoding a nullary JSON string
+    /// can inhabit.
+    UnsupportedEncoding { encoding: String },
+    /// The contract's naming policy has no realization here.
+    UnsupportedNaming { naming: String },
+    /// The JSON value is not a string.
+    NotAString { json_kind: &'static str },
+    /// The string names no arm under the contract's naming policy.
+    UnknownSpelling { spelling: String },
+}
+
+impl fmt::Display for RestResponseDecodeRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "at {} ({}): ", self.field_path, self.coproduct)?;
+        match &self.cause {
+            RestResponseDecodeCause::DeclarationUnresolved => {
+                write!(f, "the coproduct's declaration identity is unresolved")
+            }
+            RestResponseDecodeCause::NoWireContract => write!(
+                f,
+                "no CoproductWireContract row names this coproduct and its module declares no wire_contract, so its wire spelling is undeclared"
+            ),
+            RestResponseDecodeCause::ModuleWireContractUnresolved { cause } => {
+                write!(f, "the declaring module's wire_contract does not resolve: {}", cause)
+            }
+            RestResponseDecodeCause::AmbiguousWireContract { count } => {
+                write!(f, "{} CoproductWireContract rows name this coproduct", count)
+            }
+            RestResponseDecodeCause::UnsupportedEncoding { encoding } => write!(
+                f,
+                "encoding {} cannot carry a nullary coproduct as a JSON string",
+                encoding
+            ),
+            RestResponseDecodeCause::UnsupportedNaming { naming } => {
+                write!(f, "naming policy {} has no interpreter realization", naming)
+            }
+            RestResponseDecodeCause::NotAString { json_kind } => {
+                write!(f, "expected a JSON string, found {}", json_kind)
+            }
+            RestResponseDecodeCause::UnknownSpelling { spelling } => {
+                write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
+            }
+        }
+    }
+}
+
+/// The two declared forms of a coproduct's wire encoding, in the precedence the Rust emitter
+/// applies them: a `CoproductWireContract` row naming the declaration, else the declaring
+/// module's `wire_contract: VariantEncoding` (declared there or imported, alias chains followed).
+/// (declaring module path, coproduct name) -> every contract row's encoding node naming it.
+pub(crate) struct CoproductWireContractIndex {
+    encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>>,
+    module_defaults: std::collections::HashMap<String, Result<Rc<Node>, String>>,
+}
+
+const MODULE_WIRE_CONTRACT_NAME: &str = "wire_contract";
+
+/// The `VariantEncoding` node a module's data item `name` denotes: declared in the module, or
+/// imported by name, following `data x: VariantEncoding = other` aliases. `None` when the module
+/// neither declares nor imports the name; `Err` on a chain that does not end in an encoding.
+fn resolve_module_encoding(
+    modules: &std::collections::HashMap<String, Rc<TypedModule>>,
+    module_path: &str,
+    name: &str,
+    fuel: usize,
+    ctx: &InterpContext,
+) -> Option<Result<Rc<Node>, String>> {
+    if fuel == 0 {
+        return Some(Err(format!(
+            "alias chain through {}.{} exceeds its bound",
+            module_path, name
+        )));
+    }
+    let tm = modules.get(module_path)?;
+    let si = ctx.si();
+    for item in tm.items.iter() {
+        if item_kind(Rc::clone(item)) != ItemKind::DataItem
+            || authored_name_at(si.clone(), Rc::clone(item)) != name
+        {
+            continue;
+        }
+        let Some(body) = item.body.clone() else {
+            return Some(Err(format!("{}.{} has no initializer", module_path, name)));
+        };
+        if let ExprData::ExprVar { .. } = &*body.expr_data {
+            let alias = crate::v1_std_core::expr_var_name_at(body.clone(), si.clone());
+            return Some(
+                resolve_module_encoding(modules, module_path, &alias, fuel - 1, ctx)
+                    .unwrap_or_else(|| {
+                        Err(format!(
+                            "{}.{} aliases {}, which resolves nowhere",
+                            module_path, name, alias
+                        ))
+                    }),
+            );
+        }
+        return Some(Ok(body));
+    }
+    for imp in crate::v1_std_core::module_imports(tm.module.clone()).iter() {
+        if import_is_all(imp.clone()) {
+            continue;
+        }
+        if import_specific_names_at(imp.clone(), si.clone())
+            .iter()
+            .any(|imported| imported == name)
+        {
+            let source = authored_name_at(si.clone(), imp.clone());
+            return Some(
+                resolve_module_encoding(modules, &source, name, fuel - 1, ctx).unwrap_or_else(
+                    || {
+                        Err(format!(
+                            "{} imports {} from {}, which does not declare it",
+                            module_path, name, source
+                        ))
+                    },
+                ),
+            );
+        }
+    }
+    None
+}
+
+fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireContractIndex {
+    // Row admission and target reading are the emitter's predicates, not a second copy:
+    // `is_coproduct_wire_contract_row` (typed CoproductWireContract imported from
+    // std.serialization, not a local homonym, both fields present) and
+    // `coproduct_decl_ref_decl_name`. The DeclarationRef's module_path is the one field the
+    // emitter has no reader for, because it only ever matches rows in the declaring module.
+    use crate::v1_compiler_emit_rust::{
+        coproduct_decl_ref_decl_name, coproduct_wire_contract_encoding, field_value_by_name,
+        is_coproduct_wire_contract_row, record_string_field,
+    };
+    let si = ctx.si();
+    let mut encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>> =
+        std::collections::HashMap::new();
+    for tm in ctx.modules.iter() {
+        let imports = crate::v1_std_core::module_imports(tm.module.clone());
+        for item in tm.items.iter() {
+            if !is_coproduct_wire_contract_row(
+                Rc::clone(item),
+                tm.items.clone(),
+                imports.clone(),
+                si.clone(),
+            ) {
+                continue;
+            }
+            let Some(body) = item.body.clone() else {
+                continue;
+            };
+            let Some(decl_name) = coproduct_decl_ref_decl_name(body.clone(), si.clone()) else {
+                continue;
+            };
+            let Some(module_path) = field_value_by_name(body, "coproduct".to_string(), si.clone())
+                .and_then(|r| record_string_field(r, "module_path".to_string(), si.clone()))
+            else {
+                continue;
+            };
+            let Some(encoding) = coproduct_wire_contract_encoding(Rc::clone(item), si.clone())
+            else {
+                continue;
+            };
+            encodings
+                .entry((module_path, decl_name))
+                .or_default()
+                .push(encoding);
+        }
+    }
+    let modules: std::collections::HashMap<String, Rc<TypedModule>> = ctx
+        .modules
+        .iter()
+        .map(|tm| {
+            (
+                authored_name_at(si.clone(), tm.module.clone()),
+                Rc::clone(tm),
+            )
+        })
+        .collect();
+    let module_defaults = modules
+        .keys()
+        .filter_map(|path| {
+            resolve_module_encoding(&modules, path, MODULE_WIRE_CONTRACT_NAME, 32, ctx)
+                .map(|resolved| (path.clone(), resolved))
+        })
+        .collect();
+    CoproductWireContractIndex {
+        encodings,
+        module_defaults,
+    }
+}
+
+/// The wire spelling of `arm` under a `VariantNaming`, through the emitter's own spelling
+/// authority (`v1.compiler.emit_core_support` `to_snake` / `to_screaming_snake`), so the
+/// interpreter and the emitted crate read one contract row to one spelling.
+fn variant_wire_spelling(naming: &str, arm: &str) -> Option<String> {
+    use crate::v1_compiler_emit_core_support::{to_screaming_snake, to_snake};
+    match naming {
+        "AsAuthored" => Some(arm.to_string()),
+        "SnakeCase" => Some(to_snake(arm.to_string())),
+        "ScreamingSnakeCase" => Some(to_screaming_snake(arm.to_string())),
+        _ => None,
+    }
+}
+
+fn json_kind(json: &serde_json::Value) -> &'static str {
+    match json {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "a boolean",
+        serde_json::Value::Number(_) => "a number",
+        serde_json::Value::String(_) => "a string",
+        serde_json::Value::Array(_) => "an array",
+        serde_json::Value::Object(_) => "an object",
+    }
+}
+
+fn decode_json_by_declared_field(
+    json: &serde_json::Value,
+    field: &Rc<Node>,
+    ctx: &InterpContext,
+) -> Result<Value, RestResponseDecodeRefusal> {
+    let path = authored_name_at(ctx.si(), field.clone());
+    decode_json_by_declared_field_at(json, field, &path, ctx)
+}
+
+fn decode_json_by_declared_field_at(
+    json: &serde_json::Value,
+    field: &Rc<Node>,
+    path: &str,
+    ctx: &InterpContext,
+) -> Result<Value, RestResponseDecodeRefusal> {
+    match field.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => {
+            decode_json_by_declared_type(json, node, path, ctx)
+        }
+        _ => Ok(json_to_value(json)),
+    }
+}
+
+fn decode_json_by_declared_type(
+    json: &serde_json::Value,
+    ty: &Rc<Node>,
+    path: &str,
+    ctx: &InterpContext,
+) -> Result<Value, RestResponseDecodeRefusal> {
+    if json.is_null() {
+        return Ok(Value::Null);
+    }
+    let name = authored_name_at(ctx.si(), ty.clone());
+    if name.rsplit('.').next() == Some("List") {
+        return match (json, ty.children.first()) {
+            (serde_json::Value::Array(items), Some(element)) => {
+                let mut out = Vec::with_capacity(items.len());
+                for (i, item) in items.iter().enumerate() {
+                    let at = format!("{}[{}]", path, i);
+                    out.push(decode_json_by_declared_field_at(item, element, &at, ctx)?);
+                }
+                Ok(list_value(out))
+            }
+            _ => Ok(json_to_value(json)),
+        };
+    }
+    if ty.connective == Connective::Disj {
+        let nullary =
+            !ty.children.is_empty() && ty.children.iter().all(|arm| arm.children.is_empty());
+        if !nullary {
+            // A payload-carrying coproduct is not a JSON string and is outside this decode.
+            return Ok(json_to_value(json));
+        }
+        if json.is_boolean() && name.rsplit('.').next() == Some("Bool") {
+            // `Bool = True | False` is carried natively (`Value::Bool`), and a JSON boolean is
+            // its wire form; every other nullary coproduct is spelled as a string.
+            return Ok(json_to_value(json));
+        }
+        return decode_nullary_coproduct(json, ty, &name, path, ctx);
+    }
+    if let serde_json::Value::Object(obj) = json {
+        if ty.connective == Connective::Conj && !ty.children.is_empty() {
+            let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+            for (key, value) in obj.iter() {
+                let declared = ty
+                    .children
+                    .iter()
+                    .find(|f| authored_name_at(ctx.si(), (*f).clone()) == *key);
+                let decoded = match declared {
+                    Some(f) => decode_json_by_declared_field_at(
+                        value,
+                        f,
+                        &format!("{}.{}", path, key),
+                        ctx,
+                    )?,
+                    None => json_to_value(value),
+                };
+                if let Some(ck) = CanonKey::new(str_value(key.clone())) {
+                    fields.insert(ck, decoded);
+                }
+            }
+            return Ok(map_value(fields));
+        }
+    }
+    Ok(json_to_value(json))
+}
+
+fn decode_nullary_coproduct(
+    json: &serde_json::Value,
+    ty: &Rc<Node>,
+    name: &str,
+    path: &str,
+    ctx: &InterpContext,
+) -> Result<Value, RestResponseDecodeRefusal> {
+    use crate::v1_compiler_emit_rust::naming_policy_node;
+    let refuse = |cause| RestResponseDecodeRefusal {
+        field_path: path.to_string(),
+        coproduct: name.to_string(),
+        cause,
+    };
+    let serde_json::Value::String(spelling) = json else {
+        return Err(refuse(RestResponseDecodeCause::NotAString {
+            json_kind: json_kind(json),
+        }));
+    };
+    let Some(module_path) =
+        crate::data_initializer_identity::module_path_for_type_decl_node(ctx, ty, &ctx.si())
+    else {
+        return Err(refuse(RestResponseDecodeCause::DeclarationUnresolved));
+    };
+    let index = ctx.coproduct_wire_contract_index();
+    let encoding = match index
+        .encodings
+        .get(&(module_path.clone(), name.to_string()))
+    {
+        None => match index.module_defaults.get(&module_path) {
+            Some(Ok(encoding)) => Rc::clone(encoding),
+            Some(Err(cause)) => {
+                return Err(refuse(
+                    RestResponseDecodeCause::ModuleWireContractUnresolved {
+                        cause: cause.clone(),
+                    },
+                ))
+            }
+            None => return Err(refuse(RestResponseDecodeCause::NoWireContract)),
+        },
+        Some(rows) if rows.len() == 1 => Rc::clone(&rows[0]),
+        Some(rows) => {
+            return Err(refuse(RestResponseDecodeCause::AmbiguousWireContract {
+                count: rows.len(),
+            }))
+        }
+    };
+    let encoding_name = authored_name_at(ctx.si(), encoding.clone());
+    if encoding_name != "StringVariant" {
+        return Err(refuse(RestResponseDecodeCause::UnsupportedEncoding {
+            encoding: encoding_name,
+        }));
+    }
+    let naming = naming_policy_node(encoding, ctx.si())
+        .map(|n| authored_name_at(ctx.si(), n))
+        .unwrap_or_default();
+    for arm in ty.children.iter() {
+        let arm_name = authored_name_at(ctx.si(), arm.clone());
+        let Some(wire) = variant_wire_spelling(&naming, &arm_name) else {
+            return Err(refuse(RestResponseDecodeCause::UnsupportedNaming {
+                naming,
+            }));
+        };
+        if wire == *spelling {
+            return Ok(Value::Variant {
+                type_name: ctx.sym(name),
+                variant_name: ctx.sym(&arm_name),
+                fields: Rc::new(vec![]),
+            });
+        }
+    }
+    Err(refuse(RestResponseDecodeCause::UnknownSpelling {
+        spelling: spelling.clone(),
+    }))
 }
 
 fn json_to_value(json: &serde_json::Value) -> Value {
@@ -19572,14 +20125,49 @@ macro_rules! v1_builtin_arms {
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
 
+            arm "free_call.floor_discovery_source_inventory" { "floor_discovery_source_inventory" } => {
+                let roots = expect_str_list($positional.first().copied(), $name)?;
+                let outcome = match crate::cli_run::floor_discovery_source_inventory(&roots) {
+                    Ok(sources) => Value::Variant {
+                        type_name: $ctx.sym("FloorDiscoverySourceInventory"),
+                        variant_name: $ctx.sym("FloorDiscoverySourcesObserved"),
+                        fields: Rc::new(sorted_fields(vec![(
+                            $ctx.sym("sources"),
+                            list_value(sources.into_iter().map(|source| Value::Record {
+                                type_name: $ctx.sym("FloorDiscoverySource"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    ($ctx.sym("module_path"), str_value(source.module_path)),
+                                    ($ctx.sym("repo_path"), str_value(source.source.path.clone())),
+                                    ($ctx.sym("content"), str_value(source.source.content.clone())),
+                                ])),
+                            }).collect::<Vec<_>>()),
+                        )])),
+                    },
+                    Err(reason) => Value::Variant {
+                        type_name: $ctx.sym("FloorDiscoverySourceInventory"),
+                        variant_name: $ctx.sym("FloorDiscoverySourcesRefused"),
+                        fields: Rc::new(sorted_fields(vec![($ctx.sym("reason"), str_value(reason))])),
+                    },
+                };
+                Ok(Some(outcome))
+            },
+
             arm "free_call.parsed_import_statements" { "parsed_import_statements" } => {
                 let file = expect_str($positional.first().copied(), $name)?;
                 let source = expect_str($positional.get(1).copied(), $name)?;
+                let tokens = crate::cli_run::pool_acquire::tokens_for(&file, &source);
+                let source_index = crate::cli_run::pool_acquire::newline_index_for(&file, &source);
                 let observed =
                     crate::v1_gunbc_parsed_import_statements::parsed_import_statements(
-                        file, source,
+                        file, tokens, source_index.clone(),
                     );
-                Ok(Some(parsed_import_statements_value(&observed, $ctx)))
+                Ok(Some(Value::Record {
+                    type_name: $ctx.sym("ParsedImportObservation"),
+                    fields: Rc::new(sorted_fields(vec![
+                        ($ctx.sym("tokens"), acquired_source_tokens_value(&observed.tokens, &source_index, $ctx)?),
+                        ($ctx.sym("imports"), parsed_import_statements_value(&observed.imports, $ctx)),
+                    ])),
+                }))
             },
 
             arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {
