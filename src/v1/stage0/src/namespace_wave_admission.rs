@@ -1891,379 +1891,120 @@ pub struct TransitionAdmission {
 /// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
 /// and one that deserves its own evidence.
 ///
-/// TRIGGER for the 37 rows: they go when #11138 merges, at which point the base carries the
-/// shared declaration, the deltas stop being producible, and CONSUMED comes due on the roster's
-/// next touch -- adjudicated by the declaring-module join, not by this sentence.
-const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std.text";
+/// TRIGGER for the 37 rows: they went when #11138 merged. The base then carried the shared
+/// declaration and the rows were consumed; they were deleted on the roster's next touch
+/// (gunbc#11373), and the frontier above is unaffected by that deletion.
+///
+/// PCI IDENTITY REPAIR (gunbc#11373, 2026-09-14). The required floor at d616837c802
+/// measured 39 deltas: six ExplicitlyEvaluatedZeroDelta memberships and one
+/// SameDeclarationIdentityRebind removal auto-admit. These 32 exact binding rows
+/// adjudicate the remaining 17 TargetChanged and 15 NewPoolCoincidenceResolution
+/// deltas. The former relocate Ubuntu-owned brands to their PCI authority; the
+/// latter restore bindings whose runner consumers landed without that authority.
+/// This is const admission data for the existing seed consumer, not new policy.
+/// Every binding requires the complete singleton candidate set, not a subset.
+/// Delete these rows after #11373 lands and the base resolves these bindings:
+/// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
+/// wave_admission_refusal charges consumed rows on that landing run. A separate
+/// cleanup PR must remove the consumed rows; this admission does not waive it.
 
+/// THE gunbc#11373 ROWS DISSOLVED HERE (2026-09-15), BY THE TRIGGER THE BLOCK ABOVE WROTE FOR
+/// THEM. That block says it plainly -- delete these rows after #11373 lands and the base resolves
+/// these bindings, and a separate cleanup does not waive it. #11373 is present at this merge's
+/// base, so the floor on gunbc#10729 measured 0 unadjudicated deltas, 0 stale admissions and all
+/// 32 CONSUMED, due on the roster's next touch. This merge IS that touch, so they go here rather
+/// than waiting for a cleanup PR that would have to re-derive the same join.
+///
+/// ADJUDICATED BY THE FLOOR'S OWN RECEIPT, not by this sentence: every one of the 32 reported
+/// `already satisfied at the base -- consumed by its own merge`, which is the run joining each
+/// row against the merged tree on its own tuple. The count is occurrences, not constants: 17
+/// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
+/// runner hardware observation, DGX PXE and PXE-rescue consumers.
+///
+/// gunbc#11306 repository-visibility unification (2026-09-13). Six rows for one move: the
+/// spellings `RepositoryVisibility`, `PublicRepository` and `PrivateRepository` relocate from
+/// `extdeps.github.actions_token` to `extdeps.github.repository`. The concept was FORKED, which is
+/// what made the move necessary rather than cosmetic: `actions_token` declared
+/// `RepositoryVisibility = PublicRepository | PrivateRepository` for the fork-token rule while
+/// `hosted_runners` declared `RepoVisibility = PublicRepo | PrivateRepo` for the runner hardware
+/// tables -- one upstream fact under two spellings, free to disagree, and neither reusable by a
+/// third consumer that needed to ask whether a repository is world-readable. GitHub's repository
+/// resource owns `visibility` as a field, so the resource gets the module and the field gets the
+/// type.
+///
+/// THREE SPELLINGS ACROSS TWO MODULES, ENUMERATED BY EXACT IDENTITY. Every row is `TargetChanged`
+/// and the claim is this roster's header claim verbatim: a spelling authored on both sides now
+/// resolves to a different module, and NOT ONE of them changes which declaration the spelling
+/// denotes -- the coproduct and its two arms move unedited, so a binding whose meaning had actually
+/// moved would refuse on its own row rather than hide under these. The membership half of the same
+/// motion is reported separately and auto-admitted as `ExplicitlyEvaluatedZeroDelta`. The rows are
+/// enumerated rather than patterned over the module pair, because a pattern would admit a genuine
+/// rebind that happened to land in the same two modules. `hosted_runners` produces no row here: its
+/// arms were spelled `PublicRepo`/`PrivateRepo` and are new names at the head, not rebinds.
+///
+/// DISSOLVE-ON: gunbc#11306 merging. Once the relocation is on main, base and head of every
+/// pull_request build both carry it, the `TargetChanged` deltas stop being producible, all six
+/// report stale and refuse every unrelated PR. The deletion PR is authored and linked from #11306
+/// BEFORE this lands, so the trigger has a waiting actuator rather than a sentence. Remove them by
+/// that trigger, not by reinterpreting it.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.complexity_linearity_audit",
-            in_declaration: "migration_roster_contains",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "ActionsRepositoryPolicyObservation",
+            spelling: "RepositoryVisibility",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "callee_text_is_host_sink",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "fork_write_tokens_reachable",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "data_init_belongs_to_modules",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "fork_write_tokens_reachable",
+            spelling: "PublicRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flow_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "fork_policy_allows",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "path_literal_from_lexeme",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "fork_policy_denies",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "sink_kind_for_callee",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.enforcement.vocab",
-            in_declaration: "scope_roster_covers",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.fact_cardinality",
-            in_declaration: "add_unseen_key",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "callee_text_is_known_carrier",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_for_callee_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_homes_in_closure",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "classification_has_literal_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "decls_with_qualified_name",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_carrier_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "module_facts_for_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "modules_of_closure_paths",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_from_lexeme",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "runtime_read_carrier_module_names",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.manufactured_dependency_census",
-            in_declaration: "edge_is_manufactured",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.manufactured_dependency_census",
-            in_declaration: "snoc_unseen",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "add_unseen",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "bfs_absorb_neighbor",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "path_matches_touched",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "snoc_unseen_list",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "decl_contains_atom",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "decl_contains_callee",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "maybe_snoc_callee_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "node_contains_atom_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "site_row_already_present",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "structural_red_control_live_fixture_mint_site_discovered",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_corpus_paths_live",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_fact_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_import_facts_at_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_neighbor_paths_from_facts",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_paths_from_import_edges",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_paths_from_module_declarations",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "public_fork_policy_allows",
+            spelling: "PublicRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

@@ -1910,10 +1910,12 @@ pub fn whole_tree_strict_sources(
     let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
         .iter()
         .filter(|(module_path, sf)| {
-            let p = sf.path.replace('\\', "/");
-            !exclude_substrings
-                .iter()
-                .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+            crate::cli_run::prepared_subject_exclusion_row_for(
+                &sf.path,
+                module_path,
+                exclude_substrings,
+            )
+            .is_none()
         })
         .map(|(_, sf)| sf.clone())
         .collect();

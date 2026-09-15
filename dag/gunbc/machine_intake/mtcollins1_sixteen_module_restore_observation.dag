@@ -1,0 +1,296 @@
+module gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation
+
+import std.types { Int, List, NonEmptyStr, String, list_length }
+import std.measure { byte_size }
+import std.content_hash { Sha256Digest, Sha256Hash }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
+import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, OemSelPayload, SystemRestart }
+import gunbc.machine_intake_pre_os_bringup_attempt { ChassisPowerCycle }
+import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
+  SelWindowCapture,
+  SolCaptureUnderCondition,
+  mtcollins1_pre_os_capabilities,
+  mtcollins1_sol_idle_capture,
+  mtcollins1_sol_reading,
+  mtcollins1_sol_session_banner_digest,
+}
+import gunbc.machine_intake_pre_os_bringup_verdict {
+  BootCycleWindow,
+  BootRestart,
+  BringupUndetermined,
+  FirmwareProgressObserved,
+  FirmwareStatedUnrecognizedError,
+  OemTimestamped,
+  OtherStandardEvent,
+  PhysicalRemediationRequired,
+  PreOsBringupVerdict,
+  SelWindowEvent,
+  SolCaptureReading,
+  TrainingRefusedByFirmwareStatement,
+  boot_cycles,
+  pre_os_bringup_verdict,
+  sel_window_after_cursor,
+  sol_capture_reading,
+}
+
+// MT. COLLINS UNIT 1 AFTER THE OPERATOR RESTORED THE SIXTEEN PROVEN MODULES, 2026-09-12/13: THE
+// SECOND HALF OF THE PRE-OS BRING-UP REGRESSION CORPUS. gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
+// holds the failure side -- the 32-DIMM restart loop, the 3DS mixture the firmware refused with a
+// stated locus. This module holds what the same instruments recorded once the population was put
+// back: the controller's event log across the swap, and three held-session console captures of
+// boots that trained.
+//
+// WHAT THIS CORPUS CAN AND CANNOT ESTABLISH, STATED FIRST BECAUSE THE PR THAT LANDED IT FIRST
+// CLAIMED MORE. The PR headline read "the restoration held: 1h52m, zero restarts", computed from the
+// SEL window below. Run through the verdict fold that already owns this question, that window
+// yields BringupUndetermined -- and that is the fold being RIGHT, not the corpus being weak: the
+// model's only positive arm is a standard firmware-progress SEL record, and this controller wrote
+// none after the power-up even though the host reached the UEFI shell; and the console grammar
+// recognises refusals, not successes, so a capture whose firmware printed its trained capacity and
+// entered boot-device selection reads as "host bytes, no terminal stated". The absence of restart
+// records is carried and checked, but absence is not a boot (the same law this PR's own history
+// withdrew once already, at bf4cac94400). The capability that would turn these captures into a
+// positive terminal is declared at the bottom as the frontier it is.
+//
+// EVIDENCE BINDS PER SECTION, NOT PER MODULE: each row names the artifact it came from, by path
+// and digest, and the witness that reads the committed bytes checks each row's byte count against
+// them (gunbc.test.claim.machine_intake.mtcollins1_sixteen_module_restore_witness_test).
+
+// ── the event log across the swap ─────────────────────────────────────────────────────────────
+
+// RECORDS 0x637 THROUGH 0x64f OF THE `sel list` IN THE CAPTURE, one row each, record ids in
+// decimal, the controller's clock rendering carried verbatim. The window opens on the last four
+// restarts of the dual-die loop (0x637, 0x639, 0x63b, 0x63d -- the ~5m10s cadence) so the corpus
+// carries the failure it claims to have left, runs through the AC loss and power-up of the module
+// swap (0x63f, 0x640), and ends at the last record the controller held when the capture was
+// taken. The capture's own first and third lines record the host clock and the controller clock
+// in the same second: host 16:52:56Z, controller 12:52:56 PM UTC -- the four-hour offset
+// gunbc.machine_intake_mtcollins1_diskless_boot_receipt already measured. No fold here joins the
+// two clocks; the rendering is data.
+//
+// THE OEM PAYLOAD IN THIS LOOP IS 0fde70331102, NOT THE 0fde70330102 OF THE 32-DIMM LOOP. One byte
+// differs. It is carried verbatim and decoded by nothing, exactly as the 32-DIMM payload is.
+data mtcollins1_stable_boot_window_capture: SelWindowCapture = SelWindowCapture {
+  artifact_path: "artifacts/bmc/mtcollins1-stable-boot-window-2026-09-12T1652Z.txt",
+  byte_count: byte_size(count: 2387),
+  digest: Sha256Hash(Sha256Digest { hex: "441c968d80ecb23c49a39d87de6f9d23a21a6fb9bd5dd5ee0193ffec28837c36" }),
+  events: [
+    SelWindowEvent { record_id: 1591, bmc_clock_rendering: "09/12/2026 10:37:03 AM UTC", kind: BootRestart { offset: SystemRestart } },
+    SelWindowEvent { record_id: 1592, bmc_clock_rendering: "09/12/2026 10:37:06 AM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70331102" } } },
+    SelWindowEvent { record_id: 1593, bmc_clock_rendering: "09/12/2026 10:42:13 AM UTC", kind: BootRestart { offset: SystemRestart } },
+    SelWindowEvent { record_id: 1594, bmc_clock_rendering: "09/12/2026 10:42:17 AM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70331102" } } },
+    SelWindowEvent { record_id: 1595, bmc_clock_rendering: "09/12/2026 10:47:24 AM UTC", kind: BootRestart { offset: SystemRestart } },
+    SelWindowEvent { record_id: 1596, bmc_clock_rendering: "09/12/2026 10:47:28 AM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70331102" } } },
+    SelWindowEvent { record_id: 1597, bmc_clock_rendering: "09/12/2026 10:52:35 AM UTC", kind: BootRestart { offset: SystemRestart } },
+    SelWindowEvent { record_id: 1598, bmc_clock_rendering: "09/12/2026 10:52:39 AM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70331102" } } },
+    SelWindowEvent { record_id: 1599, bmc_clock_rendering: "09/12/2026 10:59:49 AM UTC", kind: OtherStandardEvent { rendering: "Power Unit #0xe0 | AC lost | Asserted" } },
+    SelWindowEvent { record_id: 1600, bmc_clock_rendering: "09/12/2026 10:59:51 AM UTC", kind: BootRestart { offset: InitiatedByPowerUp } },
+    SelWindowEvent { record_id: 1601, bmc_clock_rendering: "09/12/2026 11:00:01 AM UTC", kind: OtherStandardEvent { rendering: "Fan #0x0f | Device Present | Asserted" } },
+    SelWindowEvent { record_id: 1602, bmc_clock_rendering: "09/12/2026 11:00:01 AM UTC", kind: OtherStandardEvent { rendering: "Fan #0x10 | Device Present | Asserted" } },
+    SelWindowEvent { record_id: 1603, bmc_clock_rendering: "09/12/2026 11:00:01 AM UTC", kind: OtherStandardEvent { rendering: "Fan #0x11 | Device Present | Asserted" } },
+    SelWindowEvent { record_id: 1604, bmc_clock_rendering: "09/12/2026 11:00:01 AM UTC", kind: OtherStandardEvent { rendering: "Fan #0x12 | Device Present | Asserted" } },
+    SelWindowEvent { record_id: 1605, bmc_clock_rendering: "09/12/2026 11:00:01 AM UTC", kind: OtherStandardEvent { rendering: "Fan #0x13 | Device Present | Asserted" } },
+    SelWindowEvent { record_id: 1606, bmc_clock_rendering: "09/12/2026 11:00:01 AM UTC", kind: OtherStandardEvent { rendering: "Fan #0x14 | Device Present | Asserted" } },
+    SelWindowEvent { record_id: 1607, bmc_clock_rendering: "09/12/2026 11:00:01 AM UTC", kind: OtherStandardEvent { rendering: "Fan #0x15 | Device Present | Asserted" } },
+    SelWindowEvent { record_id: 1608, bmc_clock_rendering: "09/12/2026 11:00:01 AM UTC", kind: OtherStandardEvent { rendering: "Fan #0x16 | Device Present | Asserted" } },
+    SelWindowEvent { record_id: 1609, bmc_clock_rendering: "09/12/2026 11:00:19 AM UTC", kind: OtherStandardEvent { rendering: "System ACPI Power State #0x4d | S0/G0: working | Asserted" } },
+    SelWindowEvent { record_id: 1610, bmc_clock_rendering: "09/12/2026 11:00:24 AM UTC", kind: OtherStandardEvent { rendering: "System ACPI Power State #0x5e | S0/G0: working | Asserted" } },
+    SelWindowEvent { record_id: 1611, bmc_clock_rendering: "09/12/2026 11:00:29 AM UTC", kind: OtherStandardEvent { rendering: "Power Supply #0xea | Presence detected | Asserted" } },
+    SelWindowEvent { record_id: 1612, bmc_clock_rendering: "09/12/2026 11:00:29 AM UTC", kind: OtherStandardEvent { rendering: "Power Supply #0xeb | Presence detected | Asserted" } },
+    SelWindowEvent { record_id: 1613, bmc_clock_rendering: "09/12/2026 11:00:29 AM UTC", kind: OtherStandardEvent { rendering: "Power Supply #0xeb | Power Supply AC lost | Asserted" } },
+    SelWindowEvent { record_id: 1614, bmc_clock_rendering: "09/12/2026 12:04:20 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "caef7107ffff" } } },
+    SelWindowEvent { record_id: 1615, bmc_clock_rendering: "09/12/2026 12:04:21 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "caeff107ffff" } } },
+  ],
+}
+
+fn mtcollins1_restore_sel_window() -> List<SelWindowEvent> {
+  mtcollins1_stable_boot_window_capture.events
+}
+
+// THE CURSOR A COLLECTOR WOULD HAVE RECORDED BEFORE THE SWAP: 0x63f, the AC loss that ended the
+// dual-die loop. Everything after it is the restored sixteen-module population.
+data mtcollins1_sel_cursor_before_restore: Int = 1599
+
+// THE CURSOR BEFORE THE LOOP'S LAST FOUR RESTARTS: 0x636. The loop window is cut at the cursor
+// above on the other side, so it holds the failure and nothing of the recovery.
+data mtcollins1_sel_cursor_before_last_loop_restarts: Int = 1590
+
+// ── the three held-session boot captures ──────────────────────────────────────────────────────
+
+// EACH CAPTURE IS ONE GUNBC-BOOTRUN: collector attached before the stimulus and held across it,
+// the stimulus a chassis power cycle whose argv and rc the capture records, authentication via
+// the environment so no credential is on any argv, and the rule that the run ends on host-produced
+// evidence or an explicit failure terminal -- a quiet interval is not a result. Every capture
+// holds the firmware's populated-DIMM table and its trained-capacity line; none of those lines
+// is read by any fold in this change, which is the frontier below.
+//
+// THE RESTORED POPULATION: sixteen 16GB modules, eight per socket at one DIMM per channel. The
+// firmware table lists SK0 MC0..MC7 and SK1 MC0..MC7; "DRAM: 256GB DDR4 2666 SECDED ECC"; the
+// boot reaches the UEFI interactive shell for want of boot media. This is the population the
+// stable-boot window above was taken under.
+data mtcollins1_sixteen_module_restore_capture: SolCaptureUnderCondition = SolCaptureUnderCondition {
+  label: "sixteen-module restore verification, 2026-09-13T01:22Z",
+  condition: Present { value: ChassisPowerCycle },
+  artifact_path: "artifacts/bmc/mtcollins1-sixteen-module-restore-verification-2026-09-13.txt",
+  bytes: byte_size(count: 31692),
+  digest: Sha256Hash(Sha256Digest { hex: "340b177097d9abea3ade8ef155f12bfbb454de1a33c07c99f4a2a4d17f321ac8" }),
+}
+
+// RUN A, THE SPARSE REFERENCE PAIR: one 16GB module in J1 (SK0 MC0) and one in J17 (SK1 MC0), every
+// other connector empty. The capture's own subject line calls it a matched AFR4N pair and its own
+// subject-correction line, written at capture time, says the firmware table contradicts that: SK0
+// MC0 is HMA82GR7AFR8N-VK (2R x8) and SK1 MC0 is HMA82GR7AFR4N-VK (1R x4), a MIXED pair. The table
+// is the authority; the subject line is kept as what was written. "DRAM: 32GB DDR4 2666 SECDED
+// ECC"; the run ends in the PXE retry loop.
+data mtcollins1_run_a_sparse_reference_capture: SolCaptureUnderCondition = SolCaptureUnderCondition {
+  label: "run A, sparse reference pair J1/J17, 2026-09-13T01:48Z",
+  condition: Present { value: ChassisPowerCycle },
+  artifact_path: "artifacts/bmc/mtcollins1-run-a-sparse-reference-j1-j17-2026-09-13.txt",
+  bytes: byte_size(count: 17244),
+  digest: Sha256Hash(Sha256Digest { hex: "268e7154c751c2feb2aa1920e02a68018e2358c307ddb38ae3433a1d66629cd3" }),
+}
+
+// RUN B, THE SPARSE 3DS PAIR: one Samsung M393A8G40D40-CRB 64GB 3DS in SK0 MC0 and one in SK1 MC0,
+// the reference pair removed. The firmware that refused these modules in a mixture
+// (gunbc.mtcollins_3ds_memory_change) trains them alone: "DRAM: 128GB DDR4 2133 SYMBOL ECC"; the
+// run ends in the PXE retry loop.
+data mtcollins1_run_b_sparse_samsung_capture: SolCaptureUnderCondition = SolCaptureUnderCondition {
+  label: "run B, sparse Samsung 3DS pair, 2026-09-13T03:08Z",
+  condition: Present { value: ChassisPowerCycle },
+  artifact_path: "artifacts/bmc/mtcollins1-run-b-sparse-samsung-2026-09-13.txt",
+  bytes: byte_size(count: 23200),
+  digest: Sha256Hash(Sha256Digest { hex: "54eef1110f9fb84b5d013c6ae84e04526f03abe22ad0d4bf76d8fc09f274a277" }),
+}
+
+data mtcollins1_restore_boot_captures: List<SolCaptureUnderCondition> = [
+  mtcollins1_sixteen_module_restore_capture,
+  mtcollins1_run_a_sparse_reference_capture,
+  mtcollins1_run_b_sparse_samsung_capture,
+]
+
+// THE READING TAKES THE CAPTURE'S LINES FROM WHOEVER READ THE BYTES. This module transcribes none
+// of them: a trained boot prints several hundred checkpoint lines, and a copy of them beside the
+// artifact would be a second authority for the same bytes. The witness reads the committed file,
+// splits it, and hands the lines here; the row supplies the digest and the byte count the witness
+// checks the read against.
+fn mtcollins1_restore_sol_reading(capture: SolCaptureUnderCondition, lines: List<String>) -> SolCaptureReading {
+  sol_capture_reading(
+    capture_path: capture.artifact_path,
+    bytes: capture.bytes,
+    digest: capture.digest,
+    banner_digest: mtcollins1_sol_session_banner_digest,
+    lines: lines,
+  )
+}
+
+// ── the folds over the corpus ──────────────────────────────────────────────────────────────────
+
+// THE RESTORED POPULATION'S WINDOW, read beside the console capture taken under it.
+fn mtcollins1_restore_verdict(console: SolCaptureReading) -> PreOsBringupVerdict {
+  pre_os_bringup_verdict(
+    window: sel_window_after_cursor(window: mtcollins1_restore_sel_window(), cursor_record_id: mtcollins1_sel_cursor_before_restore),
+    console: console,
+    profile: mtcollins1_pre_os_capabilities,
+  )
+}
+
+// THE LOOP'S LAST FOUR RESTARTS, read beside the banner-only capture as the 32-DIMM loop is: no
+// held-session console exists for these four boots, and a banner-only reading is the honest "the
+// collector was not there" the fold already knows how to weigh.
+fn mtcollins1_pre_restore_loop_verdict() -> PreOsBringupVerdict {
+  pre_os_bringup_verdict(
+    window: filter(
+      xs: sel_window_after_cursor(window: mtcollins1_restore_sel_window(), cursor_record_id: mtcollins1_sel_cursor_before_last_loop_restarts),
+      f: e => e.record_id <= mtcollins1_sel_cursor_before_restore,
+    ),
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  )
+}
+
+// THE LOOP CONTROL: the four restarts before the swap are the same stable terminal the 32-DIMM
+// window resolved to, so the rows transcribed here carry the failure they claim to leave behind.
+fn check_loop_before_restore_is_the_bounded_terminal() -> ProcessExit {
+  match mtcollins1_pre_restore_loop_verdict() {
+    PhysicalRemediationRequired { restarts_without_progress: n, localization: _ } =>
+      if n == 3 {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("pre-restore loop: expected three closed restarts without progress before 0x63f, counted ", to_string(n)))
+      }
+    _ => exit_failure(reason: "pre-restore loop: records 0x637..0x63f -- four restarts, no firmware-progress record -- did not resolve to PhysicalRemediationRequired")
+  }
+}
+
+// THE RESTORE IS NOT A BOOT UNDER THIS MODEL, AND THE CHECK SAYS SO: the window after the swap
+// carries one power-up and no restart, so no cycle closes without progress and no terminal is
+// reached -- and no cycle SEES progress either, because the controller wrote no firmware-progress
+// record. The verdict is therefore undetermined, and the CAUSE is the console's: the fold decides
+// an unrecognised `ERROR:` statement BEFORE it reads the window, so the UEFI boot-option line is
+// what names the cause, whatever the window holds. That is also why this check alone cannot
+// establish "no restart after the swap" -- check_no_restart_after_the_swap below reads the window
+// through the model's own cycle fold for that. Every other outcome here is red for a stated
+// reason: FirmwareProgressObserved would be the fold minting a boot from silence; a terminal arm
+// would be reading recovery as failure; any other undetermined cause would mean the console
+// reading is not the one this corpus binds.
+fn check_restore_window_is_undetermined_not_terminal(console: SolCaptureReading) -> ProcessExit {
+  match mtcollins1_restore_verdict(console: console) {
+    BringupUndetermined { cause: c } =>
+      match c {
+        FirmwareStatedUnrecognizedError { statement: st } =>
+          if st == "ERROR: Boot option loading failed" {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat("restore window: undetermined on an unexpected firmware statement: ", st as String))
+          }
+        _ => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
+      }
+    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } =>
+      exit_failure(reason: "restore window: a window with no firmware-progress record was read as progress")
+    PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } =>
+      exit_failure(reason: "restore window: a window with one power-up and no restart was read as the bounded terminal")
+    TrainingRefusedByFirmwareStatement { statement: st, localization: _ } =>
+      exit_failure(reason: concat("restore window: a trained boot was read as a firmware refusal: ", st as String))
+  }
+}
+
+// NO RESTART AFTER THE SWAP, read through the model's own cycle fold: the window after 0x63f
+// opens exactly one cycle, at the power-up 0x640, and closes none. A restart record anywhere
+// after 0x640 closes that cycle without progress and is red here; so is a window that opens on
+// anything but the power-up. This is the executable form of the PR's "zero restarts" figure --
+// and, per the fold's own law, an open cycle with no progress is evidence of nothing further:
+// the window's end is not a boot.
+fn check_no_restart_after_the_swap() -> ProcessExit {
+  let cycles: BootCycleWindow = boot_cycles(window: sel_window_after_cursor(window: mtcollins1_restore_sel_window(), cursor_record_id: mtcollins1_sel_cursor_before_restore))
+  let closed = list_length(items: cycles.closed)
+  if closed != 0 {
+    exit_failure(reason: concat("restore window: ", to_string(closed), " cycle(s) closed by a restart after the swap; the window claims none"))
+  } else {
+    match cycles.open {
+      Absent => exit_failure(reason: "restore window: no cycle opened after the swap, so the power-up record 0x640 is missing from the transcription")
+      Present { value: c } =>
+        if c.restart_record_id != 1600 {
+          exit_failure(reason: concat("restore window: the open cycle began at record ", to_string(c.restart_record_id), ", not at the power-up 0x640"))
+        } else if c.progress_seen {
+          exit_failure(reason: "restore window: progress was read in the open cycle, but the controller wrote no firmware-progress record")
+        } else {
+          ExitSuccess
+        }
+    }
+  }
+}
+
+// ── the frontier ───────────────────────────────────────────────────────────────────────────────
+
+// WHAT THESE CAPTURES SAY THAT NOTHING HERE READS. Each holds the firmware's "DRAM populated
+// DIMMs:" table in SK<socket> MC<mcu> S<slot> addressing with the printed part token, rank and
+// width per position, and one "DRAM: <capacity> DDR4 <rate> <ecc>" line; two end in the UEFI
+// interactive shell and two in the PXE retry loop, both of which are boot-device selection --
+// the firmware finished initialising. Those are the facts the PR that landed this corpus stated
+// in prose -- 256 GiB on sixteen modules, 32 GiB on the mixed pair, 128 GiB on the Samsung pair
+// -- and they are carried here by the committed bytes alone, not by any row, so nothing in the
+// corpus can be refuted by them yet. This row is what retires that.
+data mtcollins1_restore_positive_terminal_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a firmware-console positive terminal for the pre-OS bring-up verdict -- a grammar row for the DRAM capacity statement and for entry into boot-device selection (UEFI shell, PXE retry) that yields a FirmwareConsoleReport arm the verdict fold reads as the host having completed initialisation, and a reader for the populated-DIMM table that binds each printed position and part token to gunbc.memory_configuration positions -- SUFFICIENT FOR every held-session GUNBC-BOOTRUN capture on this controller family, so that trained capacity per socket and the population that trained are folded from the bytes and never restated in prose; NOT satisfied by transcribing the capacity line into a data row, by this module's byte-count check, or by a witness asserting the line is present" as NonEmptyStr,
+)
