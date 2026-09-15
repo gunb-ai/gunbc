@@ -1,0 +1,40 @@
+module test.probe.refinement_seam_admission_probe
+
+// THIS MODULE RESOLVES TODAY, AND THAT IS THE FINDING. Every construction below puts a value the
+// declared refinement forbids into a position declared to hold it, and the compiler admits all of
+// them. It is an EXPECTING-RED hole, not a red: the witness asserts the admission, and flips when
+// the wall lands (DESIGN 4b(4) -- the probe then becomes the permanent regression control rather
+// than retiring).
+//
+// std.types declares `NonEmptyStr = String where non_empty`. Enforcement lives in
+// v1.compiler.infer where_refinement_mismatch_diags, reached from infer_expr wherever an expected
+// type is threaded -- but where_refinement_diags_for_predicate DECIDES ONLY WHEN THE VALUE IS A
+// LITERAL, and every non-deciding arm emits WhereRefinementUnenforced, whose six reasons are all
+// advisory by policy (v1.std.core is_where_refinement_unenforced_advisory_reason). So the wall is
+// a property of the SPELLING AT THE SITE, not of the refinement.
+
+import std.types { String, Int, List, NonEmptyStr, PathSegment }
+
+// THE #124 SHAPE. A blank element in a List<String> flows into a List<NonEmptyStr> parameter with
+// no cast. Measured: zero blocking diagnostics AND zero advisory -- the seam produces no
+// diagnostic of any severity, which is worse than the advisory seams below.
+fn blanks() -> List<String> { ["", "b"] }
+
+fn take_nonempty_list(xs: List<NonEmptyStr>) -> Int { count(xs) }
+
+fn blank_reaches_a_nonempty_list() -> Int { take_nonempty_list(xs: blanks()) }
+
+// A ONE-LINE ALIAS DEFEATS THE LITERAL WALL. `data v: PathSegment = "" as PathSegment` REFUSES
+// (blocking TypeMismatch, the positive control the witness asserts). The identical construction
+// through a local alias of that same type is admitted silently.
+type Seg = PathSegment
+
+data blank_through_an_alias: Seg = "" as Seg
+
+// The advisory seams: a value that is not a literal is exempt at every position that threads an
+// expected type. One WhereRefinementUnenforced advisory each, none of them blocking.
+fn take_nonempty(s: NonEmptyStr) -> Int { 1 }
+
+fn any_string_reaches_a_nonempty_parameter(raw: String) -> Int { take_nonempty(s: raw) }
+
+fn any_string_becomes_a_nonempty_return(raw: String) -> NonEmptyStr { raw as NonEmptyStr }

@@ -1,0 +1,340 @@
+module test.claim.frontend_eval_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import gunbc.frontend_eval.task {
+  EvalTask, FrontendMutationClass, TextMutation,
+  ExpressionNesting, LabeledPositionShape, CoproductIdentity, MatchArmCoverage, CrossModuleNameSentinel,
+  RefusedAtParse, RefusedAtResolve,
+  frontend_eval_tasks, frontend_eval_task_count, mutation_class_scored_separately, mutation_class_key,
+  frontend_eval_model_tasks_json, frontend_eval_judge_spec_json, frontend_stage_key,
+}
+import gunbc.frontend_eval.attempt {
+  EvalAttempt, EvalUsage, EvalOutcome, ArmSummary, ModelContextIdentity, ModelContextHashed, ModelContextUnrecorded,
+  AcceptedRepair, FrontendStillRed, TestsRed, ScopeExceeded, BudgetExhausted, TransportFailed,
+  arm_summary, frontend_eval_report, eval_outcome_accepted, ReportRead, ReportRendered, ReportNotRendered,
+  ReportStanding, ReportDriverDerived, ReportProvisional,
+}
+import gunbc.frontend_eval.attempt_arm { EvalArm, LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard, eval_arms }
+import gunbc.frontend_eval.experiment {
+  EvalCohort, EvalExperiment, EvalTreatment, CardIdentity, CardAbsent, CardPresent, ToolSurfaceIdentity, ToolsAbsent, ToolsPresent,
+  treatment_effort_wire,
+}
+import extdeps.zhipu.glm_5_3_flash { GlmReasoningEffort, GlmEffortLow, GlmEffortMax }
+import gunbc.frontend_eval.serving_identity { RealizedServing, ObservedServing, RuntimeUnobserved, realized_serving_identity }
+import gunbc.spark.vllm_observed { vllm_models_route_readback, vllm_models_entry_created, vllm_self_reported_version }
+import product.placement_supply { HostIdentity }
+import gunbc.frontend_eval.card { frontend_language_card }
+import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, refusal_names, mutation_site_occurrences, test_fns }
+import std.measure { millisecond, token_count, token_count_value }
+import extdeps.vllm.sampling_params { sampling_temperature, SamplingTemperature }
+
+fn tasks_in_class(class: FrontendMutationClass) -> Int {
+  count(frontend_eval_tasks |> filter(t => t.class == class))
+}
+
+// THE ROSTER SHAPE THE RULING ADMITTED: four language classes of four, one sentinel class of four,
+// twenty rows. A row count alone would be a change detector; the per-class join is the claim.
+test fn roster_is_four_per_class_over_five_classes() -> Bool {
+  frontend_eval_task_count() == 20
+    && tasks_in_class(class: ExpressionNesting) == 4
+    && tasks_in_class(class: LabeledPositionShape) == 4
+    && tasks_in_class(class: CoproductIdentity) == 4
+    && tasks_in_class(class: MatchArmCoverage) == 4
+    && tasks_in_class(class: CrossModuleNameSentinel) == 4
+}
+
+fn id_occurs(id: NonEmptyStr) -> Int {
+  count(frontend_eval_tasks |> filter(t => t.id == id))
+}
+
+test fn task_ids_are_unique() -> Bool {
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && id_occurs(id: t.id) == 1)
+}
+
+// A MUTATION MUST CHANGE THE TEXT AND NAME A SITE. An empty `old` matches everywhere and `old == new`
+// mutates nothing; either would be a task whose RED is unauthorable.
+test fn every_mutation_names_a_site_and_changes_it() -> Bool {
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && t.mutation.old != "" && t.mutation.old != t.mutation.new)
+}
+
+// NESTING IS THE ONLY PARSE-STAGE CLASS, and every resolve-stage task names the lexeme its refusal
+// must carry, so the control run can refuse a specimen that reds at the wrong wall.
+test fn parse_stage_is_exactly_the_nesting_class() -> Bool {
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && match t.expected_stage {
+    RefusedAtParse => t.class == ExpressionNesting
+    RefusedAtResolve => t.class != ExpressionNesting && t.expected_lexeme != ""
+  })
+}
+
+test fn only_the_sentinel_is_scored_separately() -> Bool {
+  mutation_class_scored_separately(class: CrossModuleNameSentinel)
+    && mutation_class_scored_separately(class: ExpressionNesting) == false
+    && mutation_class_scored_separately(class: LabeledPositionShape) == false
+    && mutation_class_scored_separately(class: CoproductIdentity) == false
+    && mutation_class_scored_separately(class: MatchArmCoverage) == false
+}
+
+// THE MODEL-VISIBLE PROJECTION NAMES EVERY TASK AND CARRIES NO REFERENCE REPAIR; the judge
+// specification carries the repair. The boundary between them is what keeps the answer private.
+test fn model_projection_names_tasks_and_hides_the_repair() -> Bool {
+  let visible = frontend_eval_model_tasks_json()
+  let judge = frontend_eval_judge_spec_json()
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc
+    && contains(visible, join(["\"id\": \"", t.id as String, "\""], ""))
+    && contains(visible, "\"old\"") == false
+    && contains(visible, "expected_lexeme") == false
+    && contains(judge, join(["\"id\": \"", t.id as String, "\""], ""))
+    && (t.expected_lexeme == "" || contains(judge, t.expected_lexeme)))
+}
+
+fn fixture_serving(version: String) -> RealizedServing {
+  RealizedServing {
+    observed: ObservedServing {
+      host: "srv9" as HostIdentity, port: 30000,
+      models: vllm_models_route_readback(served_model_id: "m" as NonEmptyStr, configured_model_path: "/w" as NonEmptyStr, max_model_len: token_count(count: 8)),
+      read_at: vllm_models_entry_created(created: 1),
+      version: vllm_self_reported_version(version_string: version as NonEmptyStr),
+    },
+    runtime: RuntimeUnobserved,
+  }
+}
+
+data fixture_answered_by: NonEmptyStr = realized_serving_identity(s: fixture_serving(version: "0.1"))
+
+fn fixture_cohort(t: SamplingTemperature, identity: String) -> EvalCohort {
+  EvalCohort {
+    identity: identity as NonEmptyStr, serving: fixture_serving(version: "0.1"),
+    model_id: "m" as NonEmptyStr, model_snapshot: "s" as NonEmptyStr, compiler_program_sha256: "c" as NonEmptyStr,
+    driver_sha256: "d" as NonEmptyStr, task_set_sha256: "r" as NonEmptyStr, prompt_template_sha256: "p" as NonEmptyStr,
+    clear_thinking: false, temperature: t, max_tokens: token_count(count: 1),
+  }
+}
+
+fn fixture_experiment(cohort: String, identity: String, arm: EvalArm, effort: GlmReasoningEffort, tools: ToolSurfaceIdentity, card: CardIdentity) -> EvalExperiment {
+  EvalExperiment { identity: identity as NonEmptyStr, cohort: cohort as NonEmptyStr, treatment: EvalTreatment { arm: arm, effort: effort, tools: tools, card: card } }
+}
+
+data fixture_tools: ToolSurfaceIdentity = ToolsPresent { schema_sha256: "ts" as NonEmptyStr, implementation_sha256: "ti" as NonEmptyStr }
+
+fn fixture_experiments() -> List<EvalExperiment> {
+  [
+    fixture_experiment(cohort: "cohort-1", identity: "exp-bare", arm: LowEffortBare, effort: GlmEffortLow, tools: ToolsAbsent, card: CardAbsent),
+    fixture_experiment(cohort: "cohort-1", identity: "exp-tools", arm: LowEffortTools, effort: GlmEffortLow, tools: fixture_tools, card: CardAbsent),
+    fixture_experiment(cohort: "cohort-1", identity: "exp-card", arm: LowEffortToolsCard, effort: GlmEffortLow, tools: fixture_tools, card: CardPresent { sha256: "k" as NonEmptyStr }),
+  ]
+}
+
+fn fixture_attempt_with(context: ModelContextIdentity, experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
+  EvalAttempt {
+    task_id: id as NonEmptyStr, arm: arm, experiment: experiment as NonEmptyStr, answered_by: fixture_answered_by,
+    record_sha256: "rec" as NonEmptyStr, model_context: context,
+    usage: EvalUsage { prompt_tokens: token_count(count: 0), completion_tokens: token_count(count: reasoning * 2), reasoning_tokens: token_count(count: reasoning) },
+    cycles: cycles, tool_calls: 0, edits: 1, outcome: outcome, wall: millisecond(count: 0),
+  }
+}
+
+// THE FIXTURE IS BUILT THROUGH THE TEMPERATURE'S OWN CONSTRUCTOR (a refused temperature would empty
+// the fixture, and the summary witness would then fail on `attempts == 3`, not pass vacuously).
+fn fixture_attempt(experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
+  fixture_attempt_with(context: ModelContextUnrecorded, experiment: experiment, id: id, arm: arm, outcome: outcome, reasoning: reasoning, cycles: cycles)
+}
+
+fn fixture_attempt_hashed(experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
+  fixture_attempt_with(context: ModelContextHashed { sha256: "ctx" as NonEmptyStr }, experiment: experiment, id: id, arm: arm, outcome: outcome, reasoning: reasoning, cycles: cycles)
+}
+
+data fixture_attempts: List<EvalAttempt> = [
+  fixture_attempt(experiment: "exp-bare", id: "pareto.nesting", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 10, cycles: 1),
+  fixture_attempt(experiment: "exp-bare", id: "pareto.arm", arm: LowEffortBare, outcome: FrontendStillRed, reasoning: 1000, cycles: 6),
+  fixture_attempt(experiment: "exp-bare", id: "pareto.sentinel", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 30, cycles: 3),
+  fixture_attempt(experiment: "exp-tools", id: "pareto.nesting", arm: LowEffortTools, outcome: ScopeExceeded, reasoning: 5, cycles: 1),
+]
+
+// SENTINELS ARE FOLDED APART, DENOMINATORS ARE THE ROSTER, AND A RED'S COST IS COUNTED: the
+// 1000-token failure on pareto.arm is in the language population's reasoning total (1010 over 2
+// run) and absent from its accepted total (10 over 1); pareto.sentinel lands in the sentinel fold;
+// the fourteen language tasks with no row count as not run rather than vanish from the ratio.
+test fn arm_summary_folds_sentinel_apart_and_counts_red_cost() -> Bool {
+  let s = arm_summary(attempts: fixture_attempts, arm: LowEffortBare)
+  s.language.tasks == 16 && s.language.run == 2 && s.language.accepted == 1 && s.language.accepted_in_one_cycle == 1
+    && token_count_value(t: s.language.reasoning_tokens) == 1010
+    && token_count_value(t: s.language.reasoning_tokens_accepted) == 10
+    && s.language.cycles == 7
+    && s.sentinel.tasks == 4 && s.sentinel.run == 1 && s.sentinel.accepted == 1 && s.sentinel.accepted_in_one_cycle == 0
+    && token_count_value(t: s.sentinel.reasoning_tokens) == 30
+}
+
+// SCOPE EXCEEDED IS NOT ACCEPTED, however green the tests were: the evaluator-modification wall.
+test fn scope_exceeded_is_not_an_accepted_repair() -> Bool {
+  eval_outcome_accepted(outcome: ScopeExceeded) == false
+    && eval_outcome_accepted(outcome: TestsRed) == false
+    && eval_outcome_accepted(outcome: AcceptedRepair)
+    && arm_summary(attempts: fixture_attempts, arm: LowEffortTools).language.accepted == 0
+}
+
+fn report_with(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportRead {
+  match sampling_temperature(value: 0.0) {
+    Absent => ReportNotRendered { detail: "fixture temperature refused" }
+    Present { value: t } => frontend_eval_report(cohort: fixture_cohort(t: t, identity: "cohort-1"), experiments: experiments, attempts: attempts)
+  }
+}
+
+fn rendered(attempts: List<EvalAttempt>) -> String {
+  match report_with(experiments: fixture_experiments(), attempts: attempts) {
+    ReportRendered { text, standing: _ } => text
+    ReportNotRendered { detail: _ } => ""
+  }
+}
+
+fn refused_with(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>, lexeme: String) -> Bool {
+  match report_with(experiments: experiments, attempts: attempts) {
+    ReportRendered { text: _, standing: _ } => false
+    ReportNotRendered { detail } => contains(detail, lexeme)
+  }
+}
+
+// A PARTIAL POPULATION PRINTS AS PARTIAL (1/16 with 14 not run, never 1/2), costs are means over
+// every attempted row (505 = (10 + 1000) / 2) with the accepted-only mean beside them (10), and a
+// never-run population prints as not run with no numbers.
+test fn report_renders_one_line_per_arm_from_rows() -> Bool {
+  let r = rendered(attempts: fixture_attempts)
+  contains(r, "standing: PROVISIONAL -- 4 row(s)")
+    && contains(r, "| low_bare | 1/16 (14 not run) | 1 | 505 | 10 | 3 | 0 | 1/4 (3 not run) | 0 | 30 | 30 | 3 | 0 |")
+    && contains(r, "| low_tools | 0/16 (15 not run) | 0 | 5 | - | 1 | 0 | not run | - | - | - | - | - |")
+    && contains(r, "| max_bare | not run | - | - | - | - | - | not run | - | - | - | - | - |")
+    && contains(r, "1/2") == false
+    && count(eval_arms) == 4
+}
+
+// THE CARD IS A PROJECTION: it must carry the operator table and the item forms it claims to
+// project, and it must not carry a task's mutation text (an answer leaking into the arm).
+test fn card_projects_operators_and_item_forms_and_no_task_text() -> Bool {
+  let card = frontend_language_card()
+  contains(card, "`&&` left 7 right 8")
+    && contains(card, " match ")
+    && contains(card, "- `fn` <TypeParams> (params) -> ReturnType (return required) body: expression")
+    && fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && (t.mutation.new == "" || contains(card, t.mutation.new) == false))
+}
+
+// THE CONTROL INSTRUMENT'S PURE FOLDS, exercised hermetically: stage classification from the
+// refusal's own vocabulary, the occurrence count that gates a mutation, and test-fn discovery.
+// Closure membership is the module graph's fact and is not re-tested here. The effectful run is
+// control_run.
+fn stage_key_read(text: String) -> String {
+  match refusal_stage(text: text) {
+    StageRead { stage } => frontend_stage_key(stage: stage)
+    StageUnclassified => "unclassified"
+  }
+}
+
+// A TEXT WITH NEITHER STAGE'S VOCABULARY IS UNCLASSIFIED: a panic or a missing binary that happens
+// to echo the expected lexeme must not read as a resolve-stage refusal.
+test fn control_stage_is_read_from_the_refusal_vocabulary() -> Bool {
+  stage_key_read(text: "x.dag:67:20: error: expected FatArrow, found Newline") == "parse"
+    && stage_key_read(text: "x.dag:1-1: heads-only parse: unterminated function body") == "parse"
+    && stage_key_read(text: "error: resolve failed for x.dag\n  cause: x.dag:49:22: error: non-exhaustive match: missing variant(s) Equal") == "resolve"
+    && stage_key_read(text: "thread 'main' panicked at cli_run.rs: interval_lower") == "unclassified"
+    && stage_key_read(text: "") == "unclassified"
+}
+
+test fn control_occurrences_counts_disjoint_matches() -> Bool {
+  mutation_site_occurrences(haystack: "a => b\n  Equal => Equal\n  c", needle: "Equal => Equal") == 1
+    && mutation_site_occurrences(haystack: "saw_worse: x, saw_worse: y", needle: "saw_worse") == 2
+    && mutation_site_occurrences(haystack: "nothing here", needle: "Equal") == 0
+}
+
+test fn control_discovers_test_fns_at_module_scope() -> Bool {
+  test_fns(source: "test fn a_b() -> Bool { true }\nfn c() -> Bool { true }\n  test fn indented() -> Bool { true }\ntest fn d() -> Bool { true }\n") == ["a_b", "d"]
+}
+
+// THE TEMPERATURE DOMAIN IS BOUNDED BY CONSTRUCTION: a negative sampling temperature has no
+// constructor, greedy (0) and positive values do.
+test fn negative_sampling_temperature_has_no_constructor() -> Bool {
+  match sampling_temperature(value: -3.0) {
+    Present { value: _ } => false
+    Absent => match sampling_temperature(value: 0.7) {
+      Present { value: t } => t.value == 0.7
+      Absent => false
+    }
+  }
+}
+
+// THE REPORT REFUSES A POPULATION IT CANNOT SUM HONESTLY: a second row for one (task, arm) cell
+// would double a numerator its denominator counts once, and a task outside the roster would add
+// cost with no task behind it. Both refuse by name instead of rendering (review 65900).
+test fn report_refuses_duplicate_cells_and_unknown_tasks() -> Bool {
+  let dup = concat(fixture_attempts, fixture_attempts)
+  let unknown = [fixture_attempt(experiment: "exp-bare", id: "nowhere.task", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)]
+  refused_with(experiments: fixture_experiments(), attempts: dup, lexeme: "more than one attempt")
+    && refused_with(experiments: fixture_experiments(), attempts: unknown, lexeme: "nowhere.task")
+}
+
+// ONE MANIFEST PER ARM, AND IT MUST BE THE ARM'S: a row naming an unknown manifest, a manifest of
+// another arm, or a second manifest beside the arm's first all refuse -- the table never spans
+// two experiments.
+test fn report_refuses_a_population_spanning_two_manifests() -> Bool {
+  let foreign = concat(fixture_attempts, [fixture_attempt(experiment: "exp-other", id: "pareto.labeled", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)])
+  let crossed = [fixture_attempt(experiment: "exp-tools", id: "pareto.labeled", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)]
+  refused_with(experiments: fixture_experiments(), attempts: foreign, lexeme: "manifest")
+    && refused_with(experiments: fixture_experiments(), attempts: crossed, lexeme: "manifest")
+}
+
+// THE COHORT AND THE TREATMENTS ARE LAWS, NOT LABELS: an experiment from another cohort, an arm
+// whose treatment contradicts its name (LowEffortTools with no tools; LowEffortBare at max), and a
+// card arm carrying different tools than the tools arm all refuse before any row is folded.
+test fn report_refuses_foreign_cohort_and_mislabeled_treatments() -> Bool {
+  let other_cohort = [fixture_experiment(cohort: "cohort-2", identity: "exp-bare", arm: LowEffortBare, effort: GlmEffortLow, tools: ToolsAbsent, card: CardAbsent)]
+  let toolless_tools_arm = [fixture_experiment(cohort: "cohort-1", identity: "exp-tools", arm: LowEffortTools, effort: GlmEffortLow, tools: ToolsAbsent, card: CardAbsent)]
+  let max_bare_named_low = [fixture_experiment(cohort: "cohort-1", identity: "exp-bare", arm: LowEffortBare, effort: GlmEffortMax, tools: ToolsAbsent, card: CardAbsent)]
+  let card_with_other_tools = concat(fixture_experiments() |> filter(e => e.identity != "exp-card" as NonEmptyStr),
+    [fixture_experiment(cohort: "cohort-1", identity: "exp-card", arm: LowEffortToolsCard, effort: GlmEffortLow, tools: ToolsPresent { schema_sha256: "other" as NonEmptyStr, implementation_sha256: "ti" as NonEmptyStr }, card: CardPresent { sha256: "k" as NonEmptyStr })])
+  refused_with(experiments: other_cohort, attempts: fixture_attempts, lexeme: "cohort")
+    && refused_with(experiments: toolless_tools_arm, attempts: fixture_attempts, lexeme: "low_tools")
+    && refused_with(experiments: max_bare_named_low, attempts: fixture_attempts, lexeme: "low_bare")
+    && refused_with(experiments: card_with_other_tools, attempts: fixture_attempts, lexeme: "tool surface")
+    && treatment_effort_wire(t: EvalTreatment { arm: MaxEffortBare, effort: GlmEffortMax, tools: ToolsAbsent, card: CardAbsent }) == "max" as NonEmptyStr
+}
+
+// STANDING IS STRUCTURAL: rows with hashed contexts render driver-derived; one unrecorded context
+// makes the whole report provisional, with the count in the standing.
+test fn report_standing_is_provisional_on_any_unrecorded_context() -> Bool {
+  let hashed = [
+    fixture_attempt_hashed(experiment: "exp-bare", id: "pareto.nesting", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1),
+  ]
+  match report_with(experiments: fixture_experiments(), attempts: hashed) {
+    ReportNotRendered { detail: _ } => false
+    ReportRendered { text, standing } => contains(text, "standing: driver-derived") && match standing {
+      ReportDriverDerived => true
+      ReportProvisional { unrecorded_contexts: _ } => false
+    }
+  } && match report_with(experiments: fixture_experiments(), attempts: concat(hashed, [fixture_attempt(experiment: "exp-bare", id: "pareto.arm", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)])) {
+    ReportNotRendered { detail: _ } => false
+    ReportRendered { text: _, standing } => match standing {
+      ReportDriverDerived => false
+      ReportProvisional { unrecorded_contexts } => unrecorded_contexts == 1
+    }
+  }
+}
+
+// THE LEXEME MUST BE NAMED BY A DIAGNOSTIC MESSAGE, not merely present in the transcript: an echoed
+// source line containing `Equals` does not satisfy the control; an `error:` line naming it does.
+test fn control_lexeme_must_appear_in_a_diagnostic_message() -> Bool {
+  refusal_names(text: "      Equals => Equal\n", lexeme: "Equals") == false
+    && refusal_names(text: "x.dag:234:1: error: variant 'Equals' not found in type 'Ordering'", lexeme: "Equals")
+    && refusal_names(text: "error: resolve failed for x.dag\n  cause: x.dag:1:1: error: undefined function 'interval_lower'\n", lexeme: "interval_lower")
+}
+
+// A ROW ANSWERED BY ANOTHER RUNTIME IS NOT IN THE COHORT: the same host, port and model under a
+// different self-reported vLLM version refuses, because reasoning accounting and tool parsing are
+// the runtime's. (A restart of the same version is not observable from a session and is not claimed.)
+test fn report_refuses_a_row_answered_by_another_runtime_version() -> Bool {
+  let restarted = realized_serving_identity(s: fixture_serving(version: "0.2"))
+  let row = EvalAttempt {
+    task_id: "pareto.labeled" as NonEmptyStr, arm: LowEffortBare, experiment: "exp-bare" as NonEmptyStr, answered_by: restarted,
+    record_sha256: "rec" as NonEmptyStr, model_context: ModelContextUnrecorded,
+    usage: EvalUsage { prompt_tokens: token_count(count: 0), completion_tokens: token_count(count: 0), reasoning_tokens: token_count(count: 0) },
+    cycles: 1, tool_calls: 0, edits: 1, outcome: AcceptedRepair, wall: millisecond(count: 0),
+  }
+  restarted != fixture_answered_by
+    && refused_with(experiments: fixture_experiments(), attempts: concat(fixture_attempts, [row]), lexeme: "serving realization")
+}

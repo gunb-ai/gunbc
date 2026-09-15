@@ -5,6 +5,13 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import gunbc.ensure { EnsurePolicy }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_kv,
+  json_string,
+  json_object,
+  json_array,
+}
 
 type ExecutionCapability
   = GitWorkspaceCapability
@@ -365,6 +372,52 @@ fn cargo_test_execution_contract(
     validations: [CargoTestValidation { filter: filter }],
     extra_capabilities: [],
   )
+}
+
+fn validation_operation_identity_json(validation: ValidationOperation) -> JsonValue {
+  match validation {
+    GunbcClaimValidation { entry, function } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "gunbc-claim")),
+        json_kv(key: "entry", value: json_string(s: entry as String)),
+        json_kv(key: "function", value: json_string(s: function as String)),
+      ])
+    CargoTestValidation { filter } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "cargo-test")),
+        json_kv(key: "filter", value: json_string(s: filter as String)),
+      ])
+    CargoFmtValidation =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "cargo-fmt")),
+      ])
+    ClosingContractAuthoringValidation { target } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "closing-contract-authoring")),
+        json_kv(key: "target", value: json_string(s: target as String)),
+      ])
+  }
+}
+
+fn execution_capability_identity_json(capability: ExecutionCapability) -> JsonValue {
+  json_string(s: execution_capability_label(capability: capability))
+}
+
+fn attempt_path_scope_identity_json(scope: AttemptPathScope) -> JsonValue {
+  match scope {
+    PathsUnrestricted =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "unrestricted")),
+      ])
+    PathsAllowed { prefixes } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "allowed")),
+        json_kv(
+          key: "prefixes",
+          value: json_array(elements: prefixes |> map(prefix => json_string(s: prefix as String))),
+        ),
+      ])
+  }
 }
 
 fn claim_source_root_args(layout: ClaimSourceRootLayout) -> List<String> {

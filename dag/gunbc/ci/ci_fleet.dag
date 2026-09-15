@@ -24,7 +24,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, NamedField }
 import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_count }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List, LogicalTime }
+import std.types { NonEmptyStr, List, LogicalTime, Bool }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
@@ -114,6 +114,16 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 }
 
 data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
+
+fn fleet_compute_offer_for(host: HostIdentity) -> ComputeOffer? {
+  fold(fleet_intent_offers, init: none, f: (acc, o) =>
+    if o.supply.physical.identity == host {
+      Present { value: o }
+    } else {
+      acc
+    }
+  )
+}
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 

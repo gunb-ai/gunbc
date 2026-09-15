@@ -29,8 +29,8 @@ import gunbc.fabric_event_log {
 }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted, HarnessBackendUnreachable,
-  HarnessBackendUnreadable, harness_observe_replica, harness_observe_engine, harness_standing_detail,
-  harness_route_availability, HarnessEngineReading,
+  HarnessBackendUnreadable, harness_observe_replica, harness_standing_detail,
+  harness_route_availability, HarnessEngineReading, harness_observe_engine_at,
 }
 import gunbc.harness.harness_wire { HarnessWireShape, harness_backend_url_for_endpoint }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
@@ -64,6 +64,10 @@ import gunbc.serving.turn_admission {
   spark_serving_trust_domain, serving_delay_valuation,
 }
 import gunbc.serving.turn_demand { serving_turn_requirements }
+import gunbc.serving.engine_progress {
+  EngineProgressGate, WithholdRouteNotProgressing, ProgressDoesNotWithhold,
+  engine_progress_read, engine_progress_gate, serving_engine_step_bound,
+}
 import gunbc.serving.serving_availability {
   ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
   FrontDoorDidNotAnswerSuccessfullyWithinBound, EndpointProcessReplaced,
@@ -551,10 +555,19 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
     ServingRouteResolved { endpoint: endpoint, ceiling: route_ceiling } => {
       let group = endpoint.group
-      let before = harness_observe_engine(endpoint: endpoint).launch
+      let first = harness_observe_engine_at(endpoint: endpoint, at: now)
       let standing = harness_observe_replica(endpoint: endpoint)
-      let engine = harness_observe_engine(endpoint: endpoint)
-      let availability = harness_route_availability(endpoint: endpoint, before: before, standing: standing, after: engine.launch, now: to_string(now))
+      let engine = harness_observe_engine_at(endpoint: endpoint, at: now)
+      let availability = harness_route_availability(endpoint: endpoint, before: first.launch, standing: standing, after: engine.launch, now: to_string(now))
+      let progress = engine_progress_read(
+        endpoint: endpoint,
+        before_launch: first.launch,
+        after_launch: engine.launch,
+        before: first.progress,
+        after: engine.progress,
+        bound: serving_engine_step_bound,
+        now: to_string(now),
+      )
       match availability.reading {
         ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } =>
           harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: serving_availability_text(a: availability.reading)), retryable: false)
@@ -563,6 +576,36 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
         ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: _, observed: _ }, receipt: _ } =>
           harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: serving_availability_text(a: availability.reading)), retryable: true)
         ServingAvailable { endpoint: _, launch: launch, observed_at: _, receipt: _ } =>
+          match engine_progress_gate(verdict: progress) {
+            WithholdRouteNotProgressing { note: why } =>
+              harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why), retryable: true)
+            ProgressDoesNotWithhold =>
+              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now)
+          }
+      }
+    }
+  }
+}
+
+// AN UNREAD PROGRESS READING IS NOT A WALL. Whether the engine is advancing is a different question from
+// whether the route answered, and the three non-stall arms -- advanced, idle, and unread -- all continue
+// to the model screen. Only an established stall withholds the route, and it is retryable because a
+// wedged engine may clear and the next placement round re-observes.
+fn harness_candidate_from_standing(
+  acc: HarnessCandidates,
+  group: FabricGroup,
+  endpoint: ServingRouteEndpoint,
+  route: ServingRoute,
+  class: ServingCoTenancyClass,
+  requirement: ServingModelRequirement,
+  standing: HarnessBackendStanding,
+  availability: ServingFrontDoorAvailabilityVerdict,
+  launch: VllmEndpointProcessLaunch,
+  engine: HarnessEngineReading,
+  route_ceiling: ServingRouteTurnCeiling,
+  layout: EventLogLayout,
+  now: EpochSecs,
+) -> HarnessCandidates {
           match standing {
             HarnessBackendServing { model: observed_model, unit: observed_unit, readback: observed_readback } =>
               if !harness_requirement_admits(requirement: requirement, observed: observed_unit) {
@@ -587,9 +630,6 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
             HarnessBackendUnreadable { cause: _ } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: harness_standing_detail(standing: standing)), retryable: false)
           }
-      }
-    }
-  }
 }
 
 fn harness_add_serving_candidate(
@@ -737,7 +777,7 @@ type HarnessAcquisition
 // (review 62155). A refused release is therefore a refusal of the whole placement, and the seat it
 // could not give back is named in the reason.
 fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
-  match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine(endpoint: candidate.endpoint).launch, now: to_string(now)).reading {
+  match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine_at(endpoint: candidate.endpoint, at: now).launch, now: to_string(now)).reading {
     EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: o } => {
       let released = release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join([o as String, " (seat ", harness_seat_release_wire(r: released), ")"], "")) }
