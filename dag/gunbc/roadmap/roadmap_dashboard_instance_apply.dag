@@ -127,6 +127,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
 }
+import gunbc.dashboard_provider_readiness { dashboard_provider_device_login_command }
 
 // The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its
 // high-level provision plan is pure and browser-visible; this module projects each operation to
