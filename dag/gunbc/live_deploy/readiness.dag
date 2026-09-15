@@ -3,6 +3,7 @@ module gunbc.live_deploy.readiness
 import std.types { String, Bool, Int, NonEmptyStr, List, CommitSha }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.readiness { Readiness, Ready, Pending, Refused }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -10,11 +11,6 @@ import std.realization_reconcile {
   Grounding,
   Grounds,
   DoesNotGround,
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconcile_grounded,
-  reconciliation_converged,
 }
 import gunbc.live_deploy.service_ready {
   ServiceNotReady,
@@ -23,11 +19,8 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_cadence,
   live_deploy_service_ready_poll_max_attempts,
-  live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
-  UnitDiagnosis,
   UnitDiagnosisUnavailable,
-  UnitDiagnosisCaptured,
 }
 import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
@@ -90,22 +83,48 @@ type ServiceReadyEvidence {
   body: String
 }
 
-type ServiceReadyApplyEffect {
-  unit: NonEmptyStr
-  endpoint: NonEmptyStr
-}
+type ServiceReadinessPending
+  = ServiceProbeUnanswered { detail: String }
 
-fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
-  ServiceReadyApplyEffect {
-    unit: live_deploy_service_ready_unit_authority,
-    endpoint: live_deploy_service_ready_endpoint_authority,
+type ServiceReadinessRefusal
+  = ServiceReadinessAccessDenied { reason: String }
+  | ServiceReadinessIdentityRefused { reason: String }
+  | ServiceReadinessPollBound { refusal: ServiceNotReady }
+
+type ServiceReadiness
+  = Readiness<ServiceReadyEvidence, ServiceReadinessPending, ServiceReadinessRefusal>
+
+fn service_readiness_reason(r: ServiceReadiness) -> String {
+  match r {
+    Ready { evidence: e } => e.body
+    Pending { cause: ServiceProbeUnanswered { detail } } => detail
+    Refused { cause: ServiceReadinessAccessDenied { reason } } => reason
+    Refused { cause: ServiceReadinessIdentityRefused { reason } } => reason
+    Refused { cause: ServiceReadinessPollBound { refusal } } =>
+      service_not_ready_reason(refusal: refusal)
   }
 }
 
-fn service_ready_apply_effect_for_deploy(spec: DeploymentSpec) -> ServiceReadyApplyEffect {
-  ServiceReadyApplyEffect {
-    unit: spec.service.unit_name,
-    endpoint: live_deploy_service_ready_endpoint_authority,
+fn observe_service_readiness_from_healthz(
+  read: HealthzEffectiveRead,
+  bundle: RoadmapSiteSurfaceBundle,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
+) -> ServiceReadiness {
+  match read {
+    HealthzProbeRefused { probe_error: detail } =>
+      Pending { cause: ServiceProbeUnanswered { detail: detail } }
+    HealthzBodyRead { body: observed_body } =>
+      match ground_service_ready_from_healthz_body(
+        body: observed_body,
+        bundle: bundle,
+        expected_revision: expected_revision,
+        expected_surface_identity: expected_surface_identity,
+      ) {
+        Grounds { evidence: e } => Ready { evidence: e }
+        DoesNotGround { reason: why } =>
+          Refused { cause: ServiceReadinessIdentityRefused { reason: why } }
+      }
   }
 }
 
@@ -439,29 +458,6 @@ fn ground_service_ready_from_healthz(
   )
 }
 
-fn show_healthz_read_for_deploy(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
-  match verdict {
-    Deny { refusal: _ } =>
-      ReadObserved {
-        value: HealthzProbeRefused {
-          probe_error: deploy_access_decision_reason(d: verdict),
-        }
-      }
-    Permit =>
-      ReadObserved {
-        value: live_deploy_healthz_get_for_port(
-          port: deployment_plan_listen_port(spec: spec),
-          transport: transport,
-        )
-      }
-  }
-}
-
 // The healthy fixture is the REAL healthz body, not a hand-spelled {"status":"ok"}. Once readiness
 // means 'answering AND serving this tree', a fixture that merely parses is no longer a healthy read
 // — it is precisely the stale-surface case — so a stand-in body would have made the
@@ -498,118 +494,53 @@ fn show_healthz_read_fixture_healthy(
 // That is the same discipline the original fixture note recorded when it refused a hand-spelled
 // {\"status\":\"ok\"}, applied one layer up.
 
-fn show_healthz_read_fixture_healthy_live(
-  release_revision: CommitSha,
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  show_healthz_read_fixture_healthy(
-    bundle: materialize_live_roadmap_site_surface_bundle(),
-    release_revision: release_revision,
-  )
-}
-
-fn reconcile_service_ready_read_for_bundle(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
-  bundle: RoadmapSiteSurfaceBundle,
-  effect: ServiceReadyApplyEffect,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  match read {
-    ReadAbsent { reason: why } =>
-      reconcile_grounded(
-        apply_effect: effect,
-        show_read: read,
-        grounding: DoesNotGround { reason: why }
-      )
-    ReadObserved { value: observed } =>
-      reconcile_grounded(
-        apply_effect: effect,
-        show_read: read,
-        grounding: ground_service_ready_from_healthz_with_bundle(
-          read: observed,
-          bundle: bundle,
-          expected_revision: expected_revision,
-          expected_surface_identity: expected_surface_identity,
-        )
-      )
-  }
-}
-
-fn reconcile_service_ready_read(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  reconcile_service_ready_read_for_bundle(
-    read: read,
-    bundle: materialize_live_roadmap_site_surface_bundle(),
-    effect: service_ready_apply_effect(),
-    expected_revision: expected_revision,
-    expected_surface_identity: expected_surface_identity,
-  )
-}
-
-fn reconcile_service_ready_read_for_effect(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
-  effect: ServiceReadyApplyEffect,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  match read {
-    ReadAbsent { reason: why } =>
-      reconcile_grounded(
-        apply_effect: effect,
-        show_read: read,
-        grounding: DoesNotGround { reason: why }
-      )
-    ReadObserved { value: observed } =>
-      reconcile_grounded(
-        apply_effect: effect,
-        show_read: read,
-        grounding: ground_service_ready_from_healthz_with_bundle(
-          read: observed,
-          bundle: materialize_live_roadmap_site_surface_bundle(),
-          expected_revision: expected_revision,
-          expected_surface_identity: expected_surface_identity,
-        )
-      )
-  }
-}
-
 fn live_deploy_service_ready_once_for_deploy(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  reconcile_service_ready_read_for_effect(
-    read: show_healthz_read_for_deploy(
-      spec: spec,
-      transport: transport,
-      access: access,
-    ),
-    effect: service_ready_apply_effect_for_deploy(spec: spec),
-    expected_revision: candidate.revision,
-    expected_surface_identity: candidate.expected_surface_identity,
-  )
+) -> ServiceReadiness {
+  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
+  match verdict {
+    Deny { refusal: _ } =>
+      Refused {
+        cause: ServiceReadinessAccessDenied {
+          reason: deploy_access_decision_reason(d: verdict),
+        },
+      }
+    Permit =>
+      observe_service_readiness_from_healthz(
+        read: live_deploy_healthz_get_for_port(
+          port: deployment_plan_listen_port(spec: spec),
+          transport: transport,
+        ),
+        bundle: materialize_live_roadmap_site_surface_bundle(),
+        expected_revision: candidate.revision,
+        expected_surface_identity: candidate.expected_surface_identity,
+      )
+  }
 }
 
 fn live_deploy_service_ready_once_for_bundle(
   bundle: RoadmapSiteSurfaceBundle,
   release_revision: CommitSha,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  reconcile_service_ready_read_for_bundle(
-    read: show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision),
-    bundle: bundle,
-    effect: service_ready_apply_effect(),
-    expected_revision: release_revision,
-    expected_surface_identity: bundle.bundle_identity,
-  )
+) -> ServiceReadiness {
+  match show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision) {
+    ReadAbsent { reason: why } =>
+      Refused { cause: ServiceReadinessIdentityRefused { reason: why } }
+    ReadObserved { value: observed } =>
+      observe_service_readiness_from_healthz(
+        read: observed,
+        bundle: bundle,
+        expected_revision: release_revision,
+        expected_surface_identity: bundle.bundle_identity,
+      )
+  }
 }
 
 fn live_deploy_service_ready_once(
   release_revision: CommitSha,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> ServiceReadiness {
   live_deploy_service_ready_once_for_bundle(
     bundle: materialize_live_roadmap_site_surface_bundle(),
     release_revision: release_revision,
@@ -635,8 +566,23 @@ fn capture_unit_diagnosis(
   }
 }
 
+// Retry cadence and the terminal bound are transaction policy. They live next to
+// the one-attempt observer until the apply path owns the loop; the observer
+// itself (live_deploy_service_ready_once_*) never sleeps. Pending retries;
+// Refused does not.
+// UNPROVEN: the poll's Ready arm exits without a further attempt. The deleted
+// witness_bounded_poll_early_exit_on_grounded_read called
+// live_deploy_service_ready_once, not this loop, so it never discriminated that
+// arm. TRIGGER: a fixture that can supply a Ready ServiceReadiness into
+// live_deploy_poll_service_ready_outcome_after_attempts without materializing
+// the live site (injected one-attempt observation). Until then the once-Ready
+// property is held by
+// test.claim.roadmap_site_surface_readiness
+// witness_roadmap_site_surface_readiness_materialized_batch_holds via
+// service_ready_once_converges_on_healthy_fixture_for_bundle.
+
 type ServiceReadyPollOutcome =
-    PollSettled { result: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> }
+    PollSettled { result: ServiceReadiness }
   | PollRefusedAtBound { refusal: ServiceNotReady }
 
 fn poll_bound_refusal(spec: DeploymentSpec, last_probe: String) -> ServiceNotReady {
@@ -649,11 +595,8 @@ fn poll_bound_refusal(spec: DeploymentSpec, last_probe: String) -> ServiceNotRea
   }
 }
 
-fn refusal_to_reconciliation(refusal: ServiceNotReady) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  NotConverged {
-    reason: service_not_ready_reason(refusal: refusal),
-    applied: ServiceReadyApplyEffect { unit: refusal.unit, endpoint: refusal.endpoint },
-  }
+fn poll_bound_readiness(refusal: ServiceNotReady) -> ServiceReadiness {
+  Refused { cause: ServiceReadinessPollBound { refusal: refusal } }
 }
 
 fn live_deploy_poll_service_ready_outcome_after_attempts(
@@ -674,22 +617,24 @@ fn live_deploy_poll_service_ready_outcome_after_attempts(
       transport: transport,
       access: access,
     )
-    if reconciliation_converged(r: probe) {
-      PollSettled { result: probe }
-    } else {
-      let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence)
-      if delay {
-        live_deploy_poll_service_ready_outcome_after_attempts(
-          spec: spec,
-          candidate: candidate,
-          transport: transport,
-          access: access,
-          attempt: attempt + 1,
-          last_probe: last_probe_from_attempt(attempt: probe)
-        )
-      } else {
-        PollRefusedAtBound {
-          refusal: poll_bound_refusal(spec: spec, last_probe: "sleep between health probes failed")
+    match probe {
+      Ready { evidence: _ } => PollSettled { result: probe }
+      Refused { cause: _ } => PollSettled { result: probe }
+      Pending { cause: _ } => {
+        let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence)
+        if delay {
+          live_deploy_poll_service_ready_outcome_after_attempts(
+            spec: spec,
+            candidate: candidate,
+            transport: transport,
+            access: access,
+            attempt: attempt + 1,
+            last_probe: last_probe_from_attempt(attempt: probe)
+          )
+        } else {
+          PollRefusedAtBound {
+            refusal: poll_bound_refusal(spec: spec, last_probe: "sleep between health probes failed")
+          }
         }
       }
     }
@@ -703,7 +648,7 @@ fn live_deploy_poll_service_ready_after_attempts(
   access: DeployAccess,
   attempt: Int,
   last_probe: String,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> ServiceReadiness {
   match live_deploy_poll_service_ready_outcome_after_attempts(
     spec: spec,
     candidate: candidate,
@@ -713,17 +658,14 @@ fn live_deploy_poll_service_ready_after_attempts(
     last_probe: last_probe,
   ) {
     PollSettled { result: r } => r
-    PollRefusedAtBound { refusal: refusal } => refusal_to_reconciliation(refusal: refusal)
+    PollRefusedAtBound { refusal: refusal } => poll_bound_readiness(refusal: refusal)
   }
 }
 
 fn last_probe_from_attempt(
-  attempt: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>
+  attempt: ServiceReadiness
 ) -> String {
-  match attempt {
-    NotConverged { reason: why, applied: _ } => why
-    Converged { evidence: _, applied: _ } => "converged"
-  }
+  service_readiness_reason(r: attempt)
 }
 
 fn live_deploy_poll_until_service_ready_for_deploy(
@@ -731,7 +673,7 @@ fn live_deploy_poll_until_service_ready_for_deploy(
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> ServiceReadiness {
   match live_deploy_poll_service_ready_outcome_after_attempts(
     spec: spec,
     candidate: candidate,
@@ -742,7 +684,7 @@ fn live_deploy_poll_until_service_ready_for_deploy(
   ) {
     PollSettled { result: r } => r
     PollRefusedAtBound { refusal: refusal } =>
-      refusal_to_reconciliation(
+      poll_bound_readiness(
         refusal: service_not_ready_with_captured_diagnosis(
           refusal: refusal,
           text: capture_unit_diagnosis(
@@ -757,7 +699,7 @@ fn live_deploy_poll_until_service_ready_for_deploy(
 
 fn live_deploy_poll_until_service_ready(
   candidate: CandidateRelease,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> ServiceReadiness {
   live_deploy_poll_until_service_ready_for_deploy(
     spec: deployment_spec_srv1(),
     candidate: candidate,

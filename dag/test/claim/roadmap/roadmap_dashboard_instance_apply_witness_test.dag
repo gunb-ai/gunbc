@@ -48,7 +48,6 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_production_reading_refused,
   dashboard_production_reading_detail,
   dashboard_production_readings_equal,
-  DashboardExecResult,
   DashboardProvisionStepReceipt,
   DashboardInstanceApplyResult,
   DashboardApplyRefused,
@@ -60,10 +59,6 @@ import gunbc.roadmap_dashboard_instance_apply {
   DashboardBootstrapReady,
   DashboardBootstrapRefused,
   DashboardBootstrapUnobserved,
-  DashboardPathObservation,
-  PathObservedPresent,
-  PathObservedAbsent,
-  PathObservationRefused,
   DashboardExecutableSurvey,
   ExecutablesSurveyed,
   ExecutableSurveyRefused,
@@ -77,6 +72,13 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_required_target_executables,
   dashboard_health_poll_seconds,
   dashboard_health_poll_attempts,
+}
+import gunbc.roadmap_dashboard_instance_observe {
+  DashboardExecResult,
+  DashboardPathObservation,
+  PathObservedPresent,
+  PathObservedAbsent,
+  PathObservationRefused,
 }
 import gunbc.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }

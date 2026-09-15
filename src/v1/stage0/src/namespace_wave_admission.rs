@@ -1907,21 +1907,798 @@ pub struct TransitionAdmission {
 /// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
 /// wave_admission_refusal charges consumed rows on that landing run. A separate
 /// cleanup PR must remove the consumed rows; this admission does not waive it.
+const C5_OBSERVE_SPLIT_LABEL: &str =
+    "gunbc#11445 CONVERGENCE-ONE C5 observe split: dashboard probe types leave apply";
 
-/// THE gunbc#11373 ROWS DISSOLVED HERE (2026-09-15), BY THE TRIGGER THE BLOCK ABOVE WROTE FOR
-/// THEM. That block says it plainly -- delete these rows after #11373 lands and the base resolves
-/// these bindings, and a separate cleanup does not waive it. #11373 is present at this merge's
-/// base, so the floor on gunbc#10729 measured 0 unadjudicated deltas, 0 stale admissions and all
-/// 32 CONSUMED, due on the roster's next touch. This merge IS that touch, so they go here rather
-/// than waiting for a cleanup PR that would have to re-derive the same join.
-///
-/// ADJUDICATED BY THE FLOOR'S OWN RECEIPT, not by this sentence: every one of the 32 reported
-/// `already satisfied at the base -- consumed by its own merge`, which is the run joining each
-/// row against the merged tree on its own tuple. The count is occurrences, not constants: 17
-/// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
-/// runner hardware observation, DGX PXE and PXE-rescue consumers.
-///
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// Main emptied this roster (consumed SCM re-home rows paid on landing). The
+/// rows below are gunbc#11445 C5 only: apply→observe probe rebinds, plus serve
+/// rebinding dashboard_provider_readiness_json.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    // gunbc#11445 C5: probe/exec types and helpers moved from apply into
+    // gunbc.roadmap_dashboard_instance_observe; serve binds dashboard_provider_readiness_json
+    // on that module rather than apply. Exact TargetChanged enumerated from the floor
+    // receipt on 561d121ecd. Delete after merge when the base already binds these leaves.
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_apply_provision_op",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_bootstrap_parent_decision",
+            spelling: "DashboardPathObservation",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_bootstrap_parent_decision",
+            spelling: "PathObservationRefused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_bootstrap_parent_decision",
+            spelling: "PathObservedAbsent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_bootstrap_parent_decision",
+            spelling: "PathObservedPresent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_bootstrap_preflight_decision",
+            spelling: "DashboardPathObservation",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_bootstrap_preflight_decision",
+            spelling: "PathObservationRefused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_bootstrap_preflight_decision",
+            spelling: "PathObservedAbsent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_bootstrap_preflight_decision",
+            spelling: "PathObservedPresent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_copy_to_target_atomically",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_copy_to_target_atomically",
+            spelling: "dashboard_local_exec",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_local_origin",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_serve_binary",
+            spelling: "dashboard_exec_refused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_serve_binary",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_serve_binary",
+            spelling: "dashboard_local_exec",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_service",
+            spelling: "dashboard_exec_ok",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_service",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_service",
+            spelling: "dashboard_target_probe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_source_repo",
+            spelling: "dashboard_exec_refused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_source_repo",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_source_repo",
+            spelling: "dashboard_target_path_observe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_source_repo",
+            spelling: "PathObservationRefused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_source_repo",
+            spelling: "PathObservedAbsent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_ensure_source_repo",
+            spelling: "PathObservedPresent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_health_names_instance",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_hydrate_controller_history",
+            spelling: "dashboard_exec_ok",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_hydrate_controller_history",
+            spelling: "dashboard_exec_refused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_hydrate_controller_history",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_hydrate_controller_history",
+            spelling: "dashboard_local_exec",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_apply_preflight",
+            spelling: "dashboard_local_exec",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_apply_preflight",
+            spelling: "dashboard_target_path_observe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_apply_preflight",
+            spelling: "dashboard_target_probe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_apply_preflight",
+            spelling: "PathObservationRefused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_apply_preflight",
+            spelling: "PathObservedAbsent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_apply_preflight",
+            spelling: "PathObservedPresent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_observe",
+            spelling: "dashboard_exec_refusal_reason",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_observe",
+            spelling: "dashboard_exec_refused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_observe",
+            spelling: "dashboard_observation_present_bit",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_observe",
+            spelling: "dashboard_path_observation_refusal",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_observe",
+            spelling: "dashboard_target_file_present",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_observe",
+            spelling: "dashboard_target_path_observe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_instance_observe",
+            spelling: "dashboard_target_probe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_prepare_bundle",
+            spelling: "dashboard_exec_ok",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_prepare_bundle",
+            spelling: "dashboard_exec_refused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_prepare_bundle",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_prepare_bundle",
+            spelling: "dashboard_local_exec",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_production_snapshot",
+            spelling: "dashboard_target_probe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_read_instance_health",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_read_instance_health",
+            spelling: "dashboard_target_probe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_run_target_argvs",
+            spelling: "dashboard_exec_ok",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_run_target_argvs",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_source_anchor_matches",
+            spelling: "dashboard_target_directory_present",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_source_anchor_matches",
+            spelling: "dashboard_target_probe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_source_preflight_decision",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_source_revision_readback",
+            spelling: "dashboard_exec_ok",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_source_revision_readback",
+            spelling: "dashboard_exec_refused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_source_revision_readback",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_source_revision_readback",
+            spelling: "dashboard_target_probe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_stage_bundle",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_survey_target_executables",
+            spelling: "dashboard_target_path_observe",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_survey_target_executables",
+            spelling: "PathObservationRefused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_survey_target_executables",
+            spelling: "PathObservedAbsent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_survey_target_executables",
+            spelling: "PathObservedPresent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_target_exec",
+            spelling: "dashboard_exec_refused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_target_exec",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_target_exec",
+            spelling: "dashboard_local_exec",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_verify_health_after_attempts",
+            spelling: "dashboard_exec_refused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_verify_health_after_attempts",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_verify_health_after_attempts",
+            spelling: "dashboard_local_exec",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dashboard_instance_apply",
+            in_declaration: "dashboard_verify_health",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_serve",
+            in_declaration: "roadmap_serve_invoke_over",
+            spelling: "dashboard_provider_readiness_json",
+            expected_candidates: &["gunbc.dashboard_provider_readiness"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dashboard_instance_apply_witness",
+            in_declaration: "dashboard_bootstrap_parent_writability_is_a_preflight_fact",
+            spelling: "PathObservationRefused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dashboard_instance_apply_witness",
+            in_declaration: "dashboard_bootstrap_parent_writability_is_a_preflight_fact",
+            spelling: "PathObservedAbsent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dashboard_instance_apply_witness",
+            in_declaration: "dashboard_bootstrap_parent_writability_is_a_preflight_fact",
+            spelling: "PathObservedPresent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dashboard_instance_apply_witness",
+            in_declaration: "dashboard_dirty_controller_source_refuses_before_apply",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dashboard_instance_apply_witness",
+            in_declaration: "dashboard_unreachable_root_refuses_before_choosing_a_parent",
+            spelling: "PathObservationRefused",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dashboard_instance_apply_witness",
+            in_declaration: "dashboard_unreachable_root_refuses_before_choosing_a_parent",
+            spelling: "PathObservedPresent",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C5_OBSERVE_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dashboard_instance_apply_witness",
+            in_declaration: "health_result",
+            spelling: "DashboardExecResult",
+            expected_candidates: &["gunbc.roadmap_dashboard_instance_observe"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

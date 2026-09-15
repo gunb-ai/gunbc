@@ -594,13 +594,13 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_instance_apply"),
   ),
   census_row(
-    identity: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_provider_readiness_json"),
+    identity: cite(module_path: "gunbc.dashboard_provider_readiness", decl_name: "observe_dashboard_provider_readiness"),
     subject: RoadmapServeProviderReadiness,
     phases: protocol_phases(false, false, false, false, false, false, true),
-    current_authority: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_provider_readiness_json"),
+    current_authority: cite(module_path: "gunbc.dashboard_provider_readiness", decl_name: "observe_dashboard_provider_readiness"),
     persistent_host_effect: DoesNotMutateHost,
-    disposition: BindToAuthority { target: live_readiness() },
-    first_consumer: cite(module_path: "gunbc.roadmap_serve", decl_name: "dashboard_instance_json"),
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.roadmap_serve", decl_name: "roadmap_serve_respond"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),

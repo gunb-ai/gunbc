@@ -1,0 +1,310 @@
+module gunbc.dashboard_provider_readiness
+
+import std.algebra { trim }
+import std.types { String, NonEmptyStr, FilePath }
+import v2.std.collection { Present, Absent }
+import extdeps.languages.json.emit {
+  serialize_json,
+  json_string,
+  json_object,
+  json_kv,
+}
+import extdeps.llm.cli {
+  shape_codex_login_status_env_args_for_program,
+  shape_codex_device_login_env_args_for_program,
+  shape_codex_version_env_args_for_program,
+}
+import gunbc.readiness { Readiness, Ready, Pending, Refused }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_provider_executable,
+  dashboard_instance_provider_executable_refusal_detail,
+  dashboard_environment_binding_executable,
+}
+import gunbc.roadmap_dashboard_instance_observe {
+  DashboardExecResult,
+  DashboardPathObservation,
+  PathObservedPresent,
+  PathObservedAbsent,
+  PathObservationRefused,
+  dashboard_target_path_observe,
+  dashboard_target_probe,
+  dashboard_probe_refused,
+  codex_probe_detail,
+}
+
+// Provider readiness for the served dashboard. One attempt. Maps onto
+// gunbc.readiness Readiness so the result cannot inhabit Reconciliation.
+// CONSUMER: gunbc.roadmap_serve ProviderReadinessHandler via
+// dashboard_provider_readiness_json.
+
+type ProviderReadyEvidence {
+  runtime_detail: String
+  auth_detail: String
+}
+
+type ProviderReadinessPending
+  = ProviderStateRootAbsent {
+      state_root: FilePath,
+      remediation: String,
+    }
+  | ProviderUnauthenticated {
+      state_root: FilePath,
+      detail: String,
+      remediation: String,
+    }
+
+type ProviderReadinessRefusal
+  = ProviderExecutableUnplaced { reason: String }
+  | ProviderObservationUnusable { stage: NonEmptyStr, reason: String }
+  | ProviderRuntimeUnavailable { executable: FilePath, detail: String }
+
+type ProviderInstanceReadiness
+  = Readiness<ProviderReadyEvidence, ProviderReadinessPending, ProviderReadinessRefusal>
+
+fn dashboard_provider_device_login_command(
+  instance: HostDashboardInstance,
+  codex_program: FilePath,
+) -> String {
+  join(
+    shape_codex_device_login_env_args_for_program(
+      program: codex_program as String,
+      codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+    ),
+    " ",
+  )
+}
+
+// CONSUMER: observe_dashboard_provider_readiness always calls this once
+// with the gathered executable, path, runtime, and auth observations.
+// Witnesses that supply those observations are paired with that production
+// route: deleting this fold makes observe fail to compile.
+
+fn classify_dashboard_provider_readiness(
+  executable: FilePath?,
+  executable_refusal: String,
+  state_root: FilePath,
+  state_root_obs: DashboardPathObservation,
+  runtime: DashboardExecResult?,
+  auth: DashboardExecResult?,
+  login_command: String,
+) -> ProviderInstanceReadiness {
+  match executable {
+    Absent =>
+      Refused {
+        cause: ProviderExecutableUnplaced { reason: executable_refusal },
+      }
+    Present { value: codex_program } =>
+      match state_root_obs {
+        PathObservationRefused { reason } =>
+          Refused {
+            cause: ProviderObservationUnusable {
+              stage: "provider-state-root" as NonEmptyStr,
+              reason: reason,
+            },
+          }
+        PathObservedAbsent =>
+          Pending {
+            cause: ProviderStateRootAbsent {
+              state_root: state_root,
+              remediation: login_command,
+            },
+          }
+        PathObservedPresent =>
+          match runtime {
+            Absent =>
+              Refused {
+                cause: ProviderObservationUnusable {
+                  stage: "provider-runtime" as NonEmptyStr,
+                  reason: "runtime probe was not taken",
+                },
+              }
+            Present { value: runtime_obs } =>
+              if dashboard_probe_refused(r: runtime_obs) {
+                Refused {
+                  cause: ProviderObservationUnusable {
+                    stage: "provider-runtime" as NonEmptyStr,
+                    reason: trim(runtime_obs.stderr),
+                  },
+                }
+              } else if !runtime_obs.success {
+                Refused {
+                  cause: ProviderRuntimeUnavailable {
+                    executable: codex_program,
+                    detail: trim(runtime_obs.stderr),
+                  },
+                }
+              } else {
+                match auth {
+                  Absent =>
+                    Refused {
+                      cause: ProviderObservationUnusable {
+                        stage: "provider-auth" as NonEmptyStr,
+                        reason: "auth probe was not taken",
+                      },
+                    }
+                  Present { value: auth_obs } =>
+                    if dashboard_probe_refused(r: auth_obs) {
+                      Refused {
+                        cause: ProviderObservationUnusable {
+                          stage: "provider-auth" as NonEmptyStr,
+                          reason: trim(auth_obs.stderr),
+                        },
+                      }
+                    } else if !auth_obs.success {
+                      Pending {
+                        cause: ProviderUnauthenticated {
+                          state_root: state_root,
+                          detail: trim(auth_obs.stderr),
+                          remediation: login_command,
+                        },
+                      }
+                    } else {
+                      Ready {
+                        evidence: ProviderReadyEvidence {
+                          runtime_detail: codex_probe_detail(out: runtime_obs.stdout, err: runtime_obs.stderr),
+                          auth_detail: codex_probe_detail(out: auth_obs.stdout, err: auth_obs.stderr),
+                        },
+                      }
+                    }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn observe_dashboard_provider_readiness(
+  instance: HostDashboardInstance,
+) -> ProviderInstanceReadiness {
+  let state_root = dashboard_instance_provider_state_root(instance: instance)
+  let executable = dashboard_instance_provider_executable(instance: instance)
+  match executable {
+    Absent =>
+      classify_dashboard_provider_readiness(
+        executable: Absent,
+        executable_refusal: dashboard_instance_provider_executable_refusal_detail(instance: instance),
+        state_root: state_root,
+        state_root_obs: PathObservedAbsent,
+        runtime: Absent,
+        auth: Absent,
+        login_command: "",
+      )
+    Present { value: codex_program } => {
+      let login_command = dashboard_provider_device_login_command(
+        instance: instance,
+        codex_program: codex_program,
+      )
+      let state_root_obs = dashboard_target_path_observe(
+        instance: instance,
+        flag: "-d",
+        path: state_root,
+      )
+      match state_root_obs {
+        PathObservedAbsent =>
+          classify_dashboard_provider_readiness(
+            executable: Present { value: codex_program },
+            executable_refusal: "",
+            state_root: state_root,
+            state_root_obs: state_root_obs,
+            runtime: Absent,
+            auth: Absent,
+            login_command: login_command,
+          )
+        PathObservationRefused { reason: _ } =>
+          classify_dashboard_provider_readiness(
+            executable: Present { value: codex_program },
+            executable_refusal: "",
+            state_root: state_root,
+            state_root_obs: state_root_obs,
+            runtime: Absent,
+            auth: Absent,
+            login_command: login_command,
+          )
+        PathObservedPresent => {
+          let runtime_obs = dashboard_target_probe(
+            instance: instance,
+            program: dashboard_environment_binding_executable,
+            args: shape_codex_version_env_args_for_program(
+              program: codex_program as String,
+              codex_home: state_root as String,
+            ),
+          )
+          if dashboard_probe_refused(r: runtime_obs) || !runtime_obs.success {
+            classify_dashboard_provider_readiness(
+              executable: Present { value: codex_program },
+              executable_refusal: "",
+              state_root: state_root,
+              state_root_obs: state_root_obs,
+              runtime: Present { value: runtime_obs },
+              auth: Absent,
+              login_command: login_command,
+            )
+          } else {
+            classify_dashboard_provider_readiness(
+              executable: Present { value: codex_program },
+              executable_refusal: "",
+              state_root: state_root,
+              state_root_obs: state_root_obs,
+              runtime: Present { value: runtime_obs },
+              auth: Present {
+                value: dashboard_target_probe(
+                  instance: instance,
+                  program: dashboard_environment_binding_executable,
+                  args: shape_codex_login_status_env_args_for_program(
+                    program: codex_program as String,
+                    codex_home: state_root as String,
+                  ),
+                ),
+              },
+              login_command: login_command,
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+fn dashboard_provider_readiness_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: concat(
+    [json_kv(key: "schema", value: json_string(s: "roadmap-provider-readiness/v2"))],
+    match observe_dashboard_provider_readiness(instance: instance) {
+      Ready { evidence } => [
+        json_kv(key: "status", value: json_string(s: "ready")),
+        json_kv(key: "runtime_detail", value: json_string(s: evidence.runtime_detail)),
+        json_kv(key: "auth_detail", value: json_string(s: evidence.auth_detail)),
+      ]
+      Pending { cause: ProviderStateRootAbsent { state_root, remediation } } => [
+        json_kv(key: "status", value: json_string(s: "pending")),
+        json_kv(key: "kind", value: json_string(s: "state-root-absent")),
+        json_kv(key: "state_root", value: json_string(s: state_root as String)),
+        json_kv(key: "remediation", value: json_string(s: remediation)),
+      ]
+      Pending { cause: ProviderUnauthenticated { state_root, detail, remediation } } => [
+        json_kv(key: "status", value: json_string(s: "pending")),
+        json_kv(key: "kind", value: json_string(s: "unauthenticated")),
+        json_kv(key: "state_root", value: json_string(s: state_root as String)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+        json_kv(key: "remediation", value: json_string(s: remediation)),
+      ]
+      Refused { cause: ProviderExecutableUnplaced { reason } } => [
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "stage", value: json_string(s: "provider-executable-placement")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ]
+      Refused { cause: ProviderObservationUnusable { stage, reason } } => [
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "stage", value: json_string(s: stage as String)),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ]
+      Refused { cause: ProviderRuntimeUnavailable { executable, detail } } => [
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "stage", value: json_string(s: "runtime-unavailable")),
+        json_kv(key: "executable", value: json_string(s: executable as String)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ]
+    }
+  )))
+}
