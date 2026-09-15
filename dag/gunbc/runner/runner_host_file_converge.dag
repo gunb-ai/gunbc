@@ -204,6 +204,15 @@ fn runner_host_file_desired_population_from_uid_figure(
           RunnerHostFilesDesiredRefused {
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
           }
+        // A REFUSED WIDTH IS NOT AN UNMODELED HOST, AND CARRYING ITS CAUSE IS THE WHOLE POINT.
+        // srv2 IS modeled -- address, principals and app are all declared -- and what refuses is its
+        // admitted runner width, so the two arms answer different questions and a reader who saw
+        // "no runner deploy row" alone would go looking for a missing declaration that is present.
+        // The width refusal's own cause travels instead, unedited.
+        RunnerHostDeployRefused { host: h, cause: c } =>
+          RunnerHostFilesDesiredRefused {
+            cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row because ", c, ", so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
+          }
         RunnerHostDeployFound { deploy: d } =>
           match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }

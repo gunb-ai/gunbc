@@ -306,6 +306,7 @@ fn wt_missing_deploy() -> RunnerHostDeploy {
     host_label: "wt-unadmitted",
     ssh_target: "unadmitted@invalid.example",
     runner_user: "unadmitted",
+    unit_user: "unadmitted",
     job_user: "unadmitted",
     app: gunbc_ci_github_app,
     runner_count: 1,
