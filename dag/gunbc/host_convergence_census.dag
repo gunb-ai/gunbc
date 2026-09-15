@@ -807,7 +807,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     current_authority: cite(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "fleet_authorized_key_self_enroll_wet"),
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
-    first_consumer: cite(module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_authorized_key_enroll_target"),
+    first_consumer: cite(module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_authorized_key_enroll_target"),
   ),
 ]
 
