@@ -12,7 +12,7 @@ import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, 
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
-  json_string_value_or_empty,
+  json_string_value_or_empty, json_string_list,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -309,37 +309,6 @@ type DockerContainerInspectNamedEnvRead
     }
   | DockerContainerInspectNamedEnvUnreadable { cause: NonEmptyStr }
 
-fn docker_json_string_list(v: JsonValue) -> List<String>? {
-  match v {
-    JsonArray { elements: es } => docker_json_string_list_from(es: es, index: 0, acc: [])
-    JsonNull => none
-    JsonBool { value: _ } => none
-    JsonNumber { lexeme: _ } => none
-    JsonString { value: _ } => none
-    JsonObject { members: _ } => none
-  }
-}
-
-fn docker_json_string_list_from(es: List<JsonValue>, index: Int, acc: List<String>) -> List<String>? {
-  if index >= count(es) {
-    Present { value: acc }
-  } else {
-    match es |> get(index) {
-      Absent => none
-      Present { value: el } =>
-        match el {
-          JsonString { value: s } =>
-            docker_json_string_list_from(es: es, index: index + 1, acc: append(acc, items: [s]))
-          JsonNull => none
-          JsonBool { value: _ } => none
-          JsonNumber { lexeme: _ } => none
-          JsonArray { elements: _ } => none
-          JsonObject { members: _ } => none
-        }
-    }
-  }
-}
-
 fn docker_env_assignment_from_wire(entry: String) -> DockerEnvAssignment? {
   let parts = split(s: entry, delimiter: "=")
   match parts |> get(0) {
@@ -456,7 +425,7 @@ fn docker_container_inspect_named_env_from_object(obj: JsonValue, names: List<No
                       cause: "docker container inspect Config.Env is not a list of strings" as NonEmptyStr,
                     }
                   JsonArray { elements: _ } =>
-                    match docker_json_string_list(v: envv) {
+                    match json_string_list(v: envv) {
                       Absent =>
                         DockerContainerInspectNamedEnvUnreadable {
                           cause: "docker container inspect Config.Env is not a list of strings" as NonEmptyStr,
