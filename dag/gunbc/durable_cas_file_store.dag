@@ -3,7 +3,12 @@ module gunbc.durable_cas_file_store
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
+  FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  FilesystemFailureKind, filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
+}
 
 // The first production realization of std.durable_compare_and_set: one keyed
 // slot backed by generation-suffixed files, exclusion supplied by O_EXCL.
@@ -62,16 +67,13 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // expectation, derive the target from the OBSERVATION, create it exclusively,
 // and only then report a commit.
 
-// WHY THE FAILED WRITE IS DISAMBIGUATED BY A SECOND OBSERVATION rather than
-// by reading write.error. "The path already exists" and "the store refused the
-// write" are different outcomes with opposite remedies -- one is a lost race
-// to be retried against the new generation, the other is an operational fault
-// -- and the transport reports both as success:false with a String. Choosing
-// between them by matching on that String would be the anemic leaf DESIGN 2
-// names: a caller parsing prose to pick a remedy. Observing the target instead
-// is a structural test. It is sound precisely BECAUSE slot files are
-// append-only: a generation file is never rewritten and never deleted, so if
-// the read sees it, it is the real winner and not a value that might vanish.
+// WHY A FAILED PUBLICATION IS CLASSIFIED BY filesystem_create_new THEN A
+// SECOND OBSERVATION, NEVER BY write.error TEXT. Occupancy is the host kind
+// already_exists (FilesystemCreateTargetOccupied). Permission, space, IO,
+// staging and unrecognized kinds are CasStoreRefused. Occupancy without a
+// readable winner is also CasStoreRefused -- re-observing absence must not
+// mint CasPreconditionFailed. The observation is consulted only after the
+// host has already said the name was occupied.
 //
 // WHAT THIS MODULE DOES NOT DO. It does not create <root>; a missing root
 // surfaces as a store refusal rather than being silently created, because
@@ -228,18 +230,18 @@ fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGenera
 // bound-shaped closure DESIGN names, where a real number satisfies a question it
 // never measured.
 //
-// DECLARED BOUNDARY, INHERITED FROM THE TRANSPORT RATHER THAN INTRODUCED HERE:
-// Filesystem.Read reports success and an error string, and cannot distinguish
-// "this generation does not exist" from "this generation could not be read".
-// The probe therefore treats an unreadable generation as the end of the chain.
-// Choosing between them by matching on the error string would be the anemic leaf
-// DESIGN forbids, so the conflation is declared instead of papered over. RUNG:
-// mitigatable. NEXT-RUNG TRIGGER: a filesystem read operation whose absence arm
-// is a typed outcome rather than a false success flag.
+// READ CLASSIFICATION IS THE HOST KIND CHANNEL, NEVER THE ERROR TEXT.
+// filesystem_exact_read already partitions NotFound from PermissionDenied /
+// Other / unrecognized names. Treating every unsuccessful Read as the end of
+// the chain was the same empty-observation collapse observe_cas_slot_state
+// exists to refuse: a generation that could not be read was reported as absent,
+// and a decision caller would try to occupy it.
 type CasSlotProbe
   = ProbedAbsent
   | ProbedHead { generation: CasGeneration, value: NonEmptyStr }
   | ProbedBeyondBound { bound: Int }
+  | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
+  | ProbedReadKindUnrecognized { generation: CasGeneration, observed: String }
 
 data cas_max_generation_probe: Int = 4096
 
@@ -247,16 +249,38 @@ fn cas_probe_from(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration
   if cas_generation_count(g: generation) > cas_max_generation_probe {
     ProbedBeyondBound { bound: cas_max_generation_probe }
   } else {
-    let read = Filesystem.Read(path: cas_file_slot_path(root: root, key: key, generation: generation))
-    if read.success {
-      cas_probe_from(root: root, key: key, generation: cas_generation_next(g: generation), previous: read.content as NonEmptyStr)
-    } else {
+    let path = cas_file_slot_path(root: root, key: key, generation: generation)
+    let read = Filesystem.Read(path: path)
+    cas_probe_from_exact(
+      root: root,
+      key: key,
+      generation: generation,
+      previous: previous,
+      exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
+    )
+  }
+}
+
+fn cas_probe_from_exact(
+  root: NonEmptyStr,
+  key: NonEmptyStr,
+  generation: CasGeneration,
+  previous: NonEmptyStr,
+  exact: FilesystemExactRead,
+) -> CasSlotProbe {
+  match exact {
+    FilesystemExactPathRead { path: _, content: c } =>
+      cas_probe_from(root: root, key: key, generation: cas_generation_next(g: generation), previous: c as NonEmptyStr)
+    FilesystemExactPathAbsent { path: _ } =>
       if cas_generation_count(g: generation) == 1 {
         ProbedAbsent
       } else {
         ProbedHead { generation: cas_generation_count(g: generation) - 1, value: previous }
       }
-    }
+    FilesystemExactPathUnreadable { path: _, kind: k, error: _ } =>
+      ProbedUnreadable { generation: generation, kind: k }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
+      ProbedReadKindUnrecognized { generation: generation, observed: o }
   }
 }
 
@@ -293,6 +317,46 @@ fn cas_slot_observation_bound_exceeded(bound: Int) -> CasUnreadableSlot {
   CasUnreadableObservationBoundExceeded { bound: bound }
 }
 
+// AN UNREADABLE GENERATION IS A SLOT-OBSERVATION REFUSAL, NEVER AN ABSENT SLOT.
+//
+// gunbc#11335 made the probe read through the host's failure kind, so a generation that exists and
+// cannot be read is no longer the end of the chain. Its first projection then answered
+// `CasReadableAbsent` for that arm, for bound exhaustion and for an unrecognized kind -- the
+// importable inability-to-observe-as-absence this module had already deleted once. So the causes are
+// named here, once, and no projection anywhere turns them into a readable answer. An unrecognized
+// kind stays `CasUnreadableMalformed`: the host answered with a kind this corpus cannot name.
+fn cas_generation_unreadable(generation: CasGeneration, kind: FilesystemFailureKind) -> CasUnreadableSlot {
+  CasUnreadableReadRefused {
+    detail: concat(
+      concat("generation ", cas_generation_count(g: generation) as String),
+      concat(" unreadable:", filesystem_failure_kind_name(kind: kind)),
+    ) as NonEmptyStr
+  }
+}
+
+fn cas_generation_read_kind_unrecognized(generation: CasGeneration, observed: String) -> CasUnreadableSlot {
+  CasUnreadableMalformed {
+    detail: concat(
+      concat("generation ", cas_generation_count(g: generation) as String),
+      concat(" read failure kind unrecognized: ", observed),
+    ) as NonEmptyStr
+  }
+}
+
+fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyStr> {
+  match probe {
+    ProbedBeyondBound { bound: b } =>
+      CasObservedUnreadable { cause: cas_slot_observation_bound_exceeded(bound: b) }
+    ProbedUnreadable { generation: g, kind: k } =>
+      CasObservedUnreadable { cause: cas_generation_unreadable(generation: g, kind: k) }
+    ProbedReadKindUnrecognized { generation: g, observed: o } =>
+      CasObservedUnreadable { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
+    ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    ProbedHead { generation: h, value: v } =>
+      CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
+  }
+}
+
 // THE STORE'S OBSERVATION, FOR CALLERS THAT MUST DECIDE BEFORE THEY WRITE.
 //
 // file_compare_and_set needs no such surface: it observes and decides in one
@@ -308,14 +372,7 @@ fn cas_slot_observation_bound_exceeded(bound: Int) -> CasUnreadableSlot {
 // nothing" from a store that could not tell it anything and then choose the
 // remedy for an empty cell.
 fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
-  let probe = cas_observe_slot(root: root, key: key)
-  match probe {
-    ProbedBeyondBound { bound: b } =>
-      CasObservedUnreadable { cause: cas_slot_observation_bound_exceeded(bound: b) }
-    ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
-    ProbedHead { generation: h, value: v } =>
-      CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
-  }
+  cas_probe_as_observation(probe: cas_observe_slot(root: root, key: key))
 }
 
 // ACCESS MODE AND CONDITIONAL PUBLICATION ARE TWO FACTS, AND THIS STORE HELD THEM AS ONE.
@@ -380,21 +437,6 @@ type CasGenerationPublication
   = DefaultAccessCreateOnly
   | OwnerOnlyCreateOnly
 
-// The exclusive create. Reached only once the observation has already satisfied
-// the expectation, so this decides WHO WINS among eligible writers and nothing
-// else. Losing here is a lost race, not a bad precondition -- another writer
-// took the same target between our observation and our write -- so the slot is
-// re-observed to report what actually beat us rather than guessing.
-// THE PUBLICATION CARRIES ITS FAILURE DETAIL, AND THE FIRST WRITING THREW IT AWAY.
-//
-// It answered a bare `Bool`, so every unsuccessful write -- whoever caused it -- arrived at one arm.
-// The detail is not transcribed as a diagnosis; it is carried because the arm below needs SOMETHING
-// to say when the failure turns out not to be a lost race, and the host's own words are the only
-// honest thing available. Nothing parses it.
-type CasGenerationPublished
-  = CasGenerationWritten
-  | CasGenerationWriteRefused { detail: String }
-
 // THE ACTUATOR TAKES AN ADMITTED PUBLICATION, NOT A PATH AND SOME BYTES.
 //
 // `cas_generation_published(publication, path, content)` and
@@ -410,7 +452,7 @@ type CasGenerationPublished
 // `AdmittedCasPublication` is `sole_constructor`, so it can be built only inside this module, and the
 // only two places that build it are the branches of `file_compare_and_set` reached AFTER the attempt
 // was verified, the slot observed, and the expectation matched against the real head -- each carrying
-// the target DERIVED from that observation. Both the actuator and the raw write now take it, so the
+// the target DERIVED from that observation. The actuator takes it, so the
 // path is derived from the admitted key rather than accepted, and the bytes are the verified
 // attempt's rather than an argument.
 type AdmittedCasPublication sole_constructor {
@@ -420,41 +462,84 @@ type AdmittedCasPublication sole_constructor {
   target: CasGeneration
 }
 
-fn cas_generation_published(admitted: AdmittedCasPublication) -> CasGenerationPublished {
-  let path = cas_file_slot_path(
-    root: admitted.root,
-    key: admitted.attempt.key,
-    generation: admitted.target,
-  )
-  let content = admitted.attempt.proposed as String
-  match admitted.publication {
-    DefaultAccessCreateOnly => {
-      let write = Filesystem.WriteCreateNew(path: path, content: content)
-      if write.success { CasGenerationWritten } else { CasGenerationWriteRefused { detail: write.error } }
-    }
-    OwnerOnlyCreateOnly => {
-      let write = Filesystem.WriteOwnerOnly(path: path, content: content)
-      if write.success { CasGenerationWritten } else { CasGenerationWriteRefused { detail: write.error } }
-    }
-  }
-}
-
+// TWO BINDINGS, TWO CLASSIFIERS, AND THE DIFFERENCE IS WHAT THE HOST CAN SAY.
+//
+// `WriteCreateNew` answers the host's failure kind, so its refusal is classified by
+// `filesystem_create_new` and no error text is read: occupancy is `FilesystemCreateTargetOccupied`
+// and every other kind is the store refusing to publish. `WriteOwnerOnly` answers no kind, so its
+// failure is classified the only structural way available -- re-observe and ask whether the target
+// generation appeared -- in `cas_owner_only_failed_publication`.
 fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
   let root = admitted.root
   let attempt = admitted.attempt
   let target = admitted.target
-  match cas_generation_published(admitted: admitted) {
-    CasGenerationWritten =>
+  let path = cas_file_slot_path(root: root, key: attempt.key, generation: target)
+  let content = attempt.proposed as String
+  match admitted.publication {
+    DefaultAccessCreateOnly => {
+      let write = Filesystem.WriteCreateNew(path: path, content: content)
+      cas_outcome_from_create(
+        attempt: attempt,
+        target: target,
+        created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
+        post: observe_cas_slot_state(root: root, key: attempt.key),
+      )
+    }
+    OwnerOnlyCreateOnly => {
+      let write = Filesystem.WriteOwnerOnly(path: path, content: content)
+      if write.success {
+        CasCommitted {
+          committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
+        }
+      } else {
+        cas_owner_only_failed_publication(root: root, attempt: attempt, target: target, detail: write.error)
+      }
+    }
+  }
+}
+
+// THE CLASSIFICATION FOLD FOR THE TYPED BINDING (gunbc#11335). Occupancy is
+// FilesystemCreateTargetOccupied PLUS a readable winner; an occupied report whose re-observation
+// cannot be read refuses with that observation's cause; an occupied report with no winner, and
+// every other kind, is the store refusing to publish. Re-observing absence after a failed
+// publication must not mint CasPreconditionFailed: that is the store-refusal-as-contention widen.
+fn cas_outcome_from_create(
+  attempt: CasAttempt<NonEmptyStr>,
+  target: CasGeneration,
+  created: FilesystemCreateNew,
+  post: CasSlotObservation<NonEmptyStr>,
+) -> CasOutcome<NonEmptyStr> {
+  match created {
+    FilesystemCreated { path: _ } =>
       CasCommitted {
         committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
       }
-    CasGenerationWriteRefused { detail: detail } =>
-      cas_failed_publication(root: root, attempt: attempt, target: target, detail: detail)
+    FilesystemCreateTargetOccupied { path: _ } => cas_occupied_publication_outcome(attempt: attempt, post: post)
+    FilesystemCreateRefused { path: _, kind: k, error: _ } =>
+      cas_publication_refused(detail: concat("the store refused publication: ", filesystem_failure_kind_name(kind: k)))
+    FilesystemCreateKindUnrecognized { path: _, observed: o, error: _ } =>
+      cas_publication_refused(detail: concat("the store refused publication with an unrecognized failure kind: ", o))
+  }
+}
+
+fn cas_occupied_publication_outcome(
+  attempt: CasAttempt<NonEmptyStr>,
+  post: CasSlotObservation<NonEmptyStr>,
+) -> CasOutcome<NonEmptyStr> {
+  match post {
+    CasObservedUnreadable { cause: c } => CasStoreRefused { cause: CasSlotObservationRefused { cause: c } }
+    CasObservedReadable { readable: r } =>
+      match r {
+        CasReadablePresent { version: _ } =>
+          CasPreconditionFailed { expected: attempt.expected, observed: r }
+        CasReadableAbsent =>
+          cas_publication_refused(detail: "exclusive create reported occupancy and no readable generation was observed")
+      }
   }
 }
 
 // A FAILED WRITE IS NOT EVIDENCE THAT SOMEBODY ELSE WON, AND THIS FUNCTION IS THE REPAIR OF A LINE
-// THAT SAID IT WAS.
+// THAT SAID IT WAS. It now serves only the owner-only binding, whose write answers no failure kind.
 //
 // The earlier body answered `CasPreconditionFailed` for EVERY unsuccessful write, with the observed
 // slot re-read afterwards. When the failure was a genuine lost race that is exactly right: the target
@@ -483,7 +568,7 @@ fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
 // wearing a read failure's constructor reports "the head I read is garbage" for an event in which
 // nothing was read and the head is fine. `std.durable_compare_and_set.CasStoreFailure` now carries the
 // distinction, so this says what happened.
-fn cas_failed_publication(
+fn cas_owner_only_failed_publication(
   root: NonEmptyStr,
   attempt: CasAttempt<NonEmptyStr>,
   target: CasGeneration,
@@ -502,6 +587,12 @@ fn cas_failed_publication(
       }
     ProbedAbsent => cas_publication_refused(detail: detail)
     ProbedBeyondBound { bound: b } => cas_publication_beyond_bound(bound: b)
+    ProbedUnreadable { generation: g, kind: k } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_generation_unreadable(generation: g, kind: k) } }
+    ProbedReadKindUnrecognized { generation: g, observed: o } =>
+      CasStoreRefused {
+        cause: CasSlotObservationRefused { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
+      }
   }
 }
 
@@ -537,9 +628,7 @@ fn cas_publication_beyond_bound(bound: Int) -> CasOutcome<NonEmptyStr> {
 
 fn cas_publication_refused(detail: String) -> CasOutcome<NonEmptyStr> {
   CasStoreRefused {
-    cause: CasGenerationPublicationRefused {
-      detail: concat("generation publication refused by the store: ", detail) as NonEmptyStr
-    }
+    cause: CasGenerationPublicationRefused { detail: detail as NonEmptyStr }
   }
 }
 
@@ -561,6 +650,12 @@ fn file_compare_and_set(
     ProbedBeyondBound { bound: b } =>
       CasStoreRefused {
         cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: b) }
+      }
+    ProbedUnreadable { generation: g, kind: k } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_generation_unreadable(generation: g, kind: k) } }
+    ProbedReadKindUnrecognized { generation: g, observed: o } =>
+      CasStoreRefused {
+        cause: CasSlotObservationRefused { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
       }
     ProbedAbsent =>
       match attempt.expected {

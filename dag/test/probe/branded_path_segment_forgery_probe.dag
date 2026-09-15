@@ -1,0 +1,32 @@
+module test.probe.branded_path_segment_forgery_probe
+
+// THIS MODULE RESOLVES TODAY, AND THAT IS THE FINDING -- an EXPECTING-RED hole.
+//
+// Two production modules brand a PathSegment into an identity that becomes a DIRECTORY NAME, and
+// both say in their own prose that their validating fn is the only way in:
+//
+//   gunbc.merge_admission_subject   -- "Both producers ... go through walk_attempt_id, the only
+//                                      constructor, and refuse rather than sanitizing."
+//                                      The id is concatenated into
+//                                      <root>/.gunbc/merge-admission/<attempt_id>/.
+//   gunbc.fleet_known_hosts_anchor -- "fleet_ssh_attempt_identity is the only constructor and
+//                                      REFUSES rather than sanitizing".
+//
+// Both statements are TRUE ABOUT THE FUNCTIONS AND FALSE ABOUT THE TYPES. Each identity is
+// `PathSegment where brand(...)` -- a refined alias, which has no constructor to seal, so
+// sole-constructor admission never applies. Any module may mint one with a cast, and this one
+// does: the casts below carry exactly the `..` and `/` that path_segment_is_safe exists to refuse,
+// and they compile with zero blocking diagnostics.
+//
+// This is the consequence that ranks: the two runtime checks are real and are the only thing
+// standing, and nothing in the type stops a third branded id from being written without one.
+
+import std.types { String }
+import gunbc.merge_admission_subject { WalkAttemptId }
+import gunbc.fleet_known_hosts_anchor { FleetSshAttemptIdentity }
+
+data forged_attempt_id_escapes_its_directory: WalkAttemptId = "../../etc" as WalkAttemptId
+
+data forged_ssh_identity_introduces_a_level: FleetSshAttemptIdentity = "a/b" as FleetSshAttemptIdentity
+
+fn any_string_becomes_an_attempt_id(raw: String) -> WalkAttemptId { raw as WalkAttemptId }
