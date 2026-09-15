@@ -253,6 +253,21 @@ fn vllm_07b75534_registry_answers_for(architecture: NonEmptyStr) -> Bool {
 //
 // A REVISION IS NOT A WORKING RUNTIME. This row says what the tree contains; whether an image built
 // from it serves V4.1 on sm_121 is a launch receipt, and nothing here establishes one.
+// HOW THE ENGRAM TABLES CAN BE STORED IN THIS TREE, AND NONE OF THE WAYS IS STORAGE. vllm/config/engram.py
+// at this revision offers exactly three switches -- cpu_offload, embedding_across_dp, dp_shared_memory --
+// and vllm/models/deepseek_v4_1/nvidia/engram.py realizes them as a device allocation, a pinned host
+// allocation read over UVA, or one /dev/shm file mapped MAP_SHARED and registered whole with
+// cudaHostRegister so co-located replicas share it. /dev/shm is tmpfs: every arm keeps the full table in
+// memory, and on a unified-memory host that is the same pool as the accelerator's. So a token-time read
+// from NVMe or NFS is not something this tree can be configured to do; it is a change to the tree.
+//
+// THIS IS RATIONALE AND NOT A CHECK, WHICH IS WHY IT IS AN ANNOTATION. An earlier form modelled the three
+// realizations as a closed type with a predicate answering whether each is memory-backed. The predicate
+// returned true for every arm, so the only way it could go red was by editing its own declaration -- a
+// decoration in the sense of DESIGN section 4b, and section 5's tell that validation stood where nothing
+// was being validated. The claim it was standing in for is carried where it is load-bearing and can
+// actually refuse: gunbc.spark.v41_runtime_candidate's live patch population is V41PatchesUnestablished
+// with this revision named in its obligation, so no candidate over this tree keys until a patch exists.
 data vllm_d2d649e6_revision: VllmSourceRevision = vllm_source_revision(
   repository: "github.com/vllm-project/vllm" as NonEmptyStr,
   full_revision: "d2d649e674c75425d2d6975c87eb89fd4d55fff8" as NonEmptyStr,
@@ -289,19 +304,3 @@ data vllm_d2d649e6_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContai
   max_jobs: 16,
   nvcc_threads: 8,
 }
-
-// HOW THE ENGRAM TABLES CAN BE STORED IN THIS TREE, AND NONE OF THE WAYS IS STORAGE. vllm/config/engram.py
-// at this revision offers exactly three switches -- cpu_offload, embedding_across_dp, dp_shared_memory --
-// and vllm/models/deepseek_v4_1/nvidia/engram.py realizes them as a device allocation, a pinned host
-// allocation read over UVA, or one /dev/shm file mapped MAP_SHARED and registered whole with
-// cudaHostRegister so co-located replicas share it. /dev/shm is tmpfs: every arm keeps the full table in
-// memory, and on a unified-memory host that is the same pool as the accelerator's. So a token-time read
-// from NVMe or NFS is not something this tree can be configured to do; it is a change to the tree.
-//
-// THIS IS RATIONALE AND NOT A CHECK, WHICH IS WHY IT IS AN ANNOTATION. An earlier form modelled the three
-// realizations as a closed type with a predicate answering whether each is memory-backed. The predicate
-// returned true for every arm, so the only way it could go red was by editing its own declaration -- a
-// decoration in the sense of DESIGN section 4b, and section 5's tell that validation stood where nothing
-// was being validated. The claim it was standing in for is carried where it is load-bearing and can
-// actually refuse: gunbc.spark.v41_runtime_candidate's live patch population is V41PatchesUnestablished
-// with this revision named in its obligation, so no candidate over this tree keys until a patch exists.
