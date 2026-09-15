@@ -2,6 +2,7 @@ module test.claim.build_cache_endpoint_observe
 
 import gunbc.build_cache_instance { ProcessIdentity }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
+import std.materialization_ladder { string_list_contains }
 
 // THIS MODULE IMPORTS ProcessIdentity EXPLICITLY BECAUSE THE BARE NAME IS AMBIGUOUS CORPUS-WIDE,
 // AND THE AMBIGUITY RESOLVES SILENTLY. Two types carry that name -- gunbc.build_cache_instance
