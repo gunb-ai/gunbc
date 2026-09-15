@@ -145,7 +145,7 @@ fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
   EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
 }
 
-data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production mints the digest at gunbc.spark.pair_serving_realization spark_pair_head_unit_declared_digest" as NonEmptyStr
+data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production mints the digest at gunbc.spark.pair_serving_realization spark_pair_declared_unit_digests" as NonEmptyStr
 
 fn t_unit_unavailable() -> DeclaredUnitDigestStanding {
   DeclaredUnitDigestUnavailable { obligation: t_declared_unit_unavailable_obligation }
@@ -504,11 +504,12 @@ test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
 
 // ── ACCEPTANCE ROWS FOR THE INCARNATION JOIN ────────────────────────────────────────────────────
 //
-// Production's harness_serving_route now hashes via DigestStdin, so a hermetic driver of that
-// function is NoMockResponse rather than a standing verdict. The standing's incarnation-unobserved
-// refusal stays enrolled below (an_agreeing_unit_digest_without_an_observation_refuses). The
-// production mint spark_pair_head_unit_declared_digest is executed in
-// test.claim.spark.spark_pair_head_unit_digest_witness.
+// Production's harness_serving_route takes a declared-unit standing; the roster it comes from is
+// minted by DigestStdin once per turn (spark_pair_declared_unit_digests), which is why the mint
+// and the wire that carries it are executed on the wet lane
+// (test.claim.spark.spark_pair_head_unit_digest_witness, test.claim.serving.serving_availability_bind_wet_witness)
+// and this file supplies digests as fixtures. The standing's incarnation-unobserved refusal stays
+// enrolled below (an_agreeing_unit_digest_without_an_observation_refuses).
 
 // PRODUCTION ROUTE. This drives gunbc.harness.harness_seat harness_serving_route, the function
 // harness_bind_candidate calls, with the incarnation standing production passes when the observer
