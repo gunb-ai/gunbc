@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8 }
 import extdeps.nvidia.nccl { NcclRealizedTransport, NcclTransportUnread }
-import gunbc.spark.serving_arm { ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10, ServingTopology, SparkPairTp2, FourSparkTp4 }
+import gunbc.spark.serving_arm { ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10, ServingTopology, SparkPairTp2, FourSparkTp4, serving_topology_of_rank_count }
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectUnestablished,
@@ -397,12 +397,24 @@ data spark_group_a_topology_standing: TopologyStanding = TopologyNotFungibleMayB
 // comparison below resolves to ComparisonNotPossible rather than to the topology cut it claims --
 // which is the honest answer: the two arms were not established to share a transport, and if they
 // did not, the degree is not the only axis that moved.
+// THE DEGREE IS RESOLVED THROUGH THE OWNING AUTHORITY AND AN UNMAPPED ONE REFUSES. This read
+// `if a.tensor_parallel_size == 2 { SparkPairTp2 } else { FourSparkTp4 }`, which is a fabricated
+// default sitting on the one axis this module exists to attribute to: any degree but 2 -- 1, 8, or
+// a typo in a row -- became a confident TP=4 and the subject then joined as though the degree had
+// been read. It was also a second authority on a relation gunbc.spark.serving_arm already owns.
 fn topology_arm_subject(a: TopologyArm) -> ServingPerformanceSubjectStanding {
-  SubjectEstablished {
+  match serving_topology_of_rank_count(ranks: a.tensor_parallel_size) {
+    Absent => SubjectUnestablished {
+      missing: "tensor-parallel topology" as NonEmptyStr,
+      believed: join(["nothing: the arm declares tensor_parallel_size ", to_string(a.tensor_parallel_size),
+                      ", which no ServingTopology in gunbc.spark.serving_arm serving_topologies carries"], "") as NonEmptyStr,
+      would_settle: "add the ServingTopology row for this rank count to gunbc.spark.serving_arm, or correct the arm's declared degree; until then this arm names a shape the fleet does not model and no measurement of it may be joined to any decision" as NonEmptyStr,
+    }
+    Present { value: resolved_topology } => SubjectEstablished {
     subject: serving_performance_subject(
       checkpoint: DeepseekV4FlashIq3sSplit,
       runtime: GunbcSparkrunVllmDs4Gb10,
-      topology: if a.tensor_parallel_size == 2 { SparkPairTp2 } else { FourSparkTp4 },
+      topology: resolved_topology,
       context_ceiling: a.context_ceiling,
       max_num_batched_tokens: token_count(count: a.max_num_batched_tokens),
       kv_cache_dtype: KvFp8,
@@ -410,6 +422,7 @@ fn topology_arm_subject(a: TopologyArm) -> ServingPerformanceSubjectStanding {
         because: "this acquisition never read NCCL's `Using network` verdict line on either arm; a tensor-parallel degree change moves the collective path, so an unread transport leaves a second axis unaccounted for" as NonEmptyStr,
       }
     ),
+  }
   }
 }
 

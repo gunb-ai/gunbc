@@ -11,7 +11,8 @@ import extdeps.nvidia.nccl {
 import gunbc.spark.serving_arm {
   ServingCheckpoint, Glm53NativeFp8, DeepseekV4FlashIq3sSplit,
   ServingRuntime, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3,
-  ServingTopology, SparkPairTp2, FourSparkTp4,
+  ServingTopology, SingleSparkTp1, SparkPairTp2, FourSparkTp4,
+  serving_topology_wire, serving_topology_rank_count, serving_topology_of_rank_count,
 }
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject,
@@ -346,6 +347,39 @@ test fn w_the_topology_cut_is_not_possible_while_the_transport_is_unread() -> Bo
   }
 }
 
+// ── THE DEGREE INVERSE IS TOTAL, AND ITS REFUSAL ARM IS REACHABLE ─────────────────────────────
+//
+// The forward map and its derived inverse agree on every topology the fleet models, and a rank
+// count no topology carries answers Absent rather than the nearest plausible degree. That second
+// half is the one that matters: the arm it replaced turned every unmapped count into TP=4 on the
+// axis this module fences, and an admission arm whose refusal cannot be reached is not a wall.
+test fn w_every_modelled_topology_round_trips_through_its_rank_count() -> Bool {
+  topology_round_trips(t: SingleSparkTp1)
+    && topology_round_trips(t: SparkPairTp2)
+    && topology_round_trips(t: FourSparkTp4)
+}
+
+fn topology_round_trips(t: ServingTopology) -> Bool {
+  match serving_topology_of_rank_count(ranks: serving_topology_rank_count(t: t)) {
+    Absent => false
+    Present { value: got } => (serving_topology_wire(t: got) as String) == (serving_topology_wire(t: t) as String)
+  }
+}
+
+test fn w_an_unmodelled_rank_count_refuses_rather_than_choosing_the_nearest() -> Bool {
+  match serving_topology_of_rank_count(ranks: 8) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn w_a_zero_rank_count_refuses_too() -> Bool {
+  match serving_topology_of_rank_count(ranks: 0) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 test fn w_all_serving_performance_subject_claims_hold() -> Bool {
   w_a_deepseek_measurement_does_not_read_for_a_glm_decision()
     && w_the_refusal_does_not_name_axes_that_agree()
@@ -360,6 +394,9 @@ test fn w_all_serving_performance_subject_claims_hold() -> Bool {
     && w_a_multi_axis_pair_is_uncontrolled_rather_than_attributed()
     && w_two_identical_subjects_are_a_repeat_and_not_a_cut()
     && w_the_axis_roster_covers_every_field_of_the_subject()
+    && w_every_modelled_topology_round_trips_through_its_rank_count()
+    && w_an_unmodelled_rank_count_refuses_rather_than_choosing_the_nearest()
+    && w_a_zero_rank_count_refuses_too()
     && w_the_batch_arms_subject_is_unestablished_on_topology()
     && w_the_depth_law_does_not_read_for_the_batch_arms()
     && w_the_depth_law_does_not_even_read_for_itself_while_its_transport_is_unread()

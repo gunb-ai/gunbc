@@ -59,6 +59,28 @@ fn serving_topology_rank_count(t: ServingTopology) -> Nat {
   }
 }
 
+// ── THE RANK COUNT BACK TO A TOPOLOGY, DERIVED FROM THE FORWARD MAP AND TOTAL ─────────────────
+//
+// WHY THIS IS A SEARCH OVER THE ROSTER AND NOT A SECOND TABLE. `serving_topology_rank_count` above
+// already owns the degree-to-topology relation; hand-spelling its inverse would be that one fact
+// written twice, and the two copies would drift the moment a topology is added. So the inverse is
+// computed FROM the forward function, and the only thing this declares is which topologies exist.
+//
+// AND IT IS OPTIONAL BECAUSE IT IS PARTIAL. A rank count no topology carries has no answer, and the
+// caller is the one that must say what to do about it. An earlier consumer of this relation spelled
+// it `if ranks == 2 { SparkPairTp2 } else { FourSparkTp4 }`, which turned every unmapped count --
+// 1, 8, or a typo -- into a confident TP=4, on the exact axis its module attributes to. That is
+// DESIGN section 5's fabricated-plausible-output with a `topology` field name over it.
+data serving_topologies: List<ServingTopology> = [
+  SingleSparkTp1,
+  SparkPairTp2,
+  FourSparkTp4,
+]
+
+fn serving_topology_of_rank_count(ranks: Nat) -> ServingTopology? {
+  first(filter(serving_topologies, t => serving_topology_rank_count(t: t) == ranks))
+}
+
 // ── THE CANONICAL PROJECTION OF EACH AXIS, WHICH IS WHERE EQUALITY IS DECIDED ─────────────────
 //
 // One place knows the variants and the wire is that place -- the idiom gunbc.spark.serving_subject

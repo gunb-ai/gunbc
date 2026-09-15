@@ -141,14 +141,6 @@ fn nccl_transport_is_unread(t: NcclRealizedTransport) -> Bool {
   }
 }
 
-fn nccl_transport_unread_cause(t: NcclRealizedTransport) -> NonEmptyStr {
-  match t {
-    NcclTransportIbVerbs { network_name: n, read_from: _ } => n
-    NcclTransportSocket { network_name: n, read_from: _ } => n
-    NcclTransportUnread { because: b } => b
-  }
-}
-
 // The literal NCCL emits for each of the two networks it builds on this fleet, so a reader that has
 // the log line does not have to guess which spelling the verdict uses.
 data nccl_network_name_socket: NonEmptyStr = "Socket" as NonEmptyStr
