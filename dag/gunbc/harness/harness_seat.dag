@@ -490,8 +490,10 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 //
 // THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
 // through exactly what production passes. The declared head-unit digest is the SHA-256 of the bytes
-// gunbc.spark.pair_serving_realization spark_pair_head_unit_file rendered. The incarnation observation
-// is still absent on this path, so production still returns ServingRouteServiceUnidentified with
+// gunbc.spark.pair_serving_realization spark_pair_head_unit_file rendered; harness_collect_candidates
+// mints spark_pair_declared_unit_digests once per turn and carries the group's standing in, so
+// DigestStdin is not re-spawned per enrolled route. The incarnation observation is still absent on
+// this path, so production still returns ServingRouteServiceUnidentified with
 // ServiceIncarnationUnobserved. test.claim.spark.spark_pair_head_unit_digest_witness hashes the
 // rendered unit bytes by real sha256sum execution.
 fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRealization {
