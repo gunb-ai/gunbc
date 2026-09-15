@@ -20,13 +20,18 @@ import gunbc.spark.v41_runtime_candidate {
 
 // ── A RANK-LOCAL ENGRAM ROW STORE, AS A STRUCTURAL IDENTITY ────────────────────────────────────
 //
-// A prose label ("gather-ordered row store") is not an identity. The encoding fixes the component it
-// was produced from, the tensor population, how rows are ordered and partitioned across ranks, the
-// dtypes and geometry, the on-disk revision and endianness, and a digest over the produced bytes.
-// That last digest is THIS encoding's; it does not inherit a safetensors shard digest.
+// Encoding identity is a function of values the executing code consumes, or a fold over them —
+// not a parallel prose checklist. rank_map is what dest_rank/local_row match; row_order is what
+// rank_payload concatenates; dtypes go through SafetensorsDtype + safetensors_dtype_token; endianness
+// is Endianness + endianness_token. Alignment is not a key field: nothing pads, and packed 264-byte
+// records would disagree with a 64-byte alignment sentence. The digest is THIS encoding's; it does
+// not inherit a safetensors shard digest.
+//
+// A hash-only Python streamer of the published shards is an INDEPENDENT implementation of
+// dest_rank = global_row % rank_count and packed weight||scale records. Agreement with this module
+// (row counts, byte totals) is evidence, not derivation. That streamer does not mint Identified.
 data v41_row_store_format_revision: Nat = 1
 data v41_row_store_endianness: Endianness = LittleEndian
-data v41_row_store_alignment_bytes: ByteSize = byte_size(count: 64)
 data v41_row_store_rank_count: Nat = 4
 
 // THE PARTITION RULE IS THE PLACER. InterleaveByRankRemainder is dest_rank = global_row % rank_count
@@ -163,7 +168,6 @@ type V41RowStoreEncodingSpec sole_constructor {
   endianness: Endianness
   row_order: V41RowStoreOrder
   rank_map: V41RowStorePartition
-  alignment_bytes: ByteSize
 }
 
 fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> V41RowStoreEncoding {
@@ -201,7 +205,6 @@ fn v41_encoding_spec_with_geometry(partition: V41EngramResidencyPartition, slice
     endianness: v41_row_store_endianness,
     row_order: v41_row_store_order,
     rank_map: v41_row_store_partition,
-    alignment_bytes: v41_row_store_alignment_bytes,
   }
 }
 
@@ -216,7 +219,6 @@ fn v41_encoding_spec_override_endianness(spec: V41RowStoreEncodingSpec, endianne
     endianness: endianness,
     row_order: spec.row_order,
     rank_map: spec.rank_map,
-    alignment_bytes: spec.alignment_bytes,
   }
 }
 
@@ -235,7 +237,6 @@ fn v41_encoding_spec_inputs(spec: V41RowStoreEncodingSpec) -> List<ArtifactReali
     v41_input(identity: "row_order", value: v41_order_token(o: spec.row_order) as String),
     v41_input(identity: "rank_map", value: v41_partition_token(p: spec.rank_map) as String),
     v41_input(identity: "rank_count", value: to_string(spec.rank_count)),
-    v41_input(identity: "alignment_bytes", value: to_string(byte_size_count(b: spec.alignment_bytes))),
     v41_input(identity: "weight_dtype", value: safetensors_dtype_token(d: spec.geometry.weight_dtype) as String),
     v41_input(identity: "scale_dtype", value: safetensors_dtype_token(d: spec.geometry.scale_dtype) as String),
     v41_input(identity: "weight_width", value: to_string(spec.geometry.weight_width)),
@@ -460,7 +461,7 @@ data v41_published_transform_subject: V41TransformSubject = V41PublishedEngramSh
 
 fn v41_published_transform_standing() -> V41TransformResult {
   V41PublishedTransformUnestablished {
-    obligation: "the published Engram shards (layers 1 and 14 embed weight+scale) have not been supplied as the transform source; a fixture correspondence is a different subject and does not discharge this" as NonEmptyStr,
+    obligation: "the published Engram shards (layers 1 and 14 embed weight+scale) have not been supplied as this module's transform source; a fixture correspondence is a different subject; a hash-only Python streamer of those shards is an independent implementation of dest_rank = global_row % rank_count and packed records, and its receipt does not mint Identified here" as NonEmptyStr,
   }
 }
 
