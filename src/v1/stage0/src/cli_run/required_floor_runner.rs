@@ -1259,8 +1259,19 @@ fn changed_and_enrolled_witness_identities_with_index(
     // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
     // resolved the file. Seeding the authored module pulls its both-closure into
     // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
-    let (touched_modules, touched_outside_floor_roots) =
+    let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
+    // THE ASSEMBLY'S OWN PREDICATE (`prepared_subject_exclusion_row_for`), asked here over the
+    // seeded (path, module) pairs so the receipt names the row the assembly will honour -- one
+    // function, not a same-shaped copy that could drift from it (review 66411).
+    let exclusions = floor_prepared_subject_exclusions();
+    let mut touched_excluded_from_preparation: Vec<(String, String, String)> = Vec::new();
+    for (path, module) in &seeded_pairs {
+        if let Some(row) = prepared_subject_exclusion_row_for(path, module, &exclusions) {
+            touched_excluded_from_preparation.push((row.clone(), path.clone(), module.clone()));
+        }
+    }
+    touched_excluded_from_preparation.sort();
     // THE FOURTH PROJECTION IS THE DEPENDENTS DIRECTION OF THE SAME CLASS. The third seeds the
     // module whose declaration the diff touched; this one seeds the untouched modules whose
     // `match` over a coproduct went stale because its arm set changed in the touched one
@@ -1274,6 +1285,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         compile_subject: CompileSubjectSeeds {
             touched_modules,
             touched_outside_floor_roots,
+            touched_excluded_from_preparation,
             arm_set,
         },
     })
@@ -1297,6 +1309,11 @@ pub(crate) struct CompileSubjectSeeds {
     /// a `src/v1` `.dag` mirror edit names a module the floor's roots do not index, so it is not
     /// a seed -- and a reader must be able to see WHICH file seeded nothing and why, not a count.
     pub touched_outside_floor_roots: Vec<(String, String)>,
+    /// `(exclusion row, path, module_path)`: a touched entry that IS seeded and that
+    /// `assemble_prepared_subject_closure` then drops under `floor_prepared_subject_exclusions`
+    /// -- a designed-refusal probe, for instance. Said at the seed, so the planned-then-not-prepared
+    /// state is a typed row and not a count of excluded modules.
+    pub touched_excluded_from_preparation: Vec<(String, String, String)>,
     pub arm_set: ArmSetConsumerPlanning,
 }
 
@@ -1997,10 +2014,11 @@ pub(crate) fn module_seeds_from_touched_entry_files(
     base: &Path,
     touched_entry_files: &std::collections::HashSet<String>,
     source_roots: &[String],
-) -> Result<(Vec<String>, Vec<(String, String)>), String> {
+) -> Result<(Vec<String>, Vec<(String, String)>, Vec<(String, String)>), String> {
     let roots = floor_source_roots_workspace_relative(source_roots);
     let mut modules: Vec<String> = Vec::new();
     let mut outside: Vec<(String, String)> = Vec::new();
+    let mut seeded: Vec<(String, String)> = Vec::new();
     for file in touched_entry_files {
         let content = std::fs::read_to_string(base.join(file))
             .map_err(|e| format!("touched-entry compile-subject seed: read {file}: {e}"))?;
@@ -2013,6 +2031,7 @@ pub(crate) fn module_seeds_from_touched_entry_files(
         })?;
         let file_norm = normalize_repo_path(file);
         if path_under_floor_roots(&file_norm, &roots) {
+            seeded.push((file_norm, module.clone()));
             modules.push(module);
         } else {
             outside.push((file_norm, module));
@@ -2021,7 +2040,8 @@ pub(crate) fn module_seeds_from_touched_entry_files(
     modules.sort();
     modules.dedup();
     outside.sort();
-    Ok((modules, outside))
+    seeded.sort();
+    Ok((modules, outside, seeded))
 }
 
 /// The floor's source roots as workspace-relative directory prefixes, the spelling a
@@ -2314,6 +2334,9 @@ fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> Local
     match outcome {
         O::Pass => LocalRepoWetObserved::Passed,
         O::Fail => LocalRepoWetObserved::Failed,
+        // A TYPED REFUSAL IS A FAILED VERDICT, same class as `Fail`: the claim reached its
+        // subject and the subject said no.
+        O::ExitFailure { .. } => LocalRepoWetObserved::Failed,
         // NO VERDICT WAS REACHED. The claim was stopped or never started, which is not the same
         // as reaching a verdict this lane disagrees with.
         O::BudgetInterrupted { .. } => LocalRepoWetObserved::Nonterminal("budget".to_string()),
@@ -3688,6 +3711,17 @@ pub(crate) fn run_discovery_rows(
                 append_witness_verdict_diagnostic_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
+            // A GATE-CLASS ROW'S REASON IS ITS OWN RECEIPT. The companion-loudness appends the
+            // `Fail` arm makes are for Bool witnesses whose verdict carries nothing; a typed
+            // `ExitFailure` refusal already carries the `.dag`-authored reason, so appending a
+            // second, derived receipt beside it would be two authorities over one fact.
+            ClaimOutcome::ExitFailure { code, reason } => summary.failures.push(format!(
+                "{} ({}) returned ProcessExit::ExitFailure (code {}): {}",
+                row.function,
+                row.entry,
+                code,
+                reason.unwrap_or_else(|| "(no reason)".to_string())
+            )),
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
                 "{} ({}) returned `{}`, not Bool",
                 row.function, row.entry, got
@@ -3771,6 +3805,21 @@ pub(crate) fn run_discovery_rows(
 
 pub fn floor_prepared_subject_exclusions() -> Vec<String> {
     vec![
+        // MUST-NOT-RESOLVE PROBES. Every module under dag/test/probe/ declares in its header that
+        // it must not resolve: each is a designed refusal, consumed BY CLASS AND SUBJECT through
+        // `gunbc.compile_diagnostic_census` `census_of(source: probe_source(name))` -- the source
+        // text handed to the compiler by a fixture (DESIGN 4b), never a module in a closure.
+        // They stayed out of the prepared subject before gunbc#11256 only by accident: no
+        // importer, no gate prefix. The touched-entry seed (`module_seeds_from_touched_entry_files`)
+        // seeds the authored module of every edited non-data, non-test-fn declaration, so a PR
+        // that edits a probe (gunbc#11343 at 76923b733, run 34874099243:
+        // `[floor-phase] phase=touched-entry-compile-subject seeds=6 modules=[...,
+        // "test.probe.bare_string_from_boundary_probe"]` while
+        // `phase=arm-set-changed-consumers ... consumers_added=0`) pulled its designed refusal
+        // into Strict preparation as a blocker. This row is applied AFTER the seed walk, so the
+        // seed still prints (as `TouchedEntryExcludedFromPreparation`, a typed row rather than a
+        // vanished seed), and `ExclusionOrphansImporter` refuses the day anything imports one.
+        "test/probe/".to_string(),
         "test/fixture/meta_exec_confinement_scan/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
         // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
@@ -5358,6 +5407,17 @@ pub fn run_required_floor(
             subject.touched_modules.len(),
             subject.touched_modules
         );
+        // A SEED AN EXCLUSION ROW WILL DROP IS SAID SO HERE, at the seed, not discovered from a
+        // count of excluded modules: the module is planned as a touched entry and then not
+        // prepared, and the reader must see which row decided that (DESIGN 5: a typed, located
+        // disposition, never a silent narrowing).
+        for (row, path, module) in &subject.touched_excluded_from_preparation {
+            eprintln!(
+                "[floor-plan] TouchedEntryExcludedFromPreparation path={path} module_path={module} \
+                 row={row} -- planned as a touched entry, not prepared: the row names a population \
+                 whose refusal is designed and consumed by class elsewhere"
+            );
+        }
         for (path, module) in &subject.touched_outside_floor_roots {
             eprintln!(
                 "[floor-plan] TouchedEntryOutsideFloorRoots path={path} module_path={module} \
@@ -8301,6 +8361,14 @@ pub fn run_required_floor(
             ClaimOutcome::Fail => outcome
                 .failures
                 .push(format!("{} returned Bool(false)", claim.qualified)),
+            // Same fact as `Fail` — a failing verdict — with its reason carried instead of
+            // collapsed: this line is the floor's per-claim record of a gate-class refusal.
+            ClaimOutcome::ExitFailure { code, reason } => outcome.failures.push(format!(
+                "{} returned ProcessExit::ExitFailure (code {}): {}",
+                claim.qualified,
+                code,
+                reason.unwrap_or_else(|| "(no reason)".to_string())
+            )),
             // Every non-pass arm is reported with the fact that distinguishes it. A
             // collapsed "failed" would make a budget refusal, a runtime error and a
             // witness that answered false read alike, and those three have different
@@ -10994,10 +11062,14 @@ mod changed_witness_projection_tests {
         .expect("fixture write");
         let mut touched = std::collections::HashSet::new();
         touched.insert("consumer.dag".to_string());
-        let (seeds, outside) =
+        let (seeds, outside, seeded) =
             module_seeds_from_touched_entry_files(&dir, &touched, &[".".to_string()])
                 .expect("seeds");
         assert_eq!(seeds, vec!["exhaust.consumer".to_string()]);
+        assert_eq!(
+            seeded,
+            vec![("consumer.dag".to_string(), "exhaust.consumer".to_string())]
+        );
         assert!(
             outside.is_empty(),
             "a file under the roots is a seed, got {outside:?}"
@@ -11021,7 +11093,7 @@ mod changed_witness_projection_tests {
         .expect("fixture write");
         let mut touched = std::collections::HashSet::new();
         touched.insert("src/v1/mirror/consumer.dag".to_string());
-        let (seeds, outside) = module_seeds_from_touched_entry_files(
+        let (seeds, outside, _) = module_seeds_from_touched_entry_files(
             &dir,
             &touched,
             &["dag".to_string(), "src/v2".to_string()],
@@ -11062,6 +11134,85 @@ mod changed_witness_projection_tests {
             "refusal must name the missing header, got {err}"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A DIFF THAT EDITS A MUST-NOT-RESOLVE PROBE plans it as a touched entry and preparation
+    /// stays green with the typed row: the seed is reported (`TouchedEntryExcludedFromPreparation`
+    /// names the `test/probe/` exclusion row) and `assemble_prepared_subject_closure` drops it
+    /// before Strict resolve. The control is the same subject without the probe. Measured before
+    /// this row: gunbc#11343 at 76923b733, run 34874099243 --
+    /// `[floor-phase] phase=touched-entry-compile-subject seeds=6 modules=[...,
+    /// "test.probe.bare_string_from_boundary_probe"]` and a refused preparation on the probe's
+    /// designed `SoleConstructorViolation`.
+    #[test]
+    fn an_edited_must_not_resolve_probe_is_seeded_then_excluded_and_preparation_stays_green() {
+        let probe = "module armset.probe\n\nimport armset.x { Signal }\n\n\
+fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
+        let fx = arm_set_fixture("probe", "head", &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)]);
+        std::fs::create_dir_all(fx.join("test/probe")).expect("probe dir");
+        std::fs::write(fx.join("test/probe/probe.dag"), probe).expect("probe source");
+        let rel = fx
+            .strip_prefix(process_workspace_root())
+            .expect("under workspace")
+            .to_string_lossy()
+            .into_owned();
+        // The seed derivation sees the probe as a touched entry under the roots...
+        let mut touched = std::collections::HashSet::new();
+        touched.insert("test/probe/probe.dag".to_string());
+        touched.insert("w.dag".to_string());
+        let (seeds, _, pairs) =
+            module_seeds_from_touched_entry_files(&fx, &touched, &[".".to_string()])
+                .expect("seeds");
+        assert_eq!(
+            seeds,
+            vec!["armset.probe".to_string(), "armset.w".to_string()]
+        );
+        let exclusions = floor_prepared_subject_exclusions();
+        let excluded: Vec<(String, String, String)> = pairs
+            .iter()
+            .filter_map(|(path, module)| {
+                prepared_subject_exclusion_row_for(path, module, &exclusions)
+                    .map(|row| (row.clone(), path.clone(), module.clone()))
+            })
+            .collect();
+        assert_eq!(
+            excluded,
+            vec![(
+                "test/probe/".to_string(),
+                "test/probe/probe.dag".to_string(),
+                "armset.probe".to_string()
+            )],
+            "the probe seed must be reported against the test/probe/ row"
+        );
+        // ...and preparation over the SAME seed list, under the floor's own exclusions, is green:
+        // the probe's designed refusal never reaches Strict resolve.
+        let root = fx.to_string_lossy().into_owned();
+        let roots = [root.clone()];
+        // ONE cwd guard for both preparations: the mutex is not reentrant.
+        let (_lock, previous) = enter_workspace_cwd();
+        let index = build_multi_entry_index(&roots);
+        let prepared = prepare_repository_closure(
+            &roots,
+            &floor_prepared_subject_exclusions(),
+            Some((&index, &[], &seeds)),
+        );
+        // THE DISCRIMINATOR: without the exclusion rows the same seed list refuses on the probe.
+        let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
+        leave_workspace_cwd(&previous);
+        let (prepared, views) = prepared.expect("the excluded probe must not refuse preparation");
+        let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
+        assert!(!modules.contains(&"armset.probe"), "{modules:?}");
+        assert!(modules.contains(&"armset.w"), "{modules:?}");
+        assert_eq!(prepared.modules_excluded, 1);
+        let _ = std::fs::remove_dir_all(&fx);
+        let refusal = refusal
+            .err()
+            .expect("without the row the probe's designed refusal blocks");
+        assert!(
+            refusal.contains("no_such_field") || refusal.contains("no field"),
+            "{refusal}"
+        );
+        assert!(rel.contains("target/"), "fixture under target/: {rel}");
     }
 
     // ── THE #11194 SHAPE, EXECUTED END TO END ──────────────────────────────────────────────
