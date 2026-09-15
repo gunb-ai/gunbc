@@ -710,26 +710,40 @@ fn spark_pair_declared_head_artifact_record_parse(body: String) -> SparkPairDecl
   }
 }
 
-fn spark_pair_write_declared_head_artifact(group: FabricGroup, artifact: RenderedUnitArtifact) -> Bool {
+type SparkPairDeclaredHeadPublish
+  = SparkPairDeclaredHeadPublished { group: FabricGroup, digest: ContentHash }
+  | SparkPairDeclaredHeadPublishRefused { cause: NonEmptyStr }
+
+fn spark_pair_write_declared_head_artifact(group: FabricGroup, artifact: RenderedUnitArtifact) -> SparkPairDeclaredHeadPublish {
   let body = spark_pair_declared_head_artifact_record_text(record: SparkPairDeclaredHeadArtifactRecord {
     render_inputs_identity: artifact.render_inputs_identity,
     unit_name: artifact.unit_name,
     digest: artifact.digest,
   })
   let wr = Filesystem.Write(path: spark_pair_declared_unit_artifact_path(group: group), content: body)
-  wr.success
+  if wr.success {
+    SparkPairDeclaredHeadPublished { group: group, digest: artifact.digest }
+  } else {
+    SparkPairDeclaredHeadPublishRefused {
+      cause: join(["Filesystem.Write of the declared head-unit artifact failed: ", wr.error], "") as NonEmptyStr,
+    }
+  }
 }
 
-fn spark_pair_publish_declared_head_artifact(realization: SparkPairRealization) -> Bool {
+fn spark_pair_publish_declared_head_artifact(realization: SparkPairRealization) -> SparkPairDeclaredHeadPublish {
   match realization {
-    SparkPairRealizationRefused { group: _, cause: _ } => false
+    SparkPairRealizationRefused { group: _, cause: c } =>
+      SparkPairDeclaredHeadPublishRefused { cause: c }
     SparkPairRealized { group: g, head: h, workers: _ } =>
       match spark_pair_head_render_inputs_identity_for_group(group: g) {
-        Absent => false
+        Absent =>
+          SparkPairDeclaredHeadPublishRefused { cause: spark_pair_no_realization_names_group_obligation }
         Present { value: id } =>
           match spark_pair_seal_unit_render(render: h.unit, render_inputs_identity: id) {
-            SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
-            SparkPairUnitRendered { unit_name: _, text: _ } => false
+            SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
+              SparkPairDeclaredHeadPublishRefused { cause: c }
+            SparkPairUnitRendered { unit_name: _, text: _ } =>
+              SparkPairDeclaredHeadPublishRefused { cause: "unsigned unit bytes are not a declared digest; seal at apply publish" as NonEmptyStr }
             SparkPairUnitSealed { artifact: a } => spark_pair_write_declared_head_artifact(group: g, artifact: a)
           }
       }
