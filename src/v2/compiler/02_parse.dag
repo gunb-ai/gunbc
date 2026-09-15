@@ -1732,10 +1732,27 @@ fn choice_alts_terminal_universe(alts: List<PreparedExprFold>) -> List<Symbol> {
   choice_alts_union_first(alts: alts).terminals
 }
 
-fn choice_alts_starting_with(alts: List<PreparedExprFold>, token_class: Symbol) -> List<PreparedExprFold> {
+// C3 `choice_branches_ambiguous` sent a binary choice to ordered backtrack when both
+// sides were nullable, even with disjoint FIRST. Flattened n-way: if two or more
+// alternatives are nullable, each token bucket must still carry those nullable
+// alternatives in authored order (they match empty after a FIRST-alt rejects).
+// One nullable alternative stays FIRST-only, matching C3's unambiguous refusal.
+fn choice_alts_for_present_token(alts: List<PreparedExprFold>, token_class: Symbol) -> List<PreparedExprFold> {
+  let include_nullables = length(xs: choice_alts_nullable(alts: alts)) >= 2
   filter(
     xs: alts,
-    predicate: fn(alt) { symbol_list_contains(xs: grammar_expr_first_terminals(fold: prepared_expr_fold_first(alt: alt)), item: token_class) }
+    predicate: fn(alt) {
+      let first = prepared_expr_fold_first(alt: alt)
+      if symbol_list_contains(xs: grammar_expr_first_terminals(fold: first), item: token_class) {
+        true
+      } else {
+        if include_nullables {
+          grammar_expr_first_nullable(fold: first)
+        } else {
+          false
+        }
+      }
+    }
   )
 }
 
@@ -1948,7 +1965,7 @@ fn compile_choice_plan(
         m: acc,
         key: token_class,
         value: compile_choice_alts(
-          alts: choice_alts_starting_with(alts: alts, token_class: token_class),
+          alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
           nullable_set: nullable_set,
           first_rows: first_rows
         )

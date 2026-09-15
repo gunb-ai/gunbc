@@ -77,12 +77,37 @@ fn term(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
+fn seq(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn opt(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
 test fn prepared_choice_plan_agrees_with_the_inline_dispatch_rule() -> Bool {
   let left = term(token_class: ^pcp_a)
   let right = term(token_class: ^pcp_b)
   let expr = Choice { left: left, right: right }
   let tokens_a = [pcp_token(token_class: ^pcp_a)]
   let tokens_b = [pcp_token(token_class: ^pcp_b)]
+  let two_a = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_a)]
+  let a_then_b = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_b)]
+  let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
+  let ab = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_b))
+  let bb = seq(left: term(token_class: ^pcp_b), right: term(token_class: ^pcp_b))
+  // Flattened [aa, b?, b?]: two nullable alts. Token a is only in aa's FIRST; C3
+  // still backtracked because the outer choice was both-nullable. aa rejects one
+  // a; a nullable sibling must accept empty (review 66500).
+  let both_nullable = Choice {
+    left: aa,
+    right: Choice { left: opt(element: term(token_class: ^pcp_b)), right: opt(element: term(token_class: ^pcp_b)) }
+  }
+  let shared_prefix = Choice { left: ab, right: aa }
+  let token_prefix = Choice { left: aa, right: bb }
   (pcp_observe(expr: expr, tokens: tokens_a) == oracle_parse_choice(left: left, right: right, tokens: tokens_a))
     && ((pcp_observe(expr: expr, tokens: tokens_a) == pcp_observe(expr: expr, tokens: tokens_b)) == false)
+    && (pcp_observe(expr: both_nullable, tokens: tokens_a) == oracle_parse_choice(left: aa, right: opt(element: term(token_class: ^pcp_b)), tokens: tokens_a))
+    && (pcp_observe(expr: shared_prefix, tokens: a_then_b) == oracle_parse_choice(left: ab, right: aa, tokens: a_then_b))
+    && (pcp_observe(expr: token_prefix, tokens: two_a) == oracle_parse_choice(left: aa, right: bb, tokens: two_a))
 }
