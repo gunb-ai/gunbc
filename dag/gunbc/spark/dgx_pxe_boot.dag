@@ -1,5 +1,7 @@
 module gunbc.spark.dgx_pxe_boot
 
+import extdeps.pci.identity { PciVendorId, PciDeviceId }
+
 import std.types { NonEmptyStr, String, List, Bool }
 import std.decl_ref { DeclarationRef }
 import std.human_intervention {
@@ -38,8 +40,6 @@ import extdeps.os.ubuntu_kernel_nic_coverage {
   Noble2404GaLinux68,
   Noble2404HweLinux617,
   r8169_claims_pci_device,
-  PciVendorId,
-  PciDeviceId,
 }
 
 type PxeNetworkObservation {

@@ -1,0 +1,26 @@
+module test.claim.pci_identity_observation_witness
+
+import std.types { Bool, String }
+import gunbc.runner.runner_host_hardware_observation { mtcollins1_observed_pci_functions }
+import gunbc.runner.runner_host_first_boot_receipt { mtcollins1_igb_binding }
+
+// Import both formerly broken receipt closures on the ordinary discovery path.
+// Missing location evidence must coexist with the recorded device identity,
+// while independently recorded addresses remain available to their consumers.
+test fn w_recorded_and_unrecorded_pci_addresses_remain_distinct() -> Bool {
+  let recorded = filter(mtcollins1_observed_pci_functions, function => function.vendor as String == "8086")
+  let unrecorded = filter(mtcollins1_observed_pci_functions, function => function.vendor as String == "1a03")
+  count(recorded) == 2 && all(recorded, function => match function.address {
+    Present { value: address } => address as String == "02:02:00.00" || address as String == "02:02:00.01"
+    Absent => false
+  }) && count(unrecorded) == 1 && all(unrecorded, function => match function.address {
+    Absent => function.device as String == "2000"
+    Present { value: _ } => false
+  })
+}
+
+test fn w_igb_binding_count_joins_the_recorded_intel_functions() -> Bool {
+  let recorded = filter(mtcollins1_observed_pci_functions, function => function.vendor as String == "8086")
+  count(mtcollins1_igb_binding.bound_addresses) == count(recorded)
+    && count(recorded) == 2
+}
