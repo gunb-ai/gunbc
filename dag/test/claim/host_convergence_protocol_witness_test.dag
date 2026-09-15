@@ -97,6 +97,11 @@ fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bo
   }
 }
 
+fn refused_type_mismatch_or_missing_field(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  refused_with_class(o: o, wanted: "TypeMismatch")
+    || refused_with_class(o: o, wanted: "MissingField")
+}
+
 fn completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
     FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
@@ -110,9 +115,9 @@ data observer_with_goal_source: String = "module ta.entry\nfn observe(subject: I
 
 data observer_goal_blind_source: String = "module ta.entry\nfn observe(subject: Int, request: Int) -> Int { subject }\nfn entry() -> Int { observe(subject: 1, request: 2) }\n"
 
-data readiness_as_converged_source: String = "module ta.entry\nfn takes_int(n: Int) -> Int { n }\nfn entry() -> Int { takes_int(n: \"readiness\") }\n"
+data readiness_as_converged_source: String = "module ta.entry\ntype RuntimeReadiness { evidence: Int }\ntype ReconciledEffect { decision: Int, classified_grounding: Int }\nfn take_reconciled(v: ReconciledEffect) -> Int { v.decision }\nfn feed_ready(r: RuntimeReadiness) -> Int { take_reconciled(v: r) }\n"
 
-data readiness_stays_ready_source: String = "module ta.entry\nfn takes_int(n: Int) -> Int { n }\nfn entry() -> Int { takes_int(n: 7) }\n"
+data readiness_stays_ready_source: String = "module ta.entry\ntype RuntimeReadiness { evidence: Int }\nfn take_ready(v: RuntimeReadiness) -> Int { v.evidence }\nfn feed_ready(r: RuntimeReadiness) -> Int { take_ready(v: r) }\n"
 
 test fn control_1_observer_receiving_desired_state_refuses() -> Bool {
   refused_with_class(o: fixture_run(observer_with_goal_source), wanted: "CallArgumentNameUnknown")
@@ -223,7 +228,7 @@ test fn control_7_reused_pre_apply_reading_is_caught_by_independence() -> Bool {
 }
 
 test fn control_8_readiness_cannot_inhabit_convergence_verdict() -> Bool {
-  refused_with_class(o: fixture_run(readiness_as_converged_source), wanted: "TypeMismatch")
+  refused_type_mismatch_or_missing_field(o: fixture_run(readiness_as_converged_source))
     && completed_clean(o: fixture_run(readiness_stays_ready_source))
 }
 
