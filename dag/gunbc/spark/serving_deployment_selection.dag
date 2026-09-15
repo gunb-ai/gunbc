@@ -1308,7 +1308,13 @@ fn candidate_component_budget(
             obligation: "the per-rank share of this artifact's other components is underivable, so no budget follows" as NonEmptyStr,
           }
           Present { value: siblings_per_rank } =>
-            match measure_sub(a: group_rank_free_memory_upper(r: free), b: siblings_per_rank) {
+            match group_rank_free_memory_upper(r: free) {
+              Absent => ComponentBudgetUnestablished {
+                subject: ctx,
+                obligation: "the idle free-memory reading for this fleet carries an uncertainty region its own mint REFUSED -- its endpoints are reversed, so the region denotes nothing and no generous endpoint can be read off it. The obligation is a re-read of the reporter's line, not a repair of the stored pair" as NonEmptyStr,
+              }
+              Present { value: free_upper } =>
+            match measure_sub(a: free_upper, b: siblings_per_rank) {
               MeasureSubtrahendExceedsMinuend => ComponentBudgetEstablished {
                 subject: ctx,
                 rank_count: c.topology.tensor_parallel_degree,
@@ -1335,6 +1341,7 @@ fn candidate_component_budget(
                   ". The UPPER endpoint of that reading is used, so a route is refused only if it does not fit even the most generous value the reporter could have rounded to. Every sibling of this component has a read footprint, which is what admits this budget at all",
                 ], "") as NonEmptyStr,
               }
+            }
             }
         }
       }

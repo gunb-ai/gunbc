@@ -2,7 +2,8 @@ module gunbc.spark.pair_serving_observed
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
-import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size, measure_scale_fraction_floor }
+import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size, measure_scale_fraction_floor, measure_le }
+import std.interval { IntervalConstruction, IntervalReady, IntervalRefused, closed_interval, interval_high }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
@@ -315,11 +316,22 @@ fn group_kv_pool_observed(group: FabricGroup) -> GroupKvPoolObserved? {
 //
 // The prose stays, because a reader still needs to know WHY there are two endpoints. It is no longer the
 // only place the fact lives.
+// THE UNCERTAINTY REGION IS ONE FACT AND IS CARRIED AS ONE. Two sibling `ByteSize` endpoints were a
+// hand-written `{low, high}` record, which `std.interval` `OrderedClosedInterval` exists to forbid: a
+// transposed pair is not a wide region, it denotes nothing, and the memory screen subtracts against it.
+// The endpoints here are hand-typed hundredths, so nothing but the type stops a future row reversing
+// them.
+//
+// THE FIELD HOLDS THE CONSTRUCTION RATHER THAN THE INTERVAL, which is a departure from the shape review
+// 66511 prescribed and is forced rather than preferred. The only mint is `closed_interval`, which
+// refuses a reversed pair and therefore returns `IntervalConstruction`; a data initializer has no arm
+// in which to unwrap it, and every way of unwrapping it here -- swapping the endpoints, dropping the
+// row, substituting a default -- is the absorbing fallback DESIGN section 5 forbids. Storing the
+// construction keeps the refusal on the path to the consumer, which is what the wall is for.
 type GroupRankFreeMemoryObserved {
   group: FabricGroup
   reported_free_wire: NonEmptyStr
-  free_lower: ByteSize
-  free_upper: ByteSize
+  free: IntervalConstruction<ByteSize>
   probed_at: NonEmptyStr
   instrument: NonEmptyStr
   precision_caveat: NonEmptyStr
@@ -329,8 +341,7 @@ data group_rank_free_memory_observed: List<GroupRankFreeMemoryObserved> = [
   GroupRankFreeMemoryObserved {
     group: FabricGroupA,
     reported_free_wire: "116.9 GiB free per rank with the engine idle" as NonEmptyStr,
-    free_lower: gib_hundredths_to_bytes(hundredths: 11685),
-    free_upper: gib_hundredths_to_bytes(hundredths: 11695),
+    free: gib_hundredths_interval(low_hundredths: 11685, high_hundredths: 11695),
     probed_at: "2026-09-12" as NonEmptyStr,
     instrument: "the serving runtime's own memory-profiling line on an idle Group A rank during the V4.1 Flash rollout, read from the head's captured stdout; NVML refuses this query on unified memory and must not be substituted for it" as NonEmptyStr,
     precision_caveat: "the runtime reports one decimal of GiB, so the true free value lies within about 0.05 GiB of this figure; a verdict drawn against this bound must exceed that uncertainty to be established rather than borderline" as NonEmptyStr,
@@ -356,7 +367,22 @@ fn gib_hundredths_to_bytes(hundredths: Nat) -> ByteSize {
 // are good for rather than offered as an undifferentiated pair. An IMPOSSIBILITY screen must use the
 // upper endpoint: it may refuse only what does not fit even the most generous reading. Anything claiming
 // that memory IS available must use the lower.
-fn group_rank_free_memory_upper(r: GroupRankFreeMemoryObserved) -> ByteSize { r.free_upper }
+fn gib_hundredths_interval(low_hundredths: Nat, high_hundredths: Nat) -> IntervalConstruction<ByteSize> {
+  closed_interval(
+    low: gib_hundredths_to_bytes(hundredths: low_hundredths),
+    high: gib_hundredths_to_bytes(hundredths: high_hundredths),
+    le: measure_le)
+}
+
+// A REFUSED REGION IS NOT A MISSING ONE, and both are unusable here, so this answers `none` and the
+// caller owes an obligation either way. Returning the generous endpoint of a region that denotes
+// nothing is exactly the plausible number the interval authority exists to prevent.
+fn group_rank_free_memory_upper(r: GroupRankFreeMemoryObserved) -> ByteSize? {
+  match r.free {
+    IntervalReady { interval: i } => Present { value: interval_high(interval: i) }
+    IntervalRefused { reason: _ } => none
+  }
+}
 
 fn group_rank_free_memory(group: FabricGroup) -> GroupRankFreeMemoryObserved? {
   first(filter(group_rank_free_memory_observed, r => fabric_group_same(a: r.group, b: group)))
