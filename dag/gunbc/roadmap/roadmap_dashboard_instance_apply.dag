@@ -777,39 +777,35 @@ fn dashboard_ensure_service(
   instance: HostDashboardInstance,
   admitted_release_revision: CommitSha,
 ) -> DashboardExecResult {
-  if admitted_release_revision == "" {
-    dashboard_exec_refused(detail: "admitted release revision is empty")
-  } else {
-    match dashboard_service_session_ensure_decision(
-      observation: dashboard_observe_service_session(instance: instance),
-    ) {
-      EnsureRefuseServiceSession { cause } =>
-        dashboard_exec_refused(detail: join([
-          "service session observation refused before mutation: ",
-          cause,
-        ], ""))
-      EnsureCreateServiceSession =>
+  match dashboard_service_session_ensure_decision(
+    observation: dashboard_observe_service_session(instance: instance),
+  ) {
+    EnsureRefuseServiceSession { cause } =>
+      dashboard_exec_refused(detail: join([
+        "service session observation refused before mutation: ",
+        cause,
+      ], ""))
+    EnsureCreateServiceSession =>
+      dashboard_ensure_service_create(
+        instance: instance,
+        admitted_release_revision: admitted_release_revision,
+      )
+    EnsureReplaceServiceSession => {
+      let stopped = dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/tmux" as FilePath,
+        args: shape_tmux_kill_session_argv_for(
+          scope: instance.tmux_server,
+          session_name: dashboard_instance_service_session_name(instance: instance) as String,
+        ),
+      )
+      if !stopped.success {
+        stopped
+      } else {
         dashboard_ensure_service_create(
           instance: instance,
           admitted_release_revision: admitted_release_revision,
         )
-      EnsureReplaceServiceSession => {
-        let stopped = dashboard_target_exec(
-          instance: instance,
-          program: "/usr/bin/tmux" as FilePath,
-          args: shape_tmux_kill_session_argv_for(
-            scope: instance.tmux_server,
-            session_name: dashboard_instance_service_session_name(instance: instance) as String,
-          ),
-        )
-        if !stopped.success {
-          stopped
-        } else {
-          dashboard_ensure_service_create(
-            instance: instance,
-            admitted_release_revision: admitted_release_revision,
-          )
-        }
       }
     }
   }
@@ -921,7 +917,7 @@ fn dashboard_apply_provision_op(
   op: DashboardInstanceProvisionOp,
   temp_bundle: FilePath,
   temp_verify_repo: FilePath,
-  admitted_release_revision: CommitSha,
+  admitted_release_revision: CommitSha?,
 ) -> DashboardExecResult {
   match op {
     DashboardHydrateControllerHistory { controller_repo, history_remote } =>
@@ -992,10 +988,17 @@ fn dashboard_apply_provision_op(
       port: _,
       tmux_server: _,
     } =>
-      dashboard_ensure_service(
-        instance: instance,
-        admitted_release_revision: admitted_release_revision,
-      )
+      match admitted_release_revision {
+        Present { value: rev } =>
+          dashboard_ensure_service(
+            instance: instance,
+            admitted_release_revision: rev,
+          )
+        Absent =>
+          dashboard_exec_refused(
+            detail: "ensure-service reached a fold that did not admit a release revision",
+          )
+      }
     DashboardVerifyProviderRuntime { executable, state_root } => {
       let result = dashboard_target_exec(
         instance: instance,
@@ -1055,7 +1058,7 @@ fn dashboard_apply_plan(
   plan: List<DashboardInstanceProvisionOp>,
   temp_bundle: FilePath,
   temp_verify_repo: FilePath,
-  admitted_release_revision: CommitSha,
+  admitted_release_revision: CommitSha?,
 ) -> DashboardApplyFold {
   fold(
     plan,
@@ -2080,7 +2083,7 @@ fn dashboard_instance_apply_after_preflight(
               plan: plan,
               temp_bundle: temp_bundle,
               temp_verify_repo: temp_verify_repo,
-              admitted_release_revision: desired_source_revision,
+              admitted_release_revision: Present { value: desired_source_revision },
             )
             let cleaned = shell.Remove.RecursiveForce(path: temp.path)
             if !applied.running {
@@ -2180,7 +2183,7 @@ fn dashboard_apply_bootstrap_then_escalate(
     plan: dashboard_bootstrap_only_ops(instance: instance),
     temp_bundle: dashboard_bootstrap_unused_temp_path,
     temp_verify_repo: dashboard_bootstrap_unused_temp_path,
-    admitted_release_revision: "",
+    admitted_release_revision: none,
   )
   dashboard_apply_refused(
     instance: instance,
@@ -2280,7 +2283,7 @@ fn dashboard_instance_ensure_dispatch_roots(
       }),
     temp_bundle: "/dev/null" as FilePath,
     temp_verify_repo: "/dev/null" as FilePath,
-    admitted_release_revision: "",
+    admitted_release_revision: none,
   )
 }
 
