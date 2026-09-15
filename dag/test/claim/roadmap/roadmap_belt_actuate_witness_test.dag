@@ -143,6 +143,7 @@ import gunbc.roadmap_belt_actuate {
 }
 import gunbc.roadmap_belt { ManualReady }
 import v2.std.node_reflection { coproduct_arm_keys }
+import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
@@ -725,10 +726,18 @@ fn band_key_for_label(label: String) -> String {
 // ranges over modes, a label row exists. coproduct_arm_keys applies to NonAgentWorkMode exactly as
 // it applies here, so that version is authorable; it is not built yet, and this paragraph is the
 // declared edge rather than an omission a reader has to infer from the arm join's shape.
+// THE ROOTS THE ARM-KEY REFLECTION CONSULTS. coproduct_arm_keys resolves the spelling over a named
+// pool and refuses a forked spelling rather than answering from one of two (gunbc#11291), so a
+// Rejected reflection reds this witness instead of reading as an empty arm set.
+data belt_reflection_pool_roots: List<String> = ["dag", "src/v2"]
+
 fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
-  let arms = coproduct_arm_keys(type_name: ^LaunchRefusal)
-  count(arms) > 0
-    && all(arms, k => any(launch_refusal_exemplars(), r => discriminant(v: r) == k))
+  match coproduct_arm_keys(pool_roots: belt_reflection_pool_roots, type_name: ^LaunchRefusal) {
+    Accepted { value: arms, diagnostics: _ } =>
+      count(arms) > 0
+        && all(arms, k => any(launch_refusal_exemplars(), r => discriminant(v: r) == k))
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
