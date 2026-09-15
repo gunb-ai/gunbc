@@ -63,7 +63,7 @@ import gunbc.serving.turn_admission {
   AdmissibilityUnread, serving_group_admission, serving_admission_detail, serving_isolation_profile,
   spark_serving_trust_domain, serving_delay_valuation, serving_dispatch_inputs,
 }
-import gunbc.serving.turn_demand { serving_turn_requirements, serving_turn_work, ServingTurnRequest }
+import gunbc.serving.turn_demand { ServingModelRequirementRef, serving_turn_requirements, serving_turn_work, ServingTurnRequest }
 import std.content_hash { Fnv1a64Structural, as_content_hash_structural, content_hash_atom, content_hash_combine_structural, serialize_content_hash }
 import product.fabric.identity { FabricIdentity, DemandKey }
 import product.fabric.provider_admission { refusal_reason }
@@ -341,29 +341,32 @@ fn harness_seat_standing(route: ServingRoute, layout: EventLogLayout, now: Epoch
 //
 // ── WHAT THE TURN REQUIRES OF A MODEL, WHICH IS NOW A QUESTION RATHER THAN A CONSTANT ────────
 //
-// THE DEMAND USED TO NAME ONE MODEL AND THAT WAS THE WHOLE PROBLEM. The capability a serving offer
-// carries is derived from the model it was observed serving, and the fabric decides fungibility by
-// EXACT EQUALITY of capability references. So a requirement naming one model id made every route
-// serving anything else non-fungible -- which is the same demand the probe made, arriving a second
-// time at the selection layer.
+// THE DEMAND USED TO NAME ONE MODEL AND THAT WAS THE WHOLE PROBLEM. The fabric decides fungibility
+// by EXACT EQUALITY of capability references, so a requirement naming one model id made every route
+// serving anything else non-fungible -- the probe's demand arriving a second time at selection.
 //
-// SO THE REQUIREMENT IS A TYPED CHOICE THE CALLER MAKES. A turn that needs a particular model says
-// so and keeps the exact-equality wall; a turn that does not care -- which is what the operator
-// ruled the ordinary harness turn is -- requires the capability of being an ADMITTED SERVING ROUTE,
-// and an offer is bound with that capability only when its own probe observed an admitted model on
-// it. The capability is not weaker than it sounds: gunbc.serving.admitted_model admits only ids this
-// harness can express a turn for, and the binding is evidence-checked per placement rather than
-// asserted once.
+// THE FIRST REPAIR PUT THE REQUIREMENT INTO THE CAPABILITY, AND THAT WAS THE NEXT PROBLEM. To keep
+// equality matching, the harness stamped the OFFER with whatever the current demand required, so
+// one launch became three SupplierOffers under one key -- any-admitted, exact-DeepSeek, exact-GLM
+// -- with its capability chosen by the buyer. An offer's facts are the supplier's.
+//
+// SO NOW: the capability on both sides is the one stable token-serving capability the route offers
+// (gunbc.spark.serving_offer spark_serving_capability); the caller's requirement is REQUEST
+// IDENTITY (harness_model_requirement_ref into ServingTurnRequest.model_requirement, reaching the
+// Work key through the contract inputs); the model a launch serves is observed evidence carried on
+// the offer projection; and harness_requirement_admits screens the requirement against the
+// observed unit before any offer is bound. A turn that needs a particular model says so and is
+// refused any route serving another; a turn that does not care -- the operator's ruling for an
+// ordinary harness turn -- is admissible on any admitted route, and the two are different Work.
 //
 // WHY THIS IS NOT A FABRIC CHANGE. One could argue the fabric should express "any of these
 // capabilities" and decide the disjunction itself. It cannot today -- a requirement is one reference
 // compared by equality -- and widening that is a change to a load-bearing selection rule for a need
-// one consumer has. What this does instead is name the capability the demand ACTUALLY has, which is
-// a statement about the demand and belongs to the demand's author.
+// one consumer has. Keeping the model out of the capability is what makes that unnecessary.
 // THE EXACT ARM IS A DECLARED FRONTIER AND HAS NO PRODUCTION CALLER TODAY, said here rather than
 // left for a reader to discover by grep. Every harness entry point passes AnyAdmittedModel, because
 // the operator's ruling is that an ordinary turn does not care which model answers it. The exact arm
-// is what keeps this a REQUIREMENT rather than a constant: with one arm, harness_required_capability
+// is what keeps this a REQUIREMENT rather than a constant: with one arm, harness_model_requirement_ref
 // degenerates to a single string, the demand stops being a function of the caller, and the
 // exact-equality wall the fabric decides fungibility by becomes untestable -- the witness that proves
 // AnyAdmittedModel is not a blanket "accept anything" is written against precisely this arm.
@@ -377,10 +380,12 @@ type ServingModelRequirement
   = AnyAdmittedModel
   | ExactServingUnit { unit: HarnessServingUnit }
 
-fn harness_required_capability(requirement: ServingModelRequirement) -> NonEmptyStr {
+// The caller's model requirement as request identity: any admitted model, or one exact unit by its
+// model id. This is what harness_turn_request carries into the Work; it is never an offer fact.
+fn harness_model_requirement_ref(requirement: ServingModelRequirement) -> ServingModelRequirementRef {
   match requirement {
-    AnyAdmittedModel => "any-admitted-serving-model" as NonEmptyStr
-    ExactServingUnit { unit: u } => harness_unit_model_id(unit: u)
+    AnyAdmittedModel => "any-admitted-serving-model" as ServingModelRequirementRef
+    ExactServingUnit { unit: u } => join(["exact-serving-unit:", harness_unit_model_id(unit: u) as String], "") as ServingModelRequirementRef
   }
 }
 
@@ -394,10 +399,10 @@ fn harness_requirement_admits(requirement: ServingModelRequirement, observed: Ha
 // WHAT THE HARNESS REQUIRES, which must match what its own routes offer or nothing is fungible. The
 // isolation profile is empty on BOTH sides deliberately: turns are not isolated from each other on a
 // serving group, and a demand that pretended otherwise would refuse every offer we have.
-fn harness_execution_requirements(requirement: ServingModelRequirement) -> ExecutionRequirements {
+fn harness_execution_requirements() -> ExecutionRequirements {
   serving_turn_requirements(
     capacity_class: ControlPlaneCapacity,
-    capabilities: spark_serving_capability(model: harness_required_capability(requirement: requirement)),
+    capabilities: spark_serving_capability(),
     trust_domain: spark_serving_trust_domain,
     isolation: serving_isolation_profile(),
     shape: spark_serving_shape(),
@@ -424,9 +429,9 @@ type HarnessTurnSubject {
   demand: FabricIdentity<NonEmptyStr, DemandKey>
 }
 
-fn harness_turn_subject(request: ServingTurnRequest, requirement: ServingModelRequirement, attempt: NonEmptyStr) -> HarnessTurnSubject {
+fn harness_turn_subject(request: ServingTurnRequest, attempt: NonEmptyStr) -> HarnessTurnSubject {
   HarnessTurnSubject {
-    work: serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements(requirement: requirement)),
+    work: serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements()),
     demand: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: attempt as DemandKey },
   }
 }
@@ -442,10 +447,11 @@ fn harness_turn_subject(request: ServingTurnRequest, requirement: ServingModelRe
 // THE IDENTITY IS INJECTIVE IN THE LIST, NOT IN A DELIMITED JOIN. Each input is hashed as its own
 // atom, length-prefixed, and the atoms are combined in order under the element count; a join with
 // a separator byte would let ["a<sep>b"] and ["a", "b"] name one turn.
-fn harness_turn_request(shape: HarnessWireShape, inputs: List<String>) -> ServingTurnRequest {
+fn harness_turn_request(shape: HarnessWireShape, requirement: ServingModelRequirement, inputs: List<String>) -> ServingTurnRequest {
   ServingTurnRequest {
     interface: harness_wire_shape_interface(shape: shape),
     inputs: serialize_content_hash(hash: as_content_hash_structural(structural: harness_turn_inputs_identity(inputs: inputs))) as ArtifactManifestRef,
+    model_requirement: harness_model_requirement_ref(requirement: requirement),
     effect_contract: "gunbc.harness.streamed-turn-effects" as EffectContractRef,
     output_contract: "gunbc.harness.turn-completion" as OutputContractRef,
   }
@@ -563,7 +569,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
     launch: launch,
-    model: harness_required_capability(requirement: requirement),
+    served_model: model,
     trust_domain: spark_serving_trust_domain,
     isolation: serving_isolation_profile(),
     seats: seats as Int,
@@ -1013,8 +1019,12 @@ data harness_placement_rounds: Nat = 3
 // NO ADMISSIBLE OFFER IS A REFUSAL OR A PENDING, NEVER A DEGRADED PATH. The arm this replaces walked
 // the roster and took whatever granted a seat, which is the same shape as the router's "the request
 // has to go somewhere".
-fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, request: ServingTurnRequest, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
-  let subject = harness_turn_subject(request: request, requirement: requirement, attempt: attempt)
+// THE REQUEST IS BUILT HERE FROM THE SHAPE, THE REQUIREMENT AND THE INPUTS, so the model requirement
+// the Work carries and the one the candidate screen applies are one value with one source. A caller
+// that constructed the request itself could hand in a request naming one requirement beside a
+// screen argument naming another.
+fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+  let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt)
   match event_log_layout_for_host(short_hostname: short_hostname) {
     HostLayoutRefused { detail: d } => HarnessSeatRefused { detail: d }
     HostLayoutResolved { layout: layout, executor: _ } =>

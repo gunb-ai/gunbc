@@ -26,9 +26,11 @@ import gunbc.spark.serving_offer {
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape, AnthropicMessagesShape }
 import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_seat {
-  HarnessCandidates, HarnessTurnSubject, AnyAdmittedModel,
+  HarnessCandidates, HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
   harness_turn_subject, harness_turn_request, harness_admit_bound_offer, harness_execution_requirements,
 }
+import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
+import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape }
 
 // ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND, AND A BOUND OFFER PASSES ADMISSION OR NOTHING ──
 //
@@ -37,7 +39,10 @@ import gunbc.harness.harness_seat {
 // under that subject before the offer may enter the field. These witnesses pin both halves. The
 // admitted arm has no positive control yet, and that is stated rather than faked: first-party
 // admission refuses while the answering launch's usage-stats path is unread, on every fixture this
-// corpus can build, until a reader of the running container's effective configuration exists.
+// corpus can build. DECLARED FRONTIER (DESIGN 3c): the positive CandidateBound control lands when
+// spark_first_party_admission takes the narrow ServingUsageStatsObservation (gunbc#11441) and this
+// harness threads it through harness_admit_bound_offer -- a fixture Disabled observation on the
+// offered launch, a matching declared unit and an observed incarnation then reach the admitted arm.
 
 fn t_launch() -> VllmEndpointProcessLaunch {
   vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
@@ -72,7 +77,7 @@ fn t_bound() -> SparkOfferBinding<NonEmptyStr> {
     principal: "gunbc" as NonEmptyStr,
     executor: "spark-a" as NonEmptyStr,
     launch: t_launch(),
-    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+    served_model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
     trust_domain: "gunbc.trust.spark" as TrustDomainRef,
     isolation: IsolationProfile { guarantees: [] },
     seats: 1,
@@ -104,8 +109,7 @@ fn t_realization() -> SparkServingRealization {
 
 fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
   harness_turn_subject(
-    request: harness_turn_request(shape: OpenAiChatCompletionsShape, inputs: ["witness", prompt]),
-    requirement: AnyAdmittedModel,
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", prompt]),
     attempt: attempt as NonEmptyStr,
   )
 }
@@ -147,9 +151,9 @@ test fn a_bound_offer_refused_by_admission_is_not_a_candidate_and_carries_the_ca
 // THE SUBJECT IS THE REQUEST'S. Its Work is serving_turn_work over the normalized request and the same
 // requirements select_supply ranks against, and its Demand is the caller's attempt.
 test fn the_turn_subject_is_the_offered_service_work_and_the_attempt_demand() -> Bool {
-  let request = harness_turn_request(shape: OpenAiChatCompletionsShape, inputs: ["witness", "p"])
-  let subject = harness_turn_subject(request: request, requirement: AnyAdmittedModel, attempt: "a-1" as NonEmptyStr)
-  let direct = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements(requirement: AnyAdmittedModel))
+  let request = harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"])
+  let subject = harness_turn_subject(request: request, attempt: "a-1" as NonEmptyStr)
+  let direct = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements())
   (subject.work.id.key as String) == (direct.id.key as String)
     && (subject.demand.key as String) == "a-1"
     && (match subject.work.contract.execution {
@@ -172,7 +176,7 @@ test fn attempts_share_work_and_prompts_do_not() -> Bool {
 // in two, and an empty input each name a different turn; a delimited join would fold the first
 // two together.
 fn t_inputs_identity(inputs: List<String>) -> String {
-  harness_turn_request(shape: OpenAiChatCompletionsShape, inputs: inputs).inputs as String
+  harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: inputs).inputs as String
 }
 
 test fn the_inputs_identity_does_not_collapse_on_a_separator() -> Bool {
@@ -182,9 +186,40 @@ test fn the_inputs_identity_does_not_collapse_on_a_separator() -> Bool {
     && t_inputs_identity(inputs: ["a", "b"]) == t_inputs_identity(inputs: ["a", "b"])
 }
 
+// RED: THE NORMALIZED MODEL REQUEST IS THE WORK. A worker's rendered system prompt depends on the
+// gunbc program it names, so two turns on one brief with different programs are different Work; one
+// rendered request placed twice is one Work and two Demands; and the model requirement is request
+// identity, so an exact-unit turn on the same request is a third Work.
+fn t_worker_subject(gunbc_program: String, attempt: String) -> HarnessTurnSubject {
+  let prompt = harness_worker_system_prompt_at(worktree: "/w", repo_root: "/r", gunbc_program: gunbc_program)
+  harness_turn_subject(
+    request: harness_turn_request(shape: harness_default_wire_shape, requirement: AnyAdmittedModel, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: prompt, user_input: "brief")),
+    attempt: attempt as NonEmptyStr,
+  )
+}
+
+test fn the_rendered_request_is_the_work_and_the_attempt_is_the_demand() -> Bool {
+  let a = t_worker_subject(gunbc_program: "/bin/gunbc-a", attempt: "a-1")
+  let b = t_worker_subject(gunbc_program: "/bin/gunbc-b", attempt: "a-1")
+  let a2 = t_worker_subject(gunbc_program: "/bin/gunbc-a", attempt: "a-2")
+  let exact = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+  )
+  let any = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+  )
+  (a.work.id.key as String) != (b.work.id.key as String)
+    && (a.work.id.key as String) == (a2.work.id.key as String)
+    && (a.demand.key as String) != (a2.demand.key as String)
+    && (exact.work.id.key as String) != (any.work.id.key as String)
+    && (exact.work.requirements.capabilities as String) == (any.work.requirements.capabilities as String)
+}
+
 // RED: THE WIRE SHAPE IS THE INTERFACE, so one prompt spoken over two interfaces is two Works.
 test fn the_wire_shape_is_the_interface() -> Bool {
-  let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, inputs: ["witness", "p"]), requirement: AnyAdmittedModel, attempt: "a-1" as NonEmptyStr)
-  let anthropic = harness_turn_subject(request: harness_turn_request(shape: AnthropicMessagesShape, inputs: ["witness", "p"]), requirement: AnyAdmittedModel, attempt: "a-1" as NonEmptyStr)
+  let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
+  let anthropic = harness_turn_subject(request: harness_turn_request(shape: AnthropicMessagesShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
   (openai.work.id.key as String) != (anthropic.work.id.key as String)
 }

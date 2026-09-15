@@ -185,7 +185,7 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
     group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
     readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
     requirement: AnyAdmittedModel,
-    subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, inputs: ["witness"]), requirement: AnyAdmittedModel, attempt: "witness-attempt" as NonEmptyStr),
+    subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 4,
   )
   length(bound.candidates) == 0
