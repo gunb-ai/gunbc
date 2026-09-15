@@ -26,7 +26,7 @@ import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
-  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
+  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
   spark_pair_realizations, spark_pair_container_name, spark_pair_head_log_path,
   spark_pair_jit_cache_host_dir, spark_pair_head_unit_name, spark_pair_worker_unit_name,
   spark_pair_runtime_build_dir, exec_word_is_plain,
@@ -72,6 +72,7 @@ fn argv_line(cmd: ArgvCommand) -> String {
 fn unit_render_text(u: SparkPairUnitRender) -> String? {
   match u {
     SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
+    SparkPairUnitSealed { artifact: a } => Present { value: a.text }
     SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
   }
 }

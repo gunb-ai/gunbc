@@ -3,7 +3,7 @@ module gunbc.harness.harness_seat
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
   ServingRouteTurnCeiling, serving_enrolled_routes, serving_route_turn_ceiling_count,
@@ -54,9 +54,10 @@ import gunbc.spark.serving_offer {
   spark_serving_incarnation_unobserved_obligation,
 }
 import gunbc.spark.pair_serving_realization {
-  DeclaredUnitDigestStanding, SparkPairDeclaredUnitDigest,
-  spark_pair_declared_unit_digests, spark_pair_head_unit_declared_digest_among,
+  DeclaredUnitDigestStanding, DeclaredUnitDigestUnavailable, SparkPairRealization,
+  spark_pair_realizations, spark_pair_head_unit_declared_digest_among,
 }
+import gunbc.spark.glm_canary_converge { glm_canary_declared_unit_artifact_obligation }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
@@ -489,18 +490,20 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // is called with them, and bind_candidate has everything it compares.
 //
 // THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
-// through exactly what production passes. The declared head-unit digest is the SHA-256 of the bytes
-// gunbc.spark.pair_serving_realization spark_pair_head_unit_file rendered; harness_collect_candidates
-// mints spark_pair_declared_unit_digests once per turn and carries the group's standing in, so
-// DigestStdin is not re-spawned per enrolled route. The incarnation observation is still absent on
-// this path, so production still returns ServingRouteServiceUnidentified -- with
-// ServiceIncarnationUnobserved when the group's digest is carried, and ServiceDeclaredUnitDigestUnavailable
-// when it is not, because spark_serving_route_standing refuses the declared unit before it consults
-// the incarnation. That order is what makes the carry observable: a wire that dropped the roster
-// between harness_collect_candidates and this fold would change the verdict, not merely a note.
+// through exactly what production passes. The declared head-unit digest is a field of the rendered
+// unit artifact gunbc.spark.pair_serving_realization spark_pair_head_unit_file produced (SHA-256 of
+// the exact bytes apply writes). harness_collect_candidates reads spark_pair_realizations once per
+// collection so DigestStdin is not a second producer keyed by the turn; it is already on the artifact.
+// Group B is the canary's native argv launch and uses that arm's unrendered-unit obligation, never the
+// pair artifact. The incarnation observation is still absent on this path, so production still returns
+// ServingRouteServiceUnidentified -- with ServiceIncarnationUnobserved when the group's digest is
+// carried, and ServiceDeclaredUnitDigestUnavailable when it is not, because spark_serving_route_standing
+// refuses the declared unit before it consults the incarnation. That order is what makes the carry
+// observable: a wire that dropped the artifact between collection and this fold would change the
+// verdict, not merely a note.
 // test.claim.spark.spark_pair_head_unit_digest_witness hashes the rendered unit bytes by real
 // sha256sum execution; test.claim.serving.serving_availability_bind_wet_witness drives
-// harness_add_serving_candidate with the production roster and watches the verdict move.
+// harness_add_serving_candidate with the production realizations and watches the verdict move.
 fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRealization {
   SparkServingRealization {
     hosts: fabric_group_hosts(g: group),
@@ -559,7 +562,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
 //
 // AND THE MODEL SCREEN SITS HERE TOO, before the offer exists. A route serving something the demand
 // did not ask for is not a candidate at all, which is a different answer from being outbid.
-fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, declared_units: List<SparkPairDeclaredUnitDigest>) -> HarnessCandidates {
+fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, pair_units: List<SparkPairRealization>) -> HarnessCandidates {
   match route {
     ServingRouteUnresolved { group: _, obligation: o } =>
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
@@ -590,7 +593,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
             WithholdRouteNotProgressing { note: why } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why), retryable: true)
             ProgressDoesNotWithhold =>
-              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now, declared_units: declared_units)
+              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now, pair_units: pair_units)
           }
       }
     }
@@ -615,7 +618,7 @@ fn harness_candidate_from_standing(
   route_ceiling: ServingRouteTurnCeiling,
   layout: EventLogLayout,
   now: EpochSecs,
-  declared_units: List<SparkPairDeclaredUnitDigest>,
+  pair_units: List<SparkPairRealization>,
 ) -> HarnessCandidates {
           match standing {
             HarnessBackendServing { model: observed_model, unit: observed_unit, readback: observed_readback } =>
@@ -632,7 +635,7 @@ fn harness_candidate_from_standing(
                   model: observed_model, unit: observed_unit, readback: observed_readback,
                   seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
                   seats_held: harness_seat_standing(route: route, layout: layout, now: now),
-                  now: now, declared_units: declared_units,
+                  now: now, pair_units: pair_units,
                 )
               }
             HarnessBackendModelNotAdmitted { advertised: _ } =>
@@ -646,12 +649,19 @@ fn harness_candidate_from_standing(
 
 // EVERY OBSERVATION THIS FOLD CONSUMES ARRIVES AS A SUPPLIED VALUE -- the engine reading, the
 // availability verdict, the launch, and the seat pool standing -- and the one thing it reaches
-// for itself is the declared-unit roster lookup for this group. That is what makes the roster ->
-// among -> bind wire claimable at this one interface: test.claim.serving.serving_availability_bind_wet_witness
-// executes it with the production roster (spark_pair_declared_unit_digests, real sha256sum) and
-// shows the route verdict move when the roster is withdrawn. The observations themselves are
-// taken one call up, in harness_add_candidate, which no claim executes because it reads live
-// endpoints.
+// for itself is the declared-unit standing for this group, read from the pair render artifacts it
+// is handed (or from the canary arm's own unrendered-unit obligation). That is what makes the
+// artifact -> among -> bind wire claimable at this one interface: test.claim.serving.serving_availability_bind_wet_witness
+// executes it with the production realizations (real sha256sum at the render) and shows the route
+// verdict move when the group's row is withdrawn. The observations themselves are taken one call
+// up, in harness_add_candidate, which no claim executes because it reads live endpoints.
+fn harness_declared_unit_digest(group: FabricGroup, pair_units: List<SparkPairRealization>) -> DeclaredUnitDigestStanding {
+  match group {
+    FabricGroupA => spark_pair_head_unit_declared_digest_among(roster: pair_units, group: group)
+    FabricGroupB => DeclaredUnitDigestUnavailable { obligation: glm_canary_declared_unit_artifact_obligation }
+  }
+}
+
 fn harness_add_serving_candidate(
   acc: HarnessCandidates,
   endpoint: ServingRouteEndpoint,
@@ -666,7 +676,7 @@ fn harness_add_serving_candidate(
   seats: Nat,
   seats_held: ServingSeatStanding,
   now: EpochSecs,
-  declared_units: List<SparkPairDeclaredUnitDigest>,
+  pair_units: List<SparkPairRealization>,
 ) -> HarnessCandidates {
   let group = endpoint.group
   let admission = serving_group_admission(
@@ -679,7 +689,7 @@ fn harness_add_serving_candidate(
   )
   match admission {
     AdmissibleForClass { class: _, receipt: _ } =>
-      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, requirement: requirement, seats: seats, now: now, declared_unit: spark_pair_head_unit_declared_digest_among(roster: declared_units, group: group))
+      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, requirement: requirement, seats: seats, now: now, declared_unit: harness_declared_unit_digest(group: group, pair_units: pair_units))
     InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
       harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
     InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
@@ -710,9 +720,9 @@ fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
 // authority for the second question; every route it names still has to answer a probe before it
 // becomes a candidate, which is what makes membership observed rather than declared.
 fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, excluded: List<String>) -> HarnessCandidates {
-  let declared_units = spark_pair_declared_unit_digests()
+  let pair_units = spark_pair_realizations()
   let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false }, f: (acc, r) =>
-    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, layout: layout, now: now, declared_units: declared_units))
+    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, layout: layout, now: now, pair_units: pair_units))
   HarnessCandidates {
     candidates: filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key)),
     notes: collected.notes,
