@@ -4,14 +4,18 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
-import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8 }
-import extdeps.nvidia.nccl { NcclRealizedTransport, NcclTransportUnread }
-import gunbc.spark.serving_arm { ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10, ServingTopology, SparkPairTp2, FourSparkTp4, serving_topology_of_rank_count }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8, VllmSpeculativePolicy, SpeculativeDecodingOff }
+import extdeps.nvidia.nccl { NcclRealizedTransport }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10,
+  ServingTopology, SparkPairTp2, FourSparkTp4, serving_topology_of_rank_count,
+}
 import gunbc.spark.serving_performance_subject {
-  ServingPerformanceSubject, serving_performance_subject,
-  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectUnestablished,
-  ControlledComparison, ControlledOnAxis, ComparisonIsARepeat, ComparisonUncontrolled, ComparisonNotPossible,
-  controlled_comparison,
+  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
+  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial, SubjectUnestablished,
+  SubjectAxisDelta, AxisDeltaOnOneAxis, AxisDeltaNone, AxisDeltaOnManyAxes, AxisDeltaUndecidable,
+  serving_subject_axis_delta,
 }
 
 // ── THE SUBJECT OF EVERY ROW BELOW IS A RETIRING PROFILE ──────────────────────────────────────
@@ -67,6 +71,7 @@ import gunbc.spark.serving_performance_subject {
 // have agreed with neither while looking authoritative. With the rate as the single authority, a
 // wrong-by-1000 value announces itself in the derived throughput immediately.
 type TopologyArm sole_constructor {
+  subject: ServingPerformanceSubjectStanding
   tensor_parallel_size: Nat
   rank_population: Nat
   context_ceiling: TokenCount
@@ -78,8 +83,50 @@ type TopologyArm sole_constructor {
   provenance: NonEmptyStr
 }
 
+
+// ── EVERY ARM CARRIES ITS OWN SUBJECT, AND THE RANK POPULATION IS PART OF IT ──────────────────
+//
+// THE FIRST ATTEMPT PUT THESE BESIDE THE ARMS AS `spark_group_a_tp4_subject` / `_tp2_subject`, which
+// left `spark_group_a_tp4_arm` and every derived rate independently importable with no subject at
+// all -- the exact unbound path this type exists to close. The subject is now a field, so a consumer
+// holding a rate is holding the profile it was measured against.
+//
+// THE TOPOLOGY IS THE ARM'S DECLARED DEGREE RESOLVED THROUGH gunbc.spark.serving_arm, and the rank
+// population is carried SEPARATELY because the arm declares it separately. An earlier binding
+// derived topology from `tensor_parallel_size` alone while `rank_population` stayed independently
+// consumable, so an arm claiming TP=4 with two ranks got a FourSparkTp4 subject and the
+// fleet-normalisation path still read the other number. Both are axes; an inconsistent pair is a
+// difference the join can see rather than one the subject silently resolves.
+fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: Nat) -> ServingPerformanceSubjectStanding {
+  match serving_topology_of_rank_count(ranks: degree) {
+    Absent => SubjectUnestablished {
+      missing: "tensor-parallel topology" as NonEmptyStr,
+      believed: join(["nothing: the arm declares tensor_parallel_size ", to_string(degree),
+                      ", which no ServingTopology in gunbc.spark.serving_arm serving_topologies carries"], "") as NonEmptyStr,
+      would_settle: "add the ServingTopology row for this rank count to gunbc.spark.serving_arm, or correct the arm's declared degree; until then this arm names a shape the fleet does not model and no measurement of it may be joined to any decision" as NonEmptyStr,
+    }
+    Present { value: resolved_topology } => serving_subject_standing(
+      subject: serving_performance_subject(
+        checkpoint: DeepseekV4FlashIq3sSplit,
+        checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+        runtime: GunbcSparkrunVllmDs4Gb10,
+        runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+        topology: resolved_topology,
+        rank_population: ranks,
+        context_ceiling: ceiling,
+        max_num_batched_tokens: token_count(count: budget),
+        max_num_seqs: 32,
+        kv_cache_dtype: KvFp8,
+        speculative: Present { value: SpeculativeDecodingOff },
+        collective_transport: none
+      )
+    )
+  }
+}
+
 // 1,066.2 micros per token at ~16k depth. Reciprocal 938 tokens per second, derived, never stored.
 data spark_group_a_tp4_arm: TopologyArm = TopologyArm {
+  subject: topology_arm_subject(degree: 4, ranks: 4, ceiling: token_count(count: 131072), budget: 2048),
   tensor_parallel_size: 4,
   rank_population: 4,
   context_ceiling: token_count(count: 131072),
@@ -92,6 +139,7 @@ data spark_group_a_tp4_arm: TopologyArm = TopologyArm {
 }
 
 data spark_group_a_tp2_arm: TopologyArm = TopologyArm {
+  subject: topology_arm_subject(degree: 2, ranks: 2, ceiling: token_count(count: 131072), budget: 2048),
   tensor_parallel_size: 2,
   rank_population: 2,
   context_ceiling: token_count(count: 131072),
@@ -378,58 +426,19 @@ data spark_group_a_topology_standing: TopologyStanding = TopologyNotFungibleMayB
   before_a_profile: "three gates, none of them cleared: repeat the arms to earn an interval on the 25.4% and a within-topology numerical envelope; establish whether TP=2 admits the production 1,048,576 ceiling at all, by allocator block population and an actual maximum-context request rather than a printed pool size; and decide which topology is closer to the intended model semantics, which a stable difference alone does not settle. The mechanism inside the step is also unidentified -- collectives, shard geometry, expert partition, kernel shapes and reduction order all moved together -- so no communicator or executor replacement is earned by this result" as NonEmptyStr,
 }
 
-// ── THE TWO ARMS AS SUBJECTS, AND THE CUT AS A FOLD OVER THEM ─────────────────────────────────
+// ── THE CUT ITSELF, DERIVED FROM THE ARMS' OWN SUBJECTS ───────────────────────────────────────
 //
-// THIS MODULE'S CENTRAL CLAIM IS THAT ONE AXIS MOVED. It is stated in the opening paragraph as a
-// list of nine things held constant, and a list in prose is exactly the thing that goes stale when
-// a tenth is added. Bound as subjects, the claim is `controlled_comparison` returning
-// ControlledOnAxis with the axis named, and an arm that quietly drifts on a second axis stops
-// being describable as this cut.
+// WHAT THIS ROW DOES AND DOES NOT SAY, stated exactly because an earlier version of it overclaimed
+// twice. It reports the DELTA between the two arms' subject records -- how many modelled axes moved
+// -- and nothing about whether the two measurements are comparable: the prompts, producers, carriers
+// and launch incarnations are not in the subject and are not consulted here.
 //
-// THE CONTEXT CEILING IS 131,072 IN BOTH ARMS, which the opening paragraph flags as a deliberate
-// choice rather than the production ceiling. It is carried from the arm rows rather than restated,
-// so a change to either arm moves the subject with it.
-//
-// THE TRANSPORT IS UNREAD ON BOTH SIDES, AND THAT IS NOT A DETAIL HERE. This is the module that
-// establishes a cross-topology numerical divergence and refuses substitution on it; the collective
-// path is the one subsystem a tensor-parallel degree change most obviously moves, and nothing in
-// this acquisition read NCCL's verdict line on either arm. Because both sides are unread, the
-// comparison below resolves to ComparisonNotPossible rather than to the topology cut it claims --
-// which is the honest answer: the two arms were not established to share a transport, and if they
-// did not, the degree is not the only axis that moved.
-// THE DEGREE IS RESOLVED THROUGH THE OWNING AUTHORITY AND AN UNMAPPED ONE REFUSES. This read
-// `if a.tensor_parallel_size == 2 { SparkPairTp2 } else { FourSparkTp4 }`, which is a fabricated
-// default sitting on the one axis this module exists to attribute to: any degree but 2 -- 1, 8, or
-// a typo in a row -- became a confident TP=4 and the subject then joined as though the degree had
-// been read. It was also a second authority on a relation gunbc.spark.serving_arm already owns.
-fn topology_arm_subject(a: TopologyArm) -> ServingPerformanceSubjectStanding {
-  match serving_topology_of_rank_count(ranks: a.tensor_parallel_size) {
-    Absent => SubjectUnestablished {
-      missing: "tensor-parallel topology" as NonEmptyStr,
-      believed: join(["nothing: the arm declares tensor_parallel_size ", to_string(a.tensor_parallel_size),
-                      ", which no ServingTopology in gunbc.spark.serving_arm serving_topologies carries"], "") as NonEmptyStr,
-      would_settle: "add the ServingTopology row for this rank count to gunbc.spark.serving_arm, or correct the arm's declared degree; until then this arm names a shape the fleet does not model and no measurement of it may be joined to any decision" as NonEmptyStr,
-    }
-    Present { value: resolved_topology } => SubjectEstablished {
-    subject: serving_performance_subject(
-      checkpoint: DeepseekV4FlashIq3sSplit,
-      runtime: GunbcSparkrunVllmDs4Gb10,
-      topology: resolved_topology,
-      context_ceiling: a.context_ceiling,
-      max_num_batched_tokens: token_count(count: a.max_num_batched_tokens),
-      kv_cache_dtype: KvFp8,
-      collective_transport: NcclTransportUnread {
-        because: "this acquisition never read NCCL's `Using network` verdict line on either arm; a tensor-parallel degree change moves the collective path, so an unread transport leaves a second axis unaccounted for" as NonEmptyStr,
-      }
-    ),
-  }
-  }
-}
-
-data spark_group_a_tp4_subject: ServingPerformanceSubjectStanding = topology_arm_subject(a: spark_group_a_tp4_arm)
-data spark_group_a_tp2_subject: ServingPerformanceSubjectStanding = topology_arm_subject(a: spark_group_a_tp2_arm)
-
-// THE CUT ITSELF, DERIVED. Today this reads ComparisonNotPossible because the transport is unread
-// on both sides. Reading NCCL's verdict on a relaunch of either arm is what turns it into
-// ControlledOnAxis { AxisTopology }; nothing else here needs to change for that to happen.
-data spark_group_a_topology_cut: ControlledComparison = controlled_comparison(left: spark_group_a_tp4_subject, right: spark_group_a_tp2_subject)
+// AND IT IS PERMANENTLY UNDECIDABLE ON THE TRANSPORT AXIS, which the earlier prose got wrong in a
+// way that mattered. It said the row would flip to a one-axis cut "the moment someone reads the
+// verdict line on a relaunch of either arm". It would not: reading ONE arm leaves the other unread,
+// and -- the deeper error -- a transport reading taken from a FUTURE relaunch cannot be attached
+// backwards to performance measured on an earlier launch. A relaunch is a new subject and a new
+// experiment. These 2026-09-07 arms have no realized transport in their carriers and no later
+// observation can give them one, so this row stays undecidable on that axis forever; what a
+// relaunch buys is a NEW comparison, not a repair of this one.
+data spark_group_a_topology_axis_delta: SubjectAxisDelta = serving_subject_axis_delta(left: spark_group_a_tp4_arm.subject, right: spark_group_a_tp2_arm.subject)

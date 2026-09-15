@@ -4,8 +4,8 @@ import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
-import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, vllm_kv_cache_dtype_wire }
-import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire, nccl_transport_is_unread }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, vllm_kv_cache_dtype_wire, VllmSpeculativePolicy, vllm_speculative_policy_wire }
+import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
@@ -42,14 +42,25 @@ import gunbc.spark.serving_arm {
 // interchangeable within a profile and keying on them would refuse joins that are sound. The
 // launch is not one either -- that is what VllmServingLaunch fences, and a subject that carried it
 // could never join two launches of one profile, which is exactly what a repeated arm is.
+// THE EXACT REVISION AND IMAGE REFERENCE ARE FIELDS, NOT DERIVED FROM THE ENUM. An earlier revision
+// of this record carried only `checkpoint` and `runtime`, and compared them by their static variant
+// wires -- so a REPIN of the image behind `GunbcSparkrunVllmDs4Gb10` kept comparing SameSubject.
+// gunbc.spark.serving_arm already refuses that exact move one level up: `runtime_reading_is_current`
+// exists because a reading taken inside one digest is not evidence about another. A subject weaker
+// than the module it borrows from is not a fence.
 type ServingPerformanceSubject sole_constructor {
   checkpoint: ServingCheckpoint
+  checkpoint_revision: NonEmptyStr
   runtime: ServingRuntime
+  runtime_image_reference: NonEmptyStr
   topology: ServingTopology
+  rank_population: Nat
   context_ceiling: TokenCount
   max_num_batched_tokens: TokenCount
+  max_num_seqs: Nat
   kv_cache_dtype: VllmKvCacheDtypeRequest
-  collective_transport: NcclRealizedTransport
+  speculative: VllmSpeculativePolicy?
+  collective_transport: NcclRealizedTransport?
 }
 
 // THE FACTORY IS THE ONLY WAY TO BUILD ONE, which is what `sole_constructor` buys and is the same
@@ -59,20 +70,30 @@ type ServingPerformanceSubject sole_constructor {
 // field.
 fn serving_performance_subject(
   checkpoint: ServingCheckpoint,
+  checkpoint_revision: NonEmptyStr,
   runtime: ServingRuntime,
+  runtime_image_reference: NonEmptyStr,
   topology: ServingTopology,
+  rank_population: Nat,
   context_ceiling: TokenCount,
   max_num_batched_tokens: TokenCount,
+  max_num_seqs: Nat,
   kv_cache_dtype: VllmKvCacheDtypeRequest,
-  collective_transport: NcclRealizedTransport,
+  speculative: VllmSpeculativePolicy?,
+  collective_transport: NcclRealizedTransport?,
 ) -> ServingPerformanceSubject {
   ServingPerformanceSubject {
     checkpoint: checkpoint,
+    checkpoint_revision: checkpoint_revision,
     runtime: runtime,
+    runtime_image_reference: runtime_image_reference,
     topology: topology,
+    rank_population: rank_population,
     context_ceiling: context_ceiling,
     max_num_batched_tokens: max_num_batched_tokens,
+    max_num_seqs: max_num_seqs,
     kv_cache_dtype: kv_cache_dtype,
+    speculative: speculative,
     collective_transport: collective_transport,
   }
 }
@@ -87,21 +108,31 @@ fn serving_performance_subject(
 // a wall and a checklist: the exhaustive match is what makes the omission unwritable.
 type ServingSubjectAxis
   = AxisCheckpoint
+  | AxisCheckpointRevision
   | AxisRuntime
+  | AxisRuntimeImageReference
   | AxisTopology
+  | AxisRankPopulation
   | AxisContextCeiling
   | AxisBatchBudget
+  | AxisMaxNumSeqs
   | AxisKvCacheDtype
+  | AxisSpeculativePolicy
   | AxisCollectiveTransport
 
 fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
   match a {
     AxisCheckpoint => "checkpoint" as NonEmptyStr
+    AxisCheckpointRevision => "checkpoint revision" as NonEmptyStr
     AxisRuntime => "runtime" as NonEmptyStr
+    AxisRuntimeImageReference => "runtime image reference" as NonEmptyStr
     AxisTopology => "topology" as NonEmptyStr
+    AxisRankPopulation => "rank population" as NonEmptyStr
     AxisContextCeiling => "context ceiling" as NonEmptyStr
     AxisBatchBudget => "max_num_batched_tokens" as NonEmptyStr
+    AxisMaxNumSeqs => "max_num_seqs" as NonEmptyStr
     AxisKvCacheDtype => "kv cache dtype" as NonEmptyStr
+    AxisSpeculativePolicy => "speculative policy" as NonEmptyStr
     AxisCollectiveTransport => "collective transport" as NonEmptyStr
   }
 }
@@ -113,12 +144,25 @@ fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
 fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> NonEmptyStr {
   match a {
     AxisCheckpoint => serving_checkpoint_wire(c: s.checkpoint)
+    AxisCheckpointRevision => s.checkpoint_revision
     AxisRuntime => serving_runtime_wire(r: s.runtime)
+    AxisRuntimeImageReference => s.runtime_image_reference
     AxisTopology => serving_topology_wire(t: s.topology)
+    AxisRankPopulation => to_string(s.rank_population) as NonEmptyStr
     AxisContextCeiling => to_string(token_count_value(t: s.context_ceiling)) as NonEmptyStr
     AxisBatchBudget => to_string(token_count_value(t: s.max_num_batched_tokens)) as NonEmptyStr
+    AxisMaxNumSeqs => to_string(s.max_num_seqs) as NonEmptyStr
     AxisKvCacheDtype => vllm_kv_cache_dtype_wire(request: s.kv_cache_dtype)
-    AxisCollectiveTransport => nccl_realized_transport_wire(t: s.collective_transport)
+    AxisSpeculativePolicy =>
+      match s.speculative {
+        Absent => axis_value_unread_marker
+        Present { value: sp } => vllm_speculative_policy_wire(p: sp)
+      }
+    AxisCollectiveTransport =>
+      match s.collective_transport {
+        Absent => axis_value_unread_marker
+        Present { value: tr } => nccl_realized_transport_wire(t: tr)
+      }
   }
 }
 
@@ -126,11 +170,16 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
 // a subset of the axes by passing a shorter list.
 data serving_subject_axes: List<ServingSubjectAxis> = [
   AxisCheckpoint,
+  AxisCheckpointRevision,
   AxisRuntime,
+  AxisRuntimeImageReference,
   AxisTopology,
+  AxisRankPopulation,
   AxisContextCeiling,
   AxisBatchBudget,
+  AxisMaxNumSeqs,
   AxisKvCacheDtype,
+  AxisSpeculativePolicy,
   AxisCollectiveTransport,
 ]
 
@@ -147,55 +196,84 @@ fn serving_subject_axes_wire(axes: List<ServingSubjectAxis>) -> String {
   join(map(axes, a => serving_subject_axis_wire(a: a) as String), ", ")
 }
 
-// ── READING A MEASUREMENT FOR A SUBJECT IS A THREE-VALUED QUESTION ─────────────────────────────
+// THE MARKER IS FOR RENDERING AND IS NEVER COMPARED. `serving_subject_known_differing_axes` excludes
+// every axis that is unknown on either side before any string comparison happens, so this string
+// cannot decide agreement the way the old `<transport-unread>` sentinel could. It exists only so a
+// rendered subject line shows which axes were never read.
+data axis_value_unread_marker: NonEmptyStr = "<unread>" as NonEmptyStr
+
+// ── AN AXIS CAN BE UNKNOWN, AND AN UNKNOWN AXIS MUST NOT ERASE A KNOWN MISMATCH ───────────────
 //
-// SameSubject and DifferentSubject are the two answers a reader expects. The third is the one that
-// keeps this type honest: a subject whose collective transport was never read is not thereby EQUAL
-// to one whose transport was read, and it is not DIFFERENT from it either -- nobody looked. Collapsing
-// that into either answer is the absorbing fallback DESIGN section 5 names, in the direction that
-// hurts: read as Same, an unread transport silently licenses quoting a socket number for an RDMA
-// arm, which is precisely the comparison the live throughput question turns on.
+// Two axes carry their own "nobody looked" arm: the collective transport and the speculative
+// policy. An earlier revision of this module let either one short-circuit the whole join to
+// Incomparable BEFORE comparing anything, and that was wrong in the expensive direction: two
+// subjects on DIFFERENT CHECKPOINTS whose transport nobody read came back "I cannot tell", when the
+// checkpoint difference alone already settles that the measurement does not transfer. Destroying an
+// established counterexample because a different axis is unknown is the absorbing fallback pointed
+// at the answer instead of the ignorance.
 //
-// THE GUARD IS LOAD-BEARING AND THE PROJECTION IS NOT ENOUGH, which is worth stating exactly
-// because an earlier revision of this comment got it wrong in the direction that makes the guard
-// look redundant. NcclTransportUnread projects to a sentinel no verdict line can produce, so an
-// unread transport never compares equal to a READ one. It does compare equal to ITSELF -- two
-// subjects nobody looked at have the same projection -- so nothing in the axis fold would refuse
-// them. The explicit guard in `serving_subject_reads` is what turns that case into Incomparable,
-// and it asks extdeps.nvidia.nccl rather than reading the spelling back.
+// SO KNOWN DIFFERENCES ARE COMPUTED FIRST AND WIN. Incomparable is reserved for the case where every
+// axis anyone READ agrees and something material was never read -- which is the only situation where
+// the answer genuinely turns on the missing evidence.
+fn subject_unknown_axes(s: ServingPerformanceSubject) -> List<ServingSubjectAxis> {
+  filter(serving_subject_axes, a => subject_axis_is_unknown(s: s, a: a))
+}
+
+fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
+  match a {
+    AxisCollectiveTransport =>
+      match s.collective_transport { Absent => true, Present { value: _ } => false }
+    AxisSpeculativePolicy =>
+      match s.speculative { Absent => true, Present { value: _ } => false }
+    AxisCheckpoint => false
+    AxisCheckpointRevision => false
+    AxisRuntime => false
+    AxisRuntimeImageReference => false
+    AxisTopology => false
+    AxisRankPopulation => false
+    AxisContextCeiling => false
+    AxisBatchBudget => false
+    AxisMaxNumSeqs => false
+    AxisKvCacheDtype => false
+  }
+}
+
+fn either_side_unknown_axes(left: ServingPerformanceSubject, right: ServingPerformanceSubject) -> List<ServingSubjectAxis> {
+  filter(serving_subject_axes, a => subject_axis_is_unknown(s: left, a: a) || subject_axis_is_unknown(s: right, a: a))
+}
+
+// A KNOWN DIFFERENCE IS ONE ON AN AXIS BOTH SIDES ACTUALLY READ. An axis unknown on either side is
+// excluded here rather than counted as differing, because two unread transports project to the same
+// sentinel and would otherwise read as agreement, while an unread against a read one would read as
+// a difference the evidence does not support.
+fn serving_subject_known_differing_axes(left: ServingPerformanceSubject, right: ServingPerformanceSubject) -> List<ServingSubjectAxis> {
+  filter(serving_subject_differing_axes(left: left, right: right),
+         a => !subject_axis_is_unknown(s: left, a: a) && !subject_axis_is_unknown(s: right, a: a))
+}
+
 type ServingSubjectJoin
   = SameSubject
   | DifferentSubject { axes: NonEmptyStr, left: NonEmptyStr, right: NonEmptyStr }
   | SubjectIncomparable { because: NonEmptyStr }
 
-// UNREADNESS IS ASKED OF THE OWNING MODULE. An earlier revision of this predicate compared the
-// projection against the sentinel literal, which was a second copy of a spelling authored in
-// extdeps.nvidia.nccl -- re-spell it there and this wall silently stops firing, with no type error,
-// and the unread arm starts comparing equal to a read one. That is the exact collapse the three-
-// valued join below exists to prevent, held up by the one construct that could drift out from under
-// it.
-fn subject_transport_is_unread(s: ServingPerformanceSubject) -> Bool {
-  nccl_transport_is_unread(t: s.collective_transport)
-}
-
 fn serving_subject_reads(measurement_subject: ServingPerformanceSubject, decision_subject: ServingPerformanceSubject) -> ServingSubjectJoin {
-  if subject_transport_is_unread(s: measurement_subject) || subject_transport_is_unread(s: decision_subject) {
-    SubjectIncomparable { because: join([
-      "the collective transport was never read on at least one side (measurement: ",
-      nccl_realized_transport_wire(t: measurement_subject.collective_transport) as String,
-      ", decision: ", nccl_realized_transport_wire(t: decision_subject.collective_transport) as String,
-      "); NCCL falls back to Socket silently, so an unread transport is an unknown axis and not an agreeing one",
-    ], "") as NonEmptyStr }
+  let known = serving_subject_known_differing_axes(left: measurement_subject, right: decision_subject)
+  if length(known) > 0 {
+    DifferentSubject {
+      axes: serving_subject_axes_wire(axes: known) as NonEmptyStr,
+      left: serving_performance_subject_wire(s: measurement_subject),
+      right: serving_performance_subject_wire(s: decision_subject),
+    }
   } else {
-    let differing = serving_subject_differing_axes(left: measurement_subject, right: decision_subject)
-    if length(differing) == 0 {
-      SameSubject
+    let unknown = either_side_unknown_axes(left: measurement_subject, right: decision_subject)
+    if length(unknown) > 0 {
+      SubjectIncomparable { because: join([
+        "every axis both sides read agrees, and these were never read on at least one side: ",
+        serving_subject_axes_wire(axes: unknown),
+        ". NCCL falls back to Socket silently and a draft model consumes the same batch budget, so an unread axis is an unknown one and not an agreeing one",
+      ], "") as NonEmptyStr }
     } else {
-      DifferentSubject {
-        axes: serving_subject_axes_wire(axes: differing) as NonEmptyStr,
-        left: serving_performance_subject_wire(s: measurement_subject),
-        right: serving_performance_subject_wire(s: decision_subject),
-      }
+      SameSubject
     }
   }
 }
@@ -204,96 +282,131 @@ fn serving_performance_subject_wire(s: ServingPerformanceSubject) -> NonEmptyStr
   join(map(serving_subject_axes, a => serving_subject_axis_value(s: s, a: a) as String), "/") as NonEmptyStr
 }
 
-// ── A SUBJECT IS ESTABLISHED OR IT IS NOT, AND AN INFERRED ONE IS NEITHER ──────────────────────
+// ── ESTABLISHED MEANS EVERY AXIS WAS READ, AND THE CONSTRUCTOR IS WHAT ENFORCES IT ────────────
 //
-// WHY THIS STANDING EXISTS, discovered while binding the two measurement modules. Every axis of the
-// depth-dependent rate in gunbc.spark.prefill_batch_sweep is stated in its own provenance: TP=2, a
-// 1,048,576-token ceiling, one request. The BATCH ARMS in the same module state their budget, their
-// probe and their KV pool -- and never state their tensor-parallel degree. The module was authored
-// on a head whose production topology is TP=4 and its 2048 arm's per-token rate agrees with the
-// TP=4 arm in gunbc.spark.tensor_parallel_comparison to about 1%, so TP=4 is the obvious reading.
+// WHY THIS IS THREE ARMS AND NOT TWO. An earlier revision had `SubjectEstablished` and
+// `SubjectUnestablished`, and both bound fleet rows sat in `SubjectEstablished` while declaring
+// their collective transport never read -- a standing asserting the subject IS established around an
+// axis nobody looked at. A review put it exactly: the PR's own witness was named "the depth law does
+// not even read for itself", which is what an established subject that cannot read for itself looks
+// like from the outside. Worse, "nobody read axis X" then had TWO representations with two refusal
+// paths -- an arm inside the axis type, and the standing -- and which one an axis used was incidental.
 //
-// IT IS OBVIOUS AND IT IS NOT ESTABLISHED, and DESIGN section 4d is explicit that the difference is
-// the whole point: an inference is a bet, it is not deleted and it is not promoted, and the defect
-// is the later reader who consumes it as a fact. A rate agreeing to 1% with a TP=4 arm is evidence
-// the arms are comparable; it is not a reading of the degree, and it is exactly the shape of
-// evidence that would also be produced if both populations shared one unstated mistake.
+// SO ABSENCE LIVES IN ONE PLACE. The axis types carry only values that were READ
+// (extdeps.nvidia.nccl NcclRealizedTransport has no Unread arm any more, and neither does
+// VllmSpeculativePolicy); the SUBJECT carries those axes as optionals; and this constructor decides
+// the standing by asking the subject which axes are absent. `SubjectEstablished` around an unread
+// axis is not refused at runtime -- it is unconstructible through the only route that builds one.
 //
-// SO THE BET IS TYPED AS A BET. `SubjectUnestablished` names the axis nobody read and carries the
-// belief BESIDE it rather than inside a subject, so a join refuses and a reader is told what one
-// command would settle. This is the same discipline extdeps.external_authority applies with
-// CitedFigureStanding and strategy.node_rental with SupplierHypothesis.
+// AND PARTIAL STILL CARRIES THE SUBJECT, which is the half a two-arm shape could not express. A
+// subject with an unread transport still knows its checkpoint, and two such subjects on DIFFERENT
+// checkpoints must still report that difference rather than collapsing to "I cannot tell" -- the
+// unknown axis is unknown, it does not erase what is known. `SubjectUnestablished` remains for the
+// case where no subject can be built at all, which is what an unmapped tensor-parallel degree is:
+// ServingTopology has no value to put there, so there is nothing to carry.
 type ServingPerformanceSubjectStanding
   = SubjectEstablished { subject: ServingPerformanceSubject }
+  | SubjectPartial { subject: ServingPerformanceSubject, unknown_axes: NonEmptyStr }
   | SubjectUnestablished { missing: NonEmptyStr, believed: NonEmptyStr, would_settle: NonEmptyStr }
+
+// THE ONLY SANCTIONED WAY TO BUILD A STANDING FROM A SUBJECT. It cannot answer Established for a
+// subject with an absent axis, because it reads the absences off the subject itself.
+fn serving_subject_standing(subject: ServingPerformanceSubject) -> ServingPerformanceSubjectStanding {
+  let unknown = subject_unknown_axes(s: subject)
+  if length(unknown) == 0 {
+    SubjectEstablished { subject: subject }
+  } else {
+    SubjectPartial { subject: subject, unknown_axes: serving_subject_axes_wire(axes: unknown) as NonEmptyStr }
+  }
+}
+
+fn standing_subject(st: ServingPerformanceSubjectStanding) -> ServingPerformanceSubject? {
+  match st {
+    SubjectEstablished { subject: sub } => Present { value: sub }
+    SubjectPartial { subject: sub, unknown_axes: _ } => Present { value: sub }
+    SubjectUnestablished { missing: _, believed: _, would_settle: _ } => none
+  }
+}
+
+fn standing_unestablished_cause(st: ServingPerformanceSubjectStanding) -> NonEmptyStr {
+  match st {
+    SubjectEstablished { subject: _ } => "established" as NonEmptyStr
+    SubjectPartial { subject: _, unknown_axes: _ } => "partial" as NonEmptyStr
+    SubjectUnestablished { missing: m, believed: _, would_settle: w } =>
+      join(["unestablished on ", m as String, "; what would settle it: ", w as String], "") as NonEmptyStr
+  }
+}
 
 fn serving_subject_standing_reads(
   measurement: ServingPerformanceSubjectStanding,
   decision: ServingPerformanceSubjectStanding,
 ) -> ServingSubjectJoin {
-  match measurement {
-    SubjectUnestablished { missing: m, believed: _, would_settle: w } =>
+  match standing_subject(st: measurement) {
+    Absent =>
       SubjectIncomparable { because: join([
-        "the measurement's subject is unestablished on ", m as String,
-        "; what would settle it: ", w as String,
+        "the measurement's subject is ", standing_unestablished_cause(st: measurement) as String,
       ], "") as NonEmptyStr }
-    SubjectEstablished { subject: ms } =>
-      match decision {
-        SubjectUnestablished { missing: m, believed: _, would_settle: w } =>
+    Present { value: ms } =>
+      match standing_subject(st: decision) {
+        Absent =>
           SubjectIncomparable { because: join([
-            "the decision's subject is unestablished on ", m as String,
-            "; what would settle it: ", w as String,
+            "the decision's subject is ", standing_unestablished_cause(st: decision) as String,
           ], "") as NonEmptyStr }
-        SubjectEstablished { subject: ds } => serving_subject_reads(measurement_subject: ms, decision_subject: ds)
+        Present { value: ds } => serving_subject_reads(measurement_subject: ms, decision_subject: ds)
       }
   }
 }
 
-// ── A COMPARISON IS CONTROLLED WHEN EXACTLY ONE AXIS MOVED ─────────────────────────────────────
+// ── AN AXIS DELTA IS NOT A COMPARABILITY VERDICT, AND THE NAME NOW SAYS SO ─────────────────────
 //
-// WHAT THIS IS FOR. gunbc.spark.prefill_batch_sweep and gunbc.spark.tensor_parallel_comparison each
-// claim to hold everything constant but one thing -- the batch budget in the first, the
-// tensor-parallel degree in the second -- and each states that claim in a paragraph of prose. This
-// is that claim as a fold over the two subjects, so a pair of arms that quietly differ on a second
-// axis cannot go on being described as a controlled cut.
+// THIS OPERATION WAS CALLED `controlled_comparison` AND THAT NAME CLAIMED SOMETHING IT CANNOT SEE.
+// It consumes two subject records and nothing else: no measurements, no workload protocol, no prompt
+// or output shape, no concurrency pattern, no launch identity, no instrument, no raw carrier, no
+// observation time. What it establishes is exactly "one of the modelled subject axes differs" --
+// which is necessary for a controlled cut and nowhere near sufficient. Two observations taken with
+// different prompts, different producers, or on different launch incarnations still produce a
+// one-axis delta if their subject records differ in one field.
 //
-// ZERO DIFFERING AXES IS NOT A CONTROLLED COMPARISON EITHER, and the arm is named rather than folded
-// into the refusal: two arms that are the same subject are a REPEAT, which is a perfectly good thing
-// to have -- it is what earns a within-subject envelope -- and is not a comparison of anything. A
-// consumer that wanted a cut and got a repeat has a different problem from one whose arms drifted.
-type ControlledComparison
-  = ControlledOnAxis { axis: ServingSubjectAxis }
-  | ComparisonIsARepeat
-  | ComparisonUncontrolled { axes: NonEmptyStr }
-  | ComparisonNotPossible { because: NonEmptyStr }
+// SO IT IS NAMED FOR WHAT IT COMPUTES. A real ServingPerformanceComparison -- shared declared
+// protocol, exact producers and carriers, realized launch bindings, preserved-invariant evidence --
+// is a different type that does not exist yet, and calling this one by that name would have let a
+// reader believe the missing half was already built.
+type SubjectAxisDelta
+  = AxisDeltaOnOneAxis { axis: ServingSubjectAxis }
+  | AxisDeltaNone
+  | AxisDeltaOnManyAxes { axes: NonEmptyStr }
+  | AxisDeltaUndecidable { because: NonEmptyStr }
 
-fn controlled_comparison(
+fn serving_subject_axis_delta(
   left: ServingPerformanceSubjectStanding,
   right: ServingPerformanceSubjectStanding,
-) -> ControlledComparison {
-  match serving_subject_standing_reads(measurement: left, decision: right) {
-    SubjectIncomparable { because: b } => ComparisonNotPossible { because: b }
-    SameSubject => ComparisonIsARepeat
-    DifferentSubject { axes: _, left: _, right: _ } =>
-      match left {
-        SubjectUnestablished { missing: _, believed: _, would_settle: _ } =>
-          ComparisonNotPossible { because: "unreachable: an unestablished standing cannot reach DifferentSubject" as NonEmptyStr }
-        SubjectEstablished { subject: ls } =>
-          match right {
-            SubjectUnestablished { missing: _, believed: _, would_settle: _ } =>
-              ComparisonNotPossible { because: "unreachable: an unestablished standing cannot reach DifferentSubject" as NonEmptyStr }
-            SubjectEstablished { subject: rs } => {
-              let differing = serving_subject_differing_axes(left: ls, right: rs)
-              if length(differing) == 1 {
-                match differing.first() {
-                  Absent => ComparisonNotPossible { because: "unreachable: a one-element list has a first element" as NonEmptyStr }
-                  Present { value: only } => ControlledOnAxis { axis: only }
-                }
-              } else {
-                ComparisonUncontrolled { axes: serving_subject_axes_wire(axes: differing) as NonEmptyStr }
-              }
+) -> SubjectAxisDelta {
+  match standing_subject(st: left) {
+    Absent => AxisDeltaUndecidable { because: join(["the left subject is ", standing_unestablished_cause(st: left) as String], "") as NonEmptyStr }
+    Present { value: ls } =>
+      match standing_subject(st: right) {
+        Absent => AxisDeltaUndecidable { because: join(["the right subject is ", standing_unestablished_cause(st: right) as String], "") as NonEmptyStr }
+        Present { value: rs } => {
+          let known = serving_subject_known_differing_axes(left: ls, right: rs)
+          if length(known) == 1 {
+            match known.first() {
+              Absent => AxisDeltaUndecidable { because: "unreachable: a one-element list has a first element" as NonEmptyStr }
+              Present { value: only } => AxisDeltaOnOneAxis { axis: only }
+            }
+          } else if length(known) > 1 {
+            AxisDeltaOnManyAxes { axes: serving_subject_axes_wire(axes: known) as NonEmptyStr }
+          } else {
+            let unknown = either_side_unknown_axes(left: ls, right: rs)
+            if length(unknown) > 0 {
+              AxisDeltaUndecidable { because: join([
+                "no axis both sides read differs, and these were never read on at least one side: ",
+                serving_subject_axes_wire(axes: unknown),
+              ], "") as NonEmptyStr }
+            } else {
+              AxisDeltaNone
             }
           }
+        }
       }
   }
 }

@@ -5,12 +5,13 @@ import std.nat { Nat, nat_min }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_batch_default_resolution }
-import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8 }
-import extdeps.nvidia.nccl { NcclRealizedTransport, NcclTransportUnread }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8, VllmSpeculativePolicy, SpeculativeDecodingOff }
+import extdeps.nvidia.nccl { NcclRealizedTransport }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
 import gunbc.spark.serving_arm { ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10, ServingTopology, SparkPairTp2 }
 import gunbc.spark.serving_performance_subject {
-  ServingPerformanceSubject, serving_performance_subject,
-  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectUnestablished,
+  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
+  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial, SubjectUnestablished,
 }
 
 // ── THE SUBJECT OF EVERY ROW BELOW IS A RETIRING PROFILE ──────────────────────────────────────
@@ -59,6 +60,7 @@ import gunbc.spark.serving_performance_subject {
 // function that accepts either, and no list containing both. A consumer that wants the modelled
 // 1024 row must name the predicted population explicitly and thereby say so.
 type MeasuredBatchArm sole_constructor {
+  subject: ServingPerformanceSubjectStanding
   max_num_batched_tokens: Nat
   probe_computed_tokens: TokenCount
   probe_wall_micros: Nat
@@ -74,6 +76,33 @@ type PredictedBatchArm sole_constructor {
   predicted_wall_micros_at_16400: Nat
   predicted_step_micros: Nat
   from_law: NonEmptyStr
+}
+
+
+// ── EVERY ARM CARRIES ITS OWN SUBJECT, BECAUSE THE SWEPT AXIS IS A SUBJECT AXIS ───────────────
+//
+// THE FIRST ATTEMPT AT THIS BINDING PUT ONE `spark_group_a_batch_arm_subject` BESIDE THE POPULATION
+// AND THAT WAS INCOHERENT. `max_num_batched_tokens` IS one of the axes a subject is made of, and
+// these arms differ on exactly that -- 2048, 8192, 16384 -- so one subject cannot describe three of
+// them. A sidecar row also left the raw arms independently importable, which is the whole failure
+// this type exists to close: a consumer could read a per-token rate without ever touching a subject.
+//
+// SO THE SUBJECT IS A FIELD OF THE ARM, derived from that arm's own budget, and there is no way to
+// hold one of these numbers without the profile it was measured against coming with it. That is the
+// shape gunbc.spark.vllm_kv_layout_observe already uses for launches: VllmKvLayoutReceipt carries
+// its `launch` in EVERY arm, including the failure arms, precisely so a reading cannot be lifted off
+// the incarnation that produced it.
+//
+// THE DEGREE IS STILL UNESTABLISHED AND THAT IS NOW PER ARM. Nothing in this acquisition recorded a
+// tensor-parallel degree, so every arm's standing is Unestablished on that axis, carrying the belief
+// and the one command that would settle it. When the invocation is read, this one function changes
+// and all three arms become established together.
+fn batch_arm_subject(budget: Nat) -> ServingPerformanceSubjectStanding {
+  SubjectUnestablished {
+    missing: "tensor-parallel topology" as NonEmptyStr,
+    believed: join(["FourSparkTp4: the sweep ran on the group A head whose production topology is TP=4, and the 2048 arm's ~1.076 ms per computed token agrees to about 1% with tensor_parallel_comparison's TP=4 arm (1.0662) against its TP=2 arm (0.9838). Budget on this arm: ", to_string(budget)], "") as NonEmptyStr,
+    would_settle: "read --tensor-parallel-size off the recorded systemd invocation 794afae389e44952a9049452c0619620 for the 2048 control arm (arm_2048_binding), which is the one arm whose invocation was captured" as NonEmptyStr,
+  }
 }
 
 // ── WHAT WAS AND WAS NOT CAPTURED ABOUT EACH ARM'S LAUNCH ─────────────────────────────────────
@@ -108,6 +137,7 @@ data arm_16384_binding: ArmLaunchBinding = ArmLaunchDiscriminatedByReadback {
 // co-tenant pair taken on the same launch minutes later.
 data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
   MeasuredBatchArm {
+    subject: batch_arm_subject(budget: 2048),
     max_num_batched_tokens: 2048,
     probe_computed_tokens: token_count(count: 16510),
     probe_wall_micros: 17759300,
@@ -118,6 +148,7 @@ data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
     binding: arm_2048_binding,
   },
   MeasuredBatchArm {
+    subject: batch_arm_subject(budget: 8192),
     max_num_batched_tokens: 8192,
     probe_computed_tokens: token_count(count: 16463),
     probe_wall_micros: 16652100,
@@ -128,6 +159,7 @@ data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
     binding: arm_8192_binding,
   },
   MeasuredBatchArm {
+    subject: batch_arm_subject(budget: 16384),
     max_num_batched_tokens: 16384,
     probe_computed_tokens: token_count(count: 16508),
     probe_wall_micros: 16327100,
@@ -441,6 +473,7 @@ fn ceil_div(a: Nat, b: Nat) -> Nat {
 // attention proper, the candidate. That is a hypothesis and the operation ladder is what would
 // settle it.
 type DepthDependentRate sole_constructor {
+  subject: ServingPerformanceSubjectStanding
   base_micros_per_thousand_tokens: Nat
   micros_per_thousand_tokens_per_million_depth: Nat
   fitted_from_depth: Nat
@@ -449,7 +482,28 @@ type DepthDependentRate sole_constructor {
   provenance: NonEmptyStr
 }
 
+// THE DEPTH LAW'S SUBJECT IS FULLY STATED BY ITS OWN PROVENANCE -- TP=2, a 1,048,576 ceiling -- so
+// unlike the batch arms it is ESTABLISHED, and it is established as a DIFFERENT subject from them on
+// two axes at once. That is the fact this module could not previously express: read as one
+// `spark_group_a_*` population, the per-step amortisation result and this quadratic law describe one
+// profile, and they do not. Carrying the subject in the row is what makes the join refuse.
 data spark_group_a_depth_rate: DepthDependentRate = DepthDependentRate {
+  subject: serving_subject_standing(
+    subject: serving_performance_subject(
+      checkpoint: DeepseekV4FlashIq3sSplit,
+      checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+      runtime: GunbcSparkrunVllmDs4Gb10,
+      runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+      topology: SparkPairTp2,
+      rank_population: 2,
+      context_ceiling: token_count(count: 1048576),
+      max_num_batched_tokens: token_count(count: 2048),
+      max_num_seqs: 32,
+      kv_cache_dtype: KvFp8,
+      speculative: Present { value: SpeculativeDecodingOff },
+      collective_transport: none
+    )
+  ),
   base_micros_per_thousand_tokens: 923600,
   micros_per_thousand_tokens_per_million_depth: 1415900,
   fitted_from_depth: 8200,
@@ -541,45 +595,3 @@ data spark_group_a_batch_budget_decision: BatchBudgetDecision = BestAmongMeasure
 // The resolution this decision currently depends on, carried as a reference so the dependency is
 // visible: today the fleet gets 2048 because a probe failed, not because anyone chose it.
 data spark_group_a_current_budget_provenance: UpstreamBatchDefaultResolution = spark_gb10_batch_default_resolution
-
-// ── THE SUBJECT THESE ROWS WERE MEASURED AGAINST ──────────────────────────────────────────────
-//
-// THE MODULE HOLDS TWO SUBJECTS AND SAYING SO IS THE POINT OF BINDING IT. The batch arms and the
-// depth-dependent rate were not taken against one configuration, and until this binding nothing
-// said so: the depth rate's own provenance states TP=2 at a 1,048,576-token ceiling, while the
-// batch arms state their budget, their probe and their KV pool and NEVER STATE A DEGREE AT ALL.
-// Read as one population -- which is what a module full of `spark_group_a_*` rows invites -- the
-// per-step amortisation result and the quadratic depth law describe one profile. They do not.
-//
-// WHAT IS BELIEVED ABOUT THE ARMS' DEGREE, AND WHY IT IS NOT WRITTEN AS THEIR DEGREE. The sweep ran
-// on a head whose production topology is TP=4, and the 2048 arm's per-token rate (17,759,300 micros
-// over 16,510 tokens, about 1.076 ms) agrees to roughly 1% with the TP=4 arm in
-// gunbc.spark.tensor_parallel_comparison and not with its TP=2 arm at 0.984. That is good evidence
-// the two populations are comparable. It is NOT a reading of the degree: the same agreement would
-// appear if both populations shared one unstated assumption, and DESIGN section 4d rules that an
-// inference is typed as a bet rather than promoted to a fact. So the standing is Unestablished, the
-// belief rides beside it, and one `systemctl show` of the recorded invocation would close it.
-data spark_group_a_batch_arm_subject: ServingPerformanceSubjectStanding = SubjectUnestablished {
-  missing: "tensor-parallel topology" as NonEmptyStr,
-  believed: "FourSparkTp4: the sweep ran on the group A head whose production topology is TP=4, and the 2048 arm's ~1.076 ms per computed token agrees to about 1% with tensor_parallel_comparison's TP=4 arm (1.0662) against its TP=2 arm (0.9838)" as NonEmptyStr,
-  would_settle: "read --tensor-parallel-size off the recorded systemd invocation 794afae389e44952a9049452c0619620 for the 2048 control arm (gunbc.spark.prefill_batch_sweep arm_2048_binding), which is the one arm whose invocation was captured" as NonEmptyStr,
-}
-
-// THE DEPTH RATE'S SUBJECT IS FULLY STATED BY ITS OWN PROVENANCE, so it is established -- and it is
-// established as a DIFFERENT subject from the arms above, on two axes at once. The transport is
-// carried as unread rather than assumed: nothing in this module's acquisition read NCCL's verdict
-// line, and on a TP=2 launch across two Sparks the collective path is exactly the axis the live
-// throughput question turns on.
-data spark_group_a_depth_rate_subject: ServingPerformanceSubjectStanding = SubjectEstablished {
-  subject: serving_performance_subject(
-    checkpoint: DeepseekV4FlashIq3sSplit,
-    runtime: GunbcSparkrunVllmDs4Gb10,
-    topology: SparkPairTp2,
-    context_ceiling: token_count(count: 1048576),
-    max_num_batched_tokens: token_count(count: 2048),
-    kv_cache_dtype: KvFp8,
-    collective_transport: NcclTransportUnread {
-      because: "this acquisition never read NCCL's `Using network` verdict line; the launch's NCCL_IB_* environment was not captured either, and a requested transport is not a realized one" as NonEmptyStr,
-    }
-    ),
-}

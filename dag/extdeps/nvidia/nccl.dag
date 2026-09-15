@@ -103,41 +103,24 @@ fn nccl_roce_gid_selection_env(s: NcclRoceGidSelection) -> List<NcclEnvAssignmen
 // NCCL PUBLISHES THE VERDICT ITSELF, once per communicator init, as the `NCCL INFO ... Using network
 // <name>` line. That line is the producer, and it is the only thing here entitled to answer.
 //
-// THE FALLBACK ARM IS NOT ATTRIBUTED, AND THAT IS DELIBERATE. `NcclTransportSocket` says the verdict
-// line named Socket and nothing else. WHY it named Socket -- an absent device node, a missing
-// capability, a GID table with no matching entry, a driver that did not load -- is a separate
-// question with its own evidence, and folding a guess into this constructor would make an
-// unestablished cause indistinguishable from a read one. A consumer that wants the cause reads the
-// container's device and capability observations and says so; it does not get the cause from here.
+// EVERY ARM IS A TRANSPORT THAT WAS READ, AND THAT IS THE TYPE'S NAME BEING TRUE. An earlier
+// revision carried a third arm, `NcclTransportUnread`, so a value of a type called RealizedTransport
+// could assert that no transport had been realized -- and consumers then needed a bespoke guard to
+// notice. Absence of a reading is not a kind of reading; it is the absence of this value, spelled by
+// the optional at the use site, so the guard, the sentinel row and the special case all dissolve.
+//
+// THE NETWORK NAME IS DERIVED FROM THE ARM AND IS NOT A FIELD. It was one, on both read arms, and
+// the projection returned the caller's string -- so `NcclTransportSocket { network_name: "IB" }` was
+// writable and compared EQUAL to a genuine IB read, licensing exactly the substitution this type
+// exists to refuse. The identity is the arm; a second copy of it is the one that lies.
 type NcclRealizedTransport
-  = NcclTransportIbVerbs { network_name: NonEmptyStr, read_from: NonEmptyStr }
-  | NcclTransportSocket { network_name: NonEmptyStr, read_from: NonEmptyStr }
-  | NcclTransportUnread { because: NonEmptyStr }
+  = NcclTransportIbVerbs { read_from: NonEmptyStr }
+  | NcclTransportSocket { read_from: NonEmptyStr }
 
-// THE PROJECTION IS THE EQUALITY, as everywhere else a coproduct is compared. The unread arm
-// projects to a name no verdict line can produce, so an unread transport never compares equal to a
-// READ one. It does compare equal to ITSELF, which is why the projection cannot be the whole wall:
-// two subjects whose transport nobody looked at are not thereby the same subject, and only a
-// predicate over the ARM can say so. That predicate is `nccl_transport_is_unread`, below.
 fn nccl_realized_transport_wire(t: NcclRealizedTransport) -> NonEmptyStr {
   match t {
-    NcclTransportIbVerbs { network_name: n, read_from: _ } => n
-    NcclTransportSocket { network_name: n, read_from: _ } => n
-    NcclTransportUnread { because: _ } => nccl_network_name_unread
-  }
-}
-
-// UNREADNESS IS DECIDED BY THE ARM, NOT BY THE SPELLING OF ITS PROJECTION. A consumer that asked
-// this question by comparing the wire against the sentinel literal would be a SECOND authority on
-// what "unread" means: re-spell the sentinel here and that consumer silently starts answering false
-// for every unread transport, its caller stops refusing, and an unread transport begins comparing
-// equal to a read one -- the absorbing-fallback collapse, reached with no type error anywhere. So
-// the question is answered once, by the module that declares the variants.
-fn nccl_transport_is_unread(t: NcclRealizedTransport) -> Bool {
-  match t {
-    NcclTransportIbVerbs { network_name: _, read_from: _ } => false
-    NcclTransportSocket { network_name: _, read_from: _ } => false
-    NcclTransportUnread { because: _ } => true
+    NcclTransportIbVerbs { read_from: _ } => nccl_network_name_ib
+    NcclTransportSocket { read_from: _ } => nccl_network_name_socket
   }
 }
 
@@ -145,8 +128,3 @@ fn nccl_transport_is_unread(t: NcclRealizedTransport) -> Bool {
 // the log line does not have to guess which spelling the verdict uses.
 data nccl_network_name_socket: NonEmptyStr = "Socket" as NonEmptyStr
 data nccl_network_name_ib: NonEmptyStr = "IB" as NonEmptyStr
-
-// THE UNREAD ARM'S PROJECTION IS A ROW LIKE THE OTHER TWO, not a literal spelled at its use site.
-// It is deliberately not a name any NCCL verdict line can emit, so it cannot collide with a real
-// network; deciding unreadness from it is still wrong, and `nccl_transport_is_unread` is the way.
-data nccl_network_name_unread: NonEmptyStr = "<transport-unread>" as NonEmptyStr
