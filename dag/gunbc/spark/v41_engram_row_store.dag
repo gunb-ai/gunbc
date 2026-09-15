@@ -34,8 +34,6 @@ import gunbc.fabric.engram_materialization { engram_component_identity }
 data v41_row_store_format_revision: Nat = 1
 data v41_row_store_endianness: Endianness = LittleEndian
 data v41_row_store_rank_count: Nat = 4
-// On-disk prefix of a rank store. The overlay MAGIC bytes must be this value; they are not a second format.
-data v41_row_store_magic: NonEmptyStr = "ENGR1\n"
 
 // THE PARTITION RULE IS THE PLACER. InterleaveByRankRemainder is dest_rank = global_row % rank_count
 // and local_row = global_row / rank_count; the encoding key hashes this variant, not a parallel
@@ -152,13 +150,6 @@ fn v41_try_tensor_slice(e: SafetensorsEntry) -> V41TensorSlice? {
 
 fn v41_selected_storage_entries(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<SafetensorsEntry> {
   filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)) && (e.name as String).contains(".embed.weight"))
-}
-
-fn v41_storage_slices(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<V41TensorSlice> {
-  flat_map(v41_selected_storage_entries(population: population, partition: partition), e => match v41_try_tensor_slice(e: e) {
-    Present { value: s } => [s]
-    Absent => [] as List<V41TensorSlice>
-  })
 }
 
 type V41RowStoreEncodingSpec sole_constructor {
@@ -459,8 +450,6 @@ fn v41_dropped_source_row_is_unfaithful(source: List<V41SourceRow>, spec: V41Row
     V41PublishedTransformUnestablished { obligation: _ } => false
   }
 }
-
-data v41_published_transform_subject: V41TransformSubject = V41PublishedEngramShards
 
 fn v41_published_transform_standing() -> V41TransformResult {
   V41PublishedTransformUnestablished {
