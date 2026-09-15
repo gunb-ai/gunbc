@@ -87,7 +87,7 @@ import gunbc.roadmap_belt_actuate {
   belt_publish_outcome_http_status,
   belt_publish_outcome_json_value,
 }
-import gunbc.roadmap_dashboard_instance_apply { dashboard_provider_readiness_json }
+import gunbc.dashboard_provider_readiness { dashboard_provider_readiness_json }
 import gunbc.roadmap_dashboard_instance {
   dashboard_instance_health_schema,
   HostDashboardInstance,

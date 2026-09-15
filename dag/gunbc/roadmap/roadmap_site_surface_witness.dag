@@ -11,6 +11,7 @@ import gunbc.roadmap_site_surface_expect {
 import std.realization_reconcile {
   reconciliation_converged,
 }
+import gunbc.readiness { readiness_is_ready }
 import gunbc.live_deploy.readiness {
   HealthzEffectiveRead,
   HealthzBodyRead,
@@ -123,7 +124,7 @@ fn service_ready_once_converges_on_healthy_fixture_for_bundle(
   bundle: RoadmapSiteSurfaceBundle,
   release_revision: CommitSha,
 ) -> Bool {
-  reconciliation_converged(
+  readiness_is_ready(
     r: live_deploy_service_ready_once_for_bundle(
       bundle: bundle,
       release_revision: release_revision,
