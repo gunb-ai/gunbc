@@ -229,14 +229,20 @@ fn spark_pair_ray_worker_argv(head: FabricLaneObserved, self: FabricLaneObserved
 // second HCA on the same wire), the rail address for the node identity, plus the two engine facts
 // the operator ruled (zero monitor refresh, long context admitted). Set at create, inherited by
 // every exec.
+//
+// NCCL_SOCKET_IFNAME AND GLOO_SOCKET_IFNAME ARE NOT SPELLED HERE -- the transport plan owns them.
+// A first cut of this migration deleted the device, capability and memlock literals and left these
+// two, so the create-env list carried each of them TWICE: once by hand and once from
+// transport_plan_env. Both spellings agreed, which is exactly why it was invisible; the point of the
+// plan is that the interface is one fact, so the route may only carry the variables the plan does
+// NOT own (TP_SOCKET_IFNAME, MN_IF_NAME, the OMPI include, the rail address, the HCA, UCX, and the
+// two engine settings).
 fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignment> {
   let ifname = lane.leg_netdev as String
   let rail_ip = render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String
   let hca = lane.leg_rdma_device as String
   concat([
-    DockerEnvAssignment { name: "GLOO_SOCKET_IFNAME" as NonEmptyStr, value: ifname },
     DockerEnvAssignment { name: "TP_SOCKET_IFNAME" as NonEmptyStr, value: ifname },
-    DockerEnvAssignment { name: "NCCL_SOCKET_IFNAME" as NonEmptyStr, value: ifname },
     DockerEnvAssignment { name: "MN_IF_NAME" as NonEmptyStr, value: ifname },
     DockerEnvAssignment { name: "OMPI_MCA_btl_tcp_if_include" as NonEmptyStr, value: ifname },
     DockerEnvAssignment { name: "NODE_IP" as NonEmptyStr, value: rail_ip },
