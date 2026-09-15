@@ -1,0 +1,81 @@
+module v2.test.std.named_child_lookup
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// named_child_lookup is the total primitive and find_named_child its projection. These witnesses pin
+// the three states on a conjunction that holds one unique name, one repeated name and a positional
+// child, a node that is not a conjunction, and the exact projection: Accepted carries the unique
+// target, and the two refusals carry the reasons consumers match on (named_child_missing,
+// named_child_ambiguous).
+fn ncl_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn ncl_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn ncl_conj() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ncl_named(name: ^ncl_unique, target: ncl_atom(s: ^ncl_unique_target)),
+      ncl_named(name: ^ncl_repeated, target: ncl_atom(s: ^ncl_repeated_first)),
+      Edge { label: Positional, target: ncl_atom(s: ^ncl_positional_target) },
+      ncl_named(name: ^ncl_repeated, target: ncl_atom(s: ^ncl_repeated_second))
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ncl_found_is(lookup: NamedChildLookup, expected: Node) -> Bool {
+  match lookup {
+    NamedChildFound { target: t } => t == expected
+    NamedChildMissing => false
+    NamedChildAmbiguous => false
+  }
+}
+
+fn ncl_is_missing(lookup: NamedChildLookup) -> Bool {
+  match lookup {
+    NamedChildMissing => true
+    NamedChildFound { target: _ } => false
+    NamedChildAmbiguous => false
+  }
+}
+
+fn ncl_is_ambiguous(lookup: NamedChildLookup) -> Bool {
+  match lookup {
+    NamedChildAmbiguous => true
+    NamedChildFound { target: _ } => false
+    NamedChildMissing => false
+  }
+}
+
+fn ncl_rejected_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: d } => d.head.reason == reason
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn ncl_accepted_is(o: Outcome<Node>, expected: Node) -> Bool {
+  match o {
+    Accepted { value: v, diagnostics: _ } => v == expected
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn named_child_lookup_decides_all_three_states_in_one_pass() -> Bool {
+  ncl_found_is(lookup: named_child_lookup(root: ncl_conj(), name: ^ncl_unique), expected: ncl_atom(s: ^ncl_unique_target))
+    && ncl_is_ambiguous(lookup: named_child_lookup(root: ncl_conj(), name: ^ncl_repeated))
+    && ncl_is_missing(lookup: named_child_lookup(root: ncl_conj(), name: ^ncl_absent))
+    && ncl_is_missing(lookup: named_child_lookup(root: ncl_atom(s: ^ncl_not_a_conj), name: ^ncl_unique))
+}
+
+test fn find_named_child_projects_the_lookup_with_its_refusal_reasons() -> Bool {
+  ncl_accepted_is(o: find_named_child(root: ncl_conj(), name: ^ncl_unique), expected: ncl_atom(s: ^ncl_unique_target))
+    && ncl_rejected_with(o: find_named_child(root: ncl_conj(), name: ^ncl_repeated), reason: ^named_child_ambiguous)
+    && ncl_rejected_with(o: find_named_child(root: ncl_conj(), name: ^ncl_absent), reason: ^named_child_missing)
+    && ncl_rejected_with(o: find_named_child(root: ncl_atom(s: ^ncl_not_a_conj), name: ^ncl_unique), reason: ^named_child_missing)
+}

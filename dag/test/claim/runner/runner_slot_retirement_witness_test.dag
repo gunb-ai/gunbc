@@ -1,0 +1,778 @@
+module test.claim.runner.runner_slot_retirement_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.types { NonEmptyStr, String }
+import gunbc.host_axis_caps {
+  CapRaiseAdmitted,
+  CapRaiseBlockedIncompleteEvidence,
+  CapRaiseBlockedPendingRetirement,
+  CapRaiseBlockedUnobserved,
+  cap_raise_standing,
+  SurplusSlotsObserved,
+  SurplusSlotsUnobserved,
+}
+import gunbc.runner_width_transition {
+  required_retirees_for_host,
+  host_width_transition_standing,
+  HostHasNoOpenTransition,
+  HostTransitionOpen,
+  transition_population_agreement,
+  TransitionPopulationAgrees,
+  TransitionPopulationDisagrees,
+}
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
+import gunbc.host_operation_exec { SystemctlMaskNow, HostOperationObserved, HostOperationRefused, HostOperationOutcome }
+import gunbc.runner_slot_retirement {
+  CgroupObservedEmpty,
+  CgroupObservedPopulated,
+  CgroupAbsent,
+  CgroupUnobserved,
+  RetirementComplete,
+  RetirementPendingDrain,
+  RetirementUnobserved,
+  RunnerRetirementObservation,
+  runner_retirement_standing,
+  surplus_observation_after_retirement,
+  AuthorizedDisruptiveRetirement,
+  GracefulRetirement,
+  InterruptionAuthorization,
+  srv4_transition_interruption_authorization,
+  RetirementAttempted,
+  RetirementMethodRefused,
+  attempt_completes_retirement,
+  attempt_retirement,
+  surplus_observation_after_attempts,
+  surplus_observation_from_census_and_retirement,
+  retirement_observation_unreadable,
+  retirement_observation_from_readings,
+  authorized_retirement_actuation,
+  cgroup_occupancy_from_reads,
+  transition_interruption_coverage,
+  TransitionFullyPermitted,
+  TransitionRetireesNotPermitted,
+  RetirementActuationAuthorized,
+  RetirementActuationRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn drained() -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: "actions-runner@srv1-14.service",
+    replacement_inhibited: true,
+    service_running: false,
+    occupancy: CgroupObservedEmpty,
+  }
+}
+
+// THE POSITIVE CONTROL. Without it every refusal below is satisfied by a predicate that never
+// completes, which is the failure a refusal-only suite cannot see.
+test fn a_fully_drained_slot_is_retired() -> Bool {
+  match runner_retirement_standing(o: drained()) {
+    RetirementComplete { unit: _ } => true
+    RetirementPendingDrain { unit: _, cause: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A UNIT STILL PRESENT IS NOT RETIRED, and it is not stopped either -- admitted work finishes.
+test fn a_present_unit_is_pending_rather_than_stopped() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      service_running: true,
+      occupancy: CgroupObservedPopulated { count: 3 },
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// THE ORPHAN STATE: THE UNIT IS GONE AND ITS CGROUP IS NOT EMPTY. This is the exact class the
+// teardown drop-in (ExitType=cgroup, KillMode=control-group) was landed to prevent -- a unit
+// reporting stopped while Runner.Worker, claim_executor and gunbc keep running under it. Capacity
+// must stay charged, because that work is still holding memory.
+test fn a_gone_unit_with_a_populated_cgroup_is_not_retired() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      service_running: false,
+      occupancy: CgroupObservedPopulated { count: 2 },
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// AN UNREADABLE CGROUP IS UNOBSERVED, NOT EMPTY. A count that could not be taken and a count of zero
+// have opposite consequences; treating the first as the second releases a ceiling on evidence
+// nobody has.
+test fn an_unreadable_cgroup_is_unobserved_not_empty() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      service_running: false,
+      occupancy: CgroupUnobserved { cause: "probe" },
+    }
+  ) {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
+  }
+}
+
+// A DRAIN WITHOUT INHIBITION NEVER COMPLETES. An ephemeral runner exits after one job and is
+// restarted by its manager, so a slot drained without inhibiting replacement simply returns.
+test fn an_uninhibited_slot_cannot_complete_a_drain() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: false,
+      service_running: false,
+      occupancy: CgroupObservedEmpty,
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// THE END-TO-END JOIN: one drained slot and one still draining must leave the raise BLOCKED, and the
+// blocked standing must name the slot that is not done.
+test fn a_partial_drain_still_blocks_the_raise() -> Bool {
+  match cap_raise_standing(
+    required_retiring: [],
+    observation: surplus_observation_after_retirement(
+      standings: [
+        runner_retirement_standing(o: drained()),
+        runner_retirement_standing(
+          o: RunnerRetirementObservation {
+            unit: "actions-runner@srv1-15.service",
+            replacement_inhibited: true,
+            service_running: true,
+            occupancy: CgroupObservedPopulated { count: 1 },
+          }
+        ),
+      ]
+    )
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: sp } => sp.length() == 1
+    CapRaiseAdmitted => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// AND A COMPLETE DRAIN ADMITS IT. This is the only path to a raise in the whole transaction.
+test fn a_complete_drain_admits_the_raise() -> Bool {
+  match cap_raise_standing(
+    required_retiring: [],
+    observation: surplus_observation_after_retirement(standings: [runner_retirement_standing(o: drained())])
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// ── PERMISSION IS NOT MEASUREMENT: THE TWO-METHOD CONTRACT ─────────────────────────────────────
+
+// THE WITNESS CONSUMES THE DECLARED AUTHORIZATION AND CANNOT MINT ONE. The first draft of this file
+// constructed an `InterruptionAuthorization` inline and the compiler refused it:
+// `sole_constructor type 'InterruptionAuthorization' cannot be constructed outside its defining
+// module`. So the out-of-scope row below tests a unit the OPERATOR'S OWN scope omits, which is a
+// stronger property than testing against a scope the test invented.
+fn srv4_surplus_authorization() -> InterruptionAuthorization {
+  srv4_transition_interruption_authorization
+}
+
+fn drained_unit(unit: String) -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: unit,
+    replacement_inhibited: true,
+    service_running: false,
+    occupancy: CgroupObservedEmpty,
+  }
+}
+
+// THE GRACEFUL METHOD MUST REFUSE, NOT SUCCEED QUIETLY. It is modelled because it is the right
+// method where a service commitment requires completion, and it is not implemented. The dangerous
+// shape would be a no-op that returns `RetirementComplete` -- an unimplemented path reporting a
+// finished drain. This row is the wall against that.
+test fn selecting_the_unimplemented_graceful_method_refuses() -> Bool {
+  match attempt_retirement(
+    method: GracefulRetirement,
+    observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+    work_interrupted: false,
+  ) {
+    RetirementMethodRefused { unit: _, method_label: l, cause: _ } => l == "GracefulRetirement"
+    RetirementAttempted { outcome: _ } => false
+  }
+}
+
+// AND A REFUSED ATTEMPT CONTRIBUTES NO COMPLETION, even though the observation it was handed shows a
+// fully drained slot. That is the separation: the host state was not brought about by the method
+// that was refused, so it cannot be claimed by it.
+test fn a_refused_method_cannot_borrow_the_observations_answer() -> Bool {
+  !attempt_completes_retirement(
+    a: attempt_retirement(
+      method: GracefulRetirement,
+      observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+      work_interrupted: false,
+    )
+  )
+}
+
+// THE AUTHORIZED DISRUPTIVE METHOD COMPLETES, and this is the path this transition uses.
+test fn the_authorized_disruptive_method_completes_on_a_drained_slot() -> Bool {
+  attempt_completes_retirement(
+    a: attempt_retirement(
+      method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+      observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+      work_interrupted: true,
+    )
+  )
+}
+
+// SCOPE IS PER UNIT, NOT PER HOST OR PER ENVIRONMENT. Permission to interrupt srv4-13 and srv4-14 is
+// not permission to interrupt srv4-15, and no "this is a dev box" reading may supply it.
+test fn interruption_outside_the_authorized_scope_refuses() -> Bool {
+  match attempt_retirement(
+    method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+    observation: drained_unit(unit: "actions-runner@srv4-01.service"),
+    work_interrupted: true,
+  ) {
+    RetirementMethodRefused { unit: u, method_label: _, cause: _ } => u == "actions-runner@srv4-01.service"
+    RetirementAttempted { outcome: _ } => false
+  }
+}
+
+// AN INTERRUPTED JOB IS NEVER REPORTED AS A GRACEFUL DRAIN OR AS A FINISHED JOB. The receipt carries
+// the method and the interruption separately from the standing, so "retired" cannot be read as "the
+// work completed".
+test fn an_interrupted_retirement_is_labelled_as_interrupted() -> Bool {
+  match attempt_retirement(
+    method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+    observation: drained_unit(unit: "actions-runner@srv4-14.service"),
+    work_interrupted: true,
+  ) {
+    RetirementAttempted { outcome: out } =>
+      out.work_interrupted
+        && out.method_label == "AuthorizedDisruptiveRetirement"
+        && out.method_label != "GracefulRetirement"
+    RetirementMethodRefused { unit: _, method_label: _, cause: _ } => false
+  }
+}
+
+// DISRUPTIVE PERMISSION DOES NOT WAIVE THE POSTCONDITION. An authorized interruption whose cgroup
+// still holds processes is NOT retired -- the orphan class again, and permission cannot measure it
+// away.
+test fn authorized_interruption_still_requires_an_empty_cgroup() -> Bool {
+  !attempt_completes_retirement(
+    a: attempt_retirement(
+      method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+      observation: RunnerRetirementObservation {
+        unit: "actions-runner@srv4-13.service",
+        replacement_inhibited: true,
+        service_running: false,
+        occupancy: CgroupObservedPopulated { count: 4 },
+      },
+      work_interrupted: true,
+    )
+  )
+}
+
+// THE END-TO-END JOIN THROUGH THE METHOD LAYER: both authorized units retired, so the surplus
+// observation covers the required set and the raise admits.
+test fn two_authorized_retirements_cover_the_required_set() -> Bool {
+  match cap_raise_standing(
+    required_retiring: [
+      "actions-runner@srv4-13.service" as NonEmptyStr,
+      "actions-runner@srv4-14.service" as NonEmptyStr,
+    ],
+    observation: surplus_observation_after_attempts(
+      attempts: [
+        attempt_retirement(
+          method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+          observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+          work_interrupted: true,
+        ),
+        attempt_retirement(
+          method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+          observation: drained_unit(unit: "actions-runner@srv4-14.service"),
+          work_interrupted: true,
+        ),
+      ]
+    ),
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+
+// ── THE JOIN AND THE ACTUATOR ────────────────────────────────────────────────────────────────
+
+// THE UNION IS LOAD-BEARING IN BOTH DIRECTIONS, so each direction gets its own red.
+//
+// Direction one: the census sees a unit the standings say nothing about. A join that took
+// `still_present` from the standings alone would release a ceiling on a surplus slot nobody tried to
+// retire.
+test fn a_surplus_unit_the_standings_never_mention_still_blocks() -> Bool {
+  match cap_raise_standing(
+    required_retiring: [],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved {
+        retired: [],
+        still_present: ["actions-runner@srv4-20.service" as NonEmptyStr],
+      },
+      standings: [],
+    ),
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: _ } => true
+    CapRaiseAdmitted => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// Direction two: the unit is GONE from the listing while its cgroup still holds processes. This is
+// the orphan state, and it is invisible to `systemctl list-units` at any grain -- so a join that
+// took `still_present` from the census alone would admit the raise while the work is live.
+test fn a_unit_absent_from_the_listing_with_a_busy_cgroup_still_blocks() -> Bool {
+  match cap_raise_standing(
+    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved { retired: [], still_present: [] },
+      standings: [
+        runner_retirement_standing(
+          o: RunnerRetirementObservation {
+            unit: "actions-runner@srv4-13.service",
+            replacement_inhibited: true,
+            service_running: false,
+            occupancy: CgroupObservedPopulated { count: 2 },
+          },
+        ),
+      ],
+    ),
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: _ } => true
+    CapRaiseAdmitted => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// AN UNOBSERVED CENSUS POISONS THE JOIN rather than being answered by the standings. Two completed
+// retirements are real evidence about two units and say nothing about a host that could not be
+// listed; admitting here would be the empty-observation narrow.
+test fn an_unobserved_census_is_not_rescued_by_complete_standings() -> Bool {
+  match cap_raise_standing(
+    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsUnobserved { cause: "host unreachable" },
+      standings: [
+        runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service")),
+      ],
+    ),
+  ) {
+    CapRaiseBlockedUnobserved { cause: _ } => true
+    CapRaiseAdmitted => false
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE JOIN. Both halves clean must still admit, or every red above is
+// satisfied by a join that blocks unconditionally.
+test fn a_clean_census_and_a_complete_standing_admit_together() -> Bool {
+  match cap_raise_standing(
+    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved { retired: [], still_present: [] },
+      standings: [
+        runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service")),
+      ],
+    ),
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// AN UNREADABLE PROPERTY IS UNOBSERVED, NOT DRAINED. This is the arm the live observer lands every
+// refused `systemctl show` on, and it must never read as completion.
+test fn an_unreadable_observation_is_unobserved_rather_than_complete() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_unreadable(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      cause: "systemctl show refused",
+    ),
+  ) {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
+  }
+}
+
+// THE REACHABILITY CONTROL, AND IT IS THE ONE THE PREVIOUS SUITE LACKED.
+//
+// `mask --now` leaves UnitFileState=masked and ActiveState=inactive, and systemd removes the unit's
+// cgroup when it stops. Those exact readings must produce RetirementComplete, or the actuator cannot
+// retire anything no matter how correct the fold is. The prior positive control hand-built
+// `{ replacement_inhibited: true, unit_present: false, cgroup_process_count: 0 }` and passed while the
+// live observer -- which required LoadState=not-found against a mask that reports LoadState=masked --
+// could never produce it. This feeds the property READINGS instead, so it fails if the projection and
+// the actuator ever disagree again.
+test fn the_state_mask_now_actually_leaves_behind_completes_the_retirement() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: CgroupAbsent,
+    ),
+  ) {
+    RetirementComplete { unit: _ } => true
+    RetirementPendingDrain { unit: _, cause: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A MASKED UNIT IS NOT AN ABSENT ONE, and requiring absence is what made completion unreachable. The
+// mask must REMAIN for replacement to stay inhibited, so `masked` is the expected steady state of a
+// retired slot rather than a transitional reading on the way to not-found.
+test fn a_masked_unit_is_inhibited_rather_than_missing() -> Bool {
+  let o = retirement_observation_from_readings(
+    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    unit_file_state: "masked",
+    active_state: "inactive",
+    occupancy: CgroupObservedEmpty,
+  )
+  o.replacement_inhibited && !o.service_running
+}
+
+// A UNIT MID-STOP IS STILL RUNNING. `deactivating` is the window in which the unit has been asked to
+// stop and its worker has not exited -- exactly when an orphan is most likely and least visible -- so
+// reading only `active` would let that window register as a stopped service.
+test fn a_deactivating_unit_still_counts_as_running() -> Bool {
+  let o = retirement_observation_from_readings(
+    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    unit_file_state: "masked",
+    active_state: "deactivating",
+    occupancy: CgroupObservedEmpty,
+  )
+  o.service_running
+    && match runner_retirement_standing(o: o) {
+      RetirementPendingDrain { unit: _, cause: _ } => true
+      RetirementComplete { unit: _ } => false
+      RetirementUnobserved { unit: _, cause: _ } => false
+    }
+}
+
+// AN UNMASKED BUT STOPPED SLOT MUST NOT COMPLETE, because its manager will restart it. This is the
+// discriminating red for the inhibition half of the completion condition.
+test fn a_stopped_but_unmasked_slot_does_not_complete() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "enabled",
+      active_state: "inactive",
+      occupancy: CgroupAbsent,
+    ),
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A COMPLETED IDENTITY MUST DISCHARGE EVEN THOUGH ITS MASK KEEPS IT LISTED. `mask --now` leaves the
+// unit visible to `list-units --all` on purpose, so a join that carried the whole census population
+// into the blocking set could never let a successful retirement finish. This is that subtraction.
+test fn a_completed_masked_unit_is_subtracted_from_census_presence() -> Bool {
+  match cap_raise_standing(
+    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved {
+        retired: [],
+        still_present: ["actions-runner@srv4-13.service" as NonEmptyStr],
+      },
+      standings: [runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service"))],
+    ),
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// THE ACTUATOR IS GATED ON THE AUTHORIZATION'S SCOPE, not on the host or the environment. srv1-14 is
+// a real runner slot on a real host and is NOT named by srv4's authorization, so it must refuse.
+test fn the_actuator_refuses_a_unit_the_authorization_does_not_name() -> Bool {
+  match authorized_retirement_actuation(
+    auth: srv4_transition_interruption_authorization,
+    unit: "actions-runner@srv1-14.service" as NonEmptyStr,
+  ) {
+    RetirementActuationRefused { unit: _, cause: _ } => true
+    RetirementActuationAuthorized { unit: _, operation: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ACTUATOR, AND IT PINS THE OPERATION RATHER THAN ONLY THE ARM. An
+// actuator that authorized the right unit and then masked a different one would satisfy an
+// arm-only check.
+test fn the_actuator_authorizes_a_named_unit_and_masks_that_same_unit() -> Bool {
+  match authorized_retirement_actuation(
+    auth: srv4_transition_interruption_authorization,
+    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+  ) {
+    RetirementActuationAuthorized { unit: u, operation: op } =>
+      (u as String) == "actions-runner@srv4-13.service"
+        && match op {
+          SystemctlMaskNow { unit: mu } => (mu as String) == "actions-runner@srv4-13.service"
+          _ => false
+        }
+    RetirementActuationRefused { unit: _, cause: _ } => false
+  }
+}
+
+
+// ── THE CGROUP DECODE, WHERE THE HAZARD CAME BACK ─────────────────────────────────────────────
+//
+// Every control above this line hands an occupancy to the fold directly, so none can see whether the
+// PRODUCER establishes absence truthfully. It did not: `PathIsDirectory` runs `test -d`, which writes
+// nothing and answers through exit status, while the operation declares a `value` from stdout. An
+// earlier decode asked `trim(stdout) != "true"` and so answered `CgroupAbsent` for an EXISTING
+// directory, never reading cgroup.procs -- turning a masked, inactive slot holding a live
+// Runner.Worker into a completed retirement and authorizing `rm -rf` on its tree.
+//
+// THE FIRST ATTEMPT AT COVERING THIS RAN THROUGH THE TRANSPORT AND COULD NOT REACH ITS SUBJECT. The
+// hermetic envelope refused, naming `ReadInterfaceFile` as declaring no mock_response, and reported a
+// ROUTE GAP rather than a verdict -- correctly, and uselessly for the property. A fixed mock would not
+// have helped: it answers identically for every caller, and the discriminating input here is a PID
+// list. So the decode is pure and takes both readings, and these rows supply them.
+fn dir_exists() -> HostOperationOutcome {
+  HostOperationObserved { stdout: "", success: true, stderr: none }
+}
+
+fn dir_missing() -> HostOperationOutcome {
+  HostOperationObserved { stdout: "", success: false, stderr: none }
+}
+
+fn procs(text: String) -> HostOperationOutcome {
+  HostOperationObserved { stdout: text, success: true, stderr: none }
+}
+
+fn read_refused() -> HostOperationOutcome {
+  HostOperationRefused { operation: "CgroupReadInterfaceFile", reason: "transport refused" }
+}
+
+// THE DECISIVE NEGATIVE: `test -d` SUCCEEDS WITH EMPTY STDOUT AND cgroup.procs RETURNS PIDS. This is
+// what a live, occupied runner cgroup looks like. It must decode as populated -- the old decode
+// answered CgroupAbsent here without ever reading the PID list.
+test fn an_existing_cgroup_with_pids_is_populated_not_absent() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "4821\n4977\n")) {
+    CgroupObservedPopulated { count: n } => n == 2
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupUnobserved { cause: _ } => false
+  }
+}
+
+// AND ITS STANDING CONSEQUENCE, END TO END: masked and inactive with surviving processes must NOT
+// complete, so no teardown and no cap raise can follow. Under the old decode this exact host state
+// completed.
+test fn a_masked_inactive_slot_with_surviving_processes_does_not_complete() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "4821\n")),
+    ),
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// AN EXISTING BUT EMPTY CGROUP IS A LEGITIMATE POSTCONDITION, AND THE TWO HALVES OF THAT ARE SPLIT.
+//
+// This was ONE conjunctive row named `..._is_empty_and_completes` whose body asserted only the
+// CLASSIFICATION -- it never called `runner_retirement_standing`. Its mutation RED was then read as
+// evidence that the defective decode BLOCKED completion of an empty cgroup, which the source
+// contradicts: `CgroupAbsent` and `CgroupObservedEmpty` both route into
+// `runner_retirement_standing_over_quiesced_workload`, so a masked, inactive unit completes under
+// either. The defective decode misclassified the evidence; it did not block the behaviour.
+//
+// A conjunctive row's RED says only that SOME conjunct became false, and a row whose NAME claims more
+// than its body asserts invites exactly the inference that was drawn from it. Split, each half reports
+// for itself: the classification is expected to flip under the old decode, and the completion is
+// expected to stay green -- which separates an evidence-fidelity defect from a behavioural one instead
+// of forcing both through one Boolean.
+test fn an_existing_empty_cgroup_is_observed_empty() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "\n  \n")) {
+    CgroupObservedEmpty => true
+    CgroupObservedPopulated { count: _ } => false
+    CgroupAbsent => false
+    CgroupUnobserved { cause: _ } => false
+  }
+}
+
+// THE BEHAVIOURAL HALF. A masked, inactive unit over a positively-empty cgroup must complete -- this
+// is the positive control for the whole retirement path, and without it every refusal in this file is
+// satisfied by a fold that never completes.
+test fn an_existing_empty_cgroup_completes() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "\n  \n")),
+    ),
+  ) {
+    RetirementComplete { unit: _ } => true
+    RetirementPendingDrain { unit: _, cause: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A FAILING `test -d` IS THE ONLY READING THAT MAY MEAN ABSENT. Exit status is the operation's whole
+// answer.
+test fn a_failing_directory_test_is_the_absent_arm() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_missing(), procs_read: read_refused()) {
+    CgroupAbsent => true
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated { count: _ } => false
+    CgroupUnobserved { cause: _ } => false
+  }
+}
+
+// AN EXISTING DIRECTORY WHOSE PROCS READ REFUSES IS UNOBSERVED, NOT EMPTY AND NOT ABSENT. Not being
+// able to look is not the same as looking and finding nothing.
+test fn an_unreadable_procs_file_is_unobserved() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: read_refused()) {
+    CgroupUnobserved { cause: _ } => true
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated { count: _ } => false
+  }
+}
+
+// A REFUSED DIRECTORY TEST IS ALSO UNOBSERVED. The transport failing to answer says nothing about
+// whether the cgroup is there.
+test fn a_refused_directory_test_is_unobserved_rather_than_absent() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: read_refused(), procs_read: read_refused()) {
+    CgroupUnobserved { cause: _ } => true
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated { count: _ } => false
+  }
+}
+
+
+// ── THE TRANSITION OBLIGATION, AND THE COVERAGE CHECK OVER IT ─────────────────────────────────
+//
+// The obligation moved out of permission's reach, so these rows assert the RELATION rather than the
+// numbers: what a host is required to retire comes from its declared prior width, and permission is
+// checked as coverage over that set. Two earlier shapes failed here -- filtering the authorization
+// scope gave unauthorized hosts an empty obligation, and unioning scope with the census left an
+// identity required only while the census could still see it.
+
+// srv1 HAS A REAL OBLIGATION AND NO INTERRUPTION PERMISSION, which is the case the permission
+// projection could not express at all. Both halves are asserted: the obligation is non-empty, and the
+// coverage check refuses rather than silently shrinking it.
+test fn srv1_has_a_real_obligation_and_no_permission_to_act_on_it() -> Bool {
+  let required = required_retirees_for_host(host: operator_host_srv1)
+  list_length(items: required) > 0
+    && match transition_interruption_coverage(
+      auth: srv4_transition_interruption_authorization,
+      required: required,
+    ) {
+      TransitionRetireesNotPermitted { permitted: p, unpermitted: u } =>
+        list_length(items: u) == list_length(items: required) && list_length(items: p) == 0
+      TransitionFullyPermitted { units: _ } => false
+    }
+}
+
+// srv4's OBLIGATION IS COVERED BY THE OPERATOR'S ENUMERATION. This is the positive control for
+// coverage; without it every refusal above is satisfied by a check that never admits.
+test fn srv4s_obligation_is_fully_covered_by_the_declared_scope() -> Bool {
+  let required = required_retirees_for_host(host: operator_host_srv4)
+  list_length(items: required) > 0
+    && match transition_interruption_coverage(
+      auth: srv4_transition_interruption_authorization,
+      required: required,
+    ) {
+      TransitionFullyPermitted { units: p } => list_length(items: p) == list_length(items: required)
+      TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
+    }
+}
+
+// THE OBLIGATION DOES NOT READ THE CENSUS, which is the durability property the declaration exists
+// for. A host whose surplus has entirely delisted still owes exactly the same identities -- that is
+// what closes the orphan escape, where required=[] and census=[] and standings=[] once admitted.
+test fn the_obligation_is_unchanged_by_what_the_census_can_see() -> Bool {
+  let required = required_retirees_for_host(host: operator_host_srv4)
+  match cap_raise_standing(
+    required_retiring: required,
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved { retired: [], still_present: [] },
+      standings: [],
+    ),
+  ) {
+    CapRaiseBlockedIncompleteEvidence { missing: m } => list_length(items: m) == list_length(items: required)
+    CapRaiseAdmitted => false
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// A HOST WITH NO OPEN TRANSITION OWES NOTHING, and that is a different fact from a host that has
+// converged. srv2's admission refused rather than narrowed, so it has no transition row at all.
+test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
+  match host_width_transition_standing(host: operator_host_srv2) {
+    HostHasNoOpenTransition { host: _ } => list_length(items: required_retirees_for_host(host: operator_host_srv2)) == 0
+    HostTransitionOpen { transition: _, required: _ } => false
+  }
+}
+
+// AN OBSERVED SURPLUS OUTSIDE THE MANIFEST IS A DISAGREEMENT, NOT A SILENT EXPANSION. Folding it in
+// would make the durable set track observation again, one indirection further away.
+test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Bool {
+  match transition_population_agreement(
+    host: operator_host_srv4,
+    observed_surplus: ["actions-runner@srv4-31.service" as NonEmptyStr],
+  ) {
+    TransitionPopulationDisagrees { unexpected: u } => list_length(items: u) == 1
+    TransitionPopulationAgrees => false
+  }
+}
+
+// AND THE AGREEING CASE, so the row above is not satisfied by a check that always disagrees.
+test fn a_surplus_inside_the_manifest_agrees() -> Bool {
+  match transition_population_agreement(
+    host: operator_host_srv4,
+    observed_surplus: ["actions-runner@srv4-13.service" as NonEmptyStr],
+  ) {
+    TransitionPopulationAgrees => true
+    TransitionPopulationDisagrees { unexpected: _ } => false
+  }
+}

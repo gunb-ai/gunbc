@@ -16,9 +16,8 @@ import v2.workflow.floor_eval_step_calibration {
 }
 import gunbc.floor_cost_distribution {
   FloorCostRow,
-  ObservedCpuReading,
-  RightCensoredCpuReading,
-  CpuLowerBoundWithoutCeiling,
+  observed_eval_steps,
+  eval_steps_at_least,
   IdentityEnvelope,
   RunCost,
   RunExtremeCount,
@@ -70,6 +69,7 @@ import gunbc.floor_cost_distribution {
   CompletedIdentityAbsent,
   CompletedIdentityUnavailable,
   CompletedIdentityStepsDiffer,
+  CompletedIdentityStepsNotPerformed,
   same_head_eval_step_violations
 }
 
@@ -976,6 +976,11 @@ fn eval_step_violation_line(v: EvalStepDeterminismViolation) -> String {
       concat("\tABSENT ", concat(i, concat(" completed on ", concat(c as String, concat(", not present on ", a as String)))))
     CompletedIdentityUnavailable { identity: i, module: _, completed_attempt: c, unavailable_attempt: u } =>
       concat("\tUNAVAILABLE ", concat(i, concat(" completed on ", concat(c as String, concat(", reached no verdict on ", u as String)))))
+    CompletedIdentityStepsNotPerformed { identity: i, module: _, attempt: a } =>
+      concat(
+        "\tSTEPS-NOT-PERFORMED ",
+        concat(i, concat(concat(" on ", a as String), " reached a verdict but its step count is a bound, not work performed -- the two attempts cannot be compared"))
+      )
     CompletedIdentityStepsDiffer { identity: i, module: _, left_attempt: la, left_steps: ls, right_attempt: ra, right_steps: rs } =>
       concat(
         "\tSTEPS-DIFFER ",
@@ -1137,18 +1142,25 @@ fn calibration_specimen_grounding_for(root: String, run: NonEmptyStr) -> Calibra
 fn specimen_row_grounding(rows: List<FloorCostRow>, run: NonEmptyStr) -> CalibrationSpecimenGrounding {
   let wanted = calibration_specimen_identity(calibration: floor_eval_step_calibration) as String
   let all_matched = rows |> filter(r => r.identity == wanted)
-  let matched = all_matched |> filter(r => row_step_count_is_complete(row: r))
+  let matched = all_matched |> flat_map(r => match observed_eval_steps(reading: r.cost) {
+    Absent => []
+    Present { value: s } => [eval_step_count_value(s: s)]
+  })
   if count(all_matched) == 0 {
     SpecimenAbsentFromRun { identity: wanted, run: run }
   } else if count(matched) == 0 {
     SpecimenStepsRightCensored {
       identity: wanted,
-      lower_bound: fold(all_matched |> map(r => r.eval_steps), init: 0, f: (m, n) => if n > m { n } else { m }),
+      lower_bound: first(reverse(
+        all_matched
+          |> map(r => eval_step_count_value(s: eval_steps_at_least(reading: r.cost)))
+          |> sort_by(n => n)
+      )),
     }
   } else {
-    let steps = matched |> map(r => r.eval_steps)
-    let low = fold(steps, init: max_of(xs: steps), f: (m, n) => if n < m { n } else { m })
-    let high = fold(steps, init: 0, f: (m, n) => if n > m { n } else { m })
+    let steps = matched |> sort_by(n => n)
+    let low = first(steps)
+    let high = first(reverse(steps))
     if low != high {
       SpecimenStepsNotDeterministic { identity: wanted, low: low, high: high }
     } else {
@@ -1164,10 +1176,6 @@ fn specimen_row_grounding(rows: List<FloorCostRow>, run: NonEmptyStr) -> Calibra
 
 // The seed for the minimum fold. `fold` needs an init that is already a member, and 0 is not one --
 // it would make every population's minimum 0 and hide exactly the disagreement above.
-fn max_of(xs: List<Int>) -> Int {
-  fold(xs, init: 0, f: (m, n) => if n > m { n } else { m })
-}
-
 fn calibration_specimen_grounding_line(g: CalibrationSpecimenGrounding) -> String {
   match g {
     SpecimenJoined { grounding: gr } => match gr {
@@ -1184,17 +1192,6 @@ fn calibration_specimen_grounding_line(g: CalibrationSpecimenGrounding) -> Strin
       concat("[calibration-specimen] REFUSED non-deterministic steps for ", concat(i, concat(": ", concat(to_string(lo), concat("..", to_string(hi))))))
     SpecimenRunUnavailable { load: l } =>
       concat("[calibration-specimen] REFUSED run unavailable: ", join(refused_load_lines(loads: [l]), " "))
-  }
-}
-
-// A ROW WHOSE STEP COUNT IS A COMPLETED OBSERVATION RATHER THAN A BOUND. The reading arm is the
-// discriminator the artifact already carries: an interrupted claim's figures are lower bounds on
-// BOTH clocks and on the step counter, so the same arm that censors the cost censors the steps.
-fn row_step_count_is_complete(row: FloorCostRow) -> Bool {
-  match row.cost {
-    ObservedCpuReading { cpu_ms: _ } => true
-    RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => false
-    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: _ } => false
   }
 }
 
