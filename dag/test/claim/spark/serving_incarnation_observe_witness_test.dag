@@ -20,7 +20,7 @@ import extdeps.prometheus.client {
 import gunbc.spark.serving_incarnation_observe {
   ServingIncarnationReading, IncarnationObserved, IncarnationRefused,
   exported_start_equals_process_start, process_start_epoch_seconds,
-  endpoint_incarnation_standing, serving_incarnation_reading_wire,
+  endpoint_incarnation_standing,
 }
 import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationObserved, EndpointIncarnationUnobserved,
@@ -288,7 +288,6 @@ test fn a_refused_reading_projects_to_unobserved() -> Bool {
     EndpointIncarnationUnobserved { obligation: _ } => true
     EndpointIncarnationObserved { observation: _ } => false
   }
-  && !string_contains(serving_incarnation_reading_wire(reading: reading), "vllm serve")
 }
 
 fn gunbc_spark_serving_incarnation_no_engine() -> gunbc.spark.serving_incarnation_observe.ServingIncarnationRefusal {

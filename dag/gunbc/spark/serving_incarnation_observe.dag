@@ -551,16 +551,3 @@ fn observe_endpoint_incarnation(
   }
 }
 
-// The receipt line a consumer prints beside its route standing. It names what was bound and carries
-// no command line, no environment and no inspect object: those never enter this module's outputs.
-fn serving_incarnation_reading_wire(reading: ServingIncarnationReading) -> String {
-  match reading {
-    IncarnationObserved { observation: o } =>
-      join([
-        "incarnation observed: endpoint ", vllm_endpoint_process_launch_key(launch: o.endpoint) as String,
-        " is ", launch_wire(i: o.launch),
-        " (receipt ", o.receipt as String, ")",
-      ], "")
-    IncarnationRefused { refusal: r } => join(["incarnation unobserved: ", serving_incarnation_refusal_text(r: r)], "")
-  }
-}
