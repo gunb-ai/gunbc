@@ -92,6 +92,7 @@ import gunbc.roadmap_status {
   SupersededLine,
   TicketLine,
   TicketFields,
+  TicketUpdate,
   Signoff,
   Unsigned,
   SignedOff,
@@ -758,6 +759,26 @@ fn fields(
   }
 }
 
+// A dated status note goes on the ticket's updates thread, never into first_slice: the slice is
+// consumed as "next executable slice" by current_state and the dispatch brief, so a position
+// written there forks its meaning, and gunbc.roadmap_status's decomposition exists precisely so
+// updates stop concatenating into a field with no time axis. The page renders the thread.
+fn updated(t: TicketFields, on: String, note: String) -> TicketFields {
+  TicketFields {
+    headline: t.headline,
+    brief: t.brief,
+    displaced_cost: t.displaced_cost,
+    current_state: t.current_state,
+    first_slice: t.first_slice,
+    red_control: t.red_control,
+    out_of_scope: t.out_of_scope,
+    handback: t.handback,
+    updates: concat(t.updates, [TicketUpdate { on: on, note: note }]),
+    authored_on: t.authored_on,
+    last_verified_on: t.last_verified_on,
+  }
+}
+
 fn active_sized(
   identity: String,
   id: String,
@@ -1212,7 +1233,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-import-deletion",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
-      t: fields(
+      t: updated(t: fields(
         headline: "Delete the import lines, and the grammar that allows them",
         boundary: "Every import line goes, and import stops being something the language can express at all: writing one becomes a parse error. What a file depends on is worked out from the names it actually mentions.",
         displaced_cost: "While import still parses, a file can declare one set of dependencies while its references need another, and the two can disagree. That is the second source of truth this whole chain exists to remove, and it survives every earlier step.",
@@ -1220,7 +1241,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A file that still needs an import to reach something is named and refused, never quietly left holding it. Once the grammar goes, a file containing an import line fails to parse rather than being ignored.",
         out_of_scope: "No new way of writing dependencies is introduced; this step only removes the old one. Deleting imports ahead of a proven reference-only closure is the failure this step exists to prevent, not a shortcut through it.",
         handback: "A corpus with no import lines, a grammar with no import production, and a run showing that an authored import is now a parse error."
-      )
+      ), on: "2026-09-14", note: "WIND-DOWN POSITION (operator: all work winding down; recorded on the dated updates thread so the chain resumes from it, not from memory). The chain's standing is a modeled fact: gunbc.namespace.namespace_cut_stage carries the per-stage standing and the empty held_stage_delivery_receipts and held_activation_receipts rosters, and gunbc.compiler_frontend_program_interlock orders SelfHostNativeRouteRequiredLane -> SelfHostSeedRetirement -> NamespaceFixForwardComplete -> NamespaceGrammarRetired (gunbc#11200), so XL-6 and XL-7 run on the native floor after the seed retires. Landed under the cut: gunbc#11200 (interlock) and gunbc#11207 (ledger: call expressions are erased at v2 body lowering before resolve, which makes any v2 strip census undercount calls). At the floor and going through the landing side chat: gunbc#11202 (XL-4, tools.reference_derived_graph over the XL-0 ingest route; v2.lens.module_graph reference_derived_resolution_facts is the XL-6 swap body, not yet swapped; HELD as class 1 because program_assembly_fold_ingest is reachable from v2.compiler.00_compile, so it owes the pre-landing M/T receipt), gunbc#11291 (bare resolve_type_node host seam deleted as a chain including the seed's TYPE_ITEM_BY_NAME; v2.std.decl_index type_declarer_qualified_names is the one keyed wire and stays SeamStanding DerivedNotExercised until the closure fold reaches it - pre-registered prediction: not reached, because its only consumer node_reflection is imported by no compile-closure module, and node_reflection appearing in the prepare-module set is the falsifier), gunbc#11301 (exhaustiveness coverage key at the three lookup_variant_in_type sites; the duplicate SubState variant in extdeps.systemd deleted; ledger row a_coproduct_declares_one_variant_twice), gunbc#11354 (B0 ownership branch-join root fix, source and mirrors in one commit), then gunbc#11201 (XL-0B/C/D denominator producer v2.compiler.repair_input_origin_roster, std.repair_input_origin SourceDeclarationCarrier), gunbc#11210 (XL-3 spelling census std.declaring_identity_spelling, stacked on #11201), gunbc#11203 and gunbc#11209 (XL-1 baseline capture via v2.workflow.legacy_repair_observation; #11209 is the one admitted seed arm emit_rust_reference_derived_rows_bridge, on the v1 deletion roster). XL-0 and XL-3 are NotDerivable BY DESIGN on the production route: qualified cross-module references, call contents and bare field-position types do not reach the collector (instruments: the v2.test.claim.namespace_xl0 witnesses and v2.test.claim.reference_derived_graph_production_ingest; the field-position class is deliberately unattributed between tree loss and binding loss). ROOT GAP and the resume trigger, in order: gunbc#11354 -> gunbc#11387 (Optional representation cut, draft) -> gunbc#11277 (List to FreeMonoid substitution, parked, regenerated at fixed point after B) -> gunbc#11267 (allocator threading into the body-lowering sites that mint node_synthetic; scaffold admitted for exactly one typed identity adapter at one call site, not introduced) -> gunbc#11264 (OccurrenceBinding<ScopedOccurrenceRef> as resolve's success projection, SymbolIndex entries as BindingCandidate, sealed ResolvedTree; model checkpoint signed at da608155074, implementation not started), which dissolves the spelling-derived carrier_declaration_ref and lets XL-0 derive, XL-3 answer and XL-4 carry type edges. XL-2 is not started as an instrument (prerequisites: the body-lowering repair that lets calls reach resolve, and the emitted-closure whole-tree census, which is a front-end-only undercount by construction). ACT-0 is not started: all four receipt kinds are outstanding and the pre-cut base pin (PreCutBaseUnpinned) is the operator's decision; the XL-1 capture must be taken BEFORE v1 deletion. Not started: the reference-grain bare-type-reference census instrument and the declaration-time duplicate-variant wall (row filed, owner unassigned; v2 04_infer has no coproduct exhaustiveness judgment). Census figures are cited only by producer: v2.test.claim.namespace_xl0, src/v2/test/claim/namespace/cross_module_resolve_witness_test.dag (fn-shaped binds, type-shaped unbound), gunbc.bare_name_fork_lens, the four reflection-cost probe claims on gunbc#11291, and the bounded-regen receipts on gunbc#11277 and gunbc#11354 (the standing runner-profile need for src/v1 generation-input changes). Not landing under wind-down, state in each body: gunbc#11387, gunbc#11277, gunbc#11267, gunbc#11264.")
     ),
 
     active_small(
@@ -2007,7 +2028,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v1-verification-ledger",
       owner: "self-host",
       path: "dag/gunbc/v1/v1_deletion_plan.dag",
-      t: fields(
+      t: updated(t: fields(
         headline: "Prove old and new agree, by running them, not by waiting",
         boundary: "Run the whole test suite cold on both, compare compile results, check the self-rebuild, and record each family's outcome.",
         displaced_cost: "Confidence that comes from 'it has been fine for a while' is not evidence; this replaces it with runs someone chose to do.",
@@ -2015,7 +2036,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Any unexplained difference, skipped family, or listed-but-never-run check keeps this red.",
         out_of_scope: "No substituting elapsed time or a sample for the real thing.",
         handback: "The full list of runs, green, with every difference accounted for."
-      )
+      ), on: "2026-09-14", note: "WIND-DOWN POSITION (operator: all work winding down; recorded on the dated updates thread so the program resumes from it, not from memory). What executes this row today is the v2 native route: claim_executor --v2-native-route --source-root dag --source-root src/v2 builds the emitted v2 compiler crate (gunbc-emitted-closure-src-v2-compiler-00-compile-dag, mode adjudicate), which derives the v2.test.* universe itself and adjudicates it natively; a landing receipt is the keyed driver-rows.jsonl comparison (module, declaration identity, file-refusal path; producer tools/driver_rows_diff.py) between the fold at the merge-base main sha (M) and the fold at merge(M, head) (T), with both [native-cost-partition] lines refusing in the same class. Landed on this route: gunbc#10940 and gunbc#10990 (closure-scoped ingest, native adjudication over a seed-prepared universe), gunbc#10988, gunbc#10987 and gunbc#11036 (the seed cut out of the emitted closure's dependency graph), gunbc#10942 (obligation census: claimed vs route-covered vs seed-side escape), the grammar and pipeline repairs gunbc#10946, gunbc#10961, gunbc#10969, gunbc#10967 and gunbc#11058, and the floor cost tier gunbc#11195. LANDING PROTOCOL (landing side chat ruling be0a86fc, 2026-09-14): a change reachable from the emitted compiler (v2.compiler.00_compile closure including reachable v2.std and std), from closure construction or emission (src/v1/05_emit_rust.dag, stage0 mirrors, seed stages), from std.compiler_entry SourceRootEvalDriver, from the native observer (native_lane_runner.rs, driver-rows persistence), from the universe-selection producer or from the classifier owes the pre-landing exact-head M/T receipt; everything else lands on CI plus tally plus exact-head LAND with a post-landing native diagnostic against the last accepted baseline (M0 = b55fb521) and the revert rule for unexplained native deltas; a head move voids receipt and LAND; merge-queue enqueue with expectedHeadOid pinned is the landing action. COST, read only from the run's own [native-cost-partition] line (exclusive rows load, universe_derivation, context, prepare, eval, receipt_admission, row_serialization, module_release, relay_emit; parent_span_nanos, sum_exclusive_nanos, remainder_nanos, tolerance_nanos) and the per-module [native-prepare-split] lines: one fold is on the order of two hours, dominated by prepare (v2.compiler.00_compile native_test_resolve_module re-deriving the language model and re-validating every root per module through v2.compiler.03_name_resolve namespace_for_subject) and by context. The cost-fidelity gate NativeDriverCostRemainderExceedsTolerance refuses every full-corpus fold; the remainder is stable by ordered module-set identity, the allocator and clock-apparatus hypotheses are refuted by measurement, bisect_loop_setup and bisect_row_accumulation name part of it (fold bisect.Uqef6H on 7607ab49e6a7), and the next instrument is the per-module residual receipt [native-module-residual] (schedstat on-cpu and runqueue at module-parent grain, the meter in the account, a checked residual that refuses with no table; scratch/deep-cat-655-span-bisect at c69912992ca3, regen fixed point 07adbc48dc8b) - not landable as it stands because the landed guard emitted_driver_refuses_over_attribution in native_driver_cost_refusal_test is a text predicate on checked_sub( that cannot separate the partition remainder from a diagnostic in another scope; the rotation discriminator (move each heavy shard's exact module set to another index; does heaviness follow the modules or the index; compare within one run only) runs before any module-caused claim. Tolerance is never widened and folds are never re-run to sample a green. gunbc#11290 (relay_emit as a named exclusive row; the bisect line) LANDED 2026-09-14; gunbc#11374 (NativeDriverExclusiveRows as a total keyed collection over a closed key coproduct) is open and now conflicts with main. PERF SEQUENCE, approved by the performance side chat and stopped where it stands: gunbc#11224 controlled producer counts (OPEN, frozen head d5ae8121de9e; the controlled measurement never started - one pre-execution guard attempt aborted before driver launch and srv2 never presented a quiet window; the launcher was stopped at wind-down and the frozen head now conflicts with main after gunbc#11290 landed its std.compiler_entry rows, as do gunbc#11219, gunbc#11374, gunbc#11233 and gunbc#11295; the next owner's options are on the PR) -> counts confirm repetition -> gunbc#11233 shared accounting rows (OPEN draft, must not land as written: producer roster in std.compiler_entry is a layer inversion and the unconditional Mutex in the emitted crate has no dissolution) -> modeled selector plus nested resolver/context instrument -> fresh instrumented BEFORE with curves and context partition -> gunbc#11217 official AFTER (OPEN draft, ValidatedModuleRoots coupled carrier, waits on the counts; its two cost-shape fixes split out as gunbc#11367) -> prepare process sharding -> context map/reduce (program adhoc-a3b38a02-bd7: not started as code; Phase 1 model with four GO conditions in draft gunbc#11385 docs/plans/native-route-parallel-realization.md; homes std.realization_width process_memory_aware_spawn_width and std.decision select_realization; three-arm acceptance in-process serial / one child / N children) -> bounded-width, five-minute main measurement. Exploratory receipt, stated narrowly: under heavy competing load a naive process-per-shard run of the emitted binary (NATIVE_SHARD_COUNT and NATIVE_SHARD_INDEX on the module loop, srv1) rebuilt the entire context independently in every process; each of 32 shards took 53-57 minutes end to end, roughly 48-51 minutes of duplicated context plus about four minutes of shard-local prepare; the same-host serial result was projected at roughly three hours, not completed as a controlled comparison; 27 of 32 shards reconciled the cost gate. No fork-after-one-context realization was measured. MEMORY ENVELOPE for the parallel item's width axis (producer: the run's own floor line plus cgroup memory.events on gunbc#11343 run 34874099243, job 104076895674, srv4-13 at 16 GiB memory.high): strict preparation of a 2974-module subject alone reached the slot ceiling under host load and the floor refused before any claim executed, and that refusal shape is read by the environment classifier as a structural red rather than an environment stall - two facts the realization width must be chosen against. OPEN AND NOT LANDING at wind-down, state recorded in each body: gunbc#11322, gunbc#11284, gunbc#11370, gunbc#10943, gunbc#11366, gunbc#11368, gunbc#11379 (seed-witness harness, adhoc-babdd2de-8db), gunbc#11295, gunbc#11277 (parked: RED plus invariant re-establishment before regen).")
     ),
     active_large(
       identity: "rn_FWSQ19QP41ARPXBM0HFW4MFXGG",
@@ -2329,6 +2350,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An undeclared file, service, credential, or device refuses before anything is changed.",
         out_of_scope: "No inventory of everything on the machine for its own sake.",
         handback: "The classification plus one refusal on something unclassified."
+      )
+    ),
+    active_large(
+      identity: "rn_0J26ACBBJP5AD79QB78HAYGVQM",
+      id: "fleet-mtcollins1-first-host",
+      owner: "fleet",
+      path: "dag/gunbc/machine_intake/mtcollins1_expansion_observation.dag",
+      t: fields(
+        headline: "Bring Mt. Collins unit 1 into service as our first owned host, from observation rather than assumption",
+        boundary: "Every fact the unit's intake depends on is either bound to a git-tracked observation consumed at mint time, or stays in its typed unobserved arm and refuses. The remaining facts: OCP bay occupancy and riser fitment observed from the unit interior; the bring-up evidence captures bound onto an executing consumer rather than stored beside it; controller credential standing minted from a channel-census observation over every controller LAN address (the mtcollins1_bmc_secure_standing_frontier dissolution); one PCI identity authority with its superseded namespace admissions deleted; pre-OS assessment derived from SEL and captured inventory with its absence and indexed-replay controls executed; live pre-OS acquisition; supervision-to-envelope realization; PCI address cross-rendering equivalence between firmware and kernel renderings; and one meaning for AttachmentVerdict, since mtcollins1_expansion_attachment attachment_against_evidence discards the OCP standing (ocp: _) and so admits installability on the PCIe path but only interface compatibility on the OCP path (either match the OCP standing before the generation comparison with typed occupied and unobserved refusals, or split the verdict). Zero offers, over-reports and populated bays refuse rather than answer.",
+        displaced_cost: "Hardware bought against an assumed slot, riser or bay costs a returned part and a lost week; a credential believed rotated but readable on another controller address is a silent exposure.",
+        first_slice: "Settle OCP bay occupancy and riser fitment from the interior observation, with the zero-offer, over-report and populated-bay refusals.",
+        red_control: "An unobserved OCP variant, an unfitted riser, a populated bay, or a credential rotation evidenced on a single controller address refuses rather than reporting an attachment point or a secured controller.",
+        out_of_scope: "Not fleet-wide firmware or cooling policy (fleet-bmc-policy-convergence) and not classification of what we manage on machines generally (fleet-state-frontier).",
+        handback: "Each fact above is bound to a consumed artifact or refusing in its unobserved arm, and the unit mints a BmcSecureStanding."
       )
     ),
     active_large(
