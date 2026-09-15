@@ -391,9 +391,10 @@ fn spark_pair_snapshot_inputs_wire(snapshot: ModelSnapshotDesired) -> NonEmptySt
 // desire"; omitting a field that the renderer consults would keep a stale artifact looking current
 // (DESIGN §5: refuse, never widen). Serve argv reads executor backend, kv dtype, memory request,
 // prefix caching, prefill scheduling, AND the served-model / listen-port / tool-parser rows the
-// argv interpolates as constants. Ray start interpolates cpus/gpus/object-store/gcs-port from the
-// first-pair observation. Create/lifecycle reads the lane's netdev, RDMA device, and rail address.
-// Those belong here with tp/seqs/len and the snapshot path.
+// argv interpolates as constants. Ray start interpolates cpus/gpus/object-store/gcs-port and the
+// memory-monitor refresh. Lifecycle interpolates the pinned image, runtime tag, build dir, binaries,
+// container name, mounts, log path, and shm/infiniband literals. Create/lifecycle also reads the
+// lane's netdev, RDMA device, and rail address. Those belong here with tp/seqs/len and the snapshot path.
 fn spark_pair_engine_inputs_wire(args: VllmEngineArgs) -> NonEmptyStr {
   join([
     "tp", to_string(args.tensor_parallel_size),
@@ -421,6 +422,28 @@ fn spark_pair_ray_cluster_inputs_wire() -> NonEmptyStr {
     "|gpus", to_string(spark_pair_ray_num_gpus),
     "|object_store", to_string(spark_pair_ray_object_store_bytes),
     "|gcs", to_string(spark_pair_ray_gcs_port),
+    "|monitor_ms", to_string(millisecond_count(m: first_pair_ray_head.memory_monitor_refresh)),
+  ], "") as NonEmptyStr
+}
+
+// Lifecycle ExecStartPre interpolates the pinned image, runtime tag, build dir, container name,
+// binaries, mounts, log path, and shm/infiniband literals. Lane netdev/rdma/rail are already in
+// head_lane; omitting this wire would keep a digest current after a runtime-image or path change.
+fn spark_pair_runtime_create_inputs_wire() -> NonEmptyStr {
+  join([
+    "pin", sparkrun_vllm_ds4_gb10_pinned_reference() as String,
+    "|tag", gunbc_spark_pair_runtime_image_tag as String,
+    "|build", spark_pair_runtime_build_dir as String,
+    "|vllm", sparkrun_vllm_ds4_gb10_vllm_binary as String,
+    "|ray", sparkrun_vllm_ds4_gb10_ray_binary as String,
+    "|container", spark_pair_container_name as String,
+    "|weights_host", spark_pair_weights_host_dir as String,
+    "|weights_ctr", spark_pair_weights_container_dir as String,
+    "|jit_host", spark_pair_jit_cache_host_dir as String,
+    "|jit_ctr", sparkrun_vllm_ds4_gb10_jit_cache_root as String,
+    "|log", spark_pair_head_log_path as String,
+    "|shm", "10737418240",
+    "|ib", "/dev/infiniband",
   ], "") as NonEmptyStr
 }
 
@@ -442,6 +465,7 @@ fn spark_pair_head_render_inputs_identity(args: VllmEngineArgs, snapshot: ModelS
     ArtifactRealizationInput { identity: "engine" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_engine_inputs_wire(args: args)) },
     ArtifactRealizationInput { identity: "serve_surface" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_serve_surface_inputs_wire()) },
     ArtifactRealizationInput { identity: "ray_cluster" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_ray_cluster_inputs_wire()) },
+    ArtifactRealizationInput { identity: "runtime_create" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_runtime_create_inputs_wire()) },
     ArtifactRealizationInput { identity: "head_lane" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_lane_inputs_wire(lane: head)) },
   ])
 }
