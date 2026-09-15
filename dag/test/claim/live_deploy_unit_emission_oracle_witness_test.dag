@@ -1,10 +1,12 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size_count }
 import std.layout { render }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
+  live_deploy_slice_memory_max,
+  live_deploy_slice_memory_high,
   live_deploy_protocol,
   emit_belt_service_unit_doc,
   emit_belt_timer_unit_doc,
@@ -541,7 +543,7 @@ test fn serve_unit_is_installable_as_multi_user_target() -> Bool {
 //
 // DECISIONS ASSERTED:
 //   - the slice is derived from the deployment's unit name
-//   - the memory bounds come from gunbc_runner_slot_desired()
+//   - the memory bounds come from live_deploy_slice_memory_max / _high (the deployment's own rows)
 
 fn slice_file() -> SystemdUnitFile {
   live_deploy_slice_unit_file(spec: live_spec())
@@ -559,11 +561,18 @@ test fn slice_description_names_the_unit() -> Bool {
   }
 }
 
-// DECISION: the slice's MemoryMax and MemoryHigh derive from gunbc_runner_slot_desired().
-test fn slice_memory_bounds_match_runner_slot() -> Bool {
-  let slot = gunbc_runner_slot_desired()
-  slice_has_bytes(file: slice_file(), target: slot.memory_max, as_max: true)
-    && slice_has_bytes(file: slice_file(), target: slot.memory_high, as_max: false)
+// DECISION REVERSED 2026-09-12: the slice's bounds are the DEPLOYMENT'S OWN rows, not the runner
+// slot's. The old row asserted derivation from `gunbc_runner_slot_desired()` on the grounds that
+// both name one workload; the floor-demand ruling sized the runner row from whole-corpus
+// resolution the deployment never performs, which falsified that identity while leaving the
+// assertion green. This witness now pins the decoupling: the deployment's bytes must match its own
+// authority AND must be independent of the runner row, so a future edit that re-points either one
+// at the other reds here.
+test fn slice_memory_bounds_are_the_deployments_own() -> Bool {
+  slice_has_bytes(file: slice_file(), target: live_deploy_slice_memory_max, as_max: true)
+    && slice_has_bytes(file: slice_file(), target: live_deploy_slice_memory_high, as_max: false)
+    && byte_size_count(b: live_deploy_slice_memory_max)
+         != byte_size_count(b: gunbc_runner_slot_desired().memory_max)
 }
 
 // DECISION: the slice unit has NotInstallable (no [Install] section).
