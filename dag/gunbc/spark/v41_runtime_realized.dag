@@ -36,6 +36,10 @@ type V41OciImageDigest sole_constructor {
   config: NonEmptyStr
 }
 
+fn v41_oci_image_digest(manifest: NonEmptyStr, config: NonEmptyStr) -> V41OciImageDigest {
+  V41OciImageDigest { manifest: manifest, config: config }
+}
+
 type V41PatchConsumptionEvidence
   = V41PatchesConsumedByImage { patch_digests: List<NonEmptyStr> }
   | V41PatchesAbsentFromImage { obligation: NonEmptyStr }
@@ -237,6 +241,24 @@ type V41ResidencyLimits sole_constructor {
   effective_staging: ByteSize
   configured_inflight_io: ByteSize
   effective_inflight_io: ByteSize
+}
+
+fn v41_residency_limits(
+  configured_cache: ByteSize,
+  effective_cache: ByteSize,
+  configured_staging: ByteSize,
+  effective_staging: ByteSize,
+  configured_inflight_io: ByteSize,
+  effective_inflight_io: ByteSize,
+) -> V41ResidencyLimits {
+  V41ResidencyLimits {
+    configured_cache: configured_cache,
+    effective_cache: effective_cache,
+    configured_staging: configured_staging,
+    effective_staging: effective_staging,
+    configured_inflight_io: configured_inflight_io,
+    effective_inflight_io: effective_inflight_io,
+  }
 }
 
 type V41ResidencyVerdict

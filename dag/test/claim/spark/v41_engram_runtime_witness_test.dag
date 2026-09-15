@@ -4,13 +4,13 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import v2.std.optional { Present, Absent }
-import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash, content_hash_atom }
+import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash, content_hash_of_value }
 import std.measure { byte_size, byte_size_count }
 import std.realization { LocalFilesystem, RemoteNetwork }
 import extdeps.vllm.source_build { vllm_d2d649e6_revision, vllm_recipe_targeting }
 import extdeps.flashinfer.flashinfer { flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels }
 import gunbc.spark.serving_deployment_selection { topology_shape }
-import gunbc.fabric.engram_materialization { engram_component_identity, engram_route_b_identity, engram_route_d_identity }
+import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.v41_runtime_candidate {
   V41EnginePatch, v41_engine_patch, V41PatchPopulation, V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
@@ -30,25 +30,27 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_population_reading, deepseek_v4_1_flash_index_tensor_count,
 }
 import gunbc.spark.v41_engram_row_store {
-  V41RowStoreEncodingSpec, V41TensorSlice, V41SourceRow, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
-  v41_row_geometry, v41_row_store_format_revision, v41_row_store_endianness, v41_row_store_row_order,
-  v41_row_store_partition_rule, v41_row_store_alignment_bytes, v41_row_store_rank_count,
-  v41_transform_fixture, v41_published_transform_standing, v41_encoding_spec_key, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished,
-  V41RowStoreEncodingRefused, v41_wrong_encoding_refuses, v41_sample_agrees, v41_rank_digest_of,
+  V41RowStoreEncoding, V41RowStoreEncodingSpec, V41SourceRow, V41FixtureRows, V41PublishedEngramShards, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
+  v41_tensor_slice, v41_source_row, v41_encoding_spec_with_slices,
+  v41_transform_fixture, v41_published_transform_standing,
+  v41_wrong_encoding_refuses, v41_sample_agrees, v41_rank_digest_of,
+  v41_encoding_spec_of, v41_encoding_spec_key_of, v41_encoding_digest_of, v41_rank_stores_of, v41_fixture_encoding,
 }
 import gunbc.spark.v41_runtime_realized {
   V41OciImageDigest, V41PatchesConsumedByImage,
+  v41_oci_image_digest, v41_residency_limits,
   v41_realized_runtime, V41RuntimeRealized, V41RuntimeRealizationRefused, V41RuntimeRealizationUnestablished,
   v41_realized_candidate, v41_selectable, V41Selectable, V41NotSelectable, v41_specification_is_not_selectable,
   v41_open_rank_store, V41StoreHandle, V41StoreOpenRefused, v41_distributed_launch,
   v41_token_time, V41TokenTimeLocal, V41TokenTimeRefused,
-  V41ResidencyLimits, v41_residency_under_trace, V41ResidencyWithinBound, V41ResidencyExceeded,
+  v41_residency_under_trace, V41ResidencyWithinBound, V41ResidencyExceeded,
   v41_observe_pinned, v41_candidate_refuses_full_pin, V41CandidateRealizationRefused,
+  V41CandidateRealized, V41CandidateRealizationUnestablished,
 }
 import gunbc.spark.vllm_runtime_image_build { BuiltByThisRun, AdoptedUnderExpectedTag }
 import gunbc.spark.v41_engram_staging {
-  v41_staging_request, v41_stage, V41StagedRankStore, V41StagingVerified, V41StagingRefused, V41StagingUnestablished,
-  v41_group_a_staging_standing,
+  v41_staging_request, v41_stage, V41StagingVerified, V41StagingRefused, V41StagingUnestablished,
+  v41_group_a_staging_standing, v41_staged_matching, v41_staged_with_readback,
 }
 
 data w_closed_population: SafetensorsPopulationStanding = safetensors_population_standing(
@@ -120,54 +122,37 @@ fn w_key(s: V41CandidateVerdict, which: String) -> String {
 }
 
 fn w_tiny_spec() -> V41RowStoreEncodingSpec {
-  V41RowStoreEncodingSpec {
-    component: engram_component_identity,
+  v41_encoding_spec_with_slices(
     partition: v41_candidate_partition,
-    slices: [V41TensorSlice { name: "layers.1.engram.embed.weight" as NonEmptyStr, global_rows: 8, layer: 1 }],
-    geometry: v41_row_geometry(),
-    rank_count: v41_row_store_rank_count,
-    format_revision: v41_row_store_format_revision,
-    endianness: v41_row_store_endianness,
-    row_order: v41_row_store_row_order,
-    partition_rule: v41_row_store_partition_rule,
-    alignment_bytes: v41_row_store_alignment_bytes,
-  }
+    slices: [v41_tensor_slice(name: "layers.1.engram.embed.weight" as NonEmptyStr, global_rows: 8, layer: 1)],
+  )
 }
 
 fn w_row(i: Nat) -> V41SourceRow {
-  V41SourceRow { tensor: "layers.1.engram.embed.weight" as NonEmptyStr, global_row: i, payload: join(["r", to_string(i)], "") as NonEmptyStr }
+  v41_source_row(tensor: "layers.1.engram.embed.weight" as NonEmptyStr, global_row: i, payload: join(["r", to_string(i)], "") as NonEmptyStr)
 }
 
 fn w_source() -> List<V41SourceRow> {
   [w_row(i: 0), w_row(i: 1), w_row(i: 2), w_row(i: 3), w_row(i: 4), w_row(i: 5), w_row(i: 6), w_row(i: 7)]
 }
 
-fn w_identified() -> V41RowStoreEncodingIdentified? {
-  match v41_transform_fixture(source: w_source(), spec: w_tiny_spec()) {
-    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: e } => match e {
-      V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } =>
-        Present { value: V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } }
-      V41RowStoreEncodingUnestablished { obligation: _ } => none
-      V41RowStoreEncodingRefused { defects: _ } => none
-    }
-    V41PublishedTransformUnestablished { obligation: _ } => none
-    V41TransformUnfaithful { defects: _ } => none
-  }
+fn w_identified() -> V41RowStoreEncoding? {
+  v41_fixture_encoding(source: w_source(), spec: w_tiny_spec())
 }
 
 fn w_image() -> V41OciImageDigest {
-  V41OciImageDigest {
+  v41_oci_image_digest(
     manifest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr,
     config: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr,
-  }
+  )
 }
 
 fn w_keys() -> List<ContentHash> {
   [
-    content_hash_atom(value: "row0" as NonEmptyStr), content_hash_atom(value: "row1" as NonEmptyStr),
-    content_hash_atom(value: "row2" as NonEmptyStr), content_hash_atom(value: "row3" as NonEmptyStr),
-    content_hash_atom(value: "row4" as NonEmptyStr), content_hash_atom(value: "row5" as NonEmptyStr),
-    content_hash_atom(value: "row6" as NonEmptyStr), content_hash_atom(value: "row7" as NonEmptyStr),
+    content_hash_of_value(value: "row0" as NonEmptyStr), content_hash_of_value(value: "row1" as NonEmptyStr),
+    content_hash_of_value(value: "row2" as NonEmptyStr), content_hash_of_value(value: "row3" as NonEmptyStr),
+    content_hash_of_value(value: "row4" as NonEmptyStr), content_hash_of_value(value: "row5" as NonEmptyStr),
+    content_hash_of_value(value: "row6" as NonEmptyStr), content_hash_of_value(value: "row7" as NonEmptyStr),
   ]
 }
 
@@ -235,12 +220,15 @@ test fn control_incomplete_manifests_stay_unestablished() -> Bool {
 
 test fn control_wrong_row_store_encoding_or_range_refuses_faithfulness() -> Bool {
   match v41_transform_fixture(source: w_source(), spec: w_tiny_spec()) {
-    V41FixtureCorrespondenceHolds { subject: sub, placed: placed, encoding: _ } =>
-      (sub.row_count == 8)
-        && (sub.how as String).contains("not the published")
-        && v41_sample_agrees(placed: placed, tensor: "layers.1.engram.embed.weight" as NonEmptyStr, global_row: 3, payload: "r3" as NonEmptyStr)
-        && v41_wrong_encoding_refuses(source: w_source(), spec: w_tiny_spec(), tamper: "NOT-THE-SOURCE" as NonEmptyStr)
-        && length(placed) == 8
+    V41FixtureCorrespondenceHolds { subject: sub, placed: placed, encoding: _ } => match sub {
+      V41FixtureRows { row_count: n, how: how } =>
+        n == 8
+          && (how as String).contains("not the published")
+          && v41_sample_agrees(placed: placed, tensor: "layers.1.engram.embed.weight" as NonEmptyStr, global_row: 3, payload: "r3" as NonEmptyStr)
+          && v41_wrong_encoding_refuses(source: w_source(), spec: w_tiny_spec(), tamper: "NOT-THE-SOURCE" as NonEmptyStr)
+          && length(placed) == 8
+      V41PublishedEngramShards => false
+    }
     V41PublishedTransformUnestablished { obligation: _ } => false
     V41TransformUnfaithful { defects: _ } => false
   }
@@ -248,20 +236,29 @@ test fn control_wrong_row_store_encoding_or_range_refuses_faithfulness() -> Bool
 
 test fn fixture_correspondence_does_not_establish_the_published_shards() -> Bool {
   match v41_transform_fixture(source: w_source(), spec: w_tiny_spec()) {
-    V41FixtureCorrespondenceHolds { subject: sub, placed: placed, encoding: e } => match e {
-      V41RowStoreEncodingIdentified { spec: spec, spec_key: sk, rank_stores: rs, content_digest: d } =>
+    V41FixtureCorrespondenceHolds { subject: sub, placed: placed, encoding: e } => match sub {
+      V41PublishedEngramShards => false
+      V41FixtureRows { row_count: n, how: _ } =>
         length(placed) == 8
-          && sub.row_count == 8
-          && length(rs) == 4
-          && serialize_content_hash(hash: sk) as String != serialize_content_hash(hash: d) as String
-          && (spec.component.decl_name as String) == "deepseek_v4_1_engram_component"
-          && match v41_published_transform_standing() {
-            V41PublishedTransformUnestablished { obligation: o } => (o as String).contains("published Engram shards")
-            V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
-            V41TransformUnfaithful { defects: _ } => false
+          && n == 8
+          && length(v41_rank_stores_of(e: e)) == 4
+          && match v41_encoding_spec_key_of(e: e) {
+            Absent => false
+            Present { value: sk } => match v41_encoding_digest_of(e: e) {
+              Absent => false
+              Present { value: d } =>
+                serialize_content_hash(hash: sk) as String != serialize_content_hash(hash: d) as String
+                  && match v41_encoding_spec_of(e: e) {
+                    Absent => false
+                    Present { value: spec } => (spec.component.decl_name as String) == "deepseek_v4_1_engram_component"
+                      && match v41_published_transform_standing() {
+                        V41PublishedTransformUnestablished { obligation: o } => (o as String).contains("published Engram shards")
+                        V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+                        V41TransformUnfaithful { defects: _ } => false
+                      }
+                  }
+            }
           }
-      V41RowStoreEncodingUnestablished { obligation: _ } => false
-      V41RowStoreEncodingRefused { defects: _ } => false
     }
     V41PublishedTransformUnestablished { obligation: _ } => false
     V41TransformUnfaithful { defects: _ } => false
@@ -271,20 +268,17 @@ test fn fixture_correspondence_does_not_establish_the_published_shards() -> Bool
 test fn control_mismatched_rank_store_refuses_distributed_launch() -> Bool {
   match w_identified() {
     Absent => false
-    Present { value: enc } => {
-      let identified = V41RowStoreEncodingIdentified { spec: enc.spec, spec_key: enc.spec_key, rank_stores: enc.rank_stores, content_digest: enc.content_digest }
-      match v41_rank_digest_of(e: identified, rank: 0) {
-        Absent => false
-        Present { value: d0 } => match v41_distributed_launch(
-          opened: [
-            v41_open_rank_store(path: "/nvme/rank0.engram" as NonEmptyStr, expected: d0, observed: d0, rank: 0),
-            v41_open_rank_store(path: "/nvme/rank1.engram" as NonEmptyStr, expected: d0, observed: d0, rank: 1),
-          ],
-          encoding: identified,
-        ) {
-          V41StoreOpenRefused { defects: ds } => any(ds, x => (x as String).contains("distributed launch refuses"))
-          V41StoreHandle { path: _, expected: _, observed: _, rank: _ } => false
-        }
+    Present { value: enc } => match v41_rank_digest_of(e: enc, rank: 0) {
+      Absent => false
+      Present { value: d0 } => match v41_distributed_launch(
+        opened: [
+          v41_open_rank_store(path: "/nvme/rank0.engram" as NonEmptyStr, expected: d0, observed: d0, rank: 0),
+          v41_open_rank_store(path: "/nvme/rank1.engram" as NonEmptyStr, expected: d0, observed: d0, rank: 1),
+        ],
+        encoding: enc,
+      ) {
+        V41StoreOpenRefused { defects: ds } => any(ds, x => (x as String).contains("distributed launch refuses"))
+        V41StoreHandle { path: _, expected: _, observed: _, rank: _ } => false
       }
     }
   }
@@ -293,6 +287,8 @@ test fn control_mismatched_rank_store_refuses_distributed_launch() -> Bool {
 test fn control_full_engram_pinned_allocation_refuses_the_candidate() -> Bool {
   match v41_candidate_refuses_full_pin(obs: v41_observe_pinned(pinned_bytes: byte_size(count: 100), table_bytes: byte_size(count: 100))) {
     Present { value: V41CandidateRealizationRefused { defects: d } } => any(d, x => (x as String).contains("full Engram pinned"))
+    Present { value: V41CandidateRealized { realized_runtime: _, row_store: _, execution_profile: _, candidate: _, authorization_obligation: _ } } => false
+    Present { value: V41CandidateRealizationUnestablished { obligations: _ } } => false
     Absent => false
   }
 }
@@ -350,7 +346,7 @@ test fn only_the_realized_candidate_is_selectable() -> Bool {
         Absent => false
         Present { value: enc } => match v41_selectable(realized: v41_realized_candidate(
           runtime: v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: BuiltByThisRun, consumed: V41PatchesConsumedByImage { patch_digests: ["p" as NonEmptyStr] }),
-          row_store: V41RowStoreEncodingIdentified { spec: enc.spec, spec_key: enc.spec_key, rank_stores: enc.rank_stores, content_digest: enc.content_digest },
+          row_store: enc,
           spec: spec,
         )) {
           V41Selectable { candidate: _ } => true
@@ -363,14 +359,14 @@ test fn only_the_realized_candidate_is_selectable() -> Bool {
 }
 
 test fn adversarial_trace_larger_than_cache_evicts_and_stays_in_bound() -> Bool {
-  let limits = V41ResidencyLimits {
+  let limits = v41_residency_limits(
     configured_cache: byte_size(count: 40),
     effective_cache: byte_size(count: 40),
     configured_staging: byte_size(count: 16),
     effective_staging: byte_size(count: 16),
     configured_inflight_io: byte_size(count: 16),
     effective_inflight_io: byte_size(count: 16),
-  }
+  )
   match v41_residency_under_trace(limits: limits, keys: w_keys(), row_bytes: byte_size(count: 10)) {
     V41ResidencyWithinBound { limits: _, occupancy: o, evicted: e } => e > 0 && byte_size_count(b: o) <= 40
     V41ResidencyExceeded { defects: _ } => false
@@ -378,14 +374,14 @@ test fn adversarial_trace_larger_than_cache_evicts_and_stays_in_bound() -> Bool 
 }
 
 test fn exceeding_configured_cache_refuses() -> Bool {
-  let over = V41ResidencyLimits {
+  let over = v41_residency_limits(
     configured_cache: byte_size(count: 10),
     effective_cache: byte_size(count: 40),
     configured_staging: byte_size(count: 16),
     effective_staging: byte_size(count: 16),
     configured_inflight_io: byte_size(count: 16),
     effective_inflight_io: byte_size(count: 16),
-  }
+  )
   match v41_residency_under_trace(limits: over, keys: w_keys(), row_bytes: byte_size(count: 10)) {
     V41ResidencyExceeded { defects: d } => any(d, x => (x as String).contains("effective cache exceeds"))
     V41ResidencyWithinBound { limits: _, occupancy: _, evicted: _ } => false
@@ -395,29 +391,26 @@ test fn exceeding_configured_cache_refuses() -> Bool {
 test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
   match w_identified() {
     Absent => false
-    Present { value: enc } => {
-      let encoding = V41RowStoreEncodingIdentified { spec: enc.spec, spec_key: enc.spec_key, rank_stores: enc.rank_stores, content_digest: enc.content_digest }
-      match v41_staging_request(image: w_image(), encoding: encoding) {
-        Absent => false
-        Present { value: req } => {
-          let good = map(enc.rank_stores, r => V41StagedRankStore { rank: r.rank, identity: r.digest, readback: r.digest })
-          let bad = map(enc.rank_stores, r => V41StagedRankStore { rank: r.rank, identity: r.digest, readback: content_hash_atom(value: "nope" as NonEmptyStr) })
-          (match v41_stage(request: req, image_readback: w_image().manifest, rank_readbacks: good, provenance: BuiltByThisRun) {
-            V41StagingVerified { request_key: _, image_readback: _, ranks: rs } => length(rs) == 4
-            V41StagingRefused { defects: _ } => false
+    Present { value: enc } => match v41_staging_request(image: w_image(), encoding: enc) {
+      Absent => false
+      Present { value: req } => {
+        let good = v41_staged_matching(encoding: enc)
+        let bad = v41_staged_with_readback(encoding: enc, readback: content_hash_of_value(value: "nope" as NonEmptyStr))
+        (match v41_stage(request: req, image_readback: w_image().manifest, rank_readbacks: good, provenance: BuiltByThisRun) {
+          V41StagingVerified { request_key: _, image_readback: _, ranks: rs } => length(rs) == 4
+          V41StagingRefused { defects: _ } => false
+          V41StagingUnestablished { obligation: _ } => false
+        })
+          && (match v41_stage(request: req, image_readback: w_image().manifest, rank_readbacks: bad, provenance: BuiltByThisRun) {
+            V41StagingRefused { defects: d } => any(d, x => (x as String).contains("readback"))
+            V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
             V41StagingUnestablished { obligation: _ } => false
           })
-            && (match v41_stage(request: req, image_readback: w_image().manifest, rank_readbacks: bad, provenance: BuiltByThisRun) {
-              V41StagingRefused { defects: d } => any(d, x => (x as String).contains("readback"))
-              V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
-              V41StagingUnestablished { obligation: _ } => false
-            })
-            && (match v41_group_a_staging_standing {
-              V41StagingUnestablished { obligation: o } => (o as String).contains("V4 Flash")
-              V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
-              V41StagingRefused { defects: _ } => false
-            })
-        }
+          && (match v41_group_a_staging_standing {
+            V41StagingUnestablished { obligation: o } => (o as String).contains("V4 Flash")
+            V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
+            V41StagingRefused { defects: _ } => false
+          })
       }
     }
   }

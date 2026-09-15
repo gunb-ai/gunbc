@@ -3,7 +3,7 @@ module gunbc.spark.v41_engram_row_store
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
@@ -88,10 +88,25 @@ type V41RowStoreEncodingSpec sole_constructor {
 }
 
 fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> V41RowStoreEncodingSpec {
+  v41_encoding_spec_with_slices(
+    partition: partition,
+    slices: v41_storage_slices(population: population, partition: partition).sort_by(s => s.name as String),
+  )
+}
+
+fn v41_tensor_slice(name: NonEmptyStr, global_rows: Nat, layer: Nat) -> V41TensorSlice {
+  V41TensorSlice { name: name, global_rows: global_rows, layer: layer }
+}
+
+fn v41_source_row(tensor: NonEmptyStr, global_row: Nat, payload: NonEmptyStr) -> V41SourceRow {
+  V41SourceRow { tensor: tensor, global_row: global_row, payload: payload }
+}
+
+fn v41_encoding_spec_with_slices(partition: V41EngramResidencyPartition, slices: List<V41TensorSlice>) -> V41RowStoreEncodingSpec {
   V41RowStoreEncodingSpec {
     component: engram_component_identity,
     partition: partition,
-    slices: v41_storage_slices(population: population, partition: partition).sort_by(s => s.name as String),
+    slices: slices,
     geometry: v41_row_geometry(),
     rank_count: v41_row_store_rank_count,
     format_revision: v41_row_store_format_revision,
@@ -243,9 +258,9 @@ fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat) -> String {
 fn v41_rank_digest(placed: List<V41PlacedRow>, rank: Nat) -> ContentHash {
   let payload = v41_rank_payload(placed: placed, rank: rank)
   if payload == "" {
-    content_hash_atom(value: "empty-rank" as NonEmptyStr)
+    content_hash_of_value(value: "empty-rank" as NonEmptyStr)
   } else {
-    content_hash_atom(value: payload as NonEmptyStr)
+    content_hash_of_value(value: payload as NonEmptyStr)
   }
 }
 
@@ -307,6 +322,38 @@ fn v41_encoding_digest_of(e: V41RowStoreEncoding) -> ContentHash? {
     V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: d } => Present { value: d }
     V41RowStoreEncodingUnestablished { obligation: _ } => none
     V41RowStoreEncodingRefused { defects: _ } => none
+  }
+}
+
+fn v41_encoding_spec_of(e: V41RowStoreEncoding) -> V41RowStoreEncodingSpec? {
+  match e {
+    V41RowStoreEncodingIdentified { spec: s, spec_key: _, rank_stores: _, content_digest: _ } => Present { value: s }
+    V41RowStoreEncodingUnestablished { obligation: _ } => none
+    V41RowStoreEncodingRefused { defects: _ } => none
+  }
+}
+
+fn v41_encoding_spec_key_of(e: V41RowStoreEncoding) -> ContentHash? {
+  match e {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: k, rank_stores: _, content_digest: _ } => Present { value: k }
+    V41RowStoreEncodingUnestablished { obligation: _ } => none
+    V41RowStoreEncodingRefused { defects: _ } => none
+  }
+}
+
+fn v41_rank_stores_of(e: V41RowStoreEncoding) -> List<V41RankStoreIdentity> {
+  match e {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } => rs
+    V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41RankStoreIdentity>
+    V41RowStoreEncodingRefused { defects: _ } => [] as List<V41RankStoreIdentity>
+  }
+}
+
+fn v41_fixture_encoding(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V41RowStoreEncoding? {
+  match v41_transform_fixture(source: source, spec: spec) {
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: e } => Present { value: e }
+    V41PublishedTransformUnestablished { obligation: _ } => none
+    V41TransformUnfaithful { defects: _ } => none
   }
 }
 

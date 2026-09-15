@@ -28,6 +28,28 @@ type V41StagedRankStore sole_constructor {
   readback: ContentHash
 }
 
+fn v41_staged_rank_store(rank: Nat, identity: ContentHash, readback: ContentHash) -> V41StagedRankStore {
+  V41StagedRankStore { rank: rank, identity: identity, readback: readback }
+}
+
+fn v41_staged_matching(encoding: V41RowStoreEncoding) -> List<V41StagedRankStore> {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      map(rs, r => v41_staged_rank_store(rank: r.rank, identity: r.digest, readback: r.digest))
+    V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41StagedRankStore>
+    V41RowStoreEncodingRefused { defects: _ } => [] as List<V41StagedRankStore>
+  }
+}
+
+fn v41_staged_with_readback(encoding: V41RowStoreEncoding, readback: ContentHash) -> List<V41StagedRankStore> {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      map(rs, r => v41_staged_rank_store(rank: r.rank, identity: r.digest, readback: readback))
+    V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41StagedRankStore>
+    V41RowStoreEncodingRefused { defects: _ } => [] as List<V41StagedRankStore>
+  }
+}
+
 type V41StagingRequest sole_constructor {
   image: V41OciImageDigest
   ranks: List<ContentHash>
