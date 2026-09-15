@@ -583,6 +583,7 @@ mod compiler_tests {
                 .find(|f| f.path.ends_with("tco_slot_fixture.rs"))
                 .expect("rust emit");
             let walk_at = emitted.content.find("fn walk").expect("walk");
+            let rest = &emitted.content[walk_at..];
             let tco_at = rest.find("let __tco_0").expect("TCO temps in walk");
             let cont_rel = rest[tco_at..]
                 .find("continue")
