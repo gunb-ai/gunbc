@@ -1907,10 +1907,6 @@ pub struct TransitionAdmission {
 /// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
 /// wave_admission_refusal charges consumed rows on that landing run. A separate
 /// cleanup PR must remove the consumed rows; this admission does not waive it.
-const SCM_SOURCE_RECOVERY_REHOME_LABEL: &str =
-    "gunbc#10729 scm source-recovery re-home into object_store 2026-09-10";
-const SCM_MERGE_BASE_COHOME_LABEL: &str =
-    "gunbc#10729 scm merge-base co-home into repository_envelope 2026-09-09";
 
 /// THE gunbc#11373 ROWS DISSOLVED HERE (2026-09-15), BY THE TRIGGER THE BLOCK ABOVE WROTE FOR
 /// THEM. That block says it plainly -- delete these rows after #11373 lands and the base resolves
@@ -1925,379 +1921,90 @@ const SCM_MERGE_BASE_COHOME_LABEL: &str =
 /// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
 /// runner hardware observation, DGX PXE and PXE-rescue consumers.
 ///
-/// gunbc#10729 REFILLS THE ROSTER, and the rows below are the SCM re-home cohort: merge-base and
-/// commit-subject authorities co-homed into `gunbc.scm.repository_envelope`. An earlier revision
-/// of this paragraph said main was carrying its own in-flight rows beside them. That was true of
-/// the tree this merge started from and is false of the tree it produced, for the reason the two
-/// paragraphs above give -- main's cohort was consumed by its own landing, so the roster holds one
-/// cohort again. The distinction that makes both readings safe is the same one: a row goes when
-/// its transition is PRESENT AT THE BASE, which is a fact about that row's own trigger and not
-/// about how full the array is.
+/// gunbc#11306 repository-visibility unification (2026-09-13). Six rows for one move: the
+/// spellings `RepositoryVisibility`, `PublicRepository` and `PrivateRepository` relocate from
+/// `extdeps.github.actions_token` to `extdeps.github.repository`. The concept was FORKED, which is
+/// what made the move necessary rather than cosmetic: `actions_token` declared
+/// `RepositoryVisibility = PublicRepository | PrivateRepository` for the fork-token rule while
+/// `hosted_runners` declared `RepoVisibility = PublicRepo | PrivateRepo` for the runner hardware
+/// tables -- one upstream fact under two spellings, free to disagree, and neither reusable by a
+/// third consumer that needed to ask whether a repository is world-readable. GitHub's repository
+/// resource owns `visibility` as a field, so the resource gets the module and the field gets the
+/// type.
 ///
-/// FIVE OF THIS COHORT'S ROWS WENT ON THEIR OWN TRIGGER before this merge. Splitting
-/// `MergeBaseRefusal` out of `MergeBaseOutcome` removed the bindings they admitted, so the floor
-/// reported them CONSUMED and they were deleted rather than carried; `squash_merge`'s
-/// `MergeBaseDerived` row stays, because that route still matches the derived arm.
+/// THREE SPELLINGS ACROSS TWO MODULES, ENUMERATED BY EXACT IDENTITY. Every row is `TargetChanged`
+/// and the claim is this roster's header claim verbatim: a spelling authored on both sides now
+/// resolves to a different module, and NOT ONE of them changes which declaration the spelling
+/// denotes -- the coproduct and its two arms move unedited, so a binding whose meaning had actually
+/// moved would refuse on its own row rather than hide under these. The membership half of the same
+/// motion is reported separately and auto-admitted as `ExplicitlyEvaluatedZeroDelta`. The rows are
+/// enumerated rather than patterned over the module pair, because a pattern would admit a genuine
+/// rebind that happened to land in the same two modules. `hosted_runners` produces no row here: its
+/// arms were spelled `PublicRepo`/`PrivateRepo` and are new names at the head, not rebinds.
+///
+/// DISSOLVE-ON: gunbc#11306 merging. Once the relocation is on main, base and head of every
+/// pull_request build both carry it, the `TargetChanged` deltas stop being producible, all six
+/// report stale and refuse every unrelated PR. The deletion PR is authored and linked from #11306
+/// BEFORE this lands, so the trigger has a waiting actuator rather than a sentence. Remove them by
+/// that trigger, not by reinterpreting it.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
-            spelling: "CorpusEntrySourceMissing",
-            expected_candidates: &["gunbc.scm.object_store"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "ActionsRepositoryPolicyObservation",
+            spelling: "RepositoryVisibility",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
-            spelling: "CorpusEntrySourceIsSemanticNode",
-            expected_candidates: &["gunbc.scm.object_store"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "fork_write_tokens_reachable",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
-            spelling: "CorpusEntrySourceIsCorpusManifest",
-            expected_candidates: &["gunbc.scm.object_store"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "fork_write_tokens_reachable",
+            spelling: "PublicRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
-            spelling: "CorpusEntrySourceMissing",
-            expected_candidates: &["gunbc.scm.object_store"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "fork_policy_allows",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
-            spelling: "CorpusEntrySourceIsSemanticNode",
-            expected_candidates: &["gunbc.scm.object_store"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "fork_policy_denies",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
-            spelling: "CorpusEntrySourceIsCorpusManifest",
-            expected_candidates: &["gunbc.scm.object_store"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
-            spelling: "CorpusEntrySourceMissing",
-            expected_candidates: &["gunbc.scm.object_store"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
-            spelling: "CorpusEntrySourceIsSemanticNode",
-            expected_candidates: &["gunbc.scm.object_store"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
-            spelling: "CorpusEntrySourceIsCorpusManifest",
-            expected_candidates: &["gunbc.scm.object_store"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.squash_merge",
-            in_declaration: "squash_merge",
-            spelling: "merge_base",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.squash_merge",
-            in_declaration: "squash_merge",
-            spelling: "MergeBaseDerived",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.squash_merge",
-            in_declaration: "SquashMergeOutcome",
-            spelling: "MergeSideName",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
-            spelling: "merge_base",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
-            spelling: "MergeBaseDerived",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
-            spelling: "MergeBaseHistoriesDisjoint",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
-            spelling: "MergeBaseHistoryUnwalkable",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
-            spelling: "MergeBaseSourceAlreadyConsumed",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
-            spelling: "merge_base",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
-            spelling: "MergeBaseDerived",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
-            spelling: "MergeBaseHistoriesDisjoint",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
-            spelling: "MergeBaseHistoryUnwalkable",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
-            spelling: "MergeBaseSourceAlreadyConsumed",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
-            spelling: "merge_base",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
-            spelling: "MergeBaseDerived",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
-            spelling: "MergeBaseHistoriesDisjoint",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
-            spelling: "MergeBaseHistoryUnwalkable",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
-            spelling: "MergeBaseSourceAlreadyConsumed",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
-            spelling: "merge_base",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
-            spelling: "MergeBaseDerived",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
-            spelling: "MergeBaseHistoriesDisjoint",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
-            spelling: "MergeBaseHistoryUnwalkable",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
-            spelling: "MergeBaseSourceAlreadyConsumed",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_squash_merge_witness",
-            in_declaration:
-                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
-            spelling: "MergeBaseHistoriesDisjoint",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_squash_merge_witness",
-            in_declaration:
-                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
-            spelling: "MergeBaseHistoryUnwalkable",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_squash_merge_witness",
-            in_declaration:
-                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
-            spelling: "MergeBaseSourceAlreadyConsumed",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "public_fork_policy_allows",
+            spelling: "PublicRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
