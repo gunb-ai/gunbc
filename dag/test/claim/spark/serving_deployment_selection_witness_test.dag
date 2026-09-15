@@ -6,6 +6,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, de
 import std.measure { token_count, token_count_value, basis_point, byte_size, byte_size_count }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
+import std.interval { IntervalReady, IntervalRefused }
+import gunbc.spark.pair_serving_observed {
+  GroupRankFreeMemoryObserved, gib_hundredths_interval, group_rank_free_memory_upper,
+  group_rank_free_memory_region, group_rank_free_memory_observed,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.pareto { AxisGap, AxisReading, LowerIsBetter, SelectionAxis }
 import std.decision { HardConstraint, SelectionEvidenceNeed, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
 import std.roster_frontier {
@@ -2044,4 +2050,67 @@ fn fixture_upstream_mismatch_field_id() -> DeclarationRef {
 
 fn fixture_mismatched_sum_field_id() -> DeclarationRef {
   decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_mismatched_sum_field_id")
+}
+
+
+// THE ENDPOINTS OF THE IDLE FREE-MEMORY READING CANNOT BE TRANSPOSED WITHOUT REFUSAL. Before this
+// pair went through `std.interval`, the reading was two sibling `ByteSize` fields hand-typed as
+// hundredths of a GiB, and a transposed row would have been a region that denotes nothing which the
+// per-rank memory screen then subtracts against. The mint is the wall; these two claims are the
+// executing evidence that it is reached FROM THIS SITE rather than only available in `std`.
+test fn the_free_memory_mint_refuses_transposed_endpoints() -> Bool {
+  match gib_hundredths_interval(low_hundredths: 11695, high_hundredths: 11685) {
+    IntervalRefused { reason: r } => count(r as String) > 0
+    IntervalReady { interval: _ } => false
+  }
+}
+
+test fn the_observed_free_memory_endpoints_are_ordered_as_authored() -> Bool {
+  match gib_hundredths_interval(low_hundredths: 11685, high_hundredths: 11695) {
+    IntervalReady { interval: _ } => true
+    IntervalRefused { reason: _ } => false
+  }
+}
+
+// A REFUSED REGION REACHES THE CONSUMER AS A REFUSAL WITH ITS REASON, not as an absence. This is the
+// half that matters to the memory screen: the budget fold takes its unestablished arm and quotes the
+// mint's own words rather than subtracting against a region that denotes nothing, so the diagnosis
+// stays correct if `closed_interval` ever refuses for a second cause.
+fn free_memory_row_with(free_construction_low: Nat, free_construction_high: Nat) -> GroupRankFreeMemoryObserved {
+  GroupRankFreeMemoryObserved {
+    group: FabricGroupA,
+    reported_free_wire: "a designed row whose endpoints are supplied by this claim" as NonEmptyStr,
+    free: gib_hundredths_interval(low_hundredths: free_construction_low, high_hundredths: free_construction_high),
+    probed_at: "2026-09-15" as NonEmptyStr,
+    instrument: "no instrument: this row exists to exercise the refused-region arm of the accessor" as NonEmptyStr,
+    precision_caveat: "not a reading" as NonEmptyStr,
+  }
+}
+
+test fn a_refused_free_memory_region_carries_the_mints_reason() -> Bool {
+  match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11695, free_construction_high: 11685)) {
+    IntervalRefused { reason: r } => count(r as String) > 0
+    IntervalReady { interval: _ } => false
+  }
+}
+
+test fn an_ordered_free_memory_region_offers_its_upper_endpoint() -> Bool {
+  match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11685, free_construction_high: 11695)) {
+    IntervalReady { interval: i } => byte_size_count(b: group_rank_free_memory_upper(i: i)) > 0
+    IntervalRefused { reason: _ } => false
+  }
+}
+
+// THE MINT REFUSING IS NOT EVIDENCE THAT THE AUTHORED ROWS PASS IT. The two claims above establish what
+// `gib_hundredths_interval` does with endpoints THIS CLAIM supplies; they say nothing about the rows
+// actually in the corpus. Because the construction is stored rather than the interval, a transposed row
+// is writable and would otherwise stay silent until a consumer folded it. This is the claim that makes
+// an authored transposition red HERE instead -- it is the whole of the class's rung-two standing, and
+// deleting it drops the class to rung one.
+test fn every_authored_free_memory_row_mints_its_region() -> Bool {
+  count(group_rank_free_memory_observed) > 0
+    && all(group_rank_free_memory_observed, r => match r.free {
+      IntervalReady { interval: _ } => true
+      IntervalRefused { reason: _ } => false
+    })
 }

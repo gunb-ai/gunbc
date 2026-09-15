@@ -14,7 +14,7 @@ import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.interval { OrderedClosedInterval, degenerate_interval }
+import std.interval { OrderedClosedInterval, degenerate_interval, IntervalConstructionFold, interval_construction_fold }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   HardConstraint, SelectionPolicy, UniqueSurvivorRequired, SelectionReceipt,
@@ -52,7 +52,8 @@ import gunbc.spark.runtime_architecture_registry_reading {
 }
 import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
 import gunbc.spark.pair_serving_observed {
-  GroupRankFreeMemoryObserved, group_rank_free_memory, group_rank_free_memory_upper,
+  GroupRankFreeMemoryObserved, group_rank_free_memory, group_rank_free_memory_region,
+  group_rank_free_memory_upper,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.fabric.engram_materialization {
@@ -1274,6 +1275,10 @@ data id_component_budget_authority: DeclarationRef = decl_ref(
   module_path: "gunbc.spark.serving_deployment_selection",
   decl_name: "candidate_component_budget")
 
+// THE REFUSED REGION'S ARM SAYS WHY IN THE MINT'S OWN WORDS. `closed_interval` produces the reason a
+// pair was rejected, so this fold interpolates it rather than re-authoring the cause: a restatement
+// would be a second authority for that fact, and it would go quietly wrong the moment the mint gains a
+// refusal cause the restatement does not describe.
 fn candidate_component_budget(
   cp: ArtifactComponent,
   c: DeploymentCandidate,
@@ -1308,34 +1313,48 @@ fn candidate_component_budget(
             obligation: "the per-rank share of this artifact's other components is underivable, so no budget follows" as NonEmptyStr,
           }
           Present { value: siblings_per_rank } =>
-            match measure_sub(a: group_rank_free_memory_upper(r: free), b: siblings_per_rank) {
-              MeasureSubtrahendExceedsMinuend => ComponentBudgetEstablished {
-                subject: ctx,
-                rank_count: c.topology.tensor_parallel_degree,
-                per_rank_bytes_available: byte_size(count: 0),
-                authority: id_component_budget_authority,
-                how: join([
-                  "this artifact's OTHER components already require more than a rank has free (",
-                  to_string(byte_size_count(b: siblings_per_rank)), " bytes per rank against ",
-                  free.reported_free_wire as String,
-                  "), so nothing remains for this component on any route. Zero here is a DERIVED remainder, not a missing measurement",
-                ], "") as NonEmptyStr,
-              }
-              MeasureDifference { value: avail } => ComponentBudgetEstablished {
-                subject: ctx,
-                rank_count: c.topology.tensor_parallel_degree,
-                per_rank_bytes_available: avail,
-                authority: id_component_budget_authority,
-                how: join([
-                  "observed idle free per rank (", free.reported_free_wire as String,
-                  ", ", free.instrument as String, ") minus the per-rank ceiling of this artifact's other components (",
-                  to_string(byte_size_count(b: siblings_per_rank)), " bytes across ",
-                  to_string(c.topology.tensor_parallel_degree), " ranks). ",
-                  free.precision_caveat as String,
-                  ". The UPPER endpoint of that reading is used, so a route is refused only if it does not fit even the most generous value the reporter could have rounded to. Every sibling of this component has a read footprint, which is what admits this budget at all",
-                ], "") as NonEmptyStr,
-              }
-            }
+            interval_construction_fold(
+              construction: group_rank_free_memory_region(r: free),
+              fold: IntervalConstructionFold {
+                refused: r => ComponentBudgetUnestablished {
+                  subject: ctx,
+                  obligation: join([
+                    "the idle free-memory reading for this fleet carries an uncertainty region its own mint REFUSED (",
+                    r as String,
+                    "), so no endpoint can be read off it. The obligation is a re-read of the reporter's line, not a repair of the stored pair",
+                  ], "") as NonEmptyStr,
+                },
+                ready: region =>
+                match measure_sub(a: group_rank_free_memory_upper(i: region), b: siblings_per_rank) {
+                  MeasureSubtrahendExceedsMinuend => ComponentBudgetEstablished {
+                    subject: ctx,
+                    rank_count: c.topology.tensor_parallel_degree,
+                    per_rank_bytes_available: byte_size(count: 0),
+                    authority: id_component_budget_authority,
+                    how: join([
+                      "this artifact's OTHER components already require more than a rank has free (",
+                      to_string(byte_size_count(b: siblings_per_rank)), " bytes per rank against ",
+                      free.reported_free_wire as String,
+                      "), so nothing remains for this component on any route. Zero here is a DERIVED remainder, not a missing measurement",
+                    ], "") as NonEmptyStr,
+                  }
+                  MeasureDifference { value: avail } => ComponentBudgetEstablished {
+                    subject: ctx,
+                    rank_count: c.topology.tensor_parallel_degree,
+                    per_rank_bytes_available: avail,
+                    authority: id_component_budget_authority,
+                    how: join([
+                      "observed idle free per rank (", free.reported_free_wire as String,
+                      ", ", free.instrument as String, ") minus the per-rank ceiling of this artifact's other components (",
+                      to_string(byte_size_count(b: siblings_per_rank)), " bytes across ",
+                      to_string(c.topology.tensor_parallel_degree), " ranks). ",
+                      free.precision_caveat as String,
+                      ". The UPPER endpoint of that reading is used, so a route is refused only if it does not fit even the most generous value the reporter could have rounded to. Every sibling of this component has a read footprint, which is what admits this budget at all",
+                    ], "") as NonEmptyStr,
+                  }
+                },
+              },
+            )
         }
       }
       }
