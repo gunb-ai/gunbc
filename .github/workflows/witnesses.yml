@@ -199,17 +199,13 @@ jobs:
         if: always()
       - name: Dispatch private witnesses for this public merge
         run: |
-          # 🟡 dissolve-on: private_witness_dispatch_script — concat-built foreign-executor (GitHub Actions run:) repository_dispatch runner; the dispatch URL, associated-pulls URL, auth env and client_payload keys are derived from extdeps.github.repository_dispatch, but the curl/python transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes GitHubEffect DispatchRepository through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          set -eu
-          PR_NUMBER=$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/gunb-ai/gunbc/commits/${PUBLIC_SHA}/pulls" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["number"] if d else "")')
-          if [ -z "${PR_NUMBER}" ]; then echo no associated pull request >&2; exit 1; fi
-          curl -fsS -X POST -H "Authorization: Bearer ${GITHUB_REPOSITORY_DISPATCH_TOKEN}" -H "Accept: application/vnd.github+json" -H "Content-Type: application/json" --data "{\"event_type\":\"gunbc_public_main\",\"client_payload\":{\"sha\":\"${PUBLIC_SHA}\",\"pr_number\":${PR_NUMBER}}}" "https://api.github.com/repos/gunb-ai/gunbc-private/dispatches"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/private_witness_dispatch.dag --function dispatch
         env:
           GITHUB_REPOSITORY_DISPATCH_TOKEN: ${{ secrets.GUNBC_PRIVATE_REPOSITORY_DISPATCH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUBLIC_SHA: ${{ github.sha }}
         if: github.event_name == 'push'
-        continue-on-error: true
   required-witnesses-floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 180

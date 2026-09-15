@@ -10,8 +10,12 @@ import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
 }
 import gunbc.witness_floor_workflow { required_lanes_aggregate_job, build_lane_job }
+import extdeps.github.commits { CommitAssociatedPull }
 import gunbc.private_witness_dispatch {
-  private_witness_dispatch_script,
+  associated_pull_number,
+  dispatch_target_of,
+  private_witness_dispatch_effect,
+  gunbc_private_repository,
   private_witness_dispatch_step_name,
   private_witness_dispatch_step,
   private_witness_dispatch_uses_contents_write,
@@ -19,10 +23,6 @@ import gunbc.private_witness_dispatch {
   github_actions_secret_expression,
   public_main_dispatch_event_type,
   private_witness_dispatch_token
-}
-import extdeps.github.repository_dispatch {
-  client_payload_sha_key,
-  client_payload_pr_number_key
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -138,7 +138,7 @@ test fn build_lane_hosts_the_private_dispatch_step() -> Bool {
     acc || (
       step_name_or_empty(s: s) == private_witness_dispatch_step_name
         && step_if_or_empty(s: s) == private_witness_dispatch_if()
-        && step_continue_on_error(s: s)
+        && !step_continue_on_error(s: s)
     )
   })
 }
@@ -149,9 +149,9 @@ test fn aggregate_job_does_not_host_the_private_dispatch_step() -> Bool {
   })
 }
 
-test fn private_dispatch_step_is_push_only_and_cannot_red_the_floor() -> Bool {
+test fn private_dispatch_step_is_push_only_and_fails_loudly() -> Bool {
   let step = private_witness_dispatch_step()
-  step_continue_on_error(s: step)
+  !step_continue_on_error(s: step)
     && step_if_or_empty(s: step) == private_witness_dispatch_if()
     && string_contains(s: private_witness_dispatch_if(), pattern: "github.event_name == 'push'")
     && string_contains(
@@ -160,11 +160,25 @@ test fn private_dispatch_step_is_push_only_and_cannot_red_the_floor() -> Bool {
     )
 }
 
-test fn dispatch_script_carries_only_sha_and_pr_payload_keys() -> Bool {
-  let s = private_witness_dispatch_script()
-  string_contains(s: s, pattern: concat("\\\"", concat(client_payload_sha_key, "\\\"")))
-    && string_contains(s: s, pattern: concat("\\\"", concat(client_payload_pr_number_key, "\\\"")))
-    && string_contains(s: s, pattern: public_main_dispatch_event_type as String)
-    && string_contains(s: s, pattern: "no associated pull request")
-    && string_contains(s: s, pattern: "dissolve-on: private_witness_dispatch_script")
+test fn no_associated_pull_request_is_absent_not_a_number() -> Bool {
+  match associated_pull_number(pulls: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn the_first_associated_pull_request_is_the_one_dispatched() -> Bool {
+  match associated_pull_number(pulls: [CommitAssociatedPull { number: 11389 }, CommitAssociatedPull { number: 7 }]) {
+    Present { value: n } => n == 11389
+    Absent => false
+  }
+}
+
+test fn dispatch_target_is_read_from_the_declared_effect() -> Bool {
+  match dispatch_target_of(effect: private_witness_dispatch_effect) {
+    Present { value: t } =>
+      t.repository.full_name == gunbc_private_repository.full_name
+        && (t.event_type as String) == (public_main_dispatch_event_type as String)
+    Absent => false
+  }
 }

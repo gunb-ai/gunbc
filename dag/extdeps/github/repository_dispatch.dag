@@ -1,7 +1,8 @@
 module extdeps.github.repository_dispatch
 
-import extdeps.github.github { default_api_base, Repository }
+import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome }
 import std.credentials { EnvVar }
 import std.types { CommitSha, Int, NonEmptyStr, Secret, String, Unit }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -36,35 +37,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data repository_dispatch_auth_env: NonEmptyStr = "GITHUB_REPOSITORY_DISPATCH_TOKEN"
 
-data client_payload_sha_key: String = "sha"
-
-data client_payload_pr_number_key: String = "pr_number"
-
 data github_json_accept: String = "application/vnd.github+json"
-
-fn repository_dispatch_url(api_base: NonEmptyStr, repository: Repository) -> String {
-  join([
-    api_base as String,
-    "/repos/",
-    repository.owner,
-    "/",
-    repository.name,
-    "/dispatches"
-  ], "")
-}
-
-fn commit_associated_pulls_url(api_base: NonEmptyStr, repository: Repository, sha_env: String) -> String {
-  join([
-    api_base as String,
-    "/repos/",
-    repository.owner,
-    "/",
-    repository.name,
-    "/commits/",
-    sha_env,
-    "/pulls"
-  ], "")
-}
 
 // Create a repository_dispatch event. Cited response is 204 No Content
 // (docs.github.com REST create-a-repository-dispatch-event, read 2026-09-14). This is not
@@ -90,11 +63,12 @@ service github.RepositoryDispatch {
     }
     output {
       accepted: Unit
+      outcome: RestOutcome
     }
     transport rest {
       method: POST,
       path: "/repos/\{owner\}/\{repo\}/dispatches",
-      headers: { "Accept": "application/vnd.github+json" },
+      headers: { "Accept": github_json_accept },
       body: {
         event_type: event_type,
         client_payload: { sha: sha, pr_number: pr_number }
