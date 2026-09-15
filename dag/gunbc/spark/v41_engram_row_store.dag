@@ -1,7 +1,8 @@
 module gunbc.spark.v41_engram_row_store
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.nat { Nat }
+import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
@@ -9,7 +10,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
 import extdeps.safetensors.format {
   SafetensorsEntry, SafetensorsDtype, SafeF8E4M3, SafeF8E8M0,
-  safetensors_dtype_byte_width,
+  safetensors_dtype_byte_width, safetensors_dtype_token,
 }
 import gunbc.fabric.engram_materialization { engram_component_identity }
 import gunbc.spark.v41_runtime_candidate {
@@ -38,11 +39,15 @@ type V41RowGeometry sole_constructor {
 }
 
 fn v41_row_geometry() -> V41RowGeometry {
+  v41_row_geometry_of(weight_dtype: SafeF8E4M3, scale_dtype: SafeF8E8M0, weight_width: 256, scale_width: 8)
+}
+
+fn v41_row_geometry_of(weight_dtype: SafetensorsDtype, scale_dtype: SafetensorsDtype, weight_width: Nat, scale_width: Nat) -> V41RowGeometry {
   V41RowGeometry {
-    weight_dtype: SafeF8E4M3,
-    scale_dtype: SafeF8E8M0,
-    weight_width: 256,
-    scale_width: 8,
+    weight_dtype: weight_dtype,
+    scale_dtype: scale_dtype,
+    weight_width: weight_width,
+    scale_width: scale_width,
   }
 }
 
@@ -64,14 +69,60 @@ type V41TensorSlice sole_constructor {
   layer: Nat
 }
 
-fn v41_storage_slices(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<V41TensorSlice> {
-  map(
-    filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)) && (e.name as String).contains(".embed.weight")),
-    e => V41TensorSlice {
-      name: e.name,
-      global_rows: match get(xs: e.shape, index: 0) { Present { value: n } => n Absent => 0 },
-      layer: if (e.name as String).contains("layers.1.") { 1 } else { 14 },
+fn v41_layer_index_from_tensor_name(name: NonEmptyStr) -> Nat? {
+  let parts = split(s: name as String, delimiter: ".")
+  match get(xs: parts, index: 0) {
+    Absent => none
+    Present { value: head } =>
+      if head != "layers" {
+        none
+      } else {
+        match get(xs: parts, index: 1) {
+          Absent => none
+          Present { value: idx } => match parse_int(s: idx) {
+            Absent => none
+            Present { value: n } => match checked_int_magnitude(a: n) {
+              CheckedNatOverflow { cause: _ } => none
+              CheckedNatReady { value: layer } =>
+                if length(parts) < 3 { none } else { Present { value: layer } }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn v41_tensor_slice_defects(e: SafetensorsEntry) -> List<NonEmptyStr> {
+  concat(
+    match get(xs: e.shape, index: 0) {
+      Present { value: _ } => [] as List<NonEmptyStr>
+      Absent => [join(["tensor ", e.name as String, " has no shape reading; a missing extent is not zero rows"], "") as NonEmptyStr]
+    },
+    match v41_layer_index_from_tensor_name(name: e.name) {
+      Present { value: _ } => [] as List<NonEmptyStr>
+      Absent => [join(["tensor ", e.name as String, " does not decompose as layers.<index>.*; an unrecognized name is not a default layer"], "") as NonEmptyStr]
     })
+}
+
+fn v41_try_tensor_slice(e: SafetensorsEntry) -> V41TensorSlice? {
+  match get(xs: e.shape, index: 0) {
+    Absent => none
+    Present { value: rows } => match v41_layer_index_from_tensor_name(name: e.name) {
+      Absent => none
+      Present { value: layer } => Present { value: V41TensorSlice { name: e.name, global_rows: rows, layer: layer } }
+    }
+  }
+}
+
+fn v41_selected_storage_entries(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<SafetensorsEntry> {
+  filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)) && (e.name as String).contains(".embed.weight"))
+}
+
+fn v41_storage_slices(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<V41TensorSlice> {
+  flat_map(v41_selected_storage_entries(population: population, partition: partition), e => match v41_try_tensor_slice(e: e) {
+    Present { value: s } => [s]
+    Absent => [] as List<V41TensorSlice>
+  })
 }
 
 type V41RowStoreEncodingSpec sole_constructor {
@@ -87,11 +138,16 @@ type V41RowStoreEncodingSpec sole_constructor {
   alignment_bytes: ByteSize
 }
 
-fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> V41RowStoreEncodingSpec {
-  v41_encoding_spec_with_slices(
-    partition: partition,
-    slices: v41_storage_slices(population: population, partition: partition).sort_by(s => s.name as String),
-  )
+fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> V41RowStoreEncoding {
+  let selected = v41_selected_storage_entries(population: population, partition: partition)
+  let defects = flat_map(selected, e => v41_tensor_slice_defects(e: e))
+  if length(defects) != 0 {
+    V41RowStoreEncodingRefused { defects: defects }
+  } else {
+    V41RowStoreEncodingUnestablished {
+      obligation: "row-store spec admitted from the supplied population; rank-store content digest is not produced" as NonEmptyStr,
+    }
+  }
 }
 
 fn v41_tensor_slice(name: NonEmptyStr, global_rows: Nat, layer: Nat) -> V41TensorSlice {
@@ -103,11 +159,15 @@ fn v41_source_row(tensor: NonEmptyStr, global_row: Nat, payload: NonEmptyStr) ->
 }
 
 fn v41_encoding_spec_with_slices(partition: V41EngramResidencyPartition, slices: List<V41TensorSlice>) -> V41RowStoreEncodingSpec {
+  v41_encoding_spec_with_geometry(partition: partition, slices: slices, geometry: v41_row_geometry())
+}
+
+fn v41_encoding_spec_with_geometry(partition: V41EngramResidencyPartition, slices: List<V41TensorSlice>, geometry: V41RowGeometry) -> V41RowStoreEncodingSpec {
   V41RowStoreEncodingSpec {
     component: engram_component_identity,
     partition: partition,
     slices: slices,
-    geometry: v41_row_geometry(),
+    geometry: geometry,
     rank_count: v41_row_store_rank_count,
     format_revision: v41_row_store_format_revision,
     endianness: v41_row_store_endianness,
@@ -133,8 +193,8 @@ fn v41_encoding_spec_inputs(spec: V41RowStoreEncodingSpec) -> List<ArtifactReali
     v41_input(identity: "partition_rule", value: spec.partition_rule as String),
     v41_input(identity: "rank_count", value: to_string(spec.rank_count)),
     v41_input(identity: "alignment_bytes", value: to_string(byte_size_count(b: spec.alignment_bytes))),
-    v41_input(identity: "weight_dtype", value: "SafeF8E4M3"),
-    v41_input(identity: "scale_dtype", value: "SafeF8E8M0"),
+    v41_input(identity: "weight_dtype", value: safetensors_dtype_token(d: spec.geometry.weight_dtype) as String),
+    v41_input(identity: "scale_dtype", value: safetensors_dtype_token(d: spec.geometry.scale_dtype) as String),
     v41_input(identity: "weight_width", value: to_string(spec.geometry.weight_width)),
     v41_input(identity: "scale_width", value: to_string(spec.geometry.scale_width)),
   ], flat_map(spec.partition.storage_backed.sort_by(n => n as String), n => [v41_input(identity: join(["storage.", n as String], ""), value: "storage-backed")])),

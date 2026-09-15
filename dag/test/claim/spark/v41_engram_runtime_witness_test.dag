@@ -24,6 +24,7 @@ import gunbc.spark.v41_runtime_candidate {
 }
 import extdeps.safetensors.format {
   SafetensorsPopulationStanding, safetensors_population_standing, MembershipClosedAgainstFullIndex,
+  safetensors_entry, SafeF8E4M3, SafeF8E8M0, SafeF16,
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_index_members, deepseek_v4_1_flash_engram_shard_files,
@@ -31,10 +32,12 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingSpec, V41SourceRow, V41FixtureRows, V41PublishedEngramShards, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
-  v41_tensor_slice, v41_source_row, v41_encoding_spec_with_slices,
+  v41_tensor_slice, v41_source_row, v41_encoding_spec_with_slices, v41_encoding_spec_with_geometry, v41_encoding_spec_key,
+  v41_row_geometry_of, v41_row_store_spec, v41_layer_index_from_tensor_name,
   v41_transform_fixture, v41_published_transform_standing,
   v41_wrong_encoding_refuses, v41_sample_agrees, v41_rank_digest_of,
   v41_encoding_spec_of, v41_encoding_spec_key_of, v41_encoding_digest_of, v41_rank_stores_of, v41_fixture_encoding,
+  V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
 }
 import gunbc.spark.v41_runtime_realized {
   V41OciImageDigest, V41PatchesConsumedByImage,
@@ -423,4 +426,47 @@ test fn the_live_storage_backed_patches_are_not_minted_from_transcribed_hex() ->
     V41PatchesUnestablished { obligation: o } =>
       (o as String).contains("DigestFile") && (o as String).contains("engram_file_backed.py")
   }
+}
+
+fn w_entry(name: String, shape: List<Nat>) -> SafetensorsEntry {
+  safetensors_entry(name: name as NonEmptyStr, dtype: SafeF8E4M3, shape: shape, begin_offset: 0, end_offset: 1)
+}
+
+fn w_backed(name: String) -> V41EngramResidencyPartition {
+  V41EngramResidencyPartition { storage_backed: [name as NonEmptyStr], resident: [] as List<NonEmptyStr> }
+}
+
+test fn a_tensor_name_decomposes_to_its_layer_index_and_refuses_an_unrecognized_spelling() -> Bool {
+  match v41_layer_index_from_tensor_name(name: "layers.14.engram.embed.weight" as NonEmptyStr) {
+    Present { value: n } => n == 14
+    Absent => false
+  }
+    && match v41_layer_index_from_tensor_name(name: "layers.1.engram.embed.weight" as NonEmptyStr) {
+      Present { value: n } => n == 1
+      Absent => false
+    }
+    && match v41_layer_index_from_tensor_name(name: "engram.embed.weight" as NonEmptyStr) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match v41_row_store_spec(population: [w_entry(name: "not-a-layer.embed.weight", shape: [8])], partition: w_backed(name: "not-a-layer.embed.weight")) {
+      V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("unrecognized name"))
+      V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: _ } => false
+      V41RowStoreEncodingUnestablished { obligation: _ } => false
+    }
+}
+
+test fn a_missing_shape_reading_refuses_rather_than_becoming_zero_rows() -> Bool {
+  match v41_row_store_spec(population: [w_entry(name: "layers.1.engram.embed.weight", shape: [] as List<Nat>)], partition: w_backed(name: "layers.1.engram.embed.weight")) {
+    V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("no shape reading"))
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: _ } => false
+    V41RowStoreEncodingUnestablished { obligation: _ } => false
+  }
+}
+
+test fn the_encoding_spec_key_moves_with_the_geometry_dtypes() -> Bool {
+  let slices = [v41_tensor_slice(name: "layers.1.engram.embed.weight" as NonEmptyStr, global_rows: 8, layer: 1)]
+  let a = v41_encoding_spec_key(spec: v41_encoding_spec_with_geometry(partition: v41_candidate_partition, slices: slices, geometry: v41_row_geometry_of(weight_dtype: SafeF8E4M3, scale_dtype: SafeF8E8M0, weight_width: 256, scale_width: 8)))
+  let b = v41_encoding_spec_key(spec: v41_encoding_spec_with_geometry(partition: v41_candidate_partition, slices: slices, geometry: v41_row_geometry_of(weight_dtype: SafeF16, scale_dtype: SafeF8E8M0, weight_width: 256, scale_width: 8)))
+  serialize_content_hash(hash: a) as String != serialize_content_hash(hash: b) as String
 }
