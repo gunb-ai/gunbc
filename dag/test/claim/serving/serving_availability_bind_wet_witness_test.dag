@@ -22,6 +22,7 @@ import gunbc.harness.harness_backend {
 import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
+  SparkPairDeclaredHeadPublish, SparkPairDeclaredHeadPublished, SparkPairDeclaredHeadPublishRefused,
   spark_pair_realizations, spark_pair_publish_declared_head_artifact,
   spark_pair_declared_unit_artifact_path, spark_pair_declared_unit_artifact_unavailable_obligation,
 }
@@ -103,20 +104,25 @@ test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_fro
   match first(spark_pair_realizations()) {
     Absent => false
     Present { value: r } => {
-      let published = spark_pair_publish_declared_head_artifact(realization: r)
-      let placed = w_place()
-      published
-        && length(placed.candidates) == 0
-        && any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
-        && !any(placed.notes, note => note.contains(spark_pair_declared_unit_artifact_unavailable_obligation as String))
+      match spark_pair_publish_declared_head_artifact(realization: r) {
+        SparkPairDeclaredHeadPublishRefused { cause: _ } => false
+        SparkPairDeclaredHeadPublished { group: _, digest: _ } => {
+          let placed = w_place()
+          length(placed.candidates) == 0
+            && any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
+            && !any(placed.notes, note => note.contains(spark_pair_declared_unit_artifact_unavailable_obligation as String))
+        }
+      }
     }
   }
 }
 
 test fn a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation() -> Bool {
-  let absent = Filesystem.Delete(path: spark_pair_declared_unit_artifact_path(group: FabricGroupA))
+  let cleared = Filesystem.Delete(path: spark_pair_declared_unit_artifact_path(group: FabricGroupA))
+  let rd = Filesystem.Read(path: spark_pair_declared_unit_artifact_path(group: FabricGroupA))
   let placed = w_place()
-  (absent.success || true)
+  (cleared.success || !rd.success)
+    && !rd.success
     && length(placed.candidates) == 0
     && any(placed.notes, note => note.contains(spark_pair_declared_unit_artifact_unavailable_obligation as String))
     && !any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))

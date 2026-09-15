@@ -17,6 +17,7 @@ import gunbc.spark.pair_serving_realization {
   SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+  SparkPairDeclaredHeadPublish, SparkPairDeclaredHeadPublished, SparkPairDeclaredHeadPublishRefused,
   spark_pair_digest_unit_render, spark_pair_rendered_unit_artifact, spark_pair_container_spec,
   spark_pair_container_env, spark_pair_head_unit_name, spark_pair_lookup_declared_head_digest,
   spark_pair_realizations, spark_pair_head_render_inputs_identity, spark_pair_publish_declared_head_artifact,
@@ -188,8 +189,10 @@ test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> 
           match spark_pair_head_render_inputs_identity_for_group(group: g) {
             Absent => false
             Present { value: id } =>
-              spark_pair_publish_declared_head_artifact(realization: r)
-                && match spark_pair_digest_unit_render(render: spark_pair_seal_unit_render(render: h.unit, render_inputs_identity: id)) {
+              match spark_pair_publish_declared_head_artifact(realization: r) {
+                SparkPairDeclaredHeadPublishRefused { cause: _ } => false
+                SparkPairDeclaredHeadPublished { group: _, digest: _ } =>
+                  match spark_pair_digest_unit_render(render: spark_pair_seal_unit_render(render: h.unit, render_inputs_identity: id)) {
                   DeclaredUnitDigestUnavailable { obligation: _ } => false
                   DeclaredUnitDigested { unit_name: _, digest: from_unit } =>
                     match spark_pair_lookup_declared_head_digest(group: g) {
@@ -203,6 +206,7 @@ test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> 
                           }
                     }
                 }
+              }
           }
       }
   }
