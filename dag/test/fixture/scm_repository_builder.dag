@@ -18,12 +18,7 @@ import std.minted_identity { MintedId, MintedIdAllocator }
 import gunbc.scm.object_store {
   ObjectStore, ObjectId, empty_store,
   CorpusManifestEntry, CorpusManifestObjectRef, CorpusManifestTarget,
-  CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
-  store_corpus_manifest,
-  SourceStored, SourceLocatorCollision, store_authored_source,
-  AuthoredSourceTarget,
 }
-import gunbc.scm.integration { CommitIntegration }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -34,11 +29,26 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
-  RepositoryCommitMintIntegrationSourceMissing,
   mint_repository_commit,
   commit_at_reference,
 }
-import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
+import gunbc.scm.squash_merge {
+  squash_merge,
+  SquashMerged,
+  SquashMergeBaseRefused,
+  SquashMergeConflicted,
+  SquashMergeRootMissing,
+  SquashMergeRootIsAuthoredSource,
+  SquashMergeRootIsSemanticNode,
+  SquashMergeResultLocatorCollision,
+  SquashMergeSourceUnrecoverable,
+  SquashMergeAllocatorInvalid,
+}
+import gunbc.scm.write_spine {
+  StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
+  StageManifestLocatorCollision,
+  stage_source_at_path,
+}
 
 // THE FIXTURE IS FALLIBLE FOR THE REASON THE STAGING FIXTURE'S HEADER GIVES AND THIS FILE INHERITS
 // RATHER THAN RESTATES: a setup step that failed must stop the claim, never hand it a substitute
@@ -62,48 +72,40 @@ fn mb_start() -> MbBuild {
   }
 }
 
-// The manifest is built from the CURRENTLY STAGED entries so a later stage of a second path keeps the
-// first, which is what makes S2 a content-descendant of S1 rather than a replacement of it.
+// THE FIXTURE STAGES THROUGH THE PRODUCTION VERB, AND THIS BODY USED TO BE A HAND COPY OF IT.
+//
+// When this builder was written there was no `add`, so it performed the staging itself: read the
+// candidate entries, store the source, filter the path out, append the new pairing, store the manifest.
+// `gunbc.scm.write_spine.stage_source_at_path` now does exactly that, and leaving both would be one
+// construction rule in two places -- the same drift hazard that moved this builder out of the
+// merge_base witness in the first place, except worse, because the copy that drifts here is the one
+// every scene is built from. Every claim over one of these scenes is therefore now evidence about the
+// verb an author actually invokes.
+//
+// THE SETUP-FAILURE COLLAPSE IS THE FIXTURE'S OWN RULE AND NOT A WIDENING OF THE VERB'S. The verb keeps
+// its four refusals apart; a fixture has exactly one thing to do with any of them, which is to stop and
+// hand the claim no specimen.
 fn mb_stage(build: MbBuild, path: String, text: String) -> MbBuild {
   match build {
     MbSetupFailed => MbSetupFailed
     MbBuilt { repository: repository, at: at } =>
-      match staged_entries(repository: repository) {
-        StagedEntriesRefused { cause: _ } => MbSetupFailed
-        StagedEntries { entries: entries } =>
-          match store_authored_source(store: repository.store, text: text) {
-            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => MbSetupFailed
-            SourceStored { store: with_source, source: source } =>
-              match store_corpus_manifest(
-                store: with_source,
-                entries: concat(
-                  filter(entries, fn(e) { (e.path as String) != path }),
-                  [CorpusManifestEntry {
-                    path: path as NonEmptyStr,
-                    source: AuthoredSourceTarget { locator: source.locator },
-                  }],
-                ),
-              ) {
-                CorpusManifestDuplicatePath { path: _ } => MbSetupFailed
-                CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => MbSetupFailed
-                CorpusManifestStored { store: with_manifest, manifest: manifest } =>
-                  MbBuilt {
-                    repository: RepositoryEnvelope {
-                      store: with_manifest,
-                      commits: repository.commits,
-                      commit_allocator: repository.commit_allocator,
-                      checked_out: repository.checked_out,
-                      staged: Present { value: manifest },
-                    },
-                    at: at,
-                  }
-              }
-          }
+      match stage_source_at_path(repository: repository, path: path as NonEmptyStr, text: text) {
+        StageCandidateRefused { cause: _ } => MbSetupFailed
+        StageSourceLocatorCollision { identity: _ } => MbSetupFailed
+        StageManifestLocatorCollision { identity: _ } => MbSetupFailed
+        Staged { repository: staged, manifest: _, source: _ } =>
+          MbBuilt { repository: staged, at: at }
       }
   }
 }
 
-fn mb_commit(build: MbBuild, message: String, integration: CommitIntegration) -> MbBuild {
+// THE COMMIT STEP DELIBERATELY DOES NOT DELEGATE TO `commit_staged`, and the difference is one field.
+// The production verb CONSUMES the stage -- it advances the checkout and clears `staged`, so the next
+// candidate is inherited from the new base. This fixture leaves `staged` pointing at the tip's root,
+// because `mb_at` re-points both together to model a branch point, and that pairing is what the merge
+// scenes are built on. The two describe the same CORPUS by different routes; delegating would silently
+// re-scene every claim already standing on this builder, which is a migration and not a cleanup.
+fn mb_commit(build: MbBuild, message: String) -> MbBuild {
   match build {
     MbSetupFailed => MbSetupFailed
     MbBuilt { repository: repository, at: at } =>
@@ -115,7 +117,6 @@ fn mb_commit(build: MbBuild, message: String, integration: CommitIntegration) ->
             root: CorpusManifestTarget { locator: candidate.locator },
             message: message,
             parent: at,
-            integration: integration,
           ) {
             RepositoryCommitMinted { repository: minted, reference: reference } =>
               MbBuilt {
@@ -133,7 +134,6 @@ fn mb_commit(build: MbBuild, message: String, integration: CommitIntegration) ->
             RepositoryCommitMintRootIsAuthoredSource { root: _ } => MbSetupFailed
             RepositoryCommitMintRootIsSemanticNode { root: _ } => MbSetupFailed
             RepositoryCommitMintParentMissing { parent: _ } => MbSetupFailed
-            RepositoryCommitMintIntegrationSourceMissing { source: _ } => MbSetupFailed
           }
       }
   }
@@ -159,6 +159,50 @@ fn mb_at(build: MbBuild, target: RepositoryCommitRef) -> MbBuild {
             },
             at: Present { value: target },
           }
+      }
+  }
+}
+
+// AN INTEGRATED COMMIT IS NOW OBTAINED BY MERGING, BECAUSE IT CAN NO LONGER BE DECLARED.
+//
+// `mb_commit` used to take a `CommitIntegration`, so a scene could assert `SquashIntegrated { S1 }`
+// about a commit no merge had produced. That was convenient and it was the fixture-side face of the
+// production hole review found: membership of a source standing in for authority over the merge that
+// consumed it. The generic mint no longer accepts an integration, so this verb runs the REAL
+// `squash_merge` and the scene's integrated commit is one the merge authority actually admitted.
+//
+// This is stronger evidence than the old scene, not weaker: the consumed-source claims below now read
+// a receipt written by the operation they are about, so a `squash_merge` that stopped recording its
+// source would fail them instead of leaving them green against a hand-written row. The refusal arms
+// collapse to `MbSetupFailed` because a scene that cannot be built is a broken fixture, not a result.
+fn mb_squash(
+  build: MbBuild,
+  target: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+  message: String,
+) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match squash_merge(
+        repository: repository,
+        target: target,
+        source: source,
+        message: message,
+      ) {
+        SquashMerged { repository: merged, reference: reference } =>
+          mb_at(
+            build: MbBuilt { repository: merged, at: Present { value: reference } },
+            target: reference,
+          )
+        SquashMergeBaseRefused { refusal: _ } => MbSetupFailed
+        SquashMergeConflicted { conflicts: _ } => MbSetupFailed
+        SquashMergeRootMissing { root: _ } => MbSetupFailed
+        SquashMergeRootIsAuthoredSource { root: _ } => MbSetupFailed
+        SquashMergeRootIsSemanticNode { root: _ } => MbSetupFailed
+        SquashMergeSourceUnrecoverable { cause: _ } => MbSetupFailed
+        SquashMergeResultLocatorCollision { identity: _ } => MbSetupFailed
+        SquashMergeAllocatorInvalid => MbSetupFailed
       }
   }
 }

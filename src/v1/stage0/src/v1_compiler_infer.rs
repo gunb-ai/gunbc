@@ -379,6 +379,7 @@ pub struct InferScope {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pub caller_decl_name: String,
+    pub in_flight_lambda_param_names: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -6600,7 +6601,7 @@ pub fn borrowed_callable_call_type(
             source_indices.clone(),
         );
         if ((tp_names.clone().len() as i64) == 0) {
-            base
+            base.clone()
         } else {
             {
                 let value_params = Rc::new({
@@ -6669,7 +6670,7 @@ pub fn borrowed_callable_call_type(
                         }
                     },
                 );
-                substitute_generics(base, subst.clone(), source_indices.clone())
+                substitute_generics(base.clone(), subst.clone(), source_indices.clone())
             }
         }
     }
@@ -8366,6 +8367,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
             item_registry: scope.item_registry.clone(),
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+            in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
         })
     }
 }
@@ -8414,6 +8416,7 @@ pub fn extend_scope(
         item_registry: scope.item_registry.clone(),
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
+        in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
     })
 }
 
@@ -8446,6 +8449,7 @@ pub fn extend_scope_match_bound(
         item_registry: scope.item_registry.clone(),
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
+        in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
     })
 }
 
@@ -8480,6 +8484,7 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             item_registry: scope.item_registry.clone(),
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: scope.lambda_param_provenance.clone(),
+            in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
         })
     }
 }
@@ -8902,6 +8907,7 @@ let fold_scope = Rc::new(InferScope {
     item_registry: scope.item_registry.clone(),
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: prov_map.clone(),
+    in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
 });
 let ar = infer_expr(lam_value.clone(), fold_scope.clone(), Some(fold_callable.clone()));
 Rc::new(ArgInferResult {
@@ -8928,6 +8934,7 @@ let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
     item_registry: scope.item_registry.clone(),
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: nf_prov_map.clone(),
+    in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
 })
                         } else {
                             scope.clone()
@@ -10022,11 +10029,16 @@ Rc::new(InferResult {
                                     })
                                 }
                                 std::option::Option::None => {
-                                    let base_is_type_var = is_deferred_field_access_base(
+                                    let defer_field_miss = (is_deferred_field_access_base(
                                         resolved_base.clone(),
                                         scope.type_env.clone(),
-                                    );
-                                    if base_is_type_var.clone() {
+                                    )
+                                        && !is_never_constrained_enclosing_generic_base(
+                                            resolved_base.clone(),
+                                            base_typed.clone(),
+                                            scope.clone(),
+                                        ));
+                                    if defer_field_miss.clone() {
                                         {
                                             let fa_texpr = crate::v1_std_core::make_named_expr_node(
                                                 texpr.occurrence_identity.clone(),
@@ -10069,7 +10081,7 @@ Rc::new(InferResult {
 })
 },
     std::option::Option::None => {
-                                let error_message = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no field '".to_string(), field_name.clone()), "' on type '".to_string()), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), resolved_base.clone())), "'".to_string());
+                                let error_message = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no field '".to_string(), field_name.clone()), "' on type '".to_string()), type_node_label(resolved_base.clone(), scope.type_env.clone().source_indices.clone())), "'".to_string());
 let fa_texpr = crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::SemanticExprError, error_message.clone(), span.clone());
 Rc::new(InferResult {
     typed: fa_texpr.clone(),
@@ -12352,6 +12364,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 item_registry: lam_scope.item_registry.clone(),
                 caller_decl_name: lam_scope.caller_decl_name.clone(),
                 lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+                in_flight_lambda_param_names: v1_rt::concat(
+                    lam_scope.in_flight_lambda_param_names.clone(),
+                    lam_params.clone(),
+                ),
             });
             let body_result =
                 infer_expr(lam_body.clone(), body_scope.clone(), body_expected.clone());
@@ -12928,10 +12944,86 @@ pub fn infer_variant_constructor_call(
     }
 }
 
+pub fn is_unconstrained_type_variable_base(n: Rc<Node>) -> bool {
+    match n.inferred.clone() {
+        Some(inf) => is_type_variable(inf.clone()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn enclosing_fn_generic_names(scope: Rc<InferScope>) -> Rc<Vec<String>> {
+    if (scope.caller_decl_name.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        match (*crate::v1_compiler_infer_lookup::lookup_func_sig(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            scope.caller_decl_name.clone(),
+        ))
+        .clone()
+        {
+            FuncSigLookup::FuncSigResolved { sig: s, .. } => split_sig_params(
+                s.params.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            )
+            .generic_names
+            .clone(),
+            _ => Rc::new(vec![]),
+        }
+    }
+}
+
+pub fn field_base_is_in_flight_lambda_param(base: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*base.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            let name = crate::v1_std_core::expr_var_name_at(
+                base.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            {
+                let mut __found = false;
+                for p in scope.in_flight_lambda_param_names.clone().iter().cloned() {
+                    if (p.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        }
+        _ => false,
+    }
+}
+
+pub fn is_never_constrained_enclosing_generic_base(
+    n: Rc<Node>,
+    base_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: id, .. }) => {
+            let names = enclosing_fn_generic_names(scope.clone());
+            let in_enclosing = {
+                let mut __found = false;
+                for g in names.iter().cloned() {
+                    if (g.clone() == id.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            (in_enclosing.clone()
+                && !field_base_is_in_flight_lambda_param(base_expr.clone(), scope.clone()))
+        }
+        _ => false,
+    }
+}
+
 pub fn is_deferred_field_access_base(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if ((n.inferred.clone() != std::option::Option::None)
-        && is_type_variable(n.inferred.clone().clone().unwrap()))
-    {
+    if is_unconstrained_type_variable_base(n.clone()) {
         true
     } else {
         if (((n.connective.clone() == Connective::NoConnective)
@@ -13312,9 +13404,9 @@ pub fn alias_chain_target_after_args(
 
 pub fn alias_chain_carrier(n: Rc<Node>) -> Rc<Node> {
     if ((n.connective.clone() == Connective::NoConnective) && (n.name.clone() != "".to_string())) {
-        n
+        n.clone()
     } else {
-        structural_from_expanded_type(n)
+        structural_from_expanded_type(n.clone())
     }
 }
 
@@ -14822,10 +14914,10 @@ pub fn maybe_insert_composed_field_relation(
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match composed.clone() {
         Some(rel) => match (*rel.clone()).clone() {
-            SubValueRelation::SubValueUnknown => acc,
-            _ => v1_rt::rc_map_insert(acc, fname.clone(), rel.clone()),
+            SubValueRelation::SubValueUnknown => acc.clone(),
+            _ => v1_rt::rc_map_insert(acc.clone(), fname.clone(), rel.clone()),
         },
-        std::option::Option::None => acc,
+        std::option::Option::None => acc.clone(),
     }
 }
 
@@ -19661,6 +19753,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         item_registry: fn_scope.item_registry.clone(),
                         caller_decl_name: fn_decl_name.clone(),
                         lambda_param_provenance: fn_scope.lambda_param_provenance.clone(),
+                        in_flight_lambda_param_names: Rc::new(vec![]),
                     });
                     let fn_return_expected = if (item.inferred.clone() != std::option::Option::None)
                     {
@@ -20348,9 +20441,9 @@ pub fn substitute_generics(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if v1_rt::map_is_empty(&subst) {
-        n
+        n.clone()
     } else {
-        substitute_generics_apply(n, subst.clone(), source_indices.clone())
+        substitute_generics_apply(n.clone(), subst.clone(), source_indices.clone())
     }
 }
 
@@ -25310,6 +25403,7 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             caller_decl_name: "".to_string(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+            in_flight_lambda_param_names: Rc::new(vec![]),
         });
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
         let typed_items = Rc::new({

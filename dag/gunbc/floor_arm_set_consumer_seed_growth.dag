@@ -33,6 +33,14 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // (`arm_set_match_read_disposition`, `arm_set_match_consumer_binding`, the seed grounds and the
 // typed out-of-root dispositions), and the host is their wire rendering.
 //
+// gunbc#11408 (the probe-exclusion repair of the touched-entry seed) adds two more items under the
+// same purpose: prepared_subject_exclusion_row_for, THE ONE exclusion predicate every consumer of a
+// prepared-subject exclusion list now reads (closure assembly, whole-tree strict resolve, the
+// floor inventory walk, the planning receipt) in place of four same-shaped copies, and the RED
+// that an edited must-not-resolve probe is seeded, reported against its row, and not prepared.
+// module_seeds_from_touched_entry_files and floor_prepared_subject_exclusions are
+// ExistingSeedItemModified there (the helper returns its seeded pairs; the roster gains one row).
+//
 // HAND-ITEM DELTA is derived from the diff by gunbc.rust_item_host_observation and is not
 // restated here. The test items are enumerated because they are hand declarations in the seed;
 // the executed red among them is arm_growth_selects_the_untouched_match_consumer_and_strict_
@@ -47,6 +55,7 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.namespace_wave_admission", decl_name: "ArmSetConsumerSelection", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.namespace_wave_admission", decl_name: "arm_set_changed_match_consumers", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "module_name_is_or_is_contained_by", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "prepared_subject_exclusion_row_for", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "FloorDiffProjections", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "CompileSubjectSeeds", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "ArmSetConsumerPlanning", field: WholeDeclaration },
@@ -77,7 +86,8 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_type_change_with_no_match_consumers_plans_nothing_extra", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_diff_with_no_arm_set_change_plans_nothing_extra", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_removal_selects_the_consumer_that_still_names_the_arm", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_module_seed_is_segment_bounded", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_module_seed_is_segment_bounded", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "an_edited_must_not_resolve_probe_is_seeded_then_excluded_and_preparation_stays_green", field: WholeDeclaration }
   ],
   reason: "A required floor that never Strict-prepares an untouched module cannot run check_match on it, so a coproduct growing an arm elsewhere makes an exhaustive match silently stale (gunbc#11194). Two halves: seed the touched module (dependency direction, gunbc#11252) and seed the match-bearing consumers of a coproduct whose arm set changed between the floor's own resolved diff base and head (dependents direction), derived from the wave-admission consumption relation -- declaring_candidates over the parse phase's DeclarationIndex, lifted by two record fields (per-coproduct arm sets, match-arm constructor occurrences) and never a second relation -- and prepared through the SAME closure path. reconstruct_base_index is the wall's own base-side reconstruction lifted so both callers share it, parametrised on the window because the wall compares against the merge base with origin/main and the floor against v2.workflow.floor_diff_observe's baseline. module_name_is_or_is_contained_by is the segment-bounded rule for module-name seeds (a.b seeds a.b and a.b.c, never a.bc); gate PREFIXES stay textual as site disposition reads them. Out-of-root touched files and consumers are typed rows, not counts.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,

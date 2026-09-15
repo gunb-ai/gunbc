@@ -429,12 +429,12 @@ pub fn resolve_paramless_generic_use_decl(
     brand: String,
 ) -> Rc<Node> {
     if ((n.children.clone().len() as i64) == 0) {
-        decl
+        decl.clone()
     } else {
         resolve_paramless_generic_use_decl_with_children(
             env.clone(),
             n.clone(),
-            decl,
+            decl.clone(),
             brand.clone(),
         )
     }

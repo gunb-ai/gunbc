@@ -18,6 +18,15 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_nullary_value_projection,
   decl_facts_reflection_plain_record_parent,
 }
+import v2.std.decl_facts_skeleton {
+  skeleton_contains_authored_string_literal,
+  skeleton_contains_all_authored_string_literals,
+  skeleton_authored_string_absent_from_marshal_atom_channel,
+}
+import v2.std.decl_index { DeclFact, decl_facts_at }
+import v2.std.algebra { HeadAbsent, HeadFound, list_head }
+import std.types { List, String }
+import test.fixture.decl_facts_authored_string_channel.specimens
 import v2.std.data_initializer_identity {
   data_initializer_is_constructor_resolution_refused_projection,
   data_initializer_is_typechecked_subject_absent_projection,
@@ -50,6 +59,11 @@ data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.amb
 data ambiguous_b_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_b_specimen.ambiguous_b_arm_specimen"
 data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen"
 data unimported_globally_unique_specimen_qn: String = "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen"
+data planted_plain_string_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_plain_string_specimen"
+data planted_string_list_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_string_list_specimen"
+data planted_concat_string_qn: String = "test.fixture.decl_facts_authored_string_channel.specimens.planted_concat_string_specimen"
+data authored_string_channel_pool_roots: List<String> = ["dag/test/fixture/decl_facts_authored_string_channel"]
+data authored_string_channel_qn: String = "test.fixture.decl_facts_authored_string_channel.specimens.planted_constructor_spelling_string_specimen"
 data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_named_field_bind"
 data whole_declaration_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
 data scaffold_with_data_ref_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_with_data_ref"
@@ -281,4 +295,56 @@ test fn decl_facts_duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(
   duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(
     lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
   )
+}
+
+test fn decl_facts_plain_string_initializer_carries_authored_lexeme() -> Bool {
+  match decl_facts_reflection_fact_node(qn: planted_plain_string_qn) {
+    Present { value: node } => skeleton_contains_authored_string_literal(node: node, lexeme: "hello")
+    Absent => false
+  }
+}
+
+test fn decl_facts_record_field_string_initializer_carries_authored_lexeme() -> Bool {
+  match decl_facts_reflection_fact_node(qn: terminal_specimen_qn) {
+    Present { value: node } =>
+      skeleton_contains_authored_string_literal(node: node, lexeme: "witness-terminal")
+    Absent => false
+  }
+}
+
+test fn decl_facts_list_string_initializer_carries_authored_lexemes() -> Bool {
+  match decl_facts_reflection_fact_node(qn: planted_string_list_qn) {
+    Present { value: node } =>
+      skeleton_contains_authored_string_literal(node: node, lexeme: "list-alpha")
+        && skeleton_contains_authored_string_literal(node: node, lexeme: "list-beta")
+    Absent => false
+  }
+}
+
+test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool {
+  match list_head(xs: decl_facts_at(
+    pool_roots: authored_string_channel_pool_roots,
+    qualified_name: planted_concat_string_qn
+  )) {
+    HeadFound { value: fact } =>
+      skeleton_contains_all_authored_string_literals(
+        node: fact.node,
+        lexemes: ["concat-left", "concat-right"]
+      )
+    HeadAbsent => false
+  }
+}
+
+test fn decl_facts_authored_string_does_not_fork_constructor_spelling_channel() -> Bool {
+  match list_head(xs: decl_facts_at(
+    pool_roots: authored_string_channel_pool_roots,
+    qualified_name: authored_string_channel_qn
+  )) {
+    HeadFound { value: fact } =>
+      skeleton_authored_string_absent_from_marshal_atom_channel(
+        node: fact.node,
+        lexeme: "SingleAuthority"
+      )
+    HeadAbsent => false
+  }
 }
