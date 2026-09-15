@@ -28,6 +28,29 @@ fn decl_facts_at(pool_roots: List<String>, qualified_name: String) -> List<DeclF
   decl_facts_at(pool_roots: pool_roots, qualified_name: qualified_name)
 }
 
+// THE KEYED BARE-NAME READ, AND WHY IT IS A SEAM RATHER THAN A FOLD OVER decl_facts.
+// `decl_facts_at` answers "what is declared under this QUALIFIED name", which is the wrong question
+// for a bare spelling: a bare name has no module, so no qualified key can express it. The only
+// substrate answer was to fold the whole corpus, and that was MEASURED at roughly 3.6s per call
+// against 1ms for the keyed read, sharing at no grain -- four calls in one claim frame cost four
+// times one. That is gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame
+// in the very route meant to make the reflection memo key sound, which is why this seam exists.
+//
+// IT RETURNS THE CANDIDATES, NEVER A CHOICE. The host filters the SAME memoized declaration pool
+// `decl_facts_at` reads -- no second parse and no second memo -- and marshals no declaration nodes,
+// which is where the whole-pool cost lived. What comes back is every qualified name declaring this
+// bare spelling as a type, so the multiplicity AND the candidate identities are both the caller's
+// to judge: the refusal is located and names its candidates in the substrate, and the host never
+// picks a match. That boundary is the condition under which this seed arm was admitted at all.
+//
+// Consumer: `v2.std.node_reflection` type_declarer_names, the one reader of this seam, which both
+// guarded routes go through -- resolve_type_node for a bare spelling and resolve_type_node_at
+// for a citation. Each establishes multiplicity from what this returns and shape from the keyed
+// declaration read, before accept_sole_declaration will hand back a node.
+fn type_declarer_qualified_names(pool_roots: List<String>, bare_name: String) -> List<String> {
+  type_declarer_qualified_names(pool_roots: pool_roots, bare_name: bare_name)
+}
+
 fn export_signature_facts(pool_roots: List<String>) -> List<DeclFact> {
   export_signature_facts(pool_roots: pool_roots)
 }

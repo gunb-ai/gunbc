@@ -24766,7 +24766,10 @@ pub(crate) struct FloorDiffEdits {
     /// A wholly added file and a brand-new `test fn` in an existing file are new; a
     /// modified sibling whose name was already at the lookup path is not.
     enrolled_test_fns: HashSet<(String, String)>,
-    /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
+    /// `.dag` files with a non-data, non-test-fn declaration touched. Required-floor Strict
+    /// preparation seeds each file's authored module (`module_seeds_from_touched_entry_files`)
+    /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
+    /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
 }
 
@@ -39994,10 +39997,19 @@ pub fn assemble_prepared_subject(
 /// The seed roster is the same `v2.workflow.required_floor.required_gate_prefixes` the site
 /// disposition reads: one authority decides both what is planned and what is prepared, which is
 /// what keeps a witness admitted by one and unresolvable by the other from being writable.
+///
+/// TWO SEED KINDS, BECAUSE THEY ARE MATCHED BY TWO RULES. `closure.1` is the PREFIX roster:
+/// textual, exactly as `first_module_prefix_match` reads it for site disposition (`v2.test.`
+/// and `test.claim.namespace_` are both rows there, and the second is not a segment). `closure.2`
+/// is a list of AUTHORED MODULE NAMES -- the touched-entry and arm-set-consumer seeds the
+/// required floor derives from the diff -- and a module name matches itself or a module it
+/// contains (`a.b` seeds `a.b` and `a.b.c`), never `a.bc`. Matching those by `starts_with`
+/// widened the subject by one character today and is the shape that narrows silently when
+/// someone later "fixes" it (review on gunbc#11256), so the rule is stated once, here.
 pub fn assemble_prepared_subject_closure(
     source_roots: &[String],
     exclude_substrings: &[String],
-    closure: Option<(&MultiEntryIndex, &[String])>,
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<PreparedSubject, String> {
     let full_index = build_module_index(source_roots);
     let full_inventory: Vec<PreparedSourceView> = full_index
@@ -40010,7 +40022,7 @@ pub fn assemble_prepared_subject_closure(
     let mut discovery_exclusions: HashMap<String, String> = HashMap::new();
     let index: ModuleSourceIndex = match closure {
         None => full_index,
-        Some((entry_index, prefixes)) => {
+        Some((entry_index, prefixes, module_seeds)) => {
             let started = std::time::Instant::now();
             // THE CLOSURE IS THE LOADER'S BOTH-CLOSURE, NOT THE IMPORT HEADERS. A module in
             // this corpus may carry no `import` line at all and still depend on another
@@ -40021,7 +40033,12 @@ pub fn assemble_prepared_subject_closure(
             // closure, to a fixpoint -- and it is reused here rather than re-derived.
             let seed_paths: Vec<String> = full_index
                 .iter()
-                .filter(|(m, _)| prefixes.iter().any(|p| m.starts_with(p.as_str())))
+                .filter(|(m, _)| {
+                    prefixes.iter().any(|p| m.starts_with(p.as_str()))
+                        || module_seeds
+                            .iter()
+                            .any(|seed| module_name_is_or_is_contained_by(m, seed))
+                })
                 .map(|(_, sf)| sf.path.replace('\\', "/"))
                 .collect();
             let seeds = seed_paths.len();
@@ -40128,9 +40145,10 @@ pub fn assemble_prepared_subject_closure(
             if seeds == 0 {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=GateClosureEmpty — no module under the source \
-                     roots carries any of the {} required-gate prefixes, so the prepared subject \
-                     would be empty",
-                    prefixes.len()
+                     roots carries any of the {} required-gate prefixes or is named by any of \
+                     the {} module seeds, so the prepared subject would be empty",
+                    prefixes.len(),
+                    module_seeds.len()
                 ));
             }
             eprintln!(
@@ -40249,6 +40267,15 @@ pub fn assemble_prepared_subject_closure(
     })
 }
 
+/// Segment-bounded module-name containment: `module` is `seed` itself or a module `seed`
+/// contains by name (`seed.` is a proper prefix). `a.b` contains `a.b.c` and not `a.bc`.
+fn module_name_is_or_is_contained_by(module: &str, seed: &str) -> bool {
+    module == seed
+        || (module.len() > seed.len()
+            && module.starts_with(seed)
+            && module.as_bytes()[seed.len()] == b'.')
+}
+
 /// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
 /// typecheck gate, and returns everything a later consumer could want to know about the
 /// subject so that none of them reaches for the repository again.
@@ -40264,7 +40291,7 @@ pub fn prepare_repository_once(
 pub fn prepare_repository_closure(
     source_roots: &[String],
     exclude_substrings: &[String],
-    closure: Option<(&MultiEntryIndex, &[String])>,
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
     let subject = assemble_prepared_subject_closure(source_roots, exclude_substrings, closure)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.

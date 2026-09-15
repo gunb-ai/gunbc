@@ -45,7 +45,7 @@ The read side is modelled and already reaches `CliWireResponse`:
 ## Two host shapes, and why the idiomatic one is not sufficient
 
 The corpus's established instrument shape is `fn check(subject) -> ProcessExit`, returning
-`exit_failure(reason: join(lines, "\n"))` — see `tools.bare_name_fork_check`. `gunbc run` prints
+`exit_failure(reason: join(lines, "\n"))` — see `tools.dag_compile_clean_gate` and its siblings under `dag/gunbc/instruments/`. `gunbc run` prints
 that reason. **It can only emit text on FAILURE.** `log` and `status` must print on SUCCESS, so
 that shape cannot express them, and returning `CliWireResponse` from `gunbc run` refuses (its
 not-`ProcessExit` refusal prints the value, which is not a CLI).

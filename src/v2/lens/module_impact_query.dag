@@ -10,7 +10,7 @@ import v2.std.algebra {
 import std.algebra { Cons }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.text { String }
+import v2.std.text { String, string_eq }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding,
@@ -175,10 +175,6 @@ data impact_no_import_modules: List<String> = []
 data impact_no_module: Optional<ModuleIdentity> = Absent
 
 data impact_no_trigger: Optional<ReferenceDerivedClosureTrigger> = Absent
-
-fn impact_string_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
 fn impact_module_eq(a: ModuleIdentity, b: ModuleIdentity) -> Bool {
   a.name == b.name
@@ -393,7 +389,7 @@ fn impact_append_import_module(
   existing: List<String>,
   module_name: String
 ) -> List<String> {
-  if contains(xs: existing, item: module_name, eq: impact_string_eq) {
+  if contains(xs: existing, item: module_name, eq: string_eq) {
     existing
   } else {
     list_snoc_item(xs: existing, item: module_name)
@@ -436,7 +432,7 @@ fn impact_provenance_of_edge_indexed(
   if contains(
     xs: impact_imports_for_path(import_index: import_index, path: edge.path),
     item: edge.target_module,
-    eq: impact_string_eq
+    eq: string_eq
   ) {
     ImportDerivedEdge
   } else {
