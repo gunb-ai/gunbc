@@ -80,6 +80,9 @@ import tools.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data same: Bool = true
+data trigger: Bool = true
+
 fn fixture_run(source: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
     sources: [fixture_source("proto/entry.dag", source)],
@@ -91,8 +94,8 @@ fn refused_type_mismatch(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
     FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       fixture_has_class(rows, "TypeMismatch") && length(xs: fixture_blocking_rows(rows)) > 0
-    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
-      false
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows, "TypeMismatch") && length(xs: fixture_blocking_rows(rows)) > 0
     FixtureInstrumentRefused { cause: _ } => false
   }
 }
@@ -107,15 +110,15 @@ fn completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-data observer_with_goal_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind(observe: fn(String, String) -> Attempt<String, String>) -> Int { 1 }\nfn goal_seeing(subject: String, goal: String, request: String) -> Attempt<String, String> { Established { o: goal } }\nfn entry() -> Int { bind(observe: goal_seeing) }\n"
+data observer_with_goal_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind(observe: fn(Int, Int) -> Attempt<Int, Int>) -> Int { 1 }\nfn goal_seeing(subject: Int, goal: Int, request: Int) -> Attempt<Int, Int> { Established { o: goal } }\nfn entry() -> Int { bind(observe: goal_seeing) }\n"
 
-data observer_goal_blind_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind(observe: fn(String, String) -> Attempt<String, String>) -> Int { 1 }\nfn goal_blind(subject: String, request: String) -> Attempt<String, String> { Established { o: subject } }\nfn entry() -> Int { bind(observe: goal_blind) }\n"
+data observer_goal_blind_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind(observe: fn(Int, Int) -> Attempt<Int, Int>) -> Int { 1 }\nfn goal_blind(subject: Int, request: Int) -> Attempt<Int, Int> { Established { o: subject } }\nfn entry() -> Int { bind(observe: goal_blind) }\n"
 
-data readiness_as_converged_source: String = "module proto.entry\ntype Ready { evidence: String }\ntype Converged { evidence: String }\nfn take(v: Converged) -> String { v.evidence }\nfn feed(r: Ready) -> String { take(v: r) }\n"
+data readiness_as_converged_source: String = "module proto.entry\ntype Ready { evidence: Int }\ntype Converged { evidence: Int }\nfn take(v: Converged) -> Int { v.evidence }\nfn feed(r: Ready) -> Int { take(v: r) }\n"
 
-data readiness_stays_ready_source: String = "module proto.entry\ntype Ready { evidence: String }\nfn take(v: Ready) -> String { v.evidence }\nfn feed(r: Ready) -> String { take(v: r) }\n"
+data readiness_stays_ready_source: String = "module proto.entry\ntype Ready { evidence: Int }\nfn take(v: Ready) -> Int { v.evidence }\nfn feed(r: Ready) -> Int { take(v: r) }\n"
 
-data select_as_observe_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind_observe(observe: fn(String, String) -> Attempt<String, String>) -> Int { 1 }\nfn select(field: String, policy: String, axes: String) -> String { field }\nfn entry() -> Int { bind_observe(observe: select) }\n"
+data select_as_observe_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind_observe(observe: fn(Int, Int) -> Attempt<Int, Int>) -> Int { 1 }\nfn select(field: Int, policy: Int, axes: Int) -> Int { field }\nfn entry() -> Int { bind_observe(observe: select) }\n"
 
 test fn control_1_observer_receiving_desired_state_refuses() -> Bool {
   refused_type_mismatch(o: fixture_run(observer_with_goal_source))
