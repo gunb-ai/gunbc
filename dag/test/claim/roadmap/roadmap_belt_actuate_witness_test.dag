@@ -8,9 +8,8 @@ import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode,
   RoadmapNodeIdentity,
-  IntricacyHigh, VolumeMedium,
   PrsMerged,
-  Sized,
+  Dispatchable,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_publish {
@@ -143,11 +142,13 @@ import gunbc.roadmap_belt_actuate {
   srv1_live_dashboard_instance,
 }
 import gunbc.roadmap_belt { ManualReady }
+import v2.std.node_reflection { coproduct_arm_keys }
+import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchSessionsObserved,
@@ -196,7 +197,7 @@ fn ready_node(id: String) -> RoadmapNode {
     node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -517,7 +518,7 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
     node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
@@ -706,12 +707,48 @@ fn band_key_for_label(label: String) -> String {
   }
 }
 
+// COVERAGE IS AN IDENTITY JOIN OVER THE ARMS, NOT A COUNT OF THE ROWS. This witness pinned
+// `belt_dispatch_label_band_rows().length() == 22` while the roster had grown to 25 -- a count says
+// a NUMBER moved and never says WHICH vocabulary went unpinned, so the repair is always to bump the
+// literal, which is the change detector DESIGN 5 names. Joining the coproduct's own arm keys against
+// the exemplars instead means a new LaunchRefusal arm reds this by NAMING the arm that carries no
+// exemplar, and the fix is to exemplify it rather than to edit a number.
+//
+// The three LaunchNotAgentWork modes are pinned separately BELOW rather than by this join, because
+// one arm produces THREE wire labels through launch_non_agent_work_wire_label -- so arm coverage is
+// necessary and not sufficient for vocabulary coverage, and the mode labels need their own rows.
+//
+// WHAT WOULD NOT RED THIS, stated so nobody trusts the join further than it reaches: the witness is
+// closed under a new ARM and still OPEN under a new MODE. Adding a fourth NonAgentWorkMode leaves
+// the arm join satisfied -- LaunchNotAgentWork still has exemplars -- and leaves the three named
+// labels passing, while the fourth label goes unpinned and silent. The sentence that would close it
+// is a join over the PRODUCT rather than the arms: for every arm, and for every mode of an arm that
+// ranges over modes, a label row exists. coproduct_arm_keys applies to NonAgentWorkMode exactly as
+// it applies here, so that version is authorable; it is not built yet, and this paragraph is the
+// declared edge rather than an omission a reader has to infer from the arm join's shape.
+// THE ROOTS THE ARM-KEY REFLECTION CONSULTS. coproduct_arm_keys resolves the spelling over a named
+// pool and refuses a forked spelling rather than answering from one of two (gunbc#11291), so a
+// Rejected reflection reds this witness instead of reading as an empty arm set.
+data belt_reflection_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
+  match coproduct_arm_keys(pool_roots: belt_reflection_pool_roots, type_name: ^LaunchRefusal) {
+    Accepted { value: arms, diagnostics: _ } =>
+      count(arms) > 0
+        && all(arms, k => any(launch_refusal_exemplars(), r => discriminant(v: r) == k))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 22
+  every_launch_refusal_arm_has_an_exemplar()
+    && band_key_for_label(label: "operator_exclusive") == "fail"
+    && band_key_for_label(label: "external_lead") == "fail"
+    && band_key_for_label(label: "calendar_observation") == "fail"
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
-    && band_key_for_label(label: "size_missing") == "fail"
+    && band_key_for_label(label: "dispatch_binding_missing") == "fail"
     && band_key_for_label(label: "review_required") == "fail"
     && band_key_for_label(label: "node_superseded") == "fail"
     && band_key_for_label(label: "no_capacity") == "fail"
@@ -770,7 +807,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "node_superseded",
     "already_done_signed_off",
     "review_required",
-    "size_missing",
+    "dispatch_binding_missing",
     "execution_contract_missing",
     "dependencies_blocked",
     "observe_refused",
@@ -781,16 +818,48 @@ fn d4_wire_contract_labels() -> List<String> {
     "no_capacity",
     "cause_not_permitted_by_mode",
     "gate_not_evaluated",
+    "operator_exclusive",
+    "external_lead",
+    "calendar_observation",
   ]
 }
 
+// RECONCILIATION IS COVERAGE BOTH WAYS, NOT SEQUENCE EQUALITY. This compared
+// map(exemplars, label) == d4_wire_contract_labels() with `==`, so it was order-sensitive and it
+// went stale the same way the row count next door did: #11014 added three wire labels through
+// LaunchNotAgentWork's modes and the authored list stayed at twenty-two, so the equality was false
+// and said only that two lists differed. Coverage in both directions reds on the label that is
+// actually missing or unexpected, and order stops being load-bearing for a set that is served as a
+// vocabulary rather than a sequence.
+//
+// DISTINCTNESS IS CHECKED TOO, because coverage alone would let a DUPLICATE hide a gap: two
+// exemplars rendering the same label would satisfy both directions while one contract member went
+// unexemplified. That is the same escape the payload join next door closes by preserving repeats.
 fn d4_exemplars_reconcile(exemplars: List<BeltSpawnOutcome>) -> Bool {
-  map(exemplars, r => belt_dispatch_status_label(r: r)) == d4_wire_contract_labels()
+  let produced = map(exemplars, r => belt_dispatch_status_label(r: r))
+  let expected = d4_wire_contract_labels()
+  all(produced, l => count(filter(produced, x => x == l)) == 1)
+    && all(expected, l => any(produced, x => x == l))
+    && all(produced, l => any(expected, x => x == l))
 }
 
+// THE SECOND CONJUNCT WAS THE FIRST ONE AGAIN, WEARING A PRODUCTION NAME. It read
+// `belt_dispatch_all_status_labels() == d4_wire_contract_labels()`, and belt_dispatch_all_status_labels
+// is DEFINITIONALLY map(belt_dispatch_result_exemplars(), belt_dispatch_status_label) -- the same
+// expression d4_exemplars_reconcile computes as `produced`. So it compared the same two lists the
+// helper compares, using the order-sensitive `==` the helper deliberately replaced, and the name is
+// what hid that: it reads as "the served labels" and is in fact "the exemplar map".
+//
+// ORDER IS NOT PART OF THE SERVED CONTRACT, which is why dropping it loses nothing. Every consumer
+// of belt_dispatch_all_status_labels reads it as a SET: roadmap_component maps it to terminal states
+// and totals coverage both directions, roadmap_sandbox maps it to gallery rows, roadmap_serve joins
+// it into an error message, and the sandbox and page witnesses use all() and length(). Nothing
+// indexes it, no positional wire encoding reads it. So the sequence is an artifact of the order the
+// exemplar roster happens to be authored in, and pinning it would oblige every future variant to be
+// inserted at the roster's position rather than appended -- a maintenance cost buying an ordering
+// guarantee nothing consumes.
 test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
   d4_exemplars_reconcile(exemplars: belt_dispatch_result_exemplars())
-    && belt_dispatch_all_status_labels() == d4_wire_contract_labels()
 }
 
 fn d4_exemplars_missing_one() -> List<BeltSpawnOutcome> {

@@ -6,7 +6,6 @@ import gunbc.harness.harness_throughput {
 
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge,
-  IntricacyLow, VolumeSmall,
 }
 import gunbc.roadmap_status {
   AuthoredLine,
@@ -436,8 +435,11 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
     && work_lifecycle_key(l: work_lifecycle(rn: superseded_node, merged: [])) == "superseded"
 }
 
-// Owner, sizing, and carriers are supporting facts for the disclosure region — present when
-// declared, absent (not empty-labeled) when not. The integration witness drives work_row_view
+// Owner, repo, sizing, and carriers are supporting facts for the disclosure region — present when
+// declared, absent (not empty-labeled) when not. SIZING IS NOW THE ABSENT ONE: the row's badge is
+// derived (gunbc.roadmap_sizing) and the deriver is a stub, so a fixture node carries its repo and
+// no sizing cell. A sizing badge appearing here again means the deriver started answering, which is
+// the declared drop gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring. The integration witness drives work_row_view
 // end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary,
 // the typed scheduling position with its complete blocker set, and the actions/facts composed from
 // the same fixture.
@@ -445,7 +447,7 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
 fn fx_row_nodes() -> List<RoadmapNode> {
   [
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
-      done: false, content: "row headline — row brief", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "row headline — row brief", repo: "gunbc"),
     gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1", done: false, content: "parent one"),
     gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2", done: false, content: "parent two"),
   ]
@@ -499,7 +501,8 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
     && work_lifecycle_key(l: row.lifecycle) == "open"
     && row.superseded_by == ""
     && match row.summary { Absent => true Present { value: _ } => false }
-    && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
+    && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "repo")
+    && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
     && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "owner")
     && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
 }
@@ -515,7 +518,7 @@ test fn witness_scheduling_projects_typed_positions() -> Bool {
   let edges = fx_row_edges()
   let child = match nodes.first() { Present { value: rn } => rn Absent => gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", done: false, content: "x") }
   let ready_node = gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready",
-    done: false, content: "ready row", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+    done: false, content: "ready row", repo: "gunbc")
   let unsized_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized", done: false, content: "unsized row")
   let superseded_node = gunbc.roadmap_authority.superseded(identity: "rnfx_A2PRES0000000000000013", id: "a2-sup2", by: "a2-ready", content: "old")
   work_scheduling_key(s: work_scheduling(rn: child, nodes: nodes, edges: edges)) == "upcoming"
