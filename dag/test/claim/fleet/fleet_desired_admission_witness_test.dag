@@ -190,6 +190,34 @@ test fn a_superseded_candidate_authorizes_a_no_op_and_never_an_advance() -> Bool
   }
 }
 
+// THE UNDECODABLE-REF REFUSAL, AND WHY IT SURVIVED THE ROUTE CUT.
+//
+// Its subject is the ACTION SEAM -- action_for over an expectation-refused input -- and not the
+// admission route that produced the carrier, so deleting the workflow_run route did not touch the
+// distinction it holds. It was deleted with that route's classification rows anyway, on the first
+// pass of this change, and restored here (review 66688). The deleted row's own comment had already
+// warned that dropping it erased a correctness distinction rather than completing a migration,
+// which is DESIGN section 3: the minimum replacement must preserve every required refusal.
+//
+// THREE ASSERTIONS AND THE THIRD IS THE ONE THAT DISCRIMINATES. The message must say the ref MUST
+// NOT BE WRITTEN OVER and must name the advertised line it could not decode -- an operator cannot
+// act on a refusal that names no subject. The negative conjunct is what separates this cause from
+// its neighbour above: an undecodable ref WAS observed and could not be parsed, so rendering it as
+// "could not be observed" would report a network failure for a decode failure and send the reader
+// to the wrong system. No other witness in dag/test holds that rendered distinction.
+test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
+  match action_for(input: FleetDesiredExpectationRefusedInput {
+    accepted: accepted_fixture(),
+    cause: FleetDesiredRefUndecodable { advertised: "not-a-sha refs/fleet/desired" },
+  }) {
+    AdmissionActionAuthorized { action: _ } => false
+    AdmissionRefused { cause: c } =>
+      string_contains(s: c, pattern: "must not be written over")
+        && string_contains(s: c, pattern: "not-a-sha refs/fleet/desired")
+        && !string_contains(s: c, pattern: "could not be observed")
+  }
+}
+
 // THE EMPTY-OBSERVATION NARROW, AS A CLAIM. An unreadable prior must refuse, not be treated as an
 // absent one -- the arm that would create the ref from scratch and overwrite an admitted revision
 // nobody could read. The event is otherwise fully admitting, so this is discriminating.
