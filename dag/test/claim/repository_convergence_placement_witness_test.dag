@@ -8,7 +8,7 @@ import extdeps.access.posix_effective_principal {
   effective_posix_principal_observation,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.repository_convergence_placement {
   ConvergencePlacementOperands,
   ConvergencePrincipalAdmission,
@@ -257,6 +257,7 @@ test fn the_unit_runs_the_admitted_binary_over_the_runner_checkout_corpus() -> B
     )
     && string_contains(s: cmd, pattern: "--arg object_source=$\{GUNBC_TREE_SRC\}")
     && string_contains(s: cmd, pattern: concat("--arg candidate=", fixture_candidate))
+    && string_contains(s: cmd, pattern: concat("--arg instance_id=", spec.instance_id as String))
     && !string_contains(s: cmd, pattern: concat("--source-root ", srv1_repo_root()))
 }
 

@@ -28,7 +28,8 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisCaptured,
 }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_spec_for, deployment_srv1_target, derived_deployment_names, deployment_plan_listen_port, gunbc_roadmap_unit_name }
+import gunbc.live_deploy.spec { deployment_spec_for, deployment_srv1_target, derived_deployment_names, deployment_plan_listen_port, gunbc_roadmap_unit_name }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {

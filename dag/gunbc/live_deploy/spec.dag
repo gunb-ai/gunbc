@@ -41,7 +41,6 @@ import gunbc.host_layout {
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
-  srv1_live_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_instance_compute_root, dashboard_instance_event_log_root,
@@ -227,6 +226,7 @@ type DeploymentHostTarget {
   tailnet_domain: NonEmptyStr?
   os_package_manager: OsPackageManager
   tailscale_client: TailscaleServeCapability
+  ensured_directories: List<DeploymentDependencyStep>
 }
 
 // serve_function WAS DROPPED HERE AND THE EMITTER FELL BACK TO A LITERAL. HostDashboardInstance
@@ -709,7 +709,7 @@ fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-fn srv1_os_package_manager() -> OsPackageManager {
+fn ubuntu_noble_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
@@ -718,6 +718,7 @@ type DeploymentSpec {
   steps: List<DeploymentStep>
   service: DeploymentServiceConfig
   names: DeploymentNames
+  instance_id: NonEmptyStr
 }
 
 // TWO CONSUMERS, ONE SCOPE-FREE ROUTE LABEL (KEYING-0 follow-on, node://adhoc-907f1da5-c20):
@@ -829,7 +830,7 @@ fn deployment_owned_steps(
 // host-identity lookup -- the next-rung trigger dispatch_state_scope_carries_its_roots_note already
 // names -- and this srv1-shaped function retires into that derivation.
 
-fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
+fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
   [
     DeploymentDependencyStep {
       kind: TailscalePackage,
@@ -839,6 +840,11 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
       kind: TmuxPackage,
       subject: EnsuredPackage { package: package_tmux },
     },
+  ]
+}
+
+fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> {
+  [
     DeploymentDependencyStep {
       kind: DevbootArtifactStoreDirectory,
       subject: EnsuredHostDirectory {
@@ -854,6 +860,10 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
       },
     },
   ]
+}
+
+fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDependencyStep> {
+  concat(deployment_ensured_packages(), target.ensured_directories)
 }
 
 // Apply order is dependency-honest: the binary lands before the tree, because the tree is published
@@ -875,10 +885,11 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
 // live agent sessions or the evidence of what they did (a construction-level refusal, not a check).
 fn deployment_steps_apply_order(
   instance: HostDashboardInstance,
+  target: DeploymentHostTarget,
   names: DeploymentNames,
 ) -> List<DeploymentStep> {
   concat(
-    map(deployment_ensured_steps(), s => Dependency { step: s }),
+    map(deployment_ensured_steps(target: target), s => Dependency { step: s }),
     map(
       deployment_owned_steps(instance: instance, names: names),
       s => ArtifactStep { step: s },
@@ -933,8 +944,9 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
     ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: srv1_os_package_manager(),
+    os_package_manager: ubuntu_noble_os_package_manager(),
     tailscale_client: srv1_observed_tailscale_client(),
+    ensured_directories: deployment_ensured_srv1_host_directories(),
   }
 }
 
@@ -990,22 +1002,16 @@ fn deployment_spec_for(
 ) -> DeploymentSpec {
   DeploymentSpec {
     target: target,
-    steps: deployment_steps_apply_order(instance: instance, names: names),
+    steps: deployment_steps_apply_order(instance: instance, target: target, names: names),
     service: deployment_service_config(
       instance: instance,
       names: names,
     ),
     names: names,
+    instance_id: instance.instance_id,
   }
 }
 
-fn deployment_spec_srv1() -> DeploymentSpec {
-  deployment_spec_for(
-    instance: srv1_live_dashboard_instance(),
-    target: deployment_srv1_target(),
-    names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
-  )
-}
 
 // THE ALTERNATING-STATE-ROOTS SCAFFOLD IS DISSOLVED BY DELETION, WHICH IS THE CONDITION IT NAMED.
 // It read: dissolves when dispatch worktree and attempt-state roots are no longer a second copy
