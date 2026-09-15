@@ -1,0 +1,275 @@
+module gunbc.host_convergence_protocol
+
+import std.types { Bool, String, List }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+  GoalAssessment,
+  inspect_goal,
+  GoalInspection,
+}
+import std.upsert_decision { UpsertDecision, ObservationVerdict }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  ReconciledEffect,
+  Application,
+  reconcile_effect,
+  reconcile_effect_without_read,
+}
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import gunbc.host_convergence_census {
+  ProtocolPhases,
+  HostConvergenceCensus,
+  CensusWellFormed,
+  CensusMalformed,
+  host_convergence_census_standing,
+}
+import gunbc.readback_independence {
+  ReadBackProbe,
+  readback_evidence_verdict,
+}
+
+// CONVERGENCE-ONE C1. Binds the C0 census to the canonical stack without host actuation.
+// gunbc.ensure remains the adapter: its observation spelling projects onto
+// ObservationAttempt<ShowEffectiveRead<E>, String>.
+
+fn cite(module_path: String, decl_name: String) -> DeclarationRef {
+  decl_ref(module_path: module_path, decl_name: decl_name)
+}
+
+type CanonicalProtocolLayer
+  = LayerSelect
+  | LayerObserveAssess
+  | LayerRemedy
+  | LayerReadback
+  | LayerEnsureAdapter
+  | LayerFleetPlan
+  | LayerFleetApply
+  | LayerDeployObserve
+  | LayerDeployReadiness
+
+type CanonicalLayerBinding {
+  layer: CanonicalProtocolLayer
+  authority: DeclarationRef
+}
+
+data canonical_protocol_bindings: List<CanonicalLayerBinding> = [
+  CanonicalLayerBinding {
+    layer: LayerSelect,
+    authority: cite(module_path: "std.decision", decl_name: "select_realization"),
+  },
+  CanonicalLayerBinding {
+    layer: LayerObserveAssess,
+    authority: cite(module_path: "std.goal_assessment", decl_name: "inspect_goal"),
+  },
+  CanonicalLayerBinding {
+    layer: LayerRemedy,
+    authority: cite(module_path: "std.upsert_decision", decl_name: "UpsertDecision"),
+  },
+  CanonicalLayerBinding {
+    layer: LayerReadback,
+    authority: cite(module_path: "std.realization_reconcile", decl_name: "reconcile_effect"),
+  },
+  CanonicalLayerBinding {
+    layer: LayerEnsureAdapter,
+    authority: cite(module_path: "gunbc.ensure", decl_name: "ensure_decide"),
+  },
+  CanonicalLayerBinding {
+    layer: LayerFleetPlan,
+    authority: cite(module_path: "gunbc.fleet_converge_plan", decl_name: "fleet_converge_plan_artifact"),
+  },
+  CanonicalLayerBinding {
+    layer: LayerFleetApply,
+    authority: cite(module_path: "gunbc.fleet_converge_apply", decl_name: "converge_apply_for_host"),
+  },
+  CanonicalLayerBinding {
+    layer: LayerDeployObserve,
+    authority: cite(module_path: "gunbc.live_deploy.member_observe", decl_name: "observe_executable"),
+  },
+  CanonicalLayerBinding {
+    layer: LayerDeployReadiness,
+    authority: cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once"),
+  },
+]
+
+type ProtocolPhaseBinding
+  = PhasesBound { phases: ProtocolPhases }
+  | SelectionLeakedIntoObservation { phases: ProtocolPhases }
+  | SelectionLeakedIntoAssessment { phases: ProtocolPhases }
+
+fn admit_protocol_phases(phases: ProtocolPhases) -> ProtocolPhaseBinding {
+  if phases.selects && phases.observes {
+    SelectionLeakedIntoObservation { phases: phases }
+  } else {
+    if phases.selects && phases.assesses {
+      SelectionLeakedIntoAssessment { phases: phases }
+    } else {
+      PhasesBound { phases: phases }
+    }
+  }
+}
+
+fn census_protocol_phases_are_bound(census: HostConvergenceCensus) -> Bool {
+  match census {
+    CensusMalformed { cause: _ } => false
+    CensusWellFormed { rows: rows } =>
+      fold(rows, init: true, f: fn(ok, row) {
+        if ok {
+          match admit_protocol_phases(phases: row.phases) {
+            PhasesBound { phases: _ } => true
+            SelectionLeakedIntoObservation { phases: _ } => false
+            SelectionLeakedIntoAssessment { phases: _ } => false
+          }
+        } else {
+          false
+        }
+      })
+  }
+}
+
+fn production_census_protocol_is_bound() -> Bool {
+  census_protocol_phases_are_bound(census: host_convergence_census_standing)
+}
+
+type RuntimeReadiness<E> {
+  evidence: E
+}
+
+type HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence> {
+  observe: fn(Subject, Request) -> ObservationAttempt<Observed, ObserveRefusal>
+  assess: fn(Goal, Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>
+  decide: fn(GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>) -> UpsertDecision<Plan>
+  readiness: fn(Observed) -> RuntimeReadiness<ReadyEvidence>
+}
+
+fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>(
+  subject: Subject,
+  goal: Goal,
+  request: Request,
+  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>,
+) -> GoalInspection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
+  inspect_goal(
+    subject: subject,
+    goal: goal,
+    request: request,
+    observe: projection.observe,
+    assess: projection.assess,
+  )
+}
+
+fn decide_from_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>(
+  assessment: GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
+  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>,
+) -> UpsertDecision<Plan> {
+  projection.decide(assessment)
+}
+
+fn readiness_from_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>(
+  observed: Observed,
+  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, ReadyEvidence>,
+) -> RuntimeReadiness<ReadyEvidence> {
+  projection.readiness(observed)
+}
+
+type EstablishedReadClassification<R>
+  = ReadWasEstablished { read: ShowEffectiveRead<R> }
+  | ObservationWasRefused { cause: String }
+
+fn classify_established_read<R>(
+  attempt: ObservationAttempt<ShowEffectiveRead<R>, String>,
+) -> EstablishedReadClassification<R> {
+  match attempt {
+    ObservationEstablished { observed: read } => ReadWasEstablished { read: read }
+    ObservationRefused { cause: cause } => ObservationWasRefused { cause: cause }
+  }
+}
+
+fn established_absence<R>(c: EstablishedReadClassification<R>) -> Bool {
+  match c {
+    ReadWasEstablished { read: ReadAbsent { reason: _ } } => true
+    ReadWasEstablished { read: ReadObserved { value: _ } } => false
+    ObservationWasRefused { cause: _ } => false
+  }
+}
+
+type OwnershipStanding<E>
+  = Owned { evidence: E }
+  | Foreign { evidence: E }
+
+type OwnershipInterpretation<E, ObserveRefusal>
+  = OwnershipAssessed { standing: OwnershipStanding<E> }
+  | OwnershipUnobservable { cause: ObserveRefusal }
+
+fn interpret_ownership_from_attempt<Observed, E, ObserveRefusal>(
+  attempt: ObservationAttempt<Observed, ObserveRefusal>,
+  interpret: fn(Observed) -> OwnershipStanding<E>,
+) -> OwnershipInterpretation<E, ObserveRefusal> {
+  match attempt {
+    ObservationEstablished { observed: observed } =>
+      OwnershipAssessed { standing: interpret(observed) }
+    ObservationRefused { cause: cause } =>
+      OwnershipUnobservable { cause: cause }
+  }
+}
+
+fn reconcile_from_read_attempt<P, R, E>(
+  decision: UpsertDecision<P>,
+  application: Application,
+  after: ObservationAttempt<ShowEffectiveRead<R>, String>,
+  grounding: Grounding<E>,
+) -> ReconciledEffect<P, E> {
+  match classify_established_read(attempt: after) {
+    ReadWasEstablished { read: read } =>
+      reconcile_effect(
+        decision: decision,
+        application: application,
+        show_read: read,
+        grounding: grounding,
+      )
+    ObservationWasRefused { cause: cause } =>
+      reconcile_effect_without_read(
+        decision: decision,
+        application: application,
+        reason: cause,
+      )
+  }
+}
+
+fn admit_independent_readback(
+  probe: ReadBackProbe,
+  observed: ObservationVerdict,
+) -> ObservationVerdict {
+  readback_evidence_verdict(p: probe, observed: observed)
+}
+
+fn selection_layer_authority() -> DeclarationRef {
+  cite(module_path: "std.decision", decl_name: "select_realization")
+}
+
+fn observe_assess_layer_authority() -> DeclarationRef {
+  cite(module_path: "std.goal_assessment", decl_name: "inspect_goal")
+}
+
+fn selection_is_outside_observe_assess() -> Bool {
+  !declaration_ref_eq(
+    a: selection_layer_authority(),
+    b: observe_assess_layer_authority(),
+  )
+}
+
+fn readiness_is_not_reconciled_effect_authority() -> Bool {
+  !declaration_ref_eq(
+    a: cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once"),
+    b: cite(module_path: "std.realization_reconcile", decl_name: "reconcile_effect"),
+  )
+}
+
+fn bind_canonical_protocol() -> Bool {
+  production_census_protocol_is_bound()
+    && selection_is_outside_observe_assess()
+    && readiness_is_not_reconciled_effect_authority()
+}

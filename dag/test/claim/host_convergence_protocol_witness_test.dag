@@ -1,0 +1,369 @@
+module test.claim.host_convergence_protocol_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { length }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+  GoalAssessment,
+  GoalInspected,
+  GoalObservationRefused,
+  GoalSatisfied,
+  GoalDiverged,
+  assess_by_deviations,
+}
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, Converged, UnknownRefused }
+import std.realization_reconcile {
+  ReconciledEffect,
+  ReadObserved,
+  ReadAbsent,
+  Grounds,
+  Applied,
+  NotApplied,
+  classify_reconciled,
+  EffectConverged,
+  EffectNotConverged,
+}
+import gunbc.host_convergence_census { protocol_phases }
+import gunbc.host_convergence_protocol {
+  admit_protocol_phases,
+  PhasesBound,
+  SelectionLeakedIntoObservation,
+  SelectionLeakedIntoAssessment,
+  production_census_protocol_is_bound,
+  bind_canonical_protocol,
+  classify_established_read,
+  established_absence,
+  ReadWasEstablished,
+  ObservationWasRefused,
+  interpret_ownership_from_attempt,
+  OwnershipAssessed,
+  OwnershipUnobservable,
+  Foreign,
+  Owned,
+  reconcile_from_read_attempt,
+  admit_independent_readback,
+  inspect_via_host_effect_projection,
+  decide_from_host_effect_projection,
+  readiness_from_host_effect_projection,
+  HostEffectDomainProjection,
+  RuntimeReadiness,
+  canonical_protocol_bindings,
+  selection_is_outside_observe_assess,
+  readiness_is_not_reconciled_effect_authority,
+}
+import gunbc.ensure {
+  EnsureObserved,
+  EnsureAbsent,
+  EnsureInaccessible,
+  ensure_observation_as_attempt,
+  ensure_observation_from_attempt,
+  EnsureMayApply,
+  EnsurePlanAvailable,
+  ensure_reconcile,
+}
+import gunbc.readback_independence { sccache_show_stats_probe, systemd_show_property_probe }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class,
+  fixture_blocking_rows,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_run(source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("proto/entry.dag", source)],
+    entry: "proto/entry.dag"
+  })
+}
+
+fn refused_type_mismatch(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows, "TypeMismatch") && length(xs: fixture_blocking_rows(rows)) > 0
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+fn completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      length(xs: rows) == 0 && length(xs: files) > 0 && n > 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+data observer_with_goal_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind(observe: fn(String, String) -> Attempt<String, String>) -> Int { 1 }\nfn goal_seeing(subject: String, goal: String, request: String) -> Attempt<String, String> { Established { o: goal } }\nfn entry() -> Int { bind(observe: goal_seeing) }\n"
+
+data observer_goal_blind_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind(observe: fn(String, String) -> Attempt<String, String>) -> Int { 1 }\nfn goal_blind(subject: String, request: String) -> Attempt<String, String> { Established { o: subject } }\nfn entry() -> Int { bind(observe: goal_blind) }\n"
+
+data readiness_as_converged_source: String = "module proto.entry\ntype Ready { evidence: String }\ntype Converged { evidence: String }\nfn take(v: Converged) -> String { v.evidence }\nfn feed(r: Ready) -> String { take(v: r) }\n"
+
+data readiness_stays_ready_source: String = "module proto.entry\ntype Ready { evidence: String }\nfn take(v: Ready) -> String { v.evidence }\nfn feed(r: Ready) -> String { take(v: r) }\n"
+
+data select_as_observe_source: String = "module proto.entry\ntype Attempt<O, R> = Established { o: O } | Refused { r: R }\nfn bind_observe(observe: fn(String, String) -> Attempt<String, String>) -> Int { 1 }\nfn select(field: String, policy: String, axes: String) -> String { field }\nfn entry() -> Int { bind_observe(observe: select) }\n"
+
+test fn control_1_observer_receiving_desired_state_refuses() -> Bool {
+  refused_type_mismatch(o: fixture_run(observer_with_goal_source))
+    && completed_clean(o: fixture_run(observer_goal_blind_source))
+}
+
+test fn control_2_observation_refusal_is_not_established_absence() -> Bool {
+  !established_absence(
+    c: classify_established_read(attempt: ObservationRefused { cause: "transport refused" }),
+  )
+    && established_absence(
+      c: classify_established_read(
+        attempt: ObservationEstablished { observed: ReadAbsent { reason: "package missing" } },
+      ),
+    )
+}
+
+test fn control_3_divergence_names_a_deviation() -> Bool {
+  match assess_by_deviations(evidence: "snap", deviations: ["enforcement"]) {
+    GoalDiverged { deviations: ds } => ds.head == "enforcement"
+    _ => false
+  }
+    && match assess_by_deviations(evidence: "snap", deviations: []) {
+      GoalSatisfied { evidence: e } => e == "snap"
+      _ => false
+    }
+}
+
+fn classify_converged(r: ReconciledEffect<String, String>) -> Bool {
+  match classify_reconciled(r: r) {
+    EffectConverged { converged: _ } => true
+    EffectNotConverged { reason: _, attempt: _ } => false
+  }
+}
+
+test fn control_4_noop_cannot_carry_an_application() -> Bool {
+  !classify_converged(
+    r: reconcile_from_read_attempt(
+      decision: Noop,
+      application: Applied,
+      after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+      grounding: Grounds { evidence: "same" },
+    ),
+  )
+    && classify_converged(
+      r: reconcile_from_read_attempt(
+        decision: Noop,
+        application: NotApplied,
+        after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+        grounding: Grounds { evidence: "same" },
+      ),
+    )
+}
+
+test fn control_5_refused_decision_cannot_carry_an_application() -> Bool {
+  !classify_converged(
+    r: reconcile_from_read_attempt(
+      decision: Refuse { reason: "policy" as NonEmptyStr },
+      application: Applied,
+      after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+      grounding: Grounds { evidence: "same" },
+    ),
+  )
+    && !classify_converged(
+      r: reconcile_from_read_attempt(
+        decision: Refuse { reason: "policy" as NonEmptyStr },
+        application: NotApplied,
+        after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+        grounding: Grounds { evidence: "same" },
+      ),
+    )
+}
+
+test fn control_6_apply_cannot_converge_without_post_apply_readback() -> Bool {
+  !classify_converged(
+    r: reconcile_from_read_attempt(
+      decision: Apply { plan: "install" },
+      application: Applied,
+      after: ObservationRefused { cause: "no post-apply read" },
+      grounding: Grounds { evidence: "fabricated" },
+    ),
+  )
+    && classify_converged(
+      r: reconcile_from_read_attempt(
+        decision: Apply { plan: "install" },
+        application: Applied,
+        after: ObservationEstablished { observed: ReadObserved { value: "same" } },
+        grounding: Grounds { evidence: "same" },
+      ),
+    )
+}
+
+test fn control_7_reused_pre_apply_reading_is_caught_by_independence() -> Bool {
+  match admit_independent_readback(probe: sccache_show_stats_probe, observed: Converged) {
+    UnknownRefused => true
+    _ => false
+  }
+    && match admit_independent_readback(probe: systemd_show_property_probe, observed: Converged) {
+      Converged => true
+      _ => false
+    }
+}
+
+test fn control_8_readiness_cannot_inhabit_convergence_verdict() -> Bool {
+  refused_type_mismatch(o: fixture_run(readiness_as_converged_source))
+    && completed_clean(o: fixture_run(readiness_stays_ready_source))
+    && readiness_is_not_reconciled_effect_authority()
+}
+
+test fn control_9_selection_cannot_occur_inside_observation_or_assessment() -> Bool {
+  refused_type_mismatch(o: fixture_run(select_as_observe_source))
+    && match admit_protocol_phases(phases: protocol_phases(true, true, false, false, false, false, false)) {
+      SelectionLeakedIntoObservation { phases: _ } => true
+      _ => false
+    }
+    && match admit_protocol_phases(phases: protocol_phases(true, false, true, false, false, false, false)) {
+      SelectionLeakedIntoAssessment { phases: _ } => true
+      _ => false
+    }
+    && match admit_protocol_phases(phases: protocol_phases(true, false, false, false, false, false, false)) {
+      PhasesBound { phases: p } => p.selects && !p.observes && !p.assesses
+      _ => false
+    }
+    && selection_is_outside_observe_assess()
+}
+
+fn fixture_observe(subject: String, request: String) -> ObservationAttempt<String, String> {
+  ObservationEstablished { observed: subject }
+}
+
+fn fixture_assess(goal: String, observed: String) -> GoalAssessment<String, String, String, String> {
+  assess_by_deviations(
+    evidence: observed,
+    deviations: if goal == observed { [] } else { ["drift"] },
+  )
+}
+
+fn fixture_decide(a: GoalAssessment<String, String, String, String>) -> UpsertDecision<String> {
+  match a {
+    GoalSatisfied { evidence: _ } => Noop
+    GoalDiverged { deviations: _ } => Apply { plan: "repair" }
+    _ => Refuse { reason: "indeterminate" as NonEmptyStr }
+  }
+}
+
+fn fixture_readiness(observed: String) -> RuntimeReadiness<String> {
+  RuntimeReadiness { evidence: observed }
+}
+
+test fn host_effect_domain_projection_inspects_without_selection() -> Bool {
+  let projection = HostEffectDomainProjection {
+    observe: fixture_observe,
+    assess: fixture_assess,
+    decide: fixture_decide,
+    readiness: fixture_readiness,
+  }
+  match inspect_via_host_effect_projection(
+    subject: "host",
+    goal: "host",
+    request: "identity",
+    projection: projection,
+  ) {
+    GoalInspected { subject: s, goal: _, request: _, observed: o, assessment: a } =>
+      match decide_from_host_effect_projection(assessment: a, projection: projection) {
+        Noop =>
+          s == "host"
+            && o == "host"
+            && readiness_from_host_effect_projection(observed: o, projection: projection).evidence == "host"
+        _ => false
+      }
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: _ } => false
+  }
+}
+
+test fn ensure_observation_is_a_projection_of_the_canonical_attempt() -> Bool {
+  match ensure_observation_from_attempt(
+    attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
+  ) {
+    EnsureInaccessible { reason: r } => r == "down"
+    _ => false
+  }
+    && !established_absence(
+      c: classify_established_read(
+        attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
+      ),
+    )
+    && established_absence(
+      c: classify_established_read(
+        attempt: ensure_observation_as_attempt(observation: EnsureAbsent { reason: "missing" }),
+      ),
+    )
+}
+
+test fn ensure_inaccessible_after_cannot_converge() -> Bool {
+  match classify_reconciled(
+    r: ensure_reconcile(
+      policy: EnsureMayApply,
+      before: EnsureAbsent { reason: "missing" },
+      before_satisfies: false,
+      mismatch_reason: "missing",
+      plan: EnsurePlanAvailable { plan: "install" },
+      application: Applied,
+      after: EnsureInaccessible { reason: "probe refused" },
+      after_satisfies: false,
+      after_mismatch_reason: "unused",
+    ),
+  ) {
+    EffectNotConverged { reason: why, attempt: _ } =>
+      string_contains(s: why, pattern: "probe refused")
+    EffectConverged { converged: _ } => false
+  }
+}
+
+test fn foreign_is_assessment_of_established_evidence_not_observation_failure() -> Bool {
+  match interpret_ownership_from_attempt(
+    attempt: ObservationRefused { cause: "unreadable" },
+    interpret: fn(obs) { Foreign { evidence: obs } },
+  ) {
+    OwnershipUnobservable { cause: c } => c == "unreadable"
+    OwnershipAssessed { standing: _ } => false
+  }
+    && match interpret_ownership_from_attempt(
+      attempt: ObservationEstablished { observed: "other-owner" },
+      interpret: fn(obs) { Foreign { evidence: obs } },
+    ) {
+      OwnershipAssessed { standing: Foreign { evidence: e } } => e == "other-owner"
+      _ => false
+    }
+}
+
+test fn canonical_protocol_binds() -> Bool {
+  bind_canonical_protocol()
+    && production_census_protocol_is_bound()
+    && length(xs: canonical_protocol_bindings) == 9
+}
+
+test fn host_convergence_protocol_keystone_holds() -> Bool {
+  control_1_observer_receiving_desired_state_refuses()
+    && control_2_observation_refusal_is_not_established_absence()
+    && control_3_divergence_names_a_deviation()
+    && control_4_noop_cannot_carry_an_application()
+    && control_5_refused_decision_cannot_carry_an_application()
+    && control_6_apply_cannot_converge_without_post_apply_readback()
+    && control_7_reused_pre_apply_reading_is_caught_by_independence()
+    && control_8_readiness_cannot_inhabit_convergence_verdict()
+    && control_9_selection_cannot_occur_inside_observation_or_assessment()
+    && host_effect_domain_projection_inspects_without_selection()
+    && ensure_observation_is_a_projection_of_the_canonical_attempt()
+    && ensure_inaccessible_after_cannot_converge()
+    && foreign_is_assessment_of_established_evidence_not_observation_failure()
+    && canonical_protocol_binds()
+}

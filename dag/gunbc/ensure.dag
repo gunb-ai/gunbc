@@ -1,6 +1,11 @@
 module gunbc.ensure
 
 import std.types { String, Bool, NonEmptyStr }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+}
 import std.upsert_decision {
   UpsertDecision,
   Noop,
@@ -8,12 +13,14 @@ import std.upsert_decision {
   Refuse,
 }
 import std.realization_reconcile {
+  ShowEffectiveRead,
   ReadObserved,
   ReadAbsent,
   Grounds,
   DoesNotGround,
   ReconciledEffect,
   reconcile_effect,
+  reconcile_effect_without_read,
   Application,
 }
 
@@ -21,10 +28,39 @@ type EnsurePolicy
   = EnsureObserveOnly
   | EnsureMayApply
 
+// Derived spelling of ObservationAttempt<ShowEffectiveRead<E>, String>.
+// C0 RenameOutOfConvergence canonical = ShowEffectiveRead names the ESTABLISHED
+// read. Inaccessible is ObservationRefused, never ReadAbsent (DESIGN §5).
 type EnsureObservation<E>
   = EnsureObserved { evidence: E }
   | EnsureAbsent { reason: String }
   | EnsureInaccessible { reason: String }
+
+fn ensure_observation_as_attempt<E>(
+  observation: EnsureObservation<E>,
+) -> ObservationAttempt<ShowEffectiveRead<E>, String> {
+  match observation {
+    EnsureObserved { evidence: evidence } =>
+      ObservationEstablished { observed: ReadObserved { value: evidence } }
+    EnsureAbsent { reason: reason } =>
+      ObservationEstablished { observed: ReadAbsent { reason: reason } }
+    EnsureInaccessible { reason: reason } =>
+      ObservationRefused { cause: reason }
+  }
+}
+
+fn ensure_observation_from_attempt<E>(
+  attempt: ObservationAttempt<ShowEffectiveRead<E>, String>,
+) -> EnsureObservation<E> {
+  match attempt {
+    ObservationEstablished { observed: ReadObserved { value: evidence } } =>
+      EnsureObserved { evidence: evidence }
+    ObservationEstablished { observed: ReadAbsent { reason: reason } } =>
+      EnsureAbsent { reason: reason }
+    ObservationRefused { cause: reason } =>
+      EnsureInaccessible { reason: reason }
+  }
+}
 
 type EnsurePlan<P>
   = EnsurePlanAvailable { plan: P }
@@ -150,7 +186,7 @@ fn ensure_reconcile<P, E>(
         grounding: DoesNotGround { reason: reason },
       )
     EnsureInaccessible { reason: reason } =>
-      reconcile_effect(
+      reconcile_effect_without_read(
         decision: ensure_decide(
           policy: policy,
           observation: before,
@@ -159,8 +195,7 @@ fn ensure_reconcile<P, E>(
           plan: plan,
         ),
         application: application,
-        show_read: ReadAbsent { reason: reason },
-        grounding: DoesNotGround { reason: reason },
+        reason: reason,
       )
   }
 }
