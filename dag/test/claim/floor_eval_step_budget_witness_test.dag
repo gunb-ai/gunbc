@@ -1,7 +1,7 @@
 module test.claim.floor_eval_step_budget_witness_test
 
 import v2.std.logic { Bool }
-import v2.std.algebra { Cons, Empty }
+import v2.std.algebra { Cons, Empty, length }
 import v2.std.collection { List }
 import v2.std.integer { Int, int_add, int_mul, int_gt }
 import v2.std.text { String }
@@ -10,8 +10,8 @@ import std.measure { Millisecond, millisecond_count, EvalStepCount, eval_step_co
 import v2.workflow.required_floor {
   ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,
   ClaimPreemptionReachability, CooperativelyPollable,
-  ClaimEvalStepStanding, EvalStepsWithinBudget, EvalStepsOverBudget,
-  claim_eval_step_standing, claim_eval_step_standing_blocks,
+  ClaimEvalStepStanding, EvalStepsWithinBudget, EvalStepsOverBudget, EvalStepsOverBudgetUnderDeclaredDrop,
+  claim_eval_step_standing, claim_eval_step_standing_blocks, claim_eval_step_standing_for_identity,
   claim_safety_outcome, claim_safety_outcome_blocks,
   ClaimCeilingTier, GrandfatheredTier, NewWitnessTier,
   claim_ceiling_tier, claim_ceiling_envelope_ms, claim_ceiling_eval_step_budget,
@@ -30,6 +30,10 @@ import v2.workflow.floor_eval_step_calibration {
   SpecimenStepsGrounding, SpecimenStepsMatchThePin, SpecimenStepsDiffer,
   specimen_steps_grounding, specimen_steps_grounding_holds,
   floor_eval_step_calibration, calibration_specimen_eval_steps,
+}
+import v2.workflow.floor_eval_step_cost_drop {
+  floor_eval_step_cost_drop_holds, floor_eval_step_cost_drop_has_duplicate,
+  floor_eval_step_cost_drop_every_row_over, floor_eval_step_cost_drop_members,
 }
 import v2.workflow.floor_grandfathered_roster {
   GrandfatheredRemoval, WitnessDeleted, WitnessRenamed, WitnessNowInsideNewTier,
@@ -72,6 +76,7 @@ test fn a_cost_between_the_ceilings_passes_for_a_grandfathered_identity() -> Boo
   int_gt(a: tier_probe_steps(), b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})))
     && int_gt(a: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})), b: tier_probe_steps())
     && match claim_safety_outcome(
+      identity: "test.claim.fixture.an_identity_in_no_floor_roster",
       reached_verdict: true,
       observed_cpu_ms: 3,
       observed_wall_ms: 42,
@@ -90,6 +95,7 @@ test fn a_cost_between_the_ceilings_passes_for_a_grandfathered_identity() -> Boo
 // RED: the SAME cost, the SAME everything else, refuses on the new-witness tier.
 test fn a_cost_between_the_ceilings_refuses_for_a_new_identity() -> Bool {
   match claim_safety_outcome(
+    identity: "test.claim.fixture.an_identity_in_no_floor_roster",
     reached_verdict: true,
     observed_cpu_ms: 3,
     observed_wall_ms: 42,
@@ -262,6 +268,7 @@ test fn a_claim_far_over_the_cpu_line_with_in_budget_steps_passes_on_either_tier
 
 fn cpu_does_not_gate(budget: EvalStepCount) -> Bool {
   match claim_safety_outcome(
+    identity: "test.claim.fixture.an_identity_in_no_floor_roster",
     reached_verdict: true,
     observed_cpu_ms: 4000,
     observed_wall_ms: 4200,
@@ -281,6 +288,7 @@ fn cpu_does_not_gate(budget: EvalStepCount) -> Bool {
 
 test fn the_cpu_observation_is_still_carried_when_another_limit_fires() -> Bool {
   match claim_safety_outcome(
+    identity: "test.claim.fixture.an_identity_in_no_floor_roster",
     reached_verdict: true,
     observed_cpu_ms: 4000,
     observed_wall_ms: int_add(a: required_floor_claim_wall_safety_limit_ms(), b: 1),
@@ -521,4 +529,99 @@ test fn a_struck_identity_selects_the_new_witness_tier() -> Bool {
     GrandfatheredTier => false
     NewWitnessTier => true
   }
+}
+
+// ── THE DECLARED 4b(3) EVAL-STEP COST DROP IS NARROW, AND THE WALL STILL STANDS OUTSIDE IT ─────
+//
+// ONE FACT, TESTED FROM BOTH SIDES AT THE SAME COST. A member of `v2.workflow.floor_eval_step_cost_drop`
+// and an identity outside it, over the same new-witness budget by the same amount: only membership
+// may separate the two outcomes. A drop arm that ignored identity (every overrun admitted) fails the
+// RED; one that never fired fails the control; one that dropped the figures fails both.
+fn drop_member_identity() -> String {
+  "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal"
+}
+
+fn drop_probe_steps() -> EvalStepCount {
+  eval_step_count(
+    count: int_add(a: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})), b: 1),
+  )
+}
+
+// RED: an identity outside the drop, over budget, still refuses -- the drop does not widen the wall.
+test fn an_over_budget_identity_outside_the_declared_drop_still_refuses() -> Bool {
+  (floor_eval_step_cost_drop_holds(name: "test.claim.fixture.an_identity_in_no_floor_roster") == false)
+    && match claim_safety_outcome(
+      identity: "test.claim.fixture.an_identity_in_no_floor_roster",
+      reached_verdict: true,
+      observed_cpu_ms: 3,
+      observed_wall_ms: 42,
+      observed_eval_steps: drop_probe_steps(),
+      eval_step_budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
+      wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+      raised_by: "",
+      preemption: CooperativelyPollable,
+    ) {
+      CompletedWithinSafetyLimits => false
+      SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+      CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => true
+    }
+}
+
+// CONTROL: a member at the same cost does not block on steps, and its standing keeps both figures.
+test fn an_over_budget_member_of_the_declared_drop_is_reported_not_refused() -> Bool {
+  match claim_eval_step_standing_for_identity(
+    identity: drop_member_identity(),
+    observed_eval_steps: drop_probe_steps(),
+    budget_steps: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
+  ) {
+    EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
+    EvalStepsOverBudget { observed_steps: _, budget_steps: _ } => false
+    EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: o, budget_steps: b } =>
+      (eval_step_count_value(s: o) == eval_step_count_value(s: drop_probe_steps()))
+        && (eval_step_count_value(s: b) == eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})))
+        && match claim_safety_outcome(
+          identity: drop_member_identity(),
+          reached_verdict: true,
+          observed_cpu_ms: 3,
+          observed_wall_ms: 42,
+          observed_eval_steps: drop_probe_steps(),
+          eval_step_budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
+          wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+          raised_by: "",
+          preemption: CooperativelyPollable,
+        ) {
+          CompletedWithinSafetyLimits => true
+          SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+          CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => false
+        }
+  }
+}
+
+// RED: the drop lowers ONLY the step comparison. A member that crosses the wall still blocks.
+test fn a_member_of_the_declared_drop_still_blocks_on_the_wall() -> Bool {
+  match claim_safety_outcome(
+    identity: drop_member_identity(),
+    reached_verdict: true,
+    observed_cpu_ms: 3,
+    observed_wall_ms: int_add(a: required_floor_claim_wall_safety_limit_ms(), b: 1),
+    observed_eval_steps: drop_probe_steps(),
+    eval_step_budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
+    wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+    raised_by: "",
+    preemption: CooperativelyPollable,
+  ) {
+    CompletedWithinSafetyLimits => false
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => true
+  }
+}
+
+// THE ROSTER ITSELF: non-empty, unambiguous, and every row still covering a real overrun of the
+// new-witness budget -- the retirement condition the drop's trigger names, evaluated against the
+// row's own typed measurements. A row measured inside the budget turns this red and must leave.
+test fn the_declared_drop_roster_is_unambiguous_and_every_row_is_still_over_budget() -> Bool {
+  int_gt(a: length(xs: floor_eval_step_cost_drop_members()), b: 0)
+    && (floor_eval_step_cost_drop_has_duplicate() == false)
+    && floor_eval_step_cost_drop_every_row_over(budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
+    && floor_eval_step_cost_drop_holds(name: drop_member_identity())
 }

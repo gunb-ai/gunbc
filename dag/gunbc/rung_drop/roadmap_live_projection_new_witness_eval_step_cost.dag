@@ -3,12 +3,13 @@ module gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost
 import std.types { String, List, NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 
 // DECLARED 4b(3) DROP (fierce-lark-661, 2026-09-14, relayed verbatim via bright-boar-435).
-// One row, one authority: this file, landing as its own PR. gunbc#11365, gunbc#11371 and
-// gunbc#11303 cite it; they do not copy it. The gate's membership list is
-// a projection of the measurement list below, not a second list; eval_steps stay measured and
-// recorded on every run for all four.
+// This file is the authority for the DECLARATION (rungs, reason, trigger). The POPULATION's authority
+// is the policy roster `v2.workflow.floor_eval_step_cost_drop`, which the floor decides with; the
+// population below and the seed runner's membership set are both projections of it, not second
+// lists. eval_steps stay measured and recorded on every run for all four.
 //
 // WHY THIS IS NOT COST-DEBT: no identity is withheld from execution, which is the distinction the
 // landing-side chat drew when it refused cost-debt for gunbc#10994's tripwire. 72,300 is not
@@ -24,40 +25,18 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // amendment clause). An unrun falsifier affects WHEN the drop retires, not whether landing it hides
 // a wrong answer -- the four still execute and a semantic red still blocks.
 
-// SINGLE AUTHORITY FOR THE POPULATION. The four identities and their measurements are authored
-// ONCE, here. The gate's membership list and the RungDrop's population field are both DERIVED
-// from this list, so removing a row removes it from both at once -- a name cannot survive in one
-// while the other drops it (DESIGN section 3: each fact lives in exactly one place; section 4b(3)
-// bounded population). Same form as the sibling row gunbc.rung_drop.transitional_admission_exception.
-type RoadmapLiveProjectionEvalStepMeasurement {
-  identity: String
-  eval_steps: String
-}
-
-data roadmap_live_projection_new_witness_eval_step_measurements: List<RoadmapLiveProjectionEvalStepMeasurement> = [
-  RoadmapLiveProjectionEvalStepMeasurement {
-    identity: "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges",
-    eval_steps: "318227",
-  },
-  RoadmapLiveProjectionEvalStepMeasurement {
-    identity: "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt",
-    eval_steps: "226622",
-  },
-  RoadmapLiveProjectionEvalStepMeasurement {
-    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal",
-    eval_steps: "441871",
-  },
-  RoadmapLiveProjectionEvalStepMeasurement {
-    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection",
-    eval_steps: "370743",
-  },
-]
-
-// The gate consumes this; it is a projection of the list above, never a second list.
-data roadmap_live_projection_new_witness_eval_step_cost_identities: List<String> = roadmap_live_projection_new_witness_eval_step_measurements |> map(m => m.identity)
-
-// The population field consumes this; also a projection of the same list.
-data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> = roadmap_live_projection_new_witness_eval_step_measurements |> map(m => concat(concat(m.identity, ": "), concat(m.eval_steps, " eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR")))
+// SINGLE AUTHORITY FOR THE POPULATION, AND IT IS THE POLICY ROSTER, NOT THIS FILE. The four
+// identities and their typed measurements (`EvalStepCount`, not quoted digits) live in
+// `v2.workflow.floor_eval_step_cost_drop`, which `v2.workflow.required_floor`
+// `claim_eval_step_standing_for_identity` decides with and the seed runner mirrors. This row's
+// population is a PROJECTION of that list, so a name cannot survive here after it leaves the policy
+// (DESIGN section 3; section 4b(3) bounded population). The counts are not transcribed into the
+// sentence: they are the roster's `observed_eval_steps`, and
+// `test.claim.floor_eval_step_budget_witness_test`
+// `the_declared_drop_roster_is_unambiguous_and_every_row_is_still_over_budget` compares them to the
+// new-witness budget, which is what makes clause (ii) of the trigger evaluable (DESIGN section 6:
+// name the instrument, never transcribe its output).
+data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, observed_eval_steps in v2.workflow.floor_eval_step_cost_drop; "), m.measured_by))
 
 data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "roadmap_live_projection_new_witness_eval_step_cost" as NonEmptyStr,

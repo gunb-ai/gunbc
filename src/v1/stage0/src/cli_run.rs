@@ -42248,7 +42248,7 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
@@ -42267,14 +42267,6 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     // policy module for it would require the import to run the other way -- a cycle, which DESIGN
     // section 4 makes the import graph's one structural prohibition.
     "v2.workflow.floor_enrolment_margin",
-    // The declared 4b(3) eval-step cost drop's population
-    // (`roadmap_live_projection_new_witness_eval_step_cost_identities`, qualified). Enrolled for
-    // the same reason `gunbc.v1_interpreter_opaque_host_call` is: THIS LIST IS THE DECLARATION
-    // that a module is evaluated by name, and without the enrolment the gate's lookup refuses
-    // with "no declaration named ... in this execution's loaded index" — which is the correct
-    // fail-closed answer to an unloaded module, and exactly why the module must be declared here
-    // rather than reached by luck from whatever closure another seed happened to drag in.
-    "gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.

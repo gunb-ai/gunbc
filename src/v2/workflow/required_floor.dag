@@ -28,6 +28,7 @@ import v2.workflow.floor_eval_step_calibration {
   eval_step_budget_for
 }
 import v2.workflow.floor_grandfathered_roster { floor_grandfathered_holds }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_holds }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
@@ -1269,6 +1270,7 @@ fn new_witness_over_budget_first_remedy() -> NonEmptyStr {
 type ClaimEvalStepStanding =
     EvalStepsWithinBudget { observed_steps: EvalStepCount, budget_steps: EvalStepCount }
   | EvalStepsOverBudget { observed_steps: EvalStepCount, budget_steps: EvalStepCount }
+  | EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: EvalStepCount, budget_steps: EvalStepCount }
 
 fn claim_eval_step_standing(
   observed_eval_steps: EvalStepCount,
@@ -1288,6 +1290,39 @@ fn claim_eval_step_standing_blocks(standing: ClaimEvalStepStanding) -> Bool {
   match standing {
     EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
     EvalStepsOverBudget { observed_steps: _, budget_steps: _ } => true
+    EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: _, budget_steps: _ } => false
+  }
+}
+
+// THE STANDING FOR ONE IDENTITY, WHICH IS WHAT THE FLOOR DECIDES WITH. It applies the declared 4b(3)
+// drop `gunbc.rung_drop` `roadmap_live_projection_new_witness_eval_step_cost`, whose population is
+// `v2.workflow.floor_eval_step_cost_drop`, and applies it NARROWLY:
+//
+//   - only an OVER-budget standing is rewritten; a within-budget one is returned as is, so the drop
+//     arm never claims a member needed it on a run where it did not;
+//   - membership is the whole qualified identity, selected here and never supplied by a caller, so
+//     an identity outside the roster cannot reach the non-blocking arm by any argument;
+//   - the arm keeps both figures, so the overrun stays reported rather than absorbed (DESIGN
+//     section 5: a mechanism that stopped refusing AND stopped counting is the absorbing fallback).
+//
+// The budget is NOT raised and the tier is NOT changed; the wall-clock limit and a semantic red still
+// block a member exactly as they block anyone else.
+fn claim_eval_step_standing_for_identity(
+  identity: String,
+  observed_eval_steps: EvalStepCount,
+  budget_steps: EvalStepCount,
+) -> ClaimEvalStepStanding {
+  match claim_eval_step_standing(observed_eval_steps: observed_eval_steps, budget_steps: budget_steps) {
+    EvalStepsWithinBudget { observed_steps: o, budget_steps: b } =>
+      EvalStepsWithinBudget { observed_steps: o, budget_steps: b }
+    EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: o, budget_steps: b } =>
+      EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: o, budget_steps: b }
+    EvalStepsOverBudget { observed_steps: o, budget_steps: b } =>
+      if floor_eval_step_cost_drop_holds(name: identity) {
+        EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: o, budget_steps: b }
+      } else {
+        EvalStepsOverBudget { observed_steps: o, budget_steps: b }
+      }
   }
 }
 
@@ -1576,6 +1611,7 @@ data flat_scalar_millisecond_fields_dissolve_on: DissolutionCondition = unbound_
 // crossing on the same row is not -- the remedy for too many steps is to reach for less, while the
 // remedy for a wall crossing is usually not the claim's at all.
 fn claim_safety_outcome(
+  identity: String,
   reached_verdict: Bool,
   observed_cpu_ms: Int,
   observed_wall_ms: Int,
@@ -1594,7 +1630,8 @@ fn claim_safety_outcome(
       }
     true =>
       if claim_eval_step_standing_blocks(
-        standing: claim_eval_step_standing(
+        standing: claim_eval_step_standing_for_identity(
+          identity: identity,
           observed_eval_steps: observed_eval_steps,
           budget_steps: eval_step_budget,
         ),

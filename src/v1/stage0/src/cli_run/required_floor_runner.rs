@@ -6357,58 +6357,50 @@ pub fn run_required_floor(
         }
         out
     };
-    // DECLARED 4b(3) DROP `roadmap_live_projection_new_witness_eval_step_cost`: lowers ONLY the
-    // eval-step COST GATE for four named identities. They still EXECUTE on every run that plans
-    // them; eval_steps are still MEASURED AND RECORDED (WitnessExecutionOccurrence / claim_cost);
-    // a semantic red still blocks. Not grandfathering, not cost-debt (no identity withheld),
-    // not a skip of measurement. Empty or wrong-size decode refuses rather than applying a glob.
-    // ASKED THROUGH ITS OWN FRAME, not the `v2.workflow.*` policy frame: the closure-seed list
-    // in `cli_run.rs` states the rule that a `gunbc.*` module is evaluated in a scope of its own,
-    // and reaching it through the policy frame is what that rule refuses.
+    // THE DECLARED 4b(3) DROP'S POPULATION, READ FROM THE POLICY MODEL THE FLOOR DECIDES WITH.
+    // `v2.workflow.required_floor` `claim_eval_step_standing_for_identity` is the authority: an
+    // over-budget standing for an identity in `v2.workflow.floor_eval_step_cost_drop` is
+    // `EvalStepsOverBudgetUnderDeclaredDrop`, which does not block. This set is the host MIRROR of
+    // that membership test, joined to it by reading the SAME list through the SAME policy frame the
+    // grandfathered roster is read through, for the same measured reason (one decode, O(1) per
+    // claim). It lowers ONLY the eval-step comparison below: members still execute, eval_steps are
+    // still recorded in the claim_cost row, and a semantic red or a wall crossing still blocks.
+    //
+    // A FAILED OR AMBIGUOUS READ REFUSES, NEVER ADMITS. An empty decode, a duplicate or a non-string
+    // is what a renamed producer or a truncated read looks like; applying it would turn a decode
+    // fault into an exemption (DESIGN §5: a failure arm must refuse, never widen).
     let eval_step_cost_drop: HashSet<String> = {
-        let drop_frame = floor_authority_frame(
-            &prepared,
-            "gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost",
-        )?;
         let value = v1_interpreter::run_in_context(
-            &drop_frame,
-            "gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost.roadmap_live_projection_new_witness_eval_step_cost_identities",
+            &hermetic,
+            "v2.workflow.floor_eval_step_cost_drop.floor_eval_step_cost_drop_members",
             false,
         )
-        .map_err(|e| format!("roadmap_live_projection_new_witness_eval_step_cost_identities: {e}"))?;
-        let items = floor_decode_list(&drop_frame, Some(&value)).map_err(|e| {
-            format!("roadmap_live_projection_new_witness_eval_step_cost_identities: {e}")
-        })?;
+        .map_err(|e| format!("floor_eval_step_cost_drop_members: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_eval_step_cost_drop_members: {e}"))?;
         let mut out = HashSet::new();
         for item in items {
             match item {
                 v1_interpreter::Value::Str(s) => {
                     if !out.insert(s.to_string()) {
                         return Err(format!(
-                            "roadmap_live_projection_new_witness_eval_step_cost_identities: \
-                             duplicate identity: {s}"
+                            "floor_eval_step_cost_drop_members: duplicate identity: {s}"
                         ));
                     }
                 }
                 other => {
                     return Err(format!(
-                        "roadmap_live_projection_new_witness_eval_step_cost_identities: expected \
-                         a qualified name, got {}",
+                        "floor_eval_step_cost_drop_members: expected a qualified name, got {}",
                         floor_value_shape(Some(other))
                     ));
                 }
             }
         }
-        // The CARDINALITY IS NOT RESTATED HERE. The declared population is the measurement list
-        // in the row, and this set is a projection of it, so a third place stating "four" would
-        // be a second authority that drifts when the row is edited (DESIGN §3). An EMPTY decode
-        // still refuses: a drop that names nobody is a skip with no declared population, which is
-        // the fail-open shape this gate exists to prevent (§5).
         if out.is_empty() {
             return Err(
                 "REQUIRED-FLOOR REFUSAL cause=EvalStepCostDropPopulationEmpty \
-                 gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost \
-                 identities decoded to zero names; a declared drop must name its population."
+                 v2.workflow.floor_eval_step_cost_drop.floor_eval_step_cost_drop_members decoded \
+                 to zero identities; a declared drop must name its population."
                     .to_string(),
             );
         }
@@ -7959,9 +7951,9 @@ pub fn run_required_floor(
         // about; that row is already reported through `interrupted_before_verdict`, and adding a
         // budget sentence to it would report the same occurrence twice under two remedies.
         //
-        // THE 4b(3) DROP SKIPS ONLY THIS GATE. Membership here does not skip execution and does
-        // not skip the claim_cost row above — eval_steps stay observed and recorded. Skipping
-        // measurement would not be this drop.
+        // THE 4b(3) DROP SKIPS ONLY THIS GATE, mirroring `claim_eval_step_standing_for_identity`'s
+        // `EvalStepsOverBudgetUnderDeclaredDrop` arm. Membership does not skip execution and does
+        // not skip the claim_cost row above — eval_steps stay observed and recorded.
         if matches!(terminality, ClaimTerminality::VerdictReached { .. })
             && receipt.eval_steps > claim.eval_step_budget
             && !eval_step_cost_drop.contains(&claim.qualified)
