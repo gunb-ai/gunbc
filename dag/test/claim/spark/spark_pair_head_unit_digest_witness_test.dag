@@ -12,12 +12,12 @@ import gunbc.spark.pair_serving_desired {
   spark_pair_serving_engine_args,
 }
 import gunbc.spark.pair_serving_realization {
-  SparkPairUnitRendered, SparkPairUnitRenderRefused,
+  SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
-  spark_pair_digest_unit_render, spark_pair_head_unit_file, spark_pair_container_spec,
+  spark_pair_digest_unit_render, spark_pair_head_unit_file, spark_pair_rendered_unit_artifact, spark_pair_container_spec,
   spark_pair_container_env, spark_pair_head_unit_name, spark_pair_head_unit_declared_digest_among,
-  spark_pair_declared_unit_digests, spark_pair_realizations,
+  spark_pair_realizations,
 }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, HubCachePlacement, spark_hub_cache_root,
@@ -65,6 +65,7 @@ fn w_head_text() -> String? {
         spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
       ) {
         SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
+        SparkPairUnitSealed { artifact: a } => Present { value: a.text }
         SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
       }
   }
@@ -94,16 +95,15 @@ test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
   match w_head_text() {
     Absent => false
     Present { value: t } =>
-      match spark_pair_digest_unit_render(render: SparkPairUnitRendered { unit_name: spark_pair_head_unit_name, text: t }) {
-        DeclaredUnitDigestUnavailable { obligation: _ } => false
-        DeclaredUnitDigested { unit_name: _, digest: d } =>
-          match spark_pair_digest_unit_render(render: SparkPairUnitRendered {
-            unit_name: spark_pair_head_unit_name,
-            text: join([t, " "], ""),
-          }) {
-            DeclaredUnitDigestUnavailable { obligation: _ } => false
-            DeclaredUnitDigested { unit_name: _, digest: d2 } =>
-              match compare_content_hash(left: d, right: d2) {
+      match spark_pair_rendered_unit_artifact(unit_name: spark_pair_head_unit_name, text: t) {
+        SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
+        SparkPairUnitRendered { unit_name: _, text: _ } => false
+        SparkPairUnitSealed { artifact: a } =>
+          match spark_pair_rendered_unit_artifact(unit_name: spark_pair_head_unit_name, text: join([t, " "], "")) {
+            SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
+            SparkPairUnitRendered { unit_name: _, text: _ } => false
+            SparkPairUnitSealed { artifact: a2 } =>
+              match compare_content_hash(left: a.digest, right: a2.digest) {
                 ContentHashDifferent => true
                 ContentHashEqual => false
                 ContentHashCrossFamilyIncomparable => false
@@ -113,19 +113,18 @@ test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
   }
 }
 
-// PRODUCTION MINT, BY PRODUCTION'S OWN ROUTE: harness_collect_candidates takes
-// spark_pair_declared_unit_digests once per turn and harness_add_serving_candidate looks this group
-// up in it with spark_pair_head_unit_declared_digest_among. This row drives exactly that pair and
-// shows the looked-up standing is the digest of the realized head unit. A fixture render hashed
-// beside the roster would not prove that fold, and a convenience wrapper over the pair would be a
-// second route to the same fact.
+// PRODUCTION ARTIFACT, BY PRODUCTION'S OWN ROUTE: spark_pair_realizations seals each rendered unit
+// at the render boundary, and spark_pair_head_unit_declared_digest_among looks this group up in that
+// roster. This row drives exactly that pair and shows the looked-up standing is the digest carried
+// on the realized head-unit artifact. Re-hashing the unit beside the roster would be a second
+// DigestStdin of the same bytes.
 test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> Bool {
   match first(spark_pair_realizations()) {
     Absent => false
     Present { value: r } =>
       match r {
         SparkPairRealizationRefused { group: g, cause: c } =>
-          match spark_pair_head_unit_declared_digest_among(roster: spark_pair_declared_unit_digests(), group: g) {
+          match spark_pair_head_unit_declared_digest_among(roster: spark_pair_realizations(), group: g) {
             DeclaredUnitDigestUnavailable { obligation: o } => (o as String) == (c as String)
             DeclaredUnitDigested { unit_name: _, digest: _ } => false
           }
@@ -133,7 +132,7 @@ test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> 
           match spark_pair_digest_unit_render(render: h.unit) {
             DeclaredUnitDigestUnavailable { obligation: _ } => false
             DeclaredUnitDigested { unit_name: _, digest: from_unit } =>
-              match spark_pair_head_unit_declared_digest_among(roster: spark_pair_declared_unit_digests(), group: g) {
+              match spark_pair_head_unit_declared_digest_among(roster: spark_pair_realizations(), group: g) {
                 DeclaredUnitDigestUnavailable { obligation: _ } => false
                 DeclaredUnitDigested { unit_name: n, digest: from_group } =>
                   (n as String) == (spark_pair_head_unit_name as String)
