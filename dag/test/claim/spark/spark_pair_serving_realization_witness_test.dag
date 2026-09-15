@@ -8,8 +8,8 @@ import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
   DeclaredUnitDigested, DeclaredUnitDigestUnavailable, spark_pair_digest_unit_render,
-  spark_pair_unsigned_realization, spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
-  spark_pair_realization, spark_pair_head_unit_unsigned, spark_pair_container_spec, spark_pair_container_env,
+  spark_pair_realization, spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
+  spark_pair_head_unit_unsigned, spark_pair_container_spec, spark_pair_container_env,
   spark_pair_head_unit_name,
 }
 import gunbc.spark.pair_serving_desired {
@@ -73,7 +73,7 @@ fn w_unit_text(u: SparkPairUnitRender) -> String {
 }
 
 fn w_realized(f: fn(SparkPairHostRealization, List<SparkPairHostRealization>) -> Bool) -> Bool {
-  match Present { value: spark_pair_unsigned_realization(unit: w_fixture_unit()) } {
+  match Present { value: spark_pair_realization(unit: w_fixture_unit()) } {
     Absent => false
     Present { value: r } =>
       match r {

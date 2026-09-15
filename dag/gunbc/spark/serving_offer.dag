@@ -325,11 +325,11 @@ type SparkServiceIdentityCause
   | ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitProvenance }
   | ServiceConfigurationDisagrees { configuration: SparkRealizationIdentity }
 
-// THE DECLARED SIDE OF THE UNIT COMPARISON IS THE DIGEST FIELD OF THE RENDERED UNIT ARTIFACT
-// (gunbc.spark.pair_serving_realization spark_pair_head_unit_file / spark_pair_digest_unit_render):
-// SHA-256 of the exact rendered systemd unit bytes, or a refusal that carries the render/hash
-// refusal. This module consumes that standing; it does not hash. A structural fingerprint remains
-// the wrong family.
+// THE DECLARED SIDE OF THE UNIT COMPARISON IS THE DIGEST FIELD OF THE MATERIALIZED ARTIFACT
+// (gunbc.spark.pair_serving_realization spark_pair_lookup_declared_head_digest): SHA-256 of the
+// exact rendered systemd unit bytes, written at apply publish. This module consumes that standing;
+// it does not hash and it does not render. A miss is DeclaredUnitDigestUnavailable. A structural
+// fingerprint remains the wrong family.
 
 data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark.serving_offer: nothing on this path observes which engine incarnation the answering endpoint process belongs to. gunbc.instruments.fabric_capacity_standing launch_from_fields reads an incarnation from a probe but never which exporter belongs to it, and its live host read is a frontier. TRIGGER: an observation on the live host binding the answering endpoint process to a gunbc.spark.vllm_serving_launch VllmServingLaunch, SUFFICIENT FOR gunbc.harness.harness_seat harness_serving_realization to carry EndpointIncarnationObserved. ACCESS PRECEDES IT: no principal this fleet runs as can read a running container on the Sparks (gunbc-automation holds no passwordless grant that reaches docker and is in no docker group), so that observation needs gunbc.spark.managed_access_bootstrap InspectServingContainer installed through gunbc.spark.managed_grant_install. The grant is necessary and not sufficient: it reads the container, and binding the answering socket to a process inside it is a further observation"
 

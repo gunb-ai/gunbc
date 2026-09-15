@@ -19,7 +19,8 @@ import gunbc.harness.harness_backend {
 import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
-  spark_pair_realizations, spark_pair_no_realization_names_group_obligation,
+  spark_pair_realizations, spark_pair_publish_declared_head_artifact,
+  spark_pair_withdraw_declared_head_artifact, spark_pair_declared_unit_artifact_unavailable_obligation,
 }
 import gunbc.harness.harness_seat {
   HarnessCandidates, harness_add_serving_candidate, AnyAdmittedModel,
@@ -61,14 +62,12 @@ fn w_idle_engine(field: String) -> HarnessEngineReading {
 
 // THE ONE INTERFACE THIS CLAIM DISCRIMINATES AT is harness_add_serving_candidate: every observation it
 // consumes is supplied above, and the one value it reaches for itself is the declared-unit standing
-// for this group, read from the pair render artifacts it is handed. The roster is the PRODUCTION one
-// -- spark_pair_realizations, whose head units were sealed with DigestStdin at the render boundary
-// (why this file is on the wet lane). With it, the route verdict stops at the incarnation frontier;
-// withdraw this group's row and the verdict is the declared-unit refusal instead. Deleting the carry
-// between the artifact roster and this fold therefore turns this claim red, which is the pairing
-// obligation the digest witness alone cannot pay: that witness proves the artifact, this one proves
-// the wire consumes it.
-fn w_place(pair_units: List<SparkPairRealization>) -> HarnessCandidates {
+// for this group, read from the durable artifact file. GREEN publishes that file from the production
+// realization (DigestStdin at apply, not at collect); RED withdraws it. Deleting the lookup between
+// that file and this fold turns this claim red, which is the pairing obligation the digest witness
+// alone cannot pay: that witness proves DigestStdin of the exact bytes, this one proves bind reads
+// the store.
+fn w_place() -> HarnessCandidates {
   let field = "1789300000.12"
   harness_add_serving_candidate(
     acc: HarnessCandidates { candidates: [], notes: [], retryable: false },
@@ -84,31 +83,28 @@ fn w_place(pair_units: List<SparkPairRealization>) -> HarnessCandidates {
     seats: 4,
     seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
     now: 1789400000,
-    pair_units: pair_units,
   )
 }
 
-fn w_realization_group(r: SparkPairRealization) -> FabricGroup {
-  match r {
-    SparkPairRealizationRefused { group: g, cause: _ } => g
-    SparkPairRealized { group: g, head: _, workers: _ } => g
+test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier() -> Bool {
+  match first(spark_pair_realizations()) {
+    Absent => false
+    Present { value: r } => {
+      let published = spark_pair_publish_declared_head_artifact(realization: r)
+      let placed = w_place()
+      published
+        && length(placed.candidates) == 0
+        && any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
+        && !any(placed.notes, note => note.contains(spark_pair_declared_unit_artifact_unavailable_obligation as String))
+    }
   }
 }
 
-test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier() -> Bool {
-  let placed = w_place(pair_units: spark_pair_realizations())
-  length(placed.candidates) == 0
-    && any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
-    && !any(placed.notes, note => note.contains(spark_pair_no_realization_names_group_obligation as String))
-}
-
-// RED CONTROL for the row above: the same fold with this group's row withdrawn from the production
-// artifact roster refuses at the declared unit, so the verdict depends on the roster and not on the
-// fold's shape. The roster is still the realized one (so this row stays on the same wet schedule as
-// its pair); only the row for the group under placement is removed.
 test fn a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation() -> Bool {
-  let placed = w_place(pair_units: filter(spark_pair_realizations(), r => (fabric_group_wire(g: w_realization_group(r: r)) as String) != (fabric_group_wire(g: FabricGroupA) as String)))
-  length(placed.candidates) == 0
-    && any(placed.notes, note => note.contains(spark_pair_no_realization_names_group_obligation as String))
+  let withdrawn = spark_pair_withdraw_declared_head_artifact(group: FabricGroupA)
+  let placed = w_place()
+  withdrawn
+    && length(placed.candidates) == 0
+    && any(placed.notes, note => note.contains(spark_pair_declared_unit_artifact_unavailable_obligation as String))
     && !any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
 }
