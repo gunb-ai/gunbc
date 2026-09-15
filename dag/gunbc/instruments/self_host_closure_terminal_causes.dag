@@ -1,0 +1,1207 @@
+module gunbc.tools.self_host_closure_terminal_causes
+
+import v2.std.algebra { any, filter, length }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import v2.workflow.compile_door_ledger { FatalGrain, cause_ownership_lookup }
+
+// THE TERMINAL-CAUSE TABLE FOR THE V2 SELF-HOST CLOSURE, from the native driver's own per-file
+// output. The subject is the INPUT CLOSURE of src/v2/compiler/00_compile.dag - the modules the
+// emitted-native compiler is actually built from - and not the directory census a reader counting
+// *.dag under src/v2/compiler would reach. The closure is a fact about imports, it is carried below
+// as closure_module_manifest, and its width is length over that roster. How much of it the emitted
+// compiler's own front end refuses is length over closure_refusal_rows.
+//
+// WHY THE TERMINAL DIAGNOSTIC AND NOT THE HEAD. A rejection is a LIST, and rejected_with_pending
+// prepends the grammar-global overlap residue to every parse failure, so the head reason is the
+// same symbol on almost every row and discriminates nothing. The row therefore carries the LAST
+// diagnostic - the cause that actually refused - at the same fatal grain
+// v2.workflow.compile_door_ledger owns its FatalGrain rows at. The cause symbols here are those
+// symbols; nothing is re-coined.
+//
+// WHY A CAUSE ROSTER SEPARATE FROM THE FILE ROWS. One defect surfaces under several stop lexemes
+// and in several files, and one file can carry several defects, so file and cause are two
+// populations joined by a relation - not one row each. The displayed stop lexeme is where the
+// parser gave up, never the cause: it is the NEXT declaration's leading keyword as often as it is
+// the offending token.
+//
+// ARE THE CAUSES SHARED ACROSS FILES? Yes, and that is the load-bearing result. The concentration is
+// at both ends, and cause_population is what says how far: a module body that reaches no function
+// declaration and a raw newline inside a string literal are the two largest slices between them, and
+// the parse class is the mirror image - a single terminal reason standing for the most causes of any,
+// which is why its file count was never its work size. Ask cause_population for a defect's reach and
+// rows_for_cause for its subjects; no count is written here, because the rows beside this note
+// already determine every one of them and a numeral copied out of them rots the moment a lane
+// repairs a row. Sharing runs the other way too - one file can carry several defects, so the
+// per-cause populations overlap and do not sum to the row count - and it crosses stop lexemes: the
+// same defect is reported at `fn`, at `data`, at `type` and at its own token depending only on where
+// the parser happened to give up.
+//
+// HOW THIS TABLE IS RE-DERIVED, AND WHERE THE PRODUCER RESOLVES - which is NOT this base, and saying
+// otherwise would be the unreachable citation this module refuses to make elsewhere.
+//
+// The population and the terminal causes come from the emitted native compiler's own per-file output,
+// reached by `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane
+// v2-native`, whose context fold emits one NativeTestFileRefusal row per source carrying the head and
+// fatal reason. That lane, its authority gunbc.witness_v2_native_route, and the NativeTestFileRefusal
+// row type resolve on this base: they landed with #10882. An earlier revision of this note said they
+// resolved only at the pinned head, which was true when written and is not now - the pin still names
+// the tree the rows were OBSERVED over, which is what a pin is for, but it is no longer the only tree
+// in which the citation resolves.
+//
+// The per-declaration reduction behind each cause comes from a probe that calls
+// v2.compiler.program_assembly program_assembly_read_to_normalized_root_prepared - the same per-file
+// path that fold takes, so every stage the fold can refuse at is reachable from it. That symbol does
+// resolve here.
+//
+// EVERY STATEMENT HERE ABOUT THE STATE OF A BRANCH NAMES THE HEAD IT DESCRIBES. Two revisions of this
+// module's producer note were wrong in opposite directions - one claiming the lane resolved here when
+// it did not, then one claiming it resolved only at the pin, which stopped being true the moment
+// #10882 merged. A sentence about a moving branch rots in whichever direction the branch moves next,
+// so the pin names the tree the rows were OBSERVED over and nothing here asserts a present tense about
+// main that a later merge can falsify.
+//
+// WHAT A READER MAY NOT DO WITH IT. There is no aggregate verdict, because the population IS the
+// finding; a Boolean over it would be a verdict on subjects that have not each been separately
+// established. Each cause carries how its per-file join was backed, and the two backings are not
+// the same rung - see JoinEvidence.
+
+// THIS CARRIER'S STANDING: A HAND-AUTHORED, REVISION-SCOPED SNAPSHOT. It is stated here because the
+// table is not one kind of thing, and only half of it is a projection.
+//
+// The PROJECTED half is the population and the terminal causes. The v2-native lane's context fold
+// already emits exactly one {path, head_reason, fatal_reason} row per source, on this base, and
+// closure_module_manifest is likewise derivable from the emitted crate's per-module headers. Those rows are hand-applied here, which is the manual-application-committed-as-source tell,
+// and they are the part that should stop being authored.
+// dissolve-on: the front end's per-file verdict becoming derivable IN-MODEL, at which point these rows
+// are a fold's output, an emission target and a drift gate can exist for them, and the hand-authored
+// copy is deleted rather than migrated.
+//
+// THAT TRIGGER USED TO NAME gunbc.generated_artifact_gate AND THAT WAS WRONG, in a way worth recording
+// because it invites a specific misreading. Every artifact that gate carries - the workflow YAML, the
+// gitignore, DESIGN.md, the githooks, the stage0 crate layout - is a PROJECTION: a pure fold from .dag
+// authorities, regenerated deterministically in the regen path. These rows are not that. They are an
+// OBSERVATION, produced by emitting a compiler, building it, and running it over a source tree; no
+// fold over model data yields them, and a regen path cannot hold a twenty-five-minute build-and-run.
+// So the lane resolving on this base means the measurement can be RE-TAKEN, which is what makes the
+// table re-derivable and is why the producer is named - it does not mean the model can EMIT these
+// rows, which is what a generated artifact requires. The earlier wording blurred those two, and a
+// reader could reasonably have concluded the projected half could be generated today. It cannot, and
+// the capability that would change that is the one now named.
+//
+// The AUTHORED half is the cause roster and the per-file attribution: eighteen defects, each with a
+// reproducer, a positive control, a nearest-alternative control and its join evidence. No producer in
+// this repository emits those, because they are the output of reduction - prefix isolation, a ladder
+// of single edits, and delta-debugging - and not of a fold. Generating this table today would
+// therefore cover the projected half and fork the authored half away from it, which is a worse state
+// than one carrier that says which half is which.
+// dissolve-on: reduction becomes a modeled fold whose result the lane can emit; until that capability
+// exists this half has no producer to name, and saying otherwise would be naming an instrument that
+// does not exist.
+
+// WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE. This was a DESIGN 3c SECOND-STATE frontier - a named
+// consumer in a named later change, with its trigger beside it - and the trigger has fired, so it is
+// now the FIRST state and the declaration is kept only because the history is the evidence that the
+// trigger named a capability rather than an aspiration.
+//
+// THE CONSUMER, EXECUTING: v2.workflow.compile_door_ledger cause_ownership_lookup, asked at FATAL
+// grain of every terminal_reason carried below, through terminal_reason_owned_at_fatal_grain. That
+// join could not be written before #10882: known_frontier_causes carried four causes, all at HEAD
+// grain, with none of this table's five terminal reasons among them, so the witness would have been
+// red then and green on the repair - the wrong direction for every subject involved. With the
+// grain-keyed lookup and the fatal-grain rows on this base it is an ordinary executing route whose
+// red is authorable: a row naming a cause the ledger does not own at fatal grain turns it false.
+//
+// THE JOIN RUNS IN ONE DIRECTION ONLY, AND THE OTHER IS NOT ASSERTABLE. Every terminal cause here must
+// be owned by the ledger at fatal grain - that direction is a real obligation and is checked. The
+// converse is FALSE and asserting it would be a defect: the ledger owns fatal-grain causes this table
+// does not carry, because the closure simply does not reach them - resolve and infer causes among
+// them, which refuse whole-corpus modules the compiler's own closure never hits. A witness demanding
+// the reverse would go red on a correct table and would be pressure to pad this roster with causes
+// nobody measured here.
+//
+// WHY THIS PARTICULAR CONSUMER AND NOT A CONVENIENT ONE. It joins against an INDEPENDENT authority, so
+// unlike every other witness over this table it can go red because a DIFFERENT module changed - the
+// door ledger retiring a cause, or this table naming one the ledger never owned. That is the
+// difference between a table that checks itself and a table something else depends on.
+
+// THE PIN. Every row is an observation of ONE tree through ONE binary. The emitted closure's own
+// reported identity is byte-derived and therefore unstable across emissions (the seed emitter emits
+// its re-export lines in unordered-set order), so an ORDER-INSENSITIVE digest is carried beside it
+// as the key two runs can join on. That digest covers the EMITTED sources only: an earlier revision
+// pinned a value that also swept in a hand-written probe under src/bin/, which made it a fact about
+// whoever measured rather than about the emission, and no second reader could reproduce it - the
+// unreachable citation this module refuses elsewhere, committed here. Its producer is the exact
+// command in docs/plans/self-host-closure-terminal-causes.md; the corrected value was reproduced
+// independently on another host, over that host's own emission of the same head. The two hosts'
+// driver binaries differ in bytes, and that delta is BUILD ENVIRONMENT, not architecture - an earlier
+// revision of this note said architecture, which was inferred rather than checked and was wrong.
+//
+// The driver binary digest is the strongest of the three: rebuilding it from a SECOND emission of the
+// same sources produced identical bytes, which is what establishes that the re-export delta is inert
+// rather than merely believed to be.
+//
+// THE GRAMMAR-PREPARE RESIDUE IS PINNED HERE because the repair lanes need a BEFORE number and a
+// number that lives in a message is unreachable from the thing that owns it. It is prepare_grammar's
+// own non-fatal residue at this head - the advisory rejected_with_pending prepends to every parse
+// failure, which is why the head grain discriminates nothing. It is a property of the GRAMMAR and not
+// of the corpus, so a lane adding a production can move it in either direction and a rise is not by
+// itself a regression: a production that overlaps an existing choice adds residue rows even when it
+// parses everything it was added for.
+//
+// THE CLOSURE-ONLY SHORTCUT IS ESTABLISHED, NOT ASSUMED, AND ON EACH AXIS SEPARATELY. Every row here
+// was taken over a source root holding exactly the manifest's members rather than the whole tree, on
+// the reasoning that a per-file front-end refusal is a function of that file's bytes and the prepared
+// grammar alone. Three observations of the same head now check that reasoning rather than restate it:
+// this baseline; the same closure-only root through a DIFFERENT driver binary built on another host;
+// and that host's binary over the WHOLE tree. Baseline against the second isolates the binary, the
+// second against the third isolates the root, and every closure member reached the same terminal cause
+// in all three - none changing, none missing. So the shortcut is the same instrument as the full-root
+// driver on each axis independently, not merely when both vary together, which is the weaker claim a
+// single comparison would have supported. The method and all three observation identities are in
+// docs/plans/self-host-closure-terminal-causes.md.
+//
+// WHAT THE PIN DELIBERATELY DOES NOT CARRY is a digest of the per-declaration reduction probe. That
+// probe is a recipe in docs/plans/self-host-closure-terminal-causes.md, not an artifact in this tree,
+// so a digest of it would pin an identity no reader here can reproduce - an unreachable citation,
+// which is worse than none. The route that IS executable from this repository is the one that
+// produced the population and the terminal causes, and it is named below.
+type ObservationPin {
+  head_sha: String
+  emitted_closure_identity_as_reported: String
+  order_insensitive_closure_digest: String
+  emitted_driver_binary_digest: String
+  compiler_source_manifest_digest: String
+  grammar_prepare_residue_total: Int
+}
+
+// HOW A CAUSE WAS JOINED TO THE FILES IT EXPLAINS. The three arms are different rungs and the
+// distinction is the point: an executed join re-ran the compiler over a modified subject and
+// watched the refusal go away, a signature join matched the construct in the isolated culprit
+// declaration and did not. Every cause's RULE is executed either way; this field is about the
+// per-file attribution only, and calling a signature match executed would be the inflation the
+// guarantee ladder forbids.
+type JoinEvidence
+  = JoinedByExecutedNeutralizer
+  | JoinedByExecutedClosureIdentityJoin
+  | JoinedBySignatureOverIsolatedDeclaration
+
+// ONE DEFECT. key is the short id the repair lanes cite; id names the defect; terminal_reason is
+// the symbol the driver reported. The three text fields are PROGRAM TEXT, not commentary: the input
+// that refuses, the input that accepts, and the control that separates this cause from its nearest
+// alternative. A line break inside them is written as an escape, because a raw newline inside a
+// string literal is itself one of the causes rostered below.
+// WHAT THE NEAREST-ALTERNATIVE CONTROL ESTABLISHED. Both arms exclude an alternative and they exclude
+// different ones: a control that ACCEPTS shows the neighbouring construct is innocent, so the cause is
+// not the wider class it sits in; a control that REFUSES IDENTICALLY shows the cause does not depend on
+// the detail that control varied.
+//
+// THE VERDICT IS THE CONSTRUCTOR, NOT A FIELD BESIDE THE INPUT. An earlier revision carried the control
+// text and its verdict as two fields, which left the verdict readable by a human and consumed by
+// nothing - and the only carrier-decidable check over it turned out to be implied by the
+// copied-control wall, so adding one would have been the redundant witness this file has already
+// deleted twice. As a variant the question cannot be dodged: reading the input at all eliminates the
+// arm, so every consumer of the control has consumed the verdict, by construction rather than by a
+// check that re-states it.
+type NearestAlternativeControl
+  = ControlThatAccepts { input: String }
+  | ControlThatRefusesIdentically { input: String }
+
+type FrontEndCause {
+  key: Symbol
+  id: Symbol
+  terminal_reason: Symbol
+  rejecting_reproducer: String
+  positive_control: String
+  discriminating_control: NearestAlternativeControl
+  join_evidence: JoinEvidence
+}
+
+// THE CLOSURE ITSELF, as the denominator every row is a fraction of. It is derived, not listed by
+// hand: the emitted probe crate writes one Rust file per closure module carrying a `// Source
+// module:` header, and joining those headers against each `.dag` file's own `module` line yields
+// exactly these paths.
+//
+// THREE POPULATIONS ARE EASY TO CONFLATE HERE AND ONLY ONE IS THIS TABLE'S SUBJECT, so all three are
+// named. The MODULES are the `.dag` closure members - this roster, and the denominator every refusal
+// row is a fraction of. The EMITTED RUST FILES under the probe crate's `src/` are more numerous: one
+// per module PLUS four that project no module at all - the crate root, the driver's `main`, the
+// runtime shim and an emitted population table - which is exactly why membership is decided by the
+// `// Source module:` header join and never by counting `.rs` files. The EMISSION'S OWN FILE COUNT,
+// which the lane prints, is larger still because it includes a file outside `src/`. A reader taking
+// the second or third number for the first would be measuring the emitter's harness, not the
+// compiler's closure; the four-file gap is not slack in the roster.
+//
+// The roster is carried because a population without its denominator invites the directory census
+// this table exists to replace - and because it is the only thing a refusal row's path can be joined
+// AGAINST, which is what makes the membership witness a real check rather than a comparison of two
+// numerals authored side by side.
+data closure_module_manifest: List<String> = [
+  "dag/extdeps/cache/catalog_io.dag",
+  "dag/extdeps/cache/catalog_placement.dag",
+  "dag/extdeps/cache/materialization.dag",
+  "dag/extdeps/cache/types.dag",
+  "dag/extdeps/communication/fidelity_carriers.dag",
+  "dag/extdeps/communication/medium.dag",
+  "dag/extdeps/currency/currency.dag",
+  "dag/extdeps/external_authority.dag",
+  "dag/extdeps/languages/rust/capabilities.dag",
+  "dag/extdeps/languages/rust/emit.dag",
+  "dag/extdeps/realization/compile_stage_memo.dag",
+  "dag/extdeps/realization/parse_table_memo.dag",
+  "dag/extdeps/units/dimensionless.dag",
+  "dag/extdeps/units/iec_80000_13.dag",
+  "dag/extdeps/units/iso8601.dag",
+  "dag/extdeps/units/iso_80000_3.dag",
+  "dag/extdeps/uri.dag",
+  "dag/extdeps/uri_path.dag",
+  "dag/gunbc/v1/v1_interpreter_primitive_surface.dag",
+  "dag/std/algebra.dag",
+  "dag/std/bit.dag",
+  "dag/std/cache_identity.dag",
+  "dag/std/cache_interface.dag",
+  "dag/std/checked_arithmetic.dag",
+  "dag/std/compiler_entry.dag",
+  "dag/std/computation.dag",
+  "dag/std/constructors.dag",
+  "dag/std/content_hash.dag",
+  "dag/std/decl_ref.dag",
+  "dag/std/determinism.dag",
+  "dag/std/disposition.dag",
+  "dag/std/dissolution.dag",
+  "dag/std/effects.dag",
+  "dag/std/emit_model.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/execution_mode.dag",
+  "dag/std/induction.dag",
+  "dag/std/integer.dag",
+  "dag/std/interval.dag",
+  "dag/std/keyed_roster.dag",
+  "dag/std/keyed_row.dag",
+  "dag/std/logic.dag",
+  "dag/std/machine_constraints.dag",
+  "dag/std/magnitude.dag",
+  "dag/std/materialization_ladder.dag",
+  "dag/std/measure.dag",
+  "dag/std/nat.dag",
+  "dag/std/occurrence_identity.dag",
+  "dag/std/pareto.dag",
+  "dag/std/perturbation.dag",
+  "dag/std/primitive_identity.dag",
+  "dag/std/primitive_projection.dag",
+  "dag/std/primitives.dag",
+  "dag/std/process_termination.dag",
+  "dag/std/realization.dag",
+  "dag/std/realization_measurement.dag",
+  "dag/std/realization_schedule.dag",
+  "dag/std/realization_width.dag",
+  "dag/std/roster_frontier.dag",
+  "dag/std/source_annotation.dag",
+  "dag/std/termination.dag",
+  "dag/std/trait_derive_shape.dag",
+  "dag/std/types.dag",
+  "dag/std/unicode/types.dag",
+  "dag/std/witness_admission.dag",
+  "src/v2/compiler/body_lowering_fold.dag",
+  "src/v2/compiler/body_producer_forward.dag",
+  "src/v2/compiler/00_compile.dag",
+  "src/v2/compiler/05_emit.dag",
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/fold_lowering.dag",
+  "src/v2/compiler/04_infer.dag",
+  "src/v2/compiler/inferred_tree.dag",
+  "src/v2/compiler/materialization_carriers.dag",
+  "src/v2/compiler/03_name_resolve.dag",
+  "src/v2/compiler/namespace_graft.dag",
+  "src/v2/compiler/03_normalize.dag",
+  "src/v2/compiler/normalized_tree.dag",
+  "src/v2/compiler/02_parse.dag",
+  "src/v2/compiler/parse_diagnostic.dag",
+  "src/v2/compiler/parse_engine_hooks.dag",
+  "src/v2/compiler/program_assembly.dag",
+  "src/v2/compiler/03_resolve.dag",
+  "src/v2/compiler/source_authority.dag",
+  "src/v2/compiler/symbol_index_fill.dag",
+  "src/v2/compiler/07_target_carriers.dag",
+  "src/v2/compiler/01_tokenize.dag",
+  "src/v2/compiler/06_translate.dag",
+  "src/v2/compiler/wrap_decision.dag",
+  "src/v2/extdeps/languages/dag.dag",
+  "src/v2/extdeps/languages/fidelity.dag",
+  "src/v2/extdeps/languages/llvm_ir.dag",
+  "src/v2/extdeps/languages/python.dag",
+  "src/v2/extdeps/languages/typescript.dag",
+  "src/v2/extdeps/runtimes/v2_effect_io_pure.dag",
+  "src/v2/extdeps/runtimes/v2_evaluator.dag",
+  "src/v2/lens/common/construction_justification.dag",
+  "src/v2/lens/complexity_accumulator_copy.dag",
+  "src/v2/lens/complexity_accumulator_copy/analyze.dag",
+  "src/v2/lens/complexity_accumulator_copy/compile_gate.dag",
+  "src/v2/lens/cost.dag",
+  "src/v2/lens/cost/copied_port_citations.dag",
+  "src/v2/lens/cost/copied_port_derivation.dag",
+  "src/v2/lens/determinism.dag",
+  "src/v2/lens/fact_density.dag",
+  "src/v2/lens/lifecycle_carrier.dag",
+  "src/v2/lens/machine_shape.dag",
+  "src/v2/lens/mandatory_tag.dag",
+  "src/v2/lens/undecidable_verdict_collapse.dag",
+  "src/v2/lens/unit_modeling.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/anti_unification.dag",
+  "src/v2/std/artifact.dag",
+  "src/v2/std/bounded_lattice_completeness.dag",
+  "src/v2/std/cardinality.dag",
+  "src/v2/std/coercion.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/compilers/body_lowering.dag",
+  "src/v2/std/compilers/lexing.dag",
+  "src/v2/std/compilers/sugar.dag",
+  "src/v2/std/compilers/target_model.dag",
+  "src/v2/std/constraint_satisfaction_predicate.dag",
+  "src/v2/std/constraints.dag",
+  "src/v2/std/cross_tree/import_model.dag",
+  "src/v2/std/cross_tree/resolution.dag",
+  "src/v2/std/determinism.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/exact_structural_equality_zip_fold_predicate.dag",
+  "src/v2/std/find_witness.dag",
+  "src/v2/std/fn_index.dag",
+  "src/v2/std/fold_assembly.dag",
+  "src/v2/std/grammar.dag",
+  "src/v2/std/grammar_choice_ambiguity.dag",
+  "src/v2/std/grounding.dag",
+  "src/v2/std/host_run.dag",
+  "src/v2/std/host_transport.dag",
+  "src/v2/std/integer.dag",
+  "src/v2/std/integer_value_set.dag",
+  "src/v2/std/language_model.dag",
+  "src/v2/std/layer.dag",
+  "src/v2/std/live_tree.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/machine.dag",
+  "src/v2/std/model_core.dag",
+  "src/v2/std/namespace_alias.dag",
+  "src/v2/std/nat.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_query.dag",
+  "src/v2/std/node_shape.dag",
+  "src/v2/std/occurrence_id.dag",
+  "src/v2/std/optional.dag",
+  "src/v2/std/passing_candidate_fold.dag",
+  "src/v2/std/project_to_core_predicate.dag",
+  "src/v2/std/provenance.dag",
+  "src/v2/std/qualified_name.dag",
+  "src/v2/std/refinement.dag",
+  "src/v2/std/refinement_widening_predicate.dag",
+  "src/v2/std/resolution_policy.dag",
+  "src/v2/std/runtime.dag",
+  "src/v2/std/staging.dag",
+  "src/v2/std/subject_evidence.dag",
+  "src/v2/std/symbol_index.dag",
+  "src/v2/std/test_claim_falsification.dag",
+  "src/v2/std/text.dag",
+  "src/v2/std/verdict.dag",
+  "src/v2/std/verification.dag",
+  "src/v2/std/witness.dag"
+]
+
+// THE SHORTCUT RECEIPT. Three observations of the pinned head, and the two pairings that isolate one
+// variable each. It carries identities and an outcome, never rows: the members themselves are the
+// table above, and a second copy of them keyed by join would be the duplication this file exists to
+// avoid.
+type ObservationRoot
+  = ClosureOnlyRoot
+  | WholeTreeRoot
+
+type ShortcutObservation {
+  label: Symbol
+  root: ObservationRoot
+  driver_binary_digest: String
+  order_insensitive_closure_digest: String
+}
+
+type IsolatedVariable
+  = DriverBinaryIsolated
+  | SourceRootIsolated
+
+// A DISAGREEMENT MUST NAME ITS MEMBERS. An outcome that could say "they differed" without saying where
+// would be the absorbing arm: unfalsifiable, unactionable, and indistinguishable from not having
+// looked. The variant makes the members unskippable when the answer is not agreement.
+type JoinOutcome
+  = EveryMemberAgreed
+  | MembersDisagreed { members: List<String> }
+
+type ShortcutJoin {
+  isolates: IsolatedVariable
+  left: Symbol
+  right: Symbol
+  outcome: JoinOutcome
+}
+
+// ONE CLOSURE FILE THAT REFUSED, keyed by the path the driver reported. causes names every cause
+// found in the file, so the lists are not disjoint and their lengths do not sum to the row count.
+type ClosureFileRow {
+  path: String
+  terminal_reason: Symbol
+  causes: List<Symbol>
+}
+
+data closure_observation_pin: ObservationPin = ObservationPin {
+  head_sha: "2fb67b411aecfccfce1c2642ebc724df0a755585"
+  emitted_closure_identity_as_reported: "c1136b4a6f89b4a20222f9341e997a47b05d483550db190678f9019229d94321"
+  order_insensitive_closure_digest: "27d8a7018ec18c43371410a7c0b0d3beabbe0f9021ef81e9e8b2b70cb632c5b3"
+  emitted_driver_binary_digest: "f939a936d39d504e320a0f6ab059b0ab7dc1432367536279c48304188a81c182"
+  compiler_source_manifest_digest: "9a728cd46a611232fcefc66d7885f31f03e91fa522a01695131427b5bf8330ef"
+  grammar_prepare_residue_total: 7
+}
+
+data front_end_causes: List<FrontEndCause> = [
+  FrontEndCause {
+    key: ^A
+    id: ^where_refinement_clause
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A = NonEmptyStr where brand(\"A\")"
+    positive_control: "type A = NonEmptyStr"
+    discriminating_control: ControlThatRefusesIdentically { input: "type A = NonEmptyStr where true" }
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^B
+    id: ^module_body_without_a_function_declaration
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    rejecting_reproducer: "module m\\n\\ntype A {\\n  x: Int\\n}"
+    positive_control: "module m\\n\\ntype A {\\n  x: Int\\n}\\n\\nfn f() -> Int {\\n  1\\n}"
+    discriminating_control: ControlThatAccepts { input: "module m\\n\\ntest fn t() -> Bool {\\n  true\\n}" }
+    join_evidence: JoinedByExecutedClosureIdentityJoin
+  },
+  FrontEndCause {
+    key: ^C
+    id: ^string_literal_containing_a_raw_newline
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    rejecting_reproducer: "data d: String = \"line one<RAW NEWLINE>line two\""
+    positive_control: "data d: String = \"line one\\\\nline two\""
+    discriminating_control: ControlThatAccepts { input: "data d: String = \"an em dash \\u2014 here\"" }
+    join_evidence: JoinedByExecutedClosureIdentityJoin
+  },
+  FrontEndCause {
+    key: ^D
+    id: ^single_arm_match
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    rejecting_reproducer: "match t {\\n  _ => 1\\n}"
+    positive_control: "match t {\\n  A => 1\\n  _ => 2\\n}"
+    discriminating_control: ControlThatAccepts { input: "match t {\\n  A => 1\\n  B { x: v } => v\\n  _ => 3\\n}" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^E
+    id: ^token_between_a_type_name_and_its_body
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type S sole_constructor {\\n  x: Int\\n}"
+    positive_control: "type S {\\n  x: Int\\n}"
+    discriminating_control: ControlThatRefusesIdentically { input: "type S foo {\\n  x: Int\\n}" }
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^F
+    id: ^match_as_a_field_name
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    rejecting_reproducer: "type R {\\n  match: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.match\\n}"
+    positive_control: "type R {\\n  other: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.other\\n}"
+    discriminating_control: ControlThatAccepts { input: "type R {\\n  loop: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.loop\\n}" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^G
+    id: ^expression_bodied_function
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "fn f(a: Int) -> Int =\\n  a"
+    positive_control: "fn f(a: Int) -> Int {\\n  a\\n}"
+    discriminating_control: ControlThatRefusesIdentically { input: "fn f(c: Int) -> Int = c + 0" }
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^H
+    id: ^as_cast_outside_call_argument_position
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "R { a: x as Hex }"
+    positive_control: "R { a: x }"
+    discriminating_control: ControlThatAccepts { input: "g(a: x as Hex)" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^I
+    id: ^match_as_an_infix_operand
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "true && match x {\\n  true => true\\n  false => false\\n}"
+    positive_control: "match x {\\n  true => true\\n  false => false\\n}"
+    discriminating_control: ControlThatAccepts { input: "let y = match x {\\n  true => true\\n  false => false\\n}" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^J
+    id: ^numeric_literal_as_a_type_argument
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A = MachineWidth<8>"
+    positive_control: "type A = MachineWidth<Eight>"
+    discriminating_control: ControlThatAccepts { input: "type A = Compose<Int, List<Int>>" }
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^K
+    id: ^leading_pipe_in_a_variant_declaration
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A\\n  = | B\\n  | C"
+    positive_control: "type A\\n  = B\\n  | C"
+    discriminating_control: ControlThatAccepts { input: "type A =\\n  B\\n  | C" }
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^L
+    id: ^inline_record_type_alias
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A = { a: Int, b: Int }"
+    positive_control: "type A {\\n  a: Int\\n  b: Int\\n}"
+    discriminating_control: ControlThatAccepts { input: "type A = Map<String, String>" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^M
+    id: ^payload_carrying_constructor
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A\\n  = B(Int)\\n  | C"
+    positive_control: "type A\\n  = B\\n  | C"
+    discriminating_control: ControlThatAccepts { input: "match t {\\n  A(s) => 1\\n  B => 2\\n}" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^N
+    id: ^brace_literal_as_a_data_value
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "data d: Map<String, String> = {\\n  \"a\": \"b\"\\n}"
+    positive_control: "data d: Int = 1"
+    discriminating_control: ControlThatAccepts { input: "fn f() -> R {\\n  R {\\n    a: 1\\n  }\\n}" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^O
+    id: ^negative_numeric_literal
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "fn f() -> Int {\\n  -1\\n}"
+    positive_control: "fn f() -> Int {\\n  1\\n}"
+    discriminating_control: ControlThatAccepts { input: "fn f(a: Int) -> Int {\\n  a - 1\\n}" }
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^P
+    id: ^declaration_keyword_in_expression_position
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "B { module: a }"
+    positive_control: "B { thing: a }"
+    discriminating_control: ControlThatAccepts { input: "fn f(module: Int) -> Int {\\n  1\\n}" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^Q
+    id: ^early_return_statement
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "fn f(a: Bool) -> Int {\\n  if a {\\n    return 1\\n  }\\n  2\\n}"
+    positive_control: "fn f(a: Bool) -> Int {\\n  if a {\\n    1\\n  } else {\\n    2\\n  }\\n}"
+    discriminating_control: ControlThatAccepts { input: "fn f(a: Bool) -> Int {\\n  let x = 1\\n  x\\n}" }
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^R
+    id: ^function_value_in_a_data_record_field
+    terminal_reason: ^normalized_tree_reason_wrapper_retention_not_normalized
+    rejecting_reproducer: "data d: A = A {\\n  meet: (a, b) => a\\n}"
+    positive_control: "data d: A = A {\\n  meet: 1\\n}"
+    discriminating_control: ControlThatAccepts { input: "fn f() -> A {\\n  A {\\n    meet: (a, b) => a\\n  }\\n}" }
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  }
+]
+
+data shortcut_observations: List<ShortcutObservation> = [
+  ShortcutObservation {
+    label: ^baseline_closure_only
+    root: ClosureOnlyRoot
+    driver_binary_digest: "f939a936d39d504e320a0f6ab059b0ab7dc1432367536279c48304188a81c182"
+    order_insensitive_closure_digest: "27d8a7018ec18c43371410a7c0b0d3beabbe0f9021ef81e9e8b2b70cb632c5b3"
+  },
+  ShortcutObservation {
+    label: ^peer_host_closure_only
+    root: ClosureOnlyRoot
+    driver_binary_digest: "9ff3805437f9e08fc5135a5a450c4ad504bf7c614d83277589b393c560bf48bc"
+    order_insensitive_closure_digest: "27d8a7018ec18c43371410a7c0b0d3beabbe0f9021ef81e9e8b2b70cb632c5b3"
+  },
+  ShortcutObservation {
+    label: ^peer_host_whole_tree
+    root: WholeTreeRoot
+    driver_binary_digest: "9ff3805437f9e08fc5135a5a450c4ad504bf7c614d83277589b393c560bf48bc"
+    order_insensitive_closure_digest: "27d8a7018ec18c43371410a7c0b0d3beabbe0f9021ef81e9e8b2b70cb632c5b3"
+  }
+]
+
+data shortcut_joins: List<ShortcutJoin> = [
+  ShortcutJoin {
+    isolates: DriverBinaryIsolated
+    left: ^baseline_closure_only
+    right: ^peer_host_closure_only
+    outcome: EveryMemberAgreed
+  },
+  ShortcutJoin {
+    isolates: SourceRootIsolated
+    left: ^peer_host_closure_only
+    right: ^peer_host_whole_tree
+    outcome: EveryMemberAgreed
+  }
+]
+
+data closure_refusal_rows: List<ClosureFileRow> = [
+  ClosureFileRow {
+    path: "dag/extdeps/cache/catalog_io.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/cache/catalog_placement.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/communication/medium.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/external_authority.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/languages/rust/emit.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^N]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/realization/compile_stage_memo.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/realization/parse_table_memo.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/units/iso_80000_3.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^K]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/uri.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^E, ^H, ^M]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/uri_path.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^Q]
+  },
+  ClosureFileRow {
+    path: "dag/gunbc/v1/v1_interpreter_primitive_surface.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "dag/std/bit.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/cache_identity.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A]
+  },
+  ClosureFileRow {
+    path: "dag/std/cache_interface.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A, ^O]
+  },
+  ClosureFileRow {
+    path: "dag/std/compiler_entry.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/constructors.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/content_hash.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A, ^G, ^H, ^K, ^M]
+  },
+  ClosureFileRow {
+    path: "dag/std/decl_ref.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^H]
+  },
+  ClosureFileRow {
+    path: "dag/std/disposition.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/dissolution.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^H]
+  },
+  ClosureFileRow {
+    path: "dag/std/emit_model.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/error_primitives.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/integer.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A, ^J]
+  },
+  ClosureFileRow {
+    path: "dag/std/interval.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^E]
+  },
+  ClosureFileRow {
+    path: "dag/std/machine_constraints.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/magnitude.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/measure.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^G, ^H, ^O]
+  },
+  ClosureFileRow {
+    path: "dag/std/pareto.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^G, ^I, ^L]
+  },
+  ClosureFileRow {
+    path: "dag/std/primitive_identity.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "dag/std/primitive_projection.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "dag/std/process_termination.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/realization_schedule.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "dag/std/roster_frontier.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^H, ^I]
+  },
+  ClosureFileRow {
+    path: "dag/std/types.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "dag/std/unicode/types.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^G]
+  },
+  ClosureFileRow {
+    path: "dag/std/witness_admission.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/00_compile.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/02_parse.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/03_resolve.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/05_eval.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/06_translate.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^L]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/inferred_tree.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/normalized_tree.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^E]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/parse_engine_hooks.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/program_assembly.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/source_authority.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/languages/dag.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^I]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/languages/fidelity.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/languages/typescript.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/runtimes/v2_effect_io_pure.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/runtimes/v2_evaluator.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/lens/machine_shape.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/lens/undecidable_verdict_collapse.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/cardinality.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/compilers/target_model.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/cross_tree/resolution.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/grammar_choice_ambiguity.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/integer.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/layer.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/live_tree.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/logic.dag"
+    terminal_reason: ^normalized_tree_reason_wrapper_retention_not_normalized
+    causes: [^R]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/machine.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/model_core.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/namespace_alias.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/occurrence_id.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/passing_candidate_fold.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/runtime.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^F]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/test_claim_falsification.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  }
+]
+
+// THE QUERY THE REPAIR LANES RUN: the files one cause explains, and how many. Folds over the rows,
+// never a second per-cause roster - a hand-authored list beside the rows is the fork this shape
+// exists to avoid.
+fn rows_for_cause(cause: Symbol) -> List<ClosureFileRow> {
+  filter(xs: closure_refusal_rows, predicate: fn(row) { any(xs: row.causes, predicate: fn(c) { c == cause }) })
+}
+
+// The rows recorded for one path. A table is keyed by path, so this answering anything other than a
+// one-element list is a defect of the table itself, and the witness over it asks exactly that - by
+// COUNTING the rows for each path rather than by looking for a pair that disagrees, because two
+// identical duplicate rows disagree about nothing and would slip past a disagreement test.
+fn rows_for_path(path: String) -> List<ClosureFileRow> {
+  filter(xs: closure_refusal_rows, predicate: fn(row) { row.path == path })
+}
+
+fn cause_population(cause: Symbol) -> Int {
+  length(xs: rows_for_cause(cause: cause))
+}
+
+// THE TWO DIRECTIONS OF THE FILE-TO-CAUSE RELATION, as functions rather than as a transcribed
+// number: no row is left without a cause, no rostered cause goes unnamed by any row, and no row
+// names a cause the roster does not carry. All three are properties of THIS table, decidable from
+// it alone, which is why a witness can assert them without re-measuring the tree - and why they
+// stay true statements rather than a measure() == measure() change detector.
+fn every_row_names_a_cause() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) { length(xs: row.causes) == 0 })
+}
+
+fn every_cause_names_a_row() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) { cause_population(cause: c.key) == 0 })
+}
+
+// EVERY REFUSING PATH IS A CLOSURE MEMBER. This is the join that keeps the subject honest: the
+// driver's context fold reports refusals for every source in whatever roots it was given, so a row
+// whose path is not in the manifest is a row that leaked in from a wider run and the table is then
+// measuring something other than the closure. Its red is authorable - a single foreign path in the
+// rows turns it false - which a comparison of the row count against a pinned width was not.
+fn every_refusing_path_is_a_closure_member() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) {
+    !any(xs: closure_module_manifest, predicate: fn(member) { member == row.path })
+  })
+}
+
+// A ROW'S TERMINAL REASON MUST BE ONE ITS OWN NAMED CAUSES REPORTS. This is the table's central
+// semantic claim asked of itself: terminal_reason is the diagnostic that actually refused the file,
+// every cause record carries the terminal reason ITS defect produces, so a row naming only causes that
+// refuse at some other stage is a mis-join - and a repair lane citing that key would go hunting the
+// wrong defect in the right file. A row may name several causes and only one need match, because a
+// file can carry defects that never got to speak: only the one that refused first is terminal.
+fn row_terminal_reason_is_named_by_one_of_its_causes(row: ClosureFileRow) -> Bool {
+  any(xs: row.causes, predicate: fn(c) {
+    any(xs: front_end_causes, predicate: fn(rec) {
+      rec.key == c && rec.terminal_reason == row.terminal_reason
+    })
+  })
+}
+
+fn every_row_terminal_reason_is_named_by_a_cause() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) {
+    !row_terminal_reason_is_named_by_one_of_its_causes(row: row)
+  })
+}
+
+// THE MANIFEST IS A SET, and a repeated path would double-count the denominator every row is a
+// fraction of. Quadratic over the manifest by construction; the fold's shape is what is priced, not
+// the realized width.
+fn every_closure_module_appears_once() -> Bool {
+  !any(xs: closure_module_manifest, predicate: fn(m) {
+    length(xs: filter(xs: closure_module_manifest, predicate: fn(x) { x == m })) != 1
+  })
+}
+
+// THE CONTROL'S INPUT, WHICHEVER ARM IT CAME FROM. Every reader of a control goes through here, so
+// every reader has eliminated the verdict - which is the point of carrying it as a constructor.
+fn control_input(control: NearestAlternativeControl) -> String {
+  match control {
+    ControlThatAccepts { input: i } => i
+    ControlThatRefusesIdentically { input: i } => i
+  }
+}
+
+// WHAT THE CLOSURE-IDENTITY ARM CLAIMS, ASKED OF THE ROWS. That arm means the cause was joined to its
+// files by an identity join over the whole closure with no exceptions - so every row carrying that
+// cause's terminal reason must name it. The weaker signature arm claims nothing of the kind and is not
+// asked for it. Red is authorable in both directions: move a cause onto the executed arm without that
+// coverage, or drop the cause from one row of its class.
+fn causes_joined_by_closure_identity() -> List<FrontEndCause> {
+  filter(xs: front_end_causes, predicate: fn(c) {
+    match c.join_evidence {
+      JoinedByExecutedClosureIdentityJoin => true
+      JoinedByExecutedNeutralizer => false
+      JoinedBySignatureOverIsolatedDeclaration => false
+    }
+  })
+}
+
+fn every_closure_identity_cause_covers_its_class() -> Bool {
+  !any(xs: causes_joined_by_closure_identity(), predicate: fn(c) {
+    any(xs: closure_refusal_rows, predicate: fn(row) {
+      row.terminal_reason == c.terminal_reason
+        && !any(xs: row.causes, predicate: fn(k) { k == c.key })
+    })
+  })
+}
+
+// A NEAREST-ALTERNATIVE CONTROL THAT IS A COPY OF EITHER NAMED INPUT VARIES NOTHING, so its arm reads
+// as separating evidence while separating nothing. Two records were authored that way and a reviewer
+// caught them; this makes the shape unwritable in the carrier instead. It reads the control through
+// control_input, so it eliminates the verdict arm on every record it checks.
+fn no_cause_reuses_a_named_input_as_its_control() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) {
+    control_input(control: c.discriminating_control) == c.positive_control
+      || control_input(control: c.discriminating_control) == c.rejecting_reproducer
+  })
+}
+
+// THE RECORDS FILED UNDER ONE CITATION KEY. Five repair PRs cite causes by key, so a key naming two
+// records makes every one of those citations ambiguous. This COUNTS records per key rather than
+// looking for a disagreeing pair: the commonest duplication is the same record pasted twice, and two
+// identical records disagree about nothing. The row table learned this the hard way and this witness
+// was authored with the old defect anyway - counting is the fix in both places.
+fn causes_with_key(key: Symbol) -> List<FrontEndCause> {
+  filter(xs: front_end_causes, predicate: fn(c) { c.key == key })
+}
+
+fn every_citation_key_names_exactly_one_cause() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) { length(xs: causes_with_key(key: c.key)) != 1 })
+}
+
+// THE CROSS-AUTHORITY JOIN. Every terminal cause this table reports must be a cause
+// v2.workflow.compile_door_ledger owns AT FATAL GRAIN - the same grain distinction that makes the head
+// reason useless here. Asking the ledger rather than a local roster is the point: this is the one
+// clause over this table that a change in another module can turn red.
+fn terminal_reason_owned_at_fatal_grain(reason: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn every_terminal_reason_is_owned_by_the_door_ledger() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) {
+    !terminal_reason_owned_at_fatal_grain(reason: row.terminal_reason)
+  })
+}
+
+fn observations_with_label(label: Symbol) -> List<ShortcutObservation> {
+  filter(xs: shortcut_observations, predicate: fn(o) { o.label == label })
+}
+
+fn observation_is_closure_only(o: ShortcutObservation) -> Bool {
+  match o.root {
+    ClosureOnlyRoot => true
+    WholeTreeRoot => false
+  }
+}
+
+// A JOIN MUST ISOLATE WHAT IT CLAIMS TO ISOLATE. A pairing labelled DriverBinaryIsolated whose two
+// observations used different ROOTS would have varied two things and proved neither separately - the
+// exact overclaim this receipt exists to avoid, and it is decidable from the identities alone.
+fn join_isolation_is_coherent(j: ShortcutJoin) -> Bool {
+  length(xs: observations_with_label(label: j.left)) == 1
+    && length(xs: observations_with_label(label: j.right)) == 1
+    && j.left != j.right
+    && any(xs: observations_with_label(label: j.left), predicate: fn(l) {
+         any(xs: observations_with_label(label: j.right), predicate: fn(r) {
+           match j.isolates {
+             DriverBinaryIsolated =>
+               observation_is_closure_only(o: l) == observation_is_closure_only(o: r)
+                 && l.driver_binary_digest != r.driver_binary_digest
+             SourceRootIsolated =>
+               observation_is_closure_only(o: l) != observation_is_closure_only(o: r)
+                 && l.driver_binary_digest == r.driver_binary_digest
+           }
+         })
+       })
+}
+
+fn every_shortcut_join_isolates_what_it_claims() -> Bool {
+  !any(xs: shortcut_joins, predicate: fn(j) { !join_isolation_is_coherent(j: j) })
+}
+
+// A recorded disagreement that names no member is unactionable and unfalsifiable. This does NOT assert
+// that the joins agreed - a future observation that disagrees is a finding, not a defect of this
+// carrier - it asserts only that a disagreement carries the members it disagreed about.
+fn every_disagreeing_join_names_its_members() -> Bool {
+  !any(xs: shortcut_joins, predicate: fn(j) {
+    match j.outcome {
+      EveryMemberAgreed => false
+      MembersDisagreed { members: m } => length(xs: m) == 0
+    }
+  })
+}
+
+fn every_row_cause_is_rostered() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) {
+    any(xs: row.causes, predicate: fn(c) {
+      !any(xs: front_end_causes, predicate: fn(rostered) { rostered.key == c })
+    })
+  })
+}

@@ -1,0 +1,197 @@
+module gunbc.test.claim.self_host_closure_terminal_causes_test
+
+import v2.std.algebra { any, length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import gunbc.tools.self_host_closure_terminal_causes {
+  closure_observation_pin,
+  closure_refusal_rows,
+  every_cause_names_a_row,
+  every_citation_key_names_exactly_one_cause,
+  no_cause_reuses_a_named_input_as_its_control,
+  every_row_cause_is_rostered,
+  every_refusing_path_is_a_closure_member,
+  every_row_names_a_cause,
+  every_closure_identity_cause_covers_its_class,
+  every_closure_module_appears_once,
+  every_row_terminal_reason_is_named_by_a_cause,
+  every_disagreeing_join_names_its_members,
+  every_shortcut_join_isolates_what_it_claims,
+  every_terminal_reason_is_owned_by_the_door_ledger,
+  terminal_reason_owned_at_fatal_grain,
+  front_end_causes,
+  rows_for_path
+}
+
+// ENTRY-GRAIN DISPOSITION. The authority puts this row in the WITNESS ENTRY FILE so the fact holds
+// however far a read hides behind imports, and the fact here is that nothing in this witness's closure
+// touches the tree: every clause folds literals carried by the table under review.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THESE ASSERT PROPERTIES OF THE TABLE, NEVER A REMEASUREMENT OF THE TREE. The table is a
+// revision-scoped observation: a test that re-derived the population would go red on the repair and
+// green on a regression, which is the wrong direction for every one of these subjects. What is
+// decidable from the carrier alone is that its two populations JOIN - and a join defect is a defect
+// of this artifact, which is exactly what a witness over it should catch.
+//
+// NONE OF THESE COMPARES A COUNT TO A LITERAL COPIED OFF THE SAME TREE. Each is an identity-grain
+// statement over the relation, so automating the carrier's regeneration cannot collapse any of them
+// into measure() == measure().
+
+test fn every_refusing_file_names_at_least_one_cause() -> Bool {
+  every_row_names_a_cause()
+}
+
+test fn every_rostered_cause_is_named_by_some_file() -> Bool {
+  every_cause_names_a_row()
+}
+
+test fn no_row_names_a_cause_the_roster_does_not_carry() -> Bool {
+  every_row_cause_is_rostered()
+}
+
+// A cause whose key and id are the same symbol would mean the short citation key had silently become
+// the descriptive name, and five repair PRs citing keys would then be citing something else.
+test fn the_citation_key_and_the_defect_id_are_distinct() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) { c.key == c.id })
+}
+
+// Two records under one citation key make every one of the five repair PRs' citations ambiguous. This
+// COUNTS the records filed under each key. An earlier revision looked for a pair that DISAGREED about
+// its id, so the commonest duplication - the same record pasted twice - stayed green; that is the
+// identical defect the row table had, diagnosed and fixed there in this same PR and then re-committed
+// here. Counting is the fix in both places, and the row witness below is its twin.
+test fn every_citation_key_names_exactly_one_record() -> Bool {
+  every_citation_key_names_exactly_one_cause()
+}
+
+// Two rows for one path would mean the driver's output was decoded twice or a path was recorded under
+// two spellings; either is a defect of this table and not a finding about the compiler. This COUNTS
+// the rows recorded for each path. An earlier revision instead looked for a pair of rows that
+// disagreed about the terminal reason, which is green for the commonest duplication there is - the
+// same row decoded twice - so it named a defect it could not fail on.
+test fn every_closure_path_has_exactly_one_row() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) { length(xs: rows_for_path(path: row.path)) != 1 })
+}
+
+// A NEAREST-ALTERNATIVE CONTROL THAT COPIES EITHER NAMED INPUT VARIES NOTHING, so its arm claims to
+// separate the cause from something while separating nothing. Two records were authored that way and
+// review 63154 caught them; this is the wall that replaced the reviewer.
+test fn no_cause_reuses_a_named_input_as_its_nearest_alternative_control() -> Bool {
+  no_cause_reuses_a_named_input_as_its_control()
+}
+
+// THE PIN IS THE ROW'S PROVENANCE, so an unrecorded digest makes every row unattributable to a tree
+// or a binary. Emptiness is the only thing decidable here; the values themselves are the observation.
+test fn the_observation_pin_records_every_digest() -> Bool {
+  closure_observation_pin.head_sha != ""
+    && closure_observation_pin.emitted_closure_identity_as_reported != ""
+    && closure_observation_pin.order_insensitive_closure_digest != ""
+    && closure_observation_pin.emitted_driver_binary_digest != ""
+    && closure_observation_pin.compiler_source_manifest_digest != ""
+}
+
+// The residue is the repair lanes' BEFORE number and a lane reports movement against it, so a zero
+// here would let a lane report "unchanged" against a value that was never measured. Zero is not a
+// possible reading either: the advisory is what rejected_with_pending prepends, so a grammar carrying
+// none of it would make the head grain informative and this whole table's head/fatal split moot.
+test fn the_pinned_grammar_residue_is_a_measured_reading() -> Bool {
+  closure_observation_pin.grammar_prepare_residue_total > 0
+}
+
+// THE DENOMINATOR JOIN. The driver's context fold reports a refusal for every source in whatever
+// roots it was handed, so a row whose path is not a closure member is a row that leaked in from a
+// wider run and this table is then measuring something other than the closure it names.
+//
+// An earlier revision compared the ROW COUNT against a width pinned beside it in the same file. Both
+// numerals were authored in one diff, nothing outside it could move either, and no leaked row could
+// make it false - a decoration that would have been cited as coverage. This asks the question at
+// identity grain instead, and its red is authorable: one foreign path in the rows turns it false.
+test fn every_refusing_path_is_a_closure_member_row() -> Bool {
+  every_refusing_path_is_a_closure_member()
+}
+
+// THE TABLE'S CENTRAL SEMANTIC CLAIM, ASKED OF ITSELF. terminal_reason is the diagnostic that actually
+// refused the file and every cause record carries the terminal reason its own defect produces, so a
+// row naming only causes that refuse at some other stage is a mis-join - and a repair lane citing that
+// key would hunt the wrong defect in the right file. Its red is authorable: put ^C, a tokenize-stage
+// cause, on a parse_g0_tokens_remain row and it goes false.
+//
+// This slot previously held a comparison of the manifest's width against the row count. That is
+// implied by the two witnesses above - every refusing path is a member, and each path has exactly one
+// row, so the rows cannot outnumber the manifest - and its STRICT form was worse than redundant: it
+// would go red on a perfectly true table in which every closure file refused. A witness that fails on
+// a correct measurement is not a wall, and its annotation's stated reason was wrong besides (an empty
+// manifest turns the membership join RED, not green).
+test fn every_row_terminal_reason_is_named_by_one_of_its_causes() -> Bool {
+  every_row_terminal_reason_is_named_by_a_cause()
+}
+
+// THE MANIFEST IS THE DENOMINATOR, so a repeated path would inflate it and quietly shrink every
+// fraction taken against it. Red is authorable: duplicate one entry.
+test fn every_closure_module_is_listed_once() -> Bool {
+  every_closure_module_appears_once()
+}
+
+// THE CLOSURE-IDENTITY JOIN ARM CLAIMS WHOLE-CLASS COVERAGE, and this asks the rows whether it holds:
+// a cause joined that way must be named by every row carrying its terminal reason. The signature arm
+// claims nothing of the kind and is deliberately not asked. Red is authorable in both directions -
+// promote a cause onto the executed arm without that coverage, or drop it from one row of its class.
+test fn every_closure_identity_joined_cause_covers_its_whole_class() -> Bool {
+  every_closure_identity_cause_covers_its_class()
+}
+
+// THE ONE CLAUSE HERE THAT ANOTHER MODULE CAN TURN RED. Every other witness in this file folds
+// literals carried by the table under review, which makes them real checks OF THE ARTIFACT and
+// nothing more. This one asks v2.workflow.compile_door_ledger, at FATAL grain, whether it owns each
+// terminal cause this table reports - so it goes red if this table names a cause the ledger never
+// owned, and equally if the ledger retires one while a row still reports it.
+//
+// It is also the frontier this carrier declared and could not write: before the grain-keyed lookup and
+// the fatal-grain rows landed, known_frontier_causes carried four causes at HEAD grain and none of
+// these five, so the clause would have been red then and green on the repair. Writing it now is the
+// trigger having fired, which is the difference between a frontier and an excuse.
+test fn every_terminal_reason_is_owned_at_fatal_grain_by_the_door_ledger() -> Bool {
+  every_terminal_reason_is_owned_by_the_door_ledger()
+}
+
+// THE RECEIPT MUST ISOLATE WHAT IT CLAIMS TO ISOLATE. A pairing labelled DriverBinaryIsolated whose
+// two observations used different roots would have varied two things and established neither
+// separately - which is precisely the overclaim the three-observation design exists to avoid, and it
+// is decidable from the identities alone. Red is authorable: relabel either pairing.
+test fn every_shortcut_join_isolates_the_variable_it_names() -> Bool {
+  every_shortcut_join_isolates_what_it_claims()
+}
+
+// A RECORDED DISAGREEMENT MUST NAME ITS MEMBERS. This deliberately does NOT assert that the joins
+// agreed: a future observation that disagrees is a finding about the shortcut, not a defect of this
+// carrier, and a witness that went red on a true measurement would be the wrong wall. What it refuses
+// is a disagreement recorded without the members it disagreed about - unactionable, unfalsifiable, and
+// indistinguishable from not having looked.
+test fn every_recorded_disagreement_names_its_members() -> Bool {
+  every_disagreeing_join_names_its_members()
+}
+
+// THE JOIN'S NEGATIVE CONTROLS, ENROLLED RATHER THAN RUN ONCE. A cross-authority join that can only
+// return true is not a join, and the guarantee ladder keeps a discriminating red enrolled beside the
+// green rather than retiring it once it has been seen. These are the two ways this fold must be able
+// to refuse.
+//
+// FIRST: a symbol the ledger owns at no grain at all. This is the stable arm - it proves the fold can
+// return false, and nothing short of someone adding that exact symbol to the ledger can disturb it.
+test fn the_ledger_join_refuses_a_cause_it_does_not_own() -> Bool {
+  !terminal_reason_owned_at_fatal_grain(reason: ^not_a_frontier_cause)
+}
+
+// SECOND, AND THE ONE THAT MATTERS: a cause the ledger DOES own, but at HEAD grain only. If this fold
+// ever degraded into a membership check that ignored grain, the first control would stay green and
+// only this one would catch it - and grain is the whole distinction this table is built on, since the
+// head reason is the same symbol on almost every row.
+//
+// It is deliberately coupled to the ledger's content. Should the ledger ever give resolve_ambiguous_
+// export a fatal-grain row, this goes red - and that red is correct rather than a nuisance: it says
+// the control has stopped being a grain control and needs re-basing on whatever is head-grain-only
+// then.
+test fn the_ledger_join_refuses_a_cause_owned_only_at_head_grain() -> Bool {
+  !terminal_reason_owned_at_fatal_grain(reason: ^resolve_ambiguous_export)
+}
