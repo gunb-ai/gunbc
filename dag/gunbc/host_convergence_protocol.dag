@@ -16,6 +16,7 @@ import std.realization_reconcile {
   Grounding,
   ReconciledEffect,
   Application,
+  Reconciliation,
   reconcile_effect,
   reconcile_effect_without_read,
 }
@@ -41,9 +42,15 @@ import gunbc.host_convergence_census {
 // ObservationAttempt<ShowEffectiveRead<E>, String>.
 // RUNG: mechanically preventable on the enrolled REDs; empty GoalDiverged remains
 // structurally impossible in std.goal_assessment.
-// HostEffectDomainProjection is a declared frontier: this cut must not rewrite hosts.
-// Named consumer / trigger: gunbc.live_deploy.member_observe observe_executable
-// (the production route that must call inspect_via_host_effect_projection).
+// HostEffectDomainProjection is the standard host-effect domain surface
+// (observe, assess, decide, readiness). inspect_via consumes observe/assess
+// this cut. decide and readiness are §3c declared frontiers: typed onto
+// std.upsert_decision UpsertDecision and std.realization_reconcile
+// Reconciliation (there is no RuntimeReadiness type; inventing one would be
+// a second vocabulary). Consumers: C3/C4 fleet_plan / fleet_apply for decide;
+// C5 live_readiness for readiness. Triggers name the capability and the cut:
+// C3/C4 route member decisions through this projection; C5 routes provider
+// readiness through this projection.
 // C0 left ensure_decide and observe_executable as inline cites; those two
 // have no named census accessor, so the bind holds one decl_ref each.
 // NEXT-RUNG (controls 1 and 8): a compile instrument that can import
@@ -243,16 +250,18 @@ type CanonicalProtocolStanding
   | CensusProtocolUnbound { standing: CensusPhaseStanding }
   | HostEffectFrontierUnbound { standing: FrontierStanding }
 
-type HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
+type HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, Applied, ReadyEvidence> {
   observe: fn(Subject, Request) -> ObservationAttempt<Observed, ObserveRefusal>
   assess: fn(Goal, Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>
+  decide: fn(GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>) -> UpsertDecision<Plan>
+  readiness: fn(Observed) -> Reconciliation<Applied, ReadyEvidence>
 }
 
-fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>(
+fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, Applied, ReadyEvidence>(
   subject: Subject,
   goal: Goal,
   request: Request,
-  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>,
+  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, Applied, ReadyEvidence>,
 ) -> GoalInspection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
   inspect_goal(
     subject: subject,
@@ -263,7 +272,7 @@ fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence
   )
 }
 
-data host_effect_domain_projection_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+data host_effect_observe_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
   declaration: decl_ref(
     module_path: "gunbc.host_convergence_protocol",
     decl_name: "inspect_via_host_effect_projection",
@@ -271,6 +280,40 @@ data host_effect_domain_projection_frontier: ProtocolDeclaredFrontier = Protocol
   named_consumer: observe_executable_id,
   trigger_capability: observe_executable_id,
 }
+
+data host_effect_decide_plan_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+  declaration: decl_ref(
+    module_path: "gunbc.host_convergence_protocol",
+    decl_name: "HostEffectDomainProjection",
+  ),
+  named_consumer: fleet_plan(),
+  trigger_capability: fleet_plan(),
+}
+
+data host_effect_decide_apply_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+  declaration: decl_ref(
+    module_path: "gunbc.host_convergence_protocol",
+    decl_name: "HostEffectDomainProjection",
+  ),
+  named_consumer: fleet_apply(),
+  trigger_capability: fleet_apply(),
+}
+
+data host_effect_readiness_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+  declaration: decl_ref(
+    module_path: "gunbc.host_convergence_protocol",
+    decl_name: "HostEffectDomainProjection",
+  ),
+  named_consumer: live_readiness(),
+  trigger_capability: live_readiness(),
+}
+
+data host_effect_declared_frontiers: List<ProtocolDeclaredFrontier> = [
+  host_effect_observe_frontier,
+  host_effect_decide_plan_frontier,
+  host_effect_decide_apply_frontier,
+  host_effect_readiness_frontier,
+]
 
 fn frontier_names_a_distinct_consumer(f: ProtocolDeclaredFrontier) -> Bool {
   !declaration_ref_eq(a: f.declaration, b: f.named_consumer)
@@ -315,6 +358,24 @@ fn admit_frontier(f: ProtocolDeclaredFrontier) -> FrontierStanding {
   }
 }
 
+fn bind_declared_frontiers(frontiers: List<ProtocolDeclaredFrontier>) -> CanonicalProtocolStanding {
+  fold(frontiers, init: CanonicalProtocolBound, f: fn(acc, f) {
+    match acc {
+      CanonicalLayersUnbound { join: j } => CanonicalLayersUnbound { join: j }
+      CensusProtocolUnbound { standing: s } => CensusProtocolUnbound { standing: s }
+      HostEffectFrontierUnbound { standing: s } => HostEffectFrontierUnbound { standing: s }
+      CanonicalProtocolBound =>
+        match admit_frontier(f: f) {
+          FrontierHonest => CanonicalProtocolBound
+          FrontierConsumerIsDeclaration { frontier: x } =>
+            HostEffectFrontierUnbound { standing: FrontierConsumerIsDeclaration { frontier: x } }
+          FrontierTriggerIsDeclaration { frontier: x } =>
+            HostEffectFrontierUnbound { standing: FrontierTriggerIsDeclaration { frontier: x } }
+        }
+    }
+  })
+}
+
 fn bind_canonical_protocol() -> CanonicalProtocolStanding {
   match bind_census_protocol_phases(census: host_convergence_census_standing) {
     CensusStandingMalformed { cause: c } =>
@@ -331,13 +392,7 @@ fn bind_canonical_protocol() -> CanonicalProtocolStanding {
         CanonicalLayerDuplicated { layer: d } =>
           CanonicalLayersUnbound { join: CanonicalLayerDuplicated { layer: d } }
         CanonicalLayersCovered =>
-          match admit_frontier(f: host_effect_domain_projection_frontier) {
-            FrontierHonest => CanonicalProtocolBound
-            FrontierConsumerIsDeclaration { frontier: f } =>
-              HostEffectFrontierUnbound { standing: FrontierConsumerIsDeclaration { frontier: f } }
-            FrontierTriggerIsDeclaration { frontier: f } =>
-              HostEffectFrontierUnbound { standing: FrontierTriggerIsDeclaration { frontier: f } }
-          }
+          bind_declared_frontiers(frontiers: host_effect_declared_frontiers)
       }
   }
 }
