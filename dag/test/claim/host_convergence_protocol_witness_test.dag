@@ -34,6 +34,7 @@ import gunbc.host_convergence_protocol {
   SelectionLeakedIntoAssessment,
   bind_canonical_protocol,
   CanonicalProtocolBound,
+  CanonicalFrontiersUnbound,
   CanonicalLayersUnbound,
   CensusProtocolUnbound,
   admit_frontier,
@@ -317,8 +318,9 @@ test fn frontier_self_trigger_is_red() -> Bool {
 
 test fn canonical_protocol_binds() -> Bool {
   match bind_canonical_protocol() {
-    CanonicalProtocolBound { frontiers: fs } =>
+    CanonicalFrontiersUnbound { frontiers: fs } =>
       frontier_standings_await_routing(ss: fs)
+    CanonicalProtocolBound { frontiers: _ } => false
     CanonicalLayersUnbound { join: _ } => false
     CensusProtocolUnbound { standing: _ } => false
   }

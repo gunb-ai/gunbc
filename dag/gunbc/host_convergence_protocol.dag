@@ -1,7 +1,7 @@
 module gunbc.host_convergence_protocol
 
 import std.types { Bool, String, List, Int }
-import v2.std.algebra { filter, length, concat }
+import v2.std.algebra { filter, length }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -246,6 +246,7 @@ type FrontierStanding
 
 type CanonicalProtocolStanding
   = CanonicalProtocolBound { frontiers: List<FrontierStanding> }
+  | CanonicalFrontiersUnbound { frontiers: List<FrontierStanding> }
   | CanonicalLayersUnbound { join: CanonicalLayerJoin }
   | CensusProtocolUnbound { standing: CensusPhaseStanding }
 
@@ -354,11 +355,29 @@ fn admit_frontier(f: ProtocolDeclaredFrontier) -> FrontierStanding {
   }
 }
 
+fn frontier_standing_is_honest(s: FrontierStanding) -> Bool {
+  match s {
+    FrontierHonest => true
+    FrontierConsumerIsDeclaration { frontier: _ } => false
+    FrontierTriggerIsDeclaration { frontier: _ } => false
+    FrontierTriggerIsTheConsumer { frontier: _ } => false
+  }
+}
+
 fn bind_declared_frontiers(frontiers: List<ProtocolDeclaredFrontier>) -> CanonicalProtocolStanding {
-  CanonicalProtocolBound {
-    frontiers: fold(frontiers, init: [], f: fn(acc, f) {
-      concat(acc, [admit_frontier(f: f)])
-    }),
+  let standings = fold(frontiers, init: [], f: fn(acc, f) {
+    concat(acc, [admit_frontier(f: f)])
+  })
+  if fold(standings, init: true, f: fn(ok, s) {
+    if ok {
+      frontier_standing_is_honest(s: s)
+    } else {
+      false
+    }
+  }) {
+    CanonicalProtocolBound { frontiers: standings }
+  } else {
+    CanonicalFrontiersUnbound { frontiers: standings }
   }
 }
 
