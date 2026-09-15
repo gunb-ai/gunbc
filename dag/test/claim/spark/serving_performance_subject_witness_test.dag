@@ -237,7 +237,7 @@ test fn w_an_unread_transport_is_incomparable_and_never_equal() -> Bool {
     max_num_seqs: fx_deepseek_tp4.max_num_seqs,
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
-    collective_transport: none
+    collective_transport: Absent
     )
   join_is_incomparable(j: serving_subject_reads(measurement_subject: unread, decision_subject: fx_deepseek_tp4))
     && join_is_incomparable(j: serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: unread))
@@ -579,7 +579,7 @@ fn ServingPerformanceSubject_with_unread(base: ServingPerformanceSubject) -> Ser
     max_num_seqs: base.max_num_seqs,
     kv_cache_dtype: base.kv_cache_dtype,
     speculative: base.speculative,
-    collective_transport: none
+    collective_transport: Absent
   )
 }
 
