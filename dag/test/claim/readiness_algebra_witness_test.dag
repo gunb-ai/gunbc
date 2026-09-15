@@ -8,9 +8,6 @@ import gunbc.readiness {
   Ready,
   Pending,
   Refused,
-  readiness_is_ready,
-  readiness_is_pending,
-  readiness_is_refused,
 }
 import gunbc.dashboard_provider_readiness {
   classify_dashboard_provider_readiness,
@@ -46,15 +43,19 @@ test fn witness_ready_pending_refused_are_distinct_arms() -> Bool {
   let ready: Readiness<String, String, String> = Ready { evidence: "e" }
   let pending: Readiness<String, String, String> = Pending { cause: "p" }
   let refused: Readiness<String, String, String> = Refused { cause: "r" }
-  readiness_is_ready(r: ready)
-    && readiness_is_pending(r: pending)
-    && readiness_is_refused(r: refused)
-    && !readiness_is_ready(r: pending)
-    && !readiness_is_ready(r: refused)
-    && !readiness_is_pending(r: ready)
-    && !readiness_is_pending(r: refused)
-    && !readiness_is_refused(r: ready)
-    && !readiness_is_refused(r: pending)
+  match ready {
+    Ready { evidence: e } => e == "e"
+    Pending { cause: _ } => false
+    Refused { cause: _ } => false
+  } && match pending {
+    Pending { cause: c } => c == "p"
+    Ready { evidence: _ } => false
+    Refused { cause: _ } => false
+  } && match refused {
+    Refused { cause: c } => c == "r"
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => false
+  }
 }
 
 test fn witness_red_control_state_root_absent_is_pending_not_refused() -> Bool {

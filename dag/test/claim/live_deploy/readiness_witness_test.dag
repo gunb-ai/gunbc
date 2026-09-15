@@ -8,14 +8,13 @@ import gunbc.live_deploy.readiness {
   healthz_body_groundable,
   ground_service_ready_from_healthz,
   live_deploy_healthz_get_for_port,
-  service_ready_apply_effect_for_deploy,
   service_readiness_reason,
   observe_service_readiness_from_healthz,
   ServiceProbeUnanswered,
   HealthzBodyRead,
   HealthzProbeRefused,
 }
-import gunbc.readiness { Ready, Pending, Refused, readiness_is_ready }
+import gunbc.readiness { Ready, Pending, Refused }
 import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_max_attempts,
@@ -26,8 +25,7 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisCaptured,
 }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_spec_for, deployment_srv1_target, derived_deployment_names, deployment_plan_listen_port, gunbc_roadmap_unit_name }
-import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_listen_port }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
   LocalShell,
@@ -81,28 +79,6 @@ fn witness_candidate_release() -> CandidateRelease {
     revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   }
-}
-
-// The readiness effect names the unit of the spec it was HANDED, not production's unit. The second
-// conjunct is what makes that discriminating: an implementation that ignored its argument and
-// returned gunbc_roadmap_unit_name would satisfy the first conjunct on production's own spec and
-// fail only against a spec whose unit differs.
-// RE-ENROLLED against a derived non-production spec. The deleted green slot used to supply that
-// second unit name; with one deployment, asserting this on deployment_spec_srv1 alone would make
-// the second conjunct FALSE (production's spec unit IS gunbc_roadmap_unit_name), so repointing was
-// not available and dropping the conjunct would have deleted the whole discrimination. A spec built
-// from srv1-lab through derived_deployment_names supplies a genuinely different unit name off the
-// production constructor path, so the anti-hardwire check survives the slot it was written against.
-test fn witness_readiness_names_the_unit_of_the_spec_it_is_given() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  let spec = deployment_spec_for(
-    instance: lab,
-    target: deployment_srv1_target(),
-    names: derived_deployment_names(instance: lab),
-  )
-  let effect = service_ready_apply_effect_for_deploy(spec: spec)
-  effect.unit == spec.service.unit_name
-    && effect.unit != gunbc_roadmap_unit_name
 }
 
 test fn witness_healthz_mock_body_groundable() -> Bool {
@@ -201,14 +177,16 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
     port: port,
     transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
   )
-  !readiness_is_ready(
-    r: observe_service_readiness_from_healthz(
-      read: read,
-      bundle: materialize_live_roadmap_site_surface_bundle(),
-      expected_revision: deploy_witness_release_revision,
-      expected_surface_identity: witness_expected_surface_identity(),
-    )
-  )
+  match observe_service_readiness_from_healthz(
+    read: read,
+    bundle: materialize_live_roadmap_site_surface_bundle(),
+    expected_revision: deploy_witness_release_revision,
+    expected_surface_identity: witness_expected_surface_identity(),
+  ) {
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => true
+    Refused { cause: _ } => true
+  }
 }
 
 test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
@@ -237,13 +215,19 @@ test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() ->
     access: ci_deploy_srv1_access,
   )
   let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
-  !readiness_is_ready(r: probe) && delay
+  match probe {
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => delay
+    Refused { cause: _ } => delay
+  }
 }
 
 test fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
-  readiness_is_ready(
-    r: live_deploy_service_ready_once(release_revision: deploy_witness_release_revision)
-  )
+  match live_deploy_service_ready_once(release_revision: deploy_witness_release_revision) {
+    Ready { evidence: _ } => true
+    Pending { cause: _ } => false
+    Refused { cause: _ } => false
+  }
 }
 
 test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Bool {

@@ -65,7 +65,7 @@ import gunbc.live_deploy.readiness {
   ServiceReadiness,
   service_readiness_reason,
 }
-import gunbc.readiness { readiness_is_ready }
+import gunbc.readiness { Ready, Pending, Refused }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -266,15 +266,22 @@ fn live_deploy_apply_readiness_gate_with_readiness(
   if !reconciliation_converged(r: mutation) {
     mutation
   } else {
-    if readiness_is_ready(r: readiness) {
-      mutation
-    } else {
-      match mutation {
-        Converged { evidence: _, applied: intent } =>
-          NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
-        NotConverged { reason: _, applied: intent } =>
-          NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
-      }
+    match readiness {
+      Ready { evidence: _ } => mutation
+      Pending { cause: _ } =>
+        match mutation {
+          Converged { evidence: _, applied: intent } =>
+            NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
+          NotConverged { reason: _, applied: intent } =>
+            NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
+        }
+      Refused { cause: _ } =>
+        match mutation {
+          Converged { evidence: _, applied: intent } =>
+            NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
+          NotConverged { reason: _, applied: intent } =>
+            NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
+        }
     }
   }
 }
