@@ -8,6 +8,7 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_
 import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
 import extdeps.vllm.source_build { vllm_d2d649e6_revision, vllm_deepseek_v4_1_sm12_revision, vllm_recipe_targeting }
 import extdeps.flashinfer.flashinfer { FlashInferWheel, FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel, flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels, FlashInferPublishedRelease, FlashInferProjectStable }
 import gunbc.spark.serving_deployment_selection { topology_shape }
@@ -21,14 +22,14 @@ import gunbc.spark.v41_runtime_candidate {
   V41EngramResidencyPartition, V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
   V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
-  v41_partition_bytes, v41_engram_population_of,
+  v41_engram_population_of, v41_is_embedding_table,
 }
-import std.measure { byte_size_count }
 import extdeps.safetensors.format {
   SafetensorsPopulationStanding, safetensors_population_standing,
   MembershipClosedAgainstFullIndex,
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram,
   deepseek_v4_1_flash_engram_index_members, deepseek_v4_1_flash_engram_shard_files,
   deepseek_v4_1_flash_engram_population_reading, deepseek_v4_1_flash_engram_population,
   deepseek_v4_1_flash_index_tensor_count,
@@ -214,8 +215,7 @@ test fn a_partition_fixed_by_patch_enters_the_runtime_key() -> Bool {
 // THE LIVE PARTITION IS TOTAL AND DISJOINT OVER THE CITED POPULATION, AND ITS STORAGE-BACKED BYTES ARE
 // DERIVED FROM THE CITED SPANS: 101377628352 + 101380404048. A foreign or a missing tensor refuses.
 test fn the_partition_is_admitted_with_derived_bytes_and_a_malformed_one_refuses() -> Bool {
-  byte_size_count(b: v41_partition_bytes(population: v41_engram_population_of(standing: w_closed_population), names: v41_candidate_partition.storage_backed)) == 202758032400
-    && (match v41_admit_partition(p: v41_candidate_partition, standing: w_closed_population) {
+  (match v41_admit_partition(p: v41_candidate_partition, standing: w_closed_population) {
       V41PartitionAdmitted { partition: _ } => true
       V41PartitionRefused { defects: _ } => false
     })
@@ -254,21 +254,46 @@ test fn an_unreconciled_membership_leaves_the_engram_axis_unestablished() -> Boo
   }
 }
 
-// A TOTAL, DISJOINT PARTITION CAN STILL BE THE WRONG WAY ROUND, AND THAT IS THE ONE THE BYTE TOTAL EXISTS
-// TO CATCH. Swapping the two sides satisfies every shape check -- each tensor is assigned exactly once and
-// nothing foreign appears -- while keeping the two ~101 GB embedding tables resident and reading the small
-// q/k/wkv operators from storage. That inverts the premise the whole candidate rests on, and no name-level
-// check can see it: the discriminator is which side is larger, which is why the total is derived in
-// production rather than asserted only in a test.
-test fn a_partition_that_keeps_the_large_tables_resident_refuses() -> Bool {
-  let inverted = V41EngramResidencyPartition {
-    storage_backed: v41_candidate_partition.resident,
-    resident: v41_candidate_partition.storage_backed,
+// A TOTAL, DISJOINT PARTITION CAN STILL BE THE WRONG WAY ROUND, AND THE CHEAP TEST FOR IT IS NOT ENOUGH.
+// An earlier wall compared the two sides' byte totals. This is the partition that defeats it: layer 1's
+// embed pair AND every q/k/wkv operator on storage, layer 14's embed pair resident. Every shape check
+// passes, storage leads by 312268144 bytes, and a complete ~101 GB table is being kept in memory while
+// every small operator has moved to disk. It is the inversion the candidate exists to exclude, and the
+// byte-majority form admitted it.
+test fn a_partition_that_keeps_one_embedding_table_resident_refuses() -> Bool {
+  let population = v41_engram_population_of(standing: w_closed_population)
+  let layer_14_embed = map(filter(population, e => v41_is_embedding_table(e: e, tables: deepseek_v4_1_flash_engram) && (e.name as String).contains("layers.14.")), e => e.name)
+  let rest = map(filter(population, e => !any(layer_14_embed, n => (n as String) == (e.name as String))), e => e.name)
+  let sneaky = V41EngramResidencyPartition { storage_backed: rest, resident: layer_14_embed }
+  length(layer_14_embed) == 2
+    && length(rest) == 10
+    && match v41_admit_partition(p: sneaky, standing: w_closed_population) {
+      V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.14.engram.embed.weight") && (x as String).contains("keeps it resident"))
+      V41PartitionAdmitted { partition: _ } => false
+    }
+}
+
+// THE OTHER DIRECTION, so the wall is about roles rather than about the embedding side alone: a small
+// operator moved to storage is refused too.
+test fn a_partition_that_reads_a_small_operator_from_storage_refuses() -> Bool {
+  let moved = V41EngramResidencyPartition {
+    storage_backed: concat(v41_candidate_partition.storage_backed, ["layers.1.engram.q_weight" as NonEmptyStr]),
+    resident: map(filter(v41_candidate_partition.resident, n => (n as String) != "layers.1.engram.q_weight"), n => n),
   }
-  match v41_admit_partition(p: inverted, standing: w_closed_population) {
-    V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("the large Engram tables are the ones being kept resident"))
+  match v41_admit_partition(p: moved, standing: w_closed_population) {
+    V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.1.engram.q_weight") && (x as String).contains("reads it from storage"))
     V41PartitionAdmitted { partition: _ } => false
   }
+}
+
+// THE ROLE JOIN IS THE PUBLISHER'S OWN DECLARED EXTENTS, so this asserts the join rather than a name rule:
+// exactly the four embed tensors carry an unpadded_embeddings count as their first dimension.
+test fn exactly_the_embedding_tensors_carry_a_declared_unpadded_extent() -> Bool {
+  let population = v41_engram_population_of(standing: w_closed_population)
+  let tables = filter(population, e => v41_is_embedding_table(e: e, tables: deepseek_v4_1_flash_engram))
+  length(population) == 12
+    && length(tables) == 4
+    && all(tables, e => (e.name as String).contains(".engram.embed."))
 }
 
 // THE SHAPE AND THE KERNEL PIN REFUSE. TP8, a 12.0 device, and a kernel acquisition naming a version the
@@ -421,4 +446,33 @@ test fn a_wheel_from_a_neighbouring_release_refuses_even_with_the_right_package_
   length(foreign) == 1
     && length(swapped) == 3
     && w_refused_with(s: v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: swapped)), fragment: "does not re-admit")
+}
+
+// THE SAME TWO NUMBERS FROM ANOTHER VENDOR IS ANOTHER MACHINE. A GpuComputeCapability is a vendor and two
+// numbers, and an AMD part reporting 12.1 satisfied a gate written for a GB10 and then received GB10's
+// execution-profile identity, because both the gate and the key read only the numbers. This fixture is the
+// GB10's capability with the vendor replaced and nothing else, so it discriminates the vendor alone.
+test fn a_capability_from_another_vendor_with_the_same_numbers_refuses() -> Bool {
+  let impostor = GpuComputeCapability {
+    vendor: amd,
+    major: gb10_observed_compute_capability.major,
+    minor: gb10_observed_compute_capability.minor,
+  }
+  impostor.major == gb10_observed_compute_capability.major
+    && impostor.minor == gb10_observed_compute_capability.minor
+    && w_refused_with(
+      s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: impostor, max_jobs: 6)),
+      fragment: "is not the GB10")
+}
+
+// ONE UNPATCHED RUNTIME, ONE IDENTITY. An observed population with no patches in it carries the same
+// observed bytes as V41PatchesAbsentByObservation -- none -- and used to mint a different key, so the same
+// runtime had two identities depending on which arm the author reached for. The second half is the
+// unsatisfiable claim: no patch can fix a partition in bytes that do not exist.
+test fn an_empty_observed_patch_population_refuses_in_both_partition_authorities() -> Bool {
+  let empty_config = w_default(patches: V41PatchesObserved { patches: [] as List<V41EnginePatch>, partition: PartitionByLaunchConfiguration })
+  let empty_fixed = w_default(patches: V41PatchesObserved { patches: [] as List<V41EnginePatch>, partition: PartitionFixedByPatch })
+  w_refused_with(s: v41_candidate_standing(c: empty_config), fragment: "is not the same claim as V41PatchesAbsentByObservation")
+    && w_refused_with(s: v41_candidate_standing(c: empty_fixed), fragment: "no bytes for it to be fixed in")
+    && (w_key(s: v41_candidate_standing(c: w_default(patches: V41PatchesAbsentByObservation)), which: "runtime") != "refused")
 }

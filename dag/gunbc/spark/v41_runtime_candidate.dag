@@ -5,9 +5,11 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import std.measure { hardware_thread_count_value, ByteSize, byte_size, byte_size_count, measure_add, measure_le }
+import std.measure { hardware_thread_count_value, byte_size_count }
 import v2.std.optional { Present, Absent }
-import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.gpu.types {
+  GpuComputeCapability, GpuCapabilityLabelOk, GpuCapabilityLabelRejected, gpu_compute_capability_sm_label,
+}
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build {
   VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting,
@@ -19,11 +21,12 @@ import extdeps.flashinfer.flashinfer {
   FlashInferWheelFilenameFields, flashinfer_wheel_filename_fields,
 }
 import extdeps.safetensors.format {
-  SafetensorsEntry, SafetensorsPopulationStanding,
+  SafetensorsEntry, SafetensorsPopulationStanding, safetensors_entry_span,
   safetensors_population_entries, safetensors_population_closure_obligations,
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_population,
+  DeepseekV41EngramTables, deepseek_v4_1_flash_engram,
 }
 import gunbc.spark.vllm_runtime_image_build {
   vllm_image_build_key_inputs, v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
@@ -234,6 +237,28 @@ fn v41_partition_authority_wire(a: V41EngramPartitionAuthority) -> String {
 // THE RUNTIME ARTIFACT KEY. The recipe contributes exactly the inputs vllm_image_build_key already
 // keys (so parallelism stays out, by the same law), then the kernel acquisition and every wheel digest,
 // then the patches in application order, then -- only when the patch fixes it -- the Engram partition.
+// ONE REPRESENTATION OF "OBSERVED, AND THERE WERE NONE". V41PatchesAbsentByObservation and
+// V41PatchesObserved with an empty list carry the same observed bytes -- none -- and minted DIFFERENT
+// runtime keys, so one unpatched runtime had two identities depending on which arm the author reached for.
+// The empty observed list is refused rather than normalised into the absent arm, because the two are not
+// the same statement: the absent arm says an observation was made and found nothing, and an empty list
+// beside a partition authority is more likely an unfinished record than that claim.
+//
+// AND AN EMPTY POPULATION CANNOT CLAIM THE PARTITION IS FIXED BY THE PATCH. PartitionFixedByPatch asserts
+// that the storage/resident split lives in the patched bytes, which is what pulls the partition INTO the
+// runtime key. With no patch there are no bytes to hold it, so the claim is unsatisfiable by construction
+// and the key it produces covers a split nothing implements.
+fn v41_empty_observation_defects(patches: List<V41EnginePatch>, authority: V41EngramPartitionAuthority) -> List<NonEmptyStr> {
+  if length(patches) != 0 { [] as List<NonEmptyStr> } else {
+    concat(
+      ["an observed patch population with no patches in it is not the same claim as V41PatchesAbsentByObservation, which says an observation was made and found none; one unpatched runtime must not have two identities" as NonEmptyStr],
+      match authority {
+        PartitionByLaunchConfiguration => [] as List<NonEmptyStr>
+        PartitionFixedByPatch => ["this population claims the Engram partition is fixed by the patch while carrying no patch, so there are no bytes for it to be fixed in" as NonEmptyStr]
+      })
+  }
+}
+
 fn v41_runtime_artifact_key(i: V41RuntimeArtifactInputs, partition: V41EngramResidencyPartition) -> V41IdentityStanding {
   let kernel_defects = v41_kernel_defects(i: i)
   if length(kernel_defects) != 0 {
@@ -251,7 +276,9 @@ fn v41_runtime_artifact_key(i: V41RuntimeArtifactInputs, partition: V41EngramRes
       V41PatchesAbsentByObservation =>
         V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(base, [v41_input(identity: "patches", value: "none-by-observation")])) }
       V41PatchesObserved { patches: ps, partition: authority } => {
-        let applicability = v41_patch_applicability_defects(patches: ps, source: i.recipe.source)
+        let applicability = concat(
+          v41_patch_applicability_defects(patches: ps, source: i.recipe.source),
+          v41_empty_observation_defects(patches: ps, authority: authority))
         if length(applicability) != 0 { V41IdentityRefused { defects: applicability } } else {
         let with_patches = concat(concat(base, v41_patch_inputs(patches: ps)), [v41_input(identity: "partition_authority", value: v41_partition_authority_wire(a: authority))])
         match authority {
@@ -278,18 +305,6 @@ type V41PartitionAdmission
   = V41PartitionAdmitted { partition: V41EngramResidencyPartition }
   | V41PartitionRefused { defects: List<NonEmptyStr> }
 
-// A DERIVED BYTE QUANTITY IS A MEASURE, NOT A COUNT. The spans it sums are extdeps fidelity -- a
-// SafetensorsEntry's offsets are the cited file's own integers and stay bare there -- but the total
-// carried inward is a product-layer quantity, and std.measure ByteSize is where this repository already
-// keeps those: gunbc.fabric.engram_materialization engram_shard_set_bytes folds the same kind of
-// quantity with measure_add over the same population's files.
-fn v41_partition_bytes(population: List<SafetensorsEntry>, names: List<NonEmptyStr>) -> ByteSize {
-  fold(
-    filter(population, e => v41_count_named(names: names, name: e.name) == 1),
-    init: byte_size(count: 0),
-    f: (acc, e) => measure_add(a: acc, b: byte_size(count: e.end_offset - e.begin_offset)))
-}
-
 // THE POPULATION IS READ THROUGH ITS STANDING, NEVER AROUND IT. Concatenating the two layers' entry
 // lists reaches the same twelve rows while stepping past the carrier that says what those rows are
 // CLOSED AGAINST, and extdeps.safetensors.format says exactly what that carrier is for: "A consumer
@@ -304,6 +319,40 @@ fn v41_count_named(names: List<NonEmptyStr>, name: NonEmptyStr) -> Int {
   length(filter(names, n => (n as String) == (name as String)))
 }
 
+// WHICH TENSORS ARE THE TABLES, DECIDED BY THE PUBLISHER'S OWN CONFIG RATHER THAN BY THEIR NAMES. An
+// earlier form of this wall compared the two sides' byte totals and admitted any partition where storage
+// held the majority. That is strictly weaker than the invariant it claimed, and the counterexample is
+// constructible from the cited spans: put layer 1's embed pair AND every q/k/wkv operator on storage and
+// leave layer 14's embed pair resident, and storage leads by 312268144 bytes while a complete ~101 GB
+// table sits in memory and every small operator has moved to disk -- the exact inversion, admitted.
+//
+// THE ROLE IS A JOIN, NOT A NAME MATCH. config.json's Engram block declares unpadded_embeddings, and the
+// two embedding tensors of each layer carry that count as their first dimension: 384006168 for layer 1,
+// 384016682 for layer 14. The operators' first dimensions are 4, 25600 and 800. So membership in the
+// publisher's own declared embedding extents decides the role, and extdeps.deepseek.deepseek_v4_1_flash
+// stays the single authority for it -- no `.engram.` infix constant, no role enum minted here, and nothing
+// that a rename of a tensor could silently flip.
+fn v41_is_embedding_table(e: SafetensorsEntry, tables: DeepseekV41EngramTables) -> Bool {
+  match get(xs: e.shape, index: 0) {
+    Absent => false
+    Present { value: rows } => any(tables.unpadded_embeddings, n => n == rows)
+  }
+}
+
+// THE BYTE FIGURE IS WHAT MAKES THE DEFECT LEGIBLE, so it is reported rather than compared: "this tensor
+// is on the wrong side" is a fact a reader must look up, and "a 101377628352-byte table is being kept
+// resident" is one they can act on.
+fn v41_role_defects(population: List<SafetensorsEntry>, p: V41EngramResidencyPartition) -> List<NonEmptyStr> {
+  concat(
+    map(filter(population, e => v41_is_embedding_table(e: e, tables: deepseek_v4_1_flash_engram) && v41_count_named(names: p.resident, name: e.name) == 1),
+      e => join(["the embedding table ", e.name as String, " is ", to_string(byte_size_count(b: safetensors_entry_span(e: e))),
+        " bytes and this partition keeps it resident; this candidate exists because those tables do not fit"], "") as NonEmptyStr),
+    map(filter(population, e => !v41_is_embedding_table(e: e, tables: deepseek_v4_1_flash_engram) && v41_count_named(names: p.storage_backed, name: e.name) == 1),
+      e => join(["the operator ", e.name as String, " is ", to_string(byte_size_count(b: safetensors_entry_span(e: e))),
+        " bytes and this partition reads it from storage; the small operators stay resident"], "") as NonEmptyStr),
+  )
+}
+
 fn v41_admit_partition(p: V41EngramResidencyPartition, standing: SafetensorsPopulationStanding) -> V41PartitionAdmission {
   let population = v41_engram_population_of(standing: standing)
   let assigned = concat(p.storage_backed, p.resident)
@@ -314,14 +363,9 @@ fn v41_admit_partition(p: V41EngramResidencyPartition, standing: SafetensorsPopu
   if length(shape) != 0 {
     V41PartitionRefused { defects: shape }
   } else {
-    let storage = v41_partition_bytes(population: population, names: p.storage_backed)
-    let resident = v41_partition_bytes(population: population, names: p.resident)
-    if measure_le(a: storage, b: resident) {
-      V41PartitionRefused { defects: [join([
-        "the storage-backed side of this partition is ", to_string(byte_size_count(b: storage)),
-        " bytes and the resident side is ", to_string(byte_size_count(b: resident)),
-        " bytes, so the large Engram tables are the ones being kept resident -- this candidate exists because they are not",
-      ], "") as NonEmptyStr] }
+    let misplaced = v41_role_defects(population: population, p: p)
+    if length(misplaced) != 0 {
+      V41PartitionRefused { defects: misplaced }
     } else {
       V41PartitionAdmitted { partition: p }
     }
@@ -481,12 +525,25 @@ type V41CandidateStanding
 // comparison: running a candidate needs an exact, bounded experiment authorization for its key.
 data v41_first_party_authorization_obligation: NonEmptyStr = "gunbc.spark.serving_deployment_selection authorized_v4_1_runtime_holds admits only the published arm64 digest; a first-party candidate needs an exact, time-bounded experiment authorization for its candidate key before any host runs it" as NonEmptyStr
 
+// A CAPABILITY IS A VENDOR AND TWO NUMBERS. Comparing only the numbers admits an AMD part reporting 12.1
+// through a gate written for a GB10, and keying only "12.1" gives it the same execution-profile identity --
+// two different machines, one key. extdeps.gpu.types already owns the rendering that separates them, and it
+// is the same authority the sm_/gfx label distinction lives in, so the key consumes it rather than
+// concatenating fields here. The rejected arm cannot be reached from an admitted candidate, and it is still
+// rendered with the vendor's own name so that two unrecognised vendors cannot collide either.
+fn v41_device_wire(cap: GpuComputeCapability) -> String {
+  match gpu_compute_capability_sm_label(cap: cap) {
+    GpuCapabilityLabelOk { label: l } => l
+    GpuCapabilityLabelRejected { reason: r } => join(["unsubstantiated:", r.vendor.legal_name as String, ":", to_string(cap.major), ".", to_string(cap.minor)], "")
+  }
+}
+
 fn v41_shape_defects(c: V41CandidateInputs) -> List<NonEmptyStr> {
   concat(
     if c.topology.tensor_parallel_degree == 4 && c.topology.replica_count == 1 { [] as List<NonEmptyStr> } else {
       [join(["topology tp", to_string(c.topology.tensor_parallel_degree), " x ", to_string(c.topology.replica_count), " is not the four-Spark TP4 single replica this candidate is for"], "") as NonEmptyStr]
     },
-    if c.device.major == gb10_observed_compute_capability.major && c.device.minor == gb10_observed_compute_capability.minor { [] as List<NonEmptyStr> } else {
+    if c.device == gb10_observed_compute_capability { [] as List<NonEmptyStr> } else {
       [join(["device capability ", to_string(c.device.major), ".", to_string(c.device.minor), " is not the GB10's 12.1"], "") as NonEmptyStr]
     },
   )
@@ -533,7 +590,7 @@ fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
               v41_input(identity: "runtime_artifact", value: serialize_content_hash(hash: rk) as String),
               v41_input(identity: "model_source", value: serialize_content_hash(hash: sk) as String),
               v41_input(identity: "topology", value: join(["tp", to_string(c.topology.tensor_parallel_degree), "x", to_string(c.topology.replica_count)], "")),
-              v41_input(identity: "device", value: join([to_string(c.device.major), ".", to_string(c.device.minor)], "")),
+              v41_input(identity: "device", value: v41_device_wire(cap: c.device)),
             ])
             V41CandidateKeyed {
               runtime_artifact: rk,

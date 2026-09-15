@@ -311,6 +311,12 @@ fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
 // the recipe row records the value it resolves to. RUN_WHEEL_CHECK disables only upstream's PyPI
 // publication-size guard, which is a rule about what may be uploaded to PyPI and has nothing to say
 // about an image nobody publishes.
+//
+// INSTALL_KV_CONNECTORS IS PASSED BECAUSE IT IS KEYED. The module already carries one defect of the shape
+// where it does not -- a flashinfer version keyed and never handed to the build -- and adding the field to
+// the key without adding it here would have reproduced exactly that: a tag and a key that say
+// connectors-on while docker falls back to the Dockerfile's `false`, which is one identity standing for
+// two different sets of bytes. Keyed and passed are the same decision, made once.
 fn vllm_image_build_args(r: VllmContainerBuildRecipe) -> List<DockerBuildArg> {
   [
     DockerBuildArg { name: "CUDA_VERSION" as NonEmptyStr, value: r.cuda_version as String },
@@ -318,6 +324,7 @@ fn vllm_image_build_args(r: VllmContainerBuildRecipe) -> List<DockerBuildArg> {
     DockerBuildArg { name: "torch_cuda_arch_list" as NonEmptyStr, value: vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list) },
     DockerBuildArg { name: "max_jobs" as NonEmptyStr, value: to_string(r.max_jobs) },
     DockerBuildArg { name: "nvcc_threads" as NonEmptyStr, value: to_string(r.nvcc_threads) },
+    DockerBuildArg { name: "INSTALL_KV_CONNECTORS" as NonEmptyStr, value: if r.install_kv_connectors { "true" } else { "false" } },
     DockerBuildArg { name: "RUN_WHEEL_CHECK" as NonEmptyStr, value: "false" },
   ]
 }

@@ -141,27 +141,34 @@ test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> 
 // same, which is a key standing for two materially different sets of bytes. The second conjunct is the
 // control that keeps this a statement about the argument rather than about recipes differing at all: the
 // release recipe keys differently from the same recipe with the argument flipped, and nothing else moved.
+//
+// THE ARGV MOVES WITH IT TOO, AND THAT IS THE HALF THAT NEARLY DID NOT LAND. A key that moves while the
+// invocation does not is the defect this module already carries once -- a flashinfer version keyed and
+// never handed to the build: the tag would say connectors-on while docker fell back to the Dockerfile's
+// `false`, so one identity would stand for two different sets of bytes. Both directions are asserted.
 test fn the_key_moves_with_the_connector_build_argument() -> Bool {
-  let release = vllm_07b75534_aarch64_release_recipe
+  let with_conn = vllm_07b75534_aarch64_release_recipe
   let without = VllmContainerBuildRecipe {
-    source: release.source,
-    dockerfile_path: release.dockerfile_path,
-    build_target: release.build_target,
-    cuda_version: release.cuda_version,
-    build_base_image: release.build_base_image,
-    final_base_image: release.final_base_image,
-    python_version: release.python_version,
-    torch_version: release.torch_version,
-    flashinfer_version: release.flashinfer_version,
-    torch_cuda_arch_list: release.torch_cuda_arch_list,
+    source: with_conn.source,
+    dockerfile_path: with_conn.dockerfile_path,
+    build_target: with_conn.build_target,
+    cuda_version: with_conn.cuda_version,
+    build_base_image: with_conn.build_base_image,
+    final_base_image: with_conn.final_base_image,
+    python_version: with_conn.python_version,
+    torch_version: with_conn.torch_version,
+    flashinfer_version: with_conn.flashinfer_version,
+    torch_cuda_arch_list: with_conn.torch_cuda_arch_list,
     install_kv_connectors: false,
-    max_jobs: release.max_jobs,
-    nvcc_threads: release.nvcc_threads,
+    max_jobs: with_conn.max_jobs,
+    nvcc_threads: with_conn.nvcc_threads,
   }
-  release.install_kv_connectors
+  with_conn.install_kv_connectors
     && !without.install_kv_connectors
     && (serialize_content_hash(hash: vllm_image_build_key(r: without)) as String)
-       != (serialize_content_hash(hash: vllm_image_build_key(r: release)) as String)
+       != (serialize_content_hash(hash: vllm_image_build_key(r: with_conn)) as String)
+    && string_contains(s: join(argv_words(command: docker_build_spec_command(spec: vllm_image_build_spec(r: with_conn))), " "), pattern: "--build-arg INSTALL_KV_CONNECTORS=true")
+    && string_contains(s: join(argv_words(command: docker_build_spec_command(spec: vllm_image_build_spec(r: without))), " "), pattern: "--build-arg INSTALL_KV_CONNECTORS=false")
 }
 
 test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bool {
@@ -193,6 +200,7 @@ test fn the_build_argv_carries_the_arch_list_the_aarch64_base_and_the_context_la
   let line = join(words, " ")
   string_contains(s: line, pattern: "--build-arg torch_cuda_arch_list=12.1")
     && string_contains(s: line, pattern: "--build-arg BUILD_BASE_IMAGE=pytorch/manylinuxaarch64-builder:cuda13.0-b8b5f17a7d9ccfc25bbc5cf17b3fcea12964a042")
+    && string_contains(s: line, pattern: "--build-arg INSTALL_KV_CONNECTORS=true")
     && string_contains(s: line, pattern: "--target vllm-openai")
     && string_contains(s: line, pattern: "--platform linux/arm64")
     && string_contains(s: line, pattern: join([vllm_source_dir() as String, "/", v41_gb10_recipe().dockerfile_path as String], ""))
