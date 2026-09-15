@@ -32,6 +32,14 @@ import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner_unit { runner_unit_dropin_dir }
+import gunbc.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  transition_retirement_admission,
+  observe_transition_retirement_evidence,
+  srv4_transition_interruption_authorization,
+}
 import gunbc.runner_slot_provision {
   runner_slot_member_observed,
   runner_slot_name_in_host_grammar,
@@ -387,6 +395,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
                     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                     observed_unit_standings: observe_runner_unit_standings_wet(host: host),
+                    observed_retirement: observe_slot_retirement_evidence_wet(host: host),
                   },
                 }
                 CapMembersObserved { members: observed_caps } => FleetConvergeRequestObserved {
@@ -398,10 +407,60 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
                     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                     observed_unit_standings: observe_runner_unit_standings_wet(host: host),
+                    observed_retirement: observe_slot_retirement_evidence_wet(host: host),
                   },
                 }
               }
           }
+  }
+}
+
+// THE RETIREMENT HALF OF THE HOST OBSERVATION TRANSACTION, TAKEN WHERE EVERY OTHER HOST FACT IS.
+//
+// This is the seam the branch was missing, and its absence is why a correct remover, a correct
+// realization and a correct obligation still could not retire anything: the request carried no
+// retirement evidence, so `runner_slot_provision_plan` was always handed
+// `SlotRetirementEvidenceAbsent` and rendered withheld lines forever.
+//
+// IT OBSERVES AND DOES NOT ACTUATE. The `mask --now` for a slot that is required, permitted and not
+// yet retired is RENDERED by `runner_slot_provision_plan` into `retirement_scripts` and executed only
+// by fleet apply, after apply has reobserved this same subject and compared it with the reviewed
+// artifact. An effectful retirement performed HERE would mutate the host while the plan describing it
+// was still being built, which is why the actuator drafted in `gunbc.runner_slot_retirement` was
+// deleted rather than called from this function.
+//
+// PERMISSION IS DECIDED BEFORE ANY READ. A transition whose required retirees are not fully covered by
+// the operator's interruption authorization yields evidence-absent with the uncovered units named, so
+// the plan renders refusals rather than masks. Reading standings first and checking coverage later
+// would make the refusal a property of what the host happened to report.
+//
+// AN UNMODELED HOST OBSERVES AS EVIDENCE-ABSENT RATHER THAN AS A PERMITTED EMPTY TRANSITION, because
+// a host with no deploy row has no transition and nothing here may speak for it.
+fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvidence
+  uses net: Network
+{
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: h } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([h as String, " has no runner host deploy row, so it has no width transition and no retirement was observed"], ""),
+      }
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([h as String, " is refused as a runner host (", c, "), so no retirement was observed and none may be assumed"], ""),
+      }
+    RunnerHostDeployFound { deploy: _ } =>
+      match transition_retirement_admission(
+        host: host as HostIdentity,
+        auth: srv4_transition_interruption_authorization,
+      ) {
+        SlotRetirementEvidenceAbsent { cause: c } => SlotRetirementEvidenceAbsent { cause: c }
+        SlotRetirementEvidencePresent { authorization: auth, standings: _ } =>
+          observe_transition_retirement_evidence(
+            transport: LocalShell,
+            host: host as HostIdentity,
+            auth: auth,
+          )
+      }
   }
 }
 
@@ -440,6 +499,10 @@ fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
   uses net: Network
 {
   match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      UnitStandingsUnobserved {
+        reason: join([h as String, " is refused as a runner host (", c, "), so it desires no units and no standing was read"], "") as NonEmptyStr,
+      }
     RunnerHostDeployUnmodeled { host: h } =>
       UnitStandingsUnobserved {
         reason: join([h as String, " has no runner host deploy row, so it desires no units and no standing was read"], "") as NonEmptyStr,

@@ -12,8 +12,11 @@ import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
 import gunbc.runner_host_deploy {
-  srv3_runner_host_deploy,
-  srv4_runner_host_deploy,
+  srv3_runner_host_spec,
+  srv4_runner_host_spec,
+  runner_host_spec_for,
+  RunnerHostSpecFound,
+  RunnerHostSpecAbsent,
 }
 
 data runner_capacity_operator_access_authority_disposition: Disposition = SingleAuthority
@@ -65,6 +68,27 @@ type RunnerCapacityExecutionTarget
       reason: String
     }
 
+// THE RECOVERY TRANSPORT NAMES ITS ENDPOINT, WHICH IT PREVIOUSLY DID NOT.
+//
+// `transport: SshShell` was written without the `ssh_host` the variant requires -- a literal missing a
+// required field, latent on main because no compiled closure reached this module. It surfaced when this
+// branch pulled the module into scope, which is the reachability distinction this corpus already
+// records in the other direction: an arm nothing reaches looks fine until something reaches it.
+//
+// The endpoint comes from the host's own spec rather than being spelled here. A hand-written address at
+// this seam is the second-naming defect the spec split exists to remove, and it would point the recovery
+// lane at a machine chosen by whoever typed it.
+//
+// AN UNMODELED HOST REFUSES RATHER THAN BORROWING AN ADDRESS: a recovery aimed at the wrong machine is
+// worse than one that does not start, so the absent arm renders a marker no ssh client can resolve.
+fn runner_host_ssh_endpoint(host: HostIdentity) -> NonEmptyStr {
+  match runner_host_spec_for(host: host) {
+    RunnerHostSpecFound { spec: spec } => spec.ssh_target
+    RunnerHostSpecAbsent { host: h } =>
+      concat("__GUNBC_UNMODELED_HOST__", h as String) as NonEmptyStr
+  }
+}
+
 fn runner_capacity_execution_target_for_action(
   action: RunnerCapacityActionClass,
 ) -> RunnerCapacityExecutionTarget {
@@ -77,7 +101,7 @@ fn runner_capacity_execution_target_for_action(
     RunnerCapacityRecoverHost { host: h } =>
       RunnerCapacityExecuteHostedRemote {
         host: h,
-        transport: SshShell,
+        transport: SshShell { ssh_host: runner_host_ssh_endpoint(host: h) },
         reason: concat(
           "zero-runner recovery on ",
           concat(
@@ -138,9 +162,9 @@ fn runner_capacity_in_band_admission_probes() -> RunnerCapacityInBandAdmissionPr
 
 fn runner_capacity_executing_principal_for_host(host: HostIdentity) -> NonEmptyStr {
   if (host as String) == (operator_host_srv3 as String) {
-    srv3_runner_host_deploy.runner_user
+    srv3_runner_host_spec.runner_user
   } else if (host as String) == (operator_host_srv4 as String) {
-    srv4_runner_host_deploy.runner_user
+    srv4_runner_host_spec.runner_user
   } else {
     "briansrls" as NonEmptyStr
   }

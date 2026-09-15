@@ -1603,6 +1603,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_3PM7CFJ2XQ8VZ5KDR4HB9TNW6L",
+      id: "floor-ceiling-roster-cut-completeness",
+      owner: "ci-control",
+      path: "src/v2/workflow/floor_grandfathered_roster.dag",
+      t: fields(
+        headline: "The exemption list for the per-claim work ceiling was drawn from a partial run",
+        boundary: "The per-claim work ceiling has two tiers: checks that already existed keep the older allowance, and checks arriving after the cut get a much tighter one. Which tier a check falls into is decided by one list, and that list is the set of checks that ran on ONE PULL REQUEST -- the pull request that introduced the tiering. A pull request runs the checks its own change touches plus the standing set, so the list is that change's neighbourhood rather than the corpus: about a third of what a full run reaches. Everything outside it is treated as new work however old it is, so the next change to touch such a file inherits a ceiling its checks were never measured against.",
+        displaced_cost: "Fourteen checks written months earlier blocked a merge hours after the tiering landed, every one of them reaching its verdict and passing, with nothing in the change touching what they assert. The cost lands on whichever unrelated effort next edits a file outside the list, and it arrives looking like a defect in that effort's own work rather than in how the list was drawn.",
+        first_slice: "Draw the list from a run that reached the whole routed population, and have the list state the population it was drawn from.",
+        red_control: "A list drawn from a run that reached less than the full routed population refuses rather than being adopted, and a list drawn from a pull request run refuses on that ground alone. A check that existed in the corpus at the cut and is missing from the list is a finding, never a silent reclassification into the tighter tier. The two allowances stay distinct -- a list that covers everything is the same as having no tiering at all.",
+        out_of_scope: "Not the tiering itself and not either allowance, both of which are separately grounded; only which checks the older allowance is supposed to cover.",
+        handback: "The list, the population it was drawn from stated beside it, and one previously-misclassified check shown moving to the tier it belongs in."
+      )
+    ),
+    active_small(
       identity: "rn_W86W65EBR3HW41MK0X3RBMJ8BT",
       id: "ci-gate-contention-independent-verdict",
       owner: "ci-control",
@@ -2515,6 +2530,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A machine whose effective value differs from the desired one reports drifted. A service command that exits successfully while the machine's real limit is unchanged is a failed read-back, not a success. A machine missing from the roster is never silently skipped.",
         out_of_scope: "The emergency repair itself belongs to the envelope row in the placement lane; this row is what keeps it true afterwards.",
         handback: "The desired rows, the read-back values from every machine, and one drift repaired without a person."
+      )
+    ),
+    active_small(
+      identity: "rn_7KDQW2NFXB5RJM3HTPYV60ZC48",
+      id: "fleet-slot-retirement-wet-proof",
+      owner: "fleet",
+      path: "docs/plans/floor-memory-envelope-2026-09-12.md",
+      t: fields(
+        headline: "Prove on a real machine that a retired job slot is actually finished",
+        boundary: "The whole retirement transaction is built and checked without touching a machine: it decides which slots must go from a written-down prior width, checks the operator has permitted interrupting those exact ones, stops and pins them so they cannot come back, and then reads the machine again -- separately -- to decide whether the work under them really ended. None of that has ever run on a host. This is the first real one: interrupt the permitted slots on one machine, watch the independent read-back say they are finished, let the raised ceiling follow from that, read the ceiling back off the machine, and run the whole thing a second time to see it do nothing.",
+        displaced_cost: "Every claim about this path is currently a claim about a model of the machine. The specific thing nobody has watched is the part that matters: stopping a slot is not the same as its work having stopped, and the check that separates those two has never been asked a real question.",
+        first_slice: "One machine, the slots an operator has already named, and a second pass that must be a no-op.",
+        red_control: "A slot whose leftover work is still running must not read as finished, and must not let the ceiling move. Reading the machine unsuccessfully must not read as nothing-running. The second pass doing work is a failure, not a retry.",
+        out_of_scope: "Not the other machines, not the wider capacity change, and not any cleanup of the directories left behind -- those follow a proven single-machine run rather than riding along with it.",
+        handback: "The receipts from one machine: what was interrupted, what the separate read-back saw, the ceiling read back off the host, and a second pass that changed nothing."
       )
     ),
     active_small(
