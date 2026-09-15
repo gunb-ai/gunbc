@@ -1895,6 +1895,10 @@ pub struct TransitionAdmission {
 /// declaration and the rows were consumed; they were deleted on the roster's next touch
 /// (gunbc#11373), and the frontier above is unaffected by that deletion.
 ///
+/// THE 37 `string_eq` ROWS THAT USED TO STAND HERE ARE GONE. #11138 merged; those admissions
+/// reported CONSUMED at the base of this PR. This roster touch deleted them rather than leaving
+/// a false trigger ("they go when #11138 merges") over a different population.
+///
 /// PCI IDENTITY REPAIR (gunbc#11373, 2026-09-14). The required floor at d616837c802
 /// measured 39 deltas: six ExplicitlyEvaluatedZeroDelta memberships and one
 /// SameDeclarationIdentityRebind removal auto-admit. These 32 exact binding rows

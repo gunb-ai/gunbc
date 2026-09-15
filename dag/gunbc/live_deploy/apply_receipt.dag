@@ -47,7 +47,7 @@ import gunbc.actions_run_binding {
 // and '}'), so the candidate side and the deployed side
 // (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
 // the same way.
-data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v1"
+data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v2"
 
 fn live_deploy_apply_receipt_dir_for(instance_id: String) -> String {
   join(["target/live-deploy-", instance_id, "-receipt"], "")
@@ -56,9 +56,6 @@ fn live_deploy_apply_receipt_dir_for(instance_id: String) -> String {
 fn live_deploy_apply_receipt_artifact_path_for(instance_id: String) -> String {
   join([live_deploy_apply_receipt_dir_for(instance_id: instance_id), "/live_deploy_receipt.json"], "")
 }
-
-data live_deploy_apply_receipt_dir: String = live_deploy_apply_receipt_dir_for(instance_id: "srv1-live")
-data live_deploy_apply_receipt_artifact_path: String = live_deploy_apply_receipt_artifact_path_for(instance_id: "srv1-live")
 
 data rlm_plan_run_id_env_name: String = "RLM_PLAN_RUN_ID"
 data rlm_apply_run_id_env_name: String = "RLM_APPLY_RUN_ID"
@@ -160,7 +157,7 @@ fn live_deploy_apply_receipt_identity_text(r: LiveDeployApplyReceipt) -> String 
 
 fn live_deploy_apply_receipt_identity_hex(r: LiveDeployApplyReceipt) -> String {
   content_hash_tagged_structural(
-    tag: "live-deploy-apply-receipt-v1" as NonEmptyStr,
+    tag: "live-deploy-apply-receipt-v2" as NonEmptyStr,
     payload: content_hash_atom(value: live_deploy_apply_receipt_identity_text(r: r) as NonEmptyStr),
   ).digest as String
 }
