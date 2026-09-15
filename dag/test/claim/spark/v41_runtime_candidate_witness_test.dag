@@ -131,13 +131,13 @@ fn w_refused_with(s: V41CandidateVerdict, fragment: String) -> Bool {
   }
 }
 
-// THE LIVE CANDIDATE HAS NO KEY, AND SAYS WHAT IS MISSING. The patch population, the weight and tokenizer
-// manifests and the row-store encoding are all unwritten, so an identity minted now would be shared by
-// every future candidate that fills those holes differently.
+// THE LIVE CANDIDATE HAS NO KEY, AND SAYS WHAT IS MISSING. The storage-backed patch is observed; the
+// weight and tokenizer manifests and the row-store content digest are not, so an identity minted now
+// would be shared by every future candidate that fills those holes differently.
 test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bool {
   match v41_candidate().standing {
     V41CandidateUnestablished { obligations: o } =>
-      any(o, x => (x as String).contains("patch"))
+      !any(o, x => (x as String).contains("no Engram storage-backed lookup patch"))
         && any(o, x => (x as String).contains("weight manifest"))
         && any(o, x => (x as String).contains("tokenizer"))
         && any(o, x => (x as String).contains("row-store encoding"))

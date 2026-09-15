@@ -1,0 +1,322 @@
+module gunbc.spark.v41_runtime_realized
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.content_hash { ContentHash, serialize_content_hash }
+import std.artifact_store {
+  ArtifactStore, ArtifactRow, StorePutAdmitted, StorePutDidNotFit,
+  store_put, store_bytes_used, artifact_realization_digest,
+}
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.realization { Placement, LocalFilesystem, RemoteNetwork, LocalInProcess, LocalAccelerator }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.v41_runtime_candidate {
+  V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
+  v41_input,
+}
+import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
+  v41_rank_digest_of,
+}
+
+// ── SPECIFICATION IS NOT A RUNTIME ─────────────────────────────────────────────────────────────
+//
+// Cut A's V41CandidateKeyed is a RECIPE: source, manifests, patch digests, row-store encoding
+// identity. No image exists and no rank file exists in that verdict. Wiring that key into
+// serving_deployment_selection runtime_revision_key would let a recipe stand for bytes that were
+// never built. V41PatchesAbsentByObservation is deliberately keyable, and Engram independently
+// admits route B or D, so an unpatched runtime plus route B can reach Keyed today. That is a valid
+// identity for an infeasible specification. It is not a compatible runtime.
+//
+// ONLY the realized arm may be selected or authorized. A keyed specification remains readable as
+// what would be built; it cannot be read as executable.
+type V41OciImageDigest sole_constructor {
+  manifest: NonEmptyStr
+  config: NonEmptyStr
+}
+
+type V41PatchConsumptionEvidence
+  = V41PatchesConsumedByImage { patch_digests: List<NonEmptyStr> }
+  | V41PatchesAbsentFromImage { obligation: NonEmptyStr }
+
+type V41RealizedRuntime
+  = V41RuntimeRealized {
+      specification_runtime_key: ContentHash
+      image: V41OciImageDigest
+      consumed_patches: V41PatchConsumptionEvidence
+      realized_runtime_key: ContentHash
+    }
+  | V41RuntimeRealizationUnestablished { obligations: List<NonEmptyStr> }
+  | V41RuntimeRealizationRefused { defects: List<NonEmptyStr> }
+
+fn v41_realized_runtime(
+  spec_runtime: ContentHash,
+  image: V41OciImageDigest,
+  provenance: VllmImageProvenance,
+  consumed: V41PatchConsumptionEvidence,
+) -> V41RealizedRuntime {
+  match provenance {
+    AdoptedUnderExpectedTag => V41RuntimeRealizationRefused {
+      defects: ["an image found under a tag is not the consumed bytes; realized identity requires a content digest produced by the modeled build, not a name" as NonEmptyStr],
+    }
+    BuiltByThisRun => match consumed {
+      V41PatchesAbsentFromImage { obligation: o } => V41RuntimeRealizationUnestablished { obligations: [o] }
+      V41PatchesConsumedByImage { patch_digests: ds } =>
+        V41RuntimeRealized {
+          specification_runtime_key: spec_runtime,
+          image: image,
+          consumed_patches: consumed,
+          realized_runtime_key: artifact_realization_digest(inputs: concat([
+            v41_input(identity: "specification_runtime", value: serialize_content_hash(hash: spec_runtime) as String),
+            v41_input(identity: "oci.manifest", value: image.manifest as String),
+            v41_input(identity: "oci.config", value: image.config as String),
+          ], map(enumerate(ds), p => v41_input(identity: join(["consumed_patch.", to_string(p.first)], ""), value: p.second as String)))),
+        }
+    }
+  }
+}
+
+type V41RealizedCandidate
+  = V41CandidateRealized {
+      realized_runtime: ContentHash
+      row_store: ContentHash
+      execution_profile: ContentHash
+      candidate: ContentHash
+      authorization_obligation: NonEmptyStr
+    }
+  | V41CandidateRealizationUnestablished { obligations: List<NonEmptyStr> }
+  | V41CandidateRealizationRefused { defects: List<NonEmptyStr> }
+
+fn v41_realized_candidate(
+  runtime: V41RealizedRuntime,
+  row_store: V41RowStoreEncoding,
+  spec: V41CandidateVerdict,
+) -> V41RealizedCandidate {
+  match spec.standing {
+    V41CandidateUnestablished { obligations: o } => V41CandidateRealizationUnestablished { obligations: o }
+    V41CandidateRefused { defects: d } => V41CandidateRealizationRefused { defects: d }
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: exec, candidate: _, authorization_obligation: auth } =>
+      match runtime {
+        V41RuntimeRealizationUnestablished { obligations: o } => V41CandidateRealizationUnestablished { obligations: o }
+        V41RuntimeRealizationRefused { defects: d } => V41CandidateRealizationRefused { defects: d }
+        V41RuntimeRealized { specification_runtime_key: _, image: _, consumed_patches: _, realized_runtime_key: rk } =>
+          match row_store {
+            V41RowStoreEncodingUnestablished { obligation: o } => V41CandidateRealizationUnestablished { obligations: [o] }
+            V41RowStoreEncodingRefused { defects: d } => V41CandidateRealizationRefused { defects: d }
+            V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: rd } =>
+              V41CandidateRealized {
+                realized_runtime: rk,
+                row_store: rd,
+                execution_profile: exec,
+                candidate: artifact_realization_digest(inputs: [
+                  v41_input(identity: "realized_runtime", value: serialize_content_hash(hash: rk) as String),
+                  v41_input(identity: "row_store", value: serialize_content_hash(hash: rd) as String),
+                  v41_input(identity: "execution_profile", value: serialize_content_hash(hash: exec) as String),
+                ]),
+                authorization_obligation: auth,
+              }
+          }
+      }
+  }
+}
+
+type V41SelectableRuntime
+  = V41Selectable { candidate: V41RealizedCandidate }
+  | V41NotSelectable { reason: NonEmptyStr }
+
+fn v41_selectable(realized: V41RealizedCandidate) -> V41SelectableRuntime {
+  match realized {
+    V41CandidateRealized { realized_runtime: _, row_store: _, execution_profile: _, candidate: _, authorization_obligation: _ } =>
+      V41Selectable { candidate: realized }
+    V41CandidateRealizationUnestablished { obligations: o } =>
+      V41NotSelectable { reason: join(["specification or bytes unestablished: ", join(map(o, x => x as String), "; ")], "") as NonEmptyStr }
+    V41CandidateRealizationRefused { defects: d } =>
+      V41NotSelectable { reason: join(["realization refused: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
+  }
+}
+
+fn v41_specification_is_not_selectable(spec: V41CandidateVerdict) -> Bool {
+  match spec.standing {
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } =>
+      match v41_selectable(realized: v41_realized_candidate(
+        runtime: V41RuntimeRealizationUnestablished { obligations: ["no image digest has been produced" as NonEmptyStr] },
+        row_store: V41RowStoreEncodingUnestablished { obligation: "no rank-local store has been produced" as NonEmptyStr },
+        spec: spec,
+      )) {
+        V41NotSelectable { reason: _ } => true
+        V41Selectable { candidate: _ } => false
+      }
+    V41CandidateUnestablished { obligations: _ } => true
+    V41CandidateRefused { defects: _ } => true
+  }
+}
+
+// ── THE RUNTIME OPENS A PATH AGAINST AN EXPECTED IDENTITY ──────────────────────────────────────
+type V41OpenedStore
+  = V41StoreHandle { path: NonEmptyStr, expected: ContentHash, observed: ContentHash, rank: Nat }
+  | V41StoreOpenRefused { defects: List<NonEmptyStr> }
+
+fn v41_open_rank_store(path: NonEmptyStr, expected: ContentHash, observed: ContentHash, rank: Nat) -> V41OpenedStore {
+  if (path as String) == "" {
+    V41StoreOpenRefused { defects: ["a path is not identity; an empty path cannot be a row store" as NonEmptyStr] }
+  } else if (serialize_content_hash(hash: expected) as String) != (serialize_content_hash(hash: observed) as String) {
+    V41StoreOpenRefused { defects: ["the file that was opened does not match the expected rank-store identity; a preflight that is not this comparison can go stale" as NonEmptyStr] }
+  } else {
+    V41StoreHandle { path: path, expected: expected, observed: observed, rank: rank }
+  }
+}
+
+fn v41_distributed_launch(opened: List<V41OpenedStore>, encoding: V41RowStoreEncoding) -> V41OpenedStore {
+  let refused = filter(opened, o => match o { V41StoreOpenRefused { defects: _ } => true V41StoreHandle { path: _, expected: _, observed: _, rank: _ } => false })
+  if length(refused) != 0 {
+    match refused.first() {
+      Present { value: r } => r
+      Absent => V41StoreOpenRefused { defects: ["distributed launch refused" as NonEmptyStr] }
+    }
+  } else {
+    match encoding {
+      V41RowStoreEncodingIdentified { spec: spec, spec_key: _, rank_stores: _, content_digest: _ } => {
+        let wrong = filter(opened, o => match o {
+          V41StoreHandle { path: _, expected: e, observed: _, rank: k } =>
+            match v41_rank_digest_of(e: encoding, rank: k) {
+              Absent => true
+              Present { value: want } => (serialize_content_hash(hash: e) as String) != (serialize_content_hash(hash: want) as String)
+            }
+          V41StoreOpenRefused { defects: _ } => true
+        })
+        if length(wrong) != 0 {
+          V41StoreOpenRefused { defects: ["one rank opened a row-store identity that is not the encoding's digest for that rank; distributed launch refuses" as NonEmptyStr] }
+        } else if length(opened) != spec.rank_count {
+          V41StoreOpenRefused { defects: ["distributed launch requires every declared rank" as NonEmptyStr] }
+        } else {
+          match opened.first() {
+            Present { value: h } => h
+            Absent => V41StoreOpenRefused { defects: ["no ranks" as NonEmptyStr] }
+          }
+        }
+      }
+      V41RowStoreEncodingUnestablished { obligation: o } => V41StoreOpenRefused { defects: [o] }
+      V41RowStoreEncodingRefused { defects: d } => V41StoreOpenRefused { defects: d }
+    }
+  }
+}
+
+// ── TOKEN-TIME ACCESS: LOCAL OR REFUSE. NEVER NFS. ─────────────────────────────────────────────
+type V41TokenTimeAccess
+  = V41TokenTimeLocal { placement: Placement }
+  | V41TokenTimeRefused { defects: List<NonEmptyStr> }
+
+fn v41_token_time(placement: Placement, local_present: Bool) -> V41TokenTimeAccess {
+  match placement {
+    RemoteNetwork => V41TokenTimeRefused {
+      defects: ["a missing local row store cannot silently use NFS at token time; that would change the selected realization while preserving the launch identity" as NonEmptyStr],
+    }
+    LocalFilesystem =>
+      if local_present {
+        V41TokenTimeLocal { placement: placement }
+      } else {
+        V41TokenTimeRefused {
+          defects: ["rank-local row store missing; refusing rather than falling back to a remote path" as NonEmptyStr],
+        }
+      }
+    LocalInProcess => V41TokenTimeRefused { defects: ["token-time Engram reads are a local filesystem placement, not in-process residency" as NonEmptyStr] }
+    LocalAccelerator => V41TokenTimeRefused { defects: ["token-time Engram reads are a local filesystem placement, not an accelerator-resident table" as NonEmptyStr] }
+  }
+}
+
+// ── BOUNDED RESIDENCY UNDER AN ADVERSARIAL TRACE ───────────────────────────────────────────────
+//
+// The bound is part of candidate compatibility. Recording steady resident bytes after init is too
+// late and too observational: an access population larger than cache capacity must evict, occupancy
+// must stay inside the declared limit, and exceeding it refuses the candidate.
+type V41ResidencyLimits sole_constructor {
+  configured_cache: ByteSize
+  effective_cache: ByteSize
+  configured_staging: ByteSize
+  effective_staging: ByteSize
+  configured_inflight_io: ByteSize
+  effective_inflight_io: ByteSize
+}
+
+type V41ResidencyVerdict
+  = V41ResidencyWithinBound {
+      limits: V41ResidencyLimits
+      occupancy: ByteSize
+      evicted: Nat
+    }
+  | V41ResidencyExceeded { defects: List<NonEmptyStr> }
+
+fn v41_limit_defects(l: V41ResidencyLimits) -> List<NonEmptyStr> {
+  concat(concat(
+    if byte_size_count(b: l.effective_cache) > byte_size_count(b: l.configured_cache) {
+      ["effective cache exceeds the configured hard limit" as NonEmptyStr]
+    } else { [] as List<NonEmptyStr> },
+    if byte_size_count(b: l.effective_staging) > byte_size_count(b: l.configured_staging) {
+      ["effective pinned staging exceeds the configured hard limit" as NonEmptyStr]
+    } else { [] as List<NonEmptyStr> }),
+    if byte_size_count(b: l.effective_inflight_io) > byte_size_count(b: l.configured_inflight_io) {
+      ["effective in-flight I/O exceeds the configured hard limit" as NonEmptyStr]
+    } else { [] as List<NonEmptyStr> })
+}
+
+fn v41_residency_under_trace(limits: V41ResidencyLimits, keys: List<ContentHash>, row_bytes: ByteSize) -> V41ResidencyVerdict {
+  let shape = v41_limit_defects(l: limits)
+  if length(shape) != 0 {
+    V41ResidencyExceeded { defects: shape }
+  } else {
+    let store = ArtifactStore { budget: limits.effective_cache, next_ordinal: 1, rows: [] as List<ArtifactRow> }
+    let final_put = fold(keys, init: StorePutAdmitted { store: store, evicted: [] as List<ContentHash> }, f: (acc, k) => match acc {
+      StorePutDidNotFit { artifact_bytes: a, budget: b } => StorePutDidNotFit { artifact_bytes: a, budget: b }
+      StorePutAdmitted { store: s, evicted: prev } => match store_put(store: s, key: k, artifact_bytes: row_bytes) {
+        StorePutDidNotFit { artifact_bytes: a, budget: b } => StorePutDidNotFit { artifact_bytes: a, budget: b }
+        StorePutAdmitted { store: n, evicted: e } => StorePutAdmitted { store: n, evicted: concat(prev, e) }
+      }
+    })
+    match final_put {
+      StorePutDidNotFit { artifact_bytes: _, budget: _ } =>
+        V41ResidencyExceeded { defects: ["an Engram row does not fit the declared cache; the candidate refuses" as NonEmptyStr] }
+      StorePutAdmitted { store: s, evicted: e } => {
+        let used = store_bytes_used(store: s)
+        if used > byte_size_count(b: limits.effective_cache) {
+          V41ResidencyExceeded { defects: ["observed occupancy exceeds the admitted cache bound" as NonEmptyStr] }
+        } else if length(e) == 0 && (length(keys) * byte_size_count(b: row_bytes)) > byte_size_count(b: limits.effective_cache) {
+          V41ResidencyExceeded { defects: ["eviction did not occur under a trace larger than cache capacity; the candidate refuses" as NonEmptyStr] }
+        } else {
+          V41ResidencyWithinBound {
+            limits: limits,
+            occupancy: byte_size(count: used),
+            evicted: length(e),
+          }
+        }
+      }
+    }
+  }
+}
+
+type V41PinnedAllocation
+  = V41PinnedWithinStaging { pinned_bytes: ByteSize, table_bytes: ByteSize }
+  | V41FullEngramPinned { pinned_bytes: ByteSize, table_bytes: ByteSize }
+
+fn v41_observe_pinned(pinned_bytes: ByteSize, table_bytes: ByteSize) -> V41PinnedAllocation {
+  if byte_size_count(b: pinned_bytes) >= byte_size_count(b: table_bytes) {
+    V41FullEngramPinned { pinned_bytes: pinned_bytes, table_bytes: table_bytes }
+  } else {
+    V41PinnedWithinStaging { pinned_bytes: pinned_bytes, table_bytes: table_bytes }
+  }
+}
+
+fn v41_refuse_full_pin(obs: V41PinnedAllocation) -> Bool {
+  match obs {
+    V41FullEngramPinned { pinned_bytes: _, table_bytes: _ } => true
+    V41PinnedWithinStaging { pinned_bytes: _, table_bytes: _ } => false
+  }
+}
+
+fn v41_candidate_refuses_full_pin(obs: V41PinnedAllocation) -> V41CandidateRealizationRefused? {
+  if v41_refuse_full_pin(obs: obs) {
+    Present { value: V41CandidateRealizationRefused { defects: ["full Engram pinned allocation detected; the storage-backed runtime candidate refuses" as NonEmptyStr] } }
+  } else {
+    none
+  }
+}

@@ -1,0 +1,95 @@
+module gunbc.spark.v41_engram_staging
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.content_hash { ContentHash, serialize_content_hash }
+import std.artifact_store { artifact_realization_digest }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.v41_runtime_candidate { v41_input }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
+}
+import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
+import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
+
+// ── CUT C: ARTIFACT STAGING, NOT SERVICE MUTATION ──────────────────────────────────────────────
+//
+// This module may create verified content-addressed files in a bounded staging area. It may not
+// start or stop processes, consume GPU memory, alter units, withdraw an incumbent, or claim seats.
+// V4 Flash keeps serving. Fabric/storage selection decides which provider holds the bytes; this
+// request names exact image X and exact rank-local stores R0..R3 and does not pick the copy source.
+//
+// Prefer route D when admitted: durable origin -> fill each rank's local NVMe. Route B may become
+// equivalent once the local artifact exists. A missing local store still refuses at token time
+// (gunbc.spark.v41_runtime_realized v41_token_time); staging never records an NFS token-time path.
+type V41StagedRankStore sole_constructor {
+  rank: Nat
+  identity: ContentHash
+  readback: ContentHash
+}
+
+type V41StagingRequest sole_constructor {
+  image: V41OciImageDigest
+  ranks: List<ContentHash>
+}
+
+fn v41_staging_request(image: V41OciImageDigest, encoding: V41RowStoreEncoding) -> V41StagingRequest? {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      Present { value: V41StagingRequest { image: image, ranks: map(rs.sort_by(r => r.rank), r => r.digest) } }
+    V41RowStoreEncodingUnestablished { obligation: _ } => none
+    V41RowStoreEncodingRefused { defects: _ } => none
+  }
+}
+
+type V41StagingReceipt
+  = V41StagingVerified {
+      request_key: ContentHash
+      image_readback: NonEmptyStr
+      ranks: List<V41StagedRankStore>
+    }
+  | V41StagingUnestablished { obligation: NonEmptyStr }
+  | V41StagingRefused { defects: List<NonEmptyStr> }
+
+fn v41_stage(
+  request: V41StagingRequest,
+  image_readback: NonEmptyStr,
+  rank_readbacks: List<V41StagedRankStore>,
+  provenance: VllmImageProvenance,
+) -> V41StagingReceipt {
+  match provenance {
+    AdoptedUnderExpectedTag => V41StagingRefused {
+      defects: ["staging a tag-only image is refused; the receipt must carry the produced digest" as NonEmptyStr],
+    }
+    BuiltByThisRun => {
+      let image_ok = (image_readback as String) == (request.image.manifest as String)
+      let count_ok = length(rank_readbacks) == length(request.ranks)
+      let each_ok = all(enumerate(request.ranks), p => any(rank_readbacks, s =>
+        s.rank == p.first && (serialize_content_hash(hash: s.identity) as String) == (serialize_content_hash(hash: p.second) as String)
+          && (serialize_content_hash(hash: s.readback) as String) == (serialize_content_hash(hash: s.identity) as String)))
+      if !image_ok {
+        V41StagingRefused { defects: ["image readback does not match the requested manifest digest" as NonEmptyStr] }
+      } else if !count_ok || !each_ok {
+        V41StagingRefused { defects: ["rank-local readback does not match the requested row-store identities" as NonEmptyStr] }
+      } else {
+        V41StagingVerified {
+          request_key: artifact_realization_digest(inputs: concat(
+            [
+              v41_input(identity: "image.manifest", value: request.image.manifest as String),
+              v41_input(identity: "image.config", value: request.image.config as String),
+            ],
+            map(enumerate(request.ranks), p => v41_input(identity: join(["rank.", to_string(p.first)], ""), value: serialize_content_hash(hash: p.second) as String)))),
+          image_readback: image_readback,
+          ranks: rank_readbacks,
+        }
+      }
+    }
+  }
+}
+
+// THE LIVE GROUP-A FILL IS AN OBLIGATION UNTIL THE ORIGIN BYTES ARE TRANSFORMED. This cut models the
+// request and the receipt shape. Minting a verified receipt without a readback would be
+// specification-without-execution.
+data v41_group_a_staging_standing: V41StagingReceipt = V41StagingUnestablished {
+  obligation: "Group A staging is admitted as artifact-only mutation; the published Engram shards have not been transformed into rank-local stores in this change, so no verified fill receipt is minted. V4 Flash is not displaced." as NonEmptyStr,
+}
