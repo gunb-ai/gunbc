@@ -19,6 +19,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
 import gunbc.spark.serving_usage_stats_observe { spark_usage_stats_inspect_unread }
+import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
 import std.measure { token_count }
 import v2.std.optional { Present, Absent }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6 }
