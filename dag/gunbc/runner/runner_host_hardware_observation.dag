@@ -42,8 +42,10 @@ data mtcollins1_uefi_pci_capture: HostEvidenceCapture = HostEvidenceCapture {
 
 // ── what was observed ───────────────────────────────────────────────────────────────────────────
 
+// A function may be identified without its address having been recorded.
+// Missing address evidence stays optional, never a fabricated address string.
 type PciFunctionObservation {
-  address: PciAddress
+  address: PciAddress?
   vendor: PciVendorId
   device: PciDeviceId
   class_code: PciClassCode
@@ -54,25 +56,25 @@ type PciFunctionObservation {
 // identity.
 data mtcollins1_observed_pci_functions: List<PciFunctionObservation> = [
   PciFunctionObservation {
-    address: "02:02:00.00" as PciAddress,
+    address: Present { value: "02:02:00.00" as PciAddress },
     vendor: "8086" as PciVendorId,
     device: "1521" as PciDeviceId,
     class_code: "network-ethernet" as PciClassCode,
   },
   PciFunctionObservation {
-    address: "02:02:00.01" as PciAddress,
+    address: Present { value: "02:02:00.01" as PciAddress },
     vendor: "8086" as PciVendorId,
     device: "1521" as PciDeviceId,
     class_code: "network-ethernet" as PciClassCode,
   },
   PciFunctionObservation {
-    address: "04:03:00.00" as PciAddress,
+    address: Present { value: "04:03:00.00" as PciAddress },
     vendor: "1912" as PciVendorId,
     device: "0014" as PciDeviceId,
     class_code: "serial-bus-usb" as PciClassCode,
   },
   PciFunctionObservation {
-    address: "unrecorded-in-capture" as PciAddress,
+    address: none,
     vendor: "1a03" as PciVendorId,
     device: "2000" as PciDeviceId,
     class_code: "display" as PciClassCode,

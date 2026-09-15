@@ -15,7 +15,7 @@ import std.temporal_effect {
   LeasePortForeign,
   LeaseInaccessible,
 }
-import std.durable_compare_and_set {
+import std.durable_compare_and_set { CasSlotObservationRefused,
   CasOutcome,
   CasCommitted,
   CasStoreRefused,
@@ -582,10 +582,10 @@ test fn w_commit_standing_comes_only_from_cas() -> Bool {
     },
   }
   let missing: CasOutcome<NonEmptyStr> = CasStoreRefused {
-    cause: CasUnreadableContentMissing { referenced: content_hash_of_value(value: "absent") }
+    cause: CasSlotObservationRefused { cause: CasUnreadableContentMissing { referenced: content_hash_of_value(value: "absent") } }
   }
   let refused: CasOutcome<NonEmptyStr> = CasStoreRefused {
-    cause: CasUnreadableReadRefused { detail: "synthetic store refusal" }
+    cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "synthetic store refusal" } }
   }
   is_committed(standing: local_commit_from_cas(outcome: good))
   && is_reference_missing(standing: local_commit_from_cas(outcome: missing))

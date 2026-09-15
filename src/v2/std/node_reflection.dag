@@ -1,18 +1,53 @@
 module v2.std.node_reflection
 
+import std.decl_ref { DeclarationRef }
 import v2.std.collection { List }
-import v2.std.diagnostic { Outcome }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  invariant_port_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.decl_index {
+  DeclFact,
+  TypeItem,
+  decl_facts_at,
+  logical_qualified_name_from_module,
+  type_declarer_qualified_names
+}
 import v2.std.node { Node, Symbol }
-import v2.std.node_query { coproduct_arm_key_list_from_node }
+import v2.std.node_query { coproduct_arm_key_list_from_node, node_is_coproduct }
 
-// THE HOST TYPE-REFLECTION SURFACE, AND WHY IT IS ITS OWN MODULE.
+// THE HOST TYPE-REFLECTION SURFACE, AND WHY ONE OF ITS TWO SEAMS IS GONE.
 //
-// Both declarations below are host seams: their whole body is a self-call, answered by
-// the v1 interpreter's live declaration index (roster arms v4_bridge.resolve_type_node
-// and v4_bridge.coproduct_nullary_inhabitants). Nothing in the substrate can give them a
-// body, because neither the resolved Node for a type NAME nor an inhabitant of an
-// arbitrary T is derivable from anything the caller hands them -- the answer is a fact
-// about the running compiler's own source index, not about the arguments.
+// coproduct_nullary_inhabitants below is a host seam: its whole body is a self-call,
+// answered by the v1 interpreter's live declaration index (roster arm
+// v4_bridge.coproduct_nullary_inhabitants). Nothing in the substrate can give it a body,
+// because an inhabitant of an arbitrary T is not derivable from anything the caller hands
+// it -- the answer is a fact about the running compiler's own source index.
+//
+// A SECOND HOST SEAM USED TO SIT BESIDE IT AND IS DELETED RATHER THAN RENAMED. It carried the
+// spelling `resolve_type_node`, WHICH THE SCOPE-CARRYING FUNCTION BELOW NOW CARRIES -- the name
+// is reused across that deletion, so every sentence here about the SEAM is about the thing that
+// was removed and never about the function of the same name that replaced it. The seam took a
+// BARE type spelling, and its host arm answered by scanning the interpreter's loaded modules
+// and returning the FIRST item whose authored name matched -- so a spelling two modules
+// declare was answered from whichever load order reached first, with no diagnostic. That is
+// the DESIGN section 5 silent wrongness this module now exists to refuse.
+//
+// The seam is deleted because after the cutover nothing consumed it: the guarded route establishes
+// multiplicity and shape from the KEYED declaration read and returns the node that read
+// already carries, so it never needs the bare scan, and every other consumer was moved. A
+// rename would have kept a bare-spelling host route alive under a new name, which is exactly
+// the surviving-X attractor DESIGN section 3 warns about -- the old vocabulary stays
+// available and the next question gets answered in it. The host functions it reached,
+// eval_resolve_type_node and the type_item_by_name scan beneath it, had no other caller and
+// are deleted with it, so the seed shrinks (DESIGN section 7) rather than growing a synonym.
 //
 // They used to sit in v2.std.node and v2.std.node_query, which the v2 compiler's import
 // closure carries. Emission is decided at MODULE grain, so both were emitted into the
@@ -28,14 +63,6 @@ import v2.std.node_query { coproduct_arm_key_list_from_node }
 // emitted crate -- loudly, at the same grep the census reads. The rule the split states
 // is that reflection is an INTERPRETER-time capability: available to a lens or a witness
 // reading the live tree, never to a declaration the compiler must emit.
-fn resolve_type_node(type_name: Symbol) -> Node {
-  resolve_type_node(type_name: type_name)
-}
-
-fn coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
-  coproduct_arm_key_list_from_node(node: resolve_type_node(type_name: type_name))
-}
-
 fn coproduct_nullary_inhabitants<T>(
   type_name: Symbol,
   discriminant_of: fn(T) -> Symbol
@@ -44,4 +71,259 @@ fn coproduct_nullary_inhabitants<T>(
     type_name: type_name,
     discriminant_of: discriminant_of
   )
+}
+
+// THE SCOPE-CARRYING ROUTE, AND THE DEFECT IT REPLACED.
+//
+// THE DELETED SEAM of this name keyed on a BARE spelling. Its host arm (v4_bridge.resolve_type_node,
+// realized by v1.stage0.coproduct_reflection type_item_by_name) answered it by scanning the
+// interpreter's loaded modules in order and returning the FIRST item whose authored name
+// matched. When one spelling is declared as a closed coproduct in two modules, that scan
+// returned whichever module the load order reached first -- a different arm set, with no
+// diagnostic. It was DESIGN section 5 silent wrongness: not a refusal, a wrong answer that
+// typechecks. The corpus inhabits the invalid state today, so this is a live class and not a
+// hypothetical one; the discriminating pair enrolled against it is in
+// `v2.test.manual.scoped_type_reflection_conformance`.
+//
+// The fix mints NO new identity and NO new host seam, which is the whole point (DESIGN
+// section 3). The multiplicity that decides ambiguity is already a substrate fact:
+// `v2.std.decl_index` decl_facts carries one row per declaration with its bare `name`, its
+// `kind`, and its `qualified_name`. So the guard is derivable here, in `.dag`, from the index
+// that `v2.std.decl_ref_resolution` already treats as the authority for exactly this question
+// -- "how many declarations answer to this name" -- and whose five-arm refusal law this module
+// deliberately does not restate.
+//
+// Consumers (DESIGN section 3c), and there is NO open frontier here any more. Consumed by execution
+// in this change: v2.lens.affected_set (through the guarded route, with a refusal landing in
+// UniverseIncomplete), the generated coproduct witnesses, the reflection conformance witness, the
+// wiring-liveness entry, and the conformance claims in
+// v2.test.manual.scoped_type_reflection_conformance.
+//
+// An earlier revision of this annotation classified that cutover as a DECLARED FRONTIER and said the
+// bare pair stayed reachable and unguarded until it landed. review 65702 caught that the sentence
+// had outlived the tree: the cutover HAD landed in this same change, so the classification was the
+// wrong section 3c arm and, worse, it justified leaving a silent-first-match route importable after
+// its consumers were gone -- the escape hatch DESIGN section 5 forbids and the surviving-X attractor
+// section 3 warns about. The bare pair is now deleted rather than described, so there is nothing
+// left for a frontier sentence to be about.
+// WHY THIS IS A KEYED READ AND NOT A FOLD OVER decl_facts. The first version of this guard filtered
+// the whole declaration corpus, which was correct and cost roughly 3.6s per call against 1ms for a
+// keyed read, sharing at no grain -- four calls inside ONE claim frame cost four times one. That put
+// the guard that makes reflection sound far above the floor's per-claim ceiling, and it was itself
+// gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame in the very route
+// meant to make the reflection memo key sound. v2.std.decl_index type_declarer_qualified_names is
+// the keyed answer: the host filters the same memoized pool decl_facts_at reads and marshals no
+// declaration nodes, and it returns EVERY candidate rather than choosing among them, so the
+// multiplicity and the candidate identities are both decided here.
+fn type_declarer_names(pool_roots: List<String>, type_name: Symbol) -> List<String> {
+  type_declarer_qualified_names(
+    pool_roots: pool_roots,
+    bare_name: symbol_lexeme(sym: type_name)
+  )
+}
+
+fn scoped_type_reflection_diagnostic(type_name: Symbol, invariant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: invariant,
+    at: invariant_port_locus(port: type_name, invariant: invariant),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+// THE ONLY PATH TO THE BARE HOST SEAM, SHARED BY BOTH ROUTES ON PURPOSE. review 65571 found that
+// the shape check had been added to the spelling route and not to the citation route, so the
+// citation route still reached the seam for a record and got an untyped host error -- the exact
+// exit the sibling had just closed. Two copies of one acceptance law is the section 3 fork that
+// produced that divergence, so there is now ONE copy and neither route may call the seam except
+// through it.
+//
+// It establishes SHAPE after its caller has established uniqueness. decl_facts kind TypeItem does
+// not separate a closed coproduct from a record -- this module's own UriScheme specimen depends on
+// the v2.std.network RECORD counting as a candidate -- so uniqueness alone was never the contract
+// the annotations claimed. No new authority: node_is_coproduct is v2.std.node_query's existing
+// predicate, read from the node the keyed fact already carries.
+//
+// IT READS AT THE GRAIN ITS CALLER MEASURED, which review 65885 caught it not doing. Both callers
+// establish multiplicity over a KIND-FILTERED census: type_declarer_qualified_names counts only
+// declarations whose kind is TypeItem. decl_facts_at filters on qualified name and NOTHING ELSE, so
+// taking its head would answer from whichever row the canonical order happened to put first
+// whenever a logical qualified name carries a type declaration AND a non-type one -- the uniqueness
+// would have been proven over one population and the answer taken from another, which is the
+// first-match-without-a-diagnostic shape this module exists to close, one filter down.
+//
+// The repair is construction rather than a check: narrow the keyed read to the same kind the guard
+// counted, and refuse unless exactly one row survives. There is no arm to test into existence
+// because there is no arm that picks.
+//
+// THE STATE IS CURRENTLY UNPOPULATED AND THAT IS NOT WHY IT IS FIXED. Two declarations share one
+// logical qualified name only when logical_qualified_name_from_module strips a leading `v2.` and
+// both `v2.X` and `X` declare the name; searched across those twelve colliding module pairs, ZERO
+// names are declared as a type on one side and a non-type on the other today. So no RED is
+// authorable from the live corpus, and writing a refusal claim against it would be a decoration
+// that greens by construction (DESIGN section 4b). The mismatch is removed at the read instead,
+// where it cannot be reintroduced by someone later adding the declaration that would populate it.
+fn accept_sole_declaration(
+  pool_roots: List<String>,
+  type_name: Symbol,
+  sole_qualified_name: String
+) -> Outcome<Node> {
+  let at_name = decl_facts_at(pool_roots: pool_roots, qualified_name: sole_qualified_name)
+  let type_rows = filter(xs: at_name, predicate: fn(fact) { fact.kind == TypeItem })
+  if length(xs: type_rows) > 1 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^cited_type_qualified_name_ambiguous
+      )
+    )
+  } else {
+    match list_head(xs: type_rows) {
+      HeadAbsent =>
+        outcome_rejected(
+          d: scoped_type_reflection_diagnostic(
+            type_name: type_name,
+            invariant: ^type_declaration_absent
+          )
+        )
+      HeadFound { value: sole } =>
+        if node_is_coproduct(node: sole.node) {
+          outcome_accepted(value: sole.node)
+        } else {
+          outcome_rejected(
+            d: scoped_type_reflection_diagnostic(
+              type_name: type_name,
+              invariant: ^type_spelling_is_not_a_closed_coproduct
+            )
+          )
+        }
+    }
+  }
+}
+
+// A bare spelling resolves ONLY where the index proves exactly one type declaration answers to
+// it; zero and many each refuse, typed and located, rather than widening to a first match
+// (DESIGN section 5 -- a failure arm refuses, never widens). The single-row arm is the only one
+// that may reach the bare host seam, and it may do so precisely because uniqueness has been
+// established BEFORE the call rather than assumed by it.
+fn resolve_type_node(pool_roots: List<String>, type_name: Symbol) -> Outcome<Node> {
+  let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
+  let n = length(xs: candidates)
+  if n == 0 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^type_declaration_absent
+      )
+    )
+  } else if n > 1 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^type_spelling_ambiguous_across_modules
+      )
+    )
+  } else {
+    match list_head(xs: candidates) {
+      HeadAbsent =>
+        outcome_rejected(
+          d: scoped_type_reflection_diagnostic(
+            type_name: type_name,
+            invariant: ^type_declaration_absent
+          )
+        )
+      HeadFound { value: sole_qualified_name } =>
+        accept_sole_declaration(
+          pool_roots: pool_roots,
+          type_name: type_name,
+          sole_qualified_name: sole_qualified_name
+        )
+    }
+  }
+}
+
+fn coproduct_arm_keys(
+  pool_roots: List<String>,
+  type_name: Symbol
+) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: resolve_type_node(pool_roots: pool_roots, type_name: type_name),
+    f: fn(node) {
+      outcome_accepted(value: coproduct_arm_key_list_from_node(node: node))
+    }
+  )
+}
+
+// THE ARM-KEY READING OF THE CITATION ROUTE, declared because the spelling route has one and a
+// caller that cites its module needs the same answer shape. It binds over resolve_type_node_at
+// exactly as coproduct_arm_keys binds over resolve_type_node, so the two routes
+// differ in how the declaration is NAMED and in nothing else -- no second arm-key law.
+// Consumer: the conformance claims in v2.test.manual.scoped_type_reflection_conformance that read
+// a forked spelling through each of its declaring modules.
+fn coproduct_arm_keys_at(
+  pool_roots: List<String>,
+  ref: DeclarationRef
+) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: resolve_type_node_at(pool_roots: pool_roots, ref: ref),
+    f: fn(node) {
+      outcome_accepted(value: coproduct_arm_key_list_from_node(node: node))
+    }
+  )
+}
+
+// THE ROUTE THAT MAKES A CALLER SAY WHICH MODULE IT MEANT, and the one that can RESOLVE what the
+// spelling route can only refuse. `resolve_type_node` refuses an ambiguous spelling because
+// a bare name does not say which declaration was meant; a caller that legitimately means one of
+// several same-spelled types names it by citation instead, reusing `std.decl_ref` DeclarationRef --
+// the corpus's existing carrier for "this declaration, in this module" -- so no second spelling of a
+// scoped type identity is minted here. When PR #11264 lands its occurrence bindings, this is the
+// declaration whose parameter becomes that binding: the citation is refined in place, not forked.
+//
+// IT REFUSES MULTIPLICITY AT ITS OWN GRAIN TOO, which review 65678 caught me missing. Removing the
+// bare-uniqueness conjunct was right; leaving the ZERO case as the only refusal was not, because it
+// sent every non-zero multiplicity into the accept path, and that path takes the head of the keyed
+// read. Two declarations under ONE logical qualified name would then have been answered from
+// whichever row came first -- the same first-match-without-a-diagnostic shape this module exists to
+// close, moved one grain down from bare spelling to qualified name. This module's own seed-growth
+// receipt states the law that forbids it: two rows under one logical qualified name is an ambiguous
+// citation, and collapsing it silently RESOLVES one, which is a wrong answer and not a cost defect.
+//
+// IT ASKS ONLY WHETHER THE CITED NAME RESOLVES, and review 65649 is why that is worth stating. An
+// earlier revision also required the BARE spelling to be globally unique, and refused otherwise on
+// an invariant naming the bare host seam. That prohibition was true when the accept path still
+// delegated to the seam, which could not be told which module to read -- and it outlived its own
+// premise by one commit: once `accept_sole_declaration` began returning the node the KEYED read
+// already carries, nothing in this module consults load order, so a qualified key is exact and a
+// cited type in a forked spelling is perfectly resolvable. Keeping the conjunct would have forbidden
+// more than the evidence supports (DESIGN section 4d) and would have made the citation route unable
+// to serve the only case it exists for.
+fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcome<Node> {
+  let wanted = logical_qualified_name_from_module(
+    module_name: ref.module_path as String,
+    name: ref.decl_name as String
+  )
+  let type_name = symbol_intern_lexeme(lexeme: ref.decl_name as String)
+  let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
+  let scoped = filter(xs: candidates, predicate: fn(qn) { qn == wanted })
+  if length(xs: scoped) == 0 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^cited_type_declaration_absent
+      )
+    )
+  } else if length(xs: scoped) > 1 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^cited_type_qualified_name_ambiguous
+      )
+    )
+  } else {
+    accept_sole_declaration(
+      pool_roots: pool_roots,
+      type_name: type_name,
+      sole_qualified_name: wanted
+    )
+  }
 }
