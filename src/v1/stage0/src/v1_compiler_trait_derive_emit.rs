@@ -438,13 +438,23 @@ pub fn map_has_declared_type(type_decl_items: Rc<HashMap<String, Rc<Node>>>, nam
 }
 
 pub fn v1_map_key_fixpoint_loop(
-    mut round: Rc<MapKeyRequirementRound>,
-    mut declared_type_names: Rc<Vec<String>>,
-    mut type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    mut remaining: i64,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_round: Rc<MapKeyRequirementRound>,
+    mut __tco_loop_declared_type_names: Rc<Vec<String>>,
+    mut __tco_loop_type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    mut __tco_loop_remaining: i64,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     loop {
+        #[allow(unused_mut)]
+        let mut round = __tco_loop_round.clone();
+        #[allow(unused_mut)]
+        let mut declared_type_names = __tco_loop_declared_type_names.clone();
+        #[allow(unused_mut)]
+        let mut type_decl_items = __tco_loop_type_decl_items.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         if (remaining.clone() <= 0) {
             break round.names.clone();
         } else {
@@ -466,11 +476,11 @@ pub fn v1_map_key_fixpoint_loop(
                     let __tco_2 = type_decl_items;
                     let __tco_3 = (remaining - 1);
                     let __tco_4 = source_indices;
-                    round = __tco_0;
-                    declared_type_names = __tco_1;
-                    type_decl_items = __tco_2;
-                    remaining = __tco_3;
-                    source_indices = __tco_4;
+                    __tco_loop_round = __tco_0;
+                    __tco_loop_declared_type_names = __tco_1;
+                    __tco_loop_type_decl_items = __tco_2;
+                    __tco_loop_remaining = __tco_3;
+                    __tco_loop_source_indices = __tco_4;
                     continue;
                 }
             }
@@ -3782,13 +3792,23 @@ pub fn v1_clone_bound_seed_for_item(
 }
 
 pub fn v1_clone_bound_fixpoint_loop(
-    mut generic_type_names: Rc<Vec<String>>,
-    mut type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    mut bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    mut remaining: i64,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_generic_type_names: Rc<Vec<String>>,
+    mut __tco_loop_type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    mut __tco_loop_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    mut __tco_loop_remaining: i64,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     loop {
+        #[allow(unused_mut)]
+        let mut generic_type_names = __tco_loop_generic_type_names.clone();
+        #[allow(unused_mut)]
+        let mut type_decl_items = __tco_loop_type_decl_items.clone();
+        #[allow(unused_mut)]
+        let mut bounds = __tco_loop_bounds.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         if (remaining.clone() <= 0) {
             break bounds.clone();
         } else {
@@ -3820,11 +3840,11 @@ pub fn v1_clone_bound_fixpoint_loop(
                     let __tco_2 = round.bounds.clone();
                     let __tco_3 = (remaining - 1);
                     let __tco_4 = source_indices;
-                    generic_type_names = __tco_0;
-                    type_decl_items = __tco_1;
-                    bounds = __tco_2;
-                    remaining = __tco_3;
-                    source_indices = __tco_4;
+                    __tco_loop_generic_type_names = __tco_0;
+                    __tco_loop_type_decl_items = __tco_1;
+                    __tco_loop_bounds = __tco_2;
+                    __tco_loop_remaining = __tco_3;
+                    __tco_loop_source_indices = __tco_4;
                     continue;
                 }
             }

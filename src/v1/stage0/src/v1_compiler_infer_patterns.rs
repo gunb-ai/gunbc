@@ -232,10 +232,14 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
 }
 
 pub fn expand_scrut_type_for_variant_lookup(
-    mut scrut_node: Rc<Node>,
-    mut env: Rc<TypeEnv>,
+    mut __tco_loop_scrut_node: Rc<Node>,
+    mut __tco_loop_env: Rc<TypeEnv>,
 ) -> Rc<Node> {
     loop {
+        #[allow(unused_mut)]
+        let mut scrut_node = __tco_loop_scrut_node.clone();
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env.clone();
         let name =
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
@@ -248,8 +252,8 @@ pub fn expand_scrut_type_for_variant_lookup(
                 Some(InferredNode::Resolved { node: target, .. }) => {
                     let __tco_0 = target.clone();
                     let __tco_1 = env;
-                    scrut_node = __tco_0;
-                    env = __tco_1;
+                    __tco_loop_scrut_node = __tco_0;
+                    __tco_loop_env = __tco_1;
                     continue;
                 }
                 _ => {

@@ -141,13 +141,23 @@ pub struct KahnState {
 }
 
 pub fn kahn_cycle_drain(
-    mut queue: Rc<Vec<String>>,
-    mut in_degree: Rc<HashMap<String, i64>>,
-    mut reverse_adj: Rc<HashMap<String, Rc<Vec<String>>>>,
-    mut removed_count: i64,
-    mut fuel: i64,
+    mut __tco_loop_queue: Rc<Vec<String>>,
+    mut __tco_loop_in_degree: Rc<HashMap<String, i64>>,
+    mut __tco_loop_reverse_adj: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut __tco_loop_removed_count: i64,
+    mut __tco_loop_fuel: i64,
 ) -> Rc<KahnState> {
     loop {
+        #[allow(unused_mut)]
+        let mut queue = __tco_loop_queue.clone();
+        #[allow(unused_mut)]
+        let mut in_degree = __tco_loop_in_degree.clone();
+        #[allow(unused_mut)]
+        let mut reverse_adj = __tco_loop_reverse_adj.clone();
+        #[allow(unused_mut)]
+        let mut removed_count = __tco_loop_removed_count.clone();
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel.clone();
         if ((queue.clone().len() as i64) == 0) {
             return Rc::new(KahnState {
                 in_degree: in_degree.clone(),
@@ -213,11 +223,11 @@ pub fn kahn_cycle_drain(
             let __tco_2 = reverse_adj;
             let __tco_3 = result.removed_count.clone();
             let __tco_4 = (fuel - 1);
-            queue = __tco_0;
-            in_degree = __tco_1;
-            reverse_adj = __tco_2;
-            removed_count = __tco_3;
-            fuel = __tco_4;
+            __tco_loop_queue = __tco_0;
+            __tco_loop_in_degree = __tco_1;
+            __tco_loop_reverse_adj = __tco_2;
+            __tco_loop_removed_count = __tco_3;
+            __tco_loop_fuel = __tco_4;
             continue;
         }
     }

@@ -446,11 +446,11 @@ fn ct_tco_tail_call_assigns_every_loop_slot_test() -> String {
         "        assert!(compiled.diagnostics.is_empty(), \"fixture must compile, got {:?}\", compiled.diagnostics);\n",
     "        let emitted = compiled.files.iter().find(|f| f.path.ends_with(\"tco_slot_fixture.rs\")).expect(\"rust emit\");\n",
     "        let walk_at = emitted.content.find(\"fn walk\").expect(\"walk\");\n",
+    "        let rest = &emitted.content[walk_at..];\n",
     "        let tco_at = rest.find(\"let __tco_0\").expect(\"TCO temps in walk\");\n",
     "        let cont_rel = rest[tco_at..].find(\"continue\").expect(\"TCO continue in walk\");\n",
     "        let block = &rest[tco_at..tco_at + cont_rel + \"continue\".len()];\n",
-    "        let authored = [\"acc\".to_string(), \"n\".to_string()];\n",
-    "        tco_assert_reassign_structure(block, &authored, \"__tco_\", \"continue\");\n",
+    "        tco_assert_reassign_structure(block, &slots, \"__tco_\", \"continue\");\n",
     "    }}\n\n")
 }
 

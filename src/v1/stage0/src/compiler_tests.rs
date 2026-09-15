@@ -583,12 +583,12 @@ mod compiler_tests {
                 .find(|f| f.path.ends_with("tco_slot_fixture.rs"))
                 .expect("rust emit");
             let walk_at = emitted.content.find("fn walk").expect("walk");
-            let rest = &emitted.content[walk_at..];
-            let cont_at = rest.find("continue").expect("TCO continue in walk");
-            let block_start = rest[..cont_at].rfind("{{").unwrap_or(0);
-            let block = &rest[block_start..cont_at + "continue".len()];
-            let authored = ["acc".to_string(), "n".to_string()];
-            tco_assert_reassign_structure(block, &authored, "__tco_", "continue");
+            let tco_at = rest.find("let __tco_0").expect("TCO temps in walk");
+            let cont_rel = rest[tco_at..]
+                .find("continue")
+                .expect("TCO continue in walk");
+            let block = &rest[tco_at..tco_at + cont_rel + "continue".len()];
+            tco_assert_reassign_structure(block, &slots, "__tco_", "continue");
         }
     }
 
