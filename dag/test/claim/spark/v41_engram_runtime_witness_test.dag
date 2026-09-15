@@ -55,6 +55,7 @@ import gunbc.spark.vllm_runtime_image_build { BuiltByThisRun, AdoptedUnderExpect
 import gunbc.spark.v41_engram_staging {
   v41_staging_request, v41_stage, V41StagingVerified, V41StagingRefused, V41StagingUnestablished,
   v41_group_a_staging_standing, v41_staged_matching, v41_staged_with_readback,
+  v41_engram_disk_justification,
 }
 
 data w_closed_population: SafetensorsPopulationStanding = safetensors_population_standing(
@@ -413,7 +414,12 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
             V41StagingUnestablished { obligation: _ } => false
           })
           && (match v41_group_a_staging_standing {
-            V41StagingUnestablished { obligation: o } => (o as String).contains("proud-deer-538") && (o as String).contains("not a V4 Flash incumbent")
+            V41StagingUnestablished { obligation: o } =>
+              (o as String).contains("proud-deer-538")
+                && (o as String).contains("stages around")
+                && (o as String).contains("Fill is Unestablished")
+                && (v41_engram_disk_justification() as String).contains("2.2 GiB")
+                && (v41_engram_disk_justification() as String).contains("49.5")
             V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
             V41StagingRefused { defects: _ } => false
           })

@@ -9,7 +9,7 @@ import gunbc.spark.v41_runtime_candidate { v41_input }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
 }
-import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
 
 // ── CUT C: ARTIFACT STAGING, NOT SERVICE MUTATION ──────────────────────────────────────────────
@@ -19,10 +19,14 @@ import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRu
 // Fabric/storage selection decides which provider holds the bytes; this
 // request names exact image X and exact rank-local stores R0..R3 and does not pick the copy source.
 //
-// THE INCUMBENT ON GROUP A IS AN OBSERVATION, NOT THIS MODULE'S ASSUMPTION. The corpus has treated
-// V4 Flash as still serving there. Session proud-deer-538 (2026-09-15) read a Ray/gunbc-spark-pair
-// cluster holding most of each rank's pool with no listener on :8000. Until the operator says that
-// occupancy is disposable, this cut does not write. The live standing names that reading.
+// THE INCUMBENT ON GROUP A IS AN OBSERVATION, NOT THIS MODULE'S ASSUMPTION. Session proud-deer-538
+// (2026-09-15) read a Ray/gunbc-spark-pair cluster holding most of each rank's unified pool with no
+// listener on :8000. Operator later cleared disk use and said the group is unused: stage AROUND that
+// occupant. Cut D tears it down inside an authorized transaction. This cut does not.
+//
+// WHY ENGRAM GOES TO DISK AT ALL is proud-deer-538's reading of the published repo manifest
+// (v41_engram_disk_justification_standing): resident Engram would leave 2.2 GiB on a 121 GiB pool,
+// which is why the published NoFeasibleRealization is correct; storage-backed Engram leaves 49.5.
 //
 // Prefer route D when admitted: durable origin -> fill each rank's local NVMe. Route B may become
 // equivalent once the local artifact exists. A missing local store still refuses at token time
@@ -117,6 +121,17 @@ fn v41_stage(
 // THE LIVE GROUP-A FILL IS AN OBLIGATION UNTIL THE ORIGIN BYTES ARE TRANSFORMED. This cut models the
 // request and the receipt shape. Minting a verified receipt without a readback would be
 // specification-without-execution.
+data v41_engram_disk_justification_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "session proud-deer-538 (2026-09-15) reading of the published repo manifest, not taken by this lane: total checkpoint 475.3 GiB across 48 shards; Engram shards 47 and 48 189.1 GiB storage-backed; everything else 286.1 GiB resident; TP4 resident 71.5 GiB/rank against the 121 GiB pool leaves 49.5 GiB headroom. If Engram stayed resident it would be 118.8 GiB/rank against 121, fitting by 2.2 GiB with nothing left for KV, context, activations, or the runtime — the published NoFeasibleRealization is correct rather than conservative, and disk converts 2.2 GiB of headroom into 49.5" as NonEmptyStr,
+}
+
 data v41_group_a_staging_standing: V41StagingReceipt = V41StagingUnestablished {
-  obligation: "Group A staging is not run: door 3 is not cleared. Occupancy cited from session proud-deer-538 (2026-09-15), not taken by this lane: spark-a3ee, spark-3bd5, spark-c2b1, spark-ac79 each run a gunbc-spark-pair container ~42h holding ~100.7 GiB; free reports 107-109 GiB used of 121 with 12-14 GiB available; nothing answers on :8000. That is not a V4 Flash incumbent serving an endpoint, so Cut D drain-and-rollback has no observed V4 Flash subject on those ranks. Node total 121 GiB agrees with spark_unified_memory_per_host 130663231488 bytes. Published Engram shards are not filled here." as NonEmptyStr,
+  obligation: "Door 3 is cleared for disk. Occupant cited from proud-deer-538: gunbc-spark-pair stays up on spark-a3ee, spark-3bd5, spark-c2b1, spark-ac79; this cut stages around it and does not tear it down. Staging dirs exist at /home/briansrls/v41-engram-staging. Fill is Unestablished until published-shard rank stores have a modeled identity and a readback; a verified receipt is not minted from empty directories. Disk justification: v41_engram_disk_justification_standing. Patch apply is the next PR in this lane, not this one." as NonEmptyStr,
+}
+
+fn v41_engram_disk_justification() -> NonEmptyStr {
+  match cited_figure_read_obligation(standing: v41_engram_disk_justification_standing) {
+    Present { value: o } => o
+    Absent => "v41_engram_disk_justification_standing is TranscribedUncited and must carry a read obligation" as NonEmptyStr
+  }
 }
