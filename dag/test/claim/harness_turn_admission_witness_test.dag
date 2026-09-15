@@ -28,6 +28,7 @@ import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_seat {
   HarnessCandidates, HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
   harness_turn_subject, harness_turn_request, harness_admit_bound_offer, harness_execution_requirements,
+  harness_bind_candidate, harness_serving_realization,
 }
 import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
 import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape }
@@ -36,7 +37,9 @@ import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_
 //
 // The harness used to take a bound Spark offer straight to a refusal saying provider-use admission
 // had not run. It now builds the turn's subject once at harness_bind_seat and admits each bound offer
-// under that subject before the offer may enter the field. These witnesses pin both halves. The
+// under that subject before the offer may enter the field. These witnesses pin the subject, the
+// factored admit step, AND the production route from harness_bind_candidate's bound arm into it
+// (a_bound_offer_reaches_admission_through_bind_candidate, over the route seam). The
 // admitted arm has no positive control yet, and that is stated rather than faked: first-party
 // admission refuses while the answering launch's usage-stats path is unread, on every fixture this
 // corpus can build. DECLARED FRONTIER (DESIGN 3c): the positive CandidateBound control lands when
@@ -116,6 +119,33 @@ fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
 
 fn t_empty() -> HarnessCandidates {
   HarnessCandidates { candidates: [], notes: [], retryable: false }
+}
+
+// RED, THROUGH THE PRODUCTION ROUTE. harness_bind_candidate is the fold production calls; with a
+// fixture route that binds, its bound arm must take the offer INTO admission rather than refuse on
+// its own. The discriminator is the admission's refusal_reason in the note: the arm this replaced
+// refused with a sentence of its own and no producer had run, so restoring it turns this red.
+test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
+  let subject = t_subject(prompt: "p", attempt: "a-1")
+  let placed = harness_bind_candidate(
+    acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
+    readback: t_realization().readback, route: ServingRouteObserved { route: t_route() }, subject: subject,
+    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
+  )
+  match t_bound() {
+    SparkOfferBindingRefused { group_wire: _, cause: _ } => false
+    SparkOfferBound { bound: projection } =>
+      match spark_first_party_admission(
+        realization: harness_serving_realization(group: FabricGroupA, launch: t_launch(), readback: t_realization().readback),
+        scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
+        offer: projection.offer.id,
+      ) {
+        ProviderUseAdmitted { permit: _ } => false
+        ProviderUseDenied { decision: _, cause: why } =>
+          length(placed.candidates) == 0
+            && any(placed.notes, n => n.contains(refusal_reason(c: why)))
+      }
+  }
 }
 
 // RED, AND THE CAUSE IS THE ADMISSION'S OWN. A bound offer that first-party admission refuses never

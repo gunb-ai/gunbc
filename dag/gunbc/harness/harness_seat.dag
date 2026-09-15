@@ -561,7 +561,13 @@ fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, 
   )
 }
 
-fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, subject: HarnessTurnSubject, model: NonEmptyStr, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
+// THE ROUTE STANDING IS A SUPPLIED VALUE HERE, computed by the caller from harness_serving_route,
+// so this one interface can be driven with a fixture route that binds and shown to take the bound
+// offer INTO admission (test.claim.harness_turn_admission_witness). Production cannot reach the
+// bound arm today -- harness_serving_realization carries no incarnation observation, so every
+// route it produces is ServingRouteServiceUnidentified -- and without the seam the arm's wiring
+// would be unexercised by any control.
+fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, route: SparkServingRoute, subject: HarnessTurnSubject, model: NonEmptyStr, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
@@ -571,7 +577,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     isolation: serving_isolation_profile(),
     seats: seats as Int,
     availability: availability,
-    route: harness_serving_route(group: group, launch: launch, readback: readback),
+    route: route,
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why as String), retryable: false)
@@ -752,7 +758,7 @@ fn harness_add_serving_candidate(
   )
   match admission {
     AdmissibleForClass { class: _, receipt: _ } =>
-      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, requirement: requirement, subject: subject, model: model, unit: unit, seats: seats)
+      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, route: harness_serving_route(group: group, launch: launch, readback: readback), subject: subject, model: model, unit: unit, seats: seats)
     InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
       harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
     InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
