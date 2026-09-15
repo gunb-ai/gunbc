@@ -13,6 +13,13 @@
 # verified at open, mmap'd MAP_PRIVATE without registering the whole table
 # with CUDA. Token-time gathers copy requested rows into the existing bounded
 # pinned staging buffer. A missing local path refuses; there is no NFS arm.
+#
+# MAGIC is the realization of gunbc.spark.v41_engram_row_store v41_row_store_magic.
+# Do not mint a second revision or endianness constant here: those live on the
+# encoding spec. Open verifies whole-file SHA against rank_digest_hex and MAGIC.
+# encoding_digest / rank / format_revision are not on this type until a modeled
+# header carries them — claiming them on ExpectedRowStoreIdentity without a
+# check was a lying identity surface.
 
 from __future__ import annotations
 
@@ -20,14 +27,13 @@ import hashlib
 import mmap
 import os
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
 
 
+# gunbc.spark.v41_engram_row_store v41_row_store_magic
 MAGIC = b"ENGR1\n"
-FORMAT_REVISION = 1
-LITTLE_ENDIAN = True
 
 
 class EngramRowStoreIdentityMismatch(RuntimeError):
@@ -44,10 +50,7 @@ class EngramFullTablePinned(RuntimeError):
 
 @dataclass(frozen=True)
 class ExpectedRowStoreIdentity:
-    encoding_digest_hex: str
-    rank: int
     rank_digest_hex: str
-    format_revision: int = FORMAT_REVISION
 
 
 def _sha256_file(path: str) -> str:
@@ -78,7 +81,7 @@ class FileBackedEngramStorage:
         self._fd = os.open(self.path, os.O_RDONLY)
         self._mmap = mmap.mmap(self._fd, 0, access=mmap.ACCESS_READ)
         if self._mmap[: len(MAGIC)] != MAGIC:
-            raise EngramRowStoreIdentityMismatch("row-store magic/revision mismatch")
+            raise EngramRowStoreIdentityMismatch("row-store MAGIC mismatch")
         self._header_ok = True
 
     def close(self) -> None:

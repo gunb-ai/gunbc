@@ -10,6 +10,7 @@ import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
 }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
+import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
 
 // ── CUT C: ARTIFACT STAGING, NOT SERVICE MUTATION ──────────────────────────────────────────────
