@@ -1,7 +1,8 @@
 module gunbc.parsed_import_statement_production
 
-import std.import { ParsedImportStatements }
+import std.import { ParsedImportStatements, ParsedImportObservation }
 import std.types { String }
+import v2.std.compilers.lexing { Token }
 
 // THE PRODUCTION SEAM FOR PARSED IMPORT STATEMENTS, AND IT IS A TRANSPORT RATHER THAN AN AUTHORITY.
 //
@@ -15,5 +16,12 @@ import std.types { String }
 // question ever arises about WHICH sources to ask about, it belongs in the caller.
 
 fn parsed_import_statements_live(file: String, source: String) -> ParsedImportStatements {
+  parsed_import_observation_live(file: file, source: source).imports
+}
+
+// One host entry, two projections of the same observation. Token.class preserves the acquired
+// seed TokenShape identity (ShIdent, ShCaret, ...); lexeme is the source slice at its span, not
+// the seed token's potentially cooked text. No v2 grammar-class renaming occurs at this boundary.
+fn parsed_import_observation_live(file: String, source: String) -> ParsedImportObservation<Token> {
   parsed_import_statements(file: file, source: source)
 }

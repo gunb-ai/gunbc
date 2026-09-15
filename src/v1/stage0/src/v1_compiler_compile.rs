@@ -2868,8 +2868,8 @@ pub enum CensusModuleRetention {
 
 pub fn census_retain_module(module: Rc<Node>, retention: CensusModuleRetention) -> Rc<Node> {
     match retention.clone() {
-        CensusModuleRetention::RetainParsedModules => module,
-        CensusModuleRetention::RetainDeclarationHeads => census_heads_module_node(module),
+        CensusModuleRetention::RetainParsedModules => module.clone(),
+        CensusModuleRetention::RetainDeclarationHeads => census_heads_module_node(module.clone()),
     }
 }
 

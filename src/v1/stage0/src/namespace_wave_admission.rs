@@ -1891,379 +1891,340 @@ pub struct TransitionAdmission {
 /// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
 /// and one that deserves its own evidence.
 ///
-/// TRIGGER for the 37 rows: they go when #11138 merges, at which point the base carries the
-/// shared declaration, the deltas stop being producible, and CONSUMED comes due on the roster's
-/// next touch -- adjudicated by the declaring-module join, not by this sentence.
-const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std.text";
-
+/// TRIGGER for the 37 rows: they went when #11138 merged. The base then carried the shared
+/// declaration and the rows were consumed; they were deleted on the roster's next touch
+/// (gunbc#11373), and the frontier above is unaffected by that deletion.
+///
+/// PCI IDENTITY REPAIR (gunbc#11373, 2026-09-14). The required floor at d616837c802
+/// measured 39 deltas: six ExplicitlyEvaluatedZeroDelta memberships and one
+/// SameDeclarationIdentityRebind removal auto-admit. These 32 exact binding rows
+/// adjudicate the remaining 17 TargetChanged and 15 NewPoolCoincidenceResolution
+/// deltas. The former relocate Ubuntu-owned brands to their PCI authority; the
+/// latter restore bindings whose runner consumers landed without that authority.
+/// This is const admission data for the existing seed consumer, not new policy.
+/// Every binding requires the complete singleton candidate set, not a subset.
+/// Delete these rows after #11373 lands and the base resolves these bindings:
+/// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
+/// wave_admission_refusal charges consumed rows on that landing run. A separate
+/// cleanup PR must remove the consumed rows; this admission does not waive it.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.complexity_linearity_audit",
-            in_declaration: "migration_roster_contains",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "r8169_claims_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "callee_text_is_host_sink",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "realtek_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "data_init_belongs_to_modules",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8125_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flow_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8126_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "path_literal_from_lexeme",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8127_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "sink_kind_for_callee",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.runner.runner_host_first_boot_receipt",
+            in_declaration: "mtcollins1_igb_binding",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "LinuxDriverQualification",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "LinuxDriverQualification",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciClassPopulationObservation",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "i350_igb_qualification",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "i350_igb_qualification",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_pci_mass_storage_population",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "PciDeviceIdentity",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.enforcement.vocab",
-            in_declaration: "scope_roster_covers",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "PciDeviceIdentity",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.fact_cardinality",
-            in_declaration: "add_unseen_key",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "SparkUnattendedPxeBootRefusalReason",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "callee_text_is_known_carrier",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "SparkUnattendedPxeBootRefusalReason",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_for_callee_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.spark.pxe_rescue_observation",
+            in_declaration: "spark_2196_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_homes_in_closure",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.spark.pxe_rescue_observation",
+            in_declaration: "spark_2196_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "classification_has_literal_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "decls_with_qualified_name",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_carrier_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "module_facts_for_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "modules_of_closure_paths",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "witness_claimed_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_from_lexeme",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "runtime_read_carrier_module_names",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.manufactured_dependency_census",
-            in_declaration: "edge_is_manufactured",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.manufactured_dependency_census",
-            in_declaration: "snoc_unseen",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "add_unseen",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "bfs_absorb_neighbor",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "path_matches_touched",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "snoc_unseen_list",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "decl_contains_atom",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "decl_contains_callee",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "maybe_snoc_callee_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "node_contains_atom_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "site_row_already_present",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "structural_red_control_live_fixture_mint_site_discovered",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_corpus_paths_live",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_fact_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_import_facts_at_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_neighbor_paths_from_facts",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_paths_from_import_edges",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_paths_from_module_declarations",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "witness_claimed_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

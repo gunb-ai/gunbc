@@ -329,7 +329,7 @@ fn frontier_probe_missing_module_from_assemble_context(
           Rejected { diagnostics: _ } => optional_absent()
           Accepted { value: validated_roots, diagnostics: _ } =>
             frontier_probe_first_missing_import_lookup(
-              roots: validated_roots,
+              roots: validated_roots.roots,
               imports: admission.imports
             )
         }

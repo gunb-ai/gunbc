@@ -69,8 +69,8 @@ pub fn dissolution_trigger_fired(
             present_decls.clone(),
         );
         match (*trigger.clone()).clone() {
-            DissolutionTrigger::DeclarationAppears { ref_: _, .. } => present,
-            DissolutionTrigger::DeclarationRetires { ref_: _, .. } => !present,
+            DissolutionTrigger::DeclarationAppears { ref_: _, .. } => present.clone(),
+            DissolutionTrigger::DeclarationRetires { ref_: _, .. } => !present.clone(),
         }
     }
 }
