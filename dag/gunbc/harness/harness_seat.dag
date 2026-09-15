@@ -570,6 +570,7 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // of #11083); that arm is gone because the producer now runs.
 //
 // THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
+<<<<<<< HEAD
 // through exactly what production passes. The incarnation standing is an ARGUMENT: production takes
 // it from gunbc.spark.serving_incarnation_observe at candidate time (harness_incarnation_standing
 // below), reading the group's head host over the fleet key session at the same instant the endpoint
@@ -577,6 +578,16 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // incarnation refusal. The declared head-unit digest is the SHA-256 of the bytes
 // gunbc.spark.pair_serving_realization spark_pair_head_unit_file rendered.
 fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding) -> SparkServingRealization {
+=======
+// through exactly what production passes. The declared head-unit digest is the SHA-256 of the bytes
+// gunbc.spark.pair_serving_realization spark_pair_head_unit_file rendered; harness_collect_candidates
+// mints spark_pair_declared_unit_digests once per turn and carries the group's standing in, so
+// DigestStdin is not re-spawned per enrolled route. The incarnation observation is still absent on
+// this path, so production still returns ServingRouteServiceUnidentified with
+// ServiceIncarnationUnobserved. test.claim.spark.spark_pair_head_unit_digest_witness hashes the
+// rendered unit bytes by real sha256sum execution.
+fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRealization {
+>>>>>>> e9457df673 (WIP: Spark head-unit declared digest from rendered bytes)
   SparkServingRealization {
     hosts: fabric_group_hosts(g: group),
     readback: readback,
