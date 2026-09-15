@@ -9,7 +9,6 @@ import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, WorkflowRun, WorkflowRunList, WorkflowRunStatus, Completed }
 import extdeps.github.push_event { PushRefUpdate }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import std.algebra { length }
 import std.types { CommitSha }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_string, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
