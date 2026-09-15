@@ -1,6 +1,6 @@
 module gunbc.host_convergence_protocol
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, Int }
 import v2.std.algebra { filter, length }
 import std.goal_assessment {
   ObservationAttempt,
@@ -33,7 +33,6 @@ import gunbc.host_convergence_census {
   fleet_plan,
   fleet_apply,
   live_readiness,
-  live_member_identity,
 }
 
 // CONVERGENCE-ONE C1. Binds the C0 census to the canonical stack without host actuation.
@@ -129,54 +128,22 @@ type CanonicalLayerJoin
   | CanonicalLayerMissing { layer: CanonicalProtocolLayer }
   | CanonicalLayerDuplicated { layer: CanonicalProtocolLayer }
 
-fn canonical_layer_eq(a: CanonicalProtocolLayer, b: CanonicalProtocolLayer) -> Bool {
-  match a {
-    LayerSelect =>
-      match b {
-        LayerSelect => true
-        _ => false
-      }
-    LayerObserveAssess =>
-      match b {
-        LayerObserveAssess => true
-        _ => false
-      }
-    LayerRemedy =>
-      match b {
-        LayerRemedy => true
-        _ => false
-      }
-    LayerReadback =>
-      match b {
-        LayerReadback => true
-        _ => false
-      }
-    LayerEnsureAdapter =>
-      match b {
-        LayerEnsureAdapter => true
-        _ => false
-      }
-    LayerFleetPlan =>
-      match b {
-        LayerFleetPlan => true
-        _ => false
-      }
-    LayerFleetApply =>
-      match b {
-        LayerFleetApply => true
-        _ => false
-      }
-    LayerDeployObserve =>
-      match b {
-        LayerDeployObserve => true
-        _ => false
-      }
-    LayerDeployReadiness =>
-      match b {
-        LayerDeployReadiness => true
-        _ => false
-      }
+fn canonical_layer_tag(layer: CanonicalProtocolLayer) -> Int {
+  match layer {
+    LayerSelect => 0
+    LayerObserveAssess => 1
+    LayerRemedy => 2
+    LayerReadback => 3
+    LayerEnsureAdapter => 4
+    LayerFleetPlan => 5
+    LayerFleetApply => 6
+    LayerDeployObserve => 7
+    LayerDeployReadiness => 8
   }
+}
+
+fn canonical_layer_eq(a: CanonicalProtocolLayer, b: CanonicalProtocolLayer) -> Bool {
+  canonical_layer_tag(layer: a) == canonical_layer_tag(layer: b)
 }
 
 fn canonical_layer_join(
@@ -291,41 +258,12 @@ data host_effect_domain_projection_frontier: ProtocolDeclaredFrontier = Protocol
   trigger_capability: observe_executable_id,
 }
 
-data ownership_interpretation_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
-  declaration: decl_ref(
-    module_path: "gunbc.host_convergence_protocol",
-    decl_name: "interpret_ownership_from_attempt",
-  ),
-  named_consumer: live_member_identity(),
-  trigger_capability: live_member_identity(),
-}
-
 fn frontier_names_a_distinct_consumer(f: ProtocolDeclaredFrontier) -> Bool {
   !declaration_ref_eq(a: f.declaration, b: f.named_consumer)
 }
 
 fn frontier_trigger_is_not_declaration(f: ProtocolDeclaredFrontier) -> Bool {
   !declaration_ref_eq(a: f.declaration, b: f.trigger_capability)
-}
-
-type OwnershipStanding<E>
-  = Owned { evidence: E }
-  | Foreign { evidence: E }
-
-type OwnershipInterpretation<E, ObserveRefusal>
-  = OwnershipAssessed { standing: OwnershipStanding<E> }
-  | OwnershipUnobservable { cause: ObserveRefusal }
-
-fn interpret_ownership_from_attempt<Observed, E, ObserveRefusal>(
-  attempt: ObservationAttempt<Observed, ObserveRefusal>,
-  interpret: fn(Observed) -> OwnershipStanding<E>,
-) -> OwnershipInterpretation<E, ObserveRefusal> {
-  match attempt {
-    ObservationEstablished { observed: observed } =>
-      OwnershipAssessed { standing: interpret(observed) }
-    ObservationRefused { cause: cause } =>
-      OwnershipUnobservable { cause: cause }
-  }
 }
 
 fn reconcile_from_read_attempt<P, R, E>(
@@ -360,7 +298,5 @@ fn bind_canonical_protocol() -> Bool {
       ),
     )
     && frontier_names_a_distinct_consumer(f: host_effect_domain_projection_frontier)
-    && frontier_names_a_distinct_consumer(f: ownership_interpretation_frontier)
     && frontier_trigger_is_not_declaration(f: host_effect_domain_projection_frontier)
-    && frontier_trigger_is_not_declaration(f: ownership_interpretation_frontier)
 }

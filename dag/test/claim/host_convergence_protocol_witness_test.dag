@@ -34,10 +34,6 @@ import gunbc.host_convergence_protocol {
   SelectionLeakedIntoAssessment,
   production_census_protocol_is_bound,
   bind_canonical_protocol,
-  interpret_ownership_from_attempt,
-  OwnershipAssessed,
-  OwnershipUnobservable,
-  Foreign,
   reconcile_from_read_attempt,
   inspect_via_host_effect_projection,
   HostEffectDomainProjection,
@@ -329,23 +325,6 @@ test fn ensure_inaccessible_after_cannot_converge() -> Bool {
   }
 }
 
-test fn foreign_is_assessment_of_established_evidence_not_observation_failure() -> Bool {
-  match interpret_ownership_from_attempt(
-    attempt: ObservationRefused { cause: "unreadable" },
-    interpret: fn(obs) { Foreign { evidence: obs } },
-  ) {
-    OwnershipUnobservable { cause: c } => c == "unreadable"
-    OwnershipAssessed { standing: _ } => false
-  }
-    && match interpret_ownership_from_attempt(
-      attempt: ObservationEstablished { observed: "other-owner" },
-      interpret: fn(obs) { Foreign { evidence: obs } },
-    ) {
-      OwnershipAssessed { standing: Foreign { evidence: e } } => e == "other-owner"
-      _ => false
-    }
-}
-
 test fn canonical_layer_join_missing_required_layer_is_red() -> Bool {
   match canonical_layer_join(
     required: required_canonical_layers,
@@ -418,7 +397,6 @@ test fn host_convergence_protocol_keystone_holds() -> Bool {
     && host_effect_domain_projection_inspects_without_selection()
     && ensure_observation_is_a_projection_of_the_canonical_attempt()
     && ensure_inaccessible_after_cannot_converge()
-    && foreign_is_assessment_of_established_evidence_not_observation_failure()
     && canonical_protocol_binds()
     && canonical_layer_join_missing_required_layer_is_red()
     && frontier_self_successor_is_red()
