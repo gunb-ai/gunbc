@@ -31,8 +31,10 @@ import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
-  resolve_with_admission,
-  resolve_with_admission_grounded
+  ResolutionContext,
+  resolution_context,
+  resolve_with_admission_context_policy,
+  resolve_with_admission
 }
 import v2.compiler.program_assembly {
   assemble_program_from_ingest,
@@ -1208,7 +1210,7 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // and multiply their whole-tree cost by the test population.
 
 type NativeTestContext {
-  roots: FreeMonoid<NormalizedTree>
+  resolution: Outcome<ResolutionContext>
   index: SourceRootIndex
   active_roots: FreeMonoid<SourceRootRef>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
@@ -1304,7 +1306,7 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
         }
       )
       outcome_accepted(value: NativeTestContext {
-        roots: folded.roots,
+        resolution: resolution_context(lm: lm, roots: folded.roots),
         index: folded.index,
         active_roots: source_root_set_from_ingest(ingest: ingest),
         file_refusals: folded.file_refusals
@@ -1317,15 +1319,15 @@ fn native_test_resolve_module(
   context: NativeTestContext,
   module: QualifiedName
 ) -> Outcome<ResolvedTree> {
-  resolve_with_admission_grounded(
-    lm: dag_language_model(),
-    roots: context.roots,
+  resolve_with_admission_context_policy(
+    context: context.resolution,
     admission: Admission {
       subject: ResolutionSubject { name: module },
       imports: Empty
     },
     index: context.index,
-    active_roots: context.active_roots
+    active_roots: context.active_roots,
+    policy: v2.std.resolution_policy.default_name_resolution_policy()
   )
 }
 

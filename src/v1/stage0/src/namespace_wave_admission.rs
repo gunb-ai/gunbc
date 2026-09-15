@@ -1907,16 +1907,56 @@ pub struct TransitionAdmission {
 /// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
 /// wave_admission_refusal charges consumed rows on that landing run. A separate
 /// cleanup PR must remove the consumed rows; this admission does not waive it.
-/// THE gunbc#10729 ROWS DISSOLVED HERE (2026-09-15). The required floor on gunbc#11419
-/// (run 34946067471) reported 0 unadjudicated deltas and 35 consumed #10729 admissions due
-/// on this roster touch. Their trigger (#10729 merging) is present at the base. They are
-/// deleted here rather than inherited. The live row is the json_string_list hoist.
+
+/// THE gunbc#11373 ROWS DISSOLVED HERE (2026-09-15), BY THE TRIGGER THE BLOCK ABOVE WROTE FOR
+/// THEM. That block says it plainly -- delete these rows after #11373 lands and the base resolves
+/// these bindings, and a separate cleanup does not waive it. #11373 is present at this merge's
+/// base, so the floor on gunbc#10729 measured 0 unadjudicated deltas, 0 stale admissions and all
+/// 32 CONSUMED, due on the roster's next touch. This merge IS that touch, so they go here rather
+/// than waiting for a cleanup PR that would have to re-derive the same join.
 ///
-/// gunbc#11419 json_string_list hoist (2026-09-15). One TargetChanged: `json_string_list` in
+/// ADJUDICATED BY THE FLOOR'S OWN RECEIPT, not by this sentence: every one of the 32 reported
+/// `already satisfied at the base -- consumed by its own merge`, which is the run joining each
+/// row against the merged tree on its own tuple. The count is occurrences, not constants: 17
+/// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
+/// runner hardware observation, DGX PXE and PXE-rescue consumers.
+///
+/// gunbc#11306 repository-visibility unification (2026-09-13). Six rows for one move: the
+/// spellings `RepositoryVisibility`, `PublicRepository` and `PrivateRepository` relocate from
+/// `extdeps.github.actions_token` to `extdeps.github.repository`. The concept was FORKED, which is
+/// what made the move necessary rather than cosmetic: `actions_token` declared
+/// `RepositoryVisibility = PublicRepository | PrivateRepository` for the fork-token rule while
+/// `hosted_runners` declared `RepoVisibility = PublicRepo | PrivateRepo` for the runner hardware
+/// tables -- one upstream fact under two spellings, free to disagree, and neither reusable by a
+/// third consumer that needed to ask whether a repository is world-readable. GitHub's repository
+/// resource owns `visibility` as a field, so the resource gets the module and the field gets the
+/// type.
+///
+/// THREE SPELLINGS ACROSS TWO MODULES, ENUMERATED BY EXACT IDENTITY. Every row is `TargetChanged`
+/// and the claim is this roster's header claim verbatim: a spelling authored on both sides now
+/// resolves to a different module, and NOT ONE of them changes which declaration the spelling
+/// denotes -- the coproduct and its two arms move unedited, so a binding whose meaning had actually
+/// moved would refuse on its own row rather than hide under these. The membership half of the same
+/// motion is reported separately and auto-admitted as `ExplicitlyEvaluatedZeroDelta`. The rows are
+/// enumerated rather than patterned over the module pair, because a pattern would admit a genuine
+/// rebind that happened to land in the same two modules. `hosted_runners` produces no row here: its
+/// arms were spelled `PublicRepo`/`PrivateRepo` and are new names at the head, not rebinds.
+///
+/// DISSOLVE-ON: gunbc#11306 merging. Once the relocation is on main, base and head of every
+/// pull_request build both carry it, the `TargetChanged` deltas stop being producible, all six
+/// report stale and refuse every unrelated PR. The deletion PR is authored and linked from #11306
+/// BEFORE this lands, so the trigger has a waiting actuator rather than a sentence. Remove them by
+/// that trigger, not by reinterpreting it.
+/// THE gunbc#11306 ROWS DISSOLVED HERE (2026-09-15, gunbc#11441), by the same trigger: #11306
+/// landed as `9f5e4988c5`, so its repository-visibility cohort is present at this merge's base,
+/// every row reports consumed by its own merge, and CONSUMED comes due on this roster's next
+/// touch -- this one. The #10729 rows the block above dissolved are likewise gone.
+///
+/// gunbc#11441 json_string_list hoist (2026-09-15). One TargetChanged: `json_string_list` in
 /// `container_image_config_env_from_json` now binds `extdeps.languages.json.parse`.
-/// DISSOLVE-ON: gunbc#11419 merging.
+/// DISSOLVE-ON: gunbc#11441 merging.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "json_string_list lives in json.parse (gunbc#11419)",
+    label: "json_string_list lives in json.parse (gunbc#11441)",
     subject: AdmissionSubject::Binding {
         module: "gunbc.container.registry_image_config",
         in_declaration: "container_image_config_env_from_json",

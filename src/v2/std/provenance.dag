@@ -71,6 +71,22 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   }
 }
 
+// ONE ENTRY OF span_index_merge, for a caller that knows WHICH incoming ids it needs. The merge
+// rule is unchanged -- the base's entry wins, an absent id takes the incoming entry -- but the
+// cost is one lookup pair instead of a walk over every incoming key. The parser's memo hit is the
+// consumer: its incoming index carries every entry minted before the memoized frame started, so
+// the whole-key merge paid the size of the file so far on every hit.
+fn span_index_adopt(base: SpanIndex, incoming: SpanIndex, id: OccurrenceId) -> SpanIndex {
+  match base.entries.lookup(id) {
+    Present { value: _ } => base
+    Absent =>
+      match incoming.entries.lookup(id) {
+        Present { value: event } => SpanIndex { entries: map_insert(m: base.entries, key: id, value: event) }
+        Absent => base
+      }
+  }
+}
+
 fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^span_index_origin_chain_exhausted,

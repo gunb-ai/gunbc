@@ -1,6 +1,7 @@
 module extdeps.github.actions_token
 
 import std.types { NonEmptyStr }
+import extdeps.github.repository { RepositoryVisibility, PublicRepository, PrivateRepository }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -196,10 +197,6 @@ type PullRequestOrigin
   = SameRepositoryOrigin
   | ForkedRepositoryOrigin
   | OriginNotApplicable
-
-type RepositoryVisibility
-  = PublicRepository
-  | PrivateRepository
 
 type ActionsRepositoryPolicyObservation
   = ActionsRepositoryPolicyUnobserved
