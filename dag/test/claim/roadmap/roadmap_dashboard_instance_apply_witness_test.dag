@@ -1,6 +1,6 @@
 module test.claim.roadmap_dashboard_instance_apply_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath, GitRef }
+import std.types { Bool, String, NonEmptyStr, FilePath, GitRef, CommitSha }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_is_shallow_repository_argv,
@@ -12,6 +12,7 @@ import extdeps.git {
   shape_git_clone_branch_argv,
 }
 import extdeps.tmux {
+  classify_tmux_has_session,
   shape_tmux_has_session_argv_for,
   shape_tmux_new_session_argv_for,
 }
@@ -77,6 +78,12 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_required_target_executables,
   dashboard_health_poll_seconds,
   dashboard_health_poll_attempts,
+  dashboard_service_session_ensure_decision,
+  dashboard_ensure_service_new_session_argv,
+  DashboardServiceSessionEnsureDecision,
+  EnsureCreateServiceSession,
+  EnsureReplaceServiceSession,
+  EnsureRefuseServiceSession,
 }
 import gunbc.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }
@@ -718,6 +725,80 @@ test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
     )
 }
 
+fn witness_ensure_decision(exit_ok: Bool, stderr: String) -> DashboardServiceSessionEnsureDecision {
+  dashboard_service_session_ensure_decision(
+    observation: classify_tmux_has_session(exit_ok: exit_ok, stderr: stderr),
+  )
+}
+
+test fn dashboard_named_session_absent_creates() -> Bool {
+  match witness_ensure_decision(
+    exit_ok: false,
+    stderr: "can't find session: gunbc-dashboard-srv1-lab-codex-feedback-v0",
+  ) {
+    EnsureCreateServiceSession => true
+    EnsureReplaceServiceSession => false
+    EnsureRefuseServiceSession { cause: _ } => false
+  }
+}
+
+test fn dashboard_no_tmux_server_creates() -> Bool {
+  match witness_ensure_decision(
+    exit_ok: false,
+    stderr: "no server running on /tmp/tmux-1000/srv1-lab-codex-feedback-v0",
+  ) {
+    EnsureCreateServiceSession => true
+    EnsureReplaceServiceSession => false
+    EnsureRefuseServiceSession { cause: _ } => false
+  }
+}
+
+test fn dashboard_session_present_replaces_not_duplicate() -> Bool {
+  match witness_ensure_decision(exit_ok: true, stderr: "") {
+    EnsureReplaceServiceSession => true
+    EnsureCreateServiceSession => false
+    EnsureRefuseServiceSession { cause: _ } => false
+  }
+}
+
+test fn dashboard_permission_denied_refuses_no_create() -> Bool {
+  match witness_ensure_decision(
+    exit_ok: false,
+    stderr: "error connecting to /tmp/tmux-1000/default (Permission denied)",
+  ) {
+    EnsureRefuseServiceSession { cause } =>
+      string_contains(s: cause, pattern: "Permission denied")
+    EnsureCreateServiceSession => false
+    EnsureReplaceServiceSession => false
+  }
+}
+
+test fn dashboard_transport_refused_refuses_no_create() -> Bool {
+  match witness_ensure_decision(
+    exit_ok: false,
+    stderr: "ssh: connect to host srv1 port 22: Connection refused",
+  ) {
+    EnsureRefuseServiceSession { cause } =>
+      string_contains(s: cause, pattern: "Connection refused")
+    EnsureCreateServiceSession => false
+    EnsureReplaceServiceSession => false
+  }
+}
+
+test fn dashboard_ensure_release_revision_is_admitted_not_head() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let admitted = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+  let head_would_return = "fedcba9876543210fedcba9876543210fedcba98"
+  let argv = dashboard_ensure_service_new_session_argv(
+    instance: lab,
+    admitted_release_revision: admitted,
+  )
+  any(argv, t => t == (admitted as String))
+    && !any(argv, t => t == head_would_return)
+    && !any(argv, t => t == "rev-parse")
+    && !any(argv, t => t == "HEAD")
+}
+
 test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
   production_reading_never_equates_absent_with_observed()
     && unpeered_host_refuses_nothing_and_reads_nothing()
@@ -734,4 +815,10 @@ test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
     && dashboard_bootstrap_parent_writability_is_a_preflight_fact()
     && dashboard_unreachable_root_refuses_before_choosing_a_parent()
     && dashboard_poll_interval_is_a_usable_duration()
+    && dashboard_named_session_absent_creates()
+    && dashboard_no_tmux_server_creates()
+    && dashboard_session_present_replaces_not_duplicate()
+    && dashboard_permission_denied_refuses_no_create()
+    && dashboard_transport_refused_refuses_no_create()
+    && dashboard_ensure_release_revision_is_admitted_not_head()
 }

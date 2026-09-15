@@ -25,7 +25,11 @@ import extdeps.git {
 }
 import extdeps.tools.chmod { chmod_binary_path }
 import extdeps.tmux {
-  tmux_has_session_stderr_is_absent,
+  classify_tmux_has_session,
+  TmuxHasSessionObservation,
+  TmuxHasSessionPresent,
+  TmuxHasSessionAbsent,
+  TmuxHasSessionUnknowable,
   shape_tmux_has_session_argv_for,
   shape_tmux_kill_session_argv_for,
   shape_tmux_new_session_argv_for,
@@ -688,62 +692,126 @@ fn dashboard_ensure_source_repo(
 }
 }
 
-fn dashboard_ensure_service(
+fn dashboard_observe_service_session(
   instance: HostDashboardInstance,
-) -> DashboardExecResult {
-  let service_session = dashboard_instance_service_session_name(instance: instance)
-  let present = dashboard_target_probe(
+) -> TmuxHasSessionObservation {
+  let probe = dashboard_target_probe(
     instance: instance,
     program: "/usr/bin/tmux" as FilePath,
     args: shape_tmux_has_session_argv_for(
       scope: instance.tmux_server,
-      session_name: service_session as String,
-    ),
-  ).success
-  let stopped = if present {
-    dashboard_target_exec(
-      instance: instance,
-      program: "/usr/bin/tmux" as FilePath,
-      args: shape_tmux_kill_session_argv_for(
-        scope: instance.tmux_server,
-        session_name: service_session as String,
-      ),
-    )
-  } else {
-    dashboard_exec_ok(stdout: "service session absent")
-  }
-  let head = dashboard_target_probe(
-    instance: instance,
-    program: "/usr/bin/git" as FilePath,
-    args: shape_git_rev_parse_argv(
-      repo: instance.repo_root,
-      target: "HEAD" as GitRef,
+      session_name: dashboard_instance_service_session_name(instance: instance) as String,
     ),
   )
-  if !stopped.success {
-    stopped
-  } else if !head.success || trim(head.stdout) == "" {
-    dashboard_exec_refused(detail: join([
-      "serve release revision unreadable: git rev-parse HEAD refused: ",
-      head.stderr,
-    ], ""))
-  } else {
-    dashboard_target_exec(
-      instance: instance,
-      program: "/usr/bin/tmux" as FilePath,
-      args: shape_tmux_new_session_argv_for(
-        scope: instance.tmux_server,
-        session_name: service_session as String,
-        working_dir: instance.repo_root as String,
-        inner_argv: concat(
-          [instance.serve_binary as String],
-          dashboard_instance_serve_argv(
-            instance: instance,
-            release_revision: trim(head.stdout),
-          ),
-        ),
+  classify_tmux_has_session(exit_ok: probe.success, stderr: probe.stderr)
+}
+
+fn dashboard_service_session_observation_refusal(
+  obs: TmuxHasSessionObservation,
+) -> List<String> {
+  match obs {
+    TmuxHasSessionPresent => []
+    TmuxHasSessionAbsent => []
+    TmuxHasSessionUnknowable { stderr } =>
+      [join(["service session observation refused: ", trim(stderr)], "")]
+  }
+}
+
+fn dashboard_service_session_present_bit(obs: TmuxHasSessionObservation) -> Bool {
+  match obs {
+    TmuxHasSessionPresent => true
+    TmuxHasSessionAbsent => false
+    TmuxHasSessionUnknowable { stderr: _ } => false
+  }
+}
+
+type DashboardServiceSessionEnsureDecision
+  = EnsureCreateServiceSession
+  | EnsureReplaceServiceSession
+  | EnsureRefuseServiceSession { cause: String }
+
+fn dashboard_service_session_ensure_decision(
+  observation: TmuxHasSessionObservation,
+) -> DashboardServiceSessionEnsureDecision {
+  match observation {
+    TmuxHasSessionPresent => EnsureReplaceServiceSession
+    TmuxHasSessionAbsent => EnsureCreateServiceSession
+    TmuxHasSessionUnknowable { stderr } =>
+      EnsureRefuseServiceSession { cause: trim(stderr) }
+  }
+}
+
+fn dashboard_ensure_service_new_session_argv(
+  instance: HostDashboardInstance,
+  admitted_release_revision: CommitSha,
+) -> List<String> {
+  shape_tmux_new_session_argv_for(
+    scope: instance.tmux_server,
+    session_name: dashboard_instance_service_session_name(instance: instance) as String,
+    working_dir: instance.repo_root as String,
+    inner_argv: concat(
+      [instance.serve_binary as String],
+      dashboard_instance_serve_argv(
+        instance: instance,
+        release_revision: admitted_release_revision,
       ),
-    )
+    ),
+  )
+}
+
+fn dashboard_ensure_service_create(
+  instance: HostDashboardInstance,
+  admitted_release_revision: CommitSha,
+) -> DashboardExecResult {
+  dashboard_target_exec(
+    instance: instance,
+    program: "/usr/bin/tmux" as FilePath,
+    args: dashboard_ensure_service_new_session_argv(
+      instance: instance,
+      admitted_release_revision: admitted_release_revision,
+    ),
+  )
+}
+
+fn dashboard_ensure_service(
+  instance: HostDashboardInstance,
+  admitted_release_revision: CommitSha,
+) -> DashboardExecResult {
+  if admitted_release_revision == "" {
+    dashboard_exec_refused(detail: "admitted release revision is empty")
+  } else {
+    match dashboard_service_session_ensure_decision(
+      observation: dashboard_observe_service_session(instance: instance),
+    ) {
+      EnsureRefuseServiceSession { cause } =>
+        dashboard_exec_refused(detail: join([
+          "service session observation refused before mutation: ",
+          cause,
+        ], ""))
+      EnsureCreateServiceSession =>
+        dashboard_ensure_service_create(
+          instance: instance,
+          admitted_release_revision: admitted_release_revision,
+        )
+      EnsureReplaceServiceSession => {
+        let stopped = dashboard_target_exec(
+          instance: instance,
+          program: "/usr/bin/tmux" as FilePath,
+          args: shape_tmux_kill_session_argv_for(
+            scope: instance.tmux_server,
+            session_name: dashboard_instance_service_session_name(instance: instance) as String,
+          ),
+        )
+        if !stopped.success {
+          stopped
+        } else {
+          dashboard_ensure_service_create(
+            instance: instance,
+            admitted_release_revision: admitted_release_revision,
+          )
+        }
+      }
+    }
   }
 }
 
@@ -853,6 +921,7 @@ fn dashboard_apply_provision_op(
   op: DashboardInstanceProvisionOp,
   temp_bundle: FilePath,
   temp_verify_repo: FilePath,
+  admitted_release_revision: CommitSha,
 ) -> DashboardExecResult {
   match op {
     DashboardHydrateControllerHistory { controller_repo, history_remote } =>
@@ -923,7 +992,10 @@ fn dashboard_apply_provision_op(
       port: _,
       tmux_server: _,
     } =>
-      dashboard_ensure_service(instance: instance)
+      dashboard_ensure_service(
+        instance: instance,
+        admitted_release_revision: admitted_release_revision,
+      )
     DashboardVerifyProviderRuntime { executable, state_root } => {
       let result = dashboard_target_exec(
         instance: instance,
@@ -983,6 +1055,7 @@ fn dashboard_apply_plan(
   plan: List<DashboardInstanceProvisionOp>,
   temp_bundle: FilePath,
   temp_verify_repo: FilePath,
+  admitted_release_revision: CommitSha,
 ) -> DashboardApplyFold {
   fold(
     plan,
@@ -1002,6 +1075,7 @@ fn dashboard_apply_plan(
           op: op,
           temp_bundle: temp_bundle,
           temp_verify_repo: temp_verify_repo,
+          admitted_release_revision: admitted_release_revision,
         )
         let detail = if result.success {
           trim(join([result.stdout, "\n", result.stderr], ""))
@@ -1249,14 +1323,7 @@ fn dashboard_instance_observe(
         ),
       )
   }
-  let service = dashboard_target_probe(
-    instance: instance,
-    program: "/usr/bin/tmux" as FilePath,
-    args: shape_tmux_has_session_argv_for(
-      scope: instance.tmux_server,
-      session_name: dashboard_instance_service_session_name(instance: instance) as String,
-    ),
-  )
+  let service = dashboard_observe_service_session(instance: instance)
   let bundle_present = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
     DashboardGitBundle {
@@ -1281,11 +1348,7 @@ fn dashboard_instance_observe(
     [
       dashboard_exec_refusal_reason(label: "provider runtime", r: provider_runtime),
       dashboard_exec_refusal_reason(label: "provider auth", r: provider),
-      if service.success || tmux_has_session_stderr_is_absent(stderr: service.stderr) {
-        []
-      } else {
-        dashboard_exec_refusal_reason(label: "service session", r: service)
-      },
+      dashboard_service_session_observation_refusal(obs: service),
     ],
     init: [],
     f: fn(acc, rs) { concat(acc, rs) },
@@ -1327,7 +1390,7 @@ fn dashboard_instance_observe(
       "\n",
       provider.stderr,
     ], "")),
-    service_present: service.success,
+    service_present: dashboard_service_session_present_bit(obs: service),
     health_current: dashboard_health_names_instance(instance: instance, result: health),
     production_untouched: production_untouched,
     source_anchor_matches: dashboard_source_anchor_matches(instance: instance),
@@ -2017,6 +2080,7 @@ fn dashboard_instance_apply_after_preflight(
               plan: plan,
               temp_bundle: temp_bundle,
               temp_verify_repo: temp_verify_repo,
+              admitted_release_revision: desired_source_revision,
             )
             let cleaned = shell.Remove.RecursiveForce(path: temp.path)
             if !applied.running {
@@ -2116,6 +2180,7 @@ fn dashboard_apply_bootstrap_then_escalate(
     plan: dashboard_bootstrap_only_ops(instance: instance),
     temp_bundle: dashboard_bootstrap_unused_temp_path,
     temp_verify_repo: dashboard_bootstrap_unused_temp_path,
+    admitted_release_revision: "",
   )
   dashboard_apply_refused(
     instance: instance,
@@ -2215,6 +2280,7 @@ fn dashboard_instance_ensure_dispatch_roots(
       }),
     temp_bundle: "/dev/null" as FilePath,
     temp_verify_repo: "/dev/null" as FilePath,
+    admitted_release_revision: "",
   )
 }
 
