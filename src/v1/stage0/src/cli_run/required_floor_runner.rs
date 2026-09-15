@@ -4321,10 +4321,11 @@ pub(crate) fn floor_authority_frame(
 /// declared roster, install admission and the shared-fill observer, and warm every nullary
 /// row so its fill is billed to preparation. FAIL-CLOSED at every arm: the roster module is
 /// a declared closure seed (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`), so a subject that
-/// cannot frame it, a roster that cannot decode, a warm row whose module is gone, a warm
-/// that fails to evaluate, and a warm whose value the store refuses each stop the line — a
-/// skip at any of these arms would leave admission empty while CI reads green, memoizing
-/// nothing (a green over a flag that never ran).
+/// cannot frame it, a roster that cannot decode, a warm spelling whose module IS in this
+/// subject but names no declaration, a warm that fails to evaluate, and a warm whose value
+/// the store refuses each stop the line. A roster row whose module is simply not in this
+/// gate-bounded subject is printed and not admitted — that is not a skip of the roster
+/// module itself.
 // RETURNS ITS OBSERVATIONS RATHER THAN JUST ITS ERRORS, because the warm fills are a shared
 // preparation build and the preparation refusal is denominated over the observations its caller
 // collects. Before this, the warm ran, printed a wall figure and produced nothing the adjudicator
