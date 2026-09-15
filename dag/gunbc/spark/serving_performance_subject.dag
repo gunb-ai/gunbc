@@ -341,7 +341,11 @@ type ServingPerformanceSubjectStanding
 
 // THE ONLY SANCTIONED WAY TO BUILD A STANDING. It cannot answer Established for a subject with an
 // absent axis, because it reads the absences off the subject itself rather than taking the caller's
-// word -- so Established around an unread axis is unreachable, not refused after the fact.
+// word -- so it cannot ANSWER Established for such a subject. That is the sanctioned route being
+// closed, not the arm being unspellable: `SubjectEstablished { subject: s }` remains writable by a
+// consumer that bypasses this function, which makes the guarantee mechanically preventable rather
+// than structural. The ceiling is a module-private Established arm; the trigger is module-private
+// coproduct constructors, which `sole_constructor` already gives records.
 //
 // THE BELIEF AND THE REMEDY RIDE WITH THE PARTIAL because they are facts about THIS row's gap: what
 // the author thinks the missing axis probably is, typed as the bet DESIGN section 4d requires rather

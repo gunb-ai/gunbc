@@ -133,7 +133,9 @@ fn batch_arm_subject(budget: TokenCount) -> ServingPerformanceSubjectStanding {
       collective_transport: Absent
     ),
     believed: join(["FourSparkTp4: the sweep ran on the group A head whose production topology is TP=4, and the 2048 arm's ~1.076 ms per computed token agrees to about 1% with tensor_parallel_comparison's TP=4 arm (1.0662) against its TP=2 arm (0.9838). Budget on this arm: ", to_string(token_count_value(t: budget))], "") as NonEmptyStr,
-    would_settle: "read --tensor-parallel-size off the recorded systemd invocation 794afae389e44952a9049452c0619620 for the 2048 control arm (arm_2048_binding), which is the one arm whose invocation was captured" as NonEmptyStr,
+    would_settle: join(["read --tensor-parallel-size off the recorded systemd invocation ",
+                        arm_launch_invocation(b: arm_2048_binding) as String,
+                        " for the 2048 control arm (arm_2048_binding), which is the one arm whose invocation was captured"], "") as NonEmptyStr,
   )
 }
 
@@ -147,6 +149,17 @@ fn batch_arm_subject(budget: TokenCount) -> ServingPerformanceSubjectStanding {
 type ArmLaunchBinding
   = ArmLaunchInvocationRead { invocation: NonEmptyStr, budget_read_back: Nat }
   | ArmLaunchDiscriminatedByReadback { budget_read_back: Nat, missing: NonEmptyStr }
+
+// THE INVOCATION, PROJECTED, so a consumer that needs to name it in a remedy reads it here instead
+// of re-spelling the id. The arm that has no invocation says so rather than answering an empty
+// string: a remedy that names a blank invocation would send a reader looking for a unit that has no
+// identity recorded at all.
+fn arm_launch_invocation(b: ArmLaunchBinding) -> NonEmptyStr {
+  match b {
+    ArmLaunchInvocationRead { invocation: i, budget_read_back: _ } => i
+    ArmLaunchDiscriminatedByReadback { budget_read_back: _, missing: m } => m
+  }
+}
 
 data arm_2048_binding: ArmLaunchBinding = ArmLaunchInvocationRead {
   invocation: "794afae389e44952a9049452c0619620" as NonEmptyStr,

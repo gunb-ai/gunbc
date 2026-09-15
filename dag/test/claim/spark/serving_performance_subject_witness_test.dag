@@ -26,11 +26,19 @@ import gunbc.spark.serving_performance_subject {
   serving_subject_axes, serving_subject_axis_wire, serving_subject_reads,
   serving_subject_standing_reads, serving_subject_axis_delta, serving_subject_differing_axes,
 }
-import gunbc.spark.prefill_batch_sweep { MeasuredBatchArm, batch_arm_subject, spark_group_a_measured_arms, spark_group_a_depth_rate }
+import gunbc.spark.prefill_batch_sweep {
+  MeasuredBatchArm, batch_arm_subject, spark_group_a_measured_arms, spark_group_a_depth_rate,
+  ArmLaunchBinding, arm_2048_binding, arm_launch_invocation,
+}
 import gunbc.spark.tensor_parallel_comparison { spark_group_a_tp4_arm, spark_group_a_tp2_arm, spark_group_a_topology_axis_delta }
 
 // THE FIXTURES CARRY NO FLEET FACTS. Every subject below is authored here, so a row reds because
-// the RULE changed and never because a measurement moved underneath it. The two bound fleet rows
+// the RULE changed and never because a measurement moved underneath it.
+//
+// AND THE VALUES ARE OBVIOUSLY SYNTHETIC ON PURPOSE. An earlier version of this file used the real
+// DeepSeek and GLM revision hashes, which reads as fleet data sitting in a fixture: a later author
+// greps the hash, finds it here, and cannot tell whether this row is an authority or a stand-in.
+// Distinguishing the two costs nothing at authoring time and is expensive to recover afterwards. The two bound fleet rows
 // are asserted separately at the end, where moving underneath IS the thing being checked.
 data fx_socket: NcclRealizedTransport = NcclTransportSocket { read_from: "fixture" as NonEmptyStr }
 
@@ -41,7 +49,7 @@ data fx_ib: NcclRealizedTransport = NcclTransportIbVerbs { read_from: "fixture" 
 // THE DEEPSEEK-ERA MEASUREMENT PROFILE, as the two measurement modules describe theirs.
 data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
   checkpoint: DeepseekV4FlashIq3sSplit,
-  checkpoint_revision: Present { value: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr },
+  checkpoint_revision: Present { value: "fixture-revision-aaaa" as NonEmptyStr },
   runtime: GunbcSparkrunVllmDs4Gb10,
   runtime_image_reference: "repo@sha256:aaa" as NonEmptyStr,
   topology: Present { value: FourSparkTp4 },
@@ -58,7 +66,7 @@ data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
 // topology and budget differs from the measurement profile above, which is the whole point.
 data fx_glm_group_b: ServingPerformanceSubject = serving_performance_subject(
   checkpoint: Glm53NativeFp8,
-  checkpoint_revision: Present { value: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr },
+  checkpoint_revision: Present { value: "fixture-revision-bbbb" as NonEmptyStr },
   runtime: Gitcommit90Sm121Exl3,
   runtime_image_reference: "repo@sha256:bbb" as NonEmptyStr,
   topology: Present { value: FourSparkTp4 },
@@ -361,7 +369,7 @@ fn arm_subject_is_partial_on_topology(arm: MeasuredBatchArm) -> Bool {
   match arm.subject {
     SubjectPartial { subject: sub, unknown_axes: axes, believed: b, would_settle: w } =>
       (axes as String).contains("topology")
-        && (w as String).contains("794afae389e44952a9049452c0619620")
+        && (w as String).contains(arm_launch_invocation(b: arm_2048_binding) as String)
         && (b as String).contains(to_string(arm.max_num_batched_tokens))
         && (serving_subject_axis_value(s: sub, a: AxisCheckpoint) as String) == (serving_checkpoint_wire(c: DeepseekV4FlashIq3sSplit) as String)
     SubjectEstablished { subject: _ } => false
@@ -600,12 +608,23 @@ test fn w_the_transport_wire_is_derived_from_the_variant() -> Bool {
     && (nccl_realized_transport_wire(t: fx_ib) as String) == (nccl_network_name_ib as String)
 }
 
-// ── AN ESTABLISHED STANDING IS UNCONSTRUCTIBLE AROUND AN UNREAD AXIS ──────────────────────────
+// ── THE CONSTRUCTOR CANNOT PRODUCE AN ESTABLISHED STANDING AROUND AN UNREAD AXIS ──────────────
 //
 // The standing used to be two arms and both bound fleet rows sat in `SubjectEstablished` while
 // declaring their transport never read. Absence now lives in ONE place -- the subject's optional
-// axes -- and `serving_subject_standing` reads it off the subject, so Established is not refused at
-// runtime, it is unreachable for such a subject through the only route that builds one.
+// axes -- and `serving_subject_standing` reads it off the subject rather than taking a caller's
+// word, so it cannot answer Established for such a subject.
+//
+// WHAT THAT IS AND IS NOT, because the heading here first said "unconstructible" without
+// qualification and that is false. `SubjectEstablished { subject: s }` is a coproduct arm and a
+// consumer can still write it directly with any subject it likes; nothing in the type refuses that.
+// What is closed is the SANCTIONED ROUTE -- and every site in this change goes through it.
+//
+// RUNG (DESIGN 4b): mechanically preventable, not structural. The invalid state stays writable and
+// safety depends on consumers using the constructor. CEILING: structural, via a standing whose
+// Established arm is private to this module so the arm itself cannot be spelled elsewhere. TRIGGER:
+// module-private constructors for coproduct arms, the same capability `sole_constructor` already
+// provides for records.
 test fn w_a_subject_with_an_absent_axis_cannot_become_established() -> Bool {
   match serving_subject_standing(subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4), believed: "fixture belief" as NonEmptyStr, would_settle: "fixture remedy" as NonEmptyStr) {
     SubjectPartial { subject: _, unknown_axes: axes } => (axes as String).contains("collective transport")
