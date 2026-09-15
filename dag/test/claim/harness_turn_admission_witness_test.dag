@@ -168,6 +168,20 @@ test fn attempts_share_work_and_prompts_do_not() -> Bool {
     && (a1.work.id.key as String) != (other.work.id.key as String)
 }
 
+// RED: THE INPUT IDENTITY IS INJECTIVE IN THE LIST. A separator inside one input, an input split
+// in two, and an empty input each name a different turn; a delimited join would fold the first
+// two together.
+fn t_inputs_identity(inputs: List<String>) -> String {
+  harness_turn_request(shape: OpenAiChatCompletionsShape, inputs: inputs).inputs as String
+}
+
+test fn the_inputs_identity_does_not_collapse_on_a_separator() -> Bool {
+  t_inputs_identity(inputs: ["a\u{1f}b"]) != t_inputs_identity(inputs: ["a", "b"])
+    && t_inputs_identity(inputs: ["ab"]) != t_inputs_identity(inputs: ["a", "b"])
+    && t_inputs_identity(inputs: ["a", ""]) != t_inputs_identity(inputs: ["a"])
+    && t_inputs_identity(inputs: ["a", "b"]) == t_inputs_identity(inputs: ["a", "b"])
+}
+
 // RED: THE WIRE SHAPE IS THE INTERFACE, so one prompt spoken over two interfaces is two Works.
 test fn the_wire_shape_is_the_interface() -> Bool {
   let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, inputs: ["witness", "p"]), requirement: AnyAdmittedModel, attempt: "a-1" as NonEmptyStr)

@@ -349,7 +349,7 @@ fn harness_probe_attempt(label: String) -> NonEmptyStr {
 // so the wall it enforces is exercised rather than unreachable, and a tolerant turn arriving while
 // this entry holds a seat is refused by the law rather than by a count.
 fn harness_place_cli(actor: String, attempt: String, receipt: String) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, request: harness_turn_request(shape: harness_default_wire_shape, inputs: ["place", attempt]), actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, request: harness_turn_request(shape: harness_default_wire_shape, inputs: ["place"]), actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)

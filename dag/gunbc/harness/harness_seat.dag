@@ -64,7 +64,7 @@ import gunbc.serving.turn_admission {
   spark_serving_trust_domain, serving_delay_valuation, serving_dispatch_inputs,
 }
 import gunbc.serving.turn_demand { serving_turn_requirements, serving_turn_work, ServingTurnRequest }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.content_hash { Fnv1a64Structural, as_content_hash_structural, content_hash_atom, content_hash_combine_structural, serialize_content_hash }
 import product.fabric.identity { FabricIdentity, DemandKey }
 import product.fabric.provider_admission { refusal_reason }
 import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
@@ -435,15 +435,31 @@ fn harness_turn_subject(request: ServingTurnRequest, requirement: ServingModelRe
 // The inputs are an opaque content identity over the parts the entry supplies -- its role, its
 // prompt, and the paths its system prompt is derived from -- so placement knows WHICH turn it is
 // placing without receiving or interpreting prompt bytes. An entry that places a seat without a
-// prompt (a placement or seat probe) supplies its role and attempt, which is all it has; two such
-// placements with different attempts are different work, which is the conservative direction.
+// prompt (a placement or seat probe) supplies only its role: the attempt is the DEMAND's identity
+// and never an input of the Work, or two attempts of one request would be two Works and the
+// separation harness_turn_subject exists to keep would be gone.
+//
+// THE IDENTITY IS INJECTIVE IN THE LIST, NOT IN A DELIMITED JOIN. Each input is hashed as its own
+// atom, length-prefixed, and the atoms are combined in order under the element count; a join with
+// a separator byte would let ["a<sep>b"] and ["a", "b"] name one turn.
 fn harness_turn_request(shape: HarnessWireShape, inputs: List<String>) -> ServingTurnRequest {
   ServingTurnRequest {
     interface: harness_wire_shape_interface(shape: shape),
-    inputs: serialize_content_hash(hash: content_hash_of_value(value: join(inputs, "\u{1f}"))) as ArtifactManifestRef,
+    inputs: serialize_content_hash(hash: as_content_hash_structural(structural: harness_turn_inputs_identity(inputs: inputs))) as ArtifactManifestRef,
     effect_contract: "gunbc.harness.streamed-turn-effects" as EffectContractRef,
     output_contract: "gunbc.harness.turn-completion" as OutputContractRef,
   }
+}
+
+fn harness_turn_inputs_identity(inputs: List<String>) -> Fnv1a64Structural {
+  fold(
+    inputs,
+    init: content_hash_atom(value: join(["gunbc.harness.turn-inputs:", to_string(length(inputs))], "") as NonEmptyStr),
+    f: (acc, input) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(value: join([to_string(input.length()), ":", input], "") as NonEmptyStr),
+    ),
+  )
 }
 
 fn harness_wire_shape_interface(shape: HarnessWireShape) -> ServiceInterfaceRef {
