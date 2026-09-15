@@ -15,6 +15,7 @@ import extdeps.docker.cli {
   docker_container_inspect_named_env_from_stdout,
 }
 import extdeps.vllm.usage_stats {
+  VllmDoNotTrackMarkerStanding, VllmUsageStatsLaunchStanding,
   UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault, UsageStatsLaunchUnread,
   UsageStatsEnvMalformed, vllm_usage_stats_inspect_env_names, vllm_usage_stats_reporting,
   vllm_usage_stats_assignment_disables, DoNotTrackMarkerPresent, DoNotTrackMarkerAbsent,
@@ -31,10 +32,10 @@ import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.provider_admission { ProviderUseAdmitted, ProviderUseDenied, refusal_reason }
 import product.fabric.provider_route { ProviderPathAbsent, ProviderPathUnread, ProviderPathLocated }
 import gunbc.spark.serving_usage_stats_observe {
-  spark_serving_usage_stats_from_inspect, spark_usage_stats_inspect_unread,
+  spark_serving_usage_stats_observe, spark_usage_stats_inspect_unread,
+  ServingUsageStatsObservation, ServingUsageStatsObserved, ServingUsageStatsUnobserved,
   spark_usage_stats_marker_unread, spark_usage_stats_container_id_mismatch_obligation,
   spark_usage_stats_marker_unread_obligation,
-  InspectStdoutRead,
 }
 import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
 import gunbc.spark.pair_serving_realization {
@@ -65,6 +66,34 @@ fn t_launch() -> VllmServingLaunch {
     unit_digest: t_sha256(hex: "5555555555555555555555555555555555555555555555555555555555555555"),
     started_at: 1788907506,
   )
+}
+
+data t_receipt: String = "test.claim.spark.spark_serving_usage_stats_observe_witness_test"
+
+// The host boundary, executed: raw stdout goes in, only the typed observation comes out.
+fn t_observe(inspect_stdout: String) -> ServingUsageStatsObservation {
+  spark_serving_usage_stats_observe(
+    launch: t_launch(),
+    inspect_stdout: inspect_stdout,
+    marker: spark_usage_stats_marker_unread(),
+    receipt: t_receipt as ObservationReceiptRef,
+  )
+}
+
+fn t_observed_standing(
+  launch: VllmServingLaunch,
+  inspect_stdout: String,
+  marker: VllmDoNotTrackMarkerStanding,
+) -> VllmUsageStatsLaunchStanding {
+  match spark_serving_usage_stats_observe(
+    launch: launch,
+    inspect_stdout: inspect_stdout,
+    marker: marker,
+    receipt: t_receipt as ObservationReceiptRef,
+  ) {
+    ServingUsageStatsObserved { launch: _, container_id: _, standing: st, receipt: _ } => st
+    ServingUsageStatsUnobserved { obligation: o } => UsageStatsLaunchUnread { obligation: o }
+  }
 }
 
 fn t_inspect(env: List<String>, id: String) -> String {
@@ -104,7 +133,7 @@ test fn upstream_disables_only_on_exact_one() -> Bool {
 }
 
 test fn true_does_not_disable_the_launch() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=true", "SECRET=must-not-surface"], id: t_container_id),
     marker: spark_usage_stats_marker_unread(),
@@ -118,7 +147,7 @@ test fn true_does_not_disable_the_launch() -> Bool {
 }
 
 test fn exact_one_disables_by_vllm_no_usage_stats() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1", "SECRET=must-not-surface"], id: t_container_id),
     marker: spark_usage_stats_marker_unread(),
@@ -131,7 +160,7 @@ test fn exact_one_disables_by_vllm_no_usage_stats() -> Bool {
 }
 
 test fn exact_one_disables_by_do_not_track() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: ["DO_NOT_TRACK=1"], id: t_container_id),
     marker: spark_usage_stats_marker_unread(),
@@ -145,7 +174,7 @@ test fn exact_one_disables_by_do_not_track() -> Bool {
 }
 
 test fn vllm_do_not_track_one_disables() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: ["VLLM_DO_NOT_TRACK=1"], id: t_container_id),
     marker: spark_usage_stats_marker_unread(),
@@ -159,7 +188,7 @@ test fn vllm_do_not_track_one_disables() -> Bool {
 }
 
 test fn vllm_do_not_track_zero_blocks_do_not_track_fallback() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: ["VLLM_DO_NOT_TRACK=0", "DO_NOT_TRACK=1"], id: t_container_id),
     marker: DoNotTrackMarkerAbsent,
@@ -173,7 +202,7 @@ test fn vllm_do_not_track_zero_blocks_do_not_track_fallback() -> Bool {
 }
 
 test fn server_override_is_the_enabled_destination() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: ["VLLM_USAGE_STATS_SERVER=https://stats.example.test"], id: t_container_id),
     marker: DoNotTrackMarkerAbsent,
@@ -187,7 +216,7 @@ test fn server_override_is_the_enabled_destination() -> Bool {
 }
 
 test fn present_empty_server_is_malformed_never_default() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: ["VLLM_USAGE_STATS_SERVER="], id: t_container_id),
     marker: DoNotTrackMarkerAbsent,
@@ -201,7 +230,7 @@ test fn present_empty_server_is_malformed_never_default() -> Bool {
 }
 
 test fn marker_present_disables_when_env_does_not() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: [], id: t_container_id),
     marker: DoNotTrackMarkerPresent,
@@ -217,7 +246,7 @@ test fn marker_present_disables_when_env_does_not() -> Bool {
 test fn inspect_unread_refuses() -> Bool {
   match spark_serving_usage_stats_standing(
     realization: t_realization_observed(),
-    inspect: spark_usage_stats_inspect_unread(),
+    usage_stats: spark_usage_stats_inspect_unread(),
   ) {
     UsageStatsLaunchUnread { obligation: _ } => true
     UsageStatsDisabledByLaunch { mechanism: _ } => false
@@ -227,7 +256,7 @@ test fn inspect_unread_refuses() -> Bool {
 }
 
 test fn unreadable_inspect_is_malformed() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: "not-json",
     marker: spark_usage_stats_marker_unread(),
@@ -240,7 +269,7 @@ test fn unreadable_inspect_is_malformed() -> Bool {
 }
 
 test fn container_id_mismatch_is_unread() -> Bool {
-  match spark_serving_usage_stats_from_inspect(
+  match t_observed_standing(
     launch: t_launch(),
     inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: "other-container"),
     marker: spark_usage_stats_marker_unread(),
@@ -425,9 +454,7 @@ fn t_foreign_realization_observed() -> SparkServingRealization {
 test fn disabled_launch_is_an_absent_telemetry_path() -> Bool {
   match spark_usage_stats_telemetry_path(
     realization: t_realization_observed(),
-    inspect: InspectStdoutRead {
-      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
-    },
+    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
   ) {
     ProviderPathAbsent { evidence: _ } => true
     ProviderPathUnread { obligation: _, consulted: _ } => false
@@ -450,9 +477,7 @@ fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
 test fn first_party_admission_reaches_admitted_when_usage_stats_are_disabled() -> Bool {
   match spark_first_party_admission(
     realization: t_realization_observed(),
-    inspect: InspectStdoutRead {
-      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
-    },
+    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
@@ -464,9 +489,7 @@ test fn first_party_admission_reaches_admitted_when_usage_stats_are_disabled() -
 test fn a_foreign_readback_does_not_admit_on_a_disabled_inspect() -> Bool {
   match spark_first_party_admission(
     realization: t_foreign_realization_observed(),
-    inspect: InspectStdoutRead {
-      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
-    },
+    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
@@ -515,9 +538,7 @@ test fn a_foreign_observation_endpoint_does_not_absent_on_disabled_inspect() -> 
       process_start: "2",
       launch: t_launch(),
     ),
-    inspect: InspectStdoutRead {
-      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
-    },
+    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
   ) {
     ProviderPathAbsent { evidence: _ } => false
     ProviderPathUnread { obligation: _, consulted: _ } => true
@@ -540,9 +561,7 @@ test fn an_observation_outside_hosts_does_not_absent_on_disabled_inspect() -> Bo
         started_at: 1788907506,
       ),
     ),
-    inspect: InspectStdoutRead {
-      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
-    },
+    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
   ) {
     ProviderPathAbsent { evidence: _ } => false
     ProviderPathUnread { obligation: _, consulted: _ } => true
@@ -553,9 +572,7 @@ test fn an_observation_outside_hosts_does_not_absent_on_disabled_inspect() -> Bo
 test fn marker_unread_without_disable_is_unread_never_located() -> Bool {
   match spark_usage_stats_telemetry_path(
     realization: t_realization_observed(),
-    inspect: InspectStdoutRead {
-      stdout: t_inspect(env: [], id: t_container_id),
-    },
+    usage_stats: t_observe(inspect_stdout: t_inspect(env: [], id: t_container_id)),
   ) {
     ProviderPathUnread { obligation: _, consulted: _ } => true
     ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
@@ -565,7 +582,7 @@ test fn marker_unread_without_disable_is_unread_never_located() -> Bool {
 
 test fn canonical_enabled_is_refused_never_located() -> Bool {
   match spark_usage_stats_path_from_launch_standing(
-    standing: spark_serving_usage_stats_from_inspect(
+    standing: t_observed_standing(
       launch: t_launch(),
       inspect_stdout: t_inspect(env: [], id: t_container_id),
       marker: DoNotTrackMarkerAbsent,
@@ -586,7 +603,7 @@ test fn canonical_enabled_is_refused_never_located() -> Bool {
 
 test fn non_default_destination_cannot_use_default_enrollment() -> Bool {
   match spark_usage_stats_path_from_launch_standing(
-    standing: spark_serving_usage_stats_from_inspect(
+    standing: t_observed_standing(
       launch: t_launch(),
       inspect_stdout: t_inspect(env: ["VLLM_USAGE_STATS_SERVER=https://stats.example.test"], id: t_container_id),
       marker: DoNotTrackMarkerAbsent,
@@ -602,6 +619,37 @@ test fn non_default_destination_cannot_use_default_enrollment() -> Bool {
       )
     ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
     ProviderPathAbsent { evidence: _ } => false
+  }
+}
+
+fn t_other_launch() -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: operator_host_srv6,
+    systemd_invocation: "fixture-invocation-2" as NonEmptyStr,
+    container_id: "fixture-container-2" as NonEmptyStr,
+    executable_digest: t_sha256(hex: "7777777777777777777777777777777777777777777777777777777777777777"),
+    unit_digest: t_sha256(hex: "5555555555555555555555555555555555555555555555555555555555555555"),
+    started_at: 1788907507,
+  )
+}
+
+// RED: a disabled reading of ANOTHER launch's container, handed to policy beside an incarnation
+// observation that agrees with the realization, must not Absent the path. The admission fold joins
+// the observation's launch and container to the answering incarnation before it trusts the standing.
+test fn an_observation_of_another_launch_does_not_absent_the_path() -> Bool {
+  match spark_usage_stats_telemetry_path(
+    realization: t_realization_observed(),
+    usage_stats: spark_serving_usage_stats_observe(
+      launch: t_other_launch(),
+      inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: "fixture-container-2"),
+      marker: spark_usage_stats_marker_unread(),
+      receipt: t_receipt as ObservationReceiptRef,
+    ),
+  ) {
+    ProviderPathAbsent { evidence: _ } => false
+    ProviderPathUnread { obligation: _, consulted: _ } => true
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
   }
 }
 
@@ -634,6 +682,7 @@ fn observe_witness_main() -> ProcessExit {
     && marker_unread_without_disable_is_unread_never_located()
     && canonical_enabled_is_refused_never_located()
     && non_default_destination_cannot_use_default_enrollment()
+    && an_observation_of_another_launch_does_not_absent_the_path()
   if all_pass {
     ExitSuccess
   } else {

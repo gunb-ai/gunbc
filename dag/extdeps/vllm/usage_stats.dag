@@ -98,8 +98,8 @@ type VllmUsageStatsDisableTerm {
 // no truthiness, no case folding and no "anything non-empty": each of those is a consumer's guess
 // about a reading this module can state.
 //
-// THE NAMED CONSUMER. gunbc.spark.serving_usage_stats_observe spark_serving_usage_stats_from_inspect
-// feeds this predicate the three projected names from a running-container inspect. The exact-equality
+// THE NAMED CONSUMER. gunbc.spark.serving_usage_stats_observe spark_serving_usage_stats_observe
+// feeds this predicate the four projected names from a running-container inspect. The exact-equality
 // semantics of envs.py stay here (review 64043).
 fn vllm_usage_stats_assignment_disables(term: VllmUsageStatsDisableTerm, name: NonEmptyStr, value: String) -> Bool {
   (name as String) == (term.variable as String) && value == (term.disabling_value as String)
