@@ -1,7 +1,7 @@
 module gunbc.live_deploy.desired
 
 import std.types { String, NonEmptyStr, List, Bool }
-import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.dissolution { DissolutionCondition, retires_dissolution, bound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.keyed_row { KeyedRow, keyed_row_find }
@@ -281,4 +281,29 @@ data srv1_production_wrapper_frontier: FrontierRow = frontier_row_decl(
   },
   reason: "production live_deploy_apply_srv1_wet wrapper is a typed scaffold until C8 selects a DesiredDeployment",
   dissolution: srv1_production_wrapper_dissolution,
+)
+
+// APPLY-SCRIPT PATH DISCRIMINATION IS NOT PROVEN AT THE FLOOR. Two independent
+// witnesses that emit an apply script both measured ~200k eval steps against a
+// 72300 new-witness budget (run 34941358064: selecting_lab_changes_emitted_apply_bytes
+// 227829, apply_script_stays_within_ci_runner_grants 205688). Emission itself is
+// the cost; shrinking the plan does not close a 3x gap, and widening the budget
+// to green this program is widening a check. The consumer that closes it is
+// CONVERGENCE-ONE C8: a wet lab apply that runs real apply scripts on a real host.
+data apply_script_path_discrimination_unproven_dissolution: DissolutionCondition = bound_dissolution(
+  ref: DeclarationRef {
+    module_path: "gunbc.live_deploy.apply",
+    decl_name: "live_deploy_apply_lab_wet",
+    field: WholeDeclaration,
+  }
+)
+
+data apply_script_path_discrimination_unproven: FrontierRow = frontier_row_decl(
+  ref: DeclarationRef {
+    module_path: "gunbc.live_deploy.apply",
+    decl_name: "live_deploy_apply_lab_wet",
+    field: WholeDeclaration,
+  },
+  reason: "apply-script path discrimination is unproven at the floor because emission exceeds the new-witness eval budget; the wet C8 lab proof is the consumer that closes it",
+  dissolution: apply_script_path_discrimination_unproven_dissolution,
 )
