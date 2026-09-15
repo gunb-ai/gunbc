@@ -1938,46 +1938,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
             module: "gunbc.scm.squash_merge",
-            in_declaration: "squash_merge",
-            spelling: "MergeBaseHistoriesDisjoint",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.squash_merge",
-            in_declaration: "squash_merge",
-            spelling: "MergeBaseHistoryUnwalkable",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.squash_merge",
-            in_declaration: "squash_merge",
-            spelling: "MergeBaseSourceAlreadyConsumed",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.squash_merge",
-            in_declaration: "SquashMergeOutcome",
-            spelling: "MergeBaseOutcome",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.squash_merge",
             in_declaration: "SquashMergeOutcome",
             spelling: "MergeSideName",
             expected_candidates: &["gunbc.scm.repository_envelope"],
@@ -2180,17 +2140,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.scm_merge_base_witness",
             in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
             spelling: "MergeBaseSourceAlreadyConsumed",
-            expected_candidates: &["gunbc.scm.repository_envelope"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MERGE_BASE_COHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_squash_merge_witness",
-            in_declaration:
-                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
-            spelling: "MergeBaseDerived",
             expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
