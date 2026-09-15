@@ -45,18 +45,24 @@ import gunbc.host_convergence_census {
 // observe/assess this cut. decide is a §3c declared frontier typed onto
 // std.upsert_decision UpsertDecision. C3/C4 fleet_plan / fleet_apply:
 // those cuts route member decisions through this projection.
-// Readiness is NOT a field: there is no Ready/Pending/Refused algebra yet
-// (modeling obligation, C5). A generic Reconciliation field would let
-// readiness inhabit a convergence verdict. C5 trigger: C5 establishes a
-// Ready/Pending/Refused authority independent of Reconciliation, and routes
-// provider readiness through this projection.
+// Readiness is NOT a field on this projection. C5 landed gunbc.readiness
+// Readiness = Ready | Pending | Refused, independent of Reconciliation.
+// Provider readiness is consumed by gunbc.roadmap_serve, not by a fourth
+// field here: a Reconciliation-typed readiness field remains the control-8
+// hazard and is not restored.
 // C0 left ensure_decide and observe_executable as inline cites; those two
 // have no named census accessor, so the bind holds one decl_ref each.
 // NEXT-RUNG (control 1): a compile instrument that imports inspect_goal.
-// Control 8 holds only at live_deploy_service_ready_once, by type
-// arguments ServiceReadyApplyEffect / ServiceReadyEvidence. The generic
-// projection has no readiness field; C5 owns the Ready/Pending/Refused
-// algebra. Isolated compile_fixture cannot import live types.
+// Control 8 is structurally impossible on the production observers: they
+// return gunbc.readiness Readiness, which has no inhabitant in
+// Reconciliation or ReconciledEffect and no conversion between them.
+// DISSOLVED with the climb (§4b(4)): holding the wall only at
+// live_deploy_service_ready_once type arguments ServiceReadyApplyEffect /
+// ServiceReadyEvidence, and expressing provider readiness in the launcher
+// as a five-arm status coproduct beside apply. Discriminating REDs remain
+// enrolled (test.claim.readiness_algebra_witness; live_deploy readiness
+// pending-vs-refused). Isolated compile_fixture still cannot import live
+// types; that residual is control 1's compile instrument, not this class.
 
 data ensure_decide_id: DeclarationRef = decl_ref(
   module_path: "gunbc.ensure",
