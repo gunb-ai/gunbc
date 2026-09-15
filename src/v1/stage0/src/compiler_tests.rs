@@ -262,25 +262,116 @@ mod compiler_tests {
     }
 
     #[test]
-    fn parse_two_arg_call_terminates() {
+    fn parse_multiline_two_param_fn_and_two_arg_call_yields_expected_module() {
+        let src = concat!(
+            "module test\n",
+            "fn add(\n",
+            "  a: Int,\n",
+            "  b: Int\n",
+            ") -> Int {{\n",
+            "  a\n",
+            "}}\n",
+            "fn use_add() -> Int {{\n",
+            "  add(\n",
+            "    1,\n",
+            "    2\n",
+            "  )\n",
+            "}}\n",
+        );
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::Builder::new()
-            .name("parse-two-arg".to_string())
+            .name("parse-multiline-two".to_string())
             .stack_size(8 * 1024 * 1024)
             .spawn(move || {
                 let tokens = tokenize(
-                    "module test\nfn add(a: Int, b: Int) -> Int { a }\nfn use_add() -> Int { add(1, 2) }\n".to_string(),
+                    src.to_string(),
                     "test.dag".to_string(),
                     crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                 );
-                let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
-                let _ = tx.send(result.module.is_some());
+                let result =
+                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                let verdict = (|| {
+                    if result.error.is_some() {
+                        return Err(format!("parse error: {:?}", result.error));
+                    }
+                    let module = result
+                        .module
+                        .as_ref()
+                        .ok_or_else(|| "missing module".to_string())?;
+                    if module.name != "test" {
+                        return Err(format!("name {}", module.name));
+                    }
+                    let items = crate::v1_std_core::module_items(module.clone());
+                    let fns: Vec<_> = items
+                        .iter()
+                        .filter(|it| {
+                            matches!(
+                                it.module_item_kind,
+                                crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
+                            )
+                        })
+                        .cloned()
+                        .collect();
+                    if fns.len() != 2 {
+                        return Err(format!("fn count {}", fns.len()));
+                    }
+                    let add = fns
+                        .iter()
+                        .find(|f| f.name == "add")
+                        .ok_or_else(|| "no add".to_string())?;
+                    if add.params.len() != 2 {
+                        return Err("param count".to_string());
+                    }
+                    if add.params[0].name != "a" || add.params[1].name != "b" {
+                        return Err("param names".to_string());
+                    }
+                    let use_add = fns
+                        .iter()
+                        .find(|f| f.name == "use_add")
+                        .ok_or_else(|| "no use_add".to_string())?;
+                    let body = use_add.body.as_ref().ok_or_else(|| "no body".to_string())?;
+                    let calls = collect_expr_calls(body);
+                    if calls.len() != 1 {
+                        return Err(format!("call count {}", calls.len()));
+                    }
+                    if calls[0].children.len() != 2 {
+                        return Err("arg count".to_string());
+                    }
+                    Ok(())
+                })();
+                let _ = tx.send(verdict);
             })
-            .expect("spawn parse-two-arg");
-        let ok = rx
-            .recv_timeout(std::time::Duration::from_secs(8))
-            .expect("seed parser hung on a two-parameter fn and two-argument call (TCO identity-passthrough elision)");
-        assert!(ok, "two-arg module should parse");
+            .expect("spawn parse-multiline-two");
+        rx.recv_timeout(std::time::Duration::from_secs(8))
+            .expect("seed parser hung on a multiline 2-param fn / 2-arg call (parse_param_list_acc or parse_arg_list_acc TCO)")
+            .expect("expected parse result");
+    }
+
+    fn collect_expr_calls(
+        n: &std::rc::Rc<crate::v1_std_core::Node>,
+    ) -> Vec<std::rc::Rc<crate::v1_std_core::Node>> {
+        let mut out = Vec::new();
+        collect_expr_calls_into(n, &mut out);
+        out
+    }
+
+    fn collect_expr_calls_into(
+        n: &std::rc::Rc<crate::v1_std_core::Node>,
+        out: &mut Vec<std::rc::Rc<crate::v1_std_core::Node>>,
+    ) {
+        if matches!(*n.expr_data, crate::v1_std_core::ExprData::ExprCall { .. }) {
+            out.push(n.clone());
+        }
+        if let Some(b) = n.body.as_ref() {
+            {
+                collect_expr_calls_into(b, out);
+            }
+        }
+        for c in n.children.iter() {
+            {
+                collect_expr_calls_into(c, out);
+            }
+        }
     }
 
     #[test]
@@ -325,6 +416,180 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("self-parse test panicked");
+    }
+
+    fn tco_slot(name: &str) -> String {
+        {
+            crate::v1_compiler_emit::tco_loop_slot_name(name.to_string())
+        }
+    }
+
+    fn tco_assert_reassign_structure(
+        block: &str,
+        slots: &[String],
+        temp_prefix: &str,
+        continue_needle: &str,
+    ) {
+        {
+            let lines: Vec<&str> = block
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect();
+            let cont_at = lines
+                .iter()
+                .position(|l| l.contains(continue_needle))
+                .expect("continue in reassignment block");
+            let before = &lines[..cont_at];
+            let n = slots.len();
+            assert_eq!(before.len(), n * 2, "temps then slot writes: {:?}", before);
+            for (i, line) in before.iter().take(n).enumerate() {
+                {
+                    let temp = format!("{}{}", temp_prefix, i);
+                    assert!(line.contains(&temp), "temp before slot writes: {}", line);
+                    for slot in slots {
+                        {
+                            let dest = format!("{} =", slot);
+                            assert!(
+                                !line.contains(&dest),
+                                "slot write before all temps evaluated: {}",
+                                line
+                            );
+                        }
+                    }
+                }
+            }
+            let assigns = &before[n..];
+            assert_eq!(assigns.len(), n);
+            for (i, slot) in slots.iter().enumerate() {
+                {
+                    let dest = format!("{} =", slot);
+                    let dest_count = assigns.iter().filter(|l| l.contains(&dest)).count();
+                    assert_eq!(
+                        dest_count, 1,
+                        "slot dest must appear exactly once: {:?}",
+                        assigns
+                    );
+                    let temp = format!("{}{}", temp_prefix, i);
+                    assert!(
+                        assigns[i].contains(slot) && assigns[i].contains(&temp),
+                        "param order: {}",
+                        assigns[i]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tco_tail_call_assigns_every_loop_slot() {
+        {
+            let acc = tco_slot("acc");
+            let nslot = tco_slot("n");
+            let slots = vec![acc.clone(), nslot.clone()];
+            let args = std::rc::Rc::new(im::vector!["acc".to_string(), "(n - 1)".to_string()]);
+            let names = std::rc::Rc::new(im::Vector::from(slots.clone()));
+            let rust_spec = crate::v1_compiler_emit_core_support::language_spec(
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            let py_spec = crate::v1_compiler_emit_core_support::language_spec(
+                crate::v1_compiler_artifact::RenderTarget::Python,
+            );
+            let go_spec = crate::v1_compiler_emit_core_support::language_spec(
+                crate::v1_compiler_artifact::RenderTarget::Go,
+            );
+            let rust_block = crate::v1_compiler_emit::shared_tco_reassign(
+                args.clone(),
+                names.clone(),
+                rust_spec.clone(),
+            );
+            let py_block = crate::v1_compiler_emit::shared_tco_reassign(
+                args.clone(),
+                names.clone(),
+                py_spec.clone(),
+            );
+            let go_block = crate::v1_compiler_emit::shared_tco_reassign(
+                args.clone(),
+                names.clone(),
+                go_spec.clone(),
+            );
+            tco_assert_reassign_structure(
+                &rust_block,
+                &slots,
+                &rust_spec.tco.temp_var_prefix,
+                "continue",
+            );
+            tco_assert_reassign_structure(
+                &py_block,
+                &slots,
+                &py_spec.tco.temp_var_prefix,
+                "continue",
+            );
+            tco_assert_reassign_structure(
+                &go_block,
+                &slots,
+                &go_spec.tco.temp_var_prefix,
+                "continue",
+            );
+            let identity_mask = std::rc::Rc::new(im::vector![true, false]);
+            let mutant = crate::v1_compiler_emit::tco_reassign_identity_elision_mutant(
+                args.clone(),
+                names.clone(),
+                identity_mask,
+                rust_spec.clone(),
+            );
+            let mutant_lines: Vec<&str> = mutant
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.contains("continue"))
+                .collect();
+            let mutant_assigns = mutant_lines
+                .iter()
+                .filter(|l| {
+                    l.contains(&format!("{} =", acc)) || l.contains(&format!("{} =", nslot))
+                })
+                .count();
+            assert_eq!(
+                mutant_assigns, 1,
+                "identity-elision mutant must drop the same-named slot write, got {}",
+                mutant
+            );
+            let src = concat!(
+                "module tco_slot_fixture\n",
+                "fn walk(acc: Int, n: Int) -> Int {{\n",
+                "  if n == 0 {{ acc }} else {{\n",
+                "    let acc = acc + 1\n",
+                "    walk(acc, n - 1)\n",
+                "  }}\n",
+                "}}\n",
+            );
+            let compiled = crate::v1_compiler_compile::compile_sources(
+                std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                    crate::v1_compiler_compile::SourceFile {
+                        path: "tco_slot_fixture.dag".to_string(),
+                        content: src.to_string(),
+                    }
+                )]),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            assert!(
+                compiled.diagnostics.is_empty(),
+                "fixture must compile, got {:?}",
+                compiled.diagnostics
+            );
+            let emitted = compiled
+                .files
+                .iter()
+                .find(|f| f.path.ends_with("tco_slot_fixture.rs"))
+                .expect("rust emit");
+            let walk_at = emitted.content.find("fn walk").expect("walk");
+            let rest = &emitted.content[walk_at..];
+            let cont_at = rest.find("continue").expect("TCO continue in walk");
+            let block_start = rest[..cont_at].rfind("{{").unwrap_or(0);
+            let block = &rest[block_start..cont_at + "continue".len()];
+            let authored = ["acc".to_string(), "n".to_string()];
+            tco_assert_reassign_structure(block, &authored, "__tco_", "continue");
+        }
     }
 
     #[test]

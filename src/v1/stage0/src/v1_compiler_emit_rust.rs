@@ -153,8 +153,8 @@ pub use crate::v1_compiler_emit::{
     lookup_item_by_identity, module_emit_scope, order_typed_call_args_from_semantics,
     render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
     seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    shell_emission_refusal_fact, shell_result_channel_key, tco_reassign_core,
-    transport_binding_refusal_fact,
+    shared_tco_reassign, shell_emission_refusal_fact, shell_result_channel_key, tco_loop_slot_name,
+    tco_reassign_core, transport_binding_refusal_fact,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
@@ -33669,15 +33669,10 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let all_lines = crate::v1_compiler_emit::tco_reassign_core(
+        let inner = crate::v1_compiler_emit::shared_tco_reassign(
             ordered_args.clone(),
             param_names.clone(),
-            "__tco_".to_string(),
-            "let ".to_string(),
-            " = ".to_string(),
-            ";".to_string(),
-            "continue;".to_string(),
-            "".to_string(),
+            crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
         );
         v1_rt::concat(
             v1_rt::concat(
@@ -33685,7 +33680,7 @@ pub fn emit_typed_tco_reassign(
                     "{\n".to_string(),
                     crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 ),
-                all_lines.clone().join(&"\n".to_string()),
+                inner.clone(),
             ),
             "\n}".to_string(),
         )
