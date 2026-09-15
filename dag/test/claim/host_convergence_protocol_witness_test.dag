@@ -91,9 +91,11 @@ fn attempt_is_established_absence(
 }
 
 test fn control_2_observation_refusal_is_not_established_absence() -> Bool {
-  !attempt_is_established_absence(attempt: ObservationRefused { cause: "transport refused" })
+  !attempt_is_established_absence(
+    attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
+  )
     && attempt_is_established_absence(
-      attempt: ObservationEstablished { observed: ReadAbsent { reason: "package missing" } },
+      attempt: ensure_observation_as_attempt(observation: EnsureAbsent { reason: "missing" }),
     )
 }
 
@@ -238,15 +240,6 @@ test fn host_effect_domain_projection_inspects_without_selection() -> Bool {
   }
 }
 
-test fn ensure_observation_is_a_projection_of_the_canonical_attempt() -> Bool {
-  !attempt_is_established_absence(
-    attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
-  )
-    && attempt_is_established_absence(
-      attempt: ensure_observation_as_attempt(observation: EnsureAbsent { reason: "missing" }),
-    )
-}
-
 test fn ensure_inaccessible_after_cannot_converge() -> Bool {
   match classify_reconciled(
     r: ensure_reconcile(
@@ -371,7 +364,6 @@ test fn host_convergence_protocol_keystone_holds() -> Bool {
     && control_7_reused_pre_apply_reading_is_caught_by_independence()
     && control_9_selection_cannot_occur_inside_observation_or_assessment()
     && host_effect_domain_projection_inspects_without_selection()
-    && ensure_observation_is_a_projection_of_the_canonical_attempt()
     && ensure_inaccessible_after_cannot_converge()
     && canonical_protocol_binds()
     && decide_frontiers_do_not_claim_routing_exists()
