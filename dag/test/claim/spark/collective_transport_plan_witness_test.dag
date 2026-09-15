@@ -1,0 +1,138 @@
+module test.claim.spark.collective_transport_plan_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
+import extdeps.nvidia.nccl {
+  NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
+  NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2,
+}
+import gunbc.spark.collective_transport_plan {
+  CollectiveTransportPlan, SocketOverInterface, RoceOverInterface,
+  collective_transport_plan_wire,
+  transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited,
+  transport_plan_interface, transport_plan_env,
+  TransportPlanOutcome, TransportAsPlanned, TransportFellBackToSocket, TransportUnexpectedlyRdma,
+  transport_plan_outcome,
+  nccl_socket_ifname_env,
+}
+
+// THE FIXTURES CARRY NO FLEET FACTS. The interface name below is authored here, so a row reds when
+// the PROJECTION changes and never because a host was recabled.
+data fx_iface: NonEmptyStr = "fixture-fabric0" as NonEmptyStr
+
+data fx_socket_plan: CollectiveTransportPlan = SocketOverInterface { interface: fx_iface }
+
+data fx_roce_plan: CollectiveTransportPlan = RoceOverInterface {
+  interface: fx_iface,
+  gid_selection: NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 },
+}
+
+data fx_realized_socket: NcclRealizedTransport = NcclTransportSocket { read_from: "fixture" as NonEmptyStr }
+data fx_realized_ib: NcclRealizedTransport = NcclTransportIbVerbs { read_from: "fixture" as NonEmptyStr }
+
+fn env_has(env: List<DockerEnvAssignment>, name: NonEmptyStr) -> Bool {
+  length(filter(env, e => (e.name as String) == (name as String))) > 0
+}
+
+// ── THE SOCKET ARM ASKS FOR NOTHING, AND THAT IS ITS CONTENT ──────────────────────────────────
+//
+// This is the state Group B was found in -- Devices=[], CapAdd=null, Ulimits=[] -- and the point of
+// making it a spellable ARM is that an intentional socket deployment and an RDMA deployment that
+// lost three fields are then different values rather than the same absence.
+test fn w_a_socket_plan_projects_no_device_no_capability_no_lock() -> Bool {
+  length(transport_plan_devices(p: fx_socket_plan)) == 0
+    && length(transport_plan_cap_add(p: fx_socket_plan)) == 0
+    && !transport_plan_memlock_unlimited(p: fx_socket_plan)
+}
+
+// ── THE RoCE ARM PROJECTS ALL THREE TOGETHER ──────────────────────────────────────────────────
+//
+// They travel as one because a container that can open the verbs device but cannot lock pages fails
+// later and less legibly than one that cannot open it at all. Asserting all three in one row is
+// deliberate: the failure this type exists to prevent is exactly a partial set.
+test fn w_a_roce_plan_projects_the_device_the_capability_and_the_lock() -> Bool {
+  let devs = transport_plan_devices(p: fx_roce_plan)
+  length(devs) == 1
+    && length(filter(devs, d => (d.host_path as String) == "/dev/infiniband")) == 1
+    && length(filter(transport_plan_cap_add(p: fx_roce_plan), c => (c as String) == "IPC_LOCK")) == 1
+    && transport_plan_memlock_unlimited(p: fx_roce_plan)
+}
+
+// ── THE INTERFACE IS NOT THE TRANSPORT DECISION ───────────────────────────────────────────────
+//
+// Both arms carry it and both project it. Group B had NCCL_SOCKET_IFNAME set correctly to the fabric
+// leg and still ran every rank on sockets, which is the receipt for why this variable cannot be read
+// as evidence of the transport.
+test fn w_both_arms_project_the_interface_env() -> Bool {
+  env_has(env: transport_plan_env(p: fx_socket_plan), name: nccl_socket_ifname_env)
+    && env_has(env: transport_plan_env(p: fx_roce_plan), name: nccl_socket_ifname_env)
+    && (transport_plan_interface(p: fx_socket_plan) as String) == (fx_iface as String)
+    && (transport_plan_interface(p: fx_roce_plan) as String) == (fx_iface as String)
+}
+
+// AND THE RoCE ARM CARRIES MORE THAN THE SOCKET ARM, so the GID selection is not silently dropped.
+test fn w_the_roce_arm_projects_more_env_than_the_socket_arm() -> Bool {
+  length(transport_plan_env(p: fx_roce_plan)) > length(transport_plan_env(p: fx_socket_plan))
+}
+
+// ── THE ROW THAT WOULD HAVE CAUGHT GROUP B ────────────────────────────────────────────────────
+//
+// A plan that asked for RoCE and realized Socket is not a configuration disagreement, it is a silent
+// capability loss: the deployment still serves, at a fraction of the collective throughput, and every
+// performance number taken under it describes a transport nobody chose. On 2026-09-15 that state had
+// stood for two and a half days with nothing disagreeing.
+test fn w_a_roce_plan_that_realized_socket_is_a_fallback_not_a_success() -> Bool {
+  match transport_plan_outcome(p: fx_roce_plan, realized: fx_realized_socket) {
+    TransportFellBackToSocket { plan: _, realized: _, because: b } =>
+      (b as String).contains("/dev/infiniband") && (b as String).contains("IPC_LOCK")
+    TransportAsPlanned { plan: _, realized: _ } => false
+    TransportUnexpectedlyRdma { plan: _, realized: _ } => false
+  }
+}
+
+// ── THE POSITIVE CONTROLS, so the outcome fold is not a wall that refuses everything ───────────
+test fn w_a_roce_plan_that_realized_rdma_is_as_planned() -> Bool {
+  match transport_plan_outcome(p: fx_roce_plan, realized: fx_realized_ib) {
+    TransportAsPlanned { plan: _, realized: _ } => true
+    TransportFellBackToSocket { plan: _, realized: _, because: _ } => false
+    TransportUnexpectedlyRdma { plan: _, realized: _ } => false
+  }
+}
+
+test fn w_a_socket_plan_that_realized_socket_is_as_planned() -> Bool {
+  match transport_plan_outcome(p: fx_socket_plan, realized: fx_realized_socket) {
+    TransportAsPlanned { plan: _, realized: _ } => true
+    TransportFellBackToSocket { plan: _, realized: _, because: _ } => false
+    TransportUnexpectedlyRdma { plan: _, realized: _ } => false
+  }
+}
+
+// THE FOURTH CASE IS NOT SYMMETRIC WITH THE FALLBACK AND IS NAMED RATHER THAN FOLDED INTO IT. A
+// socket plan that realized RDMA is not a loss -- it is a deployment getting more than it asked for,
+// which means the plan is not describing what is running and some other authority supplied the
+// device. It is reported so that divergence is visible in both directions.
+test fn w_a_socket_plan_that_realized_rdma_is_reported_not_ignored() -> Bool {
+  match transport_plan_outcome(p: fx_socket_plan, realized: fx_realized_ib) {
+    TransportUnexpectedlyRdma { plan: _, realized: _ } => true
+    TransportAsPlanned { plan: _, realized: _ } => false
+    TransportFellBackToSocket { plan: _, realized: _, because: _ } => false
+  }
+}
+
+// ── THE TWO PLANS ARE DISTINGUISHABLE AS VALUES ───────────────────────────────────────────────
+test fn w_the_two_plans_do_not_share_a_wire() -> Bool {
+  (collective_transport_plan_wire(p: fx_socket_plan) as String)
+    != (collective_transport_plan_wire(p: fx_roce_plan) as String)
+}
+
+test fn w_all_collective_transport_plan_claims_hold() -> Bool {
+  w_a_socket_plan_projects_no_device_no_capability_no_lock()
+    && w_a_roce_plan_projects_the_device_the_capability_and_the_lock()
+    && w_both_arms_project_the_interface_env()
+    && w_the_roce_arm_projects_more_env_than_the_socket_arm()
+    && w_a_roce_plan_that_realized_socket_is_a_fallback_not_a_success()
+    && w_a_roce_plan_that_realized_rdma_is_as_planned()
+    && w_a_socket_plan_that_realized_socket_is_as_planned()
+    && w_a_socket_plan_that_realized_rdma_is_reported_not_ignored()
+    && w_the_two_plans_do_not_share_a_wire()
+}
