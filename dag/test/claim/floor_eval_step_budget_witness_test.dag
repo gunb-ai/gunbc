@@ -1,7 +1,7 @@
 module test.claim.floor_eval_step_budget_witness_test
 
 import v2.std.logic { Bool }
-import v2.std.algebra { Cons, Empty, length }
+import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.integer { Int, int_add, int_mul, int_gt }
 import v2.std.text { String }
@@ -33,7 +33,6 @@ import v2.workflow.floor_eval_step_calibration {
 }
 import v2.workflow.floor_eval_step_cost_drop {
   floor_eval_step_cost_drop_holds, floor_eval_step_cost_drop_has_duplicate,
-  floor_eval_step_cost_drop_every_row_over, floor_eval_step_cost_drop_members,
 }
 import v2.workflow.floor_grandfathered_roster {
   GrandfatheredRemoval, WitnessDeleted, WitnessRenamed, WitnessNowInsideNewTier,
@@ -616,12 +615,14 @@ test fn a_member_of_the_declared_drop_still_blocks_on_the_wall() -> Bool {
   }
 }
 
-// THE ROSTER ITSELF: non-empty, unambiguous, and every row still covering a real overrun of the
-// new-witness budget -- the retirement condition the drop's trigger names, evaluated against the
-// row's own typed measurements. A row measured inside the budget turns this red and must leave.
-test fn the_declared_drop_roster_is_unambiguous_and_every_row_is_still_over_budget() -> Bool {
-  int_gt(a: length(xs: floor_eval_step_cost_drop_members()), b: 0)
-    && (floor_eval_step_cost_drop_has_duplicate() == false)
-    && floor_eval_step_cost_drop_every_row_over(budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
-    && floor_eval_step_cost_drop_holds(name: drop_member_identity())
+// THE ROSTER IS UNAMBIGUOUS. A duplicated row makes the population overstate what is dropped, and
+// the second copy survives removal of the first. The seed runner refuses the same thing at decode
+// time; this is the model-level wall that survives the floor self-hosting.
+//
+// Deliberately NOT asserted here: that the roster is non-empty or holds the member above -- the
+// control pair already goes red if the member leaves -- and that the rows' recorded eval_steps
+// exceed the budget, which would be authored on both sides of the comparison and could never go
+// red (DESIGN section 4b, section 5). The drop's retirement clause (ii) is read out of band.
+test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
+  floor_eval_step_cost_drop_has_duplicate() == false
 }

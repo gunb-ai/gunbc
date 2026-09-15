@@ -5,7 +5,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
-import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }
+import std.measure { EvalStepCount, eval_step_count }
 import std.types { NonEmptyStr }
 
 // THE POLICY HALF OF THE DECLARED 4b(3) DROP `gunbc.rung_drop`
@@ -25,6 +25,13 @@ import std.types { NonEmptyStr }
 // MEMBERSHIP IS BY WHOLE QUALIFIED IDENTITY, NEVER BY PREFIX OR MODULE. A module-grain exemption
 // would silently cover every witness later added beside these four, which is the widening the
 // drop's bounded population exists to forbid.
+//
+// `observed_eval_steps` IS A RECORDED READING, NOT AN ORACLE. It is transcribed from the run named in
+// `measured_by`, so no check in this tree may compare it against the budget and call that evidence
+// the drop is still needed or may retire: both sides of such a comparison would be authored here and
+// it could not go red (DESIGN section 5, a measurement copied from the same tree is not an oracle).
+// Whether a member still overruns is read from a LIVE floor's `required_floor_claim_cost.tsv`, out
+// of band, with `tools.floor_cost_distribution_instrument`.
 //
 // IT MAY ONLY SHRINK. A row leaves when its identity measures inside the new-witness budget on the
 // acceptance path and the prepared-input capability the drop's trigger names has landed; a row is
@@ -79,18 +86,4 @@ fn floor_eval_step_cost_drop_has_duplicate() -> Bool {
       b: 1,
     )
   })
-}
-
-// THE ROW'S RETIREMENT CONDITION, EVALUABLE AGAINST ITS OWN MEASUREMENTS. The budget is a parameter
-// rather than an import because `v2.workflow.required_floor` imports this module; the caller passes
-// the new-witness ceiling. `true` means every member was still measured over it -- the drop is still
-// covering a real overrun. A member whose recorded measurement is inside the budget no longer needs
-// the drop and must leave the roster.
-fn floor_eval_step_cost_drop_every_row_over(budget: EvalStepCount) -> Bool {
-  any(xs: floor_eval_step_cost_drop_rows, predicate: fn(row) {
-    int_gt(
-      a: eval_step_count_value(s: row.observed_eval_steps),
-      b: eval_step_count_value(s: budget),
-    ) == false
-  }) == false
 }

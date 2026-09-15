@@ -30,12 +30,18 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 // `v2.workflow.floor_eval_step_cost_drop`, which `v2.workflow.required_floor`
 // `claim_eval_step_standing_for_identity` decides with and the seed runner mirrors. This row's
 // population is a PROJECTION of that list, so a name cannot survive here after it leaves the policy
-// (DESIGN section 3; section 4b(3) bounded population). The counts are not transcribed into the
-// sentence: they are the roster's `observed_eval_steps`, and
-// `test.claim.floor_eval_step_budget_witness_test`
-// `the_declared_drop_roster_is_unambiguous_and_every_row_is_still_over_budget` compares them to the
-// new-witness budget, which is what makes clause (ii) of the trigger evaluable (DESIGN section 6:
-// name the instrument, never transcribe its output).
+// (DESIGN section 3; section 4b(3) bounded population).
+//
+// CLAUSE (ii) OF THE TRIGGER IS NOT VERIFIED BY ANY ENROLLED CHECK, stated plainly. It asks whether
+// each identity measures under the new-witness budget ON THE ACCEPTANCE PATH, which is a LIVE
+// reading. The roster's `observed_eval_steps` are recorded readings from the run in `measured_by`;
+// a check comparing them to the budget would be authored on both sides and could never go red, so
+// none exists. Clause (ii) is verified by reading the live floor's `required_floor_claim_cost.tsv`
+// out of band with `tools.floor_cost_distribution_instrument`, whose load refuses an empty or
+// unreadable run. Its next-rung trigger is a claim harness able to consume a live required-floor
+// cost artifact as a supplied input with a typed refusal; the floor witness cannot read the cost
+// artifact of the run executing it, and `test.claim.floor_cost_distribution_witness_test` declares
+// `SubstrateInputsOnly` for that reason.
 data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, observed_eval_steps in v2.workflow.floor_eval_step_cost_drop; "), m.measured_by))
 
 data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
