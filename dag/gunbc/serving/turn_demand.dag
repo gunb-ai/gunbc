@@ -1,11 +1,11 @@
 module gunbc.serving.turn_demand
 
 import std.types { NonEmptyStr, List, String }
-import std.content_hash { as_content_hash_structural, content_hash_atom, content_hash_combine_structural, serialize_content_hash }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.work {
   Work, WorkContract, WorkStep, OpaqueEffects, OfferedService, ServiceInterfaceRef, ArtifactManifestRef,
   EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
-  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for,
+  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for, identity_frame,
 }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { SatisfactionRequirement }
@@ -71,9 +71,9 @@ type ServingTurnRequest {
 // The contract's one inputs identity is the normalized inputs and the model requirement together,
 // each length-framed so neither can be read as part of the other.
 fn serving_turn_contract_inputs(request: ServingTurnRequest) -> ArtifactManifestRef {
-  serialize_content_hash(hash: as_content_hash_structural(structural: content_hash_combine_structural(
-    left: content_hash_atom(value: join(["inputs:", to_string((request.inputs as String).length()), ":", request.inputs as String], "") as NonEmptyStr),
-    right: content_hash_atom(value: join(["model-requirement:", to_string((request.model_requirement as String).length()), ":", request.model_requirement as String], "") as NonEmptyStr),
+  serialize_content_hash(hash: content_hash_of_value(value: concat(
+    identity_frame(label: "inputs", value: request.inputs as String),
+    identity_frame(label: "model-requirement", value: request.model_requirement as String),
   ))) as ArtifactManifestRef
 }
 

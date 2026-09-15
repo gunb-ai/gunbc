@@ -34,7 +34,7 @@ import gunbc.harness.harness_backend {
 }
 import gunbc.harness.harness_wire { HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_backend_url_for_endpoint }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
-import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef }
+import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, identity_frame }
 import product.fabric.supply { EstimatedGrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
 import product.fabric.selection {
   CandidateOffer, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
@@ -64,7 +64,7 @@ import gunbc.serving.turn_admission {
   spark_serving_trust_domain, serving_delay_valuation, serving_dispatch_inputs,
 }
 import gunbc.serving.turn_demand { ServingModelRequirementRef, serving_turn_requirements, serving_turn_work, ServingTurnRequest }
-import std.content_hash { Fnv1a64Structural, as_content_hash_structural, content_hash_atom, content_hash_combine_structural, serialize_content_hash }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.identity { FabricIdentity, DemandKey }
 import product.fabric.provider_admission { refusal_reason }
 import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
@@ -444,27 +444,25 @@ fn harness_turn_subject(request: ServingTurnRequest, attempt: NonEmptyStr) -> Ha
 // and never an input of the Work, or two attempts of one request would be two Works and the
 // separation harness_turn_subject exists to keep would be gone.
 //
-// THE IDENTITY IS INJECTIVE IN THE LIST, NOT IN A DELIMITED JOIN. Each input is hashed as its own
-// atom, length-prefixed, and the atoms are combined in order under the element count; a join with
-// a separator byte would let ["a<sep>b"] and ["a", "b"] name one turn.
+// THE IDENTITY IS INJECTIVE IN THE LIST, NOT IN A DELIMITED JOIN. Each input is length-framed by
+// product.fabric.work identity_frame -- the one framing authority the Work key itself uses -- and
+// the frames are concatenated in order under the element count; a join with a separator byte would
+// let ["a<sep>b"] and ["a", "b"] name one turn.
 fn harness_turn_request(shape: HarnessWireShape, requirement: ServingModelRequirement, inputs: List<String>) -> ServingTurnRequest {
   ServingTurnRequest {
     interface: harness_wire_shape_interface(shape: shape),
-    inputs: serialize_content_hash(hash: as_content_hash_structural(structural: harness_turn_inputs_identity(inputs: inputs))) as ArtifactManifestRef,
+    inputs: serialize_content_hash(hash: content_hash_of_value(value: harness_turn_inputs_identity(inputs: inputs))) as ArtifactManifestRef,
     model_requirement: harness_model_requirement_ref(requirement: requirement),
     effect_contract: "gunbc.harness.streamed-turn-effects" as EffectContractRef,
     output_contract: "gunbc.harness.turn-completion" as OutputContractRef,
   }
 }
 
-fn harness_turn_inputs_identity(inputs: List<String>) -> Fnv1a64Structural {
+fn harness_turn_inputs_identity(inputs: List<String>) -> NonEmptyStr {
   fold(
     inputs,
-    init: content_hash_atom(value: join(["gunbc.harness.turn-inputs:", to_string(length(inputs))], "") as NonEmptyStr),
-    f: (acc, part) => content_hash_combine_structural(
-      left: acc,
-      right: content_hash_atom(value: join([to_string(part.length()), ":", part], "") as NonEmptyStr)
-    )
+    init: identity_frame(label: "gunbc.harness.turn-inputs", value: to_string(length(inputs))),
+    f: (acc, part) => concat(acc, identity_frame(label: "input", value: part))
   )
 }
 
