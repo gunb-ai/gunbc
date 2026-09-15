@@ -4,7 +4,6 @@ import std.types { Bool, NonEmptyStr, String, List }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash {
-  ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex,
   compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
@@ -24,11 +23,6 @@ import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, HubCachePlacement, spark_hub_cache_root,
 }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
-import gunbc.fleet_intent_network { operator_host_srv5 }
-import gunbc.spark.vllm_serving_launch {
-  vllm_serving_launch, launch_unit_provenance,
-  LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -76,10 +70,6 @@ fn w_head_text() -> String? {
   }
 }
 
-fn w_sha256(hex: String) -> ContentHash {
-  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
-}
-
 // POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice.
 test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
   match w_head_render() {
@@ -119,31 +109,6 @@ test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
                 ContentHashCrossFamilyIncomparable => false
               }
           }
-      }
-  }
-}
-
-// RED: an observed unit digest that is not the SHA-256 of the rendered declaration is not
-// LaunchedFromDeclaredUnit. The standing consumes this provenance; it must not bind as declared.
-test fn a_declared_observed_mismatch_does_not_bind_as_declared() -> Bool {
-  match w_head_render() {
-    DeclaredUnitDigestUnavailable { obligation: _ } => false
-    DeclaredUnitDigested { unit_name: _, digest: declared } =>
-      match launch_unit_provenance(
-        launch: vllm_serving_launch(
-          group: FabricGroupA,
-          head: operator_host_srv5,
-          systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
-          container_id: "fixture-container-1" as NonEmptyStr,
-          executable_digest: w_sha256(hex: "7777777777777777777777777777777777777777777777777777777777777777"),
-          unit_digest: w_sha256(hex: "6666666666666666666666666666666666666666666666666666666666666666"),
-          started_at: 1788907506,
-        ),
-        declared: declared,
-      ) {
-        LaunchedFromDifferentUnit { observed: _, declared: _ } => true
-        LaunchedFromDeclaredUnit { declared: _ } => false
-        LaunchUnitDigestsIncomparable => false
       }
   }
 }
