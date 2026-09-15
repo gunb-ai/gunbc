@@ -98,14 +98,22 @@ fn serving_performance_subject(
   }
 }
 
-// ── THE AXES ARE ENUMERATED SO THE JOIN CANNOT FORGET ONE ──────────────────────────────────────
+// ── THE AXES ARE ENUMERATED SO THE REFUSAL CAN NAME ONE ────────────────────────────────────────
 //
-// WHY A COPRODUCT AND NOT A LIST OF STRING COMPARISONS INLINE. The refusal has to NAME the axis
-// that differs -- a join that answers only "different" sends a reader back to diffing two records
-// by eye, which is the work this type exists to do. Spelling the axis as a value also means adding
-// a field to the subject without adding its arm here fails to compile at the projection below,
-// rather than silently producing a join that ignores the new field. That is the difference between
-// a wall and a checklist: the exhaustive match is what makes the omission unwritable.
+// WHY A COPRODUCT AND NOT A LIST OF STRING COMPARISONS INLINE. The refusal has to NAME the axis that
+// differs -- a join that answers only "different" sends a reader back to diffing two records by eye,
+// which is the work this type exists to do.
+//
+// WHAT THIS DOES NOT BUY, stated because an earlier version of this paragraph claimed it did: adding
+// a FIELD to ServingPerformanceSubject without adding an arm here does NOT fail to compile. The
+// exhaustive match in `serving_subject_axis_value` is over ServingSubjectAxis, not over the record's
+// fields, so the two can drift apart silently and the comparison simply ignores the new field.
+//
+// RUNG (DESIGN 4b): field-to-axis coverage is MITIGATION -- the witness asserts the roster is not
+// degenerate, and review is what actually catches a missing arm. The attainable ceiling is
+// structural: a record whose fields ARE its axes has no spelling for the mismatch. TRIGGER: a way to
+// enumerate a record's fields as a value, at which point the roster is DERIVED from the record and
+// this whole coproduct dissolves rather than being maintained beside it.
 type ServingSubjectAxis
   = AxisCheckpoint
   | AxisCheckpointRevision

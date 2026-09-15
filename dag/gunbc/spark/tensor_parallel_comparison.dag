@@ -434,12 +434,25 @@ data spark_group_a_topology_standing: TopologyStanding = TopologyNotFungibleMayB
 // -- and nothing about whether the two measurements are comparable: the prompts, producers, carriers
 // and launch incarnations are not in the subject and are not consulted here.
 //
-// AND IT IS PERMANENTLY UNDECIDABLE ON THE TRANSPORT AXIS, which the earlier prose got wrong in a
-// way that mattered. It said the row would flip to a one-axis cut "the moment someone reads the
-// verdict line on a relaunch of either arm". It would not: reading ONE arm leaves the other unread,
-// and -- the deeper error -- a transport reading taken from a FUTURE relaunch cannot be attached
-// backwards to performance measured on an earlier launch. A relaunch is a new subject and a new
-// experiment. These 2026-09-07 arms have no realized transport in their carriers and no later
-// observation can give them one, so this row stays undecidable on that axis forever; what a
-// relaunch buys is a NEW comparison, not a repair of this one.
+// WHAT IT ACTUALLY COMPUTES HERE: AxisDeltaOnManyAxes. The two arms differ on TOPOLOGY and on RANK
+// POPULATION -- 4 ranks against 2 -- and both are Present on both sides, so a known difference is
+// available and the fold reports it. That is the answer a reader wants from the one row they would
+// consult to ask whether this experiment isolated a single variable: it did not, two modelled axes
+// moved together. The module's own prose said as much in words -- "the participant count and message
+// geometry, each rank's weight shard, per-rank memory traffic, the expert partition, the quantized
+// kernel shapes, the reduction order, and the compiled graph shapes all move together" -- and
+// carrying the rank count as its own axis is what turns that paragraph into a value.
+//
+// THE UNDECIDABLE ARM IS UNREACHABLE FOR THIS ROW, and an earlier version of this paragraph claimed
+// the opposite: that the row was "permanently undecidable on the transport axis". It is not, because
+// known differences are computed BEFORE unknown axes are consulted -- an unknown axis must not erase
+// a mismatch that is already established. Asserting the opposite of the value it sits on is worse
+// than saying nothing, which is the sharper reading of DESIGN section 4c: no Accepted program can
+// read an annotation, so a wrong one is pure misdirection on the reader who trusts it.
+//
+// WHAT REMAINS TRUE ABOUT THE TRANSPORT. It is unread on BOTH arms and cannot become read: a verdict
+// line captured on a FUTURE relaunch cannot be attached backwards to performance measured on an
+// earlier launch, because a relaunch is a new subject and a new experiment. So the transport never
+// joins the moved-axis list for this pair -- not because the row is undecidable, but because that
+// axis stays unknown on both sides forever. What a relaunch buys is a NEW comparison.
 data spark_group_a_topology_axis_delta: SubjectAxisDelta = serving_subject_axis_delta(left: spark_group_a_tp4_arm.subject, right: spark_group_a_tp2_arm.subject)
