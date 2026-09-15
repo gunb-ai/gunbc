@@ -76,6 +76,13 @@ pub enum ParsedImportStatements {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedImportObservation<LexicalToken: Clone> {
+    pub tokens: Rc<Vec<LexicalToken>>,
+    pub imports: Rc<ParsedImportStatements>,
+    pub _phantom: std::marker::PhantomData<LexicalToken>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ImportStripRefusal {
     ImportSpanNamesAnotherFile {

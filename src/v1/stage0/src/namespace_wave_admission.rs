@@ -1806,11 +1806,14 @@ pub struct TransitionAdmission {
 /// why it is kept: a consumed row goes because its transition is PRESENT AT THE BASE, not because
 /// the array was being emptied.
 /// THIRTY-EIGHTH DISSOLUTION (2026-09-15, gunbc#11418). The `gunbc#11138 string_eq collapse`
-/// rows are deleted. #11138 merged as `b4ba80fe7f` ("Collapse the v2.lens string_eq copies into
-/// one authority"), so the base already binds `string_eq` at `v2.std.text`, the deltas stopped
-/// being producible, and CONSUMED comes due on this roster's own next touch. This change is that
-/// touch: it pays the deletion rather than inheriting 37 consumed rows onto an unrelated
-/// relocation. Trigger, merge identity, and the required-floor consumed count on #11418 agree.
+/// rows went: #11138 merged as `b4ba80fe7f` ("Collapse the v2.lens string_eq copies into one
+/// authority"), the base binds `string_eq` at `v2.std.text`, and main deleted the 37 consumed
+/// rows on its next roster touch, gunbc#11373. That touch replaced them with 32 rows of its own
+/// -- `gunbc#11373 PCI identity authority repair; delete after landing` -- and #11373 has since
+/// landed (`cd3d52d5fe`), so those 32 are consumed by their own merge and come due on THIS
+/// roster's next touch, which is this change. They are deleted here, by the trigger their own
+/// label named; the string_eq header prose main kept beside the empty population goes with them,
+/// since a header for rows that are not in the array is a second place the retirement is told.
 ///
 /// gunbc#11418 declared-unit-digest home (2026-09-15). Six `TargetChanged` rows for one move:
 /// `DeclaredUnitDigestStanding`, `DeclaredUnitDigested`, and `DeclaredUnitDigestUnavailable`
