@@ -55,10 +55,10 @@ type ServingPerformanceSubject sole_constructor {
   runtime_image_reference: NonEmptyStr
   topology: ServingTopology?
   rank_population: Nat?
-  context_ceiling: TokenCount
+  context_ceiling: TokenCount?
   max_num_batched_tokens: TokenCount
   max_num_seqs: Nat?
-  kv_cache_dtype: VllmKvCacheDtypeRequest
+  kv_cache_dtype: VllmKvCacheDtypeRequest?
   speculative: VllmSpeculativePolicy?
   collective_transport: NcclRealizedTransport?
 }
@@ -75,10 +75,10 @@ fn serving_performance_subject(
   runtime_image_reference: NonEmptyStr,
   topology: ServingTopology?,
   rank_population: Nat?,
-  context_ceiling: TokenCount,
+  context_ceiling: TokenCount?,
   max_num_batched_tokens: TokenCount,
   max_num_seqs: Nat?,
-  kv_cache_dtype: VllmKvCacheDtypeRequest,
+  kv_cache_dtype: VllmKvCacheDtypeRequest?,
   speculative: VllmSpeculativePolicy?,
   collective_transport: NcclRealizedTransport?,
 ) -> ServingPerformanceSubject {
@@ -169,14 +169,22 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
         Absent => axis_value_unread_marker
         Present { value: r } => to_string(r) as NonEmptyStr
       }
-    AxisContextCeiling => to_string(token_count_value(t: s.context_ceiling)) as NonEmptyStr
+    AxisContextCeiling =>
+      match s.context_ceiling {
+        Absent => axis_value_unread_marker
+        Present { value: c } => to_string(token_count_value(t: c)) as NonEmptyStr
+      }
     AxisBatchBudget => to_string(token_count_value(t: s.max_num_batched_tokens)) as NonEmptyStr
     AxisMaxNumSeqs =>
       match s.max_num_seqs {
         Absent => axis_value_unread_marker
         Present { value: n } => to_string(n) as NonEmptyStr
       }
-    AxisKvCacheDtype => vllm_kv_cache_dtype_wire(request: s.kv_cache_dtype)
+    AxisKvCacheDtype =>
+      match s.kv_cache_dtype {
+        Absent => axis_value_unread_marker
+        Present { value: d } => vllm_kv_cache_dtype_wire(request: d)
+      }
     AxisSpeculativePolicy =>
       match s.speculative {
         Absent => axis_value_unread_marker
@@ -258,11 +266,13 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
       match s.topology { Absent => true, Present { value: _ } => false }
     AxisRankPopulation =>
       match s.rank_population { Absent => true, Present { value: _ } => false }
-    AxisContextCeiling => false
+    AxisContextCeiling =>
+      match s.context_ceiling { Absent => true, Present { value: _ } => false }
     AxisBatchBudget => false
     AxisMaxNumSeqs =>
       match s.max_num_seqs { Absent => true, Present { value: _ } => false }
-    AxisKvCacheDtype => false
+    AxisKvCacheDtype =>
+      match s.kv_cache_dtype { Absent => true, Present { value: _ } => false }
   }
 }
 

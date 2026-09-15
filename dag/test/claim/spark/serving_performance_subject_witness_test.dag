@@ -54,10 +54,10 @@ data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
   runtime_image_reference: "repo@sha256:aaa" as NonEmptyStr,
   topology: Present { value: FourSparkTp4 },
   rank_population: Present { value: 4 },
-  context_ceiling: token_count(count: 131072),
+  context_ceiling: Present { value: token_count(count: 131072) },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: Present { value: 32 },
-  kv_cache_dtype: KvFp8,
+  kv_cache_dtype: Present { value: KvFp8 },
   speculative: Present { value: SpeculativeDecodingOff },
   collective_transport: Present { value: fx_socket }
     )
@@ -71,10 +71,10 @@ data fx_glm_group_b: ServingPerformanceSubject = serving_performance_subject(
   runtime_image_reference: "repo@sha256:bbb" as NonEmptyStr,
   topology: Present { value: FourSparkTp4 },
   rank_population: Present { value: 4 },
-  context_ceiling: token_count(count: 262144),
+  context_ceiling: Present { value: token_count(count: 262144) },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: Present { value: 32 },
-  kv_cache_dtype: KvFp8,
+  kv_cache_dtype: Present { value: KvFp8 },
   speculative: Present { value: SpeculativeDecodingOff },
   collective_transport: Present { value: fx_socket }
     )
@@ -196,7 +196,7 @@ test fn w_moving_the_kv_dtype_alone_is_detected_and_named() -> Bool {
     context_ceiling: fx_deepseek_tp4.context_ceiling,
     max_num_batched_tokens: fx_deepseek_tp4.max_num_batched_tokens,
     max_num_seqs: fx_deepseek_tp4.max_num_seqs,
-    kv_cache_dtype: KvBf16,
+    kv_cache_dtype: Present { value: KvBf16 },
     speculative: fx_deepseek_tp4.speculative,
     collective_transport: fx_deepseek_tp4.collective_transport
     )

@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
-import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8, VllmSpeculativePolicy }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, VllmSpeculativePolicy }
 import extdeps.nvidia.nccl { NcclRealizedTransport }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, deepseek_v4_flash_snapshot, model_snapshot_revision }
@@ -92,6 +92,13 @@ type TopologyArm sole_constructor {
 // all -- the exact unbound path this type exists to close. The subject is now a field, so a consumer
 // holding a rate is holding the profile it was measured against.
 //
+// THE KV CACHE LAYOUT IS ABSENT, AND `KvFp8` WAS HERE AND WAS FALSE. `fp8_ds_mla` is DeepSeek MLA's
+// layout and this profile is DeepSeek; extdeps.vllm.engine_args warns that the REQUESTED `fp8`
+// spelling is not the resolved format, and gunbc.spark.pair_serving_desired documents a previous
+// edit making this exact substitution on this exact route. A wrong axis value is worse than an
+// absent one -- it makes a correct decision subject refuse and an incorrect one agree -- and the
+// right-looking `KvFp8DsMla` would still be a guess, because nothing here read the layout.
+//
 // THE SCHEDULER'S SEQUENCE LIMIT IS ABSENT FOR THE SAME REASON, and it is worth saying why the
 // obvious citation is refused. gunbc.spark.serving_deployment_selection carries
 // `spark_host_max_num_seqs: Nat = 32`, and reaching for it here would look like single-authority
@@ -122,10 +129,10 @@ fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: To
       runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
       topology: serving_topology_of_rank_count(ranks: degree),
       rank_population: Present { value: ranks },
-      context_ceiling: ceiling,
+      context_ceiling: Present { value: ceiling },
       max_num_batched_tokens: budget,
       max_num_seqs: Absent,
-      kv_cache_dtype: KvFp8,
+      kv_cache_dtype: Absent,
       speculative: Absent,
       collective_transport: Absent
     ),

@@ -5,7 +5,8 @@ import std.nat { Nat, nat_min }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_batch_default_resolution }
-import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8, VllmSpeculativePolicy, SpeculativeDecodingOff }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, VllmSpeculativePolicy, SpeculativeDecodingOff }
+import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
 import extdeps.nvidia.nccl { NcclRealizedTransport }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, deepseek_v4_flash_snapshot, model_snapshot_revision }
@@ -103,6 +104,23 @@ type PredictedBatchArm sole_constructor {
 // bites here: under-asserting is not humility, and a fact you decline to state is a wall that does
 // not exist.
 //
+// THE KV CACHE LAYOUT IS ABSENT, AND A FIRST VERSION OF THIS BINDING WROTE THE WRONG ONE. I put
+// `KvFp8` here, which is not merely ungrounded -- it is FALSE for this route. `fp8_ds_mla` is the
+// cache layout of DeepSeek's Multi-head Latent Attention, and extdeps.vllm.engine_args warns in its
+// own annotation that recording the REQUESTED `fp8` spelling as the served format records the
+// argument sent rather than the behaviour got. gunbc.spark.pair_serving_desired carries a paragraph
+// about a previous edit making exactly this mistake on exactly this route. I repeated it.
+//
+// AND THE REPAIR IS STILL ABSENCE RATHER THAN THE CORRECT-LOOKING VALUE, because nothing in this
+// module read the layout for these launches either. `KvFp8DsMla` would be the right answer for the
+// route and would still be a guess about the measurement -- and a wrong axis value is worse than an
+// absent one: a correct DeepSeek decision would have REFUSED transfer against these rows, or a
+// `KvFp8` decision would have falsely agreed with them.
+//
+// THE CONTEXT CEILING IS ABSENT ON THE ARMS FOR THE SAME REASON. The module names a
+// 1,048,576-token context MODEL, which is a fact about the checkpoint and not a reading of what
+// max_model_len these four launches were started with.
+//
 // THE SCHEDULER'S SEQUENCE LIMIT IS ABSENT TOO, and a first version of this binding wrote 32 there
 // because that is what the fleet generally runs. Nothing in this module read it for these launches,
 // so it was a fabricated default on a MANDATORY axis -- which is worse than one on an optional axis,
@@ -125,10 +143,10 @@ fn batch_arm_subject(budget: TokenCount) -> ServingPerformanceSubjectStanding {
       runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
       topology: Absent,
       rank_population: Absent,
-      context_ceiling: token_count(count: 1048576),
+      context_ceiling: Absent,
       max_num_batched_tokens: budget,
       max_num_seqs: Absent,
-      kv_cache_dtype: KvFp8,
+      kv_cache_dtype: Absent,
       speculative: Present { value: SpeculativeDecodingOff },
       collective_transport: Absent
     ),
@@ -539,6 +557,12 @@ type DepthDependentRate sole_constructor {
 // answers SubjectPartial. That is the whole point of the constructor: prose cannot promote a subject
 // the axes do not support.
 //
+// THE CEILING HERE IS STATED AND IS THE MODEL'S OWN, so it is bound rather than absent: this row's
+// provenance says "TP=2 at max_model_len 1,048,576", and that figure is
+// extdeps.deepseek.deepseek_v4 deepseek_v4_context_length -- read from the loaded GGUF's
+// deepseek4.context_length and agreeing with the published figure. It is consumed rather than
+// re-spelled, so a model change moves it here too.
+//
 // THE SPECULATIVE POLICY IS READ RATHER THAN ASSUMED, and it is the one axis here with a cited
 // ground: the co-tenant section below states "This profile served no speculative decoding" and
 // corroborates it with a mechanism -- each step accepted exactly one decode token, which is what
@@ -556,10 +580,10 @@ data spark_group_a_depth_rate: DepthDependentRate = DepthDependentRate {
       runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
       topology: Present { value: SparkPairTp2 },
       rank_population: Present { value: 2 },
-      context_ceiling: token_count(count: 1048576),
+      context_ceiling: Present { value: deepseek_v4_context_length },
       max_num_batched_tokens: token_count(count: 2048),
       max_num_seqs: Absent,
-      kv_cache_dtype: KvFp8,
+      kv_cache_dtype: Absent,
       speculative: Present { value: SpeculativeDecodingOff },
       collective_transport: Absent
     )
