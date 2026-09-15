@@ -1,15 +1,14 @@
 module gunbc.serving.turn_demand
 
-import std.types { String, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
-import std.content_hash { ContentHash, serialize_content_hash }
+import std.types { NonEmptyStr, List, String }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.work {
-  Work, WorkContract, WorkStep, OpaqueEffects, ProgramRef, SourceManifestRef, ArtifactManifestRef,
+  Work, WorkContract, WorkStep, OpaqueEffects, OfferedService, ServiceInterfaceRef, ArtifactManifestRef,
   EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
-  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for,
+  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for, identity_frame,
 }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.demand { SatisfactionRequirement, ObservationReceiptRef }
+import product.fabric.demand { SatisfactionRequirement }
 
 // ── A SERVING TURN IS PROVIDER-NEUTRAL WORK ───────────────────────────────────────────────────
 //
@@ -34,102 +33,49 @@ import product.fabric.demand { SatisfactionRequirement, ObservationReceiptRef }
 // with it: the owned-hardware buy terms were zero against gunbc.spark.serving_offer's zero quote, and
 // that pairing is stated where the quote is.
 
-// ── THE SOURCE MANIFEST IS THE ONE FIELD THAT CANNOT BE FILLED IN TODAY ───────────────────────
+// ── A TURN IS AN OFFERED-SERVICE REQUEST, AND ITS IDENTITY EXISTS BEFORE ANY SUPPLIER IS CONSIDERED ──
 //
-// WHAT WAS DONE BEFORE AND WHY IT WAS WRONG. The served model ALIAS was cast straight into
-// SourceManifestRef. An alias is a route name -- what the OpenAI-shaped endpoint answers to -- and
-// work.dag is explicit that source identity is a canonical MANIFEST covering content digests of what
-// is actually consumed. Two engines answering the same alias can be serving different weights, a
-// different tokenizer, a different quantization or a different runtime, and the cast made all of
-// them one Work. That is not a missing field; it is a wrong answer about identity, and the fabric's
-// whole reuse and receipt story is keyed on it.
+// WHAT WAS DONE BEFORE AND WHY IT WAS WRONG, TWICE. First the served model ALIAS was cast into
+// SourceManifestRef, which made two engines answering one alias with different bytes the same Work.
+// The repair made the source a manifest of the SELECTED ENGINE's loaded weights, tokenizer and
+// runtime, observed or absent -- which fixed the cast and reversed the dependency: the requester's
+// identity then depended on the supplier's realization, nothing observes loaded weight or tokenizer
+// bytes (a boundary obligation outside the modeled guarantee, DESIGN 4b), and so no turn could ever
+// construct Work. Both spellings forced a service request through the materialized-program shape.
 //
-// SO THE MANIFEST IS OBSERVED OR IT IS ABSENT, AND ABSENT IS TYPED. Until every component below is
-// observed, a serving turn has no exact Work, and this module says so rather than manufacturing one.
+// SO A TURN IS product.fabric.work OfferedService. Its identity is what the caller asks for: the
+// interface it speaks, the normalized inputs, the model requirement (any admitted model, or one
+// exact serving unit), and the effect and output contracts. The selected endpoint, launch,
+// weights, tokenizer, runtime image, unit and container environment are realization evidence
+// about an OFFER: they feed offer provenance and provider-use admission, never this identity. A
+// demand that genuinely requires one of them states it as a requirement when such a demand
+// exists; no current caller does, so no such arm is declared here.
 //
-// WHAT THE MANIFEST IS MADE OF: three components, each observed or not on its own. A turn's source is
-// the weights the engine loaded, the tokenizer it loaded, and the runtime it runs in. One boolean over
-// all three would hide which is missing, and the three have different producers: an incarnation
-// observation can supply the runtime image digest (gunbc.spark.serving_offer spark_serving_turn_runtime),
-// and nothing in this repository reads the weight or tokenizer bytes a running engine loaded.
-type ServingTurnComponent = TurnWeights | TurnTokenizer | TurnRuntime
-
-fn serving_turn_component_wire(component: ServingTurnComponent) -> NonEmptyStr {
-  match component {
-    TurnWeights => "weights" as NonEmptyStr
-    TurnTokenizer => "tokenizer" as NonEmptyStr
-    TurnRuntime => "runtime" as NonEmptyStr
-  }
-}
-
-type TurnComponentStanding
-  = TurnComponentObserved { digest: ContentHash, receipt: ObservationReceiptRef }
-  | TurnComponentUnobserved { obligation: NonEmptyStr }
-
-type ServingTurnSource {
-  weights: TurnComponentStanding
-  tokenizer: TurnComponentStanding
-  runtime: TurnComponentStanding
-}
-
-// THE WEIGHTS AND TOKENIZER OBLIGATIONS NAME THE ONLY THING THAT DISCHARGES THEM. The snapshot pinned in
-// gunbc.spark.pair_serving_desired is what we DECLARED the engine should load. Reading it as what the
-// engine DID load is the declaration standing in for the realization, so it never fills these.
-data serving_turn_weights_obligation: NonEmptyStr = "no observation in this repository establishes the weight bytes a serving engine loaded; the pinned snapshot revision is a declaration, not a reading. TRIGGER: an observer of the loaded weight bytes, bound to the answering launch, SUFFICIENT FOR TurnComponentObserved on the weights component. FEASIBILITY, stated so the trigger is not read as scheduled work: this is a boundary obligation outside the modeled guarantee (DESIGN 4b), not a producer that can be built. Even with root on the host, the process table shows which files the engine opened or mapped, and the engine copies, shards and may quantize what it reads into GB10 unified memory, so no host reading establishes that the bytes now serving equal any file. The attainable ceiling is the digest of the files opened at launch, bound to the answering launch; that is weaker than this trigger and does not satisfy it. Discharging the component from that ceiling would be a change to what the Work identity means, decided at that identity, never a reading minted as loaded-bytes identity" as NonEmptyStr
-
-data serving_turn_tokenizer_obligation: NonEmptyStr = "no observation in this repository establishes the tokenizer bytes a serving engine loaded; the pinned snapshot revision is a declaration, not a reading. TRIGGER: an observer of the loaded tokenizer bytes, bound to the answering launch, SUFFICIENT FOR TurnComponentObserved on the tokenizer component. FEASIBILITY, stated so the trigger is not read as scheduled work: this is a boundary obligation outside the modeled guarantee (DESIGN 4b), not a producer that can be built. Even with root on the host, the process table shows which files the engine opened or mapped, and the engine copies, shards and may quantize what it reads into GB10 unified memory, so no host reading establishes that the bytes now serving equal any file. The attainable ceiling is the digest of the files opened at launch, bound to the answering launch; that is weaker than this trigger and does not satisfy it. Discharging the component from that ceiling would be a change to what the Work identity means, decided at that identity, never a reading minted as loaded-bytes identity" as NonEmptyStr
-
-type TurnComponentReading {
-  component: ServingTurnComponent
-  standing: TurnComponentStanding
-}
-
-fn serving_turn_component_readings(source: ServingTurnSource) -> List<TurnComponentReading> {
-  [
-    TurnComponentReading { component: TurnWeights, standing: source.weights },
-    TurnComponentReading { component: TurnTokenizer, standing: source.tokenizer },
-    TurnComponentReading { component: TurnRuntime, standing: source.runtime },
-  ]
-}
-
-fn turn_component_obligation(reading: TurnComponentReading) -> List<NonEmptyStr> {
-  match reading.standing {
-    TurnComponentObserved { digest: _, receipt: _ } => [] as List<NonEmptyStr>
-    TurnComponentUnobserved { obligation: o } =>
-      [join([serving_turn_component_wire(component: reading.component) as String, ": ", o as String], "") as NonEmptyStr]
-  }
-}
-
-fn turn_component_digest_wire(reading: TurnComponentReading) -> List<String> {
-  match reading.standing {
-    TurnComponentUnobserved { obligation: _ } => [] as List<String>
-    TurnComponentObserved { digest: d, receipt: _ } =>
-      [join([serving_turn_component_wire(component: reading.component) as String, "=", serialize_content_hash(hash: d) as String], "")]
-  }
-}
-
-// THE MANIFEST IS THE CANONICAL RENDERING OF THE THREE DIGESTS, in a fixed component order, so two
-// turns whose engines loaded different bytes in any component have different manifests and therefore
-// different Work. It exists only when every component was observed.
-fn serving_turn_manifest(source: ServingTurnSource) -> SourceManifestRef? {
-  let readings = serving_turn_component_readings(source: source)
-  let obligations = flat_map(readings, r => turn_component_obligation(reading: r))
-  if length(obligations) > 0 {
-    none
-  } else {
-    Present { value: join(flat_map(readings, r => turn_component_digest_wire(reading: r)), ";") as SourceManifestRef }
-  }
-}
+// THE MODEL REQUIREMENT IS REQUEST IDENTITY, NOT A CAPABILITY. An earlier spelling carried it in
+// ExecutionRequirements.capabilities, and because fungibility compares capabilities by equality
+// the OFFER had to be stamped with whatever the demand required -- so one launch became three
+// different SupplierOffers depending on who was asking. The capability on both sides is now the
+// one stable token-serving capability the route offers; what the caller requires of the model is
+// carried here, reaches the Work key through the contract inputs, and is screened against the
+// observed served unit before any offer is bound.
+type ServingModelRequirementRef = NonEmptyStr where brand("ServingModelRequirementRef")
 
 type ServingTurnRequest {
-  source: ServingTurnSource
-  runtime_closure: ArtifactManifestRef
+  interface: ServiceInterfaceRef
   inputs: ArtifactManifestRef
+  model_requirement: ServingModelRequirementRef
   effect_contract: EffectContractRef
   output_contract: OutputContractRef
 }
 
-data serving_turn_program: ProgramRef = "gunbc.serving.inference-turn" as ProgramRef
+// The contract's one inputs identity is the normalized inputs and the model requirement together,
+// each length-framed so neither can be read as part of the other.
+fn serving_turn_contract_inputs(request: ServingTurnRequest) -> ArtifactManifestRef {
+  serialize_content_hash(hash: content_hash_of_value(value: concat(
+    identity_frame(label: "inputs", value: request.inputs as String),
+    identity_frame(label: "model-requirement", value: request.model_requirement as String),
+  ))) as ArtifactManifestRef
+}
 
 // A TURN IS ONE STEP WITH OPAQUE EFFECTS, and that arm is the honest one rather than the tidy one. A
 // stream that dies partway has already delivered tokens the caller may have consumed and acted on,
@@ -151,36 +97,14 @@ fn serving_turn_output_obligations() -> DeclaredOutputObligations {
   declared_terminal_obligations(ids: ["inference-turn-completion" as NonEmptyStr])
 }
 
-type ServingTurnContract
-  = TurnContractBound { contract: WorkContract }
-  | TurnContractUnestablished { missing: List<ServingTurnComponent>, obligation: NonEmptyStr }
-
-// THE REFUSAL NAMES EVERY MISSING COMPONENT, not the first. A turn missing weights and runtime needs two
-// producers, and reporting one of them would send a reader to build it and meet the second refusal.
-fn serving_turn_contract(request: ServingTurnRequest) -> ServingTurnContract {
-  let readings = serving_turn_component_readings(source: request.source)
-  match serving_turn_manifest(source: request.source) {
-    Absent =>
-      TurnContractUnestablished {
-        missing: flat_map(readings, r => match r.standing {
-          TurnComponentObserved { digest: _, receipt: _ } => [] as List<ServingTurnComponent>
-          TurnComponentUnobserved { obligation: _ } => [r.component]
-        }),
-        obligation: join(map(flat_map(readings, r => turn_component_obligation(reading: r)), o => o as String), " | ") as NonEmptyStr,
-      }
-    Present { value: m } =>
-      TurnContractBound {
-        contract: WorkContract {
-          program: serving_turn_program,
-          steps: serving_turn_steps(),
-          source: m,
-          inputs: request.inputs,
-          runtime_closure: request.runtime_closure,
-          effect_contract: request.effect_contract,
-          output_contract: request.output_contract,
-          output_obligations: serving_turn_output_obligations(),
-        },
-      }
+fn serving_turn_contract(request: ServingTurnRequest) -> WorkContract {
+  WorkContract {
+    execution: OfferedService { interface: request.interface },
+    steps: serving_turn_steps(),
+    inputs: serving_turn_contract_inputs(request: request),
+    effect_contract: request.effect_contract,
+    output_contract: request.output_contract,
+    output_obligations: serving_turn_output_obligations(),
   }
 }
 
@@ -208,17 +132,10 @@ fn serving_turn_requirements(
 
 // THE KEY IS NOT DERIVED HERE. work_for is the fabric's public constructor and the only place a work
 // key comes from; an earlier spelling called derive_work_key and built the record itself, which is a
-// second construction path for one identity and would survive a change to how keys are made.
-type ServingTurnWork<P>
-  = TurnWorkBound { work: Work<P> }
-  | TurnWorkUnestablished { missing: List<ServingTurnComponent>, obligation: NonEmptyStr }
-
-fn serving_turn_work<P>(principal: P, request: ServingTurnRequest, requirements: ExecutionRequirements) -> ServingTurnWork<P> {
-  match serving_turn_contract(request: request) {
-    TurnContractUnestablished { missing: m, obligation: o } => TurnWorkUnestablished { missing: m, obligation: o }
-    TurnContractBound { contract: c } =>
-      TurnWorkBound { work: work_for(principal: principal, contract: c, requirements: requirements) }
-  }
+// second construction path for one identity and would survive a change to how keys are made. The
+// function takes no offer, launch or endpoint argument, so no realization fact can reach the key.
+fn serving_turn_work<P>(principal: P, request: ServingTurnRequest, requirements: ExecutionRequirements) -> Work<P> {
+  work_for(principal: principal, contract: serving_turn_contract(request: request), requirements: requirements)
 }
 
 // ── STEP REUSE IS NOT THE WARM PREFIX, AND READING IT THAT WAY WAS A CATEGORY ERROR ───────────
