@@ -891,7 +891,9 @@ pub fn has_nested_records_node(
                 if is_optional.clone() {
                     {
                         let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
+                        let __tco_1 = source_indices;
                         n = __tco_0;
+                        source_indices = __tco_1;
                         continue;
                     }
                 } else {
@@ -907,7 +909,9 @@ pub fn has_nested_records_node(
                         Some(val_child) => {
                             let __tco_0 =
                                 crate::v1_compiler_infer_types::child_type_node(val_child.clone());
+                            let __tco_1 = source_indices;
                             n = __tco_0;
+                            source_indices = __tco_1;
                             continue;
                         }
                         std::option::Option::None => {
@@ -920,7 +924,9 @@ pub fn has_nested_records_node(
                             Some(el) => {
                                 let __tco_0 =
                                     crate::v1_compiler_infer_types::child_type_node(el.clone());
+                                let __tco_1 = source_indices;
                                 n = __tco_0;
+                                source_indices = __tco_1;
                                 continue;
                             }
                             std::option::Option::None => {
@@ -3637,7 +3643,23 @@ pub fn emit_shared_tco_expr(
                         scope: frame.scope.clone(),
                         depth: frame.depth.clone(),
                     });
+                    let __tco_1 = fn_name;
+                    let __tco_2 = emit_self_call_reassign;
+                    let __tco_3 = emit_non_self_call;
+                    let __tco_4 = emit_if;
+                    let __tco_5 = emit_match;
+                    let __tco_6 = emit_let;
+                    let __tco_7 = emit_block;
+                    let __tco_8 = emit_default_return;
                     frame = __tco_0;
+                    fn_name = __tco_1;
+                    emit_self_call_reassign = __tco_2;
+                    emit_non_self_call = __tco_3;
+                    emit_if = __tco_4;
+                    emit_match = __tco_5;
+                    emit_let = __tco_6;
+                    emit_block = __tco_7;
+                    emit_default_return = __tco_8;
                     continue;
                 }
             }
@@ -4752,7 +4774,11 @@ pub fn suffix_escape_collides_with_reserved_chain(
                 } else {
                     {
                         let __tco_0 = base.clone();
+                        let __tco_1 = suffix;
+                        let __tco_2 = keywords;
                         name = __tco_0;
+                        suffix = __tco_1;
+                        keywords = __tco_2;
                         continue;
                     }
                 }
@@ -4849,10 +4875,18 @@ pub fn escape_emoji_codepoints_inner(
                 v1_rt::concat(acc.clone(), ch_str.clone())
             };
             {
-                let __tco_0 = (pos + 1);
-                let __tco_1 = next_acc.clone();
-                pos = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = s;
+                let __tco_1 = (pos + 1);
+                let __tco_2 = n;
+                let __tco_3 = next_acc.clone();
+                let __tco_4 = prefix;
+                let __tco_5 = suffix;
+                s = __tco_0;
+                pos = __tco_1;
+                n = __tco_2;
+                acc = __tco_3;
+                prefix = __tco_4;
+                suffix = __tco_5;
                 continue;
             }
         }
@@ -5805,9 +5839,13 @@ pub fn transparent_representation_root(
                     match n.children.clone().first().cloned() {
                         Some(base) => {
                             let __tco_0 = base.clone();
-                            let __tco_1 = (fuel - 1);
+                            let __tco_1 = env;
+                            let __tco_2 = target;
+                            let __tco_3 = (fuel - 1);
                             n = __tco_0;
-                            fuel = __tco_1;
+                            env = __tco_1;
+                            target = __tco_2;
+                            fuel = __tco_3;
                             continue;
                         }
                         std::option::Option::None => {
@@ -5822,9 +5860,13 @@ pub fn transparent_representation_root(
                         match n.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: rt, .. }) => {
                                 let __tco_0 = rt.clone();
-                                let __tco_1 = (fuel - 1);
+                                let __tco_1 = env;
+                                let __tco_2 = target;
+                                let __tco_3 = (fuel - 1);
                                 n = __tco_0;
-                                fuel = __tco_1;
+                                env = __tco_1;
+                                target = __tco_2;
+                                fuel = __tco_3;
                                 continue;
                             }
                             _ => {
@@ -6416,9 +6458,15 @@ pub fn emit_block_stmts_shared(
                     );
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
+                    let __tco_3 = depth;
+                    let __tco_4 = prepend_indent;
+                    let __tco_5 = emit_expr;
                     remaining = __tco_0;
                     text = __tco_1;
                     scope = __tco_2;
+                    depth = __tco_3;
+                    prepend_indent = __tco_4;
+                    emit_expr = __tco_5;
                     continue;
                 }
             }
@@ -6473,9 +6521,15 @@ pub fn emit_init_block_stmts_shared(
                             let __tco_0 = rest.clone();
                             let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                             let __tco_2 = next_scope.clone();
+                            let __tco_3 = depth;
+                            let __tco_4 = prepend_indent;
+                            let __tco_5 = emit_expr;
                             remaining = __tco_0;
                             text = __tco_1;
                             scope = __tco_2;
+                            depth = __tco_3;
+                            prepend_indent = __tco_4;
+                            emit_expr = __tco_5;
                             continue;
                         }
                     }
@@ -8173,22 +8227,6 @@ pub fn emit_unified_typed_expr(
     })
 }
 
-pub fn is_tco_identity_passthrough(
-    arg_val: Rc<Node>,
-    param_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match (*arg_val.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => {
-            (crate::v1_std_core::expr_var_name_at(arg_val.clone(), si.clone())
-                == param_name.clone())
-        }
-        _ => false,
-    }
-}
-
 pub fn emit_typed_tco_reassign_shared(
     args: Rc<Vec<Rc<Node>>>,
     params: Rc<Vec<Rc<Node>>>,
@@ -8204,25 +8242,19 @@ pub fn emit_typed_tco_reassign_shared(
             }
             __result
         });
-        let pairs = Rc::new({
+        let pairs = Rc::new(
+            params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        );
+        let ordered_args = Rc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new(
-                params
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            {
-                if {
-                    let pname = crate::v1_std_core::param_node_name_at(
-                        pair.1.clone(),
-                        source_indices.clone(),
-                    );
+            for pair in pairs.iter().cloned() {
+                __result.push({
                     let av = match arg_values
                         .clone()
                         .iter()
@@ -8233,35 +8265,8 @@ pub fn emit_typed_tco_reassign_shared(
                         Some(v) => v.clone(),
                         std::option::Option::None => pair.1.clone(),
                     };
-                    !is_tco_identity_passthrough(av.clone(), pname.clone(), source_indices.clone())
-                } {
-                    __result.push(pair);
-                }
-            }
-            __result
-        });
-        let filtered_arg_values = Rc::new({
-            let mut __result = Vec::new();
-            for pair in pairs.iter().cloned() {
-                __result.push(
-                    match arg_values
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(pair.0.clone() as usize)
-                        .next()
-                    {
-                        Some(v) => v.clone(),
-                        std::option::Option::None => pair.1.clone(),
-                    },
-                );
-            }
-            __result
-        });
-        let ordered_args = Rc::new({
-            let mut __result = Vec::new();
-            for av in filtered_arg_values.iter().cloned() {
-                __result.push(recurse(av.clone()));
+                    recurse(av.clone())
+                });
             }
             __result
         });

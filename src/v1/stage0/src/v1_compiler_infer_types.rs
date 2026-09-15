@@ -2359,8 +2359,10 @@ pub fn node_type_compatible(
                                                     {
                                                         let __tco_0 = left_el.clone();
                                                         let __tco_1 = right_el.clone();
+                                                        let __tco_2 = source_indices;
                                                         left = __tco_0;
                                                         right = __tco_1;
+                                                        source_indices = __tco_2;
                                                         continue;
                                                     }
                                                 }
@@ -2416,8 +2418,10 @@ pub fn node_type_compatible(
                                                     {
                                                         let __tco_0 = left_el.clone();
                                                         let __tco_1 = right_el.clone();
+                                                        let __tco_2 = source_indices;
                                                         left = __tco_0;
                                                         right = __tco_1;
+                                                        source_indices = __tco_2;
                                                         continue;
                                                     }
                                                 }
@@ -2446,8 +2450,10 @@ pub fn node_type_compatible(
                                         {
                                             let __tco_0 = left_inner.clone();
                                             let __tco_1 = right_inner.clone();
+                                            let __tco_2 = source_indices;
                                             left = __tco_0;
                                             right = __tco_1;
+                                            source_indices = __tco_2;
                                             continue;
                                         }
                                     }
@@ -3111,14 +3117,18 @@ pub fn first_matching_algebra_field(
                         }));
                     }
                     std::option::Option::None => {
-                        let __tco_0 = Rc::new(
+                        let __tco_0 = n;
+                        let __tco_1 = Rc::new(
                             candidates
                                 .iter()
                                 .cloned()
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         );
-                        candidates = __tco_0;
+                        let __tco_2 = source_indices;
+                        n = __tco_0;
+                        candidates = __tco_1;
+                        source_indices = __tco_2;
                         continue;
                     }
                 }

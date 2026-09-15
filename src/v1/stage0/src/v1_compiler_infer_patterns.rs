@@ -247,7 +247,9 @@ pub fn expand_scrut_type_for_variant_lookup(
             match scrut_node.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
                     let __tco_0 = target.clone();
+                    let __tco_1 = env;
                     scrut_node = __tco_0;
+                    env = __tco_1;
                     continue;
                 }
                 _ => {

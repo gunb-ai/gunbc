@@ -441,12 +441,14 @@ pub fn infer_block_stmts(
                     let __tco_3 = v1_rt::rc_list_push(typed_stmts, stmt_typed.clone());
                     let __tco_4 = v1_rt::rc_list_push(diag_chunks, stmt_diags.clone());
                     let __tco_5 = stmt_rt.clone();
+                    let __tco_6 = expected;
                     remaining = __tco_0;
                     remaining_count = __tco_1;
                     scope = __tco_2;
                     typed_stmts = __tco_3;
                     diag_chunks = __tco_4;
                     last_type = __tco_5;
+                    expected = __tco_6;
                     continue;
                 }
             }
@@ -583,11 +585,15 @@ Rc::new(InferScopeComponents {
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         );
-                        let __tco_1 = parent_result.svc_registry.clone();
-                        let __tco_2 = parent_result.svc_locals.clone();
+                        let __tco_1 = parent_index;
+                        let __tco_2 = env;
+                        let __tco_3 = parent_result.svc_registry.clone();
+                        let __tco_4 = parent_result.svc_locals.clone();
                         remaining = __tco_0;
-                        svc_registry = __tco_1;
-                        svc_locals = __tco_2;
+                        parent_index = __tco_1;
+                        env = __tco_2;
+                        svc_registry = __tco_3;
+                        svc_locals = __tco_4;
                         continue;
                     }
                 }
@@ -599,7 +605,15 @@ Rc::new(InferScopeComponents {
                             .skip(1 as usize)
                             .collect::<Vec<_>>(),
                     );
+                    let __tco_1 = parent_index;
+                    let __tco_2 = env;
+                    let __tco_3 = svc_registry;
+                    let __tco_4 = svc_locals;
                     remaining = __tco_0;
+                    parent_index = __tco_1;
+                    env = __tco_2;
+                    svc_registry = __tco_3;
+                    svc_locals = __tco_4;
                     continue;
                 }
             },
@@ -3699,11 +3713,17 @@ pub fn kernel_value_declared_type_mismatch_bounded(
                                         } else {
                                             {
                                                 let __tco_0 = decl.clone();
-                                                let __tco_1 = decl.name.clone();
-                                                let __tco_2 = (depth + 1);
+                                                let __tco_1 = actual;
+                                                let __tco_2 = type_env;
+                                                let __tco_3 = source_indices;
+                                                let __tco_4 = decl.name.clone();
+                                                let __tco_5 = (depth + 1);
                                                 formal = __tco_0;
-                                                formal_name_override = __tco_1;
-                                                depth = __tco_2;
+                                                actual = __tco_1;
+                                                type_env = __tco_2;
+                                                source_indices = __tco_3;
+                                                formal_name_override = __tco_4;
+                                                depth = __tco_5;
                                                 continue;
                                             }
                                         }
@@ -4593,7 +4613,15 @@ pub fn type_name_transparently_aliases_to(
                     } else {
                         {
                             let __tco_0 = peeled_name.clone();
+                            let __tco_1 = target_name;
+                            let __tco_2 = type_env;
+                            let __tco_3 = module_name;
+                            let __tco_4 = source_indices;
                             alias_name = __tco_0;
+                            target_name = __tco_1;
+                            type_env = __tco_2;
+                            module_name = __tco_3;
+                            source_indices = __tco_4;
                             continue;
                         }
                     }
@@ -5412,8 +5440,10 @@ pub fn applied_type_arguments_conflict_scan(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             );
+                            let __tco_2 = scope;
                             declared_args = __tco_0;
                             produced_args = __tco_1;
+                            scope = __tco_2;
                             continue;
                         }
                     }
@@ -9654,9 +9684,11 @@ pub fn operand_declaration_of_type(
                     };
                     {
                         let __tco_0 = base_resolved.clone();
-                        let __tco_1 = (fuel - 1);
+                        let __tco_1 = scope;
+                        let __tco_2 = (fuel - 1);
                         rt = __tco_0;
-                        fuel = __tco_1;
+                        scope = __tco_1;
+                        fuel = __tco_2;
                         continue;
                     }
                 }
@@ -15282,7 +15314,9 @@ pub fn resolve_collection_field(
                 if is_collection_preserving.clone() {
                     {
                         let __tco_0 = crate::v1_std_core::method_receiver(expr);
+                        let __tco_1 = ctx;
                         expr = __tco_0;
+                        ctx = __tco_1;
                         continue;
                     }
                 } else {
@@ -20240,8 +20274,14 @@ pub fn unify_generics(
                         Some(ac) => {
                             let __tco_0 = fc.clone();
                             let __tco_1 = ac.clone();
+                            let __tco_2 = generic_names;
+                            let __tco_3 = source_indices;
+                            let __tco_4 = acc;
                             formal = __tco_0;
                             actual = __tco_1;
+                            generic_names = __tco_2;
+                            source_indices = __tco_3;
+                            acc = __tco_4;
                             continue;
                         }
                         std::option::Option::None => {
@@ -21659,10 +21699,12 @@ pub fn transparent_alias_chase(
                         break name.clone();
                     } else {
                         {
-                            let __tco_0 = next.clone();
-                            let __tco_1 = (fuel - 1);
-                            name = __tco_0;
-                            fuel = __tco_1;
+                            let __tco_0 = edges;
+                            let __tco_1 = next.clone();
+                            let __tco_2 = (fuel - 1);
+                            edges = __tco_0;
+                            name = __tco_1;
+                            fuel = __tco_2;
                             continue;
                         }
                     }
@@ -21680,10 +21722,12 @@ pub fn transparent_alias_chase(
                                 break name.clone();
                             } else {
                                 {
-                                    let __tco_0 = next.clone();
-                                    let __tco_1 = (fuel - 1);
-                                    name = __tco_0;
-                                    fuel = __tco_1;
+                                    let __tco_0 = edges;
+                                    let __tco_1 = next.clone();
+                                    let __tco_2 = (fuel - 1);
+                                    edges = __tco_0;
+                                    name = __tco_1;
+                                    fuel = __tco_2;
                                     continue;
                                 }
                             }
@@ -24517,6 +24561,7 @@ pub fn fold_module_contributions(
                         insert_item_by_identity(item_registry, contribution.item_info.clone());
                     let __tco_6 =
                         v1_rt::rc_list_push(diag_chunks, contribution.resolve_diagnostics.clone());
+                    let __tco_7 = source_indices;
                     remaining = __tco_0;
                     resolved_items = __tco_1;
                     func_sigs = __tco_2;
@@ -24524,6 +24569,7 @@ pub fn fold_module_contributions(
                     svc_locals = __tco_4;
                     item_registry = __tco_5;
                     diag_chunks = __tco_6;
+                    source_indices = __tco_7;
                     continue;
                 }
             }
@@ -25826,12 +25872,18 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                 unit_variant_index: ready_accum.unit_variant_index.clone(),
                 unit_variant_index_observed: env.unit_variant_index_observed.clone(),
             });
-            let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
-            let __tco_3 = (fuel - 1);
+            let __tco_2 = module_name;
+            let __tco_3 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
+            let __tco_4 = local_names;
+            let __tco_5 = deps_map;
+            let __tco_6 = (fuel - 1);
             remaining = __tco_0;
             env = __tco_1;
-            diagnostics = __tco_2;
-            fuel = __tco_3;
+            module_name = __tco_2;
+            diagnostics = __tco_3;
+            local_names = __tco_4;
+            deps_map = __tco_5;
+            fuel = __tco_6;
             continue;
         }
     }

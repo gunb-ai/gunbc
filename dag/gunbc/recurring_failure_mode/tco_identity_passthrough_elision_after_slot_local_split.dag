@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.tco_identity_passthrough_elision_after_slot_local_split
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data tco_identity_passthrough_elision_after_slot_local_split: RecurringFailureMode = RecurringFailureMode {
+  identity: "tco_identity_passthrough_elision_after_slot_local_split" as NonEmptyStr,
+
+  receipts: [
+    "**TCO SKIPPED WRITING A LOOP SLOT BECAUSE THE TAIL-CALL ARGUMENT WAS THE SAME NAME AS THE PARAMETER, AFTER THAT NAME HAD BECOME A PER-ITERATION LOCAL DISTINCT FROM THE SLOT.** INVALID STATE: a TCO rewrite whose loop parameters are `__tco_loop_*` and whose authored names are rebound each iteration from those slots; a tail self-call `f(tokens, ctx, acc)` emits `continue` with no `__tco_loop_tokens = tokens` because `is_tco_identity_passthrough` treated same-named ExprVar as a no-op assign.",
+
+    "MEASURED SPECIMEN (2026-09-15, gunbc#11422, parent fierce-seal-607). After `bcf770451ee` rebinding authored names as `let mut tokens = __tco_loop_tokens.clone()`, `parse_arg_list_acc` / `parse_param_list_acc` in `src/v1/stage0/src/v1_compiler_parse.rs` still emitted a bare `continue` on the 2+ item list arm. The body had already done `tokens = skip_newlines(...)` and `acc = rc_list_push(...)`. The next iteration reloaded the ORIGINAL slots. Required CI printed nothing after `phase floor ROUTED` and was cancelled at the 90/180 minute caps (runs 34927996374..34934190604). Heads before the slot rename reached generated-artifact in ~15 min.",
+
+    "DISTINGUISHING FACTS versus `tco_rewrite_assigns_into_a_shadowing_pattern_binding`: that class writes the WRONG binding because a pattern captured the authored name. This class writes NO slot because identity-passthrough elided an assign that was a no-op only when the iteration variable WAS the slot. Recognition rule: TCO slots renamed apart from authored names, plus `continue` with no `__tco_loop_* =` in the 12 lines above, on a tail call whose arguments are the authored parameter names after those names were mutated in the body.",
+
+    "THE INTERPRETED HAND-GRAMMAR ORACLE CANNOT SEE THIS. It runs `.dag` Choice/parse, not the emitted seed parser. THE DISCRIMINATING CONTROL is the emitted seed parsing a two-parameter function and a two-argument call and terminating (`parse_two_arg_call_terminates`).",
+
+    "RUNG FOUND AT: silent wrongness until the hang is observed at a timeout (outside the ladder, then mitigatable as a cancelled lane). CEILING: structurally guaranteed once every TCO reassign writes every slot from its argument expression. NEXT-RUNG TRIGGER: `emit_typed_tco_reassign` and `emit_typed_tco_reassign_shared` assign every slot; identity-passthrough is deleted, not inverted.",
+  ],
+
+  evidence: [],
+}

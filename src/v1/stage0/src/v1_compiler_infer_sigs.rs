@@ -901,12 +901,22 @@ pub fn topo_resolve_loop(
         {
             let __tco_0 = next_remaining.clone();
             let __tco_1 = ready_accum.signatures.clone();
-            let __tco_2 = ready_accum.diagnostics.clone();
-            let __tco_3 = (fuel - 1);
+            let __tco_2 = declared_sigs;
+            let __tco_3 = call_edges;
+            let __tco_4 = local_func_set;
+            let __tco_5 = module_name;
+            let __tco_6 = ready_accum.diagnostics.clone();
+            let __tco_7 = parent_envs;
+            let __tco_8 = (fuel - 1);
             remaining = __tco_0;
             resolved = __tco_1;
-            diagnostics = __tco_2;
-            fuel = __tco_3;
+            declared_sigs = __tco_2;
+            call_edges = __tco_3;
+            local_func_set = __tco_4;
+            module_name = __tco_5;
+            diagnostics = __tco_6;
+            parent_envs = __tco_7;
+            fuel = __tco_8;
             continue;
         }
     }

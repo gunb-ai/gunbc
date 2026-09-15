@@ -149,12 +149,12 @@ pub use crate::v1_compiler_emit::{
     emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
     emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
     extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
-    is_self_recursive, is_tco_eligible, is_tco_identity_passthrough,
-    keyed_container_has_target_inhabitant, lookup_item_by_identity, module_emit_scope,
-    order_typed_call_args_from_semantics, render_node_type, render_tuple_parts,
-    rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
-    service_field_ctors, service_field_decls, shell_emission_refusal_fact,
-    shell_result_channel_key, tco_reassign_core, transport_binding_refusal_fact,
+    is_self_recursive, is_tco_eligible, keyed_container_has_target_inhabitant,
+    lookup_item_by_identity, module_emit_scope, order_typed_call_args_from_semantics,
+    render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
+    seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
+    shell_emission_refusal_fact, shell_result_channel_key, tco_reassign_core,
+    transport_binding_refusal_fact,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
@@ -1441,7 +1441,9 @@ pub fn rust_peel_all_rc_type_node(
         if ((seg.clone() == "Rc".to_string()) || (seg.clone() == "Arc".to_string())) {
             {
                 let __tco_0 = rust_peel_one_rc_type_node(type_node, source_indices.clone());
+                let __tco_1 = source_indices.clone();
                 type_node = __tco_0;
+                source_indices = __tco_1;
                 continue;
             }
         } else {
@@ -3812,8 +3814,12 @@ pub fn rust_fold_rendered_type_has_spurious_from_pos(
                         break true;
                     } else {
                         {
-                            let __tco_0 = (lt_pos.clone() + 1);
-                            search_from = __tco_0;
+                            let __tco_0 = type_str;
+                            let __tco_1 = (lt_pos.clone() + 1);
+                            let __tco_2 = generic_param_names;
+                            type_str = __tco_0;
+                            search_from = __tco_1;
+                            generic_param_names = __tco_2;
                             continue;
                         }
                     }
@@ -4663,15 +4669,19 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
                                                         Some(aliased_data) => {
                                                             let __tco_0 =
                                                                 Some(aliased_data.clone());
-                                                            let __tco_1 = v1_rt::rc_map_insert(
+                                                            let __tco_1 = source_indices;
+                                                            let __tco_2 = data_items;
+                                                            let __tco_3 = v1_rt::rc_map_insert(
                                                                 seen_aliases,
                                                                 alias_name.clone(),
                                                                 true,
                                                             );
-                                                            let __tco_2 = (fuel - 1);
+                                                            let __tco_4 = (fuel - 1);
                                                             wire_contract_item = __tco_0;
-                                                            seen_aliases = __tco_1;
-                                                            fuel = __tco_2;
+                                                            source_indices = __tco_1;
+                                                            data_items = __tco_2;
+                                                            seen_aliases = __tco_3;
+                                                            fuel = __tco_4;
                                                             continue;
                                                         }
                                                         std::option::Option::None => {
@@ -4690,11 +4700,15 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
     InferredNode::Resolved { node: node, .. } => { if (node.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue) {
                         {
                             let __tco_0 = Some(node.clone());
-let __tco_1 = v1_rt::rc_map_insert(seen_aliases, alias_name.clone(), true);
-let __tco_2 = (fuel - 1);
+let __tco_1 = source_indices;
+let __tco_2 = data_items;
+let __tco_3 = v1_rt::rc_map_insert(seen_aliases, alias_name.clone(), true);
+let __tco_4 = (fuel - 1);
 wire_contract_item = __tco_0;
-seen_aliases = __tco_1;
-fuel = __tco_2;
+source_indices = __tco_1;
+data_items = __tco_2;
+seen_aliases = __tco_3;
+fuel = __tco_4;
 continue;
 }
 } else {
@@ -4722,9 +4736,15 @@ continue;
                                             {
                                                 {
                                                     let __tco_0 = Some(node.clone());
-                                                    let __tco_1 = (fuel - 1);
+                                                    let __tco_1 = source_indices;
+                                                    let __tco_2 = data_items;
+                                                    let __tco_3 = seen_aliases;
+                                                    let __tco_4 = (fuel - 1);
                                                     wire_contract_item = __tco_0;
-                                                    fuel = __tco_1;
+                                                    source_indices = __tco_1;
+                                                    data_items = __tco_2;
+                                                    seen_aliases = __tco_3;
+                                                    fuel = __tco_4;
                                                     continue;
                                                 }
                                             } else {
@@ -5729,9 +5749,17 @@ pub fn emit_rust_block_stmts(
                     );
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
+                    let __tco_3 = registry;
+                    let __tco_4 = depth;
+                    let __tco_5 = shared_types;
+                    let __tco_6 = emit_info;
                     remaining = __tco_0;
                     text = __tco_1;
                     scope = __tco_2;
+                    registry = __tco_3;
+                    depth = __tco_4;
+                    shared_types = __tco_5;
+                    emit_info = __tco_6;
                     continue;
                 }
             }
@@ -5797,9 +5825,17 @@ pub fn emit_rust_init_block_stmts(
                             let __tco_0 = rest.clone();
                             let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                             let __tco_2 = next_scope.clone();
+                            let __tco_3 = registry;
+                            let __tco_4 = depth;
+                            let __tco_5 = shared_types;
+                            let __tco_6 = emit_info;
                             remaining = __tco_0;
                             text = __tco_1;
                             scope = __tco_2;
+                            registry = __tco_3;
+                            depth = __tco_4;
+                            shared_types = __tco_5;
+                            emit_info = __tco_6;
                             continue;
                         }
                     }
@@ -11808,10 +11844,20 @@ pub fn reexport_source_module_name_with_visited(
                             std::option::Option::None => {
                                 match Rc::new({ let mut __result = Vec::new(); for imp in Rc::new({ let mut __result = Vec::new(); for imp in crate::v1_std_core::module_imports(tm.module.clone()).iter().cloned() { if ((crate::v1_std_core::import_is_all(imp.clone()) == false) && { let mut __found = false; for n in crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone()).iter().cloned() { if (n.clone() == name.clone()) { __found = true; break; } } __found }) { __result.push(imp); } } __result }).iter().cloned() { __result.push(crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone())); } __result }).first().cloned() {
     Some(src) => { {
-                    let __tco_0 = src.clone();
-let __tco_1 = v1_rt::concat(visited, Rc::new(vec![import_module]));
-import_module = __tco_0;
-visited = __tco_1;
+                    let __tco_0 = name;
+let __tco_1 = src.clone();
+let __tco_2 = v1_rt::concat(visited, Rc::new(vec![import_module]));
+let __tco_3 = typed_modules;
+let __tco_4 = export_sets;
+let __tco_5 = source_indices;
+let __tco_6 = module_index;
+name = __tco_0;
+import_module = __tco_1;
+visited = __tco_2;
+typed_modules = __tco_3;
+export_sets = __tco_4;
+source_indices = __tco_5;
+module_index = __tco_6;
 continue;
 } },
     std::option::Option::None => { match Rc::new({ let mut __result = Vec::new(); for imp in Rc::new({ let mut __result = Vec::new(); for imp in Rc::new({ let mut __result = Vec::new(); for imp in crate::v1_std_core::module_imports(tm.module.clone()).iter().cloned() { if crate::v1_std_core::import_is_all(imp.clone()) { __result.push(imp); } } __result }).iter().cloned() { if {
@@ -11819,10 +11865,20 @@ continue;
 name_in_transitive_export_surface(name.clone(), src_mod.clone(), v1_rt::concat(visited.clone(), Rc::new(vec![import_module.clone()])), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone())
 } { __result.push(imp); } } __result }).iter().cloned() { __result.push(crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone())); } __result }).first().cloned() {
     Some(src) => { {
-                    let __tco_0 = src.clone();
-let __tco_1 = v1_rt::concat(visited, Rc::new(vec![import_module]));
-import_module = __tco_0;
-visited = __tco_1;
+                    let __tco_0 = name;
+let __tco_1 = src.clone();
+let __tco_2 = v1_rt::concat(visited, Rc::new(vec![import_module]));
+let __tco_3 = typed_modules;
+let __tco_4 = export_sets;
+let __tco_5 = source_indices;
+let __tco_6 = module_index;
+name = __tco_0;
+import_module = __tco_1;
+visited = __tco_2;
+typed_modules = __tco_3;
+export_sets = __tco_4;
+source_indices = __tco_5;
+module_index = __tco_6;
 continue;
 } },
     std::option::Option::None => { break std::option::Option::None; },
@@ -12175,8 +12231,20 @@ pub fn variant_defining_module_filename_for_import(
                     Some(hop) => {
                         if (hop.clone() != import_module.clone()) {
                             {
-                                let __tco_0 = hop.clone();
-                                import_module = __tco_0;
+                                let __tco_0 = variant_name;
+                                let __tco_1 = hop.clone();
+                                let __tco_2 = typed_modules;
+                                let __tco_3 = export_sets;
+                                let __tco_4 = source_indices;
+                                let __tco_5 = fallback;
+                                let __tco_6 = module_index;
+                                variant_name = __tco_0;
+                                import_module = __tco_1;
+                                typed_modules = __tco_2;
+                                export_sets = __tco_3;
+                                source_indices = __tco_4;
+                                fallback = __tco_5;
+                                module_index = __tco_6;
                                 continue;
                             }
                         } else {
@@ -12404,8 +12472,22 @@ pub fn reexport_variant_parent_in_import_module(
                             Some(hop) => {
                                 if (hop.clone() != src_mod.clone()) {
                                     {
-                                        let __tco_0 = hop.clone();
-                                        import_module = __tco_0;
+                                        let __tco_0 = variant_name;
+                                        let __tco_1 = hop.clone();
+                                        let __tco_2 = registry;
+                                        let __tco_3 = type_summaries;
+                                        let __tco_4 = typed_modules;
+                                        let __tco_5 = export_sets;
+                                        let __tco_6 = source_indices;
+                                        let __tco_7 = module_index;
+                                        variant_name = __tco_0;
+                                        import_module = __tco_1;
+                                        registry = __tco_2;
+                                        type_summaries = __tco_3;
+                                        typed_modules = __tco_4;
+                                        export_sets = __tco_5;
+                                        source_indices = __tco_6;
+                                        module_index = __tco_7;
                                         continue;
                                     }
                                 } else {
@@ -12909,8 +12991,26 @@ pub fn rhs_base_has_rust_type_authority_in_module(
                                         module_index.clone(),
                                     ) {
                                         Some(src) => {
-                                            let __tco_0 = crate::v1_compiler_emit_core_support::module_to_filename(src.clone());
-                                            def_mod_filename = __tco_0;
+                                            let __tco_0 = rhs_name;
+                                            let __tco_1 = crate::v1_compiler_emit_core_support::module_to_filename(src.clone());
+                                            let __tco_2 = module_name;
+                                            let __tco_3 = imports;
+                                            let __tco_4 = scope;
+                                            let __tco_5 = registry;
+                                            let __tco_6 = typed_modules;
+                                            let __tco_7 = export_sets;
+                                            let __tco_8 = source_indices;
+                                            let __tco_9 = module_index;
+                                            rhs_name = __tco_0;
+                                            def_mod_filename = __tco_1;
+                                            module_name = __tco_2;
+                                            imports = __tco_3;
+                                            scope = __tco_4;
+                                            registry = __tco_5;
+                                            typed_modules = __tco_6;
+                                            export_sets = __tco_7;
+                                            source_indices = __tco_8;
+                                            module_index = __tco_9;
                                             continue;
                                         }
                                         std::option::Option::None => {
@@ -15842,7 +15942,13 @@ pub fn needs_box_wrapping(
                     if is_optional.clone() {
                         {
                             let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
+                            let __tco_1 = recursive_types;
+                            let __tco_2 = shared_types;
+                            let __tco_3 = source_indices;
                             n = __tco_0;
+                            recursive_types = __tco_1;
+                            shared_types = __tco_2;
+                            source_indices = __tco_3;
                             continue;
                         }
                     } else {
@@ -17672,8 +17778,12 @@ pub fn string_index_of_from(mut haystack: String, mut needle: String, mut pos: i
                 break Some(pos.clone());
             } else {
                 {
-                    let __tco_0 = (pos + 1);
-                    pos = __tco_0;
+                    let __tco_0 = haystack;
+                    let __tco_1 = needle;
+                    let __tco_2 = (pos + 1);
+                    haystack = __tco_0;
+                    needle = __tco_1;
+                    pos = __tco_2;
                     continue;
                 }
             }
@@ -20325,8 +20435,10 @@ pub fn collect_pattern_string_guards(
                                     let __tco_0 = fb_pat.clone();
                                     let __tco_1 =
                                         v1_rt::rc_list_push(path_prefix, "Some".to_string());
+                                    let __tco_2 = source_indices;
                                     pattern = __tco_0;
                                     path_prefix = __tco_1;
+                                    source_indices = __tco_2;
                                     continue;
                                 }
                             }
@@ -20359,8 +20471,10 @@ pub fn collect_pattern_string_guards(
                                         {
                                             let __tco_0 = fb_pat.clone();
                                             let __tco_1 = pos_path.clone();
+                                            let __tco_2 = source_indices;
                                             pattern = __tco_0;
                                             path_prefix = __tco_1;
+                                            source_indices = __tco_2;
                                             continue;
                                         }
                                     }
@@ -22959,8 +23073,10 @@ pub fn type_needs_rc_seen(
                     {
                         let __tco_0 = crate::v1_compiler_infer_types::resolved_type(normed.clone());
                         let __tco_1 = next_seen.clone();
+                        let __tco_2 = source_indices;
                         type_node = __tco_0;
                         seen = __tco_1;
+                        source_indices = __tco_2;
                         continue;
                     }
                 } else {
@@ -22985,8 +23101,10 @@ pub fn type_needs_rc_seen(
                             {
                                 let __tco_0 = normed.clone();
                                 let __tco_1 = next_seen.clone();
+                                let __tco_2 = source_indices;
                                 type_node = __tco_0;
                                 seen = __tco_1;
+                                source_indices = __tco_2;
                                 continue;
                             }
                         }
@@ -25447,8 +25565,10 @@ pub fn emit_nested_rt_concat(
                             .collect::<Vec<_>>(),
                     );
                     let __tco_1 = next_acc.clone();
+                    let __tco_2 = shared_types;
                     remaining = __tco_0;
                     acc = __tco_1;
+                    shared_types = __tco_2;
                     continue;
                 }
             }
@@ -31801,9 +31921,11 @@ if ((fuel.clone() > 0) && crate::v1_compiler_infer::is_where_refinement_type(rt.
 };
 {
                                 let __tco_0 = base_resolved.clone();
-let __tco_1 = (fuel - 1);
+let __tco_1 = scope;
+let __tco_2 = (fuel - 1);
 rt = __tco_0;
-fuel = __tco_1;
+scope = __tco_1;
+fuel = __tco_2;
 continue;
 } },
     std::option::Option::None => { break Rc::new(OperandRealization::StructuralOperand {
@@ -31814,9 +31936,11 @@ continue;
                             if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
                                 {
                                     let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
-let __tco_1 = (fuel - 1);
+let __tco_1 = scope;
+let __tco_2 = (fuel - 1);
 rt = __tco_0;
-fuel = __tco_1;
+scope = __tco_1;
+fuel = __tco_2;
 continue;
 }
 } else {
@@ -32395,9 +32519,19 @@ pub fn emit_tco_init_block_stmts(
                             let __tco_0 = rest.clone();
                             let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                             let __tco_2 = next_scope.clone();
+                            let __tco_3 = registry;
+                            let __tco_4 = depth;
+                            let __tco_5 = shared_types;
+                            let __tco_6 = emit_info;
+                            let __tco_7 = params;
                             remaining = __tco_0;
                             text = __tco_1;
                             scope = __tco_2;
+                            registry = __tco_3;
+                            depth = __tco_4;
+                            shared_types = __tco_5;
+                            emit_info = __tco_6;
+                            params = __tco_7;
                             continue;
                         }
                     }
@@ -33467,7 +33601,7 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let identity_params = Rc::new(
+        let pairs = Rc::new(
             params
                 .clone()
                 .iter()
@@ -33475,109 +33609,18 @@ pub fn emit_typed_tco_reassign(
                 .enumerate()
                 .map(|(i, v)| (i as i64, v))
                 .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |m: Rc<HashMap<String, bool>>, pair: (i64, Rc<Node>)| {
-                let pname = crate::v1_std_core::param_node_name_at(pair.1.clone(), si.clone());
-                let av = match arg_values
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(pair.0.clone() as usize)
-                    .next()
-                {
-                    Some(v) => v.clone(),
-                    std::option::Option::None => pair.1.clone(),
-                };
-                if crate::v1_compiler_emit::is_tco_identity_passthrough(
-                    av.clone(),
-                    pname.clone(),
-                    si.clone(),
-                ) {
-                    v1_rt::rc_map_insert(m.clone(), pname.clone(), true)
-                } else {
-                    m.clone()
-                }
-            },
         );
-        let filtered_arg_values = Rc::new({
-            let mut __result = Vec::new();
-            for pair in Rc::new({
-                let mut __result = Vec::new();
-                for pair in Rc::new(
-                    params
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    if match v1_rt::map_get(
-                        &identity_params,
-                        crate::v1_std_core::param_node_name_at(pair.1.clone(), si.clone()),
-                    ) {
-                        Some(_) => false,
-                        std::option::Option::None => true,
-                    } {
-                        __result.push(pair);
-                    }
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                __result.push(
-                    match arg_values
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(pair.0.clone() as usize)
-                        .next()
-                    {
-                        Some(v) => v.clone(),
-                        std::option::Option::None => pair.1.clone(),
-                    },
-                );
-            }
-            __result
-        });
-        let filtered_params = Rc::new({
-            let mut __result = Vec::new();
-            for p in params.iter().cloned() {
-                if match v1_rt::map_get(
-                    &identity_params,
-                    crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
-                ) {
-                    Some(_) => false,
-                    std::option::Option::None => true,
-                } {
-                    __result.push(p);
-                }
-            }
-            __result
-        });
-        let tco_movable = filtered_params.iter().cloned().fold(
+        let tco_movable = params.iter().cloned().fold(
             emit_info.movable.clone(),
             |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
-                let ref_count = filtered_arg_values
-                    .iter()
-                    .cloned()
-                    .fold(0, |n: i64, av: _| {
-                        if expr_references_var(av.clone(), pname.clone(), si.clone()) {
-                            (n.clone() + 1)
-                        } else {
-                            n.clone()
-                        }
-                    });
+                let ref_count = arg_values.iter().cloned().fold(0, |n: i64, av: Rc<Node>| {
+                    if expr_references_var(av.clone(), pname.clone(), si.clone()) {
+                        (n.clone() + 1)
+                    } else {
+                        n.clone()
+                    }
+                });
                 if (ref_count.clone() <= 1) {
                     v1_rt::rc_set_insert(m.clone(), pname.clone())
                 } else {
@@ -33591,24 +33634,36 @@ pub fn emit_typed_tco_reassign(
         });
         let ordered_args = Rc::new({
             let mut __result = Vec::new();
-            for av in filtered_arg_values.iter().cloned() {
-                __result.push(emit_typed_expr(
-                    av.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    tco_emit_info.clone(),
-                    1024,
-                ));
+            for pair in pairs.iter().cloned() {
+                __result.push({
+                    let av = match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
+                        Some(v) => v.clone(),
+                        std::option::Option::None => pair.1.clone(),
+                    };
+                    emit_typed_expr(
+                        av.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        tco_emit_info.clone(),
+                        1024,
+                    )
+                });
             }
             __result
         });
         let param_names = Rc::new({
             let mut __result = Vec::new();
-            for p in filtered_params.iter().cloned() {
+            for pair in pairs.iter().cloned() {
                 __result.push(crate::v1_compiler_emit::emit_ident(
-                    crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
+                    crate::v1_std_core::param_node_name_at(pair.1.clone(), si.clone()),
                     RenderTarget::Rust,
                 ));
             }

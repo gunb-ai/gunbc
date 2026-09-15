@@ -53,9 +53,11 @@ pub fn nat_range_accumulate(mut lo: Nat, mut hi: Nat, mut acc: Rc<Vec<i64>>) -> 
         } else {
             {
                 let __tco_0 = (lo.clone() + 1);
-                let __tco_1 = v1_rt::concat(acc, Rc::new(vec![lo.clone()]));
+                let __tco_1 = hi;
+                let __tco_2 = v1_rt::concat(acc, Rc::new(vec![lo.clone()]));
                 lo = __tco_0;
-                acc = __tco_1;
+                hi = __tco_1;
+                acc = __tco_2;
                 continue;
             }
         }

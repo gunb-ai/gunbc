@@ -1139,10 +1139,14 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
                             break std::option::Option::None;
                         }
                         Some(k1) => {
-                            let __tco_0 = k1.clone();
-                            let __tco_1 = next_power.clone();
-                            k = __tco_0;
-                            power = __tco_1;
+                            let __tco_0 = base;
+                            let __tco_1 = argument;
+                            let __tco_2 = k1.clone();
+                            let __tco_3 = next_power.clone();
+                            base = __tco_0;
+                            argument = __tco_1;
+                            k = __tco_2;
+                            power = __tco_3;
                             continue;
                         }
                     }

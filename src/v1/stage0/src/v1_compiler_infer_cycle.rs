@@ -210,12 +210,14 @@ pub fn kahn_cycle_drain(
         {
             let __tco_0 = next_queue.clone();
             let __tco_1 = result.in_degree.clone();
-            let __tco_2 = result.removed_count.clone();
-            let __tco_3 = (fuel - 1);
+            let __tco_2 = reverse_adj;
+            let __tco_3 = result.removed_count.clone();
+            let __tco_4 = (fuel - 1);
             queue = __tco_0;
             in_degree = __tco_1;
-            removed_count = __tco_2;
-            fuel = __tco_3;
+            reverse_adj = __tco_2;
+            removed_count = __tco_3;
+            fuel = __tco_4;
             continue;
         }
     }

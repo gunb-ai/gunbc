@@ -711,10 +711,12 @@ pub fn mint_parsed_string_part_nodes(
                     let __tco_0 =
                         Rc::new(parts.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                     let __tco_1 = minted.ctx.clone();
-                    let __tco_2 = v1_rt::rc_list_push(acc, node.clone());
+                    let __tco_2 = span;
+                    let __tco_3 = v1_rt::rc_list_push(acc, node.clone());
                     parts = __tco_0;
                     ctx = __tco_1;
-                    acc = __tco_2;
+                    span = __tco_2;
+                    acc = __tco_3;
                     continue;
                 }
             }
@@ -2624,9 +2626,11 @@ pub fn parse_dotted_ident_rest(
                     let __tco_1 =
                         v1_rt::concat(v1_rt::concat(acc, ".".to_string()), r.name.clone());
                     let __tco_2 = extended.clone();
+                    let __tco_3 = env;
                     tokens = __tco_0;
                     acc = __tco_1;
                     span = __tco_2;
+                    env = __tco_3;
                     continue;
                 }
             }
@@ -3776,23 +3780,39 @@ pub fn last_consumed_token_end(
         } else {
             match all.clone().get((from.clone()) as usize).cloned() {
                 std::option::Option::None => {
-                    let __tco_0 = (from + 1);
-                    from = __tco_0;
+                    let __tco_0 = all;
+                    let __tco_1 = (from + 1);
+                    let __tco_2 = until;
+                    let __tco_3 = end;
+                    all = __tco_0;
+                    from = __tco_1;
+                    until = __tco_2;
+                    end = __tco_3;
                     continue;
                 }
                 Some(t) => {
                     if is_newline_shape(t.shape.clone()) {
                         {
-                            let __tco_0 = (from + 1);
-                            from = __tco_0;
+                            let __tco_0 = all;
+                            let __tco_1 = (from + 1);
+                            let __tco_2 = until;
+                            let __tco_3 = end;
+                            all = __tco_0;
+                            from = __tco_1;
+                            until = __tco_2;
+                            end = __tco_3;
                             continue;
                         }
                     } else {
                         {
-                            let __tco_0 = (from + 1);
-                            let __tco_1 = Some(t.span.clone().end.clone());
-                            from = __tco_0;
-                            end = __tco_1;
+                            let __tco_0 = all;
+                            let __tco_1 = (from + 1);
+                            let __tco_2 = until;
+                            let __tco_3 = Some(t.span.clone().end.clone());
+                            all = __tco_0;
+                            from = __tco_1;
+                            until = __tco_2;
+                            end = __tco_3;
                             continue;
                         }
                     }
@@ -4114,10 +4134,12 @@ pub fn parse_import_names_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
             });
             {
-                let __tco_0 = minted.ctx.clone();
-                let __tco_1 = v1_rt::rc_list_push(acc, name_node.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, name_node.clone());
+                tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
         }
@@ -5544,7 +5566,11 @@ pub fn parse_predicates_acc(
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = skip_newlines(__ec.clone());
+                let __tco_1 = ctx;
+                let __tco_2 = acc;
                 tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -6545,8 +6571,12 @@ pub fn parse_callable_param_types(
                     });
                 } else {
                     {
-                        let __tco_0 = minted.ctx.clone();
-                        ctx = __tco_0;
+                        let __tco_0 = tokens;
+                        let __tco_1 = minted.ctx.clone();
+                        let __tco_2 = acc;
+                        tokens = __tco_0;
+                        ctx = __tco_1;
+                        acc = __tco_2;
                         continue;
                     }
                 }
@@ -6865,10 +6895,12 @@ pub fn parse_field_list_acc(
                     EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
                 });
                 {
-                    let __tco_0 = parse_context_after_node(r.ctx.clone(), r.field.clone());
-                    let __tco_1 = v1_rt::rc_list_push(acc, r.field.clone());
-                    ctx = __tco_0;
-                    acc = __tco_1;
+                    let __tco_0 = tokens;
+                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.field.clone());
+                    let __tco_2 = v1_rt::rc_list_push(acc, r.field.clone());
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    acc = __tco_2;
                     continue;
                 }
             } else {
@@ -7447,7 +7479,11 @@ pub fn parse_uses_list_acc(
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = __ec.clone();
+                let __tco_1 = ctx;
+                let __tco_2 = acc;
                 tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -7653,8 +7689,10 @@ pub fn parse_resource_config_acc(
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = skip_newlines(__ec.clone());
                 let __tco_1 = minted.ctx.clone();
+                let __tco_2 = acc;
                 tokens = __tco_0;
                 ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -7986,9 +8024,13 @@ pub fn parse_service_entries(
                             let __tco_0 = r3.tokens.clone();
                             let __tco_1 = r2.ctx.clone();
                             let __tco_2 = Some(r2.config.clone());
+                            let __tco_3 = transport;
+                            let __tco_4 = operations;
                             tokens = __tco_0;
                             ctx = __tco_1;
                             config = __tco_2;
+                            transport = __tco_3;
+                            operations = __tco_4;
                             continue;
                         }
                     } else {
@@ -8010,10 +8052,14 @@ pub fn parse_service_entries(
                             {
                                 let __tco_0 = r.tokens.clone();
                                 let __tco_1 = r.ctx.clone();
-                                let __tco_2 = r.transport.clone();
+                                let __tco_2 = config;
+                                let __tco_3 = r.transport.clone();
+                                let __tco_4 = operations;
                                 tokens = __tco_0;
                                 ctx = __tco_1;
-                                transport = __tco_2;
+                                config = __tco_2;
+                                transport = __tco_3;
+                                operations = __tco_4;
                                 continue;
                             }
                         } else {
@@ -8050,10 +8096,14 @@ pub fn parse_service_entries(
                             let __tco_0 = r.tokens.clone();
                             let __tco_1 =
                                 parse_context_after_node(r.ctx.clone(), r.operation.clone());
-                            let __tco_2 = v1_rt::rc_list_push(operations, r.operation.clone());
+                            let __tco_2 = config;
+                            let __tco_3 = transport;
+                            let __tco_4 = v1_rt::rc_list_push(operations, r.operation.clone());
                             tokens = __tco_0;
                             ctx = __tco_1;
-                            operations = __tco_2;
+                            config = __tco_2;
+                            transport = __tco_3;
+                            operations = __tco_4;
                             continue;
                         }
                     } else {
@@ -8199,28 +8249,88 @@ pub fn parse_config_fields(
             };
             match fname.clone().as_str() {
                 "endpoint" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    endpoint = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = Some(r3.expr.clone());
+                    let __tco_3 = auth;
+                    let __tco_4 = auth_input;
+                    let __tco_5 = auth_source;
+                    let __tco_6 = rate_limit;
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    endpoint = __tco_2;
+                    auth = __tco_3;
+                    auth_input = __tco_4;
+                    auth_source = __tco_5;
+                    rate_limit = __tco_6;
                     continue;
                 }
                 "auth" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    auth = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = endpoint;
+                    let __tco_3 = Some(r3.expr.clone());
+                    let __tco_4 = auth_input;
+                    let __tco_5 = auth_source;
+                    let __tco_6 = rate_limit;
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    endpoint = __tco_2;
+                    auth = __tco_3;
+                    auth_input = __tco_4;
+                    auth_source = __tco_5;
+                    rate_limit = __tco_6;
                     continue;
                 }
                 "auth_input" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    auth_input = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = endpoint;
+                    let __tco_3 = auth;
+                    let __tco_4 = Some(r3.expr.clone());
+                    let __tco_5 = auth_source;
+                    let __tco_6 = rate_limit;
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    endpoint = __tco_2;
+                    auth = __tco_3;
+                    auth_input = __tco_4;
+                    auth_source = __tco_5;
+                    rate_limit = __tco_6;
                     continue;
                 }
                 "auth_source" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    auth_source = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = endpoint;
+                    let __tco_3 = auth;
+                    let __tco_4 = auth_input;
+                    let __tco_5 = Some(r3.expr.clone());
+                    let __tco_6 = rate_limit;
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    endpoint = __tco_2;
+                    auth = __tco_3;
+                    auth_input = __tco_4;
+                    auth_source = __tco_5;
+                    rate_limit = __tco_6;
                     continue;
                 }
                 "rate_limit" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    rate_limit = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = endpoint;
+                    let __tco_3 = auth;
+                    let __tco_4 = auth_input;
+                    let __tco_5 = auth_source;
+                    let __tco_6 = Some(r3.expr.clone());
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    endpoint = __tco_2;
+                    auth = __tco_3;
+                    auth_input = __tco_4;
+                    auth_source = __tco_5;
+                    rate_limit = __tco_6;
                     continue;
                 }
                 _ => {
@@ -8520,43 +8630,139 @@ pub fn parse_rest_fields(
             ctx = r3.ctx.clone();
             if (fname.clone() == transport_url_key()) {
                 {
-                    let __tco_0 = Some(r3.expr.clone());
-                    base_url = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = Some(r3.expr.clone());
+                    let __tco_3 = method;
+                    let __tco_4 = path_template;
+                    let __tco_5 = query;
+                    let __tco_6 = request_body;
+                    let __tco_7 = response_format;
+                    let __tco_8 = headers;
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    base_url = __tco_2;
+                    method = __tco_3;
+                    path_template = __tco_4;
+                    query = __tco_5;
+                    request_body = __tco_6;
+                    response_format = __tco_7;
+                    headers = __tco_8;
                     continue;
                 }
             } else {
                 if (fname.clone() == transport_method_key()) {
                     {
-                        let __tco_0 = Some(r3.expr.clone());
-                        method = __tco_0;
+                        let __tco_0 = tokens;
+                        let __tco_1 = ctx;
+                        let __tco_2 = base_url;
+                        let __tco_3 = Some(r3.expr.clone());
+                        let __tco_4 = path_template;
+                        let __tco_5 = query;
+                        let __tco_6 = request_body;
+                        let __tco_7 = response_format;
+                        let __tco_8 = headers;
+                        tokens = __tco_0;
+                        ctx = __tco_1;
+                        base_url = __tco_2;
+                        method = __tco_3;
+                        path_template = __tco_4;
+                        query = __tco_5;
+                        request_body = __tco_6;
+                        response_format = __tco_7;
+                        headers = __tco_8;
                         continue;
                     }
                 } else {
                     if (fname.clone() == transport_path_template_key()) {
                         {
-                            let __tco_0 = Some(r3.expr.clone());
-                            path_template = __tco_0;
+                            let __tco_0 = tokens;
+                            let __tco_1 = ctx;
+                            let __tco_2 = base_url;
+                            let __tco_3 = method;
+                            let __tco_4 = Some(r3.expr.clone());
+                            let __tco_5 = query;
+                            let __tco_6 = request_body;
+                            let __tco_7 = response_format;
+                            let __tco_8 = headers;
+                            tokens = __tco_0;
+                            ctx = __tco_1;
+                            base_url = __tco_2;
+                            method = __tco_3;
+                            path_template = __tco_4;
+                            query = __tco_5;
+                            request_body = __tco_6;
+                            response_format = __tco_7;
+                            headers = __tco_8;
                             continue;
                         }
                     } else {
                         if (fname.clone() == transport_query_key()) {
                             {
-                                let __tco_0 = Some(r3.expr.clone());
-                                query = __tco_0;
+                                let __tco_0 = tokens;
+                                let __tco_1 = ctx;
+                                let __tco_2 = base_url;
+                                let __tco_3 = method;
+                                let __tco_4 = path_template;
+                                let __tco_5 = Some(r3.expr.clone());
+                                let __tco_6 = request_body;
+                                let __tco_7 = response_format;
+                                let __tco_8 = headers;
+                                tokens = __tco_0;
+                                ctx = __tco_1;
+                                base_url = __tco_2;
+                                method = __tco_3;
+                                path_template = __tco_4;
+                                query = __tco_5;
+                                request_body = __tco_6;
+                                response_format = __tco_7;
+                                headers = __tco_8;
                                 continue;
                             }
                         } else {
                             if (fname.clone() == transport_body_key()) {
                                 {
-                                    let __tco_0 = Some(r3.expr.clone());
-                                    request_body = __tco_0;
+                                    let __tco_0 = tokens;
+                                    let __tco_1 = ctx;
+                                    let __tco_2 = base_url;
+                                    let __tco_3 = method;
+                                    let __tco_4 = path_template;
+                                    let __tco_5 = query;
+                                    let __tco_6 = Some(r3.expr.clone());
+                                    let __tco_7 = response_format;
+                                    let __tco_8 = headers;
+                                    tokens = __tco_0;
+                                    ctx = __tco_1;
+                                    base_url = __tco_2;
+                                    method = __tco_3;
+                                    path_template = __tco_4;
+                                    query = __tco_5;
+                                    request_body = __tco_6;
+                                    response_format = __tco_7;
+                                    headers = __tco_8;
                                     continue;
                                 }
                             } else {
                                 if (fname.clone() == transport_response_format_key()) {
                                     {
-                                        let __tco_0 = Some(r3.expr.clone());
-                                        response_format = __tco_0;
+                                        let __tco_0 = tokens;
+                                        let __tco_1 = ctx;
+                                        let __tco_2 = base_url;
+                                        let __tco_3 = method;
+                                        let __tco_4 = path_template;
+                                        let __tco_5 = query;
+                                        let __tco_6 = request_body;
+                                        let __tco_7 = Some(r3.expr.clone());
+                                        let __tco_8 = headers;
+                                        tokens = __tco_0;
+                                        ctx = __tco_1;
+                                        base_url = __tco_2;
+                                        method = __tco_3;
+                                        path_template = __tco_4;
+                                        query = __tco_5;
+                                        request_body = __tco_6;
+                                        response_format = __tco_7;
+                                        headers = __tco_8;
                                         continue;
                                     }
                                 } else {
@@ -8574,8 +8780,24 @@ pub fn parse_rest_fields(
 }),
 };
                                         {
-                                            let __tco_0 = h.clone();
-                                            headers = __tco_0;
+                                            let __tco_0 = tokens;
+                                            let __tco_1 = ctx;
+                                            let __tco_2 = base_url;
+                                            let __tco_3 = method;
+                                            let __tco_4 = path_template;
+                                            let __tco_5 = query;
+                                            let __tco_6 = request_body;
+                                            let __tco_7 = response_format;
+                                            let __tco_8 = h.clone();
+                                            tokens = __tco_0;
+                                            ctx = __tco_1;
+                                            base_url = __tco_2;
+                                            method = __tco_3;
+                                            path_template = __tco_4;
+                                            query = __tco_5;
+                                            request_body = __tco_6;
+                                            response_format = __tco_7;
+                                            headers = __tco_8;
                                             continue;
                                         }
                                     } else {
@@ -8591,13 +8813,27 @@ pub fn parse_rest_fields(
                                                 crate::v1_std_core::no_span(),
                                             );
                                             {
-                                                let __tco_0 = minted.ctx.clone();
-                                                let __tco_1 = v1_rt::concat(
+                                                let __tco_0 = tokens;
+                                                let __tco_1 = minted.ctx.clone();
+                                                let __tco_2 = base_url;
+                                                let __tco_3 = method;
+                                                let __tco_4 = path_template;
+                                                let __tco_5 = query;
+                                                let __tco_6 = request_body;
+                                                let __tco_7 = response_format;
+                                                let __tco_8 = v1_rt::concat(
                                                     headers,
                                                     Rc::new(vec![field.clone()]),
                                                 );
-                                                ctx = __tco_0;
-                                                headers = __tco_1;
+                                                tokens = __tco_0;
+                                                ctx = __tco_1;
+                                                base_url = __tco_2;
+                                                method = __tco_3;
+                                                path_template = __tco_4;
+                                                query = __tco_5;
+                                                request_body = __tco_6;
+                                                response_format = __tco_7;
+                                                headers = __tco_8;
                                                 continue;
                                             }
                                         } else {
@@ -8718,10 +8954,14 @@ pub fn parse_shell_fields(
                     EatResult::EatUnchanged { tokens: _, .. } => r5.tokens.clone(),
                 };
                 {
-                    let __tco_0 = r4.ctx.clone();
-                    let __tco_1 = r4.exprs.clone();
-                    ctx = __tco_0;
-                    argv = __tco_1;
+                    let __tco_0 = tokens;
+                    let __tco_1 = r4.ctx.clone();
+                    let __tco_2 = r4.exprs.clone();
+                    let __tco_3 = stdin;
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    argv = __tco_2;
+                    stdin = __tco_3;
                     continue;
                 }
             } else {
@@ -8741,10 +8981,14 @@ pub fn parse_shell_fields(
                         EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
                     };
                     {
-                        let __tco_0 = r3.ctx.clone();
-                        let __tco_1 = Some(r3.expr.clone());
-                        ctx = __tco_0;
-                        stdin = __tco_1;
+                        let __tco_0 = tokens;
+                        let __tco_1 = r3.ctx.clone();
+                        let __tco_2 = argv;
+                        let __tco_3 = Some(r3.expr.clone());
+                        tokens = __tco_0;
+                        ctx = __tco_1;
+                        argv = __tco_2;
+                        stdin = __tco_3;
                         continue;
                     }
                 } else {
@@ -8857,19 +9101,27 @@ pub fn parse_file_fields(
             };
             if ((fname.clone() == "path".to_string()) || (fname.clone() == transport_path_key())) {
                 {
-                    let __tco_0 = r3.ctx.clone();
-                    let __tco_1 = Some(r3.expr.clone());
-                    ctx = __tco_0;
-                    base_path = __tco_1;
+                    let __tco_0 = tokens;
+                    let __tco_1 = r3.ctx.clone();
+                    let __tco_2 = Some(r3.expr.clone());
+                    let __tco_3 = verb;
+                    tokens = __tco_0;
+                    ctx = __tco_1;
+                    base_path = __tco_2;
+                    verb = __tco_3;
                     continue;
                 }
             } else {
                 if (fname.clone() == "verb".to_string()) {
                     {
-                        let __tco_0 = r3.ctx.clone();
-                        let __tco_1 = Some(r3.expr.clone());
-                        ctx = __tco_0;
-                        verb = __tco_1;
+                        let __tco_0 = tokens;
+                        let __tco_1 = r3.ctx.clone();
+                        let __tco_2 = base_path;
+                        let __tco_3 = Some(r3.expr.clone());
+                        tokens = __tco_0;
+                        ctx = __tco_1;
+                        base_path = __tco_2;
+                        verb = __tco_3;
                         continue;
                     }
                 } else {
@@ -9260,9 +9512,21 @@ pub fn parse_op_body_entries(
                             let __tco_0 = r3.tokens.clone();
                             let __tco_1 = r2.ctx.clone();
                             let __tco_2 = r2.fields.clone();
+                            let __tco_3 = outputs;
+                            let __tco_4 = modifier_props;
+                            let __tco_5 = transport;
+                            let __tco_6 = exit_props;
+                            let __tco_7 = response_props;
+                            let __tco_8 = mock_props;
                             tokens = __tco_0;
                             ctx = __tco_1;
                             inputs = __tco_2;
+                            outputs = __tco_3;
+                            modifier_props = __tco_4;
+                            transport = __tco_5;
+                            exit_props = __tco_6;
+                            response_props = __tco_7;
+                            mock_props = __tco_8;
                             continue;
                         }
                     } else {
@@ -9321,10 +9585,22 @@ pub fn parse_op_body_entries(
                             {
                                 let __tco_0 = r3.tokens.clone();
                                 let __tco_1 = r2.ctx.clone();
-                                let __tco_2 = r2.fields.clone();
+                                let __tco_2 = inputs;
+                                let __tco_3 = r2.fields.clone();
+                                let __tco_4 = modifier_props;
+                                let __tco_5 = transport;
+                                let __tco_6 = exit_props;
+                                let __tco_7 = response_props;
+                                let __tco_8 = mock_props;
                                 tokens = __tco_0;
                                 ctx = __tco_1;
-                                outputs = __tco_2;
+                                inputs = __tco_2;
+                                outputs = __tco_3;
+                                modifier_props = __tco_4;
+                                transport = __tco_5;
+                                exit_props = __tco_6;
+                                response_props = __tco_7;
+                                mock_props = __tco_8;
                                 continue;
                             }
                         } else {
@@ -9337,13 +9613,25 @@ pub fn parse_op_body_entries(
                                 {
                                     let __tco_0 = token_stream_advance(tokens, 1);
                                     let __tco_1 = minted.ctx.clone();
-                                    let __tco_2 = v1_rt::rc_list_push(
+                                    let __tco_2 = inputs;
+                                    let __tco_3 = outputs;
+                                    let __tco_4 = v1_rt::rc_list_push(
                                         modifier_props,
                                         minted.property.clone(),
                                     );
+                                    let __tco_5 = transport;
+                                    let __tco_6 = exit_props;
+                                    let __tco_7 = response_props;
+                                    let __tco_8 = mock_props;
                                     tokens = __tco_0;
                                     ctx = __tco_1;
-                                    modifier_props = __tco_2;
+                                    inputs = __tco_2;
+                                    outputs = __tco_3;
+                                    modifier_props = __tco_4;
+                                    transport = __tco_5;
+                                    exit_props = __tco_6;
+                                    response_props = __tco_7;
+                                    mock_props = __tco_8;
                                     continue;
                                 }
                             } else {
@@ -9356,13 +9644,25 @@ pub fn parse_op_body_entries(
                                     {
                                         let __tco_0 = token_stream_advance(tokens, 1);
                                         let __tco_1 = minted.ctx.clone();
-                                        let __tco_2 = v1_rt::rc_list_push(
+                                        let __tco_2 = inputs;
+                                        let __tco_3 = outputs;
+                                        let __tco_4 = v1_rt::rc_list_push(
                                             modifier_props,
                                             minted.property.clone(),
                                         );
+                                        let __tco_5 = transport;
+                                        let __tco_6 = exit_props;
+                                        let __tco_7 = response_props;
+                                        let __tco_8 = mock_props;
                                         tokens = __tco_0;
                                         ctx = __tco_1;
-                                        modifier_props = __tco_2;
+                                        inputs = __tco_2;
+                                        outputs = __tco_3;
+                                        modifier_props = __tco_4;
+                                        transport = __tco_5;
+                                        exit_props = __tco_6;
+                                        response_props = __tco_7;
+                                        mock_props = __tco_8;
                                         continue;
                                     }
                                 } else {
@@ -9375,13 +9675,25 @@ pub fn parse_op_body_entries(
                                         {
                                             let __tco_0 = token_stream_advance(tokens, 1);
                                             let __tco_1 = minted.ctx.clone();
-                                            let __tco_2 = v1_rt::rc_list_push(
+                                            let __tco_2 = inputs;
+                                            let __tco_3 = outputs;
+                                            let __tco_4 = v1_rt::rc_list_push(
                                                 modifier_props,
                                                 minted.property.clone(),
                                             );
+                                            let __tco_5 = transport;
+                                            let __tco_6 = exit_props;
+                                            let __tco_7 = response_props;
+                                            let __tco_8 = mock_props;
                                             tokens = __tco_0;
                                             ctx = __tco_1;
-                                            modifier_props = __tco_2;
+                                            inputs = __tco_2;
+                                            outputs = __tco_3;
+                                            modifier_props = __tco_4;
+                                            transport = __tco_5;
+                                            exit_props = __tco_6;
+                                            response_props = __tco_7;
+                                            mock_props = __tco_8;
                                             continue;
                                         }
                                     } else {
@@ -9416,10 +9728,22 @@ pub fn parse_op_body_entries(
                         {
                             let __tco_0 = r.tokens.clone();
                             let __tco_1 = r.ctx.clone();
-                            let __tco_2 = Some(r.transport.clone());
+                            let __tco_2 = inputs;
+                            let __tco_3 = outputs;
+                            let __tco_4 = modifier_props;
+                            let __tco_5 = Some(r.transport.clone());
+                            let __tco_6 = exit_props;
+                            let __tco_7 = response_props;
+                            let __tco_8 = mock_props;
                             tokens = __tco_0;
                             ctx = __tco_1;
-                            transport = __tco_2;
+                            inputs = __tco_2;
+                            outputs = __tco_3;
+                            modifier_props = __tco_4;
+                            transport = __tco_5;
+                            exit_props = __tco_6;
+                            response_props = __tco_7;
+                            mock_props = __tco_8;
                             continue;
                         }
                     } else {
@@ -9479,10 +9803,22 @@ pub fn parse_op_body_entries(
                             {
                                 let __tco_0 = r3.tokens.clone();
                                 let __tco_1 = r2.ctx.clone();
-                                let __tco_2 = r2.entries.clone();
+                                let __tco_2 = inputs;
+                                let __tco_3 = outputs;
+                                let __tco_4 = modifier_props;
+                                let __tco_5 = transport;
+                                let __tco_6 = r2.entries.clone();
+                                let __tco_7 = response_props;
+                                let __tco_8 = mock_props;
                                 tokens = __tco_0;
                                 ctx = __tco_1;
-                                exit_props = __tco_2;
+                                inputs = __tco_2;
+                                outputs = __tco_3;
+                                modifier_props = __tco_4;
+                                transport = __tco_5;
+                                exit_props = __tco_6;
+                                response_props = __tco_7;
+                                mock_props = __tco_8;
                                 continue;
                             }
                         } else {
@@ -9505,10 +9841,22 @@ pub fn parse_op_body_entries(
                                 {
                                     let __tco_0 = r.tokens.clone();
                                     let __tco_1 = r.ctx.clone();
-                                    let __tco_2 = r.responses.clone();
+                                    let __tco_2 = inputs;
+                                    let __tco_3 = outputs;
+                                    let __tco_4 = modifier_props;
+                                    let __tco_5 = transport;
+                                    let __tco_6 = exit_props;
+                                    let __tco_7 = r.responses.clone();
+                                    let __tco_8 = mock_props;
                                     tokens = __tco_0;
                                     ctx = __tco_1;
-                                    response_props = __tco_2;
+                                    inputs = __tco_2;
+                                    outputs = __tco_3;
+                                    modifier_props = __tco_4;
+                                    transport = __tco_5;
+                                    exit_props = __tco_6;
+                                    response_props = __tco_7;
+                                    mock_props = __tco_8;
                                     continue;
                                 }
                             } else {
@@ -9534,10 +9882,22 @@ pub fn parse_op_body_entries(
                                     {
                                         let __tco_0 = r.tokens.clone();
                                         let __tco_1 = r.ctx.clone();
-                                        let __tco_2 = r.mocks.clone();
+                                        let __tco_2 = inputs;
+                                        let __tco_3 = outputs;
+                                        let __tco_4 = modifier_props;
+                                        let __tco_5 = transport;
+                                        let __tco_6 = exit_props;
+                                        let __tco_7 = response_props;
+                                        let __tco_8 = r.mocks.clone();
                                         tokens = __tco_0;
                                         ctx = __tco_1;
-                                        mock_props = __tco_2;
+                                        inputs = __tco_2;
+                                        outputs = __tco_3;
+                                        modifier_props = __tco_4;
+                                        transport = __tco_5;
+                                        exit_props = __tco_6;
+                                        response_props = __tco_7;
+                                        mock_props = __tco_8;
                                         continue;
                                     }
                                 } else {
@@ -9593,8 +9953,22 @@ pub fn parse_op_body_entries(
                                         {
                                             let __tco_0 = skip_newlines(r3.tokens.clone());
                                             let __tco_1 = r3.ctx.clone();
+                                            let __tco_2 = inputs;
+                                            let __tco_3 = outputs;
+                                            let __tco_4 = modifier_props;
+                                            let __tco_5 = transport;
+                                            let __tco_6 = exit_props;
+                                            let __tco_7 = response_props;
+                                            let __tco_8 = mock_props;
                                             tokens = __tco_0;
                                             ctx = __tco_1;
+                                            inputs = __tco_2;
+                                            outputs = __tco_3;
+                                            modifier_props = __tco_4;
+                                            transport = __tco_5;
+                                            exit_props = __tco_6;
+                                            response_props = __tco_7;
+                                            mock_props = __tco_8;
                                             continue;
                                         }
                                     } else {
@@ -9906,10 +10280,12 @@ pub fn parse_exit_entries_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => desc_tokens.clone(),
             });
             {
-                let __tco_0 = minted.ctx.clone();
-                let __tco_1 = v1_rt::rc_list_push(acc, entry.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, entry.clone());
+                tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
         }
@@ -10263,10 +10639,12 @@ pub fn parse_response_entries_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             });
             {
-                let __tco_0 = minted.ctx.clone();
-                let __tco_1 = v1_rt::rc_list_push(acc, entry.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, entry.clone());
+                tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
         }
@@ -10416,10 +10794,12 @@ pub fn parse_mock_response_entries_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => desc_tokens.clone(),
             });
             {
-                let __tco_0 = minted.ctx.clone();
-                let __tco_1 = v1_rt::rc_list_push(acc, entry.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, entry.clone());
+                tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
         }
@@ -10638,10 +11018,12 @@ pub fn parse_resource_entries(
                             let __tco_0 = r.tokens.clone();
                             let __tco_1 =
                                 parse_context_after_node(r.ctx.clone(), r.capability.clone());
-                            let __tco_2 = v1_rt::rc_list_push(capabilities, r.capability.clone());
+                            let __tco_2 = properties;
+                            let __tco_3 = v1_rt::rc_list_push(capabilities, r.capability.clone());
                             tokens = __tco_0;
                             ctx = __tco_1;
-                            capabilities = __tco_2;
+                            properties = __tco_2;
+                            capabilities = __tco_3;
                             continue;
                         }
                     } else {
@@ -10673,7 +11055,13 @@ pub fn parse_resource_entries(
                             }
                             {
                                 let __tco_0 = skip_newlines(r3.tokens.clone());
+                                let __tco_1 = ctx;
+                                let __tco_2 = properties;
+                                let __tco_3 = capabilities;
                                 tokens = __tco_0;
+                                ctx = __tco_1;
+                                properties = __tco_2;
+                                capabilities = __tco_3;
                                 continue;
                             }
                         } else {
@@ -10705,7 +11093,13 @@ pub fn parse_resource_entries(
                                 }
                                 {
                                     let __tco_0 = skip_newlines(r3.tokens.clone());
+                                    let __tco_1 = ctx;
+                                    let __tco_2 = properties;
+                                    let __tco_3 = capabilities;
                                     tokens = __tco_0;
+                                    ctx = __tco_1;
+                                    properties = __tco_2;
+                                    capabilities = __tco_3;
                                     continue;
                                 }
                             } else {
@@ -10768,9 +11162,11 @@ pub fn parse_resource_entries(
                             let __tco_0 = skip_newlines(r3.tokens.clone());
                             let __tco_1 = minted.ctx.clone();
                             let __tco_2 = v1_rt::rc_list_push(properties, fi.clone());
+                            let __tco_3 = capabilities;
                             tokens = __tco_0;
                             ctx = __tco_1;
                             properties = __tco_2;
+                            capabilities = __tco_3;
                             continue;
                         }
                     } else {
@@ -11086,9 +11482,11 @@ pub fn parse_io_blocks_acc(
                     let __tco_0 = r3.tokens.clone();
                     let __tco_1 = r2.ctx.clone();
                     let __tco_2 = r2.fields.clone();
+                    let __tco_3 = outputs;
                     tokens = __tco_0;
                     ctx = __tco_1;
                     inputs = __tco_2;
+                    outputs = __tco_3;
                     continue;
                 }
             } else {
@@ -11132,10 +11530,12 @@ pub fn parse_io_blocks_acc(
                     {
                         let __tco_0 = r3.tokens.clone();
                         let __tco_1 = r2.ctx.clone();
-                        let __tco_2 = r2.fields.clone();
+                        let __tco_2 = inputs;
+                        let __tco_3 = r2.fields.clone();
                         tokens = __tco_0;
                         ctx = __tco_1;
-                        outputs = __tco_2;
+                        inputs = __tco_2;
+                        outputs = __tco_3;
                         continue;
                     }
                 } else {
@@ -11540,6 +11940,12 @@ pub fn parse_param_list_acc(
                     });
                 } else {
                     {
+                        let __tco_0 = tokens;
+                        let __tco_1 = ctx;
+                        let __tco_2 = acc;
+                        tokens = __tco_0;
+                        ctx = __tco_1;
+                        acc = __tco_2;
                         continue;
                     }
                 }
@@ -11790,16 +12196,18 @@ pub fn heads_skip_data_value_tokens_at(
                             });
                         } else {
                             {
-                                let __tco_0 = (offset + 1);
-                                let __tco_1 = b.clone();
-                                let __tco_2 = p.clone();
-                                let __tco_3 = s.clone();
-                                let __tco_4 = true;
-                                offset = __tco_0;
-                                braces = __tco_1;
-                                parens = __tco_2;
-                                brackets = __tco_3;
-                                seen = __tco_4;
+                                let __tco_0 = tokens;
+                                let __tco_1 = (offset + 1);
+                                let __tco_2 = b.clone();
+                                let __tco_3 = p.clone();
+                                let __tco_4 = s.clone();
+                                let __tco_5 = true;
+                                tokens = __tco_0;
+                                offset = __tco_1;
+                                braces = __tco_2;
+                                parens = __tco_3;
+                                brackets = __tco_4;
+                                seen = __tco_5;
                                 continue;
                             }
                         }
@@ -11877,7 +12285,9 @@ pub fn heads_skip_block_tokens(
                         } else {
                             {
                                 let __tco_0 = token_stream_advance(tokens, 1);
+                                let __tco_1 = depth;
                                 tokens = __tco_0;
+                                depth = __tco_1;
                                 continue;
                             }
                         }
@@ -12412,9 +12822,11 @@ pub fn parse_expr_loop(
                         let __tco_0 = post.tokens.clone();
                         let __tco_1 = post.ctx.clone();
                         let __tco_2 = post.expr.clone();
+                        let __tco_3 = min_bp;
                         tokens = __tco_0;
                         ctx = __tco_1;
                         lhs = __tco_2;
+                        min_bp = __tco_3;
                         continue;
                     }
                 } else {
@@ -12462,9 +12874,11 @@ pub fn parse_expr_loop(
                                                 let __tco_0 = r.tokens.clone();
                                                 let __tco_1 = minted.ctx.clone();
                                                 let __tco_2 = new_lhs.clone();
+                                                let __tco_3 = min_bp;
                                                 tokens = __tco_0;
                                                 ctx = __tco_1;
                                                 lhs = __tco_2;
+                                                min_bp = __tco_3;
                                                 continue;
                                             }
                                         } else {
@@ -12487,9 +12901,11 @@ pub fn parse_expr_loop(
                                                     let __tco_0 = r.tokens.clone();
                                                     let __tco_1 = r.ctx.clone();
                                                     let __tco_2 = r.expr.clone();
+                                                    let __tco_3 = min_bp;
                                                     tokens = __tco_0;
                                                     ctx = __tco_1;
                                                     lhs = __tco_2;
+                                                    min_bp = __tco_3;
                                                     continue;
                                                 }
                                             } else {
@@ -12542,9 +12958,11 @@ pub fn parse_expr_loop(
                                                             let __tco_0 = r.tokens.clone();
                                                             let __tco_1 = minted.ctx.clone();
                                                             let __tco_2 = new_lhs.clone();
+                                                            let __tco_3 = min_bp;
                                                             tokens = __tco_0;
                                                             ctx = __tco_1;
                                                             lhs = __tco_2;
+                                                            min_bp = __tco_3;
                                                             continue;
                                                         }
                                                     }
@@ -13702,8 +14120,10 @@ pub fn parse_constraint_list(
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = __ec.clone();
                 let __tco_1 = minted.ctx.clone();
+                let __tco_2 = acc;
                 tokens = __tco_0;
                 ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -13951,6 +14371,12 @@ pub fn parse_arg_list_acc(
                     });
                 } else {
                     {
+                        let __tco_0 = tokens;
+                        let __tco_1 = ctx;
+                        let __tco_2 = acc;
+                        tokens = __tco_0;
+                        ctx = __tco_1;
+                        acc = __tco_2;
                         continue;
                     }
                 }
@@ -14289,9 +14715,11 @@ pub fn parse_expr_loop_no_brace(
                     let __tco_0 = r.tokens.clone();
                     let __tco_1 = minted.ctx.clone();
                     let __tco_2 = new_lhs.clone();
+                    let __tco_3 = min_bp;
                     tokens = __tco_0;
                     ctx = __tco_1;
                     lhs = __tco_2;
+                    min_bp = __tco_3;
                     continue;
                 }
             } else {
@@ -14315,9 +14743,11 @@ pub fn parse_expr_loop_no_brace(
                         let __tco_0 = r.tokens.clone();
                         let __tco_1 = r.ctx.clone();
                         let __tco_2 = r.expr.clone();
+                        let __tco_3 = min_bp;
                         tokens = __tco_0;
                         ctx = __tco_1;
                         lhs = __tco_2;
+                        min_bp = __tco_3;
                         continue;
                     }
                 } else {
@@ -14365,9 +14795,11 @@ pub fn parse_expr_loop_no_brace(
                                                 let __tco_0 = r.tokens.clone();
                                                 let __tco_1 = minted.ctx.clone();
                                                 let __tco_2 = new_lhs.clone();
+                                                let __tco_3 = min_bp;
                                                 tokens = __tco_0;
                                                 ctx = __tco_1;
                                                 lhs = __tco_2;
+                                                min_bp = __tco_3;
                                                 continue;
                                             }
                                         } else {
@@ -14390,9 +14822,11 @@ pub fn parse_expr_loop_no_brace(
                                                     let __tco_0 = r.tokens.clone();
                                                     let __tco_1 = r.ctx.clone();
                                                     let __tco_2 = r.expr.clone();
+                                                    let __tco_3 = min_bp;
                                                     tokens = __tco_0;
                                                     ctx = __tco_1;
                                                     lhs = __tco_2;
+                                                    min_bp = __tco_3;
                                                     continue;
                                                 }
                                             } else {
@@ -14445,9 +14879,11 @@ pub fn parse_expr_loop_no_brace(
                                                             let __tco_0 = r.tokens.clone();
                                                             let __tco_1 = minted.ctx.clone();
                                                             let __tco_2 = new_lhs.clone();
+                                                            let __tco_3 = min_bp;
                                                             tokens = __tco_0;
                                                             ctx = __tco_1;
                                                             lhs = __tco_2;
+                                                            min_bp = __tco_3;
                                                             continue;
                                                         }
                                                     }
@@ -14532,10 +14968,12 @@ pub fn parse_match_arms_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.arm.clone());
-                let __tco_1 = v1_rt::rc_list_push(acc, r.arm.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.arm.clone());
+                let __tco_2 = v1_rt::rc_list_push(acc, r.arm.clone());
+                tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
         }
@@ -14735,16 +15173,20 @@ pub fn arm_start_after_qualified_path(mut tokens: Rc<TokenStream>, mut offset: i
                                     );
                                 } else {
                                     {
-                                        let __tco_0 = (offset + 2);
-                                        offset = __tco_0;
+                                        let __tco_0 = tokens;
+                                        let __tco_1 = (offset + 2);
+                                        tokens = __tco_0;
+                                        offset = __tco_1;
                                         continue;
                                     }
                                 }
                             }
                         } else {
                             {
-                                let __tco_0 = (offset + 2);
-                                offset = __tco_0;
+                                let __tco_0 = tokens;
+                                let __tco_1 = (offset + 2);
+                                tokens = __tco_0;
+                                offset = __tco_1;
                                 continue;
                             }
                         }
@@ -14850,7 +15292,9 @@ pub fn scan_for_fat_arrow_after_braces(mut remaining: Rc<TokenStream>, mut depth
                         } else {
                             {
                                 let __tco_0 = token_stream_advance(remaining, 1);
+                                let __tco_1 = depth;
                                 remaining = __tco_0;
+                                depth = __tco_1;
                                 continue;
                             }
                         }
@@ -15179,10 +15623,12 @@ pub fn parse_variant_bindings_brace_acc(
                         field_name_span.clone(),
                     );
                     {
-                        let __tco_0 = minted.ctx.clone();
-                        let __tco_1 = v1_rt::rc_list_push(acc, fb.clone());
-                        ctx = __tco_0;
-                        acc = __tco_1;
+                        let __tco_0 = tokens;
+                        let __tco_1 = minted.ctx.clone();
+                        let __tco_2 = v1_rt::rc_list_push(acc, fb.clone());
+                        tokens = __tco_0;
+                        ctx = __tco_1;
+                        acc = __tco_2;
                         continue;
                     }
                 }
@@ -15208,10 +15654,12 @@ pub fn parse_variant_bindings_brace_acc(
                         field_name_span.clone(),
                     );
                     {
-                        let __tco_0 = field_mint.ctx.clone();
-                        let __tco_1 = v1_rt::rc_list_push(acc, fb.clone());
-                        ctx = __tco_0;
-                        acc = __tco_1;
+                        let __tco_0 = tokens;
+                        let __tco_1 = field_mint.ctx.clone();
+                        let __tco_2 = v1_rt::rc_list_push(acc, fb.clone());
+                        tokens = __tco_0;
+                        ctx = __tco_1;
+                        acc = __tco_2;
                         continue;
                     }
                 }
@@ -15724,10 +16172,12 @@ pub fn parse_field_init_list_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.field.clone());
-                let __tco_1 = v1_rt::rc_list_push(acc, r.field.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.field.clone());
+                let __tco_2 = v1_rt::rc_list_push(acc, r.field.clone());
+                tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
                 continue;
             }
         }
@@ -15976,10 +16426,14 @@ pub fn parse_expr_list_until_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
-                let __tco_1 = v1_rt::rc_list_push(acc, r.expr.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                let __tco_2 = end_expected;
+                let __tco_3 = v1_rt::rc_list_push(acc, r.expr.clone());
+                tokens = __tco_0;
+                ctx = __tco_1;
+                end_expected = __tco_2;
+                acc = __tco_3;
                 continue;
             }
         }
@@ -16423,9 +16877,13 @@ pub fn parse_interp_parts(
                 };
                 {
                     let __tco_0 = token_stream_advance(tokens, 1);
-                    let __tco_1 = mid_parts.clone();
+                    let __tco_1 = ctx;
+                    let __tco_2 = mid_parts.clone();
+                    let __tco_3 = span;
                     tokens = __tco_0;
-                    parts = __tco_1;
+                    ctx = __tco_1;
+                    parts = __tco_2;
+                    span = __tco_3;
                     continue;
                 }
             }

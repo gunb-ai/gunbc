@@ -72,8 +72,10 @@ pub fn oci_encoded_digest_syntax_valid(mut text: String, mut index: i64) -> bool
                 (index.clone() + 1),
             ))) {
                 {
-                    let __tco_0 = (index + 1);
-                    index = __tco_0;
+                    let __tco_0 = text;
+                    let __tco_1 = (index + 1);
+                    text = __tco_0;
+                    index = __tco_1;
                     continue;
                 }
             } else {
@@ -112,19 +114,23 @@ pub fn oci_digest_algorithm_syntax_valid(
             if in_component.clone() {
                 if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                     {
-                        let __tco_0 = (index + 1);
-                        let __tco_1 = true;
-                        index = __tco_0;
-                        in_component = __tco_1;
+                        let __tco_0 = text;
+                        let __tco_1 = (index + 1);
+                        let __tco_2 = true;
+                        text = __tco_0;
+                        index = __tco_1;
+                        in_component = __tco_2;
                         continue;
                     }
                 } else {
                     if oci_digest_algorithm_separator_char_allowed(cp.clone()) {
                         {
-                            let __tco_0 = (index + 1);
-                            let __tco_1 = false;
-                            index = __tco_0;
-                            in_component = __tco_1;
+                            let __tco_0 = text;
+                            let __tco_1 = (index + 1);
+                            let __tco_2 = false;
+                            text = __tco_0;
+                            index = __tco_1;
+                            in_component = __tco_2;
                             continue;
                         }
                     } else {
@@ -134,10 +140,12 @@ pub fn oci_digest_algorithm_syntax_valid(
             } else {
                 if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                     {
-                        let __tco_0 = (index + 1);
-                        let __tco_1 = true;
-                        index = __tco_0;
-                        in_component = __tco_1;
+                        let __tco_0 = text;
+                        let __tco_1 = (index + 1);
+                        let __tco_2 = true;
+                        text = __tco_0;
+                        index = __tco_1;
+                        in_component = __tco_2;
                         continue;
                     }
                 } else {

@@ -178,8 +178,12 @@ pub fn import_module_start(mut statement_text: String, mut at: i64, mut limit: i
         } else {
             if is_import_whitespace(v1_rt::char_at(&statement_text, at.clone())) {
                 {
-                    let __tco_0 = (at + 1);
-                    at = __tco_0;
+                    let __tco_0 = statement_text;
+                    let __tco_1 = (at + 1);
+                    let __tco_2 = limit;
+                    statement_text = __tco_0;
+                    at = __tco_1;
+                    limit = __tco_2;
                     continue;
                 }
             } else {

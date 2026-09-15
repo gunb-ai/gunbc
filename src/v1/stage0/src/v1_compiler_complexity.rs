@@ -1485,7 +1485,17 @@ pub fn infer_parser_always_advancing_members_worklist(
                 if set_has(proven.clone(), name.clone()) {
                     {
                         let __tco_0 = rest.clone();
+                        let __tco_1 = func_index;
+                        let __tco_2 = parser_name_set;
+                        let __tco_3 = reverse_graph;
+                        let __tco_4 = proven;
+                        let __tco_5 = si;
                         queue = __tco_0;
+                        func_index = __tco_1;
+                        parser_name_set = __tco_2;
+                        reverse_graph = __tco_3;
+                        proven = __tco_4;
+                        si = __tco_5;
                         continue;
                     }
                 } else {
@@ -1504,22 +1514,50 @@ pub fn infer_parser_always_advancing_members_worklist(
                                 {
                                     let __tco_0 =
                                         deduplicate(v1_rt::concat(rest.clone(), callers.clone()));
-                                    let __tco_1 = v1_rt::rc_map_insert(proven, name.clone(), true);
+                                    let __tco_1 = func_index;
+                                    let __tco_2 = parser_name_set;
+                                    let __tco_3 = reverse_graph;
+                                    let __tco_4 = v1_rt::rc_map_insert(proven, name.clone(), true);
+                                    let __tco_5 = si;
                                     queue = __tco_0;
-                                    proven = __tco_1;
+                                    func_index = __tco_1;
+                                    parser_name_set = __tco_2;
+                                    reverse_graph = __tco_3;
+                                    proven = __tco_4;
+                                    si = __tco_5;
                                     continue;
                                 }
                             } else {
                                 {
                                     let __tco_0 = rest.clone();
+                                    let __tco_1 = func_index;
+                                    let __tco_2 = parser_name_set;
+                                    let __tco_3 = reverse_graph;
+                                    let __tco_4 = proven;
+                                    let __tco_5 = si;
                                     queue = __tco_0;
+                                    func_index = __tco_1;
+                                    parser_name_set = __tco_2;
+                                    reverse_graph = __tco_3;
+                                    proven = __tco_4;
+                                    si = __tco_5;
                                     continue;
                                 }
                             }
                         }
                         std::option::Option::None => {
                             let __tco_0 = rest.clone();
+                            let __tco_1 = func_index;
+                            let __tco_2 = parser_name_set;
+                            let __tco_3 = reverse_graph;
+                            let __tco_4 = proven;
+                            let __tco_5 = si;
                             queue = __tco_0;
+                            func_index = __tco_1;
+                            parser_name_set = __tco_2;
+                            reverse_graph = __tco_3;
+                            proven = __tco_4;
+                            si = __tco_5;
                             continue;
                         }
                     }
@@ -2466,12 +2504,20 @@ pub fn expr_descending_witness_source(
             ExprData::ExprBinOp { op, .. } => match op.clone() {
                 BinOp::Sub => {
                     let __tco_0 = crate::v1_std_core::binop_left(expr);
+                    let __tco_1 = descending_witness_names;
+                    let __tco_2 = si;
                     expr = __tco_0;
+                    descending_witness_names = __tco_1;
+                    si = __tco_2;
                     continue;
                 }
                 BinOp::Div => {
                     let __tco_0 = crate::v1_std_core::binop_left(expr);
+                    let __tco_1 = descending_witness_names;
+                    let __tco_2 = si;
                     expr = __tco_0;
+                    descending_witness_names = __tco_1;
+                    si = __tco_2;
                     continue;
                 }
                 _ => {
@@ -2808,7 +2854,13 @@ pub fn is_children_of_param(
             } => match method_size_effect(ms.clone()) {
                 Some(CollectionSizeEffect::ShrinkEffect) => {
                     let __tco_0 = crate::v1_std_core::method_receiver(expr);
+                    let __tco_1 = param_name;
+                    let __tco_2 = vars;
+                    let __tco_3 = si;
                     expr = __tco_0;
+                    param_name = __tco_1;
+                    vars = __tco_2;
+                    si = __tco_3;
                     continue;
                 }
                 _ => {
@@ -3129,7 +3181,13 @@ pub fn is_tokens_input_expr(
             } => match method_size_effect(ms.clone()) {
                 Some(CollectionSizeEffect::ShrinkEffect) => {
                     let __tco_0 = crate::v1_std_core::method_receiver(expr);
+                    let __tco_1 = param_name;
+                    let __tco_2 = vars;
+                    let __tco_3 = si;
                     expr = __tco_0;
+                    param_name = __tco_1;
+                    vars = __tco_2;
+                    si = __tco_3;
                     continue;
                 }
                 _ => {
@@ -3141,7 +3199,13 @@ pub fn is_tokens_input_expr(
                     match list_passthrough_inner_arg(expr.clone(), si.clone()) {
                         Some(inner) => {
                             let __tco_0 = inner.clone();
+                            let __tco_1 = param_name;
+                            let __tco_2 = vars;
+                            let __tco_3 = si;
                             expr = __tco_0;
+                            param_name = __tco_1;
+                            vars = __tco_2;
+                            si = __tco_3;
                             continue;
                         }
                         std::option::Option::None => {
@@ -3152,7 +3216,13 @@ pub fn is_tokens_input_expr(
                     match consuming_tokens_arg(expr.clone(), si.clone()) {
                         Some(tokens_arg) => {
                             let __tco_0 = tokens_arg.clone();
+                            let __tco_1 = param_name;
+                            let __tco_2 = vars;
+                            let __tco_3 = si;
                             expr = __tco_0;
+                            param_name = __tco_1;
+                            vars = __tco_2;
+                            si = __tco_3;
                             continue;
                         }
                         std::option::Option::None => {
@@ -8083,7 +8153,9 @@ pub fn receiver_size_var(
                 if method_preserves_collection_size(method_semantics.clone()) {
                     {
                         let __tco_0 = inner_recv.clone();
+                        let __tco_1 = si;
                         recv = __tco_0;
+                        si = __tco_1;
                         continue;
                     }
                 } else {
