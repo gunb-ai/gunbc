@@ -3,7 +3,7 @@ module gunbc.harness.harness_seat
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
   ServingRouteTurnCeiling, serving_enrolled_routes, serving_route_turn_ceiling_count,
@@ -50,9 +50,14 @@ import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import gunbc.spark.serving_offer {
   SparkOfferBound, SparkOfferBindingRefused,
   spark_serving_capability, spark_serving_shape, bind_spark_serving_offer, spark_serving_route_standing,
-  SparkServingRoute, DeclaredUnitDigestUnavailable, spark_pair_head_unit_digest_unavailable_obligation,
+  SparkServingRoute,
   spark_serving_incarnation_unobserved_obligation,
 }
+import gunbc.spark.pair_serving_realization {
+  DeclaredUnitDigestStanding, DeclaredUnitDigestUnavailable,
+  spark_pair_lookup_declared_head_digest,
+}
+import gunbc.spark.glm_canary_converge { glm_canary_declared_unit_artifact_obligation }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
@@ -484,13 +489,9 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // for a harness turn -- at which point the demand and work identities exist, the admission producer
 // is called with them, and bind_candidate has everything it compares.
 //
-// THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
-// through exactly what production passes. It states two absences, and both are real on this path:
-// no incarnation observation binds the answering endpoint to an engine launch, and no SHA-256 of the
-// rendered head unit exists to compare a launch's unit digest with. So in production the route
-// standing returns ServingRouteServiceUnidentified with ServiceIncarnationUnobserved, and
-// test.claim.spark.spark_serving_offer_route_witness_test drives harness_serving_route and asserts
-// that constructor.
+// THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE. The declared head-unit digest is read
+// from the materialized artifact apply published (SHA-256 of the exact bytes apply writes), never
+// by rendering on a token turn. Group B uses the canary arm's unrendered-unit obligation.
 fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRealization {
   SparkServingRealization {
     hosts: fabric_group_hosts(g: group),
@@ -500,14 +501,14 @@ fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLa
   }
 }
 
-fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRoute {
+fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, declared_unit: DeclaredUnitDigestStanding) -> SparkServingRoute {
   spark_serving_route_standing(
     realization: harness_serving_realization(group: group, launch: launch, readback: readback),
-    declared_unit: DeclaredUnitDigestUnavailable { obligation: spark_pair_head_unit_digest_unavailable_obligation },
+    declared_unit: declared_unit,
   )
 }
 
-fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
+fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs, declared_unit: DeclaredUnitDigestStanding) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
@@ -517,7 +518,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     isolation: serving_isolation_profile(),
     seats: seats as Int,
     availability: availability,
-    route: harness_serving_route(group: group, launch: launch, readback: readback),
+    route: harness_serving_route(group: group, launch: launch, readback: readback, declared_unit: declared_unit),
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why as String), retryable: false)
@@ -616,11 +617,12 @@ fn harness_candidate_from_standing(
                 )
               } else {
                 harness_add_serving_candidate(
-                  acc: acc, endpoint: endpoint, route: route, class: class, requirement: requirement,
+                  acc: acc, endpoint: endpoint, class: class, requirement: requirement,
                   availability: availability, launch: launch, engine: engine,
                   model: observed_model, unit: observed_unit, readback: observed_readback,
                   seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
-                  layout: layout, now: now,
+                  seats_held: harness_seat_standing(route: route, layout: layout, now: now),
+                  now: now,
                 )
               }
             HarnessBackendModelNotAdmitted { advertised: _ } =>
@@ -632,10 +634,24 @@ fn harness_candidate_from_standing(
           }
 }
 
+// EVERY OBSERVATION THIS FOLD CONSUMES ARRIVES AS A SUPPLIED VALUE -- the engine reading, the
+// availability verdict, the launch, and the seat pool standing -- and the one thing it reaches
+// for itself is the declared-unit standing for this group, READ from the durable artifact apply
+// published (or from the canary arm's own unrendered-unit obligation). Placement never renders.
+// That is what makes the artifact -> lookup -> bind wire claimable at this one interface:
+// test.claim.serving.serving_availability_bind_wet_witness publishes then places, and places
+// against an absent store file. The observations themselves are taken one call up, in harness_add_candidate, which
+// no claim executes because it reads live endpoints.
+fn harness_declared_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
+  match group {
+    FabricGroupA => spark_pair_lookup_declared_head_digest(group: group)
+    FabricGroupB => DeclaredUnitDigestUnavailable { obligation: glm_canary_declared_unit_artifact_obligation }
+  }
+}
+
 fn harness_add_serving_candidate(
   acc: HarnessCandidates,
   endpoint: ServingRouteEndpoint,
-  route: ServingRoute,
   class: ServingCoTenancyClass,
   requirement: ServingModelRequirement,
   availability: ServingFrontDoorAvailabilityVerdict,
@@ -645,7 +661,7 @@ fn harness_add_serving_candidate(
   model: NonEmptyStr,
   unit: HarnessServingUnit,
   seats: Nat,
-  layout: EventLogLayout,
+  seats_held: ServingSeatStanding,
   now: EpochSecs,
 ) -> HarnessCandidates {
   let group = endpoint.group
@@ -653,13 +669,13 @@ fn harness_add_serving_candidate(
     incoming: class,
     tenancy: serving_co_tenancy(reading: engine.queue),
     pressure: serving_capacity_pressure(reading: engine.queue),
-    seats: harness_seat_standing(route: route, layout: layout, now: now),
+    seats: seats_held,
     ceiling: seats,
     receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
   )
   match admission {
     AdmissibleForClass { class: _, receipt: _ } =>
-      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, requirement: requirement, seats: seats, now: now)
+      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, requirement: requirement, seats: seats, now: now, declared_unit: harness_declared_unit_digest(group: group))
     InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
       harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
     InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>

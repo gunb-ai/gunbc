@@ -303,6 +303,36 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "hashing_the_same_rendered_bytes_is_stable" },
+      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
+      function: "hashing_the_same_rendered_bytes_is_stable",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "unit_text_differing_by_one_byte_gives_a_different_digest" },
+      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
+      function: "unit_text_differing_by_one_byte_gives_a_different_digest",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit" },
+      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
+      function: "spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving.serving_availability_bind_wet_witness", function: "the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier" },
+      entry: "dag/test/claim/serving/serving_availability_bind_wet_witness_test.dag",
+      function: "the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving.serving_availability_bind_wet_witness", function: "a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation" },
+      entry: "dag/test/claim/serving/serving_availability_bind_wet_witness_test.dag",
+      function: "a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "install_media_hash_matches_true_by_real_execution",

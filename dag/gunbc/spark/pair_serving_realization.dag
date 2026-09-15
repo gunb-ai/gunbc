@@ -3,6 +3,11 @@ module gunbc.spark.pair_serving_realization
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash_wire }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
+import extdeps.tools.sha256sum
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { token_count_value, millisecond_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
@@ -340,11 +345,63 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
   }
 }
 
+// THE RENDER RESULT IS ONE ARTIFACT. Apply writes artifact.text; serving admission reads
+// artifact.digest. Both are produced here, when the unit text is serialized, so a token turn cannot
+// be a second producer of the digest. DigestStdin is the SHA-256 of those exact bytes (FIPS 180-4),
+// the same family as the host probe's unit_sha. A structural fingerprint of the Dag value is a
+// different family and must not stand as the declared digest: compared with the observed unit digest
+// it would be incomparable, never agreement.
+//
+// MATERIALIZATION CONFORMANCE (DESIGN §3b). The digest is a content-keyed fact: SHA-256 of the
+// exact unit bytes, minted once at apply via DigestStdin. Placement does not DigestStdin. Staleness
+// is construction, not a second encoding of the renderer inputs: the store keeps those bytes, lookup
+// re-renders the unsigned unit (a pure fold) and requires byte equality. A knob added to the
+// renderer changes the text, so a stored artifact is current only while it still is that text.
+type RenderedUnitArtifact {
+  unit_name: NonEmptyStr
+  text: String
+  digest: ContentHash
+}
+
 type SparkPairUnitRender
   = SparkPairUnitRendered { unit_name: NonEmptyStr, text: String }
+  | SparkPairUnitSealed { artifact: RenderedUnitArtifact }
   | SparkPairUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
 
-fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesired, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
+type DeclaredUnitDigestStanding
+  = DeclaredUnitDigested { unit_name: NonEmptyStr, digest: ContentHash }
+  | DeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
+
+fn spark_pair_rendered_unit_artifact(unit_name: NonEmptyStr, text: String) -> SparkPairUnitRender {
+  if (text as String) == "" {
+    SparkPairUnitRenderRefused { unit_name: unit_name, cause: "rendered unit text is empty" as NonEmptyStr }
+  } else {
+    let observed = sha256sum.Sha256.DigestStdin(content: text, expect: OutcomeIsData)
+    if observed.success == false {
+      SparkPairUnitRenderRefused { unit_name: unit_name, cause: "sha256sum could not digest the rendered unit bytes" as NonEmptyStr }
+    } else {
+      match sha256sum_line_digest(line: observed.line) {
+        Absent =>
+          SparkPairUnitRenderRefused { unit_name: unit_name, cause: "sha256sum printed no digest field for the rendered unit bytes" as NonEmptyStr }
+        Present { value: d } =>
+          match sha256_digest_content_hash(digest: d) {
+            Absent =>
+              SparkPairUnitRenderRefused { unit_name: unit_name, cause: "the sha256sum hex for the rendered unit bytes did not inhabit Sha256Digest" as NonEmptyStr }
+            Present { value: h } =>
+              SparkPairUnitSealed {
+                artifact: RenderedUnitArtifact {
+                  unit_name: unit_name,
+                  text: text,
+                  digest: h,
+                },
+              }
+          }
+      }
+    }
+  }
+}
+
+fn spark_pair_head_unit_unsigned(args: VllmEngineArgs, snapshot: ModelSnapshotDesired, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
   let start = spark_pair_lifecycle_pre_directives(spec: spec)
   let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
   let start_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_head_argv(head: head)))
@@ -391,7 +448,7 @@ fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesire
   }
 }
 
-fn spark_pair_worker_unit_file(head: FabricLaneObserved, self: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
+fn spark_pair_worker_unit_unsigned(head: FabricLaneObserved, self: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
   let start = spark_pair_lifecycle_pre_directives(spec: spec)
   let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
   let join_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_worker_argv(head: head, self: self)))
@@ -429,6 +486,15 @@ fn spark_pair_worker_unit_file(head: FabricLaneObserved, self: FabricLaneObserve
   }
 }
 
+fn spark_pair_seal_unit_render(render: SparkPairUnitRender) -> SparkPairUnitRender {
+  match render {
+    SparkPairUnitRenderRefused { unit_name: _, cause: _ } => render
+    SparkPairUnitSealed { artifact: _ } => render
+    SparkPairUnitRendered { unit_name: n, text: t } =>
+      spark_pair_rendered_unit_artifact(unit_name: n, text: t)
+  }
+}
+
 type SparkPairHostRealization {
   host: HostIdentity
   container: DockerCreateSpec
@@ -452,7 +518,7 @@ fn spark_pair_host_realization(host: HostIdentity, lane: FabricLaneObserved, uni
 
 fn spark_pair_worker_realizations(head: FabricLaneObserved, workers: List<SparkPairServingParticipant>) -> List<SparkPairHostRealization>? {
   let realized = flat_map(workers, w =>
-    match spark_pair_host_realization(host: w.host, lane: w.lane, unit: fn(spec) { spark_pair_worker_unit_file(head: head, self: w.lane, spec: spec) }) {
+    match spark_pair_host_realization(host: w.host, lane: w.lane, unit: fn(spec) { spark_pair_worker_unit_unsigned(head: head, self: w.lane, spec: spec) }) {
       Present { value: r } => [r]
       Absent => [] as List<SparkPairHostRealization>
     })
@@ -466,7 +532,7 @@ fn spark_pair_realization(unit: SparkPairServingUnit) -> SparkPairRealization {
       match e {
         OllamaServing { profile: _ } => SparkPairRealizationRefused { group: g, cause: "a group unit carries an Ollama engine, which has no group realization" as NonEmptyStr }
         VllmServing { args: args } =>
-          match spark_pair_host_realization(host: h.host, lane: h.lane, unit: fn(spec) { spark_pair_head_unit_file(args: args, snapshot: spark_pair_desired_snapshot, head: h.lane, spec: spec) }) {
+          match spark_pair_host_realization(host: h.host, lane: h.lane, unit: fn(spec) { spark_pair_head_unit_unsigned(args: args, snapshot: spark_pair_desired_snapshot, head: h.lane, spec: spec) }) {
             Absent => SparkPairRealizationRefused { group: g, cause: "the head's container environment does not cover every interface name the image bakes" as NonEmptyStr }
             Present { value: head_real } =>
               match spark_pair_worker_realizations(head: h.lane, workers: ws) {
@@ -480,6 +546,141 @@ fn spark_pair_realization(unit: SparkPairServingUnit) -> SparkPairRealization {
 
 fn spark_pair_realizations() -> List<SparkPairRealization> {
   map(spark_pair_serving_desired, u => spark_pair_realization(unit: u))
+}
+
+data spark_pair_no_realization_names_group_obligation: NonEmptyStr = "no pair realization names this fabric group, so there are no rendered head-unit bytes to digest" as NonEmptyStr
+
+data spark_pair_declared_unit_artifact_unavailable_obligation: NonEmptyStr = "no materialized declared-unit artifact matches the current head-unit text; placement does not DigestStdin" as NonEmptyStr
+
+data spark_pair_declared_unit_artifact_store_prefix: String = "target/spark-pair-declared-head-"
+
+fn spark_pair_declared_unit_artifact_path(group: FabricGroup) -> String {
+  join([spark_pair_declared_unit_artifact_store_prefix, fabric_group_wire(g: group) as String], "")
+}
+
+fn spark_pair_head_unit_text_of(render: SparkPairUnitRender) -> String? {
+  match render {
+    SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
+    SparkPairUnitSealed { artifact: a } => Present { value: a.text }
+    SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
+  }
+}
+
+fn spark_pair_head_unit_text_for_group(group: FabricGroup) -> String? {
+  match first(filter(spark_pair_realizations(), r =>
+    match r {
+      SparkPairRealizationRefused { group: g, cause: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
+      SparkPairRealized { group: g, head: _, workers: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
+    })) {
+    Absent => none
+    Present { value: r } =>
+      match r {
+        SparkPairRealizationRefused { group: _, cause: _ } => none
+        SparkPairRealized { group: _, head: h, workers: _ } => spark_pair_head_unit_text_of(render: h.unit)
+      }
+  }
+}
+
+type SparkPairDeclaredHeadArtifactRecord {
+  unit_name: NonEmptyStr
+  digest: ContentHash
+  text: String
+}
+
+fn spark_pair_declared_head_artifact_record_text(record: SparkPairDeclaredHeadArtifactRecord) -> String {
+  join([
+    record.unit_name as String,
+    "\n",
+    serialize_content_hash(hash: record.digest) as String,
+    "\n",
+    record.text,
+  ], "")
+}
+
+fn spark_pair_declared_head_artifact_record_parse(body: String) -> SparkPairDeclaredHeadArtifactRecord? {
+  let lines = split(s: body, delimiter: "\n")
+  match first(lines) {
+    Absent => none
+    Present { value: name } =>
+      match lines.skip(n: 1).first() {
+        Absent => none
+        Present { value: digest_wire } =>
+          match parse_content_hash_wire(wire: digest_wire) {
+            Absent => none
+            Present { value: digest } =>
+              Present { value: SparkPairDeclaredHeadArtifactRecord {
+                unit_name: name as NonEmptyStr,
+                digest: digest,
+                text: join(lines.skip(n: 2), "\n"),
+              } }
+          }
+      }
+  }
+}
+
+type SparkPairDeclaredHeadPublish
+  = SparkPairDeclaredHeadPublished { group: FabricGroup, digest: ContentHash }
+  | SparkPairDeclaredHeadPublishRefused { cause: NonEmptyStr }
+
+fn spark_pair_write_declared_head_artifact(group: FabricGroup, artifact: RenderedUnitArtifact) -> SparkPairDeclaredHeadPublish {
+  let body = spark_pair_declared_head_artifact_record_text(record: SparkPairDeclaredHeadArtifactRecord {
+    unit_name: artifact.unit_name,
+    digest: artifact.digest,
+    text: artifact.text,
+  })
+  let wr = Filesystem.Write(path: spark_pair_declared_unit_artifact_path(group: group), content: body)
+  if wr.success {
+    SparkPairDeclaredHeadPublished { group: group, digest: artifact.digest }
+  } else {
+    SparkPairDeclaredHeadPublishRefused {
+      cause: join(["Filesystem.Write of the declared head-unit artifact failed: ", wr.error], "") as NonEmptyStr,
+    }
+  }
+}
+
+fn spark_pair_publish_declared_head_artifact(realization: SparkPairRealization) -> SparkPairDeclaredHeadPublish {
+  match realization {
+    SparkPairRealizationRefused { group: _, cause: c } =>
+      SparkPairDeclaredHeadPublishRefused { cause: c }
+    SparkPairRealized { group: g, head: h, workers: _ } =>
+      match spark_pair_seal_unit_render(render: h.unit) {
+        SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
+          SparkPairDeclaredHeadPublishRefused { cause: c }
+        SparkPairUnitRendered { unit_name: _, text: _ } =>
+          SparkPairDeclaredHeadPublishRefused { cause: "unsigned unit bytes are not a declared digest; seal at apply publish" as NonEmptyStr }
+        SparkPairUnitSealed { artifact: a } => spark_pair_write_declared_head_artifact(group: g, artifact: a)
+      }
+  }
+}
+
+fn spark_pair_standing_from_artifact_body(expected_text: String, body: String) -> DeclaredUnitDigestStanding {
+  match spark_pair_declared_head_artifact_record_parse(body: body) {
+    Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+    Present { value: record } =>
+      if (record.text as String) == expected_text {
+        DeclaredUnitDigested { unit_name: record.unit_name, digest: record.digest }
+      } else {
+        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+      }
+  }
+}
+
+fn spark_pair_lookup_declared_head_digest_at(group: FabricGroup, expected_text: String) -> DeclaredUnitDigestStanding {
+  let rd = Filesystem.Read(path: spark_pair_declared_unit_artifact_path(group: group))
+  if !rd.success {
+    DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+  } else {
+    spark_pair_standing_from_artifact_body(expected_text: expected_text, body: rd.content)
+  }
+}
+
+fn spark_pair_lookup_declared_head_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
+  match spark_pair_head_unit_text_for_group(group: group) {
+    Absent =>
+      DeclaredUnitDigestUnavailable { obligation: spark_pair_no_realization_names_group_obligation }
+    Present { value: expected_text } =>
+      spark_pair_lookup_declared_head_digest_at(group: group, expected_text: expected_text)
+  }
 }
 
 // Which unit a host carries, from the realized pairs: the head unit on a head, the worker unit on a

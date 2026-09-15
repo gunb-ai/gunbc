@@ -26,10 +26,11 @@ import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
-  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
+  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
   spark_pair_realizations, spark_pair_container_name, spark_pair_head_log_path,
   spark_pair_jit_cache_host_dir, spark_pair_head_unit_name, spark_pair_worker_unit_name,
-  spark_pair_runtime_build_dir, exec_word_is_plain,
+  spark_pair_runtime_build_dir, exec_word_is_plain, spark_pair_publish_declared_head_artifact,
+  SparkPairDeclaredHeadPublish, SparkPairDeclaredHeadPublished, SparkPairDeclaredHeadPublishRefused,
 }
 import gunbc.spark.pair_serving_observed { first_pair_container_runtime }
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotRole, model_snapshot_role_for }
@@ -72,6 +73,7 @@ fn argv_line(cmd: ArgvCommand) -> String {
 fn unit_render_text(u: SparkPairUnitRender) -> String? {
   match u {
     SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
+    SparkPairUnitSealed { artifact: a } => Present { value: a.text }
     SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
   }
 }
@@ -264,6 +266,18 @@ fn spark_pair_serving_apply_wet() -> ProcessExit
   } else if length(refusals) != 0 {
     exit_failure(reason: join(["spark_pair_serving_apply: a group realization refused: ", join(refusals, "; ")], ""))
   } else {
+    let publish_causes = flat_map(spark_pair_realizations(), r =>
+      match r {
+        SparkPairRealizationRefused { group: _, cause: _ } => [] as List<String>
+        SparkPairRealized { group: _, head: _, workers: _ } =>
+          match spark_pair_publish_declared_head_artifact(realization: r) {
+            SparkPairDeclaredHeadPublished { group: _, digest: _ } => [] as List<String>
+            SparkPairDeclaredHeadPublishRefused { cause: c } => [c as String]
+          }
+      })
+    if length(publish_causes) != 0 {
+      exit_failure(reason: join(["spark_pair_serving_apply: could not materialize the declared head-unit artifact for lookup: ", join(publish_causes, "; ")], ""))
+    } else {
     match observe_executor_reach() {
       ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: ", c], ""))
       ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -312,6 +326,7 @@ fn spark_pair_serving_apply_wet() -> ProcessExit
                 }
               }
           }
+    }
     }
   }
 }

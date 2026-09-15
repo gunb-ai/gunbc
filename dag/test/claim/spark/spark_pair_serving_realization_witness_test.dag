@@ -1,14 +1,17 @@
 module test.claim.spark.spark_pair_serving_realization_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
 import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_baked_interface_env_names, sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names, sparkrun_vllm_ds4_gb10_digest_sha256_hex, gunbc_spark_pair_runtime_dockerfile }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
-  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
-  spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
-  spark_pair_realization, spark_pair_head_unit_file, spark_pair_container_spec, spark_pair_container_env,
+  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
+  DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+  spark_pair_realization, spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
+  spark_pair_head_unit_unsigned, spark_pair_container_spec, spark_pair_container_env,
+  spark_pair_head_unit_name, spark_pair_head_unit_text_of, spark_pair_standing_from_artifact_body,
 }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_with, SeqCapacityMeasured,
@@ -65,6 +68,7 @@ fn w_fixture_unit() -> SparkPairServingUnit {
 fn w_unit_text(u: SparkPairUnitRender) -> String {
   match u {
     SparkPairUnitRendered { unit_name: _, text: t } => t
+    SparkPairUnitSealed { artifact: a } => a.text
     SparkPairUnitRenderRefused { unit_name: _, cause: _ } => ""
   }
 }
@@ -117,7 +121,7 @@ test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -
   match w_fixture_unit() {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
-      match spark_pair_head_unit_file(
+      match spark_pair_head_unit_unsigned(
         args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
         snapshot: ModelSnapshotUnpinned {
           identity: "fixture-unpinned" as NonEmptyStr,
@@ -128,6 +132,7 @@ test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -
         spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
       ) {
         SparkPairUnitRendered { unit_name: _, text: _ } => false
+        SparkPairUnitSealed { artifact: _ } => false
         SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
           string_contains(s: c as String, pattern: "no pinned revision")
       }
@@ -158,13 +163,14 @@ test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout()
   match w_fixture_unit() {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
-      match spark_pair_head_unit_file(
+      match spark_pair_head_unit_unsigned(
         args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
         snapshot: w_fixture_snapshot,
         head: h.lane,
         spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
       ) {
         SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
+        SparkPairUnitSealed { artifact: _ } => false
         SparkPairUnitRendered { unit_name: _, text: t } =>
           string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split")
             && string_contains(s: t, pattern: "--tool-call-parser deepseek_v4")
@@ -262,6 +268,19 @@ test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> 
   })
 }
 
+// A RENDER REFUSAL IS NOT A DIGEST. Hashing is only reached on SparkPairUnitRendered; this row
+// stays hermetic because it never calls sha256sum.
+test fn a_render_refusal_is_not_a_declared_digest() -> Bool {
+  match SparkPairUnitRenderRefused {
+    unit_name: spark_pair_head_unit_name,
+    cause: "fixture render refusal" as NonEmptyStr,
+  } {
+    SparkPairUnitRenderRefused { unit_name: _, cause: o } => (o as String) == "fixture render refusal"
+    SparkPairUnitSealed { artifact: _ } => false
+    SparkPairUnitRendered { unit_name: _, text: _ } => false
+  }
+}
+
 // THE RDMA ROSTER CAN GO RED: an env covering every interface name but no GID index is refused.
 test fn an_env_that_leaves_the_gid_index_to_the_image_is_not_covering() -> Bool {
   length(sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names) == 3
@@ -272,4 +291,30 @@ test fn an_env_that_leaves_the_gid_index_to_the_image_is_not_covering() -> Bool 
         DockerEnvAssignment { name: "UCX_NET_DEVICES" as NonEmptyStr, value: "x" },
       ],
     ))
+}
+
+// RED: stored bytes that are not the current unsigned render are not a current digest. Lookup
+// compares text, so this is the same wall without DigestStdin.
+test fn stored_unit_text_that_is_not_the_current_render_is_unavailable() -> Bool {
+  match spark_pair_realization(unit: w_fixture_unit()) {
+    SparkPairRealizationRefused { group: _, cause: _ } => false
+    SparkPairRealized { group: _, head: h, workers: _ } =>
+      match spark_pair_head_unit_text_of(render: h.unit) {
+        Absent => false
+        Present { value: current } =>
+          match spark_pair_standing_from_artifact_body(
+            expected_text: current,
+            body: join([
+              spark_pair_head_unit_name as String,
+              "\n",
+              serialize_content_hash(hash: content_hash_of_value(value: "stale-unit-fixture" as NonEmptyStr)) as String,
+              "\n",
+              "not the current unit text\n",
+            ], ""),
+          ) {
+            DeclaredUnitDigestUnavailable { obligation: _ } => (current as String) != "not the current unit text\n"
+            DeclaredUnitDigested { unit_name: _, digest: _ } => false
+          }
+      }
+  }
 }

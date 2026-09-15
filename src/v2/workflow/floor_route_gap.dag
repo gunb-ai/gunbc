@@ -985,7 +985,37 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
       identity: "test.claim.memory_capture_real_execution_witness.w_capture_digest_binds_consumed_content",
       operation: "DigestStdin", ground: NoMockResponse {}
     },
-    tail: Empty {}
+    tail: Cons {
+      head: FloorRouteGapExpectation {
+        identity: "test.claim.spark.spark_pair_head_unit_digest_witness.hashing_the_same_rendered_bytes_is_stable",
+        operation: "DigestStdin", ground: NoMockResponse {}
+      },
+      tail: Cons {
+        head: FloorRouteGapExpectation {
+          identity: "test.claim.spark.spark_pair_head_unit_digest_witness.unit_text_differing_by_one_byte_gives_a_different_digest",
+          operation: "DigestStdin", ground: NoMockResponse {}
+        },
+        tail: Cons {
+          head: FloorRouteGapExpectation {
+            identity: "test.claim.spark.spark_pair_head_unit_digest_witness.spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit",
+            operation: "DigestStdin", ground: NoMockResponse {}
+          },
+          tail: Cons {
+            head: FloorRouteGapExpectation {
+              identity: "test.claim.serving.serving_availability_bind_wet_witness.the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier",
+              operation: "DigestStdin", ground: NoMockResponse {}
+            },
+            tail: Cons {
+              head: FloorRouteGapExpectation {
+                identity: "test.claim.serving.serving_availability_bind_wet_witness.a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation",
+                operation: "Delete", ground: NoMockResponse {}
+              },
+              tail: Empty {}
+            }
+          }
+        }
+      }
+    }
   }
 }
 
