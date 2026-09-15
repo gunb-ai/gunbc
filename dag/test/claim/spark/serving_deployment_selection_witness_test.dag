@@ -9,7 +9,7 @@ import v2.std.optional { Present, Absent }
 import std.interval { IntervalReady, IntervalRefused }
 import gunbc.spark.pair_serving_observed {
   GroupRankFreeMemoryObserved, gib_hundredths_interval, group_rank_free_memory_upper,
-  group_rank_free_memory_observed,
+  group_rank_free_memory_region, group_rank_free_memory_observed,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.pareto { AxisGap, AxisReading, LowerIsBetter, SelectionAxis }
@@ -2072,9 +2072,10 @@ test fn the_observed_free_memory_endpoints_are_ordered_as_authored() -> Bool {
   }
 }
 
-// A REFUSED REGION YIELDS NO GENEROUS ENDPOINT. This is the half that matters to the memory screen:
-// the accessor answers Absent rather than reaching into a record that denotes nothing, so the budget
-// fold takes its unestablished arm instead of subtracting against a plausible number.
+// A REFUSED REGION REACHES THE CONSUMER AS A REFUSAL WITH ITS REASON, not as an absence. This is the
+// half that matters to the memory screen: the budget fold takes its unestablished arm and quotes the
+// mint's own words rather than subtracting against a region that denotes nothing, so the diagnosis
+// stays correct if `closed_interval` ever refuses for a second cause.
 fn free_memory_row_with(free_construction_low: Nat, free_construction_high: Nat) -> GroupRankFreeMemoryObserved {
   GroupRankFreeMemoryObserved {
     group: FabricGroupA,
@@ -2086,17 +2087,17 @@ fn free_memory_row_with(free_construction_low: Nat, free_construction_high: Nat)
   }
 }
 
-test fn a_refused_free_memory_region_offers_no_upper_endpoint() -> Bool {
-  match group_rank_free_memory_upper(r: free_memory_row_with(free_construction_low: 11695, free_construction_high: 11685)) {
-    Absent => true
-    Present { value: _ } => false
+test fn a_refused_free_memory_region_carries_the_mints_reason() -> Bool {
+  match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11695, free_construction_high: 11685)) {
+    IntervalRefused { reason: r } => count(r as String) > 0
+    IntervalReady { interval: _ } => false
   }
 }
 
 test fn an_ordered_free_memory_region_offers_its_upper_endpoint() -> Bool {
-  match group_rank_free_memory_upper(r: free_memory_row_with(free_construction_low: 11685, free_construction_high: 11695)) {
-    Present { value: b } => byte_size_count(b: b) > 0
-    Absent => false
+  match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11685, free_construction_high: 11695)) {
+    IntervalReady { interval: i } => byte_size_count(b: group_rank_free_memory_upper(i: i)) > 0
+    IntervalRefused { reason: _ } => false
   }
 }
 

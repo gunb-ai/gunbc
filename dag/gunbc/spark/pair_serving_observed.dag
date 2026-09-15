@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_observed
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size, measure_scale_fraction_floor, measure_le }
-import std.interval { IntervalConstruction, IntervalReady, IntervalRefused, closed_interval, interval_high }
+import std.interval { IntervalConstruction, OrderedClosedInterval, closed_interval, interval_high }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
@@ -379,10 +379,10 @@ fn gib_hundredths_to_bytes(hundredths: Nat) -> ByteSize {
     den: 100)
 }
 
-// WHICH ENDPOINT A CONSUMER MAY USE IS NOT ITS CHOICE TO MAKE FREELY, so the two are named for what they
-// are good for rather than offered as an undifferentiated pair. An IMPOSSIBILITY screen must use the
-// upper endpoint: it may refuse only what does not fit even the most generous reading. Anything claiming
-// that memory IS available must use the lower.
+// THE ONE MINT AUTHORED ROWS CALL. It is the only route into the region, so a row cannot spell the
+// endpoints directly, and a reversed pair comes back as `IntervalRefused` carrying std.interval's own
+// reason rather than being swapped into order -- swapping would be the absorbing fallback: a plausible
+// range that destroys the evidence the reporter's line was misread.
 fn gib_hundredths_interval(low_hundredths: Nat, high_hundredths: Nat) -> IntervalConstruction<ByteSize> {
   closed_interval(
     low: gib_hundredths_to_bytes(hundredths: low_hundredths),
@@ -390,14 +390,21 @@ fn gib_hundredths_interval(low_hundredths: Nat, high_hundredths: Nat) -> Interva
     le: measure_le)
 }
 
-// A REFUSED REGION IS NOT A MISSING ONE, and both are unusable here, so this answers `none` and the
-// caller owes an obligation either way. Returning the generous endpoint of a region that denotes
-// nothing is exactly the plausible number the interval authority exists to prevent.
-fn group_rank_free_memory_upper(r: GroupRankFreeMemoryObserved) -> ByteSize? {
-  match r.free {
-    IntervalReady { interval: i } => Present { value: interval_high(interval: i) }
-    IntervalRefused { reason: _ } => none
-  }
+// THE REGION GOES TO THE CALLER AS THE MINT LEFT IT, refusal reason included. An accessor that
+// collapsed the refused arm to an absence discarded `closed_interval`'s own typed reason and forced the
+// consumer to re-author the diagnosis in its own words -- a second authority for a fact the value
+// already carries (DESIGN section 3), and one that is only accidentally true while the mint has exactly
+// one refusal cause. The caller folds this through `interval_construction_fold` and interpolates the
+// reason it is given.
+fn group_rank_free_memory_region(r: GroupRankFreeMemoryObserved) -> IntervalConstruction<ByteSize> {
+  r.free
+}
+
+// WHICH ENDPOINT A CONSUMER MAY USE IS STILL NOT ITS CHOICE TO MAKE FREELY, so the endpoint policy stays
+// here rather than travelling with the region. An IMPOSSIBILITY screen must use the upper endpoint: it
+// may refuse only what does not fit even the most generous reading.
+fn group_rank_free_memory_upper(i: OrderedClosedInterval<ByteSize>) -> ByteSize {
+  interval_high(interval: i)
 }
 
 fn group_rank_free_memory(group: FabricGroup) -> GroupRankFreeMemoryObserved? {
