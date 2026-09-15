@@ -3,7 +3,7 @@ module test.claim.spark.serving_incarnation_observe
 import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.decimal { ExactDecimal }
 import std.content_hash { ContentHash, Sha256Hash, ContentHashEqual, compare_content_hash, sha256_hex_digest }
-import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, proc_stat_boot_time }
+import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch, proc_stat_boot_time }
 import extdeps.linux.proc_pid_stat {
   StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time,
 }
@@ -108,6 +108,7 @@ test fn boot_time_reads_from_proc_stat() -> Bool {
     BootTimeObserved { epoch_seconds: s } => s == 1788630958
     BootTimeLineAbsent => false
     BootTimeUnparseable { field: _ } => false
+    BootTimeBeforeEpoch { field: _ } => false
   }
 }
 
@@ -115,6 +116,18 @@ test fn a_proc_stat_without_btime_refuses() -> Bool {
   match proc_stat_boot_time(content: "cpu 1 2 3\nprocesses 9\n") {
     BootTimeLineAbsent => true
     BootTimeObserved { epoch_seconds: _ } => false
+    BootTimeUnparseable { field: _ } => false
+    BootTimeBeforeEpoch { field: _ } => false
+  }
+}
+
+// parse_int admits a leading minus; EpochSecs does not. A negative btime is a broken clock,
+// not an instant, matching extdeps.clock's refusal before minting ClockTimestampObserved.
+test fn a_negative_btime_refuses_rather_than_minting_epoch_secs() -> Bool {
+  match proc_stat_boot_time(content: "btime -1\n") {
+    BootTimeBeforeEpoch { field: f } => f == "-1"
+    BootTimeObserved { epoch_seconds: _ } => false
+    BootTimeLineAbsent => false
     BootTimeUnparseable { field: _ } => false
   }
 }

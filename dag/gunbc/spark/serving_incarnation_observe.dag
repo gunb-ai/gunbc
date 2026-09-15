@@ -28,7 +28,7 @@ import extdeps.linux.proc_self_cgroup {
   CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed,
   read_unified_cgroup_membership,
 }
-import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, proc_stat_boot_time }
+import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch, proc_stat_boot_time }
 import extdeps.linux.proc_pid_stat {
   StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time,
 }
@@ -253,7 +253,7 @@ type CandidateScan {
   refusal: ServingIncarnationRefusal?
 }
 
-fn scan_candidate(acc: CandidateScan, transport: HostEffectTransport, pid: Int, exported: ExactDecimal, boot: Int, ticks: Int) -> CandidateScan {
+fn scan_candidate(acc: CandidateScan, transport: HostEffectTransport, pid: Int, exported: ExactDecimal, boot: EpochSecs, ticks: Int) -> CandidateScan {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -354,7 +354,7 @@ fn incarnation_after_process(
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
   pid: Int,
-  boot: Int,
+  boot: EpochSecs,
   ticks: Int,
   start_ticks: Int,
 ) -> ServingIncarnationReading {
@@ -418,7 +418,7 @@ fn incarnation_after_host_facts(
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
   exported: ExactDecimal,
-  boot: Int,
+  boot: EpochSecs,
   ticks: Int,
 ) -> ServingIncarnationReading {
   let pattern = sparkrun_vllm_ds4_gb10_vllm_binary
@@ -487,6 +487,7 @@ fn incarnation_after_unit(
                   match proc_stat_boot_time(content: stat_text) {
                     BootTimeLineAbsent => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: "/proc/stat has no btime line" } }
                     BootTimeUnparseable { field: f } => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: join(["btime `", f, "` is not an integer"], "") } }
+                    BootTimeBeforeEpoch { field: f } => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: join(["btime `", f, "` is before the epoch"], "") } }
                     BootTimeObserved { epoch_seconds: boot } =>
                       incarnation_after_host_facts(
                         transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,

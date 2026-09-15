@@ -1,6 +1,6 @@
 module extdeps.linux.proc_stat
 
-import std.types { Int, List, NonEmptyStr }
+import std.types { Int, List, NonEmptyStr, EpochSecs }
 import std.string_type { String }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -38,9 +38,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // exactly that arithmetic when it exports process_start_time_seconds, so a reader that wants to
 // meet that exporter on equal terms reads the same two kernel facts it read.
 type ProcStatBootTime
-  = BootTimeObserved { epoch_seconds: Int }
+  = BootTimeObserved { epoch_seconds: EpochSecs }
   | BootTimeLineAbsent
   | BootTimeUnparseable { field: String }
+  | BootTimeBeforeEpoch { field: String }
 
 data proc_stat_btime_keyword: NonEmptyStr = "btime" as NonEmptyStr
 
@@ -73,13 +74,19 @@ fn proc_stat_boot_time(content: String) -> ProcStatBootTime {
     match acc {
       BootTimeObserved { epoch_seconds: _ } => acc
       BootTimeUnparseable { field: _ } => acc
+      BootTimeBeforeEpoch { field: _ } => acc
       BootTimeLineAbsent =>
         match proc_stat_btime_field(line: line) {
           Absent => acc
           Present { value: field } =>
             match parse_int(s: field) {
-              Present { value: n } => BootTimeObserved { epoch_seconds: n }
               Absent => BootTimeUnparseable { field: field }
+              Present { value: n } =>
+                if n < 0 {
+                  BootTimeBeforeEpoch { field: field }
+                } else {
+                  BootTimeObserved { epoch_seconds: n }
+                }
             }
         }
     })
