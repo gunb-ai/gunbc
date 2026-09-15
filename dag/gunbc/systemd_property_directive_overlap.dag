@@ -10,6 +10,7 @@ import extdeps.systemd {
   MemoryCurrent, TasksCurrent, ControlGroup,
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   EnvironmentProperty, AfterProperty, WantsProperty,
+  InvocationIDProperty, FragmentPathProperty,
   systemd_unit_property_wire,
 }
 
@@ -105,6 +106,8 @@ type SystemdPropertyWritability
 // unresolvable; it is added here because this change is the first to touch the classifier since.
 // KillMode and ExitType are the [Service] directives of the same spelling (systemd.kill(5),
 // systemd.service(5)); Id is the manager's name for the loaded unit and no unit file assigns it.
+// InvocationID is the manager-minted 128-bit id of the current activation and FragmentPath the
+// path the unit was loaded from (systemctl(1) show); neither is a directive a unit file could set.
 fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropertyWritability {
   match property {
     MemoryMax => SettableDirective
@@ -141,6 +144,8 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     EnvironmentProperty => SettableDirective
     AfterProperty => SettableDirective
     WantsProperty => SettableDirective
+    InvocationIDProperty => ObservationOnly
+    FragmentPathProperty => ObservationOnly
   }
 }
 
@@ -178,6 +183,7 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic, NeedDaemonReload,
   IdProperty, KillModeProperty, ExitTypeProperty,
   EnvironmentProperty, AfterProperty, WantsProperty,
+  InvocationIDProperty, FragmentPathProperty,
 ]
 
 fn settable_property_wires() -> List<String> {
