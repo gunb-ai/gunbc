@@ -22,6 +22,7 @@ import v2.std.witness_evaluation {
   witness_diagnostic_rendered_reason,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.workflow_runs { WorkflowRunList, Completed, Success }
 import test.fixture.rest_exchange_replay_probe
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -338,5 +339,87 @@ test fn rest_replay_binding_does_not_escape_its_frame() -> Bool {
   match inside {
     WitnessReturned { value } => value && !witness_evaluation_frame_active()
     WitnessRefused { diagnostic } => false
+  }
+}
+
+// TYPE-DIRECTED RESPONSE DECODE. A nullary coproduct field is decoded through its declared wire
+// contract (extdeps.github.workflow_runs_contracts), so the recorded spelling becomes the arm.
+data decoded_run_list_body: String = "{\"total_count\":1,\"workflow_runs\":[{\"id\":34853888826,\"name\":\"witnesses\",\"path\":\".github/workflows/witnesses.yml\",\"head_sha\":\"a8d4fdeb1c2c971fcf9b17614d80e75c63f07d50\",\"head_branch\":\"gh-readonly-queue/main/pr-11256-74627165a69024b49b4069f25ac285c9abdade5d\",\"event\":\"merge_group\",\"status\":\"completed\",\"conclusion\":\"success\",\"workflow_id\":335117115,\"run_number\":19305,\"run_attempt\":1,\"actor\":{\"login\":\"briansrls\",\"id\":11205878,\"type\":\"User\"},\"triggering_actor\":{\"login\":\"briansrls\",\"id\":11205878,\"type\":\"User\"},\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/34853888826\",\"created_at\":\"2026-09-14T14:10:32Z\",\"updated_at\":\"2026-09-14T15:00:21Z\",\"pull_requests\":[]}]}"
+
+// One character of the recorded body changed: "success" -> "succeeded", a spelling that names no
+// WorkflowRunConclusion arm under SnakeCase. It refuses at the located field rather than carrying
+// the string into a match that would take its wildcard arm.
+data misspelled_conclusion_body: String = "{\"total_count\":1,\"workflow_runs\":[{\"id\":34853888826,\"name\":\"witnesses\",\"path\":\".github/workflows/witnesses.yml\",\"head_sha\":\"a8d4fdeb1c2c971fcf9b17614d80e75c63f07d50\",\"head_branch\":\"gh-readonly-queue/main/pr-11256-74627165a69024b49b4069f25ac285c9abdade5d\",\"event\":\"merge_group\",\"status\":\"completed\",\"conclusion\":\"succeeded\",\"workflow_id\":335117115,\"run_number\":19305,\"run_attempt\":1,\"actor\":{\"login\":\"briansrls\",\"id\":11205878,\"type\":\"User\"},\"triggering_actor\":{\"login\":\"briansrls\",\"id\":11205878,\"type\":\"User\"},\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/34853888826\",\"created_at\":\"2026-09-14T14:10:32Z\",\"updated_at\":\"2026-09-14T15:00:21Z\",\"pull_requests\":[]}]}"
+
+fn first_run_completed_successfully(runs: WorkflowRunList) -> Bool {
+  match runs.workflow_runs |> first {
+    Present { value: run } => match run.status {
+      Completed => match run.conclusion {
+        Present { value: Success } => true
+        _ => false
+      }
+      _ => false
+    }
+    none => false
+  }
+}
+
+fn run_list_frame(body: String) -> WitnessEvaluationFrame {
+  replay_frame(fixtures: [
+    fixture_for(operation: "WorkflowRunsPage", observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }),
+    fixture_for(operation: "WorkflowRunsPageLegacy", observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }),
+  ])
+}
+
+test fn a_contracted_coproduct_field_decodes_to_its_arm() -> Bool {
+  match evaluate_in_witness_frame(frame: run_list_frame(body: decoded_run_list_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPage() }) {
+    WitnessReturned { value } => match value.observed {
+      RestOk => first_run_completed_successfully(runs: value.runs)
+      _ => false
+    }
+    WitnessRefused { diagnostic: _ } => false
+  }
+}
+
+test fn an_unknown_spelling_refuses_at_the_located_field() -> Bool {
+  match evaluate_in_witness_frame(frame: run_list_frame(body: misspelled_conclusion_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPage() }) {
+    WitnessReturned { value } => match value.observed {
+      RestBodyUndecodable { status, cause } =>
+        status == 200
+          && string_contains(s: cause, pattern: "workflow_runs[0].conclusion")
+          && string_contains(s: cause, pattern: "\"succeeded\" names no arm")
+      _ => false
+    }
+    WitnessRefused { diagnostic: _ } => false
+  }
+}
+
+// Without an outcome field the same refusal is a loud evaluation failure, never a returned value.
+test fn an_unknown_spelling_without_an_outcome_field_refuses_the_evaluation() -> Bool {
+  match evaluate_in_witness_frame(frame: run_list_frame(body: misspelled_conclusion_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPageLegacy() }) {
+    WitnessReturned { value: _ } => false
+    WitnessRefused { diagnostic } =>
+      string_contains(s: witness_diagnostic_rendered_reason(diagnostic: diagnostic), pattern: "names no arm under the declared wire contract")
+  }
+}
+
+// NO LENIENT ARM FOR AN UNDECLARED SPELLING. The string "Alpha" is exactly an arm's authored name,
+// so a decoder that guessed AsAuthored would accept it; the coproduct has no contract and its module
+// declares no wire_contract, so it refuses.
+test fn a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "RootUncontracted",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: "{\"arm\":\"Alpha\"}" } }
+    )]),
+    subject: fn(_scope) { test.RestReplay.RootUncontracted() }
+  )
+  match result {
+    WitnessReturned { value } => match value.observed {
+      RestBodyUndecodable { status, cause } =>
+        status == 200 && string_contains(s: cause, pattern: "shape.arm (UncontractedArm)") && string_contains(s: cause, pattern: "wire spelling is undeclared")
+      _ => false
+    }
+    WitnessRefused { diagnostic: _ } => false
   }
 }

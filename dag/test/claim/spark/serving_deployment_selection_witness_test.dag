@@ -6,6 +6,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, de
 import std.measure { token_count, token_count_value, basis_point, byte_size, byte_size_count }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
+import std.interval { IntervalReady, IntervalRefused }
+import gunbc.spark.pair_serving_observed {
+  GroupRankFreeMemoryObserved, gib_hundredths_interval, group_rank_free_memory_upper,
+  group_rank_free_memory_region, group_rank_free_memory_observed,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.pareto { AxisGap, AxisReading, LowerIsBetter, SelectionAxis }
 import std.decision { HardConstraint, SelectionEvidenceNeed, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
 import std.roster_frontier {
@@ -1714,36 +1720,64 @@ test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> 
 // rather than asserted -- #11383 requires that SOME claim fail when the integration is removed, and
 // last time none did.
 //
-// THE DELETION WAS RUN. In a scratch checkout with `candidate_component_route_standings` returning `[]`
-// -- the wiring severed, the program still well-formed:
+// THE DELETION WAS RUN AGAINST THE PRODUCTION SEAM. `routed_candidates` -- the producer
+// `select_serving_deployment` reaches through `select_over_routed` -- rewritten to carry
+// `route_standings: []`, the program still well-formed, every other declaration untouched:
 //
 //   a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration   false  (true intact)
 //   the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor                 false  (true intact)
-//   the_v4_1_aggregation_returns_no_feasible_naming_every_candidate                   TRUE   (true intact)
+//   the_v4_1_aggregation_returns_no_feasible_naming_every_candidate                   false  (true intact)
 //
-// AND THE THIRD LINE IS THE REASON THIS SPLIT EXISTS RATHER THAN A FOOTNOTE. The aggregation claim DOES
-// NOT DETECT THE REMOVAL. It asserts `ax_component_route` among the causes, and that axis is still named
-// with no route standings at all, because exclusion reaches it through `component_resident_footprint`'s
-// unread path. So it passes for a reason that survives the deletion, and anything relying on it as the
-// product-root control would let the integration be deleted with everything green. The wall rests
-// ENTIRELY on the first claim above. That is measured, not reasoned: both directions were executed, and
-// a claim that reds on a broken tree without greening on the intact one is a decoration, not a wall.
+// AN EARLIER VERSION OF THIS TABLE PROVED THE WRONG THING, recorded because the error was in the TEST
+// rather than in the code and would otherwise be invisible. It severed `candidate_component_route_standings`,
+// which `select_serving_deployment` DOES NOT USE: the entry path runs `routed_candidates` ->
+// `resolved_route_demands` + `candidate_standings_from_demands`, a parallel producer that also reaches
+// `engram_route_standing`. The wall red because the wall called the thing that was severed, and the
+// serving consumer's own path was never touched. `routed_standing_of` below is the repair.
+//
+// THAT TABLE ALSO CARRIED AN UNVERIFIED CAUSAL CLAIM, which is the part worth keeping. It reported the
+// aggregation as surviving the deletion and attributed the survival to exclusion reaching
+// `ax_component_route` through `component_resident_footprint`'s unread path. The real reason was that
+// the aggregation's producer had never been severed: against the production seam the aggregation reds
+// too, third row above. A deletion proof is only as good as the identity of what it deleted, and an
+// explanation of a result is a second claim that needs its own execution.
 fn v4_1_live_candidate_at(tp: Nat, replicas: Nat) -> DeploymentCandidate? {
   (filter(deepseek_v4_1_candidate_field.candidates,
     k => k.topology.tensor_parallel_degree == tp && k.topology.replica_count == replicas)).first()
 }
 
-fn engram_standing_of(c: DeploymentCandidate) -> ComponentRouteStanding? {
-  (filter(candidate_component_route_standings(c: c, p: c.profile),
-    st => declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity))).first()
+// THE STANDINGS AS THE SERVING CONSUMER OBTAINS THEM, not as a parallel helper produces them. There
+// are TWO producers that both reach `engram_route_standing`, and only one is on the entry path:
+//
+//   select_serving_deployment -> select_over_routed(routed: routed_candidates(field)) ->
+//     resolved_route_demands + candidate_standings_from_demands     <- the production seam
+//   candidate_component_route_standings -> component_route_standing_for     <- a direct helper
+//
+// A wall built on the second proves nothing about the first. This walks `routed_candidates` over a
+// one-candidate field so the claim is cheap AND traverses the same producer the consumer does.
+fn v4_1_single_candidate_probe_field(c: DeploymentCandidate) -> ServingDeploymentCandidateField {
+  serving_candidate_field(
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test",
+                       decl_name: "v4_1_single_candidate_probe_field"),
+    domain: deepseek_v4_1_candidate_field.domain,
+    candidates: [c])
+}
+
+fn routed_standing_of(c: DeploymentCandidate) -> ComponentRouteStanding? {
+  match (routed_candidates(field: v4_1_single_candidate_probe_field(c: c))).first() {
+    Absent => none
+    Present { value: rc } =>
+      (filter(rc.route_standings,
+        st => declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity))).first()
+  }
 }
 
 test fn a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration() -> Bool {
   match v4_1_live_candidate_at(tp: 4, replicas: 1) {
     Absent => false
     Present { value: c } =>
-      count(candidate_component_route_standings(c: c, p: c.profile)) > 0
-        && match engram_standing_of(c: c) {
+      count(routed_candidates(field: v4_1_single_candidate_probe_field(c: c))) > 0
+        && match routed_standing_of(c: c) {
           Absent => false
           Present { value: st } =>
             declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity)
@@ -1756,7 +1790,7 @@ test fn the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor() -> B
   match v4_1_live_candidate_at(tp: 4, replicas: 1) {
     Absent => false
     Present { value: c } =>
-      match engram_standing_of(c: c) {
+      match routed_standing_of(c: c) {
         Absent => false
         Present { value: st } =>
           match component_route_placement_standing(s: st) {
@@ -2044,4 +2078,67 @@ fn fixture_upstream_mismatch_field_id() -> DeclarationRef {
 
 fn fixture_mismatched_sum_field_id() -> DeclarationRef {
   decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_mismatched_sum_field_id")
+}
+
+
+// THE ENDPOINTS OF THE IDLE FREE-MEMORY READING CANNOT BE TRANSPOSED WITHOUT REFUSAL. Before this
+// pair went through `std.interval`, the reading was two sibling `ByteSize` fields hand-typed as
+// hundredths of a GiB, and a transposed row would have been a region that denotes nothing which the
+// per-rank memory screen then subtracts against. The mint is the wall; these two claims are the
+// executing evidence that it is reached FROM THIS SITE rather than only available in `std`.
+test fn the_free_memory_mint_refuses_transposed_endpoints() -> Bool {
+  match gib_hundredths_interval(low_hundredths: 11695, high_hundredths: 11685) {
+    IntervalRefused { reason: r } => count(r as String) > 0
+    IntervalReady { interval: _ } => false
+  }
+}
+
+test fn the_observed_free_memory_endpoints_are_ordered_as_authored() -> Bool {
+  match gib_hundredths_interval(low_hundredths: 11685, high_hundredths: 11695) {
+    IntervalReady { interval: _ } => true
+    IntervalRefused { reason: _ } => false
+  }
+}
+
+// A REFUSED REGION REACHES THE CONSUMER AS A REFUSAL WITH ITS REASON, not as an absence. This is the
+// half that matters to the memory screen: the budget fold takes its unestablished arm and quotes the
+// mint's own words rather than subtracting against a region that denotes nothing, so the diagnosis
+// stays correct if `closed_interval` ever refuses for a second cause.
+fn free_memory_row_with(free_construction_low: Nat, free_construction_high: Nat) -> GroupRankFreeMemoryObserved {
+  GroupRankFreeMemoryObserved {
+    group: FabricGroupA,
+    reported_free_wire: "a designed row whose endpoints are supplied by this claim" as NonEmptyStr,
+    free: gib_hundredths_interval(low_hundredths: free_construction_low, high_hundredths: free_construction_high),
+    probed_at: "2026-09-15" as NonEmptyStr,
+    instrument: "no instrument: this row exists to exercise the refused-region arm of the accessor" as NonEmptyStr,
+    precision_caveat: "not a reading" as NonEmptyStr,
+  }
+}
+
+test fn a_refused_free_memory_region_carries_the_mints_reason() -> Bool {
+  match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11695, free_construction_high: 11685)) {
+    IntervalRefused { reason: r } => count(r as String) > 0
+    IntervalReady { interval: _ } => false
+  }
+}
+
+test fn an_ordered_free_memory_region_offers_its_upper_endpoint() -> Bool {
+  match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11685, free_construction_high: 11695)) {
+    IntervalReady { interval: i } => byte_size_count(b: group_rank_free_memory_upper(i: i)) > 0
+    IntervalRefused { reason: _ } => false
+  }
+}
+
+// THE MINT REFUSING IS NOT EVIDENCE THAT THE AUTHORED ROWS PASS IT. The two claims above establish what
+// `gib_hundredths_interval` does with endpoints THIS CLAIM supplies; they say nothing about the rows
+// actually in the corpus. Because the construction is stored rather than the interval, a transposed row
+// is writable and would otherwise stay silent until a consumer folded it. This is the claim that makes
+// an authored transposition red HERE instead -- it is the whole of the class's rung-two standing, and
+// deleting it drops the class to rung one.
+test fn every_authored_free_memory_row_mints_its_region() -> Bool {
+  count(group_rank_free_memory_observed) > 0
+    && all(group_rank_free_memory_observed, r => match r.free {
+      IntervalReady { interval: _ } => true
+      IntervalRefused { reason: _ } => false
+    })
 }

@@ -2,7 +2,8 @@ module gunbc.spark.pair_serving_observed
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
-import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size, measure_scale_fraction_floor }
+import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size, measure_scale_fraction_floor, measure_le }
+import std.interval { IntervalConstruction, OrderedClosedInterval, closed_interval, interval_high }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
@@ -315,11 +316,38 @@ fn group_kv_pool_observed(group: FabricGroup) -> GroupKvPoolObserved? {
 //
 // The prose stays, because a reader still needs to know WHY there are two endpoints. It is no longer the
 // only place the fact lives.
+// THE UNCERTAINTY REGION IS ONE FACT AND IS CARRIED AS ONE. Two sibling `ByteSize` endpoints were a
+// hand-written `{low, high}` record, which `std.interval` `OrderedClosedInterval` exists to forbid: a
+// transposed pair is not a wide region, it denotes nothing, and the memory screen subtracts against it.
+// The endpoints here are hand-typed hundredths, so nothing but the type stops a future row reversing
+// them.
+//
+// THE FIELD HOLDS THE CONSTRUCTION RATHER THAN THE INTERVAL, which is a departure from the shape review
+// 66511 prescribed and is forced rather than preferred. The only mint is `closed_interval`, which
+// refuses a reversed pair and therefore returns `IntervalConstruction`; a data initializer has no arm
+// in which to unwrap it, and every way of unwrapping it here -- swapping the endpoints, dropping the
+// row, substituting a default -- is the absorbing fallback DESIGN section 5 forbids. Storing the
+// construction keeps the refusal on the path to the consumer, which is what the wall is for.
+//
+// SO THIS CLASS DOES NOT INHERIT `OrderedClosedInterval`'s RUNG, and saying otherwise would be rung
+// inflation (DESIGN section 4b). `OrderedClosedInterval` reaches rung four: reversed endpoints have no
+// constructor. Here a reversed pair is still WRITABLE in the row -- `gib_hundredths_interval(low: 11695,
+// high: 11685)` is an authorable row that compiles -- and refuses only when a consumer folds the
+// construction. Measured against that boundary the class sits at rung one to two: the harm is contained
+// by a typed refusal that reaches `candidate_component_budget` as an evidence obligation (one), and the
+// witness roster below asserts every authored row mints successfully, so an authored transposition reds
+// at witness time rather than at the first consumer (two) -- which depends on that claim executing and
+// staying enrolled, and is therefore not three.
+//
+// CEILING: rung four, by a `std.interval` mint that can be checked at construction, so a reversed pair
+// has no constructor at the row either. TRIGGER: that mint existing in `std.interval` -- the capability,
+// not this module's adoption of it. It is deliberately not proposed here: `std.interval` is a
+// load-bearing authority and widening its constructor surface is its own decision, not a side effect of
+// repairing one observation row.
 type GroupRankFreeMemoryObserved {
   group: FabricGroup
   reported_free_wire: NonEmptyStr
-  free_lower: ByteSize
-  free_upper: ByteSize
+  free: IntervalConstruction<ByteSize>
   probed_at: NonEmptyStr
   instrument: NonEmptyStr
   precision_caveat: NonEmptyStr
@@ -329,8 +357,7 @@ data group_rank_free_memory_observed: List<GroupRankFreeMemoryObserved> = [
   GroupRankFreeMemoryObserved {
     group: FabricGroupA,
     reported_free_wire: "116.9 GiB free per rank with the engine idle" as NonEmptyStr,
-    free_lower: gib_hundredths_to_bytes(hundredths: 11685),
-    free_upper: gib_hundredths_to_bytes(hundredths: 11695),
+    free: gib_hundredths_interval(low_hundredths: 11685, high_hundredths: 11695),
     probed_at: "2026-09-12" as NonEmptyStr,
     instrument: "the serving runtime's own memory-profiling line on an idle Group A rank during the V4.1 Flash rollout, read from the head's captured stdout; NVML refuses this query on unified memory and must not be substituted for it" as NonEmptyStr,
     precision_caveat: "the runtime reports one decimal of GiB, so the true free value lies within about 0.05 GiB of this figure; a verdict drawn against this bound must exceed that uncertainty to be established rather than borderline" as NonEmptyStr,
@@ -352,11 +379,33 @@ fn gib_hundredths_to_bytes(hundredths: Nat) -> ByteSize {
     den: 100)
 }
 
-// WHICH ENDPOINT A CONSUMER MAY USE IS NOT ITS CHOICE TO MAKE FREELY, so the two are named for what they
-// are good for rather than offered as an undifferentiated pair. An IMPOSSIBILITY screen must use the
-// upper endpoint: it may refuse only what does not fit even the most generous reading. Anything claiming
-// that memory IS available must use the lower.
-fn group_rank_free_memory_upper(r: GroupRankFreeMemoryObserved) -> ByteSize { r.free_upper }
+// THE ONE MINT AUTHORED ROWS CALL. It is the only route into the region, so a row cannot spell the
+// endpoints directly, and a reversed pair comes back as `IntervalRefused` carrying std.interval's own
+// reason rather than being swapped into order -- swapping would be the absorbing fallback: a plausible
+// range that destroys the evidence the reporter's line was misread.
+fn gib_hundredths_interval(low_hundredths: Nat, high_hundredths: Nat) -> IntervalConstruction<ByteSize> {
+  closed_interval(
+    low: gib_hundredths_to_bytes(hundredths: low_hundredths),
+    high: gib_hundredths_to_bytes(hundredths: high_hundredths),
+    le: measure_le)
+}
+
+// THE REGION GOES TO THE CALLER AS THE MINT LEFT IT, refusal reason included. An accessor that
+// collapsed the refused arm to an absence discarded `closed_interval`'s own typed reason and forced the
+// consumer to re-author the diagnosis in its own words -- a second authority for a fact the value
+// already carries (DESIGN section 3), and one that is only accidentally true while the mint has exactly
+// one refusal cause. The caller folds this through `interval_construction_fold` and interpolates the
+// reason it is given.
+fn group_rank_free_memory_region(r: GroupRankFreeMemoryObserved) -> IntervalConstruction<ByteSize> {
+  r.free
+}
+
+// WHICH ENDPOINT A CONSUMER MAY USE IS STILL NOT ITS CHOICE TO MAKE FREELY, so the endpoint policy stays
+// here rather than travelling with the region. An IMPOSSIBILITY screen must use the upper endpoint: it
+// may refuse only what does not fit even the most generous reading.
+fn group_rank_free_memory_upper(i: OrderedClosedInterval<ByteSize>) -> ByteSize {
+  interval_high(interval: i)
+}
 
 fn group_rank_free_memory(group: FabricGroup) -> GroupRankFreeMemoryObserved? {
   first(filter(group_rank_free_memory_observed, r => fabric_group_same(a: r.group, b: group)))

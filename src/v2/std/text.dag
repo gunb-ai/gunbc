@@ -67,6 +67,42 @@ fn char_eq(a: Char, b: Char) -> Bool {
   a == b
 }
 
+// THE AUTHORITY FOR STRING EQUALITY, AND WHAT IT DOES NOT YET REACH. The byte-identical copies
+// this change reaches across v2.lens collapse here. That is the whole of what this change does,
+// and it is NOT one string_eq corpus-wide: byte-identical forks survive elsewhere, several of
+// them under names that do not spell string_eq exactly.
+//
+// THE CENSUS IS THE INSTRUMENT, NOT A LIST. Re-derive the residue rather than reading a count that
+// rots the moment anyone adds or removes a copy. ONE COMMAND, and it is the SAME ONE the roster
+// header in src/v1/stage0/src/namespace_wave_admission.rs names -- two spellings of one census
+// would be the second authority DESIGN section 3 forbids, and the narrower one UNDER-REPORTS:
+//   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
+// A LIST OR A NUMBER WRITTEN HERE WOULD BE STALE ON THE NEXT MERGE and would be cited as coverage
+// after it stopped being true, which is why neither appears in this annotation.
+//
+// AN EARLIER WORDING OF THIS NOTE NAMED THE NARROW PATTERN '^fn string_eq' AND CALLED
+// grammar_coverage_string_eq THE renamed exception. BOTH WERE FALSE. The narrow pattern misses
+// every renamed fork, and grammar_coverage was not the only one -- the command above finds
+// several. That clone no longer exists: it was retained here on the ground that its module
+// declared no imports, and the retention was rejected because naming that module's own imports is
+// source work this change can express, which is not a dissolution trigger but a task. So
+// v2.lens.enforcement.grammar_coverage now names its import surface and calls this declaration.
+// EVERY FORK THE COMMAND STILL FINDS IS UNDECLARED RESIDUE: no reason recorded, no retention
+// stated, nothing at its declaration saying why it is still there.
+//
+// TRIGGER, per fork rather than for the set: a fork collapses when a change touches its module,
+// or earlier if that module's import closure already reaches v2.std.text. There is no single event
+// that retires the whole residue, which is why this is a per-fork trigger and not a date.
+//
+// WHAT WILL ENCOUNTER IT: the DESIGN section 3 single-authority reviewer, a standing criterion
+// declared in gunbc.design_argument and derived into reviewers by gunbc.roadmap.roadmap_review_criteria,
+// which asks whether a change gives one concept a second name or a second home. It runs on changes
+// to this repository. This annotation exists so that reviewer meets a DECLARED residue with a
+// working census rather than rediscovering an undeclared one with a command that under-reports it.
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
 fn string_split_step(state: StringSplitState, delimiter: String) -> StringSplitState {
   if list_starts_with(xs: state.rest, prefix: delimiter, eq: char_eq) {
     StringSplitState {
