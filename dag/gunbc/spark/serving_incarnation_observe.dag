@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
 import std.algebra { trim }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_multiply, checked_int_add, CheckedIntReady, CheckedIntOverflow }
+import std.measure { Hertz, hertz, hertz_count }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
@@ -224,11 +225,12 @@ fn host_read_failure_text(stderr: String?) -> String {
 // boot*ticks before the outer multiply ever saw it, so that intermediate is formed with
 // checked_int_multiply / checked_int_add too. The prometheus reader bounds exported.fraction_digits to
 // the i64-safe pow10 range, so decimal_pow10 here does not itself wrap.
-fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: EpochSecs, ticks_per_second: Int, start_ticks: Int) -> Bool {
-  match checked_int_multiply(a: exported.units, b: ticks_per_second) {
+fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: Int) -> Bool {
+  let ticks = hertz_count(h: ticks_per_second)
+  match checked_int_multiply(a: exported.units, b: ticks) {
     CheckedIntOverflow { cause: _ } => false
     CheckedIntReady { value: lhs } =>
-      match checked_int_multiply(a: boot_epoch_seconds, b: ticks_per_second) {
+      match checked_int_multiply(a: boot_epoch_seconds, b: ticks) {
         CheckedIntOverflow { cause: _ } => false
         CheckedIntReady { value: boot_ticks } =>
           match checked_int_add(a: boot_ticks, b: start_ticks) {
@@ -253,7 +255,7 @@ type CandidateScan {
   refusal: ServingIncarnationRefusal?
 }
 
-fn scan_candidate(acc: CandidateScan, transport: HostEffectTransport, pid: Int, exported: ExactDecimal, boot: EpochSecs, ticks: Int) -> CandidateScan {
+fn scan_candidate(acc: CandidateScan, transport: HostEffectTransport, pid: Int, exported: ExactDecimal, boot: EpochSecs, ticks: Hertz) -> CandidateScan {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -283,8 +285,8 @@ fn scan_candidate(acc: CandidateScan, transport: HostEffectTransport, pid: Int, 
 // VllmServingLaunch.started_at carries. The sub-second part is exactly what the exported field and
 // the tick equality above keep; this field is the launch's coarse instant for readers that order
 // launches, not its identity.
-fn process_start_epoch_seconds(boot_epoch_seconds: EpochSecs, ticks_per_second: Int, start_ticks: Int) -> Int {
-  boot_epoch_seconds + (start_ticks / ticks_per_second)
+fn process_start_epoch_seconds(boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: Int) -> Int {
+  boot_epoch_seconds + (start_ticks / hertz_count(h: ticks_per_second))
 }
 
 // ── THE OBSERVATION ─────────────────────────────────────────────────────────────────────────────
@@ -355,7 +357,7 @@ fn incarnation_after_process(
   unit_digest: ContentHash,
   pid: Int,
   boot: EpochSecs,
-  ticks: Int,
+  ticks: Hertz,
   start_ticks: Int,
 ) -> ServingIncarnationReading {
   match host_read_text(transport: transport, operation: ProcfsReadPidCgroup { pid: to_string(pid) as NonEmptyStr }) {
@@ -419,7 +421,7 @@ fn incarnation_after_host_facts(
   unit_digest: ContentHash,
   exported: ExactDecimal,
   boot: EpochSecs,
-  ticks: Int,
+  ticks: Hertz,
 ) -> ServingIncarnationReading {
   let pattern = sparkrun_vllm_ds4_gb10_vllm_binary
   match scan_engine_processes(target: target, context: context, pattern: pattern) {
@@ -480,7 +482,8 @@ fn incarnation_after_unit(
           match clock_ticks_reading(stdout: tick_text) {
             ClockTicksUnparseable { field: f } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: join(["`", f, "` is not an integer"], "") } }
             ClockTicksNotPositive { value: v } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: join(["tick rate ", to_string(v), " is not positive"], "") } }
-            ClockTicksObserved { per_second: ticks } =>
+            ClockTicksObserved { per_second: n } =>
+              let ticks = hertz(count: n)
               match host_read_text(transport: transport, operation: ProcfsReadStat) {
                 HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: c } }
                 HostTextObserved { stdout: stat_text } =>

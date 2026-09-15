@@ -1,6 +1,6 @@
 module test.claim.spark.serving_incarnation_observe
 
-import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.measure { hertz }
 import std.decimal { ExactDecimal }
 import std.content_hash { ContentHash, Sha256Hash, ContentHashEqual, compare_content_hash, sha256_hex_digest }
 import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch, proc_stat_boot_time }
@@ -176,7 +176,7 @@ test fn a_comm_containing_spaces_and_parens_does_not_shift_the_field() -> Bool {
 test fn the_exported_instant_equals_the_process_start_tick_for_tick() -> Bool {
   match prometheus_sample_value_reading(field: fixture_exported) {
     SampleValueExact { value: exported } =>
-      exported_start_equals_process_start(exported: exported, boot_epoch_seconds: 1788630958, ticks_per_second: 100, start_ticks: 71392591)
+      exported_start_equals_process_start(exported: exported, boot_epoch_seconds: 1788630958, ticks_per_second: hertz(count: 100), start_ticks: 71392591)
     SampleValueNotFinite { lexeme: _ } => false
     SampleValueUnreadable { lexeme: _ } => false
   }
@@ -187,7 +187,7 @@ test fn the_exported_instant_equals_the_process_start_tick_for_tick() -> Bool {
 test fn a_process_one_tick_off_does_not_match_the_exported_instant() -> Bool {
   match prometheus_sample_value_reading(field: fixture_exported) {
     SampleValueExact { value: exported } =>
-      !exported_start_equals_process_start(exported: exported, boot_epoch_seconds: 1788630958, ticks_per_second: 100, start_ticks: 71392592)
+      !exported_start_equals_process_start(exported: exported, boot_epoch_seconds: 1788630958, ticks_per_second: hertz(count: 100), start_ticks: 71392592)
     SampleValueNotFinite { lexeme: _ } => false
     SampleValueUnreadable { lexeme: _ } => false
   }
@@ -197,11 +197,11 @@ test fn a_process_one_tick_off_does_not_match_the_exported_instant() -> Bool {
 // false (not a match) rather than comparing against a wrapped value, so a wrapped equality cannot
 // fabricate a match (review 66389).
 test fn a_wrapping_tick_rate_is_not_a_match() -> Bool {
-  !exported_start_equals_process_start(exported: ExactDecimal { units: 1, fraction_digits: 0 }, boot_epoch_seconds: 9000000000000000000, ticks_per_second: 9000000000000000000, start_ticks: 0)
+  !exported_start_equals_process_start(exported: ExactDecimal { units: 1, fraction_digits: 0 }, boot_epoch_seconds: 9000000000000000000, ticks_per_second: hertz(count: 9000000000000000000), start_ticks: 0)
 }
 
 test fn the_process_start_epoch_floors_to_whole_seconds() -> Bool {
-  process_start_epoch_seconds(boot_epoch_seconds: 1788630958, ticks_per_second: 100, start_ticks: 71392591) == 1789344883
+  process_start_epoch_seconds(boot_epoch_seconds: 1788630958, ticks_per_second: hertz(count: 100), start_ticks: 71392591) == 1789344883
 }
 
 // ── THE CONTAINER COMES OFF THE CGROUP, NO DOCKER ACCESS ──────────────────────────────────────────
