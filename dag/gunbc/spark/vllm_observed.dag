@@ -1,6 +1,6 @@
 module gunbc.spark.vllm_observed
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
 import extdeps.languages.json.parse {
   JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
@@ -273,6 +273,21 @@ fn vllm_models_route_readback(
     configured_model_path: configured_model_path,
     max_model_len: max_model_len,
   }
+}
+
+// THE `created` FIELD OF A /v1/models ENTRY IS THE TIME THE ROUTE ANSWERED, NOT THE ENGINE'S START.
+// This was first modeled as a process generation and refuted by measurement: 52 readbacks of one
+// endpoint carried 52 distinct values, one per request (vLLM's OpenAI-compatible server stamps the
+// model card with the current time on each listing). So it establishes WHEN a readback was taken
+// and nothing about which process answered; a restart is NOT observable from this route. It keeps
+// upstream's name and is carried as std.types EpochSecs, never a bare Int, beside the readback
+// that produces it.
+type VllmModelsEntryCreated sole_constructor {
+  created: EpochSecs
+}
+
+fn vllm_models_entry_created(created: EpochSecs) -> VllmModelsEntryCreated {
+  VllmModelsEntryCreated { created: created }
 }
 
 fn vllm_version_route_readback(server_version: NonEmptyStr) -> VllmVersionRouteReadback {

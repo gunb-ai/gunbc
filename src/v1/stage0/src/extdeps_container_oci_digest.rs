@@ -106,10 +106,10 @@ pub fn oci_digest_algorithm_syntax_valid(
 ) -> bool {
     loop {
         if (index.clone() >= v1_rt::string_length(&text)) {
-            break in_component;
+            break in_component.clone();
         } else {
             let cp = v1_rt::code_point(v1_rt::substring(&text, index.clone(), (index.clone() + 1)));
-            if in_component {
+            if in_component.clone() {
                 if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                     {
                         let __tco_0 = (index + 1);

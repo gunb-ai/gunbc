@@ -45,6 +45,7 @@ import gunbc.roadmap_execution_contract {
   CargoTestValidation,
   CargoFmtValidation,
   ClosingContractAuthoringValidation,
+  validation_operation_identity_json,
 }
 import gunbc.roadmap_validation_oracle {
   ValidationVerdict,
@@ -1018,33 +1019,6 @@ fn verification_subject_json(subject: VerificationSubject) -> JsonValue {
   ])
 }
 
-fn verification_validation_operation_json(
-  validation: ValidationOperation,
-) -> JsonValue {
-  match validation {
-    GunbcClaimValidation { entry, function } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "gunbc-claim")),
-        json_kv(key: "entry", value: json_string(s: entry as String)),
-        json_kv(key: "function", value: json_string(s: function as String)),
-      ])
-    CargoTestValidation { filter } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "cargo-test")),
-        json_kv(key: "filter", value: json_string(s: filter as String)),
-      ])
-    CargoFmtValidation =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "cargo-fmt")),
-      ])
-    ClosingContractAuthoringValidation { target } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "closing-contract-authoring")),
-        json_kv(key: "target", value: json_string(s: target as String)),
-      ])
-  }
-}
-
 fn verification_modeled_command_json(
   command: ModeledValidationCommand,
 ) -> JsonValue {
@@ -1064,7 +1038,7 @@ fn verification_validation_execution_json(
   json_object(members: [
     json_kv(
       key: "validation",
-      value: verification_validation_operation_json(
+      value: validation_operation_identity_json(
         validation: execution.validation,
       ),
     ),

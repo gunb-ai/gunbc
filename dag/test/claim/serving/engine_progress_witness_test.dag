@@ -1,0 +1,240 @@
+module test.claim.serving.engine_progress_witness
+
+import std.types { Bool, String, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
+import std.measure { second, second_count }
+import v2.std.optional { Present, Absent }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, vllm_endpoint_process_launch, LaunchObserved, LaunchUnobserved,
+}
+import gunbc.harness.harness_backend { harness_progress_sample, harness_counter_field }
+import extdeps.vllm.metrics {
+  VllmServingMetric, GenerationTokensTotal, EstimatedFlopsPerGpuTotal, NumRequestsRunning, KvCacheUsagePerc, NumRequestsWaiting,
+  ServingQuestion, IsTheEngineCoreProgressing,
+  MetricVerdict, MetricAnswers, MetricAnswersOnlyUnder, MetricRefuses, vllm_metric_answers, vllm_metric_is_admissible,
+  MfuMetricsStanding, MfuMetricsEnabled, MfuMetricsDisabled, MfuMetricsStandingUnread,
+}
+import gunbc.serving.engine_progress {
+  EngineProgressSample, EngineProgress, EngineProgressVerdict,
+  EngineProgressed, EngineIdle, EngineNotProgressing, EngineProgressUnread,
+  EngineProgressGate, WithholdRouteNotProgressing, ProgressDoesNotWithhold,
+  engine_progress_read, engine_progress_gate,
+  serving_engine_step_bound, serving_engine_step_bound_standing,
+  ServingStepBoundStanding, StepBoundMeasured, StepBoundDeclaredUnmeasured,
+}
+
+data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
+
+fn w_launch(field: String) -> VllmEndpointProcessLaunch {
+  vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
+}
+
+fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
+  LaunchObserved { launch: w_launch(field: field), receipt: "w" as ObservationReceiptRef }
+}
+
+fn w_sample(running: Nat, counter: String, at: EpochSecs) -> EngineProgressSample? {
+  Present { value: EngineProgressSample { running: running, generation_field: counter as NonEmptyStr, at: at } }
+}
+
+// The fold under one stable exporter, which is the case every arm below varies inside.
+fn w_read(before: EngineProgressSample?, after: EngineProgressSample?) -> EngineProgress {
+  engine_progress_read(
+    endpoint: w_endpoint,
+    before_launch: w_seen(field: "1789300000.12"),
+    after_launch: w_seen(field: "1789300000.12"),
+    before: before,
+    after: after,
+    bound: serving_engine_step_bound,
+    now: "1789400600",
+  ).reading
+}
+
+fn w_is_not_progressing(p: EngineProgress) -> Bool {
+  match p {
+    EngineNotProgressing { endpoint: _, launch: _, running: _, over: _, bound: _, observed_at: _, receipt: _ } => true
+    EngineProgressed { endpoint: _, launch: _, over: _, observed_at: _, receipt: _ } => false
+    EngineIdle { endpoint: _, launch: _, observed_at: _, receipt: _ } => false
+    EngineProgressUnread { endpoint: _, attempted_at: _, cause: _ } => false
+  }
+}
+
+fn w_is_idle(p: EngineProgress) -> Bool {
+  match p {
+    EngineIdle { endpoint: _, launch: _, observed_at: _, receipt: _ } => true
+    EngineNotProgressing { endpoint: _, launch: _, running: _, over: _, bound: _, observed_at: _, receipt: _ } => false
+    EngineProgressed { endpoint: _, launch: _, over: _, observed_at: _, receipt: _ } => false
+    EngineProgressUnread { endpoint: _, attempted_at: _, cause: _ } => false
+  }
+}
+
+fn w_is_progressed(p: EngineProgress) -> Bool {
+  match p {
+    EngineProgressed { endpoint: _, launch: _, over: _, observed_at: _, receipt: _ } => true
+    EngineIdle { endpoint: _, launch: _, observed_at: _, receipt: _ } => false
+    EngineNotProgressing { endpoint: _, launch: _, running: _, over: _, bound: _, observed_at: _, receipt: _ } => false
+    EngineProgressUnread { endpoint: _, attempted_at: _, cause: _ } => false
+  }
+}
+
+fn w_unread_cause(p: EngineProgress) -> String {
+  match p {
+    EngineProgressUnread { endpoint: _, attempted_at: _, cause: c } => c as String
+    EngineProgressed { endpoint: _, launch: _, over: _, observed_at: _, receipt: _ } => ""
+    EngineIdle { endpoint: _, launch: _, observed_at: _, receipt: _ } => ""
+    EngineNotProgressing { endpoint: _, launch: _, running: _, over: _, bound: _, observed_at: _, receipt: _ } => ""
+  }
+}
+
+// THE POSITIVE CASE: requests running, the counter did not move, and the interval is past the bound.
+test fn a_motionless_counter_with_requests_running_past_the_bound_is_not_progressing() -> Bool {
+  let p = w_read(before: w_sample(running: 3, counter: "412.0", at: 1789400000), after: w_sample(running: 3, counter: "412.0", at: 1789400600))
+  w_is_not_progressing(p: p)
+    && (match p {
+      EngineNotProgressing { endpoint: _, launch: _, running: r, over: o, bound: b, observed_at: _, receipt: _ } =>
+        r == 3 && second_count(s: o) == 600 && second_count(s: b) == second_count(s: serving_engine_step_bound)
+      EngineProgressed { endpoint: _, launch: _, over: _, observed_at: _, receipt: _ } => false
+      EngineIdle { endpoint: _, launch: _, observed_at: _, receipt: _ } => false
+      EngineProgressUnread { endpoint: _, attempted_at: _, cause: _ } => false
+    })
+}
+
+// IDLE IS NOT STALLED, and this is the false positive that would matter most: an engine with nothing to do
+// has a motionless counter for as long as nobody asks it anything. Same interval, same counter, running 0.
+test fn an_idle_engine_is_idle_however_long_its_counter_stands_still() -> Bool {
+  let p = w_read(before: w_sample(running: 0, counter: "412.0", at: 1789400000), after: w_sample(running: 0, counter: "412.0", at: 1789400600))
+  w_is_idle(p: p) && !w_is_not_progressing(p: p)
+}
+
+// AN EXPONENT RENDERING IS A COUNTER LIKE ANY OTHER. prometheus switches to it past seven integer digits,
+// and the enrolled group B head already exports one (vllm:prompt_tokens_total 9.7885348e+07, read
+// 2026-09-14). A reader that parsed the field would refuse this pair and, folded as "no movement", would
+// report every warm long-lived engine as stalled.
+test fn an_exponent_rendered_counter_that_moves_reads_as_progress() -> Bool {
+  let p = w_read(before: w_sample(running: 3, counter: "1.234567e+06", at: 1789400000), after: w_sample(running: 3, counter: "1.234571e+06", at: 1789400600))
+  w_is_progressed(p: p)
+    && w_is_not_progressing(p: w_read(before: w_sample(running: 3, counter: "1.234567e+06", at: 1789400000), after: w_sample(running: 3, counter: "1.234567e+06", at: 1789400600)))
+}
+
+// AN INTERVAL INSIDE ONE STEP ESTABLISHES NOTHING, so a sub-bound window is unread and names its own span
+// rather than calling a step in flight a stall. The bracket a placement takes today is sub-second, which
+// is exactly why this arm exists.
+test fn a_window_shorter_than_the_step_bound_is_unread_not_a_stall() -> Bool {
+  let p = w_read(before: w_sample(running: 3, counter: "412.0", at: 1789400000), after: w_sample(running: 3, counter: "412.0", at: 1789400002))
+  !w_is_not_progressing(p: p) && w_unread_cause(p: p).contains("2s") && w_unread_cause(p: p).contains("step bound")
+}
+
+// A RESTART RESETS THE COUNTER, so two samples across a replaced exporter compare nothing. Stillness across
+// a restart is not stall, and neither is the apparent backwards jump.
+test fn samples_across_a_replaced_exporter_are_unread() -> Bool {
+  let p = engine_progress_read(
+    endpoint: w_endpoint,
+    before_launch: w_seen(field: "1789300000.12"),
+    after_launch: w_seen(field: "1789399999.50"),
+    before: w_sample(running: 3, counter: "9412.0", at: 1789400000),
+    after: w_sample(running: 3, counter: "4.0", at: 1789400600),
+    bound: serving_engine_step_bound,
+    now: "1789400600",
+  ).reading
+  !w_is_not_progressing(p: p) && w_unread_cause(p: p).contains("replaced")
+    && w_unread_cause(p: engine_progress_read(
+      endpoint: w_endpoint,
+      before_launch: LaunchUnobserved { group: FabricGroupA, obligation: "metrics did not answer" as NonEmptyStr },
+      after_launch: w_seen(field: "1789300000.12"),
+      before: none,
+      after: w_sample(running: 3, counter: "4.0", at: 1789400600),
+      bound: serving_engine_step_bound,
+      now: "1789400600",
+    ).reading) != ""
+}
+
+// A MISSING SAMPLE IS NOT A ZERO. Either side absent is unread, never a stall.
+test fn a_missing_sample_on_either_side_is_unread() -> Bool {
+  !w_is_not_progressing(p: w_read(before: none, after: w_sample(running: 3, counter: "412.0", at: 1789400600)))
+    && !w_is_not_progressing(p: w_read(before: w_sample(running: 3, counter: "412.0", at: 1789400000), after: none))
+    && w_unread_cause(p: w_read(before: none, after: w_sample(running: 3, counter: "412.0", at: 1789400600))).contains("first")
+    && w_unread_cause(p: w_read(before: w_sample(running: 3, counter: "412.0", at: 1789400000), after: none)).contains("second")
+}
+
+// THE BODY READER TAKES BOTH FACTS OR NEITHER, AND INHERITS THE EXACTLY-ONE-LINE LAW. A body whose counter
+// family carries two label sets is not a reading, and one missing the counter is not a reading either --
+// the engine's live shape (one line, labelled by engine and model_name) is the admitted case.
+test fn the_body_reader_needs_one_counter_line_and_a_running_gauge() -> Bool {
+  let live = join([
+    "vllm:num_requests_running\{engine=\"0\",model_name=\"deepseek-v4-flash:iq3s-split\"} 3.0\n",
+    "vllm:generation_tokens_total\{engine=\"0\",model_name=\"deepseek-v4-flash:iq3s-split\"} 412.0\n",
+  ], "")
+  let two_counters = join([live, "vllm:generation_tokens_total\{engine=\"1\",model_name=\"other\"} 7.0\n"], "")
+  let no_counter = "vllm:num_requests_running\{engine=\"0\"} 3.0\n"
+  (match harness_progress_sample(body: live, at: 1789400000) {
+    Present { value: s } => s.running == 3 && (s.generation_field as String) == "412.0"
+    Absent => false
+  })
+    && (match harness_progress_sample(body: two_counters, at: 1789400000) { Present { value: _ } => false  Absent => true })
+    && (match harness_progress_sample(body: no_counter, at: 1789400000) { Present { value: _ } => false  Absent => true })
+    && (match harness_counter_field(body: live, metric: GenerationTokensTotal) {
+      Present { value: f } => (f as String) == "412.0"
+      Absent => false
+    })
+}
+
+// THE STEP COUNTER THAT READS ZERO FOREVER IS NOT ADMITTED FOR THIS QUESTION. With MFU disabled --
+// measured on both enrolled heads 2026-09-14 -- estimated_flops_per_gpu_total sits at 0.0 whether the
+// engine is stepping or stopped, so it answers only under its precondition and is inadmissible unread.
+test fn the_flops_counter_answers_progress_only_under_its_precondition() -> Bool {
+  (match vllm_metric_answers(metric: EstimatedFlopsPerGpuTotal, question: IsTheEngineCoreProgressing) {
+    MetricAnswersOnlyUnder { precondition: p, note: _ } => (p as String).contains("enable-mfu-metrics")
+    MetricAnswers { note: _ } => false
+    MetricRefuses { because: _ } => false
+  })
+    && !vllm_metric_is_admissible(metric: EstimatedFlopsPerGpuTotal, question: IsTheEngineCoreProgressing, mfu: MfuMetricsStandingUnread)
+    && !vllm_metric_is_admissible(metric: EstimatedFlopsPerGpuTotal, question: IsTheEngineCoreProgressing, mfu: MfuMetricsDisabled)
+    && vllm_metric_is_admissible(metric: EstimatedFlopsPerGpuTotal, question: IsTheEngineCoreProgressing, mfu: MfuMetricsEnabled)
+}
+
+// THE TWO METRICS THIS CUT READS ANSWER THE QUESTION, AND THE TWO THAT LOOK LIKE THEY DO, DO NOT. A full KV
+// pool is the steady state of a warm idle engine, and a queue forms behind a stalled engine and a busy one
+// alike.
+test fn the_progress_question_admits_the_counter_and_the_running_gauge_only() -> Bool {
+  (match vllm_metric_answers(metric: GenerationTokensTotal, question: IsTheEngineCoreProgressing) {
+    MetricAnswers { note: n } => (n as String).contains("equality is NOT stall")
+    MetricAnswersOnlyUnder { precondition: _, note: _ } => false
+    MetricRefuses { because: _ } => false
+  })
+    && vllm_metric_is_admissible(metric: NumRequestsRunning, question: IsTheEngineCoreProgressing, mfu: MfuMetricsStandingUnread)
+    && !vllm_metric_is_admissible(metric: KvCacheUsagePerc, question: IsTheEngineCoreProgressing, mfu: MfuMetricsEnabled)
+    && !vllm_metric_is_admissible(metric: NumRequestsWaiting, question: IsTheEngineCoreProgressing, mfu: MfuMetricsEnabled)
+}
+
+// THE CONSUMER'S DECISION, ASSERTED DIRECTLY: only an established stall withholds a route, and an unread
+// reading is not a wall. gunbc.harness.harness_seat harness_add_candidate matches this gate.
+test fn only_an_established_stall_withholds_the_route() -> Bool {
+  let stalled = engine_progress_read(endpoint: w_endpoint, before_launch: w_seen(field: "1"), after_launch: w_seen(field: "1"), before: w_sample(running: 3, counter: "412.0", at: 1789400000), after: w_sample(running: 3, counter: "412.0", at: 1789400600), bound: serving_engine_step_bound, now: "1789400600")
+  let unread = engine_progress_read(endpoint: w_endpoint, before_launch: w_seen(field: "1"), after_launch: w_seen(field: "1"), before: w_sample(running: 3, counter: "412.0", at: 1789400000), after: w_sample(running: 3, counter: "412.0", at: 1789400002), bound: serving_engine_step_bound, now: "1789400002")
+  let idle = engine_progress_read(endpoint: w_endpoint, before_launch: w_seen(field: "1"), after_launch: w_seen(field: "1"), before: w_sample(running: 0, counter: "412.0", at: 1789400000), after: w_sample(running: 0, counter: "412.0", at: 1789400600), bound: serving_engine_step_bound, now: "1789400600")
+  (match engine_progress_gate(verdict: stalled) {
+    WithholdRouteNotProgressing { note: n } => n.contains("produced no output")
+    ProgressDoesNotWithhold => false
+  })
+    && (match engine_progress_gate(verdict: unread) { ProgressDoesNotWithhold => true  WithholdRouteNotProgressing { note: _ } => false })
+    && (match engine_progress_gate(verdict: idle) { ProgressDoesNotWithhold => true  WithholdRouteNotProgressing { note: _ } => false })
+}
+
+// THE BOUND IS DECLARED, NOT MEASURED, AND THE ROW SAYS SO. This reds when someone tightens the number
+// without producing a measurement for the route under observation.
+test fn the_step_bound_is_declared_rather_than_measured() -> Bool {
+  match serving_engine_step_bound_standing {
+    StepBoundDeclaredUnmeasured { basis: b } => (b as String).contains("chosen") && second_count(s: serving_engine_step_bound) == 120
+    StepBoundMeasured { tail: _, receipt: _ } => false
+  }
+}
+
+// BYTE EQUALITY'S ONE WEAKNESS, NAMED RATHER THAN DISCOVERED: a renderer that changed "412.0" to "412.00"
+// would read as movement. That is the safe direction -- it under-fires, leaving a stalled route a
+// candidate one round longer -- and it is asserted so the behaviour is a decision rather than a surprise.
+test fn a_rerendered_counter_reads_as_progress_which_is_the_under_firing_direction() -> Bool {
+  w_is_progressed(p: w_read(before: w_sample(running: 3, counter: "412.0", at: 1789400000), after: w_sample(running: 3, counter: "412.00", at: 1789400600)))
+}

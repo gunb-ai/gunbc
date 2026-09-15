@@ -25,6 +25,9 @@ import v2.std.verification {
   test_claim_input
 }
 
+// THE ROOTS THE REFLECTION READS CONSULT, named so the population is re-derivable.
+data coproduct_exhaustiveness_pool_roots: List<String> = ["dag", "src/v2"]
+
 fn reference_coproduct_exhaustiveness_anchor() -> GeneratedAnchorKey {
   coproduct_exhaustiveness_anchor(coproduct_type: ^TestClaim, omitted_variant: ^DiagnosticClaim)
 }
@@ -100,17 +103,27 @@ fn roster_covers_arms(
   }
 }
 
+// THE READ IS NOW SCOPE-CARRYING AND CAN REFUSE. A refusal fails this claim rather than reading as
+// zero arms, which it would have done if the Outcome were flattened to an empty list -- and the
+// `length(arms) > 0` conjunct below would then have caught it only by accident. The refusal arm is
+// explicit so the two states stay distinguishable: a spelling no module declares, and a spelling
+// two modules declare, are both unanswerable here and neither is "covered".
 fn roster_covers_all_arms_of_roster(
+  pool_roots: List<String>,
   gens: List<Generator<TestgenConcept>>,
   coproduct_type: Symbol
 ) -> Bool {
-  let arms = coproduct_arm_keys(type_name: coproduct_type)
-  (length(xs: arms) > 0)
-    && roster_covers_arms(gens: gens, coproduct_type: coproduct_type, arms: arms)
+  match coproduct_arm_keys(pool_roots: pool_roots, type_name: coproduct_type) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: arms, diagnostics: _ } =>
+      (length(xs: arms) > 0)
+        && roster_covers_arms(gens: gens, coproduct_type: coproduct_type, arms: arms)
+  }
 }
 
 fn roster_covers_all_arms_of(coproduct_type: Symbol) -> Bool {
   roster_covers_all_arms_of_roster(
+    pool_roots: coproduct_exhaustiveness_pool_roots,
     gens: testgen_scheduled_coproduct_exhaustiveness_generators(),
     coproduct_type: coproduct_type
   )
@@ -119,7 +132,11 @@ fn roster_covers_all_arms_of(coproduct_type: Symbol) -> Bool {
 fn witness_coproduct_exhaustiveness_roster_covers_testclaim() -> Bool {
   let gens = testgen_scheduled_coproduct_exhaustiveness_generators()
   (length(xs: gens) > 0)
-    && roster_covers_all_arms_of_roster(gens: gens, coproduct_type: ^TestClaim)
+    && roster_covers_all_arms_of_roster(
+      pool_roots: coproduct_exhaustiveness_pool_roots,
+      gens: gens,
+      coproduct_type: ^TestClaim
+    )
 }
 
 fn witness_coproduct_exhaustiveness_covers_second_coproduct() -> Bool {

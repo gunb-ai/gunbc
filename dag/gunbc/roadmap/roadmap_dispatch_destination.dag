@@ -21,6 +21,9 @@ import gunbc.merge_admission_subject { render_git_object_id_wire, parse_git_obje
 import gunbc.roadmap_execution_contract {
   ClaimSourceRootLayout, claim_source_root_args, WorkItemExecutionContract,
   ExecutionContract, ExecutionContractUnspecified, NotAgentWork,
+  ValidationOperation, ExecutionCapability, AttemptPathScope,
+  validation_operation_identity_json, execution_capability_identity_json,
+  attempt_path_scope_identity_json,
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -314,18 +317,25 @@ type AdmittedPublicRevision {
 // WorkItemDispatch). The destination owns publication and its default branch; the admitted base
 // owns the starting revision in that destination; public_revision pins the public dependency
 // of the validation composition. These can be different repositories and different revisions.
-// WorkItemExecutionContract remains the only authored source-root composition. Admission reads
-// its source_roots directly: there is no independent roots parameter. sealed_source_roots is a
-// HISTORICAL snapshot, exactly as the revision standing is, not a second current execution
-// contract. Reading the current owner's roots on both sides would erase a composition move.
-// This snapshot adds the temporal fact the live owner cannot supply after it changes. It must
-// never answer what the CURRENT roots are; the join compares sealed history against new
-// admission from the current WorkItemExecutionContract, never current against itself.
+// WorkItemExecutionContract remains the only authored contract. Admission reads its four
+// fields directly: there is no independent contract parameter beside execution. Each sealed_*
+// field is a HISTORICAL snapshot of that contract half, exactly as the revision standing is,
+// not a second current execution contract. The composition half is sealed_source_roots; the
+// judgment and touch halves are sealed_validations, sealed_path_scope, and
+// sealed_extra_capabilities. Reading the current owner's contract on both sides would erase a
+// contract move. These snapshots add the temporal facts the live owner cannot supply after it
+// changes. They must never answer what the CURRENT contract is; the join compares sealed
+// history against new admission from the current WorkItemExecutionContract, never current
+// against itself. publication and acceptance_kind are not fields of WorkItemExecutionContract
+// or of this subject; they are not sealed here.
 type AttemptAdmissionSubject {
   node: RoadmapNodeIdentity
   destination: DestinationIdentity
   base: AdmittedBaseRevision
   public_revision: AdmittedPublicRevision
+  sealed_validations: List<ValidationOperation>
+  sealed_extra_capabilities: List<ExecutionCapability>
+  sealed_path_scope: AttemptPathScope
   sealed_source_roots: ClaimSourceRootLayout
 }
 
@@ -346,9 +356,9 @@ type AttemptSubjectAdmission
 // census_closure_frontier_row_groups enrolls these rows for dissolution_census to fold.
 data attempt_admission_subject_frontier_rows: List<FrontierRow> = [frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.roadmap_dispatch_destination", decl_name: "AttemptAdmissionSubject"),
-  reason: "The sealed subject is executed by public witnesses. No public production attempt currently stores or reads it; gunbc-private#60 consumes it only after its coordinated recut, not in this closure",
+  reason: "The sealed subject is executed by public witnesses. No public production attempt currently stores or reads the sealed contract fields; gunbc-private#60 finding 4 is the named later consumer, after its coordinated recut, not in this closure",
   dissolution: unbound_dissolution(
-    description: "strategy.plan_item_dispatch on the private recut stores AttemptAdmissionSubject as its durable admitted subject, imports PublicRevisionStanding and public_revision_standing_text instead of defining them, derives contract identity from attempt_admission_subject_fields, and joins through join_attempt_subject. The public belt follow-up binds worktree creation and publication to this subject's destination and admitted base, persists the subject at admission, and reads it at verify. A witness-only caller or a rendered parallel string contract does not satisfy this production trigger"
+    description: "gunbc-private#60 finding 4 recuts strategy.plan_item_dispatch to store AttemptAdmissionSubject as its durable admitted subject, consume sealed_validations, sealed_path_scope and sealed_extra_capabilities for grant/oracle/publication identity, import PublicRevisionStanding and public_revision_standing_text instead of defining them, derive contract identity from attempt_admission_subject_fields, and join through join_attempt_subject. The public belt follow-up binds worktree creation and publication to this subject's destination and admitted base, persists the subject at admission, and reads it at verify. A witness-only caller or a rendered parallel string contract does not satisfy this production trigger"
   ),
 )]
 
@@ -376,12 +386,15 @@ fn admit_attempt_subject(
                   match execution {
                     ExecutionContractUnspecified => AttemptSubjectRefused { node: node, cause: AttemptSubjectInputMissing { field: "execution_contract" } }
                     NotAgentWork { mode: _ } => AttemptSubjectRefused { node: node, cause: AttemptSubjectInputMissing { field: "agent_execution_contract" } }
-                    ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots } =>
+                    ExecutionContract { validations, extra_capabilities, path_scope, source_roots } =>
                       validate_attempt_subject(subject: AttemptAdmissionSubject {
                         node: node,
                         destination: identity,
                         base: admitted_base,
                         public_revision: AdmittedPublicRevision { revision: revision, standing: standing },
+                        sealed_validations: validations,
+                        sealed_extra_capabilities: extra_capabilities,
+                        sealed_path_scope: path_scope,
                         sealed_source_roots: source_roots,
                       })
                   }
@@ -416,6 +429,9 @@ fn validate_attempt_subject(subject: AttemptAdmissionSubject) -> AttemptSubjectA
                 destination: subject.destination,
                 base: AdmittedBaseRevision { revision: base, admitted_by: subject.base.admitted_by, admitted_on: subject.base.admitted_on },
                 public_revision: AdmittedPublicRevision { revision: revision, standing: subject.public_revision.standing },
+                sealed_validations: subject.sealed_validations,
+                sealed_extra_capabilities: subject.sealed_extra_capabilities,
+                sealed_path_scope: subject.sealed_path_scope,
                 sealed_source_roots: subject.sealed_source_roots,
               } }
           }
@@ -446,6 +462,9 @@ fn attempt_admission_subject_fields(subject: AttemptAdmissionSubject) -> List<Js
     json_kv(key: "admitted_on", value: json_string(s: subject.base.admitted_on as String)),
     json_kv(key: "public_revision", value: json_string(s: render_git_object_id_wire(oid: subject.public_revision.revision))),
     json_kv(key: "public_revision_standing", value: json_string(s: public_revision_standing_text(s: subject.public_revision.standing))),
+    json_kv(key: "validations", value: json_array(elements: subject.sealed_validations |> map(v => validation_operation_identity_json(validation: v)))),
+    json_kv(key: "extra_capabilities", value: json_array(elements: subject.sealed_extra_capabilities |> map(c => execution_capability_identity_json(capability: c)))),
+    json_kv(key: "path_scope", value: attempt_path_scope_identity_json(scope: subject.sealed_path_scope)),
     json_kv(key: "source_roots", value: json_array(elements: claim_source_root_args(layout: subject.sealed_source_roots) |> map(arg => json_string(s: arg)))),
   ]
 }

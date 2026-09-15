@@ -17,7 +17,6 @@ import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_comma
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
-
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -253,14 +252,12 @@ type SparkManagedGrant
 // than riding beside it as a trigger sentence.
 //
 // WHAT "EVERYTHING ELSE" IS IS NOT ESTABLISHED BY THIS REPOSITORY. spark_pair_container_env declares
-// no secret-bearing entry, but the container's Config.Env also inherits the image's baked ENV, and no
-// instrument here reads an image configuration from a registry: a one-off read of the base config
-// was taken while this grant was authored, and its conclusion is deliberately NOT transcribed here,
-// because a transcription is unreachable from the thing it describes (DESIGN 6) and an annotation is
-// never evidence (4c). TRIGGER: an image-configuration reader over
-// extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference, decoding into
-// extdeps.container.oci.image_config ContainerImageConfig, SUFFICIENT FOR the base image's Env to be
-// enumerated and classified by execution at the pinned digest.
+// no secret-bearing entry, but the container's Config.Env also inherits the image's baked ENV.
+// THE PINNED-BASE HALF IS ESTABLISHED BY EXECUTION: gunbc.spark.pinned_base_env_classification
+// sparkrun_pinned_base_env_read reads Hub config at extdeps.docker.images.sparkrun_vllm_ds4_gb10
+// sparkrun_vllm_ds4_gb10_pinned_reference, decodes into extdeps.container.oci.image_config
+// ContainerImageConfig, and classifies Env. Name that instrument; do not transcribe its output here
+// (DESIGN 6). That receipt is not a classification of the live serving container.
 //
 // AND THE IMAGE THE CONTAINER RUNS IS NOT THAT DIGEST. It is created from the host-local tag
 // gunbc_spark_pair_runtime_image_tag, built from gunbc_spark_pair_runtime_dockerfile (FROM the pinned
@@ -268,7 +265,7 @@ type SparkManagedGrant
 // grant is also that gap's observer: inspect returns .Image, the running container's image id, which
 // is its config digest. TRIGGER: this grant installed AND a build-digest producer for that Dockerfile,
 // SUFFICIENT FOR the running pair container's image to be identified by digest rather than by a
-// host-local tag. No comparison is built here; both halves are missing.
+// host-local tag. No comparison is built here; the join half is missing.
 
 // THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
 // "/usr/bin/loginctl enable-linger" and the argv six lines down emitted bare
@@ -292,14 +289,15 @@ type SparkManagedGrant
 // "unestablished" and erase its obligation for the very grant it admits, so the model would say the
 // knowledge wall came down when only the decision to proceed was taken.
 
-// THE EPISTEMIC AXIS. A grant that returns no host data has nothing to classify. The
-// classification-established arm lands with the image-configuration reader whose receipt is its
-// payload; until then the only data-bearing standing is unestablished.
+// THE EPISTEMIC AXIS. A grant that returns no host data has nothing to classify.
+// A pinned-base image Env classification lives on PinnedBaseEnvRead, not on this coproduct:
+// classifying a digest-pinned image is not a disclosure standing for any grant, including
+// InspectServingContainer (live object, unpinned tag).
 type SparkGrantDisclosureStanding
   = GrantReturnsNoHostData
   | GrantDisclosureUnestablished { obligation: NonEmptyStr }
 
-data spark_inspect_grant_disclosure_unestablished_obligation: NonEmptyStr = "gunbc.spark.managed_access_bootstrap: installing InspectServingContainer lets gunbc-automation read the whole extdeps.docker.container_inspect ContainerInspect object of the live serving container, including Config.Env, whose values can carry secrets, and nothing in this repository classifies that object. Two facts are missing and neither implies the other: the environment the pinned base image bakes (extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference), and whether the live container is that construction at all, since it runs the host-local tag gunbc_spark_pair_runtime_image_tag, which no digest binds. A registry reading therefore cannot stand in for the live object. TRIGGER: a classification of the inspect-visible sensitive fields of the live container, established without the grant (an administrator-credential read, or a pinned-image reading joined to an observation that the live container runs that digest), SUFFICIENT FOR spark_managed_grant_disclosure_standing to leave GrantDisclosureUnestablished for InspectServingContainer" as NonEmptyStr
+data spark_inspect_grant_disclosure_unestablished_obligation: NonEmptyStr = "gunbc.spark.managed_access_bootstrap: installing InspectServingContainer lets gunbc-automation read the whole extdeps.docker.container_inspect ContainerInspect object of the live serving container, including Config.Env, whose values can carry secrets, and nothing in this repository classifies that live object. The pinned-base Env half is established by gunbc.spark.pinned_base_env_classification sparkrun_pinned_base_env_read over extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference. What is still missing is whether the live container is that construction at all, since it runs the host-local tag gunbc_spark_pair_runtime_image_tag, which no digest binds. A registry reading therefore cannot stand in for the live object. TRIGGER: a classification of the inspect-visible sensitive fields of the live container, established without the grant (an administrator-credential read, or a pinned-image reading joined to an observation that the live container runs that digest), SUFFICIENT FOR spark_managed_grant_disclosure_standing to leave GrantDisclosureUnestablished for InspectServingContainer" as NonEmptyStr
 
 fn spark_managed_grant_disclosure_standing(grant: SparkManagedGrant) -> SparkGrantDisclosureStanding {
   match grant {
@@ -321,9 +319,23 @@ type SparkGrantInstallBasis
   = InstallBasisAbsent
   | OperatorAcceptedUnresolvedDisclosureRisk { actor: NonEmptyStr, decided_on: NonEmptyStr, accepted_for: SparkManagedGrant }
 
-// THE ROW AN OPERATOR DECISION EDITS. Absent until the operator decides to accept the risk or waits for
-// the reader.
-data spark_managed_grant_install_basis: SparkGrantInstallBasis = InstallBasisAbsent
+// THE ROW AN OPERATOR DECISION EDITS, AND THE DECISION THAT EDITED IT. On 2026-09-14 the operator
+// answered the escalation raised when the inspect grant landed withheld (#11326): APPROVE installing
+// InspectServingContainer for the pinned pair container, on the strength of a one-off read of the
+// base image's configuration taken outside this repository. That read is NOT transcribed here and
+// this row does NOT classify anything -- it is an attributable decision to proceed while the
+// disclosure stays unestablished, which is exactly what the accepted-risk arm means. The
+// obligation spark_inspect_grant_disclosure_unestablished_obligation remains outstanding and is
+// still owed by the image-configuration reader and by the live inspect classification; an admission
+// on this basis carries that obligation into the receipt rather than retiring it.
+//
+// The actor is the operator's fleet login, read from the account model rather than spelled here, so
+// the decision is attributed to the same principal every other operator act in this lane names.
+data spark_managed_grant_install_basis: SparkGrantInstallBasis = OperatorAcceptedUnresolvedDisclosureRisk {
+  actor: fleet_bootstrap_principal_login(),
+  decided_on: "2026-09-14" as NonEmptyStr,
+  accepted_for: InspectServingContainer { container: spark_pair_container_name },
+}
 
 // Whether a basis names this grant, joined on the derived sudoers command: two grants authorizing the
 // same words are the same authorization.

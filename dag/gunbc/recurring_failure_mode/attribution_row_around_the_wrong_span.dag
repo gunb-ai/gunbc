@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.attribution_row_around_the_wrong_span
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data attribution_row_around_the_wrong_span: RecurringFailureMode = RecurringFailureMode {
+  identity: "attribution_row_around_the_wrong_span" as NonEmptyStr,
+
+  receipts: [
+    "**an attribution row placed around the wrong span leaves the residual intact while the class reads as repaired.** A cost partition refuses because some work inside the parent span is covered by no exclusive row. An author hypothesises which work it is, measures THAT span honestly, lands it as a row -- and the residual does not move, because the hypothesis was wrong. The row is real, measured and non-overlapping; it simply accounts for something else. What makes this a failure mode rather than an ordinary wrong guess is the SECOND step: the repair gets written up as the repair, and the next reader inherits a closed question.",
+
+    "INVALID STATE: an authority asserting that a named row explains a measured residual, when the row's own count is orders of magnitude smaller than the residual it is credited with.",
+
+    "HARM: DESIGN section 4b rung inflation, reached through an honest measurement. The row is not fabricated and its number is not wrong -- only the CAUSAL SENTENCE beside it is. So every later reader sees a measured row, a plausible story and a closed case, and the actual unattributed span keeps refusing every full-corpus fold while the class is filed as understood. The cost is paid by whoever next reads the residual and believes the annotation instead of the number.",
+
+    "DISTINGUISHING FACT, and it is arithmetic rather than judgement: THE ROW'S OWN COUNT IS ~0 WHILE THE RESIDUAL IS UNCHANGED TO THE MILLISECOND. If a row is credited with a residual, its count and that residual must be the same order. Read them together and the claim refutes itself.",
+
+    "RECEIPT (2026-09-12/13, deep-cat-655, gunbc#10940 lineage). SUCC3's full-corpus fold refused at RemainderExceedsTolerance with a 238.5 ms residual. The hypothesis was that the per-module loop's release of its resolved tree, which fell out of scope after the prepare span closed, was the unattributed work. module_release was added as a measured row around an explicit drop, and dag/std/compiler_entry.dag was annotated to say the residual had been that release. SUCC6 then measured module_release at 1.9 ms with a 244.8 ms residual still standing, and a third fold (gunbc#11256, f5e8a568) measured 1.86 ms against 238.8 ms. Read the [native-cost-partition] line of each retake log for the figures rather than this sentence: SUCC3 45a9105101, SUCC6 4011bf9d, gunbc#11256 f5e8a568 and gunbc#11202 a3157d6a. The row accounts for roughly one part in a hundred of what it was credited with. By the time the annotation was corrected another lane had already cited it as 'the 238.5 ms was repaired by the module_release row' -- the inheritance this class describes, observed.",
+
+    "WHAT THIS IS NOT. It is not the fabricated-value class: nothing here is invented, and the row would survive review on its own terms. It is not a measurement error: every number is correct. It is the gap between a correct measurement and the causal sentence written beside it, which no gate reads.",
+
+    "RULE: a row may be credited with a residual only when its measured count is the same order as that residual, on the same run. Until then the row lands as a named span and the residual stays open in its own words -- 'the span is named, the remainder is smaller, the next one gets the same treatment' -- never as a repair.",
+
+    "RUNG FOUND AT: mitigatable. The residual is caught by the partition's own tolerance arm, so the defect surfaces loudly on every full-corpus fold; what is unmitigated is the annotation beside it, which no gate reads.",
+
+    "CEILING: mechanically preventable. A partition whose annotation credits a row with a residual is checkable against the run that produced both, because the row's count and the remainder are printed on the same receipt line.",
+
+    "NEXT TRIGGER: a lens over cost-partition annotations that joins a credited row's measured count to the remainder on the same receipt and refuses when they differ by more than an order of magnitude. Until that exists the wall is review diligence, and this row says so rather than claiming a rung it does not hold."
+  ],
+
+  evidence: [],
+}

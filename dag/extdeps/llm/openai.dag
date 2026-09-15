@@ -3,6 +3,7 @@ module extdeps.llm.openai
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.llm.openai_contracts { openai_finish_reason_wire_contract }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

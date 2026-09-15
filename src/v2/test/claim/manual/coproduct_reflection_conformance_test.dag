@@ -1,10 +1,15 @@
 module v2.test.manual.coproduct_reflection_conformance
 
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
 import extdeps.languages.rust.capabilities {
   RustCapability
 }
 import extdeps.uri { UriScheme, uri_scheme_inhabitants }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node_reflection {
+  coproduct_arm_keys_at,
   coproduct_arm_keys,
   coproduct_nullary_inhabitants
 }
@@ -12,7 +17,32 @@ import v2.test.fixture.coproduct_reflection_generic_wrapper {
   nullary_reflection_through_generic_wrapper
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// READS THE LIVE TREE AS OF THE REFLECTION CUTOVER -- the reads name pool roots and consult the
+// live declaration index. v2.std.live_tree records that a SubstrateInputsOnly row over a live read
+// is re-checked by nothing, so a stale row here would be a lie no consumer would catch.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ROOTS THE REFLECTION READS CONSULT, named so the population is re-derivable.
+data reflection_conformance_pool_roots: List<String> = ["dag", "src/v2"]
+
+// UriScheme IS A FORKED SPELLING AND THIS IS WHERE THE CUTOVER SHOWS. It is a closed coproduct in
+// extdeps.uri and a RECORD in v2.std.network, so the guarded bare route REFUSES it -- correctly,
+// because a bare spelling cannot say which of the two was meant. Before the cutover the seam
+// answered it from whichever module load order reached first, and the two claims below consumed
+// that answer while believing they were reading extdeps.uri. They now CITE the module, which is
+// the only way to ask the question they were always asking.
+data reflect_uri_scheme_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.uri",
+  decl_name: "UriScheme",
+  field: WholeDeclaration
+}
+
+fn conformance_arm_keys_or_empty(o: Outcome<List<Symbol>>) -> List<Symbol> {
+  match o {
+    Accepted { value: keys, diagnostics: _ } => keys
+    Rejected { diagnostics: _ } => std.algebra.Empty
+  }
+}
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
@@ -69,7 +99,7 @@ test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_gene
     Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
         xs: imported_derive_trait_discriminants(inhabitants: inhabitants),
-        ys: coproduct_arm_keys(type_name: reflect_imported_derive_trait_type),
+        ys: conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_imported_derive_trait_type)),
         eq: symbol_eq
       )
     Rejected { diagnostics: _ } => false
@@ -102,8 +132,8 @@ test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool 
 
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
   !bag_eq(
-    xs: coproduct_arm_keys(type_name: reflect_connective_type),
-    ys: coproduct_arm_keys(type_name: reflect_behavior_type),
+    xs: conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_connective_type)),
+    ys: conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_behavior_type)),
     eq: symbol_eq
   )
 }
@@ -135,7 +165,7 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
     discriminant_of: behavior_discriminant
   ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
-      let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
+      let keys = conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_behavior_type))
       bag_eq(
         xs: nullary_inhabitant_discriminants(inhabitants: inhabitants),
         ys: keys,
@@ -190,7 +220,12 @@ fn uri_scheme_roster_discriminants(inhabitants: List<UriScheme>) -> List<Symbol>
 test fn witness_uri_scheme_declared_roster_matches_reflected_arm_keys() -> Bool {
   bag_eq(
     xs: uri_scheme_roster_discriminants(inhabitants: uri_scheme_inhabitants()),
-    ys: coproduct_arm_keys(type_name: reflect_uri_scheme_type),
+    ys: conformance_arm_keys_or_empty(
+      o: coproduct_arm_keys_at(
+        pool_roots: reflection_conformance_pool_roots,
+        ref: reflect_uri_scheme_ref
+      )
+    ),
     eq: symbol_eq
   )
 }
@@ -199,5 +234,12 @@ test fn witness_uri_scheme_declared_roster_matches_reflected_arm_keys() -> Bool 
 // reflection call that silently returned nothing -- the empty-observation narrow -- would
 // green the wall while checking nothing at all.
 test fn witness_uri_scheme_reflected_arm_keys_are_non_empty() -> Bool {
-  length(xs: coproduct_arm_keys(type_name: reflect_uri_scheme_type)) > 0
+  length(
+    xs: conformance_arm_keys_or_empty(
+      o: coproduct_arm_keys_at(
+        pool_roots: reflection_conformance_pool_roots,
+        ref: reflect_uri_scheme_ref
+      )
+    )
+  ) > 0
 }

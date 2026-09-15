@@ -344,13 +344,13 @@ pub fn compose_sub_value_relations(
     callee_rel: Rc<SubValueRelation>,
 ) -> Rc<SubValueRelation> {
     match (*callee_rel.clone()).clone() {
-        SubValueRelation::PreservedValue => arg_rel,
+        SubValueRelation::PreservedValue => arg_rel.clone(),
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-        SubValueRelation::NonIncreasingValue => match (*arg_rel).clone() {
+        SubValueRelation::NonIncreasingValue => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             _ => Rc::new(SubValueRelation::NonIncreasingValue),
         },
-        SubValueRelation::StrictAxisErased => match (*arg_rel).clone() {
+        SubValueRelation::StrictAxisErased => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::StrictAxisErased),
             SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::StrictAxisErased),
@@ -364,12 +364,12 @@ pub fn compose_sub_value_relations(
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
             SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
         },
-        SubValueRelation::MixedTop => match (*arg_rel).clone() {
+        SubValueRelation::MixedTop => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
             _ => Rc::new(SubValueRelation::MixedTop),
         },
-        SubValueRelation::StrictSubValue { .. } => match (*arg_rel).clone() {
+        SubValueRelation::StrictSubValue { .. } => match (*arg_rel.clone()).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::StrictSubValue { field: f, .. } => {
@@ -391,7 +391,7 @@ pub fn compose_sub_value_relations(
             SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
             SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
         },
-        SubValueRelation::IteratedSubValue { field: _, .. } => match (*arg_rel).clone() {
+        SubValueRelation::IteratedSubValue { field: _, .. } => match (*arg_rel.clone()).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::StrictSubValue { field: f, .. } => {
@@ -417,7 +417,7 @@ pub fn compose_sub_value_relations(
             param: p,
             factor: f,
             ..
-        } => match (*arg_rel).clone() {
+        } => match (*arg_rel.clone()).clone() {
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::ArithmeticDescent {
                 param: p.clone(),
                 factor: f.clone(),
@@ -962,27 +962,25 @@ pub fn cost_bound_params_of_factors(
 
 pub fn cost_bound_params_into(b: Rc<CostBound>, seen: Rc<Vec<String>>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*b.clone()).clone() {
-        CostBound::ConstantBound => seen,
+        CostBound::ConstantBound => seen.clone(),
         CostBound::AtomicBound { cost: c, .. } => {
-            cost_bound_params_of_factors(Rc::new(vec![c.clone()]), seen)
+            cost_bound_params_of_factors(Rc::new(vec![c.clone()]), seen.clone())
         }
         CostBound::ProductBound { factors: fs, .. } => {
-            cost_bound_params_of_factors(fs.clone(), seen)
+            cost_bound_params_of_factors(fs.clone(), seen.clone())
         }
         CostBound::SumOfProductsBound { terms: ts, .. } => ts.iter().cloned().fold(
-            seen,
+            seen.clone(),
             |acc: Rc<Vec<String>>, factors: Rc<Vec<Rc<AtomicCost>>>| {
                 cost_bound_params_of_factors(factors.clone(), acc)
             },
         ),
-        CostBound::SumBound { terms: ts, .. } => ts
-            .iter()
-            .cloned()
-            .fold(seen, |acc: Rc<Vec<String>>, inner: Rc<CostBound>| {
-                cost_bound_params_into(inner.clone(), acc)
-            }),
-        CostBound::ForeverBound => seen,
-        CostBound::ErrorBound => seen,
+        CostBound::SumBound { terms: ts, .. } => ts.iter().cloned().fold(
+            seen.clone(),
+            |acc: Rc<Vec<String>>, inner: Rc<CostBound>| cost_bound_params_into(inner.clone(), acc),
+        ),
+        CostBound::ForeverBound => seen.clone(),
+        CostBound::ErrorBound => seen.clone(),
     })
 }
 

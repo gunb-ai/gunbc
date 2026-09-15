@@ -24,6 +24,7 @@ type GeneratedArtifact
   | DesignArtifact
   | DesignFailureModesArtifact
   | DesignRungDropsArtifact
+  | ContributorOnboardingArtifact
   | GithooksPrePushArtifact
   | GithooksPreCommitArtifact
   | GeneratedArtifactMergeDriverArtifact
@@ -45,7 +46,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -176,6 +177,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     DesignArtifact => ArtifactLocation { directory: ".", name: "DESIGN.md" }
     DesignFailureModesArtifact => ArtifactLocation { directory: "docs", name: "design-failure-modes.md" }
     DesignRungDropsArtifact => ArtifactLocation { directory: "docs", name: "design-rung-drops.md" }
+    ContributorOnboardingArtifact => ArtifactLocation { directory: "docs", name: "onboarding.md" }
     GithooksPrePushArtifact => ArtifactLocation { directory: ".githooks", name: "pre-push" }
     GithooksPreCommitArtifact => ArtifactLocation { directory: ".githooks", name: "pre-commit" }
     GeneratedArtifactMergeDriverArtifact =>
@@ -251,6 +253,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
     DesignRungDropsArtifact => CommitRequired { consumer: ProjectDocumentation }
+    ContributorOnboardingArtifact => CommitRequired { consumer: ProjectDocumentation }
     PlanArtifact { plan } =>
       match plan.projection {
         PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
@@ -306,6 +309,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     DesignFailureModesArtifact => match b { DesignFailureModesArtifact => true  _ => false }
     DesignRungDropsArtifact => match b { DesignRungDropsArtifact => true  _ => false }
+    ContributorOnboardingArtifact => match b { ContributorOnboardingArtifact => true  _ => false }
     GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
     GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
     GeneratedArtifactMergeDriverArtifact => match b { GeneratedArtifactMergeDriverArtifact => true  _ => false }
@@ -372,6 +376,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     DesignArtifact => decl_ref(module_path: "gunbc.design_document", decl_name: "expected_design_md")
     DesignFailureModesArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_failure_modes_md")
     DesignRungDropsArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_rung_drops_md")
+    ContributorOnboardingArtifact => decl_ref(module_path: "gunbc.contributor_onboarding_path", decl_name: "expected_contributor_onboarding_md")
     GithooksPrePushArtifact => decl_ref(module_path: "gunbc.githooks_pre_push_emit", decl_name: "expected_githooks_pre_push_sh")
     GithooksPreCommitArtifact => decl_ref(module_path: "gunbc.githooks_pre_commit_emit", decl_name: "expected_githooks_pre_commit_sh")
     GeneratedArtifactMergeDriverArtifact => decl_ref(module_path: "gunbc.generated_artifact_merge_driver", decl_name: "expected_generated_artifact_merge_driver_sh")
