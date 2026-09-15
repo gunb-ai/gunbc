@@ -20,8 +20,8 @@ import extdeps.vllm.usage_stats {
   vllm_usage_stats_assignment_disables, DoNotTrackMarkerPresent, DoNotTrackMarkerAbsent,
   VllmUsageStatsDisableTerm, vllm_usage_stats_empty_server_cause,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7 }
 import gunbc.spark.vllm_serving_launch {
   vllm_serving_launch, VllmServingLaunch, EndpointIncarnationObserved,
   endpoint_incarnation_observation,
@@ -475,6 +475,81 @@ test fn a_foreign_readback_does_not_admit_on_a_disabled_inspect() -> Bool {
   }
 }
 
+fn t_realization_with_observation_endpoint(
+  observation_endpoint: String,
+  process_start: String,
+  launch: VllmServingLaunch,
+) -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: ModelsRouteRead {
+      readback: vllm_models_route_readback(
+        served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+        configured_model_path: t_declared_path() as NonEmptyStr,
+        max_model_len: token_count(count: 1048576),
+      ),
+    },
+    endpoint: vllm_endpoint_process_launch(
+      group: FabricGroupA,
+      endpoint: "http://10.0.0.1:8000" as NonEmptyStr,
+      process_start_field: "1" as NonEmptyStr,
+    ),
+    incarnation: EndpointIncarnationObserved {
+      observation: endpoint_incarnation_observation(
+        endpoint: vllm_endpoint_process_launch(
+          group: FabricGroupA,
+          endpoint: observation_endpoint as NonEmptyStr,
+          process_start_field: process_start as NonEmptyStr,
+        ),
+        launch: launch,
+        receipt: "test.claim.spark.spark_serving_usage_stats_observe_witness_test" as ObservationReceiptRef,
+      ),
+    },
+  }
+}
+
+test fn a_foreign_observation_endpoint_does_not_absent_on_disabled_inspect() -> Bool {
+  match spark_usage_stats_telemetry_path(
+    realization: t_realization_with_observation_endpoint(
+      observation_endpoint: "http://10.0.0.1:8001",
+      process_start: "2",
+      launch: t_launch(),
+    ),
+    inspect: InspectStdoutRead {
+      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
+    },
+  ) {
+    ProviderPathAbsent { evidence: _ } => false
+    ProviderPathUnread { obligation: _, consulted: _ } => true
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+  }
+}
+
+test fn an_observation_outside_hosts_does_not_absent_on_disabled_inspect() -> Bool {
+  match spark_usage_stats_telemetry_path(
+    realization: t_realization_with_observation_endpoint(
+      observation_endpoint: "http://10.0.0.1:8000",
+      process_start: "1",
+      launch: vllm_serving_launch(
+        group: FabricGroupB,
+        head: operator_host_srv7,
+        systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
+        container_id: t_container_id as NonEmptyStr,
+        executable_digest: t_sha256(hex: "7777777777777777777777777777777777777777777777777777777777777777"),
+        unit_digest: t_sha256(hex: "5555555555555555555555555555555555555555555555555555555555555555"),
+        started_at: 1788907506,
+      ),
+    ),
+    inspect: InspectStdoutRead {
+      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
+    },
+  ) {
+    ProviderPathAbsent { evidence: _ } => false
+    ProviderPathUnread { obligation: _, consulted: _ } => true
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+  }
+}
+
 test fn marker_unread_without_disable_is_unread_never_located() -> Bool {
   match spark_usage_stats_telemetry_path(
     realization: t_realization_observed(),
@@ -554,6 +629,8 @@ fn observe_witness_main() -> ProcessExit {
     && disabled_launch_is_an_absent_telemetry_path()
     && first_party_admission_reaches_admitted_when_usage_stats_are_disabled()
     && a_foreign_readback_does_not_admit_on_a_disabled_inspect()
+    && a_foreign_observation_endpoint_does_not_absent_on_disabled_inspect()
+    && an_observation_outside_hosts_does_not_absent_on_disabled_inspect()
     && marker_unread_without_disable_is_unread_never_located()
     && canonical_enabled_is_refused_never_located()
     && non_default_destination_cannot_use_default_enrollment()

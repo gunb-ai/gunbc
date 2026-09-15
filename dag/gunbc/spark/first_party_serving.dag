@@ -17,7 +17,7 @@ import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
   DispositionStanding, DispositionNotEngaged, admit_provider_use,
 }
-import gunbc.spark.fabric_switch_observed { fabric_lane_observations }
+import gunbc.spark.fabric_switch_observed { fabric_lane_observations, fabric_group_wire }
 import gunbc.spark.vllm_observed {
   VllmModelsRouteReadbackStanding, ModelsRouteRead, VllmModelsRouteReadback,
 }
@@ -31,9 +31,12 @@ import extdeps.vllm.usage_stats {
   vllm_usage_stats_reporting,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
-import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
+}
 import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
+  EndpointIncarnationObservation, launch_wire,
 }
 import gunbc.spark.serving_usage_stats_observe {
   ServingContainerInspectStdout, InspectStdoutRead, InspectStdoutUnread,
@@ -485,9 +488,11 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // THE ENDPOINT AND THE INCARNATION ARE THE SERVICE HALF'S EVIDENCE. The endpoint is the process the
 // route answered on; the incarnation standing says whether anything observed which engine launch that
 // process belongs to. The production caller, gunbc.harness.harness_seat harness_serving_realization,
-// has no such observer and says so with EndpointIncarnationUnobserved. Only
-// gunbc.spark.serving_offer spark_serving_route_standing reads them. The telemetry standing does not,
-// and should not: knowing which incarnation answered is not a reading of its effective environment.
+// has no such observer and says so with EndpointIncarnationUnobserved. Telemetry inspect is bound
+// to observation.launch only after spark_incarnation_observation_agreement agrees the observation
+// names this realization's endpoint and its group/hosts -- the same join
+// gunbc.spark.serving_offer spark_service_from_observation consumes, so a foreign endpoint cannot
+// Absent the path.
 type SparkServingRealization {
   hosts: List<HostIdentity>
   readback: VllmModelsRouteReadbackStanding
@@ -495,6 +500,42 @@ type SparkServingRealization {
   incarnation: EndpointIncarnationStanding
 }
 
+// THE SAME TWO CHECKS SPARK_SERVICE_FROM_OBSERVATION RUNS before it will name a service.
+// An observation is about a process; inspect of that observation's container_id is not
+// evidence about a different answering endpoint. Disagreement is unread, never Absent.
+type SparkIncarnationObservationAgreement
+  = ObservationAgreesWithThisRealization
+  | ObservationNamesAnotherEndpoint { observed: NonEmptyStr, answering: NonEmptyStr }
+  | ObservationIncarnationOutsideRealization { incarnation: NonEmptyStr }
+
+fn spark_incarnation_observation_agreement(
+  realization: SparkServingRealization,
+  observation: EndpointIncarnationObservation,
+) -> SparkIncarnationObservationAgreement {
+  let observed_key = vllm_endpoint_process_launch_key(launch: observation.endpoint)
+  let answering_key = vllm_endpoint_process_launch_key(launch: realization.endpoint)
+  if (observed_key as String) != (answering_key as String) {
+    ObservationNamesAnotherEndpoint { observed: observed_key, answering: answering_key }
+  } else if (fabric_group_wire(g: observation.launch.group) as String) != (fabric_group_wire(g: realization.endpoint.group) as String)
+      || !any(realization.hosts, h => host_identity_eq(a: h, b: observation.launch.head)) {
+    ObservationIncarnationOutsideRealization { incarnation: launch_wire(i: observation.launch) as NonEmptyStr }
+  } else {
+    ObservationAgreesWithThisRealization
+  }
+}
+
+fn spark_incarnation_observation_unread_obligation(
+  agreement: SparkIncarnationObservationAgreement,
+) -> NonEmptyStr {
+  match agreement {
+    ObservationAgreesWithThisRealization =>
+      "spark_incarnation_observation_unread_obligation is not an agree-arm obligation" as NonEmptyStr
+    ObservationNamesAnotherEndpoint { observed: ob, answering: an } =>
+      join(["the incarnation observation is about endpoint process ", ob as String, ", not the process that answered this route, ", an as String], "") as NonEmptyStr
+    ObservationIncarnationOutsideRealization { incarnation: i } =>
+      join(["the observed incarnation ", i as String, " is not on this realization's group and hosts"], "") as NonEmptyStr
+  }
+}
 
 fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -> List<HostIdentity> {
   filter(
@@ -684,11 +725,26 @@ fn spark_serving_usage_stats_standing(
             EndpointIncarnationUnobserved { obligation: o } =>
               UsageStatsLaunchUnread { obligation: o }
             EndpointIncarnationObserved { observation: obs } =>
-              spark_serving_usage_stats_from_inspect(
-                launch: obs.launch,
-                inspect_stdout: stdout,
-                marker: spark_usage_stats_marker_unread(),
-              )
+              match spark_incarnation_observation_agreement(realization: realization, observation: obs) {
+                ObservationAgreesWithThisRealization =>
+                  spark_serving_usage_stats_from_inspect(
+                    launch: obs.launch,
+                    inspect_stdout: stdout,
+                    marker: spark_usage_stats_marker_unread(),
+                  )
+                ObservationNamesAnotherEndpoint { observed: ob, answering: an } =>
+                  UsageStatsLaunchUnread {
+                    obligation: spark_incarnation_observation_unread_obligation(
+                      agreement: ObservationNamesAnotherEndpoint { observed: ob, answering: an },
+                    ),
+                  }
+                ObservationIncarnationOutsideRealization { incarnation: i } =>
+                  UsageStatsLaunchUnread {
+                    obligation: spark_incarnation_observation_unread_obligation(
+                      agreement: ObservationIncarnationOutsideRealization { incarnation: i },
+                    ),
+                  }
+              }
           }
       }
   }
