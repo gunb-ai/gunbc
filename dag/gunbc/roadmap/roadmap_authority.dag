@@ -33,6 +33,8 @@ import gunbc.roadmap_model {
   LiveReceiptJoinsAmbiguousDeclaredNode,
   node_accepted,
   project_live_acceptance_receipts,
+  LiveAcceptanceReceiptsReplayed,
+  LiveAcceptanceReceiptsReplayRefused,
   replay_acceptance_history,
   acceptance_history_integrity_holds,
   AcceptanceHistoryIntegrityVerdict,
@@ -3184,6 +3186,8 @@ type RoadmapAcceptanceReceiptsProjection
   = RoadmapAcceptanceReceiptsProjected { receipts: List<RoadmapAcceptanceReceipt> }
   | RoadmapAcceptanceReceiptsProjectionRefused { detail: String }
 
+data acceptance_history_replay_refused_detail: String = "acceptance history replay refused: an event did not apply to the replayed state, so no live receipt set can be derived from this history"
+
 fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad {
   load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path)
 }
@@ -3201,12 +3205,26 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
 // git.Core.Show — a changed carrier without valid merge-base parse refuses
 // AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = [].
 
+// The single route from a loaded event history to a receipts projection. Both wrappers below
+// call it, so a loaded-but-unreplayable history cannot fabricate an affirmative empty on one
+// path while the other refuses: there is one arm to get wrong, not two.
+fn acceptance_receipts_projection_from_events(
+  events: List<RoadmapAcceptanceEvent>,
+) -> RoadmapAcceptanceReceiptsProjection {
+  match project_live_acceptance_receipts(history: events) {
+    LiveAcceptanceReceiptsReplayed { live: live } =>
+      RoadmapAcceptanceReceiptsProjected { receipts: live }
+    LiveAcceptanceReceiptsReplayRefused =>
+      RoadmapAcceptanceReceiptsProjectionRefused {
+        detail: acceptance_history_replay_refused_detail,
+      }
+  }
+}
+
 fn roadmap_acceptance_receipts_from_carrier_text(text: String) -> RoadmapAcceptanceReceiptsProjection {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      RoadmapAcceptanceReceiptsProjected {
-        receipts: project_live_acceptance_receipts(history: events),
-      }
+      acceptance_receipts_projection_from_events(events: events)
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
   }
@@ -3215,9 +3233,7 @@ fn roadmap_acceptance_receipts_from_carrier_text(text: String) -> RoadmapAccepta
 fn roadmap_acceptance_receipts() -> RoadmapAcceptanceReceiptsProjection {
   match roadmap_acceptance_event_history_load() {
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      RoadmapAcceptanceReceiptsProjected {
-        receipts: project_live_acceptance_receipts(history: events),
-      }
+      acceptance_receipts_projection_from_events(events: events)
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
   }
