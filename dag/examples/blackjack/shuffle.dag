@@ -1,0 +1,8 @@
+module examples.blackjack.shuffle
+
+// FILE MARKER FOR THE ONBOARDING PROJECT. The deterministic shuffle -- shuffle, next_seed,
+// seed_from_octets -- is specified in docs/plans/blackjack-onboarding.md section 4.4
+// (authority gunbc.plans.blackjack_onboarding). The anchor is the replay handle: a recorded
+// value, not an entropy source. Entropy is reached only through extdeps.entropy and only from
+// the one integration claim that section 6 of the brief describes.
+type ShuffleSeed { value: Int }
