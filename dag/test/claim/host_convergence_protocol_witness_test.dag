@@ -25,8 +25,6 @@ import std.realization_reconcile {
   classify_reconciled,
   EffectConverged,
   EffectNotConverged,
-  Reconciliation,
-  NotConverged,
 }
 import std.decl_ref { decl_ref }
 import gunbc.host_convergence_protocol {
@@ -209,16 +207,11 @@ fn fixture_decide(a: GoalAssessment<String, String, String, String>) -> UpsertDe
   }
 }
 
-fn fixture_readiness(observed: String) -> Reconciliation<String, String> {
-  NotConverged { reason: "fixture-not-ready", applied: observed }
-}
-
 test fn host_effect_domain_projection_inspects_without_selection() -> Bool {
   let projection = HostEffectDomainProjection {
     observe: fixture_observe,
     assess: fixture_assess,
     decide: fixture_decide,
-    readiness: fixture_readiness,
   }
   match inspect_via_host_effect_projection(
     subject: "host",

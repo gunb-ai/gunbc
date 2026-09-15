@@ -16,7 +16,6 @@ import std.realization_reconcile {
   Grounding,
   ReconciledEffect,
   Application,
-  Reconciliation,
   reconcile_effect,
   reconcile_effect_without_read,
 }
@@ -42,15 +41,15 @@ import gunbc.host_convergence_census {
 // ObservationAttempt<ShowEffectiveRead<E>, String>.
 // RUNG: mechanically preventable on the enrolled REDs; empty GoalDiverged remains
 // structurally impossible in std.goal_assessment.
-// HostEffectDomainProjection is the standard host-effect domain surface
-// (observe, assess, decide, readiness). inspect_via consumes observe/assess
-// this cut. decide and readiness are §3c declared frontiers: typed onto
-// std.upsert_decision UpsertDecision and std.realization_reconcile
-// Reconciliation (there is no RuntimeReadiness type; inventing one would be
-// a second vocabulary). Consumers: C3/C4 fleet_plan / fleet_apply for decide;
-// C5 live_readiness for readiness. Triggers name the capability and the cut:
-// C3/C4 route member decisions through this projection; C5 routes provider
-// readiness through this projection.
+// HostEffectDomainProjection is observe, assess, decide. inspect_via consumes
+// observe/assess this cut. decide is a §3c declared frontier typed onto
+// std.upsert_decision UpsertDecision. C3/C4 fleet_plan / fleet_apply:
+// those cuts route member decisions through this projection.
+// Readiness is NOT a field: there is no Ready/Pending/Refused algebra yet
+// (modeling obligation, C5). A generic Reconciliation field would let
+// readiness inhabit a convergence verdict. C5 trigger: C5 establishes a
+// Ready/Pending/Refused authority independent of Reconciliation, and routes
+// provider readiness through this projection.
 // C0 left ensure_decide and observe_executable as inline cites; those two
 // have no named census accessor, so the bind holds one decl_ref each.
 // NEXT-RUNG (controls 1 and 8): a compile instrument that can import
@@ -250,18 +249,17 @@ type CanonicalProtocolStanding
   | CensusProtocolUnbound { standing: CensusPhaseStanding }
   | HostEffectFrontierUnbound { standing: FrontierStanding }
 
-type HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, Applied, ReadyEvidence> {
+type HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan> {
   observe: fn(Subject, Request) -> ObservationAttempt<Observed, ObserveRefusal>
   assess: fn(Goal, Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>
   decide: fn(GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>) -> UpsertDecision<Plan>
-  readiness: fn(Observed) -> Reconciliation<Applied, ReadyEvidence>
 }
 
-fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, Applied, ReadyEvidence>(
+fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan>(
   subject: Subject,
   goal: Goal,
   request: Request,
-  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan, Applied, ReadyEvidence>,
+  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan>,
 ) -> GoalInspection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
   inspect_goal(
     subject: subject,
@@ -299,20 +297,10 @@ data host_effect_decide_apply_frontier: ProtocolDeclaredFrontier = ProtocolDecla
   trigger_capability: fleet_apply(),
 }
 
-data host_effect_readiness_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
-  declaration: decl_ref(
-    module_path: "gunbc.host_convergence_protocol",
-    decl_name: "HostEffectDomainProjection",
-  ),
-  named_consumer: live_readiness(),
-  trigger_capability: live_readiness(),
-}
-
 data host_effect_declared_frontiers: List<ProtocolDeclaredFrontier> = [
   host_effect_observe_frontier,
   host_effect_decide_plan_frontier,
   host_effect_decide_apply_frontier,
-  host_effect_readiness_frontier,
 ]
 
 fn frontier_names_a_distinct_consumer(f: ProtocolDeclaredFrontier) -> Bool {
