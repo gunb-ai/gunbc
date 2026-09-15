@@ -85,6 +85,9 @@ fn opt(element: GrammarExpr) -> GrammarExpr {
   Optional { element: element }
 }
 
+// Flattened [aa, b?, b?]: two nullable alts. Token a is only in aa's FIRST; C3
+// still backtracked because the outer choice was both-nullable. aa rejects one
+// a; a nullable sibling must accept empty (review 66500).
 test fn prepared_choice_plan_agrees_with_the_inline_dispatch_rule() -> Bool {
   let left = term(token_class: ^pcp_a)
   let right = term(token_class: ^pcp_b)
@@ -96,9 +99,6 @@ test fn prepared_choice_plan_agrees_with_the_inline_dispatch_rule() -> Bool {
   let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
   let ab = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_b))
   let bb = seq(left: term(token_class: ^pcp_b), right: term(token_class: ^pcp_b))
-  // Flattened [aa, b?, b?]: two nullable alts. Token a is only in aa's FIRST; C3
-  // still backtracked because the outer choice was both-nullable. aa rejects one
-  // a; a nullable sibling must accept empty (review 66500).
   let both_nullable = Choice {
     left: aa,
     right: Choice { left: opt(element: term(token_class: ^pcp_b)), right: opt(element: term(token_class: ^pcp_b)) }
