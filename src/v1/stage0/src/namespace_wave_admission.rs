@@ -1891,379 +1891,413 @@ pub struct TransitionAdmission {
 /// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
 /// and one that deserves its own evidence.
 ///
-/// TRIGGER for the 37 rows: they go when #11138 merges, at which point the base carries the
-/// shared declaration, the deltas stop being producible, and CONSUMED comes due on the roster's
-/// next touch -- adjudicated by the declaring-module join, not by this sentence.
-const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std.text";
+/// TRIGGER for the 37 rows: they went when #11138 merged. The base then carried the shared
+/// declaration and the rows were consumed; they were deleted on the roster's next touch
+/// (gunbc#11373), and the frontier above is unaffected by that deletion.
+///
+/// PCI IDENTITY REPAIR (gunbc#11373, 2026-09-14). The required floor at d616837c802
+/// measured 39 deltas: six ExplicitlyEvaluatedZeroDelta memberships and one
+/// SameDeclarationIdentityRebind removal auto-admit. These 32 exact binding rows
+/// adjudicate the remaining 17 TargetChanged and 15 NewPoolCoincidenceResolution
+/// deltas. The former relocate Ubuntu-owned brands to their PCI authority; the
+/// latter restore bindings whose runner consumers landed without that authority.
+/// This is const admission data for the existing seed consumer, not new policy.
+/// Every binding requires the complete singleton candidate set, not a subset.
+/// Delete these rows after #11373 lands and the base resolves these bindings:
+/// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
+/// wave_admission_refusal charges consumed rows on that landing run. A separate
+/// cleanup PR must remove the consumed rows; this admission does not waive it.
+const SCM_SOURCE_RECOVERY_REHOME_LABEL: &str =
+    "gunbc#10729 scm source-recovery re-home into object_store 2026-09-10";
+const SCM_MERGE_BASE_COHOME_LABEL: &str =
+    "gunbc#10729 scm merge-base co-home into repository_envelope 2026-09-09";
 
+/// THE gunbc#11373 ROWS DISSOLVED HERE (2026-09-15), BY THE TRIGGER THE BLOCK ABOVE WROTE FOR
+/// THEM. That block says it plainly -- delete these rows after #11373 lands and the base resolves
+/// these bindings, and a separate cleanup does not waive it. #11373 is present at this merge's
+/// base, so the floor on gunbc#10729 measured 0 unadjudicated deltas, 0 stale admissions and all
+/// 32 CONSUMED, due on the roster's next touch. This merge IS that touch, so they go here rather
+/// than waiting for a cleanup PR that would have to re-derive the same join.
+///
+/// ADJUDICATED BY THE FLOOR'S OWN RECEIPT, not by this sentence: every one of the 32 reported
+/// `already satisfied at the base -- consumed by its own merge`, which is the run joining each
+/// row against the merged tree on its own tuple. The count is occurrences, not constants: 17
+/// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
+/// runner hardware observation, DGX PXE and PXE-rescue consumers.
+///
+/// gunbc#10729 REFILLS THE ROSTER, and the rows below are the SCM re-home cohort: merge-base and
+/// commit-subject authorities co-homed into `gunbc.scm.repository_envelope`. An earlier revision
+/// of this paragraph said main was carrying its own in-flight rows beside them. That was true of
+/// the tree this merge started from and is false of the tree it produced, for the reason the two
+/// paragraphs above give -- main's cohort was consumed by its own landing, so the roster holds one
+/// cohort again. The distinction that makes both readings safe is the same one: a row goes when
+/// its transition is PRESENT AT THE BASE, which is a fact about that row's own trigger and not
+/// about how full the array is.
+///
+/// FIVE OF THIS COHORT'S ROWS WENT ON THEIR OWN TRIGGER before this merge. Splitting
+/// `MergeBaseRefusal` out of `MergeBaseOutcome` removed the bindings they admitted, so the floor
+/// reported them CONSUMED and they were deleted rather than carried; `squash_merge`'s
+/// `MergeBaseDerived` row stays, because that route still matches the derived arm.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.complexity_linearity_audit",
-            in_declaration: "migration_roster_contains",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceMissing",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "callee_text_is_host_sink",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "data_init_belongs_to_modules",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flow_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceMissing",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "path_literal_from_lexeme",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "sink_kind_for_callee",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.enforcement.vocab",
-            in_declaration: "scope_roster_covers",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceMissing",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.fact_cardinality",
-            in_declaration: "add_unseen_key",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "callee_text_is_known_carrier",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_for_callee_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.scm.squash_merge",
+            in_declaration: "squash_merge",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_homes_in_closure",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.scm.squash_merge",
+            in_declaration: "squash_merge",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "classification_has_literal_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "gunbc.scm.squash_merge",
+            in_declaration: "SquashMergeOutcome",
+            spelling: "MergeSideName",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "decls_with_qualified_name",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_carrier_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "module_facts_for_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "modules_of_closure_paths",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_from_lexeme",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "runtime_read_carrier_module_names",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.manufactured_dependency_census",
-            in_declaration: "edge_is_manufactured",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.manufactured_dependency_census",
-            in_declaration: "snoc_unseen",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "add_unseen",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "bfs_absorb_neighbor",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "path_matches_touched",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.module_graph",
-            in_declaration: "snoc_unseen_list",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "decl_contains_atom",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "decl_contains_callee",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "maybe_snoc_callee_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "node_contains_atom_text",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "site_row_already_present",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "structural_red_control_live_fixture_mint_site_discovered",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_corpus_paths_live",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_fact_eq",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_squash_merge_witness",
+            in_declaration:
+                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_import_facts_at_path",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_squash_merge_witness",
+            in_declaration:
+                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_neighbor_paths_from_facts",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_paths_from_import_edges",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: STRING_EQ_COLLAPSE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.reference_deps",
-            in_declaration: "reference_paths_from_module_declarations",
-            spelling: "string_eq",
-            expected_candidates: &["v2.std.text"],
+            module: "test.claim.scm_squash_merge_witness",
+            in_declaration:
+                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

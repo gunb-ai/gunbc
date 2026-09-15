@@ -2336,6 +2336,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_0J26ACBBJP5AD79QB78HAYGVQM",
+      id: "fleet-mtcollins1-first-host",
+      owner: "fleet",
+      path: "dag/gunbc/machine_intake/mtcollins1_expansion_observation.dag",
+      t: fields(
+        headline: "Bring Mt. Collins unit 1 into service as our first owned host, from observation rather than assumption",
+        boundary: "Every fact the unit's intake depends on is either bound to a git-tracked observation consumed at mint time, or stays in its typed unobserved arm and refuses. The remaining facts: OCP bay occupancy and riser fitment observed from the unit interior; the bring-up evidence captures bound onto an executing consumer rather than stored beside it; controller credential standing minted from a channel-census observation over every controller LAN address (the mtcollins1_bmc_secure_standing_frontier dissolution); one PCI identity authority with its superseded namespace admissions deleted; pre-OS assessment derived from SEL and captured inventory with its absence and indexed-replay controls executed; live pre-OS acquisition; supervision-to-envelope realization; PCI address cross-rendering equivalence between firmware and kernel renderings; and one meaning for AttachmentVerdict, since mtcollins1_expansion_attachment attachment_against_evidence discards the OCP standing (ocp: _) and so admits installability on the PCIe path but only interface compatibility on the OCP path (either match the OCP standing before the generation comparison with typed occupied and unobserved refusals, or split the verdict). Zero offers, over-reports and populated bays refuse rather than answer.",
+        displaced_cost: "Hardware bought against an assumed slot, riser or bay costs a returned part and a lost week; a credential believed rotated but readable on another controller address is a silent exposure.",
+        first_slice: "Settle OCP bay occupancy and riser fitment from the interior observation, with the zero-offer, over-report and populated-bay refusals.",
+        red_control: "An unobserved OCP variant, an unfitted riser, a populated bay, or a credential rotation evidenced on a single controller address refuses rather than reporting an attachment point or a secured controller.",
+        out_of_scope: "Not fleet-wide firmware or cooling policy (fleet-bmc-policy-convergence) and not classification of what we manage on machines generally (fleet-state-frontier).",
+        handback: "Each fact above is bound to a consumed artifact or refusing in its unobserved arm, and the unit mints a BmcSecureStanding."
+      )
+    ),
+    active_large(
       identity: "rn_PEH90XVR97GYYA5FXGDJXZ70PF",
       id: "fleet-bmc-policy-convergence",
       owner: "fleet",

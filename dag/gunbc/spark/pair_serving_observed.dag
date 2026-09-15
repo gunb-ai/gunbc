@@ -2,7 +2,7 @@ module gunbc.spark.pair_serving_observed
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
-import std.measure { Millisecond, millisecond, TokenCount, token_count }
+import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size, measure_scale_fraction_floor }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
@@ -279,6 +279,87 @@ fn fabric_group_same(a: FabricGroup, b: FabricGroup) -> Bool {
 
 fn group_kv_pool_observed(group: FabricGroup) -> GroupKvPoolObserved? {
   first(filter(group_kv_pools_observed, r => fabric_group_same(a: r.group, b: group)))
+}
+
+// ── WHAT A RANK ACTUALLY HAS FREE WHEN IDLE, WHICH IS NOT total_memory AND NOT A FRACTION OF IT ──
+//
+// THREE QUANTITIES THAT ARE ROUTINELY CONFLATED, and this module carries only the third. The DEVICE
+// TOTAL is a hardware property and lives on gunbc.spark.serving_deployment_selection FleetSnapshot.
+// A REQUESTED ENVELOPE is total x --gpu-memory-utilization and is a launch parameter, not a reading.
+// IDLE FREE is what the runtime found unallocated on an idle rank, and it is smaller than the total
+// by whatever the driver, the CUDA context and the container already hold -- an amount no fraction
+// of the total predicts. A lower-bound feasibility screen wants THIS one, because it is the only one
+// of the three that is an observation of the machine rather than a property or a request.
+//
+// THE PRECISION IS THE REPORTER'S AND THE ROW SAYS SO. The runtime prints one decimal of GiB, so the
+// reading is 116.9 GiB and its true value lies within about 0.05 GiB of that. The byte figure below
+// is DERIVED from the reported GiB by std.measure rather than transcribed as a product, so a reader
+// who disputes the conversion can re-derive it; and any consumer comparing against it must be able
+// to survive the 0.05 GiB uncertainty, which is a fact about the reading, not a caveat to be dropped
+// once it is inconvenient. Rounding is GENEROUS here in the direction that matters: 116.9 is at most
+// 0.05 GiB above the truth, so a shortfall larger than that is established rather than borderline.
+// THE READING IS TWO ByteSize ENDPOINTS, NOT A SCALAR WITH A REMEMBERED SCALE (review 65713).
+//
+// A first cut stored `reported_free_gib_tenths: Nat` and left a function to interpret it -- a product-layer
+// memory quantity whose unit lived in the field NAME and in one reader's head. std.measure owns byte
+// quantities, so the carrier holds them, and the tenths-of-a-GiB arithmetic happens ONCE at the
+// declaration where the reported figure is transcribed.
+//
+// AND THE UNCERTAINTY IS NUMERIC RATHER THAN PROSE, WHICH IS THE OTHER HALF OF THE SAME FINDING. The
+// runtime prints one decimal of GiB, so the true value lies within about 0.05 GiB of the figure. That was
+// carried in `precision_caveat` -- a sentence -- while every consumer compared against the point value as
+// if it were exact. A screen built on it could therefore EXCLUDE a requirement that actually fits, which
+// DESIGN section 4d names directly: do not over-generalize a prohibition, because the cost is the thing
+// you never did and the failure looks like rigour. So the endpoints are fields, and a consumer that
+// refuses must justify itself against the one that makes refusing hardest.
+//
+// The prose stays, because a reader still needs to know WHY there are two endpoints. It is no longer the
+// only place the fact lives.
+type GroupRankFreeMemoryObserved {
+  group: FabricGroup
+  reported_free_wire: NonEmptyStr
+  free_lower: ByteSize
+  free_upper: ByteSize
+  probed_at: NonEmptyStr
+  instrument: NonEmptyStr
+  precision_caveat: NonEmptyStr
+}
+
+data group_rank_free_memory_observed: List<GroupRankFreeMemoryObserved> = [
+  GroupRankFreeMemoryObserved {
+    group: FabricGroupA,
+    reported_free_wire: "116.9 GiB free per rank with the engine idle" as NonEmptyStr,
+    free_lower: gib_hundredths_to_bytes(hundredths: 11685),
+    free_upper: gib_hundredths_to_bytes(hundredths: 11695),
+    probed_at: "2026-09-12" as NonEmptyStr,
+    instrument: "the serving runtime's own memory-profiling line on an idle Group A rank during the V4.1 Flash rollout, read from the head's captured stdout; NVML refuses this query on unified memory and must not be substituted for it" as NonEmptyStr,
+    precision_caveat: "the runtime reports one decimal of GiB, so the true free value lies within about 0.05 GiB of this figure; a verdict drawn against this bound must exceed that uncertainty to be established rather than borderline" as NonEmptyStr,
+  },
+]
+
+// ONE TENTH OF A GIBIBYTE IS NOT A BYTE COUNT ANYONE SHOULD TYPE. The reported figure is tenths of
+// GiB, so the byte value is a std.measure scaling of a Gibibyte measure and not a hand-multiplied
+// literal -- the same reason this module records a source line rather than a retyped number.
+// THE ENDPOINTS ARE HALF THE REPORTER'S LAST PRINTED DIGIT EITHER SIDE, WHICH IS WHY THE SCALE IS
+// HUNDREDTHS AND NOT TENTHS. A runtime printing one decimal of GiB emits 116.9 for anything in
+// [116.85, 116.95), so the bracket is 11685 and 11695 hundredths -- a span of 0.1 GiB, not 1.0. A first
+// cut wrote 1164 and 1174 tenths, which is the same construction at the wrong scale and would have handed
+// the memory screen a bound ten times too generous. The conversion is std.measure's, once, here.
+fn gib_hundredths_to_bytes(hundredths: Nat) -> ByteSize {
+  measure_scale_fraction_floor(
+    m: gibibyte_to_byte_size(g: gibibyte(count: hundredths)),
+    num: 1,
+    den: 100)
+}
+
+// WHICH ENDPOINT A CONSUMER MAY USE IS NOT ITS CHOICE TO MAKE FREELY, so the two are named for what they
+// are good for rather than offered as an undifferentiated pair. An IMPOSSIBILITY screen must use the
+// upper endpoint: it may refuse only what does not fit even the most generous reading. Anything claiming
+// that memory IS available must use the lower.
+fn group_rank_free_memory_upper(r: GroupRankFreeMemoryObserved) -> ByteSize { r.free_upper }
+
+fn group_rank_free_memory(group: FabricGroup) -> GroupRankFreeMemoryObserved? {
+  first(filter(group_rank_free_memory_observed, r => fabric_group_same(a: r.group, b: group)))
 }
 
 // The head host of the first pair as observed: the unit and the serve process are on srv6, and the
