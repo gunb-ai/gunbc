@@ -14,7 +14,10 @@ import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.cache_identity {
   parse_source_artifact_kind,
   typed_module_artifact_kind,
-  resolved_graph_artifact_kind
+  resolved_graph_artifact_kind,
+  native_compiler_artifact_kind,
+  native_test_universe_artifact_kind,
+  native_module_verdict_bundle_artifact_kind
 }
 import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingEnforcement, MissingConcept,
@@ -30,8 +33,8 @@ import std.materialization_provider {
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
-  request_key, request_kind, request_required_outputs, request_declared_inputs,
-  request_judgment_contract, judgment_required_output_ids,
+  request_key, request_kind, request_required_outputs,
+  request_judgment_contract, SemanticOnly, Scoped,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
   compiler_identity_input,
   output_parse_tree, output_typed_module_interface,
@@ -699,27 +702,41 @@ fn witness_six_artifact_request_families() -> List<ArtifactRequest> {
   ]
 }
 
-// PAIR: request_projections_read_the_judgment_contract (specimen over all six families) with
-// provider_serve_completeness_reads_the_judgment_contract (production inhabitance). Bypass:
-// provider_serve that does not read request_required_outputs from the contract greens a v1-shape
-// resolve artifact. Removing one family's contract constructor from request_judgment_contract
-// fails to typecheck by request_fold totality.
-test fn request_projections_read_the_judgment_contract() -> Bool {
+// PAIR: six_judgment_contracts_join_the_cache_identity_kinds (specimen: contract kind and
+// occurrence grain against std.cache_identity / OccurrencePersistenceContract, not against the
+// request_* aliases) with provider_serve_completeness_reads_the_judgment_contract (inhabitance).
+// Bypass of the inhabitance: provider_serve that does not use the contract roster greens a
+// v1-shape resolve artifact. A family omitted from request_judgment_contract fails to typecheck.
+test fn six_judgment_contracts_join_the_cache_identity_kinds() -> Bool {
   let reqs = witness_six_artifact_request_families()
-  let n = reqs.count()
-  let matched = reqs |> filter(r => {
-    let c = request_judgment_contract(req: r)
-    (request_kind(req: r) == c.kind)
-      && (request_declared_inputs(req: r) == c.declared_inputs)
-      && (request_required_outputs(req: r) == judgment_required_output_ids(contract: c))
-  }) |> count()
-  (n == 6) && (matched == 6)
+  let expected = [
+    parse_source_artifact_kind,
+    typed_module_artifact_kind,
+    resolved_graph_artifact_kind,
+    native_compiler_artifact_kind,
+    native_test_universe_artifact_kind,
+    native_module_verdict_bundle_artifact_kind
+  ]
+  let kinds = reqs |> map(r => request_judgment_contract(req: r).kind)
+  let joined = expected |> filter(k => (kinds |> filter(x => x == k) |> count()) == 1) |> count()
+  let left_only = expected |> filter(k => (kinds |> filter(x => x == k) |> count()) == 0) |> count()
+  let right_only = kinds |> filter(k => (expected |> filter(x => x == k) |> count()) == 0) |> count()
+  let typecheck_outputs = request_judgment_contract(req: witness_typecheck_request()).result.required_persisted_outputs
+  let interface_semantic = (typecheck_outputs |> filter(o =>
+    o.id == output_typed_module_interface && o.occurrence_contract == SemanticOnly
+  ) |> count()) == 1
+  let diagnostics_scoped = (typecheck_outputs |> filter(o =>
+    o.id == output_typecheck_diagnostics && o.occurrence_contract == Scoped
+  ) |> count()) == 1
+  (expected.count() == 6)
+    && (kinds.count() == 6)
+    && (joined == 6)
+    && (left_only == 0)
+    && (right_only == 0)
+    && interface_semantic
+    && diagnostics_scoped
 }
 
-// Production-route inhabitance: the real provider door uses the contract roster. Removing
-// output_compile_clean_diagnostic_union from resolve_closure_judgment_contract would make this
-// green on a v1-shape artifact (bypass). Removing the resolve family from request_judgment_contract
-// fails to typecheck by request_fold totality.
 test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
   let req = witness_closure_request()
   let required = request_required_outputs(req: req)
@@ -731,8 +748,7 @@ test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
     }
   )
   let missing = lookup_refused_incomplete_missing(l: refused)
-  (required == judgment_required_output_ids(contract: request_judgment_contract(req: req)))
-    && (required.count() == 3)
+  (required.count() == 3)
     && (missing.count() == 1)
     && output_list_contains(xs: required, wanted: output_compile_clean_diagnostic_union)
     && output_list_contains(xs: missing, wanted: output_compile_clean_diagnostic_union)
