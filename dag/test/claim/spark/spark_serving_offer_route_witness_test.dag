@@ -49,6 +49,7 @@ import gunbc.spark.vllm_serving_launch {
   LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
 }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
+import gunbc.harness.harness_seat { harness_serving_route }
 import gunbc.spark.first_party_serving { spark_first_party_route }
 
 // THE ROUTE OBLIGATION, EXECUTED. The standing has two independently evidenced halves. Host
