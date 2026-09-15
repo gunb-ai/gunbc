@@ -3,7 +3,7 @@ module test.claim.heal_revalidation_binding_witness
 import extdeps.github.actions {
   Step, RunStep, UsesStep, Job,
   WorkflowTrigger, WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall,
-  WorkflowRunCompleted, MergeGroup,
+  WorkflowRunCompleted, MergeGroup, RepositoryDispatch,
   PermRead, PermWrite, PermNone
 }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
@@ -202,6 +202,7 @@ fn dispatch_trigger_value() -> YamlValue {
       WorkflowCall { inputs: _ } => acc
       WorkflowRunCompleted { workflows: _, branches: _ } => acc
       MergeGroup => acc
+      RepositoryDispatch { types: _ } => acc
     }
   })
 }

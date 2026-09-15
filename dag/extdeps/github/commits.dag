@@ -22,6 +22,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data associated_pulls_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit"
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -31,7 +38,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [associated_pulls_citation]
 }
 
 type CommitParentRef {
@@ -82,16 +89,24 @@ type Comparison {
   total_commits: Int
 }
 
+type CommitAssociatedPull {
+  number: Int
+}
+
 // COMPARE TAKES ITS `basehead` AS ONE INPUT. The spelling is the upstream's, `{base}...{head}` with
 // three dots, and it is passed whole rather than assembled from two operands because that is the
 // shape the path segment actually takes. Splitting it here would invent a structure the endpoint
 // does not have and would then need re-joining at the transport, which is exactly where a
 // separator gets lost.
+// The env var this service reads its token from. One authority: the workflow step that sets the
+// env and the client that reads it consume this row, so the two cannot drift.
+data commits_auth_env: NonEmptyStr = "GITHUB_TOKEN"
+
 service github.Commits {
   config {
     endpoint: default_api_base
     auth: Bearer
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+    auth_source: EnvVar { name: commits_auth_env }
   }
 
   operation Get {
@@ -136,6 +151,30 @@ service github.Commits {
     }
     response {
       200 => Comparison
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation ListAssociatedPulls {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      commit_sha: String
+    }
+    output {
+      pulls: List<CommitAssociatedPull>
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/commits/\{commit_sha\}/pulls"
+    }
+    response {
+      200 => List<CommitAssociatedPull>
       401 => GitHubErrorShape
       404 => GitHubErrorShape
       5xx => GitHubErrorShape

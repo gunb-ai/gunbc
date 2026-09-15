@@ -1,0 +1,83 @@
+module extdeps.github.repository_dispatch
+
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome }
+import std.credentials { EnvVar }
+import std.types { CommitSha, Int, NonEmptyStr, Secret, String, Unit }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/repos/repos#create-a-repository-dispatch-event"
+  }
+}
+
+data repository_dispatch_trigger_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#repository_dispatch"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.repository_dispatch",
+      decl_name: "github.RepositoryDispatch",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [repository_dispatch_trigger_citation]
+}
+
+data repository_dispatch_auth_env: NonEmptyStr = "GITHUB_REPOSITORY_DISPATCH_TOKEN"
+
+data github_json_accept: String = "application/vnd.github+json"
+
+// Create a repository_dispatch event. Cited response is 204 No Content
+// (docs.github.com REST create-a-repository-dispatch-event, read 2026-09-14). This is not
+// github.Workflows CreateDispatch: that endpoint names a workflow file and is workflow_dispatch.
+// client_payload admits at most ten top-level keys and must be smaller than 64KB; this operation
+// admits exactly the two keys a cross-repo merge receipt needs, so a caller cannot widen the
+// payload without changing the cited shape.
+service github.RepositoryDispatch {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: repository_dispatch_auth_env }
+  }
+
+  operation Create {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      event_type: String
+      sha: CommitSha
+      pr_number: Int
+    }
+    output {
+      accepted: Unit
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/dispatches",
+      headers: { "Accept": github_json_accept },
+      body: {
+        event_type: event_type,
+        client_payload: { sha: sha, pr_number: pr_number }
+      }
+    }
+    response {
+      204 => Unit
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+    }
+  }
+}

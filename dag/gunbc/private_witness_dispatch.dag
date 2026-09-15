@@ -1,0 +1,198 @@
+module gunbc.private_witness_dispatch
+
+import std.types { NonEmptyStr, String, List, Int, CommitSha }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.shell
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.repository { gunbc_repository, gunbc_private_repository }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import extdeps.github.github { Repository }
+import extdeps.github.commits { CommitAssociatedPull, commits_auth_env }
+import extdeps.github.effect { GitHubEffect, DispatchRepository, github_effect_required_permissions, contents_write }
+import extdeps.github.repository_dispatch { repository_dispatch_auth_env }
+import extdeps.github.actions {
+  Step, RunStep,
+  github_event_name_push
+}
+import extdeps.github.expressions { Equals, ContextAccess, Github, Secrets, StringLiteral, serialize_expression, interpolate }
+import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+
+data public_main_dispatch_event_type: NonEmptyStr = "gunbc_public_main"
+
+data private_witness_dispatch_token: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "GUNBC_PRIVATE_REPOSITORY_DISPATCH_TOKEN" as NonEmptyStr,
+  version: "1",
+  hash_state: HashPending,
+}
+
+type PrivateWitnessDispatchTarget {
+  repository: Repository
+  event_type: NonEmptyStr
+}
+
+// The one statement of WHAT this workflow does: dispatch one event type to one repository.
+// THE TARGET IS THE AUTHORITY AND THE EFFECT IS DERIVED FROM IT, not the reverse. Declaring the
+// effect first and narrowing back to the target made the narrowing a runtime refusal over a wide
+// coproduct, and since the effect was a DispatchRepository literal that refusal could never fire --
+// DESIGN 5's tell, a check satisfiable by editing the declaration while the realization still lies.
+// Deriving the effect removes the arm rather than guarding it.
+data private_witness_dispatch_target: PrivateWitnessDispatchTarget = PrivateWitnessDispatchTarget {
+  repository: gunbc_private_repository,
+  event_type: public_main_dispatch_event_type
+}
+
+data private_witness_dispatch_effect: GitHubEffect = DispatchRepository {
+  repository: private_witness_dispatch_target.repository,
+  event_type: private_witness_dispatch_target.event_type
+}
+
+
+fn private_witness_dispatch_uses_contents_write() -> Bool {
+  let perms = github_effect_required_permissions(effect: private_witness_dispatch_effect)
+  count(perms) == 1 && fold(perms, init: false, f: fn(found, p) {
+    found || (p.name == contents_write.name && p.access == contents_write.access)
+  })
+}
+
+// GitHub lists the pull requests associated with a commit; a squash-merge push to main has
+// the PR that produced it first. Absent is a legitimately empty push (a direct push to main),
+// distinct from a failed read, which is RestOutcome's refusal arm and never reaches here.
+fn associated_pull_number(pulls: List<CommitAssociatedPull>) -> Int? {
+  fold(pulls, init: none, f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: p.number }
+    }
+  })
+}
+
+fn rest_refusal(what: String, outcome: RestOutcome) -> String? {
+  match outcome {
+    RestOk => none
+    RestStatusRefused { status: s, body: b } =>
+      Present { value: join([what, " refused with status ", to_string(s), ": ", b], "") }
+    RestTransportRefused { cause: c } =>
+      Present { value: join([what, " never reached GitHub: ", c], "") }
+    RestBodyUndecodable { status: s, cause: c } =>
+      Present { value: join([what, " returned status ", to_string(s), " with an unreadable body: ", c], "") }
+  }
+}
+
+fn public_sha_env_name() -> NonEmptyStr { "PUBLIC_SHA" }
+
+fn public_sha() -> String? {
+  match shell.Env.Get(name: public_sha_env_name()).value {
+    Present { value: raw } =>
+      let line = trim(raw)
+      if line == "" { none } else { Present { value: line } }
+    Absent => none
+  }
+}
+
+// The Absent arm of associated_pull_number exits success on the reading that an empty list means
+// no PR behind this push. Outside the modeled guarantee, a token that lost scope may answer 200
+// with an empty list rather than 4xx, and this function cannot tell those apart.
+fn dispatch_to(target: PrivateWitnessDispatchTarget, sha: String) -> ProcessExit {
+  let pulls = github.Commits.ListAssociatedPulls(
+    auth_token: "",
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    commit_sha: sha,
+  )
+  match rest_refusal(what: "associated pull request read", outcome: pulls.outcome) {
+    Present { value: why } => exit_failure(reason: why)
+    Absent =>
+      match associated_pull_number(pulls: pulls.pulls) {
+        Absent => ExitSuccess
+        Present { value: pr_number } => {
+          let sent = github.RepositoryDispatch.Create(
+            auth_token: "",
+            owner: target.repository.owner,
+            repo: target.repository.name,
+            event_type: target.event_type as String,
+            sha: sha as CommitSha,
+            pr_number: pr_number,
+          )
+          match rest_refusal(what: "repository_dispatch", outcome: sent.outcome) {
+            Present { value: why } => exit_failure(reason: why)
+            Absent => ExitSuccess
+          }
+        }
+      }
+  }
+}
+
+// The executing route: `gunbc run --entry dag/gunbc/private_witness_dispatch.dag --function dispatch`.
+fn dispatch() -> ProcessExit {
+  match public_sha() {
+    Absent => exit_failure(reason: concat(public_sha_env_name() as String, " is unset or empty"))
+    Present { value: sha } => dispatch_to(target: private_witness_dispatch_target, sha: sha)
+  }
+}
+
+data private_witness_dispatch_entry: String = "dag/gunbc/private_witness_dispatch.dag"
+data private_witness_dispatch_function: String = "dispatch"
+
+fn private_witness_dispatch_script() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: private_witness_dispatch_entry,
+    function: private_witness_dispatch_function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn github_actions_secret_expression(secret_name: NonEmptyStr) -> String {
+  interpolate(expression: ContextAccess { context: Secrets, path: [secret_name as String] })
+}
+
+fn github_sha_gha_expression() -> String {
+  interpolate(expression: ContextAccess { context: Github, path: ["sha"] })
+}
+
+fn private_witness_dispatch_if() -> String {
+  serialize_expression(expression: Equals {
+    left: ContextAccess { context: Github, path: ["event_name"] },
+    right: StringLiteral { value: github_event_name_push }
+  })
+}
+
+
+fn private_witness_dispatch_step_env() -> List<YamlKeyValue> {
+  [
+    kv(
+      key: repository_dispatch_auth_env as String,
+      value: yaml_string(s: github_actions_secret_expression(secret_name: private_witness_dispatch_token.secret))
+    ),
+    kv(
+      key: commits_auth_env as String,
+      value: yaml_string(s: github_actions_secret_expression(secret_name: commits_auth_env))
+    ),
+    kv(
+      key: public_sha_env_name() as String,
+      value: yaml_string(s: github_sha_gha_expression())
+    )
+  ]
+}
+
+data private_witness_dispatch_step_name: String = "Dispatch private witnesses for this public merge"
+
+fn private_witness_dispatch_step() -> Step {
+  RunStep {
+    name: Present { value: private_witness_dispatch_step_name },
+    id: none,
+    run: private_witness_dispatch_script(),
+    shell: none,
+    env: Present { value: private_witness_dispatch_step_env() },
+    working_directory: none,
+    if_condition: Present { value: private_witness_dispatch_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}

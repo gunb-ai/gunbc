@@ -69,6 +69,7 @@ import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_sta
 import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall { information_retrieval_transport_cannot_report_status_stall }
 import gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall { module_cited_only_in_annotation_prose_stall }
 import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { joint_claim_join_private_corpus_unindexed_stall }
+import gunbc.guarantee_stall.process_exit_success_carries_no_receipt_stall { process_exit_success_carries_no_receipt_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -233,6 +234,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   module_cited_only_in_annotation_prose_stall,
   joint_claim_join_private_corpus_unindexed_stall,
   pci_address_rendering_equivalence_stall,
+  process_exit_success_carries_no_receipt_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
