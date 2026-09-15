@@ -2301,6 +2301,16 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
+    TransitionAdmission {
+        label: "json_string_list lives in json.parse (gunbc#11419)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.container.registry_image_config",
+            in_declaration: "container_image_config_env_from_json",
+            spelling: "json_string_list",
+            expected_candidates: &["extdeps.languages.json.parse"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
 ];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
