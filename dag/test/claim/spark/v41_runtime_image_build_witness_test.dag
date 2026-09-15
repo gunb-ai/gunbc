@@ -10,6 +10,7 @@ import extdeps.docker.cli { docker_build_spec_command }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.gpu.types { GpuCapabilityLabelOk, GpuCapabilityLabelRejected }
 import extdeps.vllm.source_build {
+  VllmContainerBuildRecipe,
   vllm_07b75534_aarch64_release_recipe, vllm_07b75534_default_recipe,
   vllm_recipe_targeting, vllm_cuda_arch_supported,
   vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
@@ -133,6 +134,36 @@ test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> 
 // THE BUILD KEY IS A FUNCTION OF THE INPUTS AND THE TAG IS A FUNCTION OF THE KEY. The discriminating
 // half is the second pair: a key that ignored the arch list would give the sm_121 build and a 12.0
 // build the same tag, which is exactly the collision the key exists to prevent.
+// THE CONNECTOR BUILD ARGUMENT DECIDES WHAT IS IN THE IMAGE, SO IT IS IN THE KEY. docker/Dockerfile
+// declares `ARG INSTALL_KV_CONNECTORS=false` and installs an extra package set when it is true, while both
+// revisions' release pipelines pass true -- so the default recipe and the release recipe describe images
+// with different contents. Before this axis existed, two recipes differing only in that argument keyed the
+// same, which is a key standing for two materially different sets of bytes. The second conjunct is the
+// control that keeps this a statement about the argument rather than about recipes differing at all: the
+// release recipe keys differently from the same recipe with the argument flipped, and nothing else moved.
+test fn the_key_moves_with_the_connector_build_argument() -> Bool {
+  let release = vllm_07b75534_aarch64_release_recipe
+  let without = VllmContainerBuildRecipe {
+    source: release.source,
+    dockerfile_path: release.dockerfile_path,
+    build_target: release.build_target,
+    cuda_version: release.cuda_version,
+    build_base_image: release.build_base_image,
+    final_base_image: release.final_base_image,
+    python_version: release.python_version,
+    torch_version: release.torch_version,
+    flashinfer_version: release.flashinfer_version,
+    torch_cuda_arch_list: release.torch_cuda_arch_list,
+    install_kv_connectors: false,
+    max_jobs: release.max_jobs,
+    nvcc_threads: release.nvcc_threads,
+  }
+  release.install_kv_connectors
+    && !without.install_kv_connectors
+    && (serialize_content_hash(hash: vllm_image_build_key(r: without)) as String)
+       != (serialize_content_hash(hash: vllm_image_build_key(r: release)) as String)
+}
+
 test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bool {
   let fleet = v41_gb10_recipe()
   let other_arch = vllm_recipe_targeting(

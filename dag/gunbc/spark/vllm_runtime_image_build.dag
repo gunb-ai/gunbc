@@ -285,6 +285,7 @@ fn vllm_image_build_key_inputs(r: VllmContainerBuildRecipe) -> List<ArtifactReal
     ArtifactRealizationInput { identity: "torch_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.torch_version) },
     ArtifactRealizationInput { identity: "flashinfer_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.flashinfer_version) },
     ArtifactRealizationInput { identity: "torch_cuda_arch_list" as NonEmptyStr, content_digest: content_hash_atom(value: vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list) as NonEmptyStr) },
+    ArtifactRealizationInput { identity: "install_kv_connectors" as NonEmptyStr, content_digest: content_hash_atom(value: (if r.install_kv_connectors { "true" } else { "false" }) as NonEmptyStr) },
   ]
 }
 
