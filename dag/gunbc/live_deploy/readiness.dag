@@ -11,11 +11,6 @@ import std.realization_reconcile {
   Grounding,
   Grounds,
   DoesNotGround,
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconcile_grounded,
-  reconciliation_converged,
 }
 import gunbc.live_deploy.service_ready {
   ServiceNotReady,
@@ -24,7 +19,6 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_cadence,
   live_deploy_service_ready_poll_max_attempts,
-  live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosis,
   UnitDiagnosisUnavailable,
@@ -94,13 +88,6 @@ type ServiceReadyEvidence {
 type ServiceReadyApplyEffect {
   unit: NonEmptyStr
   endpoint: NonEmptyStr
-}
-
-fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
-  ServiceReadyApplyEffect {
-    unit: live_deploy_service_ready_unit_authority,
-    endpoint: live_deploy_service_ready_endpoint_authority,
-  }
 }
 
 fn service_ready_apply_effect_for_deploy(spec: DeploymentSpec) -> ServiceReadyApplyEffect {
@@ -485,29 +472,6 @@ fn ground_service_ready_from_healthz(
   )
 }
 
-fn show_healthz_read_for_deploy(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
-  match verdict {
-    Deny { refusal: _ } =>
-      ReadObserved {
-        value: HealthzProbeRefused {
-          probe_error: deploy_access_decision_reason(d: verdict),
-        }
-      }
-    Permit =>
-      ReadObserved {
-        value: live_deploy_healthz_get_for_port(
-          port: deployment_plan_listen_port(spec: spec),
-          transport: transport,
-        )
-      }
-  }
-}
-
 // The healthy fixture is the REAL healthz body, not a hand-spelled {"status":"ok"}. Once readiness
 // means 'answering AND serving this tree', a fixture that merely parses is no longer a healthy read
 // — it is precisely the stale-surface case — so a stand-in body would have made the
@@ -543,84 +507,6 @@ fn show_healthz_read_fixture_healthy(
 // is a document the process could actually emit rather than a hand-assembled approximation of one.
 // That is the same discipline the original fixture note recorded when it refused a hand-spelled
 // {\"status\":\"ok\"}, applied one layer up.
-
-fn show_healthz_read_fixture_healthy_live(
-  release_revision: CommitSha,
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  show_healthz_read_fixture_healthy(
-    bundle: materialize_live_roadmap_site_surface_bundle(),
-    release_revision: release_revision,
-  )
-}
-
-fn reconcile_service_ready_read_for_bundle(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
-  bundle: RoadmapSiteSurfaceBundle,
-  effect: ServiceReadyApplyEffect,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  match read {
-    ReadAbsent { reason: why } =>
-      reconcile_grounded(
-        apply_effect: effect,
-        show_read: read,
-        grounding: DoesNotGround { reason: why }
-      )
-    ReadObserved { value: observed } =>
-      reconcile_grounded(
-        apply_effect: effect,
-        show_read: read,
-        grounding: ground_service_ready_from_healthz_with_bundle(
-          read: observed,
-          bundle: bundle,
-          expected_revision: expected_revision,
-          expected_surface_identity: expected_surface_identity,
-        )
-      )
-  }
-}
-
-fn reconcile_service_ready_read(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  reconcile_service_ready_read_for_bundle(
-    read: read,
-    bundle: materialize_live_roadmap_site_surface_bundle(),
-    effect: service_ready_apply_effect(),
-    expected_revision: expected_revision,
-    expected_surface_identity: expected_surface_identity,
-  )
-}
-
-fn reconcile_service_ready_read_for_effect(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
-  effect: ServiceReadyApplyEffect,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  match read {
-    ReadAbsent { reason: why } =>
-      reconcile_grounded(
-        apply_effect: effect,
-        show_read: read,
-        grounding: DoesNotGround { reason: why }
-      )
-    ReadObserved { value: observed } =>
-      reconcile_grounded(
-        apply_effect: effect,
-        show_read: read,
-        grounding: ground_service_ready_from_healthz_with_bundle(
-          read: observed,
-          bundle: materialize_live_roadmap_site_surface_bundle(),
-          expected_revision: expected_revision,
-          expected_surface_identity: expected_surface_identity,
-        )
-      )
-  }
-}
 
 fn live_deploy_service_ready_once_for_deploy(
   spec: DeploymentSpec,

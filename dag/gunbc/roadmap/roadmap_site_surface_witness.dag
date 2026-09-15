@@ -8,17 +8,13 @@ import gunbc.roadmap_site_surface_expect {
   healthz_surface_tolerates_transport_trailing_lf,
   healthz_route_json_ok,
 }
-import std.realization_reconcile {
-  reconciliation_converged,
-}
 import gunbc.readiness { readiness_is_ready }
+import std.realization_reconcile { ReadObserved, ReadAbsent }
 import gunbc.live_deploy.readiness {
-  HealthzEffectiveRead,
   HealthzBodyRead,
-  reconcile_service_ready_read_for_bundle,
   live_deploy_service_ready_once_for_bundle,
   show_healthz_read_fixture_healthy,
-  service_ready_apply_effect,
+  observe_service_readiness_from_healthz,
   ground_service_ready_from_healthz_with_bundle,
   Grounds,
   DoesNotGround,
@@ -109,15 +105,18 @@ fn reconcile_grounds_healthy_fixture_read_for_bundle(
   bundle: RoadmapSiteSurfaceBundle,
   release_revision: CommitSha,
 ) -> Bool {
-  reconciliation_converged(
-    r: reconcile_service_ready_read_for_bundle(
-      read: show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision),
-      bundle: bundle,
-      effect: service_ready_apply_effect(),
-      expected_revision: release_revision,
-      expected_surface_identity: bundle.bundle_identity,
-    )
-  )
+  match show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision) {
+    ReadObserved { value: read } =>
+      readiness_is_ready(
+        r: observe_service_readiness_from_healthz(
+          read: read,
+          bundle: bundle,
+          expected_revision: release_revision,
+          expected_surface_identity: bundle.bundle_identity,
+        )
+      )
+    ReadAbsent { reason: _ } => false
+  }
 }
 
 fn service_ready_once_converges_on_healthy_fixture_for_bundle(
