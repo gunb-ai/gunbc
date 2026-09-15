@@ -1179,18 +1179,6 @@ pub fn emit_go_fn_def(
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let params_str = crate::v1_compiler_emit::emit_params_shared(
-            params.clone(),
-            RenderTarget::Go,
-            si.clone(),
-        );
-        let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
-            inferred.clone(),
-            RenderTarget::Go,
-            si.clone(),
-        );
-        let body_scope =
-            crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         let use_tco = crate::v1_compiler_emit::is_tco_eligible(
             Rc::new(DeclaredCallableIdentity {
                 owner_module_path: scope.module_name.clone(),
@@ -1200,6 +1188,26 @@ pub fn emit_go_fn_def(
             registry.clone(),
             si.clone(),
         );
+        let params_str = if use_tco.clone() {
+            crate::v1_compiler_emit::emit_tco_params_shared(
+                params.clone(),
+                RenderTarget::Go,
+                si.clone(),
+            )
+        } else {
+            crate::v1_compiler_emit::emit_params_shared(
+                params.clone(),
+                RenderTarget::Go,
+                si.clone(),
+            )
+        };
+        let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
+            inferred.clone(),
+            RenderTarget::Go,
+            si.clone(),
+        );
+        let body_scope =
+            crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         if use_tco.clone() {
             {
                 let body_str = crate::v1_compiler_emit::emit_tco_unified(

@@ -3614,22 +3614,35 @@ pub fn tco_loop_iteration_lets(
         let mut __result = Vec::new();
         for p in params.iter().cloned() {
             let n = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
-            __result.push(v1_rt::concat(
-                crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
-                v1_rt::concat(
-                    "let ".to_string(),
+            let authored = emit_ident(n.clone(), target.clone());
+            let slot = emit_ident(tco_loop_slot_name(n.clone()), target.clone());
+            let line = match target.clone() {
+                RenderTarget::Rust => v1_rt::concat(
+                    crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
                     v1_rt::concat(
-                        emit_ident(n.clone(), target.clone()),
+                        "let ".to_string(),
                         v1_rt::concat(
-                            " = ".to_string(),
+                            authored.clone(),
                             v1_rt::concat(
-                                emit_ident(tco_loop_slot_name(n.clone()), target.clone()),
-                                ".clone();\n".to_string(),
+                                " = ".to_string(),
+                                v1_rt::concat(slot.clone(), ".clone();\n".to_string()),
                             ),
                         ),
                     ),
                 ),
-            ));
+                RenderTarget::Python | RenderTarget::Go => v1_rt::concat(
+                    crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
+                    v1_rt::concat(
+                        authored.clone(),
+                        v1_rt::concat(
+                            " = ".to_string(),
+                            v1_rt::concat(slot.clone(), "\n".to_string()),
+                        ),
+                    ),
+                ),
+                RenderTarget::Dag => "".to_string(),
+            };
+            __result.push(line);
         }
         __result
     })
@@ -4125,7 +4138,19 @@ pub fn emit_unified_tco_body(
             render_match.clone(),
             render_init_stmts.clone(),
         );
-        shared_tco_body(inner.clone(), depth.clone(), spec.clone())
+        shared_tco_body(
+            v1_rt::concat(
+                tco_loop_iteration_lets(
+                    params.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    (depth.clone() + 1),
+                    target.clone(),
+                ),
+                inner.clone(),
+            ),
+            depth.clone(),
+            spec.clone(),
+        )
     }
 }
 
@@ -6681,6 +6706,64 @@ pub fn emit_param_shared(
     }
 }
 
+pub fn emit_tco_param_shared(
+    param: Rc<Node>,
+    target: RenderTarget,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let ty = emit_node_type(
+            crate::v1_std_core::param_node_type_expr(param.clone()),
+            target.clone(),
+            source_indices.clone(),
+        );
+        v1_rt::concat(
+            v1_rt::concat(
+                emit_ident(
+                    tco_loop_slot_name(crate::v1_std_core::param_node_name_at(
+                        param.clone(),
+                        source_indices.clone(),
+                    )),
+                    target.clone(),
+                ),
+                crate::v1_compiler_emit_core_support::language_spec(target.clone())
+                    .items
+                    .clone()
+                    .param_type_sep
+                    .clone(),
+            ),
+            ty.clone(),
+        )
+    }
+}
+
+pub fn emit_tco_params_shared(
+    params: Rc<Vec<Rc<Node>>>,
+    target: RenderTarget,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let strs = Rc::new({
+            let mut __result = Vec::new();
+            for p in params.iter().cloned() {
+                __result.push(emit_tco_param_shared(
+                    p.clone(),
+                    target.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        strs.clone().join(
+            &crate::v1_compiler_emit_core_support::language_spec(target.clone())
+                .items
+                .clone()
+                .param_separator
+                .clone(),
+        )
+    }
+}
+
 pub fn emit_params_shared(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
@@ -8303,7 +8386,10 @@ pub fn emit_typed_tco_reassign_shared(
             let mut __result = Vec::new();
             for pair in pairs.iter().cloned() {
                 __result.push(emit_ident(
-                    crate::v1_std_core::param_node_name_at(pair.1.clone(), source_indices.clone()),
+                    tco_loop_slot_name(crate::v1_std_core::param_node_name_at(
+                        pair.1.clone(),
+                        source_indices.clone(),
+                    )),
                     target.clone(),
                 ));
             }

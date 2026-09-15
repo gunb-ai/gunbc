@@ -167,8 +167,7 @@ fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> Li
       sequence: fn(left, right) { list_append(left: left, right: right) },
       choice: fn(left, right) { list_append(left: left, right: right) },
       optional: fn(xs) { xs },
-      repeat: fn(xs) { xs },
-      lookahead: fn(xs) { xs }
+      repeat: fn(xs) { xs }
     }
   )
 }
