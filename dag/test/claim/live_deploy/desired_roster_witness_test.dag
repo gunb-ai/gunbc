@@ -2,6 +2,7 @@ module test.claim.live_deploy.desired_roster
 
 import std.types { Bool, String, Int }
 import gunbc.live_deploy.desired {
+  DesiredDeployment,
   DesiredRosterAdmitted,
   DesiredRosterSameHostCollision,
   desired_deployment_roster,
@@ -29,6 +30,26 @@ test fn the_desired_roster_admits_three_disjoint_deployments() -> Bool {
       DesiredRosterAdmitted => true
       DesiredRosterSameHostCollision { host: _ } => false
     }
+}
+
+fn witness_colliding_same_host_roster() -> List<DesiredDeployment> {
+  let live = srv1_production_desired_deployment()
+  let lab = srv1_lab_desired_deployment()
+  [
+    live,
+    DesiredDeployment {
+      instance: lab.instance,
+      target: lab.target,
+      names: live.names,
+    },
+  ]
+}
+
+test fn a_same_host_roster_that_shares_production_names_is_a_collision_on_srv1() -> Bool {
+  match desired_roster_standing(rows: witness_colliding_same_host_roster()) {
+    DesiredRosterSameHostCollision { host } => host == "srv1"
+    DesiredRosterAdmitted => false
+  }
 }
 
 test fn roster_rows_carry_distinct_instance_ids() -> Bool {

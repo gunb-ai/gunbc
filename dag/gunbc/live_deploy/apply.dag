@@ -136,9 +136,10 @@ fn live_deploy_mutation_denied(
 //
 // WHAT WENT, AS ONE POPULATION: the slot selection coproduct and its Tailscale-status read, the
 // deploy-idle-then-flip-then-retire fold, the slot/route/retiring spec projections, and the second
-// HostDashboardInstance. What replaces them is this: apply converges deployment_spec_srv1 IN PLACE,
-// members in declared order, and the Tailscale mapping is an ordinary member pointing at the one
-// port rather than a route flipped between two.
+// HostDashboardInstance. What replaces them is this: apply converges a caller-supplied
+// DeploymentSpec in place (gunbc.live_deploy.desired selected_deployment_spec), members in
+// declared order, and the Tailscale mapping is an ordinary member pointing at that spec's port
+// rather than a route flipped between two.
 //
 // WHAT IS HONESTLY LOST is the property blue/green existed to buy: a failed candidate can no longer
 // be discovered on an idle slot while the old process keeps serving. A bad deploy now restarts the

@@ -106,6 +106,16 @@ fn deployment_owned_identity(spec: DeploymentSpec, step: DeploymentArtifactStep)
   join([deployment_plan_host_identity(spec: spec), ":", step.path as String], "")
 }
 
+// HOST-QUALIFIED PATHS OF OWNED ARTIFACT STEPS ONLY — the retract-order membership
+// gunbc.live_deploy.spec deployment_owned_steps actually installs: serve binary, source tree,
+// tree-remote unit, dispatch worktree root, attempt-state root, compute root, fabric event-log
+// root, systemd unit, publication-helper timer, belt timer, tailscale route member path.
+// Dispatch/attempt/compute/event-log roots are already in that list (C6 moving them into the
+// member roster does not extend this fold). It does NOT enumerate listen port, serve_function,
+// tree-sync unit/env filenames, slice unit, belt/publication service units, or the credential
+// env file. Those are either names-surface fields (checked by spec_same_host_surface_collision)
+// or files torn down as a side effect of another member. A law over this list is not a law over
+// every file the emit script touches.
 fn spec_owned_identities(spec: DeploymentSpec) -> List<String> {
   map(
     deployment_owned_steps_retract_order(spec: spec),
