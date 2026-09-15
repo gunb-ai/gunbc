@@ -51,8 +51,8 @@ pub fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> 
 
 pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
     match a.clone() {
-        DescentEvidence::DescentUnknown => b,
-        DescentEvidence::NonIncreasing => match b {
+        DescentEvidence::DescentUnknown => b.clone(),
+        DescentEvidence::NonIncreasing => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::Strict,
             _ => DescentEvidence::NonIncreasing,
         },
@@ -88,8 +88,8 @@ pub fn optional_evidence_meet(
     b: Option<DescentEvidence>,
 ) -> Option<DescentEvidence> {
     match a.clone() {
-        std::option::Option::None => b,
-        Some(va) => match b {
+        std::option::Option::None => b.clone(),
+        Some(va) => match b.clone() {
             std::option::Option::None => a.clone(),
             Some(vb) => Some(descent_evidence_lattice_meet(va.clone(), vb.clone())),
         },

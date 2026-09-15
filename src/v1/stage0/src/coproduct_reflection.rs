@@ -134,37 +134,6 @@ pub fn eval_symbol_lexeme(
     Ok(str_value(sym))
 }
 
-pub(crate) fn type_item_by_name<'a>(
-    ctx: &'a InterpContext,
-    type_name: &str,
-) -> InterpResult<(&'a Rc<Node>, String)> {
-    let si = ctx.source_indices();
-    for module in ctx.modules.iter() {
-        for item in module.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
-            if name != type_name {
-                continue;
-            }
-            let is_type = ctx
-                .item_registry
-                .get(&name)
-                .map(|info| info.kind == ItemKind::TypeItem)
-                .unwrap_or(false)
-                || ctx
-                    .item_registry
-                    .get(&item.name)
-                    .map(|info| info.kind == ItemKind::TypeItem)
-                    .unwrap_or(false);
-            if is_type {
-                return Ok((item, item.span.file.clone()));
-            }
-        }
-    }
-    Err(InterpError::TypeError {
-        msg: format!("resolve_type_node: unknown closed type `{type_name}`"),
-    })
-}
-
 fn nullary_connective_variant(ctx: &InterpContext, name: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
@@ -320,7 +289,7 @@ pub fn marshal_disj_type_item(
 ) -> InterpResult<Value> {
     if item.connective != Connective::Disj {
         return Err(InterpError::TypeError {
-            msg: "resolve_type_node: type is not a closed coproduct (Disj)".to_string(),
+            msg: "marshal_disj_type_item: type is not a closed coproduct (Disj)".to_string(),
         });
     }
     let mut edges = Vec::with_capacity(item.children.len());
@@ -334,15 +303,6 @@ pub fn marshal_disj_type_item(
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Disj")),
         edges,
     ))
-}
-
-pub fn eval_resolve_type_node(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let type_name = expect_symbol(args.first().map(|(_, v)| v), "resolve_type_node")?;
-    let (item, _) = type_item_by_name(ctx, type_name)?;
-    marshal_disj_type_item(ctx, &ctx.source_indices(), item)
 }
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
@@ -2094,6 +2054,51 @@ pub fn eval_decl_facts_at(
         .cloned()
         .collect();
     eval_decl_facts_rows(ctx, &matching)
+}
+
+/// THE KEYED BARE-NAME READ BEHIND `v2.std.decl_index` `type_declarer_qualified_names`.
+///
+/// It exists because the question it answers cannot be asked of `decl_facts_at`: that one is keyed
+/// by QUALIFIED name, and a bare spelling has no module. The substrate-only alternative was to fold
+/// the whole corpus, measured at ~3.6s per call against ~1ms for a keyed read and sharing at no
+/// grain, which put the guard that makes reflection sound above the floor's per-claim ceiling.
+///
+/// TWO PROPERTIES ARE LOAD-BEARING AND ARE WHY THIS ARM WAS ADMITTED.
+///
+/// It reads the SAME memoized pool `eval_decl_facts_at` reads, via `decl_facts_for_roots_shared` —
+/// no second parse, no second memo, nothing for the two to disagree about.
+///
+/// It NEVER PICKS A MATCH. It returns every qualified name declaring this bare spelling as a type,
+/// so multiplicity and candidate identity both go back to the substrate and the refusal is decided
+/// and located there. The moment this function chose among them it would be the bare-name identity
+/// defect it was written to remove, one layer down. It also marshals no declaration nodes, which is
+/// where the whole-pool cost actually lived.
+pub fn eval_type_declarer_qualified_names(
+    _ctx: &InterpContext,
+    pool_roots: &[String],
+    bare_name: &str,
+) -> InterpResult<Value> {
+    // Same line-stop as `eval_decl_facts_at`, and for the same reason: a root that contributes
+    // nothing is invisible in a keyed answer, because an empty result is what a genuine miss looks
+    // like — so the refusal fires against the DECLARED roots, before the read.
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "type_declarer_qualified_names",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let facts = decl_facts_for_roots_shared(pool_roots);
+    let mut names: Vec<Value> = Vec::new();
+    for fact in facts.iter() {
+        if fact.name == bare_name && fact.kind == ItemKind::TypeItem {
+            names.push(str_value(fact.qualified_name.clone()));
+        }
+    }
+    Ok(crate::v1_interpreter::list_value(names))
 }
 
 fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {

@@ -96,8 +96,9 @@ fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
   }
 }
 
-// THE A/B THAT SEPARATES THE LAMBDA SPELLING FROM EVERYTHING ELSE, AND IT IS THE ENROLLED
-// EVIDENCE FOR gunbc.recurring_failure_mode fold_shape_visible_to_no_lens. The two arrow fixtures
+// THE A/B THAT SEPARATES THE LAMBDA SPELLING FROM EVERYTHING ELSE, AND IT IS THE COMMITTED
+// EVIDENCE FOR gunbc.recurring_failure_mode fold_shape_visible_to_no_lens -- executed under
+// claim_batch and planned by no lane, per the standing at the top of this file. The two arrow fixtures
 // are byte-for-byte the fn-form fixtures above with `fn(acc, x) { .. }` rewritten
 // `(acc, x) => ..` and nothing else changed -- same callee, same ports, same combiner, same
 // planted copy. So the ONLY thing either predicate can be answering about is the spelling.
