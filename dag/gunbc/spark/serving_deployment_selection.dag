@@ -1275,6 +1275,10 @@ data id_component_budget_authority: DeclarationRef = decl_ref(
   module_path: "gunbc.spark.serving_deployment_selection",
   decl_name: "candidate_component_budget")
 
+// THE REFUSED REGION'S ARM SAYS WHY IN THE MINT'S OWN WORDS. `closed_interval` produces the reason a
+// pair was rejected, so this fold interpolates it rather than re-authoring the cause: a restatement
+// would be a second authority for that fact, and it would go quietly wrong the moment the mint gains a
+// refusal cause the restatement does not describe.
 fn candidate_component_budget(
   cp: ArtifactComponent,
   c: DeploymentCandidate,
@@ -1312,9 +1316,6 @@ fn candidate_component_budget(
             interval_construction_fold(
               construction: group_rank_free_memory_region(r: free),
               fold: IntervalConstructionFold {
-                // THE REFUSAL SAYS WHY IN ITS OWN WORDS. Re-authoring the cause here would be a second
-                // authority for a fact the mint already produced, and would go quietly wrong the moment
-                // `closed_interval` gains a refusal cause this text does not describe.
                 refused: r => ComponentBudgetUnestablished {
                   subject: ctx,
                   obligation: join([
