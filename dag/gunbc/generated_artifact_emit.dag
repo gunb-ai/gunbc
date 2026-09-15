@@ -4,7 +4,7 @@ module gunbc.generated_artifact_emit
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -35,6 +35,7 @@ import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGeneratio
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
+import gunbc.contributor_onboarding_path { expected_contributor_onboarding_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
@@ -101,6 +102,7 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     DesignArtifact => artifact_generated(content: expected_design_md())
     DesignFailureModesArtifact => artifact_generated(content: expected_design_failure_modes_md())
     DesignRungDropsArtifact => artifact_generated(content: expected_design_rung_drops_md())
+    ContributorOnboardingArtifact => artifact_generated(content: expected_contributor_onboarding_md())
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
     GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
     GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(
@@ -195,6 +197,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     DesignArtifact => true
     DesignFailureModesArtifact => true
     DesignRungDropsArtifact => true
+    ContributorOnboardingArtifact => true
     GithooksPrePushArtifact => true
     GithooksPreCommitArtifact => true
     GeneratedArtifactMergeDriverArtifact => true

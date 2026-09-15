@@ -67,6 +67,7 @@ import v2.workflow.regen_convergence_transaction {
   regen_stage_execution_admission_detail,
   StagePlannedExecutedMismatch,
   regen_plan_stage,
+  regen_plan_next_stage,
   regen_admit_affected_bound,
   RegenInstallBoundaryObservation,
   RegenSurfaceLineage,
@@ -172,6 +173,10 @@ test fn single_pass_producer_plus_old_dependent_refuses_the_seed_build() -> Bool
   }
 }
 
+// g0 is producer-only. A mixed producer+subject generation is the other RED:
+// mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild. This fixture
+// still covers Promote then Install when the first generation has no seed-embedded
+// subject sibling.
 test fn staged_producer_then_complete_subject_cut_reaches_zero_drift() -> Bool {
   let producer = fixture_surface(
     module: "compiler.transport",
@@ -192,7 +197,7 @@ test fn staged_producer_then_complete_subject_cut_reaches_zero_drift() -> Bool {
     seed: SeedEmbedded
   )
   match regen_execute_convergence_fixture(fixture: RegenConvergenceFixture {
-    g0_changed: [producer, lower],
+    g0_changed: [producer],
     producer_stage_build: RegenStageBuildPassed,
     g1_changed: [lower, dependent],
     subject_stage_build: RegenStageBuildPassed,
@@ -524,24 +529,107 @@ fn fixture_plan(kind: RegenStageKind, rows: List<RegenChangedSurface>) -> RegenS
   )
 }
 
-test fn producer_stage_defers_seed_subject_until_promoted_generation() -> Bool {
+// RED: a GenerationInput mirror that re-exports a symbol only a GenerationSubject
+// sibling introduces must not be installed alone. regen_plan_next_stage used to pick
+// PromoteGenerationInputs and defer the subject; cargo then failed E0432.
+test fn mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild() -> Bool {
   let producer = fixture_surface(
-    module: "compiler.producer",
-    path: "compiler_producer.rs",
+    module: "v1.compiler.emit_rust",
+    path: "v1_compiler_emit_rust.rs",
     role: GenerationInput,
     seed: SeedEmbedded
   )
   let subject = fixture_surface(
-    module: "std.subject",
-    path: "std_subject.rs",
+    module: "std.compiler_entry",
+    path: "std_compiler_entry.rs",
     role: GenerationSubject,
     seed: SeedEmbedded
   )
-  match fixture_plan(kind: PromoteGenerationInputs, rows: [producer, subject]) {
+  match regen_plan_next_stage(
+    ordinal: 1,
+    producer_generation_id: "g0",
+    candidate_tree_id: "tree-g0",
+    candidate_tree_digest: "tree-digest-g0",
+    changed: [producer, subject],
+    build_target: "claim_executor",
+    build_invocation: "cargo build --release --bin claim_executor"
+  ) {
+    RegenStagePlanned { stage: first } =>
+      count(first.planned_surfaces) == 2
+        && count(first.deferred_surfaces) == 0
+        && match first.kind {
+          InstallSeedCompatibilityCut => true
+          PromoteGenerationInputs => false
+          PublishNonSeedOutputs => false
+        }
+        && match regen_plan_next_stage(
+          ordinal: 1,
+          producer_generation_id: "g0",
+          candidate_tree_id: "tree-g0",
+          candidate_tree_digest: "tree-digest-g0",
+          changed: [subject, producer],
+          build_target: "claim_executor",
+          build_invocation: "cargo build --release --bin claim_executor"
+        ) {
+          RegenStagePlanned { stage: second } =>
+            count(second.planned_surfaces) == 2
+              && count(second.deferred_surfaces) == 0
+              && match second.kind {
+                InstallSeedCompatibilityCut => true
+                PromoteGenerationInputs => false
+                PublishNonSeedOutputs => false
+              }
+          RegenStagePlanningRefused { refusal: _ } => false
+          RegenConvergenceTerminal => false
+        }
+    RegenStagePlanningRefused { refusal: _ } => false
+    RegenConvergenceTerminal => false
+  }
+}
+
+test fn single_generation_input_still_promotes_alone() -> Bool {
+  let producer = fixture_surface(
+    module: "v1.compiler.emit_rust",
+    path: "v1_compiler_emit_rust.rs",
+    role: GenerationInput,
+    seed: SeedEmbedded
+  )
+  match regen_plan_next_stage(
+    ordinal: 1,
+    producer_generation_id: "g0",
+    candidate_tree_id: "tree-g0",
+    candidate_tree_digest: "tree-digest-g0",
+    changed: [producer],
+    build_target: "claim_executor",
+    build_invocation: "cargo build --release --bin claim_executor"
+  ) {
     RegenStagePlanned { stage: stage } =>
       count(stage.planned_surfaces) == 1
-        && stage.planned_surfaces |> all(only => only.identity.declaring_module == "compiler.producer")
-        && count(stage.deferred_surfaces) == 1
+        && match stage.kind {
+          PromoteGenerationInputs => true
+          InstallSeedCompatibilityCut => false
+          PublishNonSeedOutputs => false
+        }
+    RegenStagePlanningRefused { refusal: _ } => false
+    RegenConvergenceTerminal => false
+  }
+}
+
+test fn seed_compatibility_cut_installs_generation_input_with_its_dependent_subject() -> Bool {
+  let producer = fixture_surface(
+    module: "v1.compiler.emit_rust",
+    path: "v1_compiler_emit_rust.rs",
+    role: GenerationInput,
+    seed: SeedEmbedded
+  )
+  let dependent = fixture_surface(
+    module: "std.compiler_entry",
+    path: "std_compiler_entry.rs",
+    role: GenerationSubject,
+    seed: SeedEmbedded
+  )
+  match fixture_plan(kind: InstallSeedCompatibilityCut, rows: [producer, dependent]) {
+    RegenStagePlanned { stage: stage } => count(stage.planned_surfaces) == 2
     RegenStagePlanningRefused { refusal: _ } => false
     RegenConvergenceTerminal => false
   }

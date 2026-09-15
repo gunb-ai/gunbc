@@ -616,10 +616,28 @@ data floor_cross_claim_pure_producers_claim_forced: List<String> = [
 // channel into typed fields would be transcription with a schema -- the same rot, now
 // type-checked. `measurement` names the run pair and the artifact that re-derives the verdict;
 // the numbers stay where they are produced.
+// `KeyOmitsAnInputTheValueDependsOn` IS NOT A COST ARM AND MUST NOT BE FOLDED INTO ONE.
+// `gunbc.recurring_failure_mode` `refusal_names_a_comparison_and_prints_neither_side` states the
+// rule this arm exists to obey: the other three arms all answer a COST question -- is serving
+// cheaper than recomputing -- and filing a non-cost refusal under one of them is a MEANING FORK,
+// because a cost refusal reads as "we measured and sharing lost" and ranks for a cost repair, while
+// this one means SHARING IS NOT AVAILABLE AT ALL and ranks for a shape repair.
+//
+// THE DIFFERENCE IS BETWEEN "DO NOT BOTHER" AND "MUST NOT". A cost-refused row is legitimately
+// re-proposable on new cost evidence; a row refused here may NOT come back on any amount of cost
+// evidence, because the objection is that serving would be WRONG. The memo key is
+// `(fn_node, args_hash)` and `args_hash` covers the DECLARED arguments only, so a producer whose
+// value also depends on the resolving context can be served a value computed under a different
+// context -- silently, with a plausible result. DESIGN section 5 puts that outside the ladder
+// rather than low on it.
+//
+// `undeclared_input` NAMES WHAT THE KEY CANNOT SEE, so the row says which fact would have to become
+// an argument -- or become part of the key -- for the refusal to end.
 type ShareRefusalVerdict =
     MeasuredServeAboveRecompute
   | NoMeasuredEffectOverItsConsumers
   | SupersededBySingleAuthorityRepair { repaired_by: String }
+  | KeyOmitsAnInputTheValueDependsOn { undeclared_input: String }
 
 // `carrier_modules` is the set of consuming modules the refusal was MEASURED OVER -- the claims
 // that carried it, read from the deciding run's own `[floor-shared-fill]` `modules=` field, which
@@ -631,6 +649,20 @@ type RefusedShareCandidate {
   carrier_modules: List<String>
   measurement: String
   next_trigger: String
+}
+
+// ONE DECLARATION, TWO READERS. Both refused rows below ask the same question of the corpus, so it
+// is answered once here rather than in a paragraph copied into each `measurement` string -- which is
+// what an earlier revision did, and the copies could then drift apart on a one-line edit (DESIGN
+// section 2).
+//
+// WHY THE ANNOTATION SAYS NO MORE THAN THAT: the declaration below IS prose, so an annotation
+// restating its claims would be the same fork one level up, in the copy no consumer reads (DESIGN
+// section 4c -- an annotation must not restate what the declaration structurally says). The grain,
+// the frontier and the no-figure rule are stated once, in the string, where the rows actually read
+// them. Found by review 65532.
+fn homonym_census_note() -> String {
+  "THE HOMONYM EVIDENCE IS CITED AT REFERENCE GRAIN AND IS A DECLARED FRONTIER. The refusal below fires on a bare spelling RESOLVED through a claim scope that carries two declarers, so the population that ranks this class is (referencing module, bare spelling, candidate declaring modules) -- not a count of homonymous DECLARATIONS, which is a different question a corpus can answer loudly while having no ambiguous reference at all. The reference-grain census is owned by `witty-otter-157` under the `swift-bat-902` reflection lane and is NOT YET AN ENTRY POINT; this row names no census symbol until it is, because a citation that resolves to nothing is worse than an admitted gap. NO CORPUS ROW RECORDS THIS POPULATION TODAY EITHER, AND AN EARLIER REVISION OF THIS SENTENCE SAID ONE DID (review 65792). It cited `gunbc.bare_name_identity_consumer_census` as carrying a row sited at `v2.std.node_reflection` `resolve_type_node` with a `ReachabilityUnmeasured` reach. That row does not exist at this head -- every site in that roster is a v1 emitter module -- so the citation resolved to nothing, in the same sentence that calls a citation resolving to nothing worse than an admitted gap. It came from relaying a peer lane's description of its own UNLANDED PR as though it were a fact about the tree, which is the failure mode `gunbc.recurring_failure_mode` `prose_repealed_by_the_change_that_wrote_it` names one step removed: not a claim this change falsified, but a claim no change had yet made true. The row and the reference-grain census are both PROPOSED in gunbc#11291 by `witty-otter-157` under the `swift-bat-902` reflection lane; neither has landed, and this row cites the symbol when one does. NO FIGURE IS CARRIED HERE IN EITHER DIRECTION (DESIGN section 6: name the instrument, never transcribe its output -- which governs a qualitative claim exactly as it governs a number). WHAT THE ANSWER WOULD MEAN, since that is what does not age: a NON-EMPTY reference population means the class has live specimens and the upstream repair ranks against a real one; an EMPTY population means these rows are UNGUARDED rather than harmful. NEITHER ANSWER CHANGES THE REFUSAL -- the census ranks the repair, it does not decide the enrolment, and a key that omits an input the value depends on may not be enrolled whatever the population is (DESIGN section 5: construction, not validation)."
 }
 
 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
@@ -679,6 +711,38 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
     ],
     measurement: "gunbc#10094 measured this enrolment as a large WIN and withdrew it anyway; the refusal is DESIGN section 3, not cost -- gunbc#10108 removes the receipt-series argument instead of paying to reify and verify it per consuming frame, so one fact gets one row at the declaration that makes it cheap",
     next_trigger: "none that restores THIS spelling: the general declaration takes the series as an argument and is meant to keep taking it. The row retires when its repair lands, and re-proposing this producer means proposing to serve the argument-taking shape again"
+  },
+  RefusedShareCandidate {
+    producer: "v2.std.node_reflection.coproduct_arm_keys",
+    verdict: KeyOmitsAnInputTheValueDependsOn {
+      undeclared_input: "the RESOLVING CONTEXT. coproduct_arm_keys(type_name: Symbol) reaches resolve_type_node, whose host arm eval_resolve_type_node calls type_item_by_name(ctx, type_name); that fold iterates ctx.modules and matches on the AUTHORED (bare) name. So the value is a function of type_name AND of which modules the claim scope carries and which bare name wins among them. The cross-claim memo key is (fn_node, args_hash) and args_hash covers the declared arguments only, so ctx is invisible to it" as String,
+    },
+    carrier_modules: [
+      "v2.test.claim.affected_set_universe",
+      "v2.test.claim.generated_conformance_floor",
+      "v2.test.manual.value_null_split_witness",
+      "v2.test.manual.coproduct_reflection_conformance"
+    ],
+    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), the row keyed producer=coproduct_arm_keys arg_shape=keyed, decl_site src/v2/std/node_reflection.dag. ITS COST COLUMNS ARE NOT COPIED HERE (DESIGN section 6: name the instrument, never transcribe its output). The run, the artifact and the row key above ARE the citation; a figure copied into this prose is unreachable from the producer that owns it and rots without anyone touching either end. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports a consumer-module count ABOVE ONE, over v2.test.claim.generated_conformance_floor and v2.test.manual.value_null_split_witness. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal. WHAT THE SEAM ACTUALLY DOES WAS EXECUTED RATHER THAN READ OFF THE RUST, and the two specimens do not behave alike (witty-otter-157, 2026-09-13): for one it ANSWERS from one of several candidate declarations -- a coproduct in one module and a record in another, with an enrolled claim green on main over the arm list it returned -- and for the other it FAILS UNTYPED with an unknown-closed-type host error rather than picking between two disjoint arm sets. So the mechanism is: answers from one of several, or fails untyped, NEVER refuses. An earlier revision of this row said first-match-wins serves a plausible wrong arm set; that is true of the first shape only, and was read from the Rust rather than run. Neither shape is a typed located refusal, which is why the defect and this refusal both stand unchanged ", homonym_census_note()),
+    next_trigger: "REFLECTION KEYED BY QUALIFIED OR SCOPED IDENTITY, as a capability and not as a witness. Either type_item_by_name resolves a QUALIFIED name so the value is a function of its arguments alone, or the reflection carries the resolving scope into the key so the memo can tell two resolutions apart. A scope-invariance witness is explicitly NOT the trigger: it is validation standing where construction is available (DESIGN section 5), the value would still be computed from an input the key cannot see, and a witness over today's corpus says nothing about tomorrow's homonym. Bare-name resolution is a namespace-layer subject (gunbc.rung_drop bare_name_fork_lens and the namespace cut), so this trigger is an upstream obligation rather than work this roster can do. When it lands, this producer and the two rows below return as enrolments with the ordinary present-versus-absent receipt" as String
+  },
+  RefusedShareCandidate {
+    producer: "v2.lens.affected_set.ci_gate_processes",
+    verdict: KeyOmitsAnInputTheValueDependsOn {
+      undeclared_input: "the RESOLVING CONTEXT, inherited one level up and with LESS to look at. This producer is nullary, so its args_hash is EMPTY and its key is the declaration alone -- while its whole value is a fold over coproduct_arm_keys(type_name: affected_set_reflect_gate_type). An empty key over a ctx-dependent value is the same defect as the row above with nothing in the key to inspect" as String,
+    },
+    carrier_modules: ["v2.test.claim.affected_set_universe"],
+    measurement: concat("required floor run 34742966153, artifact required-floor-cross-claim-demand, the row keyed producer=ci_gate_processes arg_shape=keyed, decl_site src/v2/lens/affected_set.dag; its cost and module columns are read from that artifact rather than copied here. arg_shape reads `keyed` because a nullary call has zero unkeyable arguments, which is exactly the point: the census cannot distinguish `every input is in the key` from `there are no inputs in the key`. that row reports a SINGLE consumer module today, so no cross-scope serve is observed for THIS producer -- the refusal is that nothing prevents one and the key could not express the constraint if it did ", homonym_census_note()),
+    next_trigger: "the same capability as the row above: reflection keyed by qualified or scoped identity. This producer has no repair of its own -- it is sound exactly when its callee is" as String
+  },
+  RefusedShareCandidate {
+    producer: "v2.lens.affected_set.meta_processes",
+    verdict: KeyOmitsAnInputTheValueDependsOn {
+      undeclared_input: "the RESOLVING CONTEXT, by the same route as ci_gate_processes: nullary, empty key, value folded over coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type)" as String,
+    },
+    carrier_modules: ["v2.test.claim.affected_set_universe"],
+    measurement: "THIS ROW IS A WITHDRAWAL OF AN ENROLMENT THIS LANE PROPOSED, recorded as such rather than as a candidate that was never admitted. gunbc#11247 proposed carrying this producer WARM on a real duplication measurement -- the floor own census carried a producer=meta_processes row whose cross-claim share was a visible fraction of its total, and the carry demonstrably worked: with it applied, affected_set_universe_includes_meta_self drops to a SMALL FRACTION of its unserved step count and meta_processes DISAPPEARS from the cross-claim census of run 34742966153 because it is served rather than re-derived. The cost case was correct and is not what refuses it. NO FIGURE FROM THAT MEASUREMENT IS TRANSCRIBED HERE, and the withdrawal does not need one: what is preserved is that a real duplication was measured and that the cost case was sound, both re-derivable from the named run and artifact. What refuses it is the key: the serve-boundary check made when it was proposed asked whether the VALUE was portable (no Closure, no OriginBoundNode at any depth) and never asked whether the KEY covered every input. It does not" as String,
+    next_trigger: "the same capability: reflection keyed by qualified or scoped identity. When it lands this row returns to floor_cross_claim_pure_producers_warm with the receipt gunbc#11247 already measured, which is why that measurement is preserved above rather than discarded with the enrolment" as String
   }
 ]
 
@@ -735,11 +799,17 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
 // two arms that leave it are still refused by the identity fold above on their own spelling, so
 // no row loses coverage of its own re-proposal -- what they lose is a claim over OTHER producers
 // that the measurement never supported.
+// `KeyOmitsAnInputTheValueDependsOn` DOES NOT TRANSFER, and that is the one arm worth saying why
+// about. `MeasuredServeAboveRecompute` travels because it is a measured cost fact about a SHAPE that
+// other producers share. A key objection is a fact about ONE producer's key, so transferring it
+// would refuse unrelated candidates on an objection that does not apply to them -- the inflation the
+// failure-mode row above warns about, in the other direction.
 fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
   match verdict {
     MeasuredServeAboveRecompute => true
     NoMeasuredEffectOverItsConsumers => false
     SupersededBySingleAuthorityRepair { repaired_by: _ } => false
+    KeyOmitsAnInputTheValueDependsOn { undeclared_input: _ } => false
   }
 }
 
@@ -898,6 +968,208 @@ fn share_roster_pending_collisions(
   let decided = concat(admitted, refused_share_producers(refused: refused))
   reverse(fold(pending_share_producers(pending: pending), init: [], f: fn(acc, name) {
     if any(xs: decided, predicate: fn(d) { d == name }) {
+      concat([name], acc)
+    } else {
+      acc
+    }
+  }))
+}
+
+// ── A THIRD FILL DISPOSITION: A PREPARED EFFECT INPUT, CARRIED ────────────────────────────
+//
+// THE ROW KIND THIS FILE COULD NOT SPELL. The two rosters above are the two dispositions a
+// fill can have: a WARM row is nullary and preparation-forceable, a CLAIM-FORCED row has
+// claim-shaped arguments and fills inside the fold. A producer whose value depends on ONE
+// READ OF A COMMITTED CARRIER fits neither, and the reason is in the KEY rather than in
+// anyone's taste: a stored entry is keyed on (resolved fn node, portable ARGUMENT ROW), and a
+// nullary call that reaches a read contributes NOTHING about what it read to that key. Warming
+// it would let two different carrier contents share one entry — the content form of the
+// ctx-blind homonym class this file already refuses by resolving every spelling to a node. So
+// such a producer could only ever be CLAIM-FORCED, where it re-derives once per claim frame:
+// the rostered class `shared_precondition_re_derived_once_per_claim_frame`.
+//
+// THE LIVE INSTANCE. `gunbc.roadmap_authority.roadmap_authority_projection` is one
+// `Filesystem.Read` of `dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl` followed by a
+// pure fold, demanded by seven required-lane claims and by gunbc#10994 — whose merge path is
+// blocked by an enrolment margin on exactly this shared precondition.
+//
+// WHY CARRYING IT IS BINDING AN INPUT AND NOT CACHING AN EFFECT, which is the whole licence for
+// this row kind. Hermetic evaluation ALREADY classifies this read as INPUT ACCESS: the
+// checkout-input carve-out in `v1_interpreter::eval_service_call` dispatches a readonly
+// `Filesystem.Read`/`List` wet when `hermetic_checkout_input_disposition` confirms the path
+// under the checkout root, and refuses — typed and located — everything it cannot confirm (an
+// out-of-root path, a `.git`/`target` component, an unresolvable path). The value is therefore a
+// function of the commit the run prepared, constant for the whole prepared subject, and
+// ACQUIRING IT ONCE IS BINDING AN INPUT THE RUN ALREADY HOLDS FIXED. A producer reaching host
+// state that wall cannot confirm is never carryable, because that wall refuses it first.
+//
+// WHAT PREPARATION DOES, and every arm of it stops the line rather than widening:
+//   1. resolve each acquisition to its fn node in a frame over the prepared subject;
+//   2. refuse any acquisition that is not nullary — a carried input WITH arguments is a
+//      different concept and must not arrive under this one;
+//   3. evaluate it ONCE under the shared-build observation, so it is billed to preparation and
+//      adjudicated by the same preparation refusal as every other shared build;
+//   4. reify the value TOTALLY to its portable form — the same total walk publication already
+//      performs — and take its structural digest as the carried CONTENT IDENTITY;
+//   5. bind it for the prepared subject's lifetime, cleared with the tier.
+//
+// NO STALE SERVE IS UNWRITABLE RATHER THAN GUARDED. The carried value IS the key material: a
+// changed carrier content produces a different portable argument row, the stored row fails to
+// match, and the producer recomputes. There is no staleness check to forget to run, which is
+// DESIGN section 5's construction-over-validation in the one place a cache usually gets it
+// backwards.
+//
+// THE FLOOR NEVER READS A DOMAIN TYPE. When an acquisition SUCCEEDS and returns its own
+// coproduct's refusal arm (`RoadmapAcceptanceEventHistoryLoadRefused` and its peers), the
+// carried value is that refusal, faithfully, and every claim receives the IDENTICAL typed value
+// it would have computed for itself. That is propagation, not widening: no claim passes where it
+// would otherwise have failed, and the alternative — the floor stopping on a named domain
+// variant — would make this module enumerate `gunbc.roadmap_authority`'s vocabulary, the section
+// 3 layer inversion (adjudicated 2026-09-14: fierce-lark-661 and bright-boar-435, both
+// approving, the second conditioning approval on the disposition being PRINTED so a run where
+// the carrier refused is diagnosable rather than silent — the floor's phase line carries the
+// carried value's outermost variant name and content digest for exactly that reason).
+//
+// SECTION 2's LADDER, WHICH IS THE STRUCTURAL AUTHORITY HERE AND IS CITED IN SOURCE RATHER THAN
+// IN A PLAN DOC. `std.materialization_ladder` is the authority this row kind answers to, and the
+// answer is stated at its own vocabulary: the demand's identity is the resolved declaration; the
+// obligation LCA is required-floor PREPARATION, which is the least common visible ancestor of
+// the consuming claims (each claim is an isolated frame, so the carry crosses an isolation
+// boundary and only a STORE tier may discharge it — `std.materialization_ladder.tier_axes`
+// derives that, this module does not restate it); the provider is the cross-claim tier, a
+// `MemoTier { keying: ContentKeyed }` whose coverage is the enrolled identities below and whose
+// retention is released at its scope's exit with an exact byte ceiling. The section 2 ordering is
+// respected in the direction the text writes it: the demand graph is MINIMIZED FIRST — the
+// repetition has a shared-state least common ancestor, so it is authored duplication whose repair
+// is to CARRY the first value, and the tier is merely where the carried value is held. The typed
+// THE FOUR OBLIGATIONS, EACH AS A TYPED VALUE DERIVED FROM THE ROW, and deliberately NOT as four
+// more String fields beside it. A row already carries its computation identity — the resolved
+// declaration in `acquisition` / `producer` — and the other three are properties of the provider,
+// not of the row, so copying them per row would be one fact in two places (section 3) and the
+// transcription section 6 forbids. They are derived and named here instead:
+//   computation identity -> the row's own `acquisition` / `producer`, consumed as the ladder
+//     demand's `identity` by `floor_prepared_effect_input_ladder.acquisition_demand` and
+//     `producer_demand`;
+//   declared inputs      -> the carried content digest, which IS the stored key's argument row;
+//     stated to the ladder as `MemoTier { keying: ContentKeyed }` and printed per run on the
+//     `phase=prepared-effect-input-acquire` line as `content_digest=`;
+//   provider scope       -> `floor_prepared_effect_input_ladder.floor_preparation_frame`, the
+//     obligation LCA of the consuming claims — and the ladder's verdict at a SHARED-STATE LCA is
+//     AuthoredDuplication rather than Discharged, which is the ladder refusing to let a provider
+//     stand in for the carry: section 2's repair there is to carry the first value, so the pair
+//     `every_carried_identity_is_authored_duplication_before_the_carry` /
+//     `every_carried_identity_is_a_single_demand_after_the_carry` states the transition this row
+//     kind performs instead of claiming a discharge the ladder would not give;
+//   retention            -> `floor_prepared_effect_input_ladder.cross_claim_tier_retention`,
+//     released at the provider's scope exit with the tier's exact byte ceiling.
+// The conformance rows and the fold that decides them live in
+// `v2.workflow.floor_prepared_effect_input_ladder`, one module out, because THIS module is a
+// declared closure seed of the required floor (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`) and
+// every import it grows widens the subject every required run must frame.
+
+// HOW A WARM ROW DECLARES ITS DEPENDENCE ON A CARRIED INPUT, and there are exactly two shapes
+// because there are exactly two ways a producer can reach the acquisition.
+//
+// `BoundParameter` — the producer TAKES the acquired value as a named argument, so a claim's own
+// call already carries the content in its argument row and the stored key needs no help. This is
+// the shape gunbc#11303 is moving the roadmap projections to.
+//
+// `ImplicitAcquisition` — the producer is nullary and reaches the acquisition INSIDE itself. The
+// carried input's content identity is folded into the key on both the warm and the serve, so the
+// entry is content-keyed exactly as the parameterised shape is. This arm carries one obligation
+// the other does not, and it is enforced by execution rather than by this sentence: with the
+// carry installed, the producer's warm must dispatch NO effect. A producer that still reaches
+// the world has a second input the key does not represent, and the floor refuses the row —
+// `PreparedEffectInputProducerStillDispatchesEffect` — rather than storing a value whose key is
+// incomplete. That is the one check that separates "its only input is this carrier" from "we
+// hope its only input is this carrier".
+type CarriedInputDependence
+  = BoundParameter { parameter: String }
+  | ImplicitAcquisition
+
+// `acquisition` is the nullary declaration whose evaluation acquires the input; `checkout_input`
+// is the committed path whose content IS the declared input, named so a reader can see WHAT the
+// carried identity is a digest of without running the floor. `ground` states why this is a
+// commit-determined input rather than host state; `measurement` names the instrument that
+// re-derives the row's present-vs-absent verdict and never transcribes its output.
+type PreparedEffectInput {
+  acquisition: String
+  checkout_input: String
+  ground: String
+  measurement: String
+}
+
+type CarriedInputWarmRow {
+  producer: String
+  carried_input: String
+  dependence: CarriedInputDependence
+  measurement: String
+}
+
+data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
+  PreparedEffectInput {
+    acquisition: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
+    checkout_input: "dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl",
+    ground: "A committed carrier under the checkout root, so hermetic evaluation already reads it as INPUT ACCESS rather than a host effect (v1_interpreter hermetic_checkout_input_disposition). Its content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same value every claim would have read for itself. Demanded by every claim that reaches the roadmap authority: the seven required-lane roadmap claims and gunbc#10994's forecast witness.",
+    measurement: "Present-vs-absent on this row, both arms by workflow_dispatch on a branch ref pinned to an exact sha per this module's corrected procedure, read over required_floor_claim_cost.tsv and the run's own [floor-shared-fill] ledger; the acquisition's own arm is the run's effect-dispatch count for this carrier, which is 1 with the row enrolled and one-per-consuming-claim without it."
+  }
+]
+
+data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
+  CarriedInputWarmRow {
+    producer: "gunbc.roadmap_authority.roadmap_authority_projection",
+    carried_input: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
+    dependence: ImplicitAcquisition,
+    measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. ImplicitAcquisition is the shape on main today: gunbc#11303 moves the live callers to the explicit-history spelling, at which point this row becomes BoundParameter and the producer's own nullary wrapper stops existing — the migration is a row edit, not a mechanism change."
+  }
+]
+
+// The carried-input producers as names, folded exactly like `refused_share_producers` and
+// `pending_share_producers`, for the reason those two state: the walls below need identities, and
+// a third spelling of this fold would be the duplicate this file exists to price.
+fn carried_input_warm_producers(rows: List<CarriedInputWarmRow>) -> List<String> {
+  reverse(fold(rows, init: [], f: fn(acc, row) { concat([row.producer], acc) }))
+}
+
+fn prepared_effect_input_acquisitions(inputs: List<PreparedEffectInput>) -> List<String> {
+  reverse(fold(inputs, init: [], f: fn(acc, row) { concat([row.acquisition], acc) }))
+}
+
+// THE WALL: A CARRIED-INPUT ROW MAY NOT NAME AN INPUT NOBODY PREPARES.
+//
+// A row whose `input` matches no `PreparedEffectInput.acquisition` declares a dependence on a
+// value that will never be bound. The floor refuses it at install, so this fold is the same fact
+// stated where a fixture can redden it: over the live rosters it is green and could be reddened
+// only by editing the corpus it guards, which DESIGN section 4b calls a decoration — as a
+// function of both populations the forbidden state is writable in a fixture and the live tree is
+// the positive control.
+fn carried_input_rows_without_a_prepared_input(
+  rows: List<CarriedInputWarmRow>,
+  inputs: List<PreparedEffectInput>
+) -> List<String> {
+  let prepared = prepared_effect_input_acquisitions(inputs: inputs)
+  reverse(fold(rows, init: [], f: fn(acc, row) {
+    if any(xs: prepared, predicate: fn(p) { p == row.carried_input }) {
+      acc
+    } else {
+      concat([row.producer], acc)
+    }
+  }))
+}
+
+// THE SECOND WALL: A PRODUCER MAY NOT CARRY AN INPUT AND ALSO STAND IN A PLAIN ROSTER.
+//
+// The two enrolments are different keys for one identity — a plain warm row stores under the
+// EMPTY argument row while a carried-input row stores under the carried content — so a producer
+// in both would have one value servable under a key that does not represent the carrier, which is
+// precisely the stale serve this row kind exists to make unwritable. One identity, one
+// disposition.
+fn carried_input_roster_collisions(
+  rows: List<CarriedInputWarmRow>,
+  admitted: List<String>
+) -> List<String> {
+  reverse(fold(carried_input_warm_producers(rows: rows), init: [], f: fn(acc, name) {
+    if any(xs: admitted, predicate: fn(d) { d == name }) {
       concat([name], acc)
     } else {
       acc

@@ -6,7 +6,8 @@ import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
 import extdeps.external_authority { ExternalAuthority }
-import gunbc.memory_configuration { MemoryChangeProposal, RetainedMemoryUnit, AcquireMemoryUnit, MemoryTrainingFailureScreen }
+import gunbc.memory_configuration {
+  CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_label, MemoryChangeProposal, RetainedMemoryUnit, AcquireMemoryUnit, MemoryTrainingFailureScreen }
 import gunbc.memory_observation { MemoryEvaluationEvidence }
 import gunbc.memory_change_evaluation {
   MemoryChangeAssessment, MemoryPurchasePurpose, ProductionMemoryPurchase, QualificationMemoryPurchase,
@@ -156,7 +157,7 @@ fn derive_bom(recipe: NodeRecipe) -> List<BomLine> {
           } else { line })
         } else {
           concat(lines, [BomLine { role: MemoryModule, part: dimm.part,
-            display_label: dimm.catalog.part_number, quantity_per_build: 1 }])
+            display_label: memory_module_label(dimm: dimm), quantity_per_build: 1 }])
         }
       }
     }
@@ -571,24 +572,37 @@ fn memory_screened_rows(recipe: NodeRecipe, rows: List<SupplyRow>) -> List<Suppl
     let compatibility = fold(recipe.memory.proposed.population, init: row.compatibility, f: (acc, dimm) =>
       if !declaration_ref_eq(a: dimm.part, b: row.part) { acc }
       else {
-        let implication = part_implication(candidate: dimm.catalog, failures: recipe.memory_evidence.training_failures,
-          target_board: recipe.memory.proposed.platform.board)
-        let screened = compatibility_of(implication: implication)
-        match screened {
-          CompatibilityRefutedForPlatform { reason: _ } => screened
-          CompatibilityEvidenceUnread { obligation: _ } => match acc {
+        match dimm.identity {
+          ObservedMemoryModule { printed_part: _, capacity: _, source: _, missing_catalog_binding } => match acc {
             CompatibilityRefutedForPlatform { reason: _ } => acc
-            _ => match implication {
-              PartNotImplicated => acc
-              _ => match recipe.memory_purchase {
-                ProductionMemoryPurchase => screened
-                QualificationMemoryPurchase { maximum_units: _, completion } =>
-                  if any(completion, obligation => obligation == MemoryTrainingFailureScreen) { acc }
-                  else { screened }
-              }
+            _ => match recipe.memory_purchase {
+              QualificationMemoryPurchase { maximum_units: _, completion } =>
+                if any(completion, obligation => obligation == MemoryCatalogBinding) { acc }
+                else { CompatibilityEvidenceUnread { obligation: missing_catalog_binding } }
+              ProductionMemoryPurchase => CompatibilityEvidenceUnread { obligation: missing_catalog_binding }
             }
           }
-          CompatibilityEstablished => acc
+          CatalogMemoryModule { catalog } => {
+            let implication = part_implication(candidate: catalog, failures: recipe.memory_evidence.training_failures,
+              target_board: recipe.memory.proposed.platform.board)
+            let screened = compatibility_of(implication: implication)
+            match screened {
+              CompatibilityRefutedForPlatform { reason: _ } => screened
+              CompatibilityEvidenceUnread { obligation: _ } => match acc {
+                CompatibilityRefutedForPlatform { reason: _ } => acc
+                _ => match implication {
+                  PartNotImplicated => acc
+                  _ => match recipe.memory_purchase {
+                    ProductionMemoryPurchase => screened
+                    QualificationMemoryPurchase { maximum_units: _, completion } =>
+                      if any(completion, obligation => obligation == MemoryTrainingFailureScreen) { acc }
+                      else { screened }
+                  }
+                }
+              }
+              CompatibilityEstablished => acc
+            }
+          }
         }
       }
     )

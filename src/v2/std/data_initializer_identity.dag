@@ -8,6 +8,11 @@ import v2.std.optional { optional_present, optional_absent }
 // Resolved parent/arm projection for DataItem rows — qualified_name, module_path, rel_path, and
 // name locator grain (not occurrence identity). Host bridge marshals projection Node trees from
 // typechecked subjects; parse-pool decl_facts rows use PoolDeclarationIdentity only.
+// Authored LitStr values in the initializer (every shape: bare literal, record field, list
+// element, concat argument, string-interp fragment) are attached as named edges whose
+// intern spelling is `v2.std.decl_facts_skeleton` `authored_string_literal_edge_name`
+// so constructor-spelling atom walks stay structural while lexeme-keyed discovery still
+// reads the target atoms. Not `DataInitDecl.literal_fp`.
 
 fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
   match node.kind {

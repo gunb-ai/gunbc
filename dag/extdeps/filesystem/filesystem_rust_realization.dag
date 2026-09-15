@@ -98,6 +98,17 @@ module extdeps.filesystem.rust_realization
 // therefore stated as what it is -- one WriteCreateNew act may perform at most this many exclusive
 // staging-candidate acquisition attempts before refusing with StagingCandidateBudgetExhausted.
 //
+// PUBLICATION VISIBILITY VERSUS DIRECTORY DURABILITY, AND THE TWO MUST NOT BE COLLAPSED.
+//
+// The function below writes complete bytes to a private staging file, fsyncs THAT file, then
+// hard_link(2)s the name into the target. Success means the target directory entry became visible
+// with the complete content, or the call refused and the target name was never claimed. That is
+// exclusive complete PUBLICATION. It is NOT durable publication of the parent directory's metadata:
+// fsync of the staging file does not fsync the directory that received the link. A crash between
+// a successful hard_link and a directory fsync can lose the entry. This module does not infer the
+// second fact from the first, and no consumer may. RUNG for crash-durable directory metadata:
+// outside the modeled guarantee until a declared directory-sync step is part of this contract.
+//
 // It lives here, named, rather than as a literal inside the generated Rust, so that the function
 // and its controls consume ONE authority. A test that retyped 1024 would be a second authority for
 // the same fact, and would keep passing if this row changed -- which is the failure this module
