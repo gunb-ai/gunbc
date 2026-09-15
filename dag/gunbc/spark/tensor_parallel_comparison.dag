@@ -13,7 +13,7 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
-  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial, SubjectUnestablished,
+  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
   SubjectAxisDelta, AxisDeltaOnOneAxis, AxisDeltaNone, AxisDeltaOnManyAxes, AxisDeltaUndecidable,
   serving_subject_axis_delta,
 }
@@ -104,30 +104,25 @@ type TopologyArm sole_constructor {
 // fleet-normalisation path still read the other number. Both are axes; an inconsistent pair is a
 // difference the join can see rather than one the subject silently resolves.
 fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: TokenCount) -> ServingPerformanceSubjectStanding {
-  match serving_topology_of_rank_count(ranks: degree) {
-    Absent => SubjectUnestablished {
-      missing: "tensor-parallel topology" as NonEmptyStr,
-      believed: join(["nothing: the arm declares tensor_parallel_size ", to_string(degree),
-                      ", which no ServingTopology in gunbc.spark.serving_arm serving_topologies carries"], "") as NonEmptyStr,
-      would_settle: "add the ServingTopology row for this rank count to gunbc.spark.serving_arm, or correct the arm's declared degree; until then this arm names a shape the fleet does not model and no measurement of it may be joined to any decision" as NonEmptyStr,
-    }
-    Present { value: resolved_topology } => serving_subject_standing(
-      subject: serving_performance_subject(
-        checkpoint: DeepseekV4FlashIq3sSplit,
-        checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
-        runtime: GunbcSparkrunVllmDs4Gb10,
-        runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
-        topology: resolved_topology,
-        rank_population: ranks,
-        context_ceiling: ceiling,
-        max_num_batched_tokens: budget,
-        max_num_seqs: 32,
-        kv_cache_dtype: KvFp8,
-        speculative: none,
-        collective_transport: none
-      )
-    )
-  }
+  serving_subject_standing(
+    subject: serving_performance_subject(
+      checkpoint: DeepseekV4FlashIq3sSplit,
+      checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+      runtime: GunbcSparkrunVllmDs4Gb10,
+      runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+      topology: serving_topology_of_rank_count(ranks: degree),
+      rank_population: Present { value: ranks },
+      context_ceiling: ceiling,
+      max_num_batched_tokens: budget,
+      max_num_seqs: 32,
+      kv_cache_dtype: KvFp8,
+      speculative: none,
+      collective_transport: none
+    ),
+    believed: join(["the arm declares tensor_parallel_size ", to_string(degree),
+                    "; a degree no ServingTopology carries leaves the topology axis absent rather than resolved to the nearest one"], "") as NonEmptyStr,
+    would_settle: "for an unmapped degree, add the ServingTopology row for that rank count to gunbc.spark.serving_arm or correct the arm's declared degree; for the transport and speculative axes, read NCCL's `Using network` verdict line and the launch's speculative configuration on a relaunch -- which produces a NEW subject rather than repairing this one" as NonEmptyStr,
+  )
 }
 
 // 1,066.2 micros per token at ~16k depth. Reciprocal 938 tokens per second, derived, never stored.

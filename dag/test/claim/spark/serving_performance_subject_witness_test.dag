@@ -12,11 +12,11 @@ import gunbc.spark.serving_arm {
   ServingCheckpoint, Glm53NativeFp8, DeepseekV4FlashIq3sSplit,
   ServingRuntime, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3,
   ServingTopology, SingleSparkTp1, SparkPairTp2, FourSparkTp4,
-  serving_topology_wire, serving_topology_rank_count, serving_topology_of_rank_count,
+  serving_topology_wire, serving_topology_rank_count, serving_topology_of_rank_count, serving_checkpoint_wire,
 }
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing, standing_subject,
-  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial, SubjectUnestablished,
+  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
   ServingSubjectJoin, SameSubject, DifferentSubject, SubjectIncomparable,
   ServingSubjectAxis, AxisCheckpoint, AxisRuntime, AxisTopology, AxisContextCeiling,
   AxisBatchBudget, AxisKvCacheDtype, AxisCollectiveTransport,
@@ -26,7 +26,7 @@ import gunbc.spark.serving_performance_subject {
   serving_subject_axes, serving_subject_axis_wire, serving_subject_reads,
   serving_subject_standing_reads, serving_subject_axis_delta, serving_subject_differing_axes,
 }
-import gunbc.spark.prefill_batch_sweep { MeasuredBatchArm, spark_group_a_measured_arms, spark_group_a_depth_rate }
+import gunbc.spark.prefill_batch_sweep { MeasuredBatchArm, batch_arm_subject, spark_group_a_measured_arms, spark_group_a_depth_rate }
 import gunbc.spark.tensor_parallel_comparison { spark_group_a_tp4_arm, spark_group_a_tp2_arm, spark_group_a_topology_axis_delta }
 
 // THE FIXTURES CARRY NO FLEET FACTS. Every subject below is authored here, so a row reds because
@@ -44,8 +44,8 @@ data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
   checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
   runtime: GunbcSparkrunVllmDs4Gb10,
   runtime_image_reference: "repo@sha256:aaa" as NonEmptyStr,
-  topology: FourSparkTp4,
-  rank_population: 4,
+  topology: Present { value: FourSparkTp4 },
+  rank_population: Present { value: 4 },
   context_ceiling: token_count(count: 131072),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
@@ -61,8 +61,8 @@ data fx_glm_group_b: ServingPerformanceSubject = serving_performance_subject(
   checkpoint_revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   runtime: Gitcommit90Sm121Exl3,
   runtime_image_reference: "repo@sha256:bbb" as NonEmptyStr,
-  topology: FourSparkTp4,
-  rank_population: 4,
+  topology: Present { value: FourSparkTp4 },
+  rank_population: Present { value: 4 },
   context_ceiling: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
@@ -145,7 +145,7 @@ test fn w_moving_the_topology_alone_is_detected_and_named() -> Bool {
     checkpoint_revision: fx_deepseek_tp4.checkpoint_revision,
     runtime: fx_deepseek_tp4.runtime,
     runtime_image_reference: fx_deepseek_tp4.runtime_image_reference,
-    topology: SparkPairTp2,
+    topology: Present { value: SparkPairTp2 },
     rank_population: fx_deepseek_tp4.rank_population,
     context_ceiling: fx_deepseek_tp4.context_ceiling,
     max_num_batched_tokens: fx_deepseek_tp4.max_num_batched_tokens,
@@ -245,18 +245,16 @@ test fn w_an_unread_transport_is_incomparable_and_never_equal() -> Bool {
 }
 
 // ── AN UNESTABLISHED STANDING REFUSES RATHER THAN GUESSING ─────────────────────────────────────
-test fn w_an_unestablished_standing_refuses_and_says_what_would_settle_it() -> Bool {
-  let unestablished = SubjectUnestablished {
-    missing: "tensor-parallel topology" as NonEmptyStr,
+test fn w_a_partial_standing_names_its_gap_and_the_remedy() -> Bool {
+  match serving_subject_standing(
+    subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4),
     believed: "fixture belief" as NonEmptyStr,
-    would_settle: "fixture remedy" as NonEmptyStr,
-  }
-  let established = SubjectEstablished { subject: fx_deepseek_tp4 }
-  match serving_subject_standing_reads(measurement: unestablished, decision: established) {
-    SubjectIncomparable { because: b } =>
-      (b as String).contains("tensor-parallel topology") && (b as String).contains("fixture remedy")
-    SameSubject => false
-    DifferentSubject { axes: _, left: _, right: _ } => false
+    would_settle: "fixture remedy" as NonEmptyStr) {
+    SubjectPartial { subject: _, unknown_axes: axes, believed: b, would_settle: w } =>
+      (axes as String).contains("collective transport")
+        && (b as String).contains("fixture belief")
+        && (w as String).contains("fixture remedy")
+    SubjectEstablished { subject: _ } => false
   }
 }
 
@@ -341,50 +339,71 @@ test fn w_the_axis_roster_is_not_degenerate() -> Bool {
 // These are the rows that make this type CONSUMED rather than declared, and unlike the fixtures
 // above they are SUPPOSED to move when a measurement is re-taken. Each asserts the standing its own
 // module states in prose, so the prose and the value cannot drift apart.
-test fn w_every_batch_arm_carries_its_own_unestablished_subject() -> Bool {
+test fn w_every_batch_arm_carries_its_own_partial_subject() -> Bool {
   length(spark_group_a_measured_arms) > 0
-    && fold(spark_group_a_measured_arms, init: true, f: (acc, arm) => acc && arm_subject_is_unestablished_on_topology(arm: arm))
+    && fold(spark_group_a_measured_arms, init: true, f: (acc, arm) => acc && arm_subject_is_partial_on_topology(arm: arm))
 }
 
 // THE FIRST ARM STANDS FOR THE POPULATION HERE because every arm's standing is built by one
 // function; the per-arm claim above is what establishes that each of them actually carries it.
 fn first_batch_arm_subject() -> ServingPerformanceSubjectStanding {
   match spark_group_a_measured_arms.first() {
-    Absent => SubjectUnestablished { missing: "no arms" as NonEmptyStr, believed: "none" as NonEmptyStr, would_settle: "the measured population is empty" as NonEmptyStr }
+    Absent => batch_arm_subject(budget: token_count(count: 0))
     Present { value: arm } => arm.subject
   }
 }
 
-fn arm_subject_is_unestablished_on_topology(arm: MeasuredBatchArm) -> Bool {
+// THE ARM IS PARTIAL ON THE DEGREE AND CARRIES EVERYTHING ELSE, which is the half the first binding
+// got wrong: it answered a subject-less standing and threw away six known axes to represent one
+// unknown one. This asserts BOTH halves -- the gap is named, and the checkpoint is present -- because
+// only the second is what makes a DeepSeek arm refuse to read for a GLM decision.
+fn arm_subject_is_partial_on_topology(arm: MeasuredBatchArm) -> Bool {
   match arm.subject {
-    SubjectUnestablished { missing: m, believed: b, would_settle: w } =>
-      (m as String).contains("topology")
+    SubjectPartial { subject: sub, unknown_axes: axes, believed: b, would_settle: w } =>
+      (axes as String).contains("topology")
         && (w as String).contains("794afae389e44952a9049452c0619620")
         && (b as String).contains(to_string(arm.max_num_batched_tokens))
-    SubjectPartial { subject: _, unknown_axes: _ } => false
+        && (serving_subject_axis_value(s: sub, a: AxisCheckpoint) as String) == (serving_checkpoint_wire(c: DeepseekV4FlashIq3sSplit) as String)
     SubjectEstablished { subject: _ } => false
   }
 }
 
-// THE MODULE HOLDS TWO SUBJECTS, AND THIS IS THE ROW THAT SAYS SO. The depth law and the batch arms
-// may not be read as one population.
+// THE MODULE HOLDS TWO SUBJECTS AND THE JOIN STILL REFUSES, BUT FOR A DIFFERENT REASON THAN THIS
+// ROW FIRST ASSERTED -- and the change is the point of the last rework.
 //
-// THE CLAIM NAMES WHICH REFUSAL FIRED, AND AN EARLIER VERSION DID NOT -- which is the whole reason
-// this comment exists. Asserting only `join_is_incomparable` made the row OVER-DETERMINED: two
-// independent guards produce that answer here (the batch arms' unestablished standing, and the
-// depth rate's unread transport), so a plant that broke either one left the row green on the
-// strength of the other. A conjunct that no discriminating input can red is an inert wall, however
-// true it is. Pinning the CAUSE to the standing makes exactly one mechanism answerable for this row:
-// promote the batch arms' bet to an established subject and the cause becomes the transport instead,
-// and this reds.
+// It used to read "unestablished on tensor-parallel topology", because the batch arms carried NO
+// subject at all and the join could not get past the standing. Now they carry every axis the module
+// states and leave absent only the degree and the rank count, so the join compares: every axis both
+// sides read AGREES (same checkpoint, revision, runtime, image, ceiling, budget, KV, speculation),
+// and what separates them is exactly the axis nobody read. Incomparable is the honest answer, and
+// the refusal now names WHICH axes are missing rather than reporting that one side had no subject.
+//
+// THE DEPTH LAW IS TP=2 AND THE ARMS ARE BELIEVED TP=4, AND THAT IS PRECISELY WHAT MAY NOT BE
+// ASSERTED. If the arms' degree were promoted from belief to fact, this would become a
+// DifferentSubject on topology; while it is a bet, the join says it cannot tell. That is the
+// difference between the two answers, and it is the whole reason the belief stays outside the
+// subject.
 test fn w_the_depth_law_does_not_read_for_the_batch_arms() -> Bool {
   match serving_subject_standing_reads(
     measurement: spark_group_a_depth_rate.subject,
     decision: first_batch_arm_subject()) {
-    SubjectIncomparable { because: b } => (b as String).contains("unestablished on tensor-parallel topology")
+    SubjectIncomparable { because: b } =>
+      (b as String).contains("topology") && (b as String).contains("never read")
     SameSubject => false
     DifferentSubject { axes: _, left: _, right: _ } => false
   }
+}
+
+// AND THE KNOWN AXES DO FENCE, which is the half the subject-less standing could not do at all. A
+// batch arm read against the GLM profile reports the CHECKPOINT difference rather than "I cannot
+// tell" -- on the live carrier, not a fixture. This is the row the PR's headline claim rests on.
+test fn w_a_live_batch_arm_refuses_a_glm_decision_by_naming_the_checkpoint() -> Bool {
+  let j = serving_subject_reads(
+    measurement_subject: standing_subject(st: first_batch_arm_subject()),
+    decision_subject: fx_glm_group_b)
+  join_is_different(j: j)
+    && join_names_axis(j: j, a: AxisCheckpoint)
+    && join_names_axis(j: j, a: AxisRuntime)
 }
 
 // THE TRANSPORT GUARD IS THE OTHER MECHANISM, PINNED SEPARATELY so each is answerable for its own
@@ -477,7 +496,7 @@ fn moved(base: ServingPerformanceSubject, which: ServingSubjectAxis) -> ServingP
     runtime: base.runtime,
     runtime_image_reference: if axis_is(a: which, b: AxisRuntimeImageReference) { "repo@sha256:zzz" as NonEmptyStr } else { base.runtime_image_reference },
     topology: base.topology,
-    rank_population: if axis_is(a: which, b: AxisRankPopulation) { base.rank_population + 1 } else { base.rank_population },
+    rank_population: if axis_is(a: which, b: AxisRankPopulation) { bumped_rank(base: base) } else { base.rank_population },
     context_ceiling: base.context_ceiling,
     max_num_batched_tokens: base.max_num_batched_tokens,
     max_num_seqs: if axis_is(a: which, b: AxisMaxNumSeqs) { base.max_num_seqs + 1 } else { base.max_num_seqs },
@@ -485,6 +504,15 @@ fn moved(base: ServingPerformanceSubject, which: ServingSubjectAxis) -> ServingP
     speculative: if axis_is(a: which, b: AxisSpeculativePolicy) { Present { value: SpeculativeDecodingOn { proposer: "draft" as NonEmptyStr } } } else { base.speculative },
     collective_transport: base.collective_transport
   )
+}
+
+// THE BUMP GOES THROUGH THE OPTIONAL rather than substituting a literal, so the moved subject keeps
+// the same absent/present shape as its base on every axis but the one under test.
+fn bumped_rank(base: ServingPerformanceSubject) -> Nat? {
+  match base.rank_population {
+    Absent => Present { value: 1 }
+    Present { value: r } => Present { value: r + 1 }
+  }
 }
 
 fn axis_is(a: ServingSubjectAxis, b: ServingSubjectAxis) -> Bool {
@@ -572,30 +600,27 @@ test fn w_the_transport_wire_is_derived_from_the_variant() -> Bool {
 // axes -- and `serving_subject_standing` reads it off the subject, so Established is not refused at
 // runtime, it is unreachable for such a subject through the only route that builds one.
 test fn w_a_subject_with_an_absent_axis_cannot_become_established() -> Bool {
-  match serving_subject_standing(subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4)) {
+  match serving_subject_standing(subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4), believed: "fixture belief" as NonEmptyStr, would_settle: "fixture remedy" as NonEmptyStr) {
     SubjectPartial { subject: _, unknown_axes: axes } => (axes as String).contains("collective transport")
     SubjectEstablished { subject: _ } => false
-    SubjectUnestablished { missing: _, believed: _, would_settle: _ } => false
   }
 }
 
 // THE POSITIVE CONTROL: a subject with every axis read DOES become established, so the constructor
 // is not a wall that refuses everything.
 test fn w_a_fully_read_subject_becomes_established() -> Bool {
-  match serving_subject_standing(subject: fx_deepseek_tp4) {
+  match serving_subject_standing(subject: fx_deepseek_tp4, believed: "fixture belief" as NonEmptyStr, would_settle: "fixture remedy" as NonEmptyStr) {
     SubjectEstablished { subject: _ } => true
     SubjectPartial { subject: _, unknown_axes: _ } => false
-    SubjectUnestablished { missing: _, believed: _, would_settle: _ } => false
   }
 }
 
 // AND A PARTIAL STANDING STILL CARRIES ITS SUBJECT, which is what lets a known difference survive an
 // unknown axis rather than collapsing to "I cannot tell".
 test fn w_a_partial_standing_still_carries_its_subject() -> Bool {
-  match standing_subject(st: serving_subject_standing(subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4))) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  let st = serving_subject_standing(subject: ServingPerformanceSubject_with_unread(base: fx_deepseek_tp4), believed: "fixture belief" as NonEmptyStr, would_settle: "fixture remedy" as NonEmptyStr)
+  (serving_subject_axis_value(s: standing_subject(st: st), a: AxisCheckpoint) as String)
+    == (serving_subject_axis_value(s: fx_deepseek_tp4, a: AxisCheckpoint) as String)
 }
 
 test fn w_all_serving_performance_subject_claims_hold() -> Bool {
@@ -607,7 +632,7 @@ test fn w_all_serving_performance_subject_claims_hold() -> Bool {
     && w_moving_the_kv_dtype_alone_is_detected_and_named()
     && w_socket_and_rdma_are_different_subjects()
     && w_an_unread_transport_is_incomparable_and_never_equal()
-    && w_an_unestablished_standing_refuses_and_says_what_would_settle_it()
+    && w_a_partial_standing_names_its_gap_and_the_remedy()
     && w_a_one_axis_cut_is_controlled_and_names_that_axis()
     && w_a_multi_axis_pair_is_uncontrolled_rather_than_attributed()
     && w_two_identical_subjects_are_a_repeat_and_not_a_cut()
@@ -626,8 +651,9 @@ test fn w_all_serving_performance_subject_claims_hold() -> Bool {
     && w_every_modelled_topology_round_trips_through_its_rank_count()
     && w_an_unmodelled_rank_count_refuses_rather_than_choosing_the_nearest()
     && w_a_zero_rank_count_refuses_too()
-    && w_every_batch_arm_carries_its_own_unestablished_subject()
+    && w_every_batch_arm_carries_its_own_partial_subject()
     && w_the_depth_law_does_not_read_for_the_batch_arms()
+    && w_a_live_batch_arm_refuses_a_glm_decision_by_naming_the_checkpoint()
     && w_the_depth_law_does_not_even_read_for_itself_while_its_transport_is_unread()
     && w_the_topology_cut_moves_two_axes_rather_than_isolating_the_degree()
 }

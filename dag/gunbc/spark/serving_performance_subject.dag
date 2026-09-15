@@ -53,8 +53,8 @@ type ServingPerformanceSubject sole_constructor {
   checkpoint_revision: NonEmptyStr
   runtime: ServingRuntime
   runtime_image_reference: NonEmptyStr
-  topology: ServingTopology
-  rank_population: Nat
+  topology: ServingTopology?
+  rank_population: Nat?
   context_ceiling: TokenCount
   max_num_batched_tokens: TokenCount
   max_num_seqs: Nat
@@ -73,8 +73,8 @@ fn serving_performance_subject(
   checkpoint_revision: NonEmptyStr,
   runtime: ServingRuntime,
   runtime_image_reference: NonEmptyStr,
-  topology: ServingTopology,
-  rank_population: Nat,
+  topology: ServingTopology?,
+  rank_population: Nat?,
   context_ceiling: TokenCount,
   max_num_batched_tokens: TokenCount,
   max_num_seqs: Nat,
@@ -147,8 +147,16 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
     AxisCheckpointRevision => s.checkpoint_revision
     AxisRuntime => serving_runtime_wire(r: s.runtime)
     AxisRuntimeImageReference => s.runtime_image_reference
-    AxisTopology => serving_topology_wire(t: s.topology)
-    AxisRankPopulation => to_string(s.rank_population) as NonEmptyStr
+    AxisTopology =>
+      match s.topology {
+        Absent => axis_value_unread_marker
+        Present { value: t } => serving_topology_wire(t: t)
+      }
+    AxisRankPopulation =>
+      match s.rank_population {
+        Absent => axis_value_unread_marker
+        Present { value: r } => to_string(r) as NonEmptyStr
+      }
     AxisContextCeiling => to_string(token_count_value(t: s.context_ceiling)) as NonEmptyStr
     AxisBatchBudget => to_string(token_count_value(t: s.max_num_batched_tokens)) as NonEmptyStr
     AxisMaxNumSeqs => to_string(s.max_num_seqs) as NonEmptyStr
@@ -229,8 +237,10 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
     AxisCheckpointRevision => false
     AxisRuntime => false
     AxisRuntimeImageReference => false
-    AxisTopology => false
-    AxisRankPopulation => false
+    AxisTopology =>
+      match s.topology { Absent => true, Present { value: _ } => false }
+    AxisRankPopulation =>
+      match s.rank_population { Absent => true, Present { value: _ } => false }
     AxisContextCeiling => false
     AxisBatchBudget => false
     AxisMaxNumSeqs => false
@@ -284,77 +294,75 @@ fn serving_performance_subject_wire(s: ServingPerformanceSubject) -> NonEmptyStr
 
 // ── ESTABLISHED MEANS EVERY AXIS WAS READ, AND THE CONSTRUCTOR IS WHAT ENFORCES IT ────────────
 //
-// WHY THIS IS THREE ARMS AND NOT TWO. An earlier revision had `SubjectEstablished` and
-// `SubjectUnestablished`, and both bound fleet rows sat in `SubjectEstablished` while declaring
-// their collective transport never read -- a standing asserting the subject IS established around an
-// axis nobody looked at. A review put it exactly: the PR's own witness was named "the depth law does
-// not even read for itself", which is what an established subject that cannot read for itself looks
-// like from the outside. Worse, "nobody read axis X" then had TWO representations with two refusal
-// paths -- an arm inside the axis type, and the standing -- and which one an axis used was incidental.
+// WHY THERE ARE TWO ARMS AND NOT THREE, and this is the correction that mattered most in this lane.
+// The standing used to have a `SubjectUnestablished { missing, believed, would_settle }` arm that
+// carried NO SUBJECT, and the batch-sweep arms -- where most of the fleet's numbers live -- were in
+// it. So `standing_subject` answered Absent for them, every join came back "incomparable, subject
+// unestablished", and a DeepSeek batch measurement read against a GLM decision never reported the
+// CHECKPOINT difference that is the whole point of this type. The module's header claimed the
+// subject was now carried structurally; for the primary population it was not.
 //
-// SO ABSENCE LIVES IN ONE PLACE. The axis types carry only values that were READ
-// (extdeps.nvidia.nccl NcclRealizedTransport has no Unread arm any more, and neither does
-// VllmSpeculativePolicy); the SUBJECT carries those axes as optionals; and this constructor decides
-// the standing by asking the subject which axes are absent. `SubjectEstablished` around an unread
-// axis is not refused at runtime -- it is unconstructible through the only route that builds one.
+// THE DEFECT WAS UNDER-ASSERTION, WHICH DESIGN SECTION 4d NAMES AS ITS OWN FAILURE: "Do assert what
+// you are confident in. Under-asserting is not humility. A fact you decline to state is a wall that
+// does not exist." Those arms' checkpoint, revision, runtime, image, budget and KV dtype are all
+// stated by the module. Exactly ONE axis was never read -- the tensor-parallel degree -- and
+// collapsing to a prose-only Unestablished threw six known axes away to represent one unknown one.
 //
-// AND PARTIAL STILL CARRIES THE SUBJECT, which is the half a two-arm shape could not express. A
-// subject with an unread transport still knows its checkpoint, and two such subjects on DIFFERENT
-// checkpoints must still report that difference rather than collapsing to "I cannot tell" -- the
-// unknown axis is unknown, it does not erase what is known. `SubjectUnestablished` remains for the
-// case where no subject can be built at all, which is what an unmapped tensor-parallel degree is:
-// ServingTopology has no value to put there, so there is nothing to carry.
+// SO EVERY AXIS IS OPTIONAL AND ABSENCE IS UNIFORM. A subject can always be built from what IS
+// known; the constructor reads the absences off it and answers Partial, carrying the subject so the
+// known axes still fence. There is no longer a state in which a measurement has no subject at all,
+// which is why the third arm is gone rather than merely unused.
 type ServingPerformanceSubjectStanding
   = SubjectEstablished { subject: ServingPerformanceSubject }
-  | SubjectPartial { subject: ServingPerformanceSubject, unknown_axes: NonEmptyStr }
-  | SubjectUnestablished { missing: NonEmptyStr, believed: NonEmptyStr, would_settle: NonEmptyStr }
+  | SubjectPartial {
+      subject: ServingPerformanceSubject,
+      unknown_axes: NonEmptyStr,
+      believed: NonEmptyStr,
+      would_settle: NonEmptyStr,
+    }
 
-// THE ONLY SANCTIONED WAY TO BUILD A STANDING FROM A SUBJECT. It cannot answer Established for a
-// subject with an absent axis, because it reads the absences off the subject itself.
-fn serving_subject_standing(subject: ServingPerformanceSubject) -> ServingPerformanceSubjectStanding {
+// THE ONLY SANCTIONED WAY TO BUILD A STANDING. It cannot answer Established for a subject with an
+// absent axis, because it reads the absences off the subject itself rather than taking the caller's
+// word -- so Established around an unread axis is unreachable, not refused after the fact.
+//
+// THE BELIEF AND THE REMEDY RIDE WITH THE PARTIAL because they are facts about THIS row's gap: what
+// the author thinks the missing axis probably is, typed as the bet DESIGN section 4d requires rather
+// than promoted into the subject, and the one action that would close it.
+fn serving_subject_standing(
+  subject: ServingPerformanceSubject,
+  believed: NonEmptyStr,
+  would_settle: NonEmptyStr,
+) -> ServingPerformanceSubjectStanding {
   let unknown = subject_unknown_axes(s: subject)
   if length(unknown) == 0 {
     SubjectEstablished { subject: subject }
   } else {
-    SubjectPartial { subject: subject, unknown_axes: serving_subject_axes_wire(axes: unknown) as NonEmptyStr }
+    SubjectPartial {
+      subject: subject,
+      unknown_axes: serving_subject_axes_wire(axes: unknown) as NonEmptyStr,
+      believed: believed,
+      would_settle: would_settle,
+    }
   }
 }
 
-fn standing_subject(st: ServingPerformanceSubjectStanding) -> ServingPerformanceSubject? {
+fn standing_subject(st: ServingPerformanceSubjectStanding) -> ServingPerformanceSubject {
   match st {
-    SubjectEstablished { subject: sub } => Present { value: sub }
-    SubjectPartial { subject: sub, unknown_axes: _ } => Present { value: sub }
-    SubjectUnestablished { missing: _, believed: _, would_settle: _ } => none
+    SubjectEstablished { subject: sub } => sub
+    SubjectPartial { subject: sub, unknown_axes: _, believed: _, would_settle: _ } => sub
   }
 }
 
-fn standing_unestablished_cause(st: ServingPerformanceSubjectStanding) -> NonEmptyStr {
-  match st {
-    SubjectEstablished { subject: _ } => "established" as NonEmptyStr
-    SubjectPartial { subject: _, unknown_axes: _ } => "partial" as NonEmptyStr
-    SubjectUnestablished { missing: m, believed: _, would_settle: w } =>
-      join(["unestablished on ", m as String, "; what would settle it: ", w as String], "") as NonEmptyStr
-  }
-}
-
+// A STANDING ALWAYS HAS A SUBJECT NOW, so the join is the subject comparison and nothing else. The
+// two-step dance the three-arm shape needed -- resolve the standing, then compare -- is gone with
+// the arm that made it necessary.
 fn serving_subject_standing_reads(
   measurement: ServingPerformanceSubjectStanding,
   decision: ServingPerformanceSubjectStanding,
 ) -> ServingSubjectJoin {
-  match standing_subject(st: measurement) {
-    Absent =>
-      SubjectIncomparable { because: join([
-        "the measurement's subject is ", standing_unestablished_cause(st: measurement) as String,
-      ], "") as NonEmptyStr }
-    Present { value: ms } =>
-      match standing_subject(st: decision) {
-        Absent =>
-          SubjectIncomparable { because: join([
-            "the decision's subject is ", standing_unestablished_cause(st: decision) as String,
-          ], "") as NonEmptyStr }
-        Present { value: ds } => serving_subject_reads(measurement_subject: ms, decision_subject: ds)
-      }
-  }
+  serving_subject_reads(
+    measurement_subject: standing_subject(st: measurement),
+    decision_subject: standing_subject(st: decision))
 }
 
 // ── AN AXIS DELTA IS NOT A COMPARABILITY VERDICT, AND THE NAME NOW SAYS SO ─────────────────────
@@ -381,32 +389,25 @@ fn serving_subject_axis_delta(
   left: ServingPerformanceSubjectStanding,
   right: ServingPerformanceSubjectStanding,
 ) -> SubjectAxisDelta {
-  match standing_subject(st: left) {
-    Absent => AxisDeltaUndecidable { because: join(["the left subject is ", standing_unestablished_cause(st: left) as String], "") as NonEmptyStr }
-    Present { value: ls } =>
-      match standing_subject(st: right) {
-        Absent => AxisDeltaUndecidable { because: join(["the right subject is ", standing_unestablished_cause(st: right) as String], "") as NonEmptyStr }
-        Present { value: rs } => {
-          let known = serving_subject_known_differing_axes(left: ls, right: rs)
-          if length(known) == 1 {
-            match known.first() {
-              Absent => AxisDeltaUndecidable { because: "unreachable: a one-element list has a first element" as NonEmptyStr }
-              Present { value: only } => AxisDeltaOnOneAxis { axis: only }
-            }
-          } else if length(known) > 1 {
-            AxisDeltaOnManyAxes { axes: serving_subject_axes_wire(axes: known) as NonEmptyStr }
-          } else {
-            let unknown = either_side_unknown_axes(left: ls, right: rs)
-            if length(unknown) > 0 {
-              AxisDeltaUndecidable { because: join([
-                "no axis both sides read differs, and these were never read on at least one side: ",
-                serving_subject_axes_wire(axes: unknown),
-              ], "") as NonEmptyStr }
-            } else {
-              AxisDeltaNone
-            }
-          }
-        }
-      }
+  let ls = standing_subject(st: left)
+  let rs = standing_subject(st: right)
+  let known = serving_subject_known_differing_axes(left: ls, right: rs)
+  if length(known) == 1 {
+    match known.first() {
+      Absent => AxisDeltaUndecidable { because: "unreachable: a one-element list has a first element" as NonEmptyStr }
+      Present { value: only } => AxisDeltaOnOneAxis { axis: only }
+    }
+  } else if length(known) > 1 {
+    AxisDeltaOnManyAxes { axes: serving_subject_axes_wire(axes: known) as NonEmptyStr }
+  } else {
+    let unknown = either_side_unknown_axes(left: ls, right: rs)
+    if length(unknown) > 0 {
+      AxisDeltaUndecidable { because: join([
+        "no axis both sides read differs, and these were never read on at least one side: ",
+        serving_subject_axes_wire(axes: unknown),
+      ], "") as NonEmptyStr }
+    } else {
+      AxisDeltaNone
+    }
   }
 }
