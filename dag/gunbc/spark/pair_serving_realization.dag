@@ -546,24 +546,6 @@ fn spark_pair_seal_unit_render(render: SparkPairUnitRender, render_inputs_identi
   }
 }
 
-fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesired, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
-  spark_pair_seal_unit_render(
-    render: spark_pair_head_unit_unsigned(args: args, snapshot: snapshot, head: head, spec: spec),
-    render_inputs_identity: spark_pair_head_render_inputs_identity(args: args, snapshot: snapshot, head: head),
-  )
-}
-
-fn spark_pair_worker_unit_file(head: FabricLaneObserved, self: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
-  spark_pair_seal_unit_render(
-    render: spark_pair_worker_unit_unsigned(head: head, self: self, spec: spec),
-    render_inputs_identity: artifact_realization_digest(inputs: [
-      ArtifactRealizationInput { identity: "unit_name" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_worker_unit_name) },
-      ArtifactRealizationInput { identity: "head_lane" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_lane_inputs_wire(lane: head)) },
-      ArtifactRealizationInput { identity: "self_lane" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_lane_inputs_wire(lane: self)) },
-    ]),
-  )
-}
-
 type SparkPairHostRealization {
   host: HostIdentity
   container: DockerCreateSpec
@@ -743,10 +725,6 @@ fn spark_pair_lookup_declared_head_digest(group: FabricGroup) -> DeclaredUnitDig
 fn spark_pair_withdraw_declared_head_artifact(group: FabricGroup) -> Bool {
   let wr = Filesystem.Write(path: spark_pair_declared_unit_artifact_path(group: group), content: "withdrawn\n")
   wr.success
-}
-
-fn spark_pair_head_unit_declared_digest_among(group: FabricGroup) -> DeclaredUnitDigestStanding {
-  spark_pair_lookup_declared_head_digest(group: group)
 }
 
 // Which unit a host carries, from the realized pairs: the head unit on a head, the worker unit on a
