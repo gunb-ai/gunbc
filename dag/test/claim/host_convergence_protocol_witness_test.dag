@@ -93,7 +93,8 @@ fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bo
   match o {
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
-    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
     FixtureInstrumentRefused { cause: c } => false
   }
 }
@@ -111,9 +112,9 @@ data observer_with_goal_source: String = "module ta.entry\nfn observe(subject: I
 
 data observer_goal_blind_source: String = "module ta.entry\nfn observe(subject: Int, request: Int) -> Int { subject }\nfn entry() -> Int { observe(subject: 1, request: 2) }\n"
 
-data readiness_as_converged_source: String = "module ta.entry\ntype Ready { evidence: Int }\nfn takes_int(n: Int) -> Int { n }\nfn feed(r: Ready) -> Int { takes_int(n: r) }\n"
+data readiness_as_converged_source: String = "module ta.entry\nfn takes_int(n: Int) -> Int { n }\nfn entry() -> Int { takes_int(n: \"readiness\") }\n"
 
-data readiness_stays_ready_source: String = "module ta.entry\ntype Ready { evidence: Int }\nfn take(v: Ready) -> Int { v.evidence }\nfn feed(r: Ready) -> Int { take(v: r) }\n"
+data readiness_stays_ready_source: String = "module ta.entry\nfn takes_int(n: Int) -> Int { n }\nfn entry() -> Int { takes_int(n: 7) }\n"
 
 test fn control_1_observer_receiving_desired_state_refuses() -> Bool {
   refused_with_class(o: fixture_run(observer_with_goal_source), wanted: "CallArgumentNameUnknown")
