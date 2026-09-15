@@ -49,8 +49,12 @@ import gunbc.actions_run_binding {
 // the same way.
 data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v2"
 
+fn live_deploy_apply_receipt_artifact_name_for(instance_id: String) -> String {
+  join(["live-deploy-", instance_id, "-receipt"], "")
+}
+
 fn live_deploy_apply_receipt_dir_for(instance_id: String) -> String {
-  join(["target/live-deploy-", instance_id, "-receipt"], "")
+  join(["target/", live_deploy_apply_receipt_artifact_name_for(instance_id: instance_id)], "")
 }
 
 fn live_deploy_apply_receipt_artifact_path_for(instance_id: String) -> String {

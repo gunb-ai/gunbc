@@ -1,6 +1,6 @@
 module gunbc.live_deploy.desired
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.dissolution { DissolutionCondition, retires_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -108,24 +108,6 @@ fn instance_id_text(id: NonEmptyStr) -> String {
   join([id as String], "")
 }
 
-fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeployment? {
-  fold(
-    desired_deployment_roster(),
-    init: none,
-    f: (acc, row) =>
-      match acc {
-        Present { value } => Present { value: value }
-        Absent => {
-          if instance_id_text(id: row.instance.instance_id) == instance_id {
-            Present { value: row }
-          } else {
-            none
-          }
-        }
-      },
-  )
-}
-
 fn deployment_owned_identity(spec: DeploymentSpec, step: DeploymentArtifactStep) -> String {
   join([deployment_plan_host_identity(spec: spec), ":", step.path as String], "")
 }
@@ -166,40 +148,116 @@ fn spec_same_host_surface_collision(a: DeploymentSpec, b: DeploymentSpec) -> Boo
 type DesiredRosterStanding
   = DesiredRosterAdmitted
   | DesiredRosterSameHostCollision { host: String }
+  | DesiredRosterDuplicateInstanceId { instance_id: String }
+
+type DesiredRosterScan {
+  standing: DesiredRosterStanding
+  a_at: Int
+}
+
+type DesiredRosterInnerScan {
+  standing: DesiredRosterStanding
+  b_at: Int
+}
+
+fn desired_roster_pair_standing(
+  a_at: Int,
+  b_at: Int,
+  a_row: DesiredDeployment,
+  b_row: DesiredDeployment,
+) -> DesiredRosterStanding {
+  if a_at == b_at {
+    DesiredRosterAdmitted
+  } else {
+    if a_row.instance.instance_id == b_row.instance.instance_id {
+      DesiredRosterDuplicateInstanceId {
+        instance_id: instance_id_text(id: a_row.instance.instance_id),
+      }
+    } else {
+      let a = selected_deployment_spec(row: a_row)
+      let b = selected_deployment_spec(row: b_row)
+      if spec_same_host_surface_collision(a: a, b: b) {
+        DesiredRosterSameHostCollision {
+          host: deployment_plan_host_identity(spec: a),
+        }
+      } else {
+        DesiredRosterAdmitted
+      }
+    }
+  }
+}
 
 fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStanding {
   fold(
     rows,
-    init: DesiredRosterAdmitted,
-    f: (acc, a_row) =>
-      match acc {
-        DesiredRosterSameHostCollision { host } => DesiredRosterSameHostCollision { host: host }
-        DesiredRosterAdmitted =>
-          fold(
+    init: DesiredRosterScan { standing: DesiredRosterAdmitted, a_at: 0 },
+    f: (outer, a_row) =>
+      match outer.standing {
+        DesiredRosterSameHostCollision { host } =>
+          DesiredRosterScan {
+            standing: DesiredRosterSameHostCollision { host: host },
+            a_at: outer.a_at + 1,
+          }
+        DesiredRosterDuplicateInstanceId { instance_id } =>
+          DesiredRosterScan {
+            standing: DesiredRosterDuplicateInstanceId { instance_id: instance_id },
+            a_at: outer.a_at + 1,
+          }
+        DesiredRosterAdmitted => {
+          let inner = fold(
             rows,
-            init: DesiredRosterAdmitted,
-            f: (inner, b_row) =>
-              match inner {
+            init: DesiredRosterInnerScan { standing: DesiredRosterAdmitted, b_at: 0 },
+            f: (scan, b_row) =>
+              match scan.standing {
                 DesiredRosterSameHostCollision { host } =>
-                  DesiredRosterSameHostCollision { host: host }
+                  DesiredRosterInnerScan {
+                    standing: DesiredRosterSameHostCollision { host: host },
+                    b_at: scan.b_at + 1,
+                  }
+                DesiredRosterDuplicateInstanceId { instance_id } =>
+                  DesiredRosterInnerScan {
+                    standing: DesiredRosterDuplicateInstanceId { instance_id: instance_id },
+                    b_at: scan.b_at + 1,
+                  }
                 DesiredRosterAdmitted =>
-                  if a_row.instance.instance_id == b_row.instance.instance_id {
-                    DesiredRosterAdmitted
-                  } else {
-                    let a = selected_deployment_spec(row: a_row)
-                    let b = selected_deployment_spec(row: b_row)
-                    if spec_same_host_surface_collision(a: a, b: b) {
-                      DesiredRosterSameHostCollision {
-                        host: deployment_plan_host_identity(spec: a),
-                      }
-                    } else {
-                      DesiredRosterAdmitted
-                    }
+                  DesiredRosterInnerScan {
+                    standing: desired_roster_pair_standing(
+                      a_at: outer.a_at,
+                      b_at: scan.b_at,
+                      a_row: a_row,
+                      b_row: b_row,
+                    ),
+                    b_at: scan.b_at + 1,
                   }
               },
           )
+          DesiredRosterScan { standing: inner.standing, a_at: outer.a_at + 1 }
+        }
       },
-  )
+  ).standing
+}
+
+fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeployment? {
+  match desired_roster_standing(rows: desired_deployment_roster()) {
+    DesiredRosterSameHostCollision { host: _ } => none
+    DesiredRosterDuplicateInstanceId { instance_id: _ } => none
+    DesiredRosterAdmitted =>
+      fold(
+        desired_deployment_roster(),
+        init: none,
+        f: (acc, row) =>
+          match acc {
+            Present { value } => Present { value: value }
+            Absent => {
+              if instance_id_text(id: row.instance.instance_id) == instance_id {
+                Present { value: row }
+              } else {
+                none
+              }
+            }
+          },
+      )
+  }
 }
 
 // PRODUCTION WRAPPERS in apply/readiness/CLI survive one migration PR as typed scaffolds.

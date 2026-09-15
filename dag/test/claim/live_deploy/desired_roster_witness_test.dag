@@ -12,9 +12,11 @@ import gunbc.live_deploy.desired {
   DesiredDeployment,
   DesiredRosterAdmitted,
   DesiredRosterSameHostCollision,
+  DesiredRosterDuplicateInstanceId,
   desired_deployment_roster,
   desired_deployment_for_instance_id,
   desired_roster_standing,
+  instance_id_text,
   selected_deployment_spec,
   srv1_production_desired_deployment,
   srv1_lab_desired_deployment,
@@ -68,6 +70,7 @@ test fn the_desired_roster_admits_three_disjoint_deployments() -> Bool {
     && match desired_roster_standing(rows: rows) {
       DesiredRosterAdmitted => true
       DesiredRosterSameHostCollision { host: _ } => false
+      DesiredRosterDuplicateInstanceId { instance_id: _ } => false
     }
 }
 
@@ -88,14 +91,18 @@ test fn a_same_host_roster_that_shares_production_names_is_a_collision_on_srv1()
   match desired_roster_standing(rows: witness_colliding_same_host_roster()) {
     DesiredRosterSameHostCollision { host } => host == "srv1"
     DesiredRosterAdmitted => false
+    DesiredRosterDuplicateInstanceId { instance_id: _ } => false
   }
 }
 
-test fn roster_rows_carry_distinct_instance_ids() -> Bool {
-  let a = srv1_production_desired_deployment().instance.instance_id
-  let b = srv1_lab_desired_deployment().instance.instance_id
-  let c = srv2_deploy_desired_deployment().instance.instance_id
-  !(a == b) && !(a == c) && !(b == c)
+test fn a_roster_with_a_repeated_instance_id_is_not_admitted() -> Bool {
+  let live = srv1_production_desired_deployment()
+  match desired_roster_standing(rows: [live, live]) {
+    DesiredRosterDuplicateInstanceId { instance_id } =>
+      instance_id == instance_id_text(id: live.instance.instance_id)
+    DesiredRosterAdmitted => false
+    DesiredRosterSameHostCollision { host: _ } => false
+  }
 }
 
 test fn owned_identities_are_host_qualified_and_pairwise_disjoint() -> Bool {

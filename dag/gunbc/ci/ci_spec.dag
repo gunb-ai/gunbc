@@ -33,6 +33,7 @@ import gunbc.roadmap_dashboard_instance { srv1_dashboard_live_id }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_dir_for,
   live_deploy_apply_receipt_artifact_path_for,
+  live_deploy_apply_receipt_artifact_name_for,
 }
 
 import gunbc.ci_release_bins {
@@ -1040,7 +1041,7 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
   )
 }
 
-data gunbc_live_deploy_receipt_artifact_name: String = join(["live-deploy-", srv1_dashboard_live_id as String, "-receipt"], "")
+data gunbc_live_deploy_receipt_artifact_name: String = live_deploy_apply_receipt_artifact_name_for(instance_id: srv1_dashboard_live_id as String)
 data gunbc_live_deploy_receipt_artifact_dir: String = live_deploy_apply_receipt_dir_for(instance_id: srv1_dashboard_live_id as String)
 data gunbc_fleet_converge_apply_receipt_artifact_name: String = "fleet-converge-apply-receipt"
 data gunbc_fleet_converge_apply_receipt_artifact_dir: String = "/tmp/fleet-converge-apply"
