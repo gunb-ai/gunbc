@@ -3,9 +3,9 @@ module gunbc.spark.pair_serving_realization
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
+import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash, parse_content_hash_wire, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash, sha256_digest }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.tools.sha256sum
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -647,28 +647,58 @@ fn spark_pair_head_render_inputs_identity_for_group(group: FabricGroup) -> Conte
   }
 }
 
-fn spark_pair_parse_sha256_wire(wire: String) -> ContentHash? {
-  if string_length(s: wire) != 71 {
-    none
-  } else if substring(s: wire, start: 0, end: 7) != "sha256:" {
-    none
-  } else {
-    match sha256_digest_content_hash(digest: sha256_digest(hex: substring(s: wire, start: 7, end: 71) as NonEmptyStr)) {
-      Absent => none
-      Present { value: h } => Present { value: h }
-    }
+type SparkPairDeclaredHeadArtifactRecord {
+  render_inputs_identity: ContentHash
+  unit_name: NonEmptyStr
+  digest: ContentHash
+}
+
+fn spark_pair_declared_head_artifact_record_text(record: SparkPairDeclaredHeadArtifactRecord) -> String {
+  join([
+    serialize_content_hash(hash: record.render_inputs_identity) as String,
+    "\n",
+    record.unit_name as String,
+    "\n",
+    serialize_content_hash(hash: record.digest) as String,
+    "\n",
+  ], "")
+}
+
+fn spark_pair_declared_head_artifact_record_parse(body: String) -> SparkPairDeclaredHeadArtifactRecord? {
+  let lines = filter(split(s: body, delimiter: "\n"), line => line != "")
+  match first(lines) {
+    Absent => none
+    Present { value: identity_wire } =>
+      match lines.skip(n: 1).first() {
+        Absent => none
+        Present { value: name } =>
+          match lines.skip(n: 2).first() {
+            Absent => none
+            Present { value: digest_wire } =>
+              match parse_content_hash_wire(wire: identity_wire) {
+                Absent => none
+                Present { value: identity } =>
+                  match parse_content_hash_wire(wire: digest_wire) {
+                    Absent => none
+                    Present { value: digest } =>
+                      Present { value: SparkPairDeclaredHeadArtifactRecord {
+                        render_inputs_identity: identity,
+                        unit_name: name as NonEmptyStr,
+                        digest: digest,
+                      } }
+                  }
+              }
+          }
+      }
   }
 }
 
 fn spark_pair_write_declared_head_artifact(group: FabricGroup, artifact: RenderedUnitArtifact) -> Bool {
-  let body = join([
-    serialize_content_hash(hash: artifact.render_inputs_identity) as String,
-    "\n",
-    artifact.unit_name as String,
-    "\n",
-    serialize_content_hash(hash: artifact.digest) as String,
-    "\n",
-  ], "")
+  let body = spark_pair_declared_head_artifact_record_text(record: SparkPairDeclaredHeadArtifactRecord {
+    render_inputs_identity: artifact.render_inputs_identity,
+    unit_name: artifact.unit_name,
+    digest: artifact.digest,
+  })
   let wr = Filesystem.Write(path: spark_pair_declared_unit_artifact_path(group: group), content: body)
   wr.success
 }
@@ -689,31 +719,17 @@ fn spark_pair_publish_declared_head_artifact(realization: SparkPairRealization) 
   }
 }
 
-fn spark_pair_standing_from_artifact_lines(expected: ContentHash, stored_id: String, name: String, digest_wire: String) -> DeclaredUnitDigestStanding {
-  if stored_id != (serialize_content_hash(hash: expected) as String) {
-    DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-  } else {
-    match spark_pair_parse_sha256_wire(wire: digest_wire) {
-      Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-      Present { value: digest } =>
-        DeclaredUnitDigested { unit_name: name as NonEmptyStr, digest: digest }
-    }
-  }
-}
-
 fn spark_pair_standing_from_artifact_body(expected: ContentHash, body: String) -> DeclaredUnitDigestStanding {
-  let lines = filter(split(s: body, delimiter: "\n"), line => line != "")
-  match first(lines) {
+  match spark_pair_declared_head_artifact_record_parse(body: body) {
     Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-    Present { value: stored_id } =>
-      match lines.skip(n: 1).first() {
-        Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-        Present { value: name } =>
-          match lines.skip(n: 2).first() {
-            Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-            Present { value: digest_wire } =>
-              spark_pair_standing_from_artifact_lines(expected: expected, stored_id: stored_id, name: name, digest_wire: digest_wire)
-          }
+    Present { value: record } =>
+      match compare_content_hash(left: record.render_inputs_identity, right: expected) {
+        ContentHashEqual =>
+          DeclaredUnitDigested { unit_name: record.unit_name, digest: record.digest }
+        ContentHashDifferent =>
+          DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+        ContentHashCrossFamilyIncomparable =>
+          DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
       }
   }
 }

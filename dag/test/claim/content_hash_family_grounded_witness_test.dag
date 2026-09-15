@@ -32,6 +32,7 @@ import std.content_hash {
   Sha1Family,
   Sha512Family,
   serialize_content_hash,
+  parse_content_hash_wire,
 }
 import extdeps.git.object_store { git_sha1_object_id, git_object_id_content_hash, GitSha1ObjectId }
 import extdeps.crypto.hash { sha256_digest, sha256_digest_content_hash }
@@ -340,6 +341,26 @@ test fn serialize_sha256_prefix_is_wire_form_not_discriminant() -> Bool {
   let row = witness_sha256_row()
   let wire = serialize_content_hash(hash: as_content_hash_cryptographic(digest: row))
   (wire as String) == "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
+
+test fn parse_content_hash_wire_inverts_serialize_for_sha256() -> Bool {
+  let hash = as_content_hash_cryptographic(digest: witness_sha256_row())
+  match parse_content_hash_wire(wire: serialize_content_hash(hash: hash) as String) {
+    Absent => false
+    Present { value: parsed } =>
+      match compare_content_hash(left: hash, right: parsed) {
+        ContentHashEqual => true
+        ContentHashDifferent => false
+        ContentHashCrossFamilyIncomparable => false
+      }
+  }
+}
+
+test fn parse_content_hash_wire_refuses_a_sha256_prefix_with_short_hex() -> Bool {
+  match parse_content_hash_wire(wire: "sha256:dead") {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 test fn content_hash_family_tags_cryptographic() -> Bool {
