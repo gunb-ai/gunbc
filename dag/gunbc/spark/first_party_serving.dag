@@ -766,9 +766,10 @@ fn spark_first_party_use_scope<P>(
 //
 // CONSUMED. The production consumer is gunbc.harness.harness_seat harness_admit_bound_offer, which
 // calls this with spark_first_party_use_scope over the turn subject's Demand and Work id -- both
-// constructed once by harness_turn_subject before candidate enumeration -- and takes only a
-// ProviderUseAdmitted result on to product.fabric.selection bind_candidate. A refusal here is the
-// candidate's OfferNotAdmittedForUse, carrying this producer's refusal_reason unchanged.
+// constructed once by harness_turn_subject before candidate enumeration -- and hands the result to
+// product.fabric.selection bind_candidate as its admission. Only CandidateBound becomes a harness
+// candidate; a refusal here surfaces as OfferNotAdmittedForUse carrying this producer's
+// refusal_reason unchanged.
 // test.claim.spark.spark_first_party_serving_witness_test exercises both arms directly.
 fn spark_first_party_admission<P>(
   realization: SparkServingRealization,
