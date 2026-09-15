@@ -2017,7 +2017,8 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
-    },    TransitionAdmission {
+    },
+    TransitionAdmission {
         label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
         subject: AdmissionSubject::Binding {
             module: "gunbc.fleet_converge_plan_cli",
