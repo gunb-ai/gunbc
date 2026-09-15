@@ -29,7 +29,7 @@ import gunbc.spark.pair_serving_realization {
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
   spark_pair_realizations, spark_pair_container_name, spark_pair_head_log_path,
   spark_pair_jit_cache_host_dir, spark_pair_head_unit_name, spark_pair_worker_unit_name,
-  spark_pair_runtime_build_dir, exec_word_is_plain,
+  spark_pair_runtime_build_dir, exec_word_is_plain, spark_pair_publish_declared_head_artifact,
 }
 import gunbc.spark.pair_serving_observed { first_pair_container_runtime }
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotRole, model_snapshot_role_for }
@@ -264,6 +264,11 @@ fn spark_pair_serving_apply_wet() -> ProcessExit
     exit_failure(reason: "spark_pair_serving_apply: no group is promoted to pair serving")
   } else if length(refusals) != 0 {
     exit_failure(reason: join(["spark_pair_serving_apply: a group realization refused: ", join(refusals, "; ")], ""))
+  } else if !all(spark_pair_realizations(), r => match r {
+    SparkPairRealizationRefused { group: _, cause: _ } => true
+    SparkPairRealized { group: _, head: _, workers: _ } => spark_pair_publish_declared_head_artifact(realization: r)
+  }) {
+    exit_failure(reason: "spark_pair_serving_apply: could not materialize the declared head-unit artifact for lookup")
   } else {
     match observe_executor_reach() {
       ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: ", c], ""))

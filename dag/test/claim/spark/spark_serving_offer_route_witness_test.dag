@@ -145,7 +145,7 @@ fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
   EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
 }
 
-data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production seals the digest onto the rendered unit artifact at gunbc.spark.pair_serving_realization spark_pair_head_unit_file" as NonEmptyStr
+data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production looks up the declared digest from the materialized unit artifact at gunbc.spark.pair_serving_realization spark_pair_lookup_declared_head_digest" as NonEmptyStr
 
 fn t_unit_unavailable() -> DeclaredUnitDigestStanding {
   DeclaredUnitDigestUnavailable { obligation: t_declared_unit_unavailable_obligation }
@@ -504,9 +504,9 @@ test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
 
 // ── ACCEPTANCE ROWS FOR THE INCARNATION JOIN ────────────────────────────────────────────────────
 //
-// Production's harness_serving_route takes a declared-unit standing; the artifact it comes from is
-// sealed by DigestStdin at the unit render (spark_pair_head_unit_file / RenderedUnitArtifact), which
-// is why the seal and the wire that carries it are executed on the wet lane
+// Production's harness_serving_route takes a declared-unit standing; the digest is the SHA-256 of
+// the exact unit bytes, materialized at apply and looked up by placement without rendering
+// (spark_pair_lookup_declared_head_digest). The seal and the bind wire are executed on the wet lane
 // (test.claim.spark.spark_pair_head_unit_digest_witness, test.claim.serving.serving_availability_bind_wet_witness)
 // and this file supplies digests as fixtures. The standing's incarnation-unobserved refusal stays
 // enrolled below (an_agreeing_unit_digest_without_an_observation_refuses).
