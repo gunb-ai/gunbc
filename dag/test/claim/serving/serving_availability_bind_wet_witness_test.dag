@@ -1,7 +1,9 @@
 module test.claim.serving.serving_availability_bind_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
-import v2.std.optional { none }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.optional { none, Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
@@ -21,7 +23,7 @@ import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligati
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   spark_pair_realizations, spark_pair_publish_declared_head_artifact,
-  spark_pair_withdraw_declared_head_artifact, spark_pair_declared_unit_artifact_unavailable_obligation,
+  spark_pair_declared_unit_artifact_path, spark_pair_declared_unit_artifact_unavailable_obligation,
 }
 import gunbc.harness.harness_seat {
   HarnessCandidates, HarnessTurnSubject, harness_add_serving_candidate, AnyAdmittedModel,
@@ -70,11 +72,12 @@ fn w_idle_engine(field: String) -> HarnessEngineReading {
 // THE ONE INTERFACE THIS CLAIM DISCRIMINATES AT is harness_add_serving_candidate: every observation it
 // consumes is supplied above, and the one value it reaches for itself is the declared-unit standing
 // for this group, read from the durable artifact file. GREEN publishes that file from the production
-// realization (DigestStdin at apply, not at collect); RED publishes then withdraws so DigestStdin
-// is on the same identity as the floor_route_gap row, then lookup sees the withdrawn file. Deleting the lookup between
-// that file and this fold turns this claim red, which is the pairing obligation the digest witness
-// alone cannot pay: that witness proves DigestStdin of the exact bytes, this one proves bind reads
-// the store.
+// realization (DigestStdin at apply, not at collect). RED establishes absence in this witness by
+// deleting the store path (so a sibling GREEN cannot leave a leftover file) and then placing; lookup
+// already treats a missing file as DeclaredUnitDigestUnavailable. The production module has no
+// withdraw writer. Deleting the lookup between that file and this fold turns this claim red, which
+// is the pairing obligation the digest witness alone cannot pay: that witness proves DigestStdin of
+// the exact bytes, this one proves bind reads the store.
 fn w_place() -> HarnessCandidates {
   let field = "1789300000.12"
   harness_add_serving_candidate(
@@ -111,17 +114,10 @@ test fn the_production_roster_carries_the_declared_digest_to_the_incarnation_fro
 }
 
 test fn a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation() -> Bool {
-  match first(spark_pair_realizations()) {
-    Absent => false
-    Present { value: r } => {
-      let published = spark_pair_publish_declared_head_artifact(realization: r)
-      let withdrawn = spark_pair_withdraw_declared_head_artifact(group: FabricGroupA)
-      let placed = w_place()
-      published
-        && withdrawn
-        && length(placed.candidates) == 0
-        && any(placed.notes, note => note.contains(spark_pair_declared_unit_artifact_unavailable_obligation as String))
-        && !any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
-    }
-  }
+  let absent = Filesystem.Delete(path: spark_pair_declared_unit_artifact_path(group: FabricGroupA))
+  let placed = w_place()
+  (absent.success || true)
+    && length(placed.candidates) == 0
+    && any(placed.notes, note => note.contains(spark_pair_declared_unit_artifact_unavailable_obligation as String))
+    && !any(placed.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
 }

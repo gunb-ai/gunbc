@@ -786,8 +786,8 @@ fn harness_candidate_from_standing(
 // for itself is the declared-unit standing for this group, READ from the durable artifact apply
 // published (or from the canary arm's own unrendered-unit obligation). Placement never renders.
 // That is what makes the artifact -> lookup -> bind wire claimable at this one interface:
-// test.claim.serving.serving_availability_bind_wet_witness publishes then places, and withdraws
-// then places. The observations themselves are taken one call up, in harness_add_candidate, which
+// test.claim.serving.serving_availability_bind_wet_witness publishes then places, and places
+// against an absent store file. The observations themselves are taken one call up, in harness_add_candidate, which
 // no claim executes because it reads live endpoints.
 fn harness_declared_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
   match group {

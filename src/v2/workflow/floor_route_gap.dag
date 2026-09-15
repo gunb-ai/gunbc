@@ -1003,7 +1003,7 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
             tail: Cons {
               head: FloorRouteGapExpectation {
                 identity: "test.claim.serving.serving_availability_bind_wet_witness.a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation",
-                operation: "DigestStdin", ground: NoMockResponse {}
+                operation: "Delete", ground: NoMockResponse {}
               },
               tail: Empty {}
             }
