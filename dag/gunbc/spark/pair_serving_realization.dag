@@ -447,8 +447,8 @@ fn spark_pair_digest_unit_render(render: SparkPairUnitRender) -> DeclaredUnitDig
       DeclaredUnitDigestUnavailable { obligation: c }
     SparkPairUnitSealed { artifact: a } =>
       DeclaredUnitDigested { unit_name: a.unit_name, digest: a.digest }
-    SparkPairUnitRendered { unit_name: n, text: t } =>
-      SparkPairUnitRenderRefused { unit_name: n, cause: "unsigned unit bytes are not a declared digest; seal at apply publish" as NonEmptyStr }
+    SparkPairUnitRendered { unit_name: _, text: _ } =>
+      DeclaredUnitDigestUnavailable { obligation: "unsigned unit bytes are not a declared digest; seal at apply publish" as NonEmptyStr }
   }
 }
 
