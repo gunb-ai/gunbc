@@ -291,27 +291,17 @@ data vllm_d2d649e6_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContai
 }
 
 // HOW THE ENGRAM TABLES CAN BE STORED IN THIS TREE, AND NONE OF THE WAYS IS STORAGE. vllm/config/engram.py
-// at this revision offers exactly three switches -- cpu_offload, embedding_across_dp, dp_shared_memory
-// -- and vllm/models/deepseek_v4_1/nvidia/engram.py realizes them as a device allocation, a pinned
-// host allocation read over UVA, or one /dev/shm file mapped MAP_SHARED and registered with CUDA so
-// co-located replicas share it. /dev/shm is tmpfs: every arm keeps the full table in memory, and on a
-// unified-memory host that is the same pool as the accelerator's. So a token-time read from NVMe or
-// NFS is not something this tree can be configured to do; it is a change to the tree.
-type VllmEngramStorageRealization
-  = EngramOnDevice
-  | EngramPinnedHostOverUva
-  | EngramSharedMemoryFileAcrossDataParallel
-
-data vllm_d2d649e6_engram_storage_realizations: List<VllmEngramStorageRealization> = [
-  EngramOnDevice,
-  EngramPinnedHostOverUva,
-  EngramSharedMemoryFileAcrossDataParallel,
-]
-
-fn vllm_engram_storage_realization_is_memory_backed(r: VllmEngramStorageRealization) -> Bool {
-  match r {
-    EngramOnDevice => true
-    EngramPinnedHostOverUva => true
-    EngramSharedMemoryFileAcrossDataParallel => true
-  }
-}
+// at this revision offers exactly three switches -- cpu_offload, embedding_across_dp, dp_shared_memory --
+// and vllm/models/deepseek_v4_1/nvidia/engram.py realizes them as a device allocation, a pinned host
+// allocation read over UVA, or one /dev/shm file mapped MAP_SHARED and registered whole with
+// cudaHostRegister so co-located replicas share it. /dev/shm is tmpfs: every arm keeps the full table in
+// memory, and on a unified-memory host that is the same pool as the accelerator's. So a token-time read
+// from NVMe or NFS is not something this tree can be configured to do; it is a change to the tree.
+//
+// THIS IS RATIONALE AND NOT A CHECK, WHICH IS WHY IT IS AN ANNOTATION. An earlier form modelled the three
+// realizations as a closed type with a predicate answering whether each is memory-backed. The predicate
+// returned true for every arm, so the only way it could go red was by editing its own declaration -- a
+// decoration in the sense of DESIGN section 4b, and section 5's tell that validation stood where nothing
+// was being validated. The claim it was standing in for is carried where it is load-bearing and can
+// actually refuse: gunbc.spark.v41_runtime_candidate's live patch population is V41PatchesUnestablished
+// with this revision named in its obligation, so no candidate over this tree keys until a patch exists.
