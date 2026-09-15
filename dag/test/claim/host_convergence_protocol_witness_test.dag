@@ -17,6 +17,7 @@ import std.goal_assessment {
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, Converged, UnknownRefused }
 import std.realization_reconcile {
   ReconciledEffect,
+  ShowEffectiveRead,
   ReadObserved,
   ReadAbsent,
   Grounds,
@@ -26,7 +27,7 @@ import std.realization_reconcile {
   EffectConverged,
   EffectNotConverged,
 }
-import gunbc.host_convergence_census { protocol_phases }
+import std.decl_ref { decl_ref }
 import gunbc.host_convergence_protocol {
   admit_protocol_phases,
   PhasesBound,
@@ -34,15 +35,10 @@ import gunbc.host_convergence_protocol {
   SelectionLeakedIntoAssessment,
   production_census_protocol_is_bound,
   bind_canonical_protocol,
-  classify_established_read,
-  established_absence,
-  ReadWasEstablished,
-  ObservationWasRefused,
   interpret_ownership_from_attempt,
   OwnershipAssessed,
   OwnershipUnobservable,
   Foreign,
-  Owned,
   reconcile_from_read_attempt,
   admit_independent_readback,
   inspect_via_host_effect_projection,
@@ -51,9 +47,14 @@ import gunbc.host_convergence_protocol {
   HostEffectDomainProjection,
   RuntimeReadiness,
   canonical_protocol_bindings,
-  selection_is_outside_observe_assess,
-  readiness_is_not_reconciled_effect_authority,
+  required_canonical_layers,
+  canonical_layer_join,
+  canonical_layer_join_covered,
+  CanonicalLayerMissing,
+  ProtocolDeclaredFrontier,
+  frontier_names_a_distinct_consumer,
 }
+import gunbc.host_convergence_census { protocol_phases }
 import gunbc.ensure {
   EnsureObserved,
   EnsureAbsent,
@@ -121,14 +122,20 @@ test fn control_1_observer_receiving_desired_state_refuses() -> Bool {
     && completed_clean(o: fixture_run(observer_goal_blind_source))
 }
 
+fn attempt_is_established_absence(
+  attempt: ObservationAttempt<ShowEffectiveRead<String>, String>,
+) -> Bool {
+  match attempt {
+    ObservationEstablished { observed: ReadAbsent { reason: _ } } => true
+    ObservationEstablished { observed: ReadObserved { value: _ } } => false
+    ObservationRefused { cause: _ } => false
+  }
+}
+
 test fn control_2_observation_refusal_is_not_established_absence() -> Bool {
-  !established_absence(
-    c: classify_established_read(attempt: ObservationRefused { cause: "transport refused" }),
-  )
-    && established_absence(
-      c: classify_established_read(
-        attempt: ObservationEstablished { observed: ReadAbsent { reason: "package missing" } },
-      ),
+  !attempt_is_established_absence(attempt: ObservationRefused { cause: "transport refused" })
+    && attempt_is_established_absence(
+      attempt: ObservationEstablished { observed: ReadAbsent { reason: "package missing" } },
     )
 }
 
@@ -221,7 +228,6 @@ test fn control_7_reused_pre_apply_reading_is_caught_by_independence() -> Bool {
 test fn control_8_readiness_cannot_inhabit_convergence_verdict() -> Bool {
   refused_type_mismatch(o: fixture_run(readiness_as_converged_source))
     && completed_clean(o: fixture_run(readiness_stays_ready_source))
-    && readiness_is_not_reconciled_effect_authority()
 }
 
 test fn control_9_selection_cannot_occur_inside_observation_or_assessment() -> Bool {
@@ -238,7 +244,6 @@ test fn control_9_selection_cannot_occur_inside_observation_or_assessment() -> B
       PhasesBound { phases: p } => p.selects && !p.observes && !p.assesses
       _ => false
     }
-    && selection_is_outside_observe_assess()
 }
 
 fn fixture_observe(subject: String, request: String) -> ObservationAttempt<String, String> {
@@ -296,15 +301,11 @@ test fn ensure_observation_is_a_projection_of_the_canonical_attempt() -> Bool {
     EnsureInaccessible { reason: r } => r == "down"
     _ => false
   }
-    && !established_absence(
-      c: classify_established_read(
-        attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
-      ),
+    && !attempt_is_established_absence(
+      attempt: ensure_observation_as_attempt(observation: EnsureInaccessible { reason: "down" }),
     )
-    && established_absence(
-      c: classify_established_read(
-        attempt: ensure_observation_as_attempt(observation: EnsureAbsent { reason: "missing" }),
-      ),
+    && attempt_is_established_absence(
+      attempt: ensure_observation_as_attempt(observation: EnsureAbsent { reason: "missing" }),
     )
 }
 
@@ -345,10 +346,44 @@ test fn foreign_is_assessment_of_established_evidence_not_observation_failure() 
     }
 }
 
+test fn canonical_layer_join_missing_required_layer_is_red() -> Bool {
+  match canonical_layer_join(
+    required: required_canonical_layers,
+    bindings: [],
+  ) {
+    CanonicalLayerMissing { layer: _ } => true
+    _ => false
+  }
+}
+
+test fn frontier_self_successor_is_red() -> Bool {
+  !frontier_names_a_distinct_consumer(
+    f: ProtocolDeclaredFrontier {
+      declaration: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "same",
+      ),
+      named_consumer: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "same",
+      ),
+      trigger_capability: decl_ref(
+        module_path: "test.claim.host_convergence_protocol_witness",
+        decl_name: "trigger",
+      ),
+    },
+  )
+}
+
 test fn canonical_protocol_binds() -> Bool {
   bind_canonical_protocol()
     && production_census_protocol_is_bound()
-    && length(xs: canonical_protocol_bindings) == 9
+    && canonical_layer_join_covered(
+      j: canonical_layer_join(
+        required: required_canonical_layers,
+        bindings: canonical_protocol_bindings,
+      ),
+    )
 }
 
 test fn host_convergence_protocol_keystone_holds() -> Bool {
@@ -366,4 +401,6 @@ test fn host_convergence_protocol_keystone_holds() -> Bool {
     && ensure_inaccessible_after_cannot_converge()
     && foreign_is_assessment_of_established_evidence_not_observation_failure()
     && canonical_protocol_binds()
+    && canonical_layer_join_missing_required_layer_is_red()
+    && frontier_self_successor_is_red()
 }

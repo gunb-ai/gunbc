@@ -1,6 +1,7 @@
 module gunbc.host_convergence_protocol
 
 import std.types { Bool, String, List }
+import v2.std.algebra { filter, length }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -12,8 +13,6 @@ import std.goal_assessment {
 import std.upsert_decision { UpsertDecision, ObservationVerdict }
 import std.realization_reconcile {
   ShowEffectiveRead,
-  ReadObserved,
-  ReadAbsent,
   Grounding,
   ReconciledEffect,
   Application,
@@ -36,6 +35,11 @@ import gunbc.readback_independence {
 // CONVERGENCE-ONE C1. Binds the C0 census to the canonical stack without host actuation.
 // gunbc.ensure remains the adapter: its observation spelling projects onto
 // ObservationAttempt<ShowEffectiveRead<E>, String>.
+// RUNG: mechanically preventable on the enrolled REDs; empty GoalDiverged remains
+// structurally impossible in std.goal_assessment.
+// HostEffectDomainProjection is a declared frontier: this cut must not rewrite hosts.
+// First consumer: gunbc.live_deploy.member_observe observe_executable.
+// Trigger: that observe route calling inspect_via_host_effect_projection.
 
 fn cite(module_path: String, decl_name: String) -> DeclarationRef {
   decl_ref(module_path: module_path, decl_name: decl_name)
@@ -95,6 +99,105 @@ data canonical_protocol_bindings: List<CanonicalLayerBinding> = [
     authority: cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once"),
   },
 ]
+
+data required_canonical_layers: List<CanonicalProtocolLayer> = [
+  LayerSelect,
+  LayerObserveAssess,
+  LayerRemedy,
+  LayerReadback,
+  LayerEnsureAdapter,
+  LayerFleetPlan,
+  LayerFleetApply,
+  LayerDeployObserve,
+  LayerDeployReadiness,
+]
+
+type CanonicalLayerJoin
+  = CanonicalLayersCovered
+  | CanonicalLayerMissing { layer: CanonicalProtocolLayer }
+  | CanonicalLayerDuplicated { layer: CanonicalProtocolLayer }
+
+fn canonical_layer_eq(a: CanonicalProtocolLayer, b: CanonicalProtocolLayer) -> Bool {
+  match a {
+    LayerSelect =>
+      match b {
+        LayerSelect => true
+        _ => false
+      }
+    LayerObserveAssess =>
+      match b {
+        LayerObserveAssess => true
+        _ => false
+      }
+    LayerRemedy =>
+      match b {
+        LayerRemedy => true
+        _ => false
+      }
+    LayerReadback =>
+      match b {
+        LayerReadback => true
+        _ => false
+      }
+    LayerEnsureAdapter =>
+      match b {
+        LayerEnsureAdapter => true
+        _ => false
+      }
+    LayerFleetPlan =>
+      match b {
+        LayerFleetPlan => true
+        _ => false
+      }
+    LayerFleetApply =>
+      match b {
+        LayerFleetApply => true
+        _ => false
+      }
+    LayerDeployObserve =>
+      match b {
+        LayerDeployObserve => true
+        _ => false
+      }
+    LayerDeployReadiness =>
+      match b {
+        LayerDeployReadiness => true
+        _ => false
+      }
+  }
+}
+
+fn canonical_layer_join(
+  required: List<CanonicalProtocolLayer>,
+  bindings: List<CanonicalLayerBinding>,
+) -> CanonicalLayerJoin {
+  fold(required, init: CanonicalLayersCovered, f: fn(acc, layer) {
+    match acc {
+      CanonicalLayerMissing { layer: m } => CanonicalLayerMissing { layer: m }
+      CanonicalLayerDuplicated { layer: d } => CanonicalLayerDuplicated { layer: d }
+      CanonicalLayersCovered => {
+        let hits = filter(xs: bindings, predicate: fn(b) { canonical_layer_eq(a: b.layer, b: layer) })
+        if length(xs: hits) == 0 {
+          CanonicalLayerMissing { layer: layer }
+        } else {
+          if length(xs: hits) > 1 {
+            CanonicalLayerDuplicated { layer: layer }
+          } else {
+            CanonicalLayersCovered
+          }
+        }
+      }
+    }
+  })
+}
+
+fn canonical_layer_join_covered(j: CanonicalLayerJoin) -> Bool {
+  match j {
+    CanonicalLayersCovered => true
+    CanonicalLayerMissing { layer: _ } => false
+    CanonicalLayerDuplicated { layer: _ } => false
+  }
+}
 
 type ProtocolPhaseBinding
   = PhasesBound { phases: ProtocolPhases }
@@ -175,25 +278,26 @@ fn readiness_from_host_effect_projection<Subject, Goal, Request, Observed, Evide
   projection.readiness(observed)
 }
 
-type EstablishedReadClassification<R>
-  = ReadWasEstablished { read: ShowEffectiveRead<R> }
-  | ObservationWasRefused { cause: String }
-
-fn classify_established_read<R>(
-  attempt: ObservationAttempt<ShowEffectiveRead<R>, String>,
-) -> EstablishedReadClassification<R> {
-  match attempt {
-    ObservationEstablished { observed: read } => ReadWasEstablished { read: read }
-    ObservationRefused { cause: cause } => ObservationWasRefused { cause: cause }
-  }
+type ProtocolDeclaredFrontier {
+  declaration: DeclarationRef
+  named_consumer: DeclarationRef
+  trigger_capability: DeclarationRef
 }
 
-fn established_absence<R>(c: EstablishedReadClassification<R>) -> Bool {
-  match c {
-    ReadWasEstablished { read: ReadAbsent { reason: _ } } => true
-    ReadWasEstablished { read: ReadObserved { value: _ } } => false
-    ObservationWasRefused { cause: _ } => false
-  }
+data host_effect_domain_projection_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+  declaration: cite(module_path: "gunbc.host_convergence_protocol", decl_name: "HostEffectDomainProjection"),
+  named_consumer: cite(module_path: "gunbc.live_deploy.member_observe", decl_name: "observe_executable"),
+  trigger_capability: cite(module_path: "gunbc.host_convergence_protocol", decl_name: "inspect_via_host_effect_projection"),
+}
+
+data ownership_interpretation_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+  declaration: cite(module_path: "gunbc.host_convergence_protocol", decl_name: "interpret_ownership_from_attempt"),
+  named_consumer: cite(module_path: "gunbc.live_deploy.member_identity", decl_name: "decide_member"),
+  trigger_capability: cite(module_path: "gunbc.host_convergence_protocol", decl_name: "interpret_ownership_from_attempt"),
+}
+
+fn frontier_names_a_distinct_consumer(f: ProtocolDeclaredFrontier) -> Bool {
+  !declaration_ref_eq(a: f.declaration, b: f.named_consumer)
 }
 
 type OwnershipStanding<E>
@@ -222,15 +326,15 @@ fn reconcile_from_read_attempt<P, R, E>(
   after: ObservationAttempt<ShowEffectiveRead<R>, String>,
   grounding: Grounding<E>,
 ) -> ReconciledEffect<P, E> {
-  match classify_established_read(attempt: after) {
-    ReadWasEstablished { read: read } =>
+  match after {
+    ObservationEstablished { observed: read } =>
       reconcile_effect(
         decision: decision,
         application: application,
         show_read: read,
         grounding: grounding,
       )
-    ObservationWasRefused { cause: cause } =>
+    ObservationRefused { cause: cause } =>
       reconcile_effect_without_read(
         decision: decision,
         application: application,
@@ -246,30 +350,14 @@ fn admit_independent_readback(
   readback_evidence_verdict(p: probe, observed: observed)
 }
 
-fn selection_layer_authority() -> DeclarationRef {
-  cite(module_path: "std.decision", decl_name: "select_realization")
-}
-
-fn observe_assess_layer_authority() -> DeclarationRef {
-  cite(module_path: "std.goal_assessment", decl_name: "inspect_goal")
-}
-
-fn selection_is_outside_observe_assess() -> Bool {
-  !declaration_ref_eq(
-    a: selection_layer_authority(),
-    b: observe_assess_layer_authority(),
-  )
-}
-
-fn readiness_is_not_reconciled_effect_authority() -> Bool {
-  !declaration_ref_eq(
-    a: cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once"),
-    b: cite(module_path: "std.realization_reconcile", decl_name: "reconcile_effect"),
-  )
-}
-
 fn bind_canonical_protocol() -> Bool {
   production_census_protocol_is_bound()
-    && selection_is_outside_observe_assess()
-    && readiness_is_not_reconciled_effect_authority()
+    && canonical_layer_join_covered(
+      j: canonical_layer_join(
+        required: required_canonical_layers,
+        bindings: canonical_protocol_bindings,
+      ),
+    )
+    && frontier_names_a_distinct_consumer(f: host_effect_domain_projection_frontier)
+    && frontier_names_a_distinct_consumer(f: ownership_interpretation_frontier)
 }
