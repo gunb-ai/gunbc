@@ -55,7 +55,7 @@ import gunbc.spark.serving_offer {
 }
 import gunbc.spark.pair_serving_realization {
   DeclaredUnitDigestStanding, DeclaredUnitDigestUnavailable,
-  spark_pair_head_unit_declared_digest_among,
+  spark_pair_lookup_declared_head_digest,
 }
 import gunbc.spark.glm_canary_converge { glm_canary_declared_unit_artifact_obligation }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
@@ -785,13 +785,13 @@ fn harness_candidate_from_standing(
 // availability verdict, the launch, and the seat pool standing -- and the one thing it reaches
 // for itself is the declared-unit standing for this group, READ from the durable artifact apply
 // published (or from the canary arm's own unrendered-unit obligation). Placement never renders.
-// That is what makes the artifact -> among -> bind wire claimable at this one interface:
+// That is what makes the artifact -> lookup -> bind wire claimable at this one interface:
 // test.claim.serving.serving_availability_bind_wet_witness publishes then places, and withdraws
 // then places. The observations themselves are taken one call up, in harness_add_candidate, which
 // no claim executes because it reads live endpoints.
 fn harness_declared_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
   match group {
-    FabricGroupA => spark_pair_head_unit_declared_digest_among(group: group)
+    FabricGroupA => spark_pair_lookup_declared_head_digest(group: group)
     FabricGroupB => DeclaredUnitDigestUnavailable { obligation: glm_canary_declared_unit_artifact_obligation }
   }
 }
