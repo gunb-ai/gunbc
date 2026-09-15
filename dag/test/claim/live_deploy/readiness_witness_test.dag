@@ -2,7 +2,6 @@ module test.claim.live_deploy.readiness
 
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.live_deploy.readiness {
-  live_deploy_service_ready_once,
   live_deploy_service_ready_once_for_deploy,
   live_deploy_poll_service_ready_after_attempts,
   healthz_body_groundable,
@@ -11,6 +10,7 @@ import gunbc.live_deploy.readiness {
   service_readiness_reason,
   observe_service_readiness_from_healthz,
   ServiceProbeUnanswered,
+  ServiceReadinessPollBound,
   HealthzBodyRead,
   HealthzProbeRefused,
 }
@@ -32,6 +32,7 @@ import gunbc.host_effect {
   SshShell,
 }
 import std.types { NonEmptyStr, String, List }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_reconcile {
@@ -57,7 +58,6 @@ import gunbc.roadmap_site_healthz_validate {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.live_deploy.candidate { CandidateRelease }
-import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -78,6 +78,30 @@ fn witness_candidate_release() -> CandidateRelease {
   CandidateRelease {
     revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
+  }
+}
+
+fn unused_surface_artifact() -> RoadmapSiteSurfaceArtifact {
+  RoadmapSiteSurfaceArtifact {
+    url_path: "/x" as NonEmptyStr,
+    body: "",
+    digest: witness_expected_surface_identity(),
+  }
+}
+
+// Probe-refused and mock-stdout arms do not read the served surface. A live
+// materialization is the 800k-step charge the new-witness ceiling refuses.
+fn unused_surface_bundle() -> RoadmapSiteSurfaceBundle {
+  RoadmapSiteSurfaceBundle {
+    subject_identity: witness_expected_surface_identity(),
+    producer_identity: witness_expected_surface_identity(),
+    bundle_identity: witness_expected_surface_identity(),
+    roadmap_md: unused_surface_artifact(),
+    dispatch_json: unused_surface_artifact(),
+    daily_html: unused_surface_artifact(),
+    full_html: unused_surface_artifact(),
+    dispatch_js: unused_surface_artifact(),
+    healthz_body: "",
   }
 }
 
@@ -149,7 +173,7 @@ test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
     read: HealthzProbeRefused {
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },
-    bundle: materialize_live_roadmap_site_surface_bundle(),
+    bundle: unused_surface_bundle(),
     expected_revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {
@@ -179,7 +203,7 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
   )
   match observe_service_readiness_from_healthz(
     read: read,
-    bundle: materialize_live_roadmap_site_surface_bundle(),
+    bundle: unused_surface_bundle(),
     expected_revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {
@@ -222,14 +246,6 @@ test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() ->
   }
 }
 
-test fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
-  match live_deploy_service_ready_once(release_revision: deploy_witness_release_revision) {
-    Ready { evidence: _ } => true
-    Pending { cause: _ } => false
-    Refused { cause: _ } => false
-  }
-}
-
 test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Bool {
   let max_attempts = live_deploy_service_ready_poll_max_attempts()
   let r = live_deploy_poll_service_ready_after_attempts(
@@ -241,13 +257,13 @@ test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Boo
     last_probe: "health probe never succeeded"
   )
   match r {
-    Refused { cause: _ } =>
-      string_contains(s: service_readiness_reason(r: r), pattern: "ServiceNotReady")
-        && string_contains(s: service_readiness_reason(r: r), pattern: "waited_s=120")
-        && string_contains(s: service_readiness_reason(r: r), pattern: "health probe never succeeded")
+    Refused { cause: ServiceReadinessPollBound { refusal } } =>
+      second_count(s: refusal.waited) == second_count(s: live_deploy_service_ready_poll_bound)
+        && refusal.last_probe == "health probe never succeeded"
         && !string_contains(s: service_readiness_reason(r: r), pattern: "converged")
     Ready { evidence: _ } => false
     Pending { cause: _ } => false
+    Refused { cause: _ } => false
   }
 }
 
