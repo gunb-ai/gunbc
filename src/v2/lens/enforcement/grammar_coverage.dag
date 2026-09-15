@@ -1,5 +1,18 @@
 module v2.lens.enforcement.grammar_coverage
 
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.coverage { dedupe_snoc }
+import v2.std.algebra { fold_list, length, list_append }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol, symbol_identity_digest }
+import v2.std.text { String, string_eq }
+
 
 type GrammarCoverageParseVerdict
   = ParsedClean
@@ -49,10 +62,6 @@ data grammar_coverage_file_anchor: Symbol = ^grammar_coverage_file_anchor
 
 data grammar_coverage_reject_probe: Symbol = ^grammar_coverage_reject_probe
 
-fn grammar_coverage_string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn grammar_coverage_tree_root_for_path(path: String) -> String {
   if path.starts_with(prefix: "dag/") {
     "dag"
@@ -73,7 +82,7 @@ fn grammar_coverage_distinct_rel_paths(facts: List<v2.std.decl_index.DeclFact>) 
       dedupe_snoc(
         acc: acc,
         item: fact.rel_path,
-        eq: grammar_coverage_string_eq
+        eq: string_eq
       )
     }
   )
@@ -332,7 +341,7 @@ fn grammar_coverage_roster_contains_path(
     xs: roster,
     empty: false,
     cons: fn(acc, p) {
-      acc || grammar_coverage_string_eq(a: p, b: path)
+      acc || string_eq(a: p, b: path)
     }
   )
 }

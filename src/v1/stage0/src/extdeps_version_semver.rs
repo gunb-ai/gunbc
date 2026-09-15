@@ -193,10 +193,10 @@ pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
             )
         };
         if ((v.build.clone().len() as i64) == 0) {
-            with_pre
+            with_pre.clone()
         } else {
             v1_rt::concat(
-                with_pre,
+                with_pre.clone(),
                 v1_rt::concat("+".to_string(), semver_identifiers_label(v.build.clone())),
             )
         }

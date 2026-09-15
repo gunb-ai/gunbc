@@ -1259,8 +1259,19 @@ fn changed_and_enrolled_witness_identities_with_index(
     // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
     // resolved the file. Seeding the authored module pulls its both-closure into
     // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
-    let (touched_modules, touched_outside_floor_roots) =
+    let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
+    // THE ASSEMBLY'S OWN PREDICATE (`prepared_subject_exclusion_row_for`), asked here over the
+    // seeded (path, module) pairs so the receipt names the row the assembly will honour -- one
+    // function, not a same-shaped copy that could drift from it (review 66411).
+    let exclusions = floor_prepared_subject_exclusions();
+    let mut touched_excluded_from_preparation: Vec<(String, String, String)> = Vec::new();
+    for (path, module) in &seeded_pairs {
+        if let Some(row) = prepared_subject_exclusion_row_for(path, module, &exclusions) {
+            touched_excluded_from_preparation.push((row.clone(), path.clone(), module.clone()));
+        }
+    }
+    touched_excluded_from_preparation.sort();
     // THE FOURTH PROJECTION IS THE DEPENDENTS DIRECTION OF THE SAME CLASS. The third seeds the
     // module whose declaration the diff touched; this one seeds the untouched modules whose
     // `match` over a coproduct went stale because its arm set changed in the touched one
@@ -1274,6 +1285,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         compile_subject: CompileSubjectSeeds {
             touched_modules,
             touched_outside_floor_roots,
+            touched_excluded_from_preparation,
             arm_set,
         },
     })
@@ -1297,6 +1309,11 @@ pub(crate) struct CompileSubjectSeeds {
     /// a `src/v1` `.dag` mirror edit names a module the floor's roots do not index, so it is not
     /// a seed -- and a reader must be able to see WHICH file seeded nothing and why, not a count.
     pub touched_outside_floor_roots: Vec<(String, String)>,
+    /// `(exclusion row, path, module_path)`: a touched entry that IS seeded and that
+    /// `assemble_prepared_subject_closure` then drops under `floor_prepared_subject_exclusions`
+    /// -- a designed-refusal probe, for instance. Said at the seed, so the planned-then-not-prepared
+    /// state is a typed row and not a count of excluded modules.
+    pub touched_excluded_from_preparation: Vec<(String, String, String)>,
     pub arm_set: ArmSetConsumerPlanning,
 }
 
@@ -1997,10 +2014,11 @@ pub(crate) fn module_seeds_from_touched_entry_files(
     base: &Path,
     touched_entry_files: &std::collections::HashSet<String>,
     source_roots: &[String],
-) -> Result<(Vec<String>, Vec<(String, String)>), String> {
+) -> Result<(Vec<String>, Vec<(String, String)>, Vec<(String, String)>), String> {
     let roots = floor_source_roots_workspace_relative(source_roots);
     let mut modules: Vec<String> = Vec::new();
     let mut outside: Vec<(String, String)> = Vec::new();
+    let mut seeded: Vec<(String, String)> = Vec::new();
     for file in touched_entry_files {
         let content = std::fs::read_to_string(base.join(file))
             .map_err(|e| format!("touched-entry compile-subject seed: read {file}: {e}"))?;
@@ -2013,6 +2031,7 @@ pub(crate) fn module_seeds_from_touched_entry_files(
         })?;
         let file_norm = normalize_repo_path(file);
         if path_under_floor_roots(&file_norm, &roots) {
+            seeded.push((file_norm, module.clone()));
             modules.push(module);
         } else {
             outside.push((file_norm, module));
@@ -2021,7 +2040,8 @@ pub(crate) fn module_seeds_from_touched_entry_files(
     modules.sort();
     modules.dedup();
     outside.sort();
-    Ok((modules, outside))
+    seeded.sort();
+    Ok((modules, outside, seeded))
 }
 
 /// The floor's source roots as workspace-relative directory prefixes, the spelling a
@@ -2314,6 +2334,9 @@ fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> Local
     match outcome {
         O::Pass => LocalRepoWetObserved::Passed,
         O::Fail => LocalRepoWetObserved::Failed,
+        // A TYPED REFUSAL IS A FAILED VERDICT, same class as `Fail`: the claim reached its
+        // subject and the subject said no.
+        O::ExitFailure { .. } => LocalRepoWetObserved::Failed,
         // NO VERDICT WAS REACHED. The claim was stopped or never started, which is not the same
         // as reaching a verdict this lane disagrees with.
         O::BudgetInterrupted { .. } => LocalRepoWetObserved::Nonterminal("budget".to_string()),
@@ -3688,6 +3711,17 @@ pub(crate) fn run_discovery_rows(
                 append_witness_verdict_diagnostic_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
+            // A GATE-CLASS ROW'S REASON IS ITS OWN RECEIPT. The companion-loudness appends the
+            // `Fail` arm makes are for Bool witnesses whose verdict carries nothing; a typed
+            // `ExitFailure` refusal already carries the `.dag`-authored reason, so appending a
+            // second, derived receipt beside it would be two authorities over one fact.
+            ClaimOutcome::ExitFailure { code, reason } => summary.failures.push(format!(
+                "{} ({}) returned ProcessExit::ExitFailure (code {}): {}",
+                row.function,
+                row.entry,
+                code,
+                reason.unwrap_or_else(|| "(no reason)".to_string())
+            )),
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
                 "{} ({}) returned `{}`, not Bool",
                 row.function, row.entry, got
@@ -3771,6 +3805,21 @@ pub(crate) fn run_discovery_rows(
 
 pub fn floor_prepared_subject_exclusions() -> Vec<String> {
     vec![
+        // MUST-NOT-RESOLVE PROBES. Every module under dag/test/probe/ declares in its header that
+        // it must not resolve: each is a designed refusal, consumed BY CLASS AND SUBJECT through
+        // `gunbc.compile_diagnostic_census` `census_of(source: probe_source(name))` -- the source
+        // text handed to the compiler by a fixture (DESIGN 4b), never a module in a closure.
+        // They stayed out of the prepared subject before gunbc#11256 only by accident: no
+        // importer, no gate prefix. The touched-entry seed (`module_seeds_from_touched_entry_files`)
+        // seeds the authored module of every edited non-data, non-test-fn declaration, so a PR
+        // that edits a probe (gunbc#11343 at 76923b733, run 34874099243:
+        // `[floor-phase] phase=touched-entry-compile-subject seeds=6 modules=[...,
+        // "test.probe.bare_string_from_boundary_probe"]` while
+        // `phase=arm-set-changed-consumers ... consumers_added=0`) pulled its designed refusal
+        // into Strict preparation as a blocker. This row is applied AFTER the seed walk, so the
+        // seed still prints (as `TouchedEntryExcludedFromPreparation`, a typed row rather than a
+        // vanished seed), and `ExclusionOrphansImporter` refuses the day anything imports one.
+        "test/probe/".to_string(),
         "test/fixture/meta_exec_confinement_scan/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
         // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
@@ -4307,6 +4356,20 @@ pub(crate) fn install_pure_producer_share(
             "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_claim_forced"
         ),
     )?;
+    // The two carried-input rosters are decoded HERE, beside the other two, because their
+    // producers are part of the ADMITTED population: admission is one node set, and a producer
+    // that warms into the tier but is not admitted would store nothing while the receipt read
+    // green. The roster's own wall refuses a producer standing in both a plain roster and a
+    // carried-input row, so the union is unambiguous by construction.
+    let prepared_inputs = floor_decode_prepared_effect_inputs(
+        &roster_frame,
+        &format!("{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_prepared_effect_inputs"),
+    )?;
+    let carried_rows = floor_decode_carried_input_warm_rows(
+        &roster_frame,
+        &format!("{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_carried_input_warm_rows"),
+    )?;
+
     // Admission is by RESOLVED DECLARATION IDENTITY (review 57446 F1): each qualified
     // roster spelling resolves to its fn node in a frame over the prepared subject, and the
     // interpreter admits by that node set — a bare-name homonym in a non-rostered module is
@@ -4315,7 +4378,12 @@ pub(crate) fn install_pure_producer_share(
     let mut resolution_frames: std::collections::HashMap<String, v1_interpreter::InterpContext> =
         std::collections::HashMap::new();
     let mut admitted_nodes = Vec::new();
-    for qualified in warm_rows.iter().chain(claim_forced_rows.iter()) {
+    let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
+    for qualified in warm_rows
+        .iter()
+        .chain(claim_forced_rows.iter())
+        .chain(carried_producers.iter())
+    {
         let module = match qualified.rsplit_once('.') {
             Some((module, _)) => module.to_string(),
             None => qualified.clone(),
@@ -4351,6 +4419,7 @@ pub(crate) fn install_pure_producer_share(
             admitted_qualified: warm_rows
                 .iter()
                 .chain(claim_forced_rows.iter())
+                .chain(carried_producers.iter())
                 .cloned()
                 .collect(),
             refused,
@@ -4375,6 +4444,160 @@ pub(crate) fn install_pure_producer_share(
         },
     ));
     let mut warm_observations: Vec<(String, SharedBuildObservation)> = Vec::new();
+
+    // ── THE PREPARED EFFECT INPUTS, ACQUIRED ONCE AND CARRIED ────────────────────────────
+    //
+    // Ordered BEFORE the plain warm loop because a carried-input row cannot be warmed until its
+    // input is bound, and every arm here stops the line: a row whose module the subject does not
+    // carry, a spelling that resolves to nothing, an acquisition that is not nullary, an
+    // acquisition that fails to evaluate, a value that is not portable. None of them has an empty
+    // default — an empty carry would be served to every claim as though it were the carrier's
+    // content, which is the fabricated-plausible-output failure with a cache in front of it.
+    //
+    // WHAT THE FLOOR DOES NOT DO IS DECIDE WHAT THE CARRIED VALUE MEANS. When the acquisition
+    // SUCCEEDS and returns its own coproduct's refusal arm, that refusal is carried faithfully and
+    // every claim receives the identical typed value it would have computed for itself — no claim
+    // passes where it would otherwise have failed, which is what separates propagating a refusal
+    // from widening one. The disposition is PRINTED (the carried variant name and content digest)
+    // so a run whose carrier refused is diagnosable instead of reading as a corpus problem
+    // (adjudicated 2026-09-14; bright-boar-435's condition on that ruling).
+    let mut acquisition_nodes: std::collections::HashMap<
+        String,
+        std::rc::Rc<crate::v1_std_core::Node>,
+    > = std::collections::HashMap::new();
+    for input in &prepared_inputs {
+        let module = match input.acquisition.rsplit_once('.') {
+            Some((module, _)) => module.to_string(),
+            None => input.acquisition.clone(),
+        };
+        if !resolution_frames.contains_key(&module) {
+            let frame = floor_authority_frame(prepared, &module).map_err(|why| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputModuleOutsideSubject acquisition={} — the prepared input's module is not in the prepared subject; delete the stale roster row or restore it: {why}",
+                    input.acquisition
+                )
+            })?;
+            resolution_frames.insert(module.clone(), frame);
+        }
+        let frame = &resolution_frames[&module];
+        let node = frame.lookup_fn_node(&input.acquisition).ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputUnresolved acquisition={} — the rostered spelling names no declaration in its module's frame; fix or delete the roster row",
+                input.acquisition
+            )
+        })?;
+        let (acquired, observation) = observe_shared_build(false, "floor-preparation", || {
+            v1_interpreter::acquire_prepared_effect_input(frame, &input.acquisition)
+        });
+        let carry = acquired.map_err(|why| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputAcquisitionFailed acquisition={} checkout_input={} — {why}",
+                input.acquisition, input.checkout_input
+            )
+        })?;
+        eprintln!(
+            "[floor-phase] phase=prepared-effect-input-acquire state=completed acquisition={} checkout_input={} content_digest={} disposition={} cpu_ms={} wall_ms={} rss_growth_bytes={}",
+            input.acquisition,
+            input.checkout_input,
+            carry.digest,
+            carry.disposition(),
+            observation.cpu_ms,
+            observation.wall_ms,
+            observation.rss_growth_bytes,
+        );
+        v1_interpreter::install_prepared_effect_input(&node, carry);
+        acquisition_nodes.insert(input.acquisition.clone(), node);
+        warm_observations.push((
+            format!("PreparedEffectInputAcquire/{}", input.acquisition),
+            observation,
+        ));
+    }
+    for row in &carried_rows {
+        let acquisition_node = acquisition_nodes.get(&row.carried_input).ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputUnknown producer={} input={} — the row declares a dependence on an input no floor_cross_claim_prepared_effect_inputs row prepares, so the value it names would never be bound",
+                row.producer, row.carried_input
+            )
+        })?;
+        let module = match row.producer.rsplit_once('.') {
+            Some((module, _)) => module.to_string(),
+            None => row.producer.clone(),
+        };
+        // Resolution above already framed every rostered producer's module, carried-input rows
+        // included (they are part of the admitted population), so the frame is present.
+        let frame = &resolution_frames[&module];
+        let producer_node = frame.lookup_fn_node(&row.producer).ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerUnresolved producer={} — the rostered spelling names no declaration in its module's frame",
+                row.producer
+            )
+        })?;
+        // The implicit binding is installed ONLY for the shape that needs it: a `BoundParameter`
+        // row's caller passes the carried value itself, so its key already represents the
+        // content and folding it in a second time would key one call two ways.
+        if row.bound_parameter.is_none() {
+            v1_interpreter::install_carried_input_producer(&producer_node, acquisition_node)
+                .map_err(|why| {
+                    format!(
+                        "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputUnknown \
+                         producer={} input={} — {why}",
+                        row.producer, row.carried_input
+                    )
+                })?;
+        }
+        let (warm_result, warm_observation) =
+            observe_shared_build(false, "floor-preparation", || {
+                v1_interpreter::warm_cross_claim_carried_input_producer(
+                    frame,
+                    &row.producer,
+                    &row.carried_input,
+                    row.bound_parameter.as_deref(),
+                )
+            });
+        match warm_result {
+            Ok(outcome) => {
+                if !outcome.is_servable() {
+                    let detail = match outcome.not_portable_detail() {
+                        Some(refusal) => format!(
+                            "{} path={} kind={}",
+                            outcome.cause(),
+                            if refusal.path_into_value.is_empty() {
+                                "<root>"
+                            } else {
+                                refusal.path_into_value.as_str()
+                            },
+                            refusal.encountered_kind
+                        ),
+                        None => outcome.cause().to_string(),
+                    };
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored producer={} — the carried-input producer evaluated but its value was refused by the cross-claim store: {detail}",
+                        row.producer
+                    ));
+                }
+                eprintln!(
+                    "[floor-phase] phase=prepared-effect-input-warm state=completed producer={} input={} disposition={} cpu_ms={} wall_ms={} rss_growth_bytes={}",
+                    row.producer,
+                    row.carried_input,
+                    outcome.cause(),
+                    warm_observation.cpu_ms,
+                    warm_observation.wall_ms,
+                    warm_observation.rss_growth_bytes,
+                );
+                warm_observations.push((
+                    format!("CrossClaimCarriedInputWarm/{}", row.producer),
+                    warm_observation,
+                ));
+            }
+            Err(why) => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed producer={} — {why}",
+                    row.producer
+                ));
+            }
+        }
+    }
+
     for qualified in &warm_rows {
         let module = match qualified.rsplit_once('.') {
             Some((module, _)) => module.to_string(),
@@ -4465,7 +4688,16 @@ pub(crate) fn install_pure_producer_share(
                     warm_observation,
                 ));
             }
-            Err(why) => {
+            Err(v1_interpreter::PureProducerWarmRefusal::DispatchedEffect { effects }) => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmDispatchedEffect \
+                     producer={qualified} effects={effects} — the warm row reached the world, \
+                     so the value depends on an input its empty argument row cannot represent; \
+                     roster the read as a prepared effect input and the fold as a carried-input \
+                     warm row instead"
+                ));
+            }
+            Err(v1_interpreter::PureProducerWarmRefusal::Failed(why)) => {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
                      producer={qualified} — {why}"
@@ -4509,6 +4741,137 @@ thread_local! {
 /// deliberately NOT tolerated — a fourth verdict arrives with a meaning this wall does not know
 /// how to weigh, and treating it as "some refusal" would let the authority claim a judgement the
 /// executor cannot perform.
+/// One row of `floor_cross_claim_prepared_effect_inputs`: an input the floor acquires ONCE at
+/// preparation and carries for the prepared subject's lifetime.
+#[derive(Clone)]
+pub(crate) struct PreparedEffectInputRow {
+    acquisition: String,
+    checkout_input: String,
+}
+
+/// One row of `floor_cross_claim_carried_input_warm_rows`: a producer warmed at preparation
+/// whose value depends on a carried input. `ImplicitAcquisition` is the shape whose key must be
+/// taught the carried content; `BoundParameter` is the shape whose caller already passes it.
+#[derive(Clone)]
+pub(crate) struct CarriedInputWarmRowDecoded {
+    producer: String,
+    carried_input: String,
+    bound_parameter: Option<String>,
+}
+
+fn floor_decode_prepared_effect_inputs(
+    hermetic: &v1_interpreter::InterpContext,
+    qualified_name: &str,
+) -> Result<Vec<PreparedEffectInputRow>, String> {
+    let value = v1_interpreter::run_in_context(hermetic, qualified_name, false)
+        .map_err(|e| format!("{qualified_name}: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|why| format!("{qualified_name} decode: {why}"))?;
+    let mut out = Vec::new();
+    for item in items {
+        let v1_interpreter::Value::Record { type_name, fields } = &item else {
+            return Err(format!(
+                "{qualified_name}: expected PreparedEffectInput rows, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "PreparedEffectInput") {
+            return Err(format!(
+                "{qualified_name}: expected PreparedEffectInput, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let field_str = |name: &str| -> Result<String, String> {
+            match hermetic.field(fields, name) {
+                Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "{qualified_name}: PreparedEffectInput.{name} must be a String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        out.push(PreparedEffectInputRow {
+            acquisition: field_str("acquisition")?,
+            checkout_input: field_str("checkout_input")?,
+        });
+    }
+    Ok(out)
+}
+
+fn floor_decode_carried_input_warm_rows(
+    hermetic: &v1_interpreter::InterpContext,
+    qualified_name: &str,
+) -> Result<Vec<CarriedInputWarmRowDecoded>, String> {
+    let value = v1_interpreter::run_in_context(hermetic, qualified_name, false)
+        .map_err(|e| format!("{qualified_name}: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|why| format!("{qualified_name} decode: {why}"))?;
+    let mut out = Vec::new();
+    for item in items {
+        let v1_interpreter::Value::Record { type_name, fields } = &item else {
+            return Err(format!(
+                "{qualified_name}: expected CarriedInputWarmRow rows, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "CarriedInputWarmRow") {
+            return Err(format!(
+                "{qualified_name}: expected CarriedInputWarmRow, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let field_str = |name: &str| -> Result<String, String> {
+            match hermetic.field(fields, name) {
+                Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "{qualified_name}: CarriedInputWarmRow.{name} must be a String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        // THE DEPENDENCE ARM IS READ, NOT ASSUMED. An unknown arm stops the line rather than
+        // defaulting to either shape: defaulting to `ImplicitAcquisition` would teach the key a
+        // content the producer never read, and defaulting to `BoundParameter` would key a
+        // nullary call on the empty row — the stale serve this row kind exists to prevent.
+        let bound_parameter = match hermetic.field(fields, "dependence") {
+            Some(v1_interpreter::Value::Variant {
+                variant_name,
+                fields: dep_fields,
+                ..
+            }) => match hermetic.resolve(*variant_name).as_str() {
+                "ImplicitAcquisition" => None,
+                "BoundParameter" => match hermetic.field(dep_fields, "parameter") {
+                    Some(v1_interpreter::Value::Str(s)) => Some(s.to_string()),
+                    other => {
+                        return Err(format!(
+                            "{qualified_name}: BoundParameter.parameter must be a String, got {}",
+                            floor_value_shape(other)
+                        ))
+                    }
+                },
+                other => {
+                    return Err(format!(
+                        "{qualified_name}: unknown CarriedInputDependence arm {other}"
+                    ))
+                }
+            },
+            other => {
+                return Err(format!(
+                    "{qualified_name}: CarriedInputWarmRow.dependence must be a \
+                     CarriedInputDependence, got {}",
+                    floor_value_shape(other)
+                ))
+            }
+        };
+        out.push(CarriedInputWarmRowDecoded {
+            producer: field_str("producer")?,
+            carried_input: field_str("carried_input")?,
+            bound_parameter,
+        });
+    }
+    Ok(out)
+}
+
 fn floor_decode_refused_share_candidates(
     hermetic: &v1_interpreter::InterpContext,
     qualified_name: &str,
@@ -5044,6 +5407,17 @@ pub fn run_required_floor(
             subject.touched_modules.len(),
             subject.touched_modules
         );
+        // A SEED AN EXCLUSION ROW WILL DROP IS SAID SO HERE, at the seed, not discovered from a
+        // count of excluded modules: the module is planned as a touched entry and then not
+        // prepared, and the reader must see which row decided that (DESIGN 5: a typed, located
+        // disposition, never a silent narrowing).
+        for (row, path, module) in &subject.touched_excluded_from_preparation {
+            eprintln!(
+                "[floor-plan] TouchedEntryExcludedFromPreparation path={path} module_path={module} \
+                 row={row} -- planned as a touched entry, not prepared: the row names a population \
+                 whose refusal is designed and consumed by class elsewhere"
+            );
+        }
         for (path, module) in &subject.touched_outside_floor_roots {
             eprintln!(
                 "[floor-plan] TouchedEntryOutsideFloorRoots path={path} module_path={module} \
@@ -7987,6 +8361,14 @@ pub fn run_required_floor(
             ClaimOutcome::Fail => outcome
                 .failures
                 .push(format!("{} returned Bool(false)", claim.qualified)),
+            // Same fact as `Fail` — a failing verdict — with its reason carried instead of
+            // collapsed: this line is the floor's per-claim record of a gate-class refusal.
+            ClaimOutcome::ExitFailure { code, reason } => outcome.failures.push(format!(
+                "{} returned ProcessExit::ExitFailure (code {}): {}",
+                claim.qualified,
+                code,
+                reason.unwrap_or_else(|| "(no reason)".to_string())
+            )),
             // Every non-pass arm is reported with the fact that distinguishes it. A
             // collapsed "failed" would make a budget refusal, a runtime error and a
             // witness that answered false read alike, and those three have different
@@ -9096,6 +9478,58 @@ pub fn run_required_floor(
                 row.decl_site
             );
         }
+        // ── THE PARTIAL-CLASS SPLIT, WHICH IS THE WHOLE POINT OF KEYING THIS BUCKET ──────────
+        //
+        // Before the partial key, a declaration with ANY unkeyable argument produced exactly ONE
+        // census row however different its arguments were, because the absorb path keyed it as
+        // `args: Vec::new()`. `v2.std.diagnostic` `bind_outcome<T,U>(o, f)` takes a function
+        // argument, so every one of its calls landed there: one row reporting 609 claims, 67,674
+        // evaluations and 186s of "cross-claim" time that was a merge of every distinct call rather
+        // than a measurement of one fact re-derived.
+        //
+        // THIS ROLLUP IS THE READING THAT SEPARATES THE TWO. `prefixes` is how many DISTINCT keyable
+        // argument rows now stand where one row stood. A producer whose 67,674 evaluations split
+        // into tens of thousands of prefixes was never sharing a fact; a producer whose evaluations
+        // collapse onto a handful is re-deriving, and only that second shape is a carry candidate.
+        //
+        // THE TIME IS AN UPPER BOUND AND THE LINE SAYS SO. Two calls agreeing on every keyed
+        // position may still differ in an unkeyable one, so a partial row's cross-claim figure
+        // bounds recoverable duplication from above rather than measuring it.
+        // `v2.workflow.floor_pure_producer_share` may not carry a producer on this number.
+        let mut partial_rollup: std::collections::BTreeMap<
+            (String, String),
+            (usize, u64, u64, u128),
+        > = std::collections::BTreeMap::new();
+        for row in shared.iter().filter(|r| r.arg_shape == "partial") {
+            let e = partial_rollup
+                .entry((row.producer.clone(), row.decl_site.clone()))
+                .or_insert((0, 0, 0, 0));
+            e.0 += 1;
+            e.1 += row.claims;
+            e.2 += row.evals;
+            e.3 += row.cross_claim_wasted_ns();
+        }
+        let mut partial_ranked: Vec<_> = partial_rollup.into_iter().collect();
+        partial_ranked.sort_by(|a, b| b.1 .3.cmp(&a.1 .3));
+        const PARTIAL_ROLLUP_PRINT_LIMIT: usize = 10;
+        for ((producer, site), (prefixes, claims, evals, ns)) in
+            partial_ranked.iter().take(PARTIAL_ROLLUP_PRINT_LIMIT)
+        {
+            eprintln!(
+                "[cross-claim-demand] partial-split producer={producer} prefixes={prefixes} \
+                 claims={claims} evals={evals} cross_claim_ms_upper_bound={} @{site} (UPPER BOUND: \
+                 rows agreeing on every KEYED argument may still differ in an unkeyable one, so this \
+                 is not a recoverable figure and is not carry-eligible)",
+                ns / 1_000_000
+            );
+        }
+        if partial_ranked.len() > PARTIAL_ROLLUP_PRINT_LIMIT {
+            eprintln!(
+                "[cross-claim-demand] ... and {} further partial-class producer identit(ies), not \
+                 printed",
+                partial_ranked.len() - PARTIAL_ROLLUP_PRINT_LIMIT
+            );
+        }
         if shared.len() > CROSS_CLAIM_DEMAND_PRINT_LIMIT {
             eprintln!(
                 "[cross-claim-demand] ... and {} further shared producer identit(ies), not \
@@ -9454,6 +9888,23 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
+             type CarriedInputDependence =\n\
+                 BoundParameter { parameter: String }\n\
+               | ImplicitAcquisition\n\
+             type PreparedEffectInput {\n\
+               acquisition: String\n\
+               checkout_input: String\n\
+               ground: String\n\
+               measurement: String\n\
+             }\n\
+             type CarriedInputWarmRow {\n\
+               producer: String\n\
+               carried_input: String\n\
+               dependence: CarriedInputDependence\n\
+               measurement: String\n\
+             }\n\
+             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
              data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [\n\
                RefusedShareCandidate {\n\
                  producer: \"v2.workflow.floor_pure_producer_share.tm_refused\",\n\
@@ -9496,6 +9947,80 @@ mod pure_producer_share_tests {
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
+    /// THE RED FOR THE CONTENT-BLIND WARM: a nullary row that performs one confirmed checkout
+    /// read, rostered as a PLAIN warm row. Before the guard the warm path stored it under the
+    /// empty argument row — `Stored`, no refusal — so a changed file would have been served the
+    /// old value by every later claim. The read is a real hermetic checkout-input dispatch (the
+    /// test's cwd is inside the checkout and `Cargo.toml` is committed), not a stubbed counter,
+    /// so the wall is exercised on the path the floor runs. The positive control is
+    /// `a_carried_roster_warms_and_stores_its_nullary_rows`: a pure nullary row still stores.
+    #[test]
+    fn a_plain_warm_row_that_dispatches_an_effect_stops_the_line() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             service Filesystem {\n\
+               operation Read {\n\
+                 input { path: String }\n\
+                 output {\n\
+                   content: String from \"content\"\n\
+                   success: Bool from \"read_success\"\n\
+                   error: String from \"error\"\n\
+                   error_kind: String from \"error_kind\"\n\
+                 }\n\
+                 readonly\n\
+                 transport file { path: \"{path}\" }\n\
+               }\n\
+             }\n\
+             fn reads_checkout() -> String {\n\
+               let read = Filesystem.Read(path: \"Cargo.toml\")\n\
+               read.content\n\
+             }\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.reads_checkout\"]\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             type CarriedInputDependence =\n\
+                 BoundParameter { parameter: String }\n\
+               | ImplicitAcquisition\n\
+             type PreparedEffectInput {\n\
+               acquisition: String\n\
+               checkout_input: String\n\
+               ground: String\n\
+               measurement: String\n\
+             }\n\
+             type CarriedInputWarmRow {\n\
+               producer: String\n\
+               carried_input: String\n\
+               dependence: CarriedInputDependence\n\
+               measurement: String\n\
+             }\n\
+             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+        )]);
+        let err = install_pure_producer_share(&prepared)
+            .expect_err("an effectful plain warm row must refuse, never store content-blind");
+        assert!(
+            err.contains("cause=PureProducerShareWarmDispatchedEffect")
+                && err.contains("producer=v2.workflow.floor_pure_producer_share.reads_checkout")
+                && err.contains("effects=1"),
+            "the refusal must name the cause, the row and the dispatch it saw: {err}"
+        );
+        let (stores, _) = v1_interpreter::cross_claim_pure_memo_counts();
+        assert_eq!(stores, 0, "nothing may be retained for the refused row");
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
     /// THE `AlreadyPresent` PATH REPORTS THAT IT FOUND THE VALUE, NOT THAT IT BUILT IT.
     /// The discriminating red for review 59035: before the fix this asserted
     /// `BuiltByPreparation` on a warm that built nothing, so the receipt claimed preparation
@@ -9521,6 +10046,23 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
+             type CarriedInputDependence =\n\
+                 BoundParameter { parameter: String }\n\
+               | ImplicitAcquisition\n\
+             type PreparedEffectInput {\n\
+               acquisition: String\n\
+               checkout_input: String\n\
+               ground: String\n\
+               measurement: String\n\
+             }\n\
+             type CarriedInputWarmRow {\n\
+               producer: String\n\
+               carried_input: String\n\
+               dependence: CarriedInputDependence\n\
+               measurement: String\n\
+             }\n\
+             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
              data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
         )]);
 
@@ -9552,6 +10094,342 @@ mod pure_producer_share_tests {
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
+    /// The fixture roster for the carried-input tests: one acquisition (`carrier_a`), one
+    /// producer that reaches it nullary (`projection`), and a SECOND acquisition returning
+    /// different content (`carrier_b`) which exists only so a test can bind a different carrier
+    /// content to the same acquisition node — the in-process stand-in for "the committed file
+    /// changed between two prepared runs".
+    fn carried_input_fixture(dependence: &str) -> PreparedRepository {
+        prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            &format!(
+                "module v2.workflow.floor_pure_producer_share\n\
+                 fn carrier_a() -> String {{ \"content-A\" }}\n\
+                 fn carrier_b() -> String {{ \"content-B\" }}\n\
+                 fn projection() -> String {{ concat(\"projected:\", carrier_a()) }}\n\
+                 fn consumer() -> String {{ projection() }}\n\
+                 data floor_cross_claim_pure_producers_warm: List<String> = []\n\
+                 data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
+                 type CarriedInputDependence =\n\
+                     BoundParameter {{ parameter: String }}\n\
+                   | ImplicitAcquisition\n\
+                 type PreparedEffectInput {{\n\
+                   acquisition: String\n\
+                   checkout_input: String\n\
+                   ground: String\n\
+                   measurement: String\n\
+                 }}\n\
+                 type CarriedInputWarmRow {{\n\
+                   producer: String\n\
+                   carried_input: String\n\
+                   dependence: CarriedInputDependence\n\
+                   measurement: String\n\
+                 }}\n\
+                 data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [\n\
+                   PreparedEffectInput {{\n\
+                     acquisition: \"v2.workflow.floor_pure_producer_share.carrier_a\",\n\
+                     checkout_input: \"fixture/carrier.jsonl\",\n\
+                     ground: \"fixture\",\n\
+                     measurement: \"fixture\"\n\
+                   }}\n\
+                 ]\n\
+                 data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [\n\
+                   CarriedInputWarmRow {{\n\
+                     producer: \"v2.workflow.floor_pure_producer_share.projection\",\n\
+                     carried_input: \"{dependence_input}\",\n\
+                     dependence: {dependence},\n\
+                     measurement: \"fixture\"\n\
+                   }}\n\
+                 ]\n\
+                 type ShareRefusalVerdict =\n\
+                     MeasuredServeAboveRecompute\n\
+                   | NoMeasuredEffectOverItsConsumers\n\
+                 type RefusedShareCandidate {{\n\
+                   producer: String\n\
+                   verdict: ShareRefusalVerdict\n\
+                   carrier_modules: List<String>\n\
+                   measurement: String\n\
+                   next_trigger: String\n\
+                 }}\n\
+                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+                dependence = dependence,
+                dependence_input = "v2.workflow.floor_pure_producer_share.carrier_a",
+            ),
+        )])
+    }
+
+    /// Evaluate an entry and return its value beside the producer names the cross-claim tier
+    /// SERVED while it ran. The hit list is what separates "the right value" from "the value was
+    /// served": a recompute produces the same string, so a control that read only the value could
+    /// not tell a working share from a dead one.
+    fn evaluate_counting_hits(
+        frame: &v1_interpreter::InterpContext,
+        entry: &str,
+    ) -> (v1_interpreter::Value, Vec<String>) {
+        let hits: std::rc::Rc<std::cell::RefCell<Vec<String>>> =
+            std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let sink = hits.clone();
+        v1_interpreter::install_cross_claim_share_observer(Some(
+            v1_interpreter::CrossClaimShareObserver {
+                on_fill_begin: Box::new(|| {}),
+                on_fill: Box::new(|_, _, _| {}),
+                on_fill_abandon: Box::new(|| {}),
+                on_hit: Box::new(move |name| sink.borrow_mut().push(name.to_string())),
+            },
+        ));
+        let value =
+            v1_interpreter::run_in_context(frame, entry, false).expect("the entry evaluates");
+        let observed = hits.borrow().clone();
+        (value, observed)
+    }
+
+    /// POSITIVE CONTROL: the input is acquired ONCE at preparation, the producer is warmed over
+    /// it, and a later evaluation of the producer is SERVED — the shape the whole row kind
+    /// exists for. The acquisition's own observation is present too, because the acquire is a
+    /// shared preparation build and a build bounded by nothing is exactly what the observation
+    /// vector exists to stop.
+    #[test]
+    fn a_prepared_effect_input_is_acquired_once_and_its_producer_is_warmed_over_it() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = carried_input_fixture("ImplicitAcquisition");
+        let observations =
+            install_pure_producer_share(&prepared).expect("the carried input installs and warms");
+        let labels: Vec<&str> = observations.iter().map(|(l, _)| l.as_str()).collect();
+        assert!(
+            labels.contains(
+                &"PreparedEffectInputAcquire/v2.workflow.floor_pure_producer_share.carrier_a"
+            ),
+            "the acquisition must be observed as a shared preparation build: {labels:?}"
+        );
+        assert!(
+            labels.contains(
+                &"CrossClaimCarriedInputWarm/v2.workflow.floor_pure_producer_share.projection"
+            ),
+            "the carried-input warm must be observed: {labels:?}"
+        );
+        let frame = floor_authority_frame(&prepared, "v2.workflow.floor_pure_producer_share")
+            .expect("fixture frame");
+        // EVALUATE THROUGH A CALL SITE, not through `run_in_context` on the producer itself:
+        // `run_in_context` calls `call_function` DIRECTLY, so it reaches neither the cross-claim
+        // tier nor the prepared-input binding. A control that evaluated the producer that way
+        // would assert a value RECOMPUTE also produces — measuring nothing, in the shape DESIGN
+        // section 4b calls a decoration. `consumer()` is an ordinary call site, so its inner
+        // call goes through the same path every claim's call takes.
+        let (served, hits) =
+            evaluate_counting_hits(&frame, "v2.workflow.floor_pure_producer_share.consumer");
+        match &served {
+            v1_interpreter::Value::Str(s) => assert_eq!(&**s, "projected:content-A"),
+            other => panic!("unexpected value: {other:?}"),
+        }
+        assert!(
+            hits.iter().any(|h| h == "projection"),
+            "the producer must be SERVED from the warm, not recomputed: {hits:?}"
+        );
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// THE DISCRIMINATING RED: A CHANGED CARRIER CONTENT IS NOT SERVED THE OLD VALUE.
+    ///
+    /// This is the control the whole design rests on, and it is aimed at the specific wrong
+    /// implementation rather than at the happy path: an entry keyed on the EMPTY argument row
+    /// passes the positive control above and FAILS HERE, because it would serve the value
+    /// derived from content-A after content-B was carried. Binding a different acquired value to
+    /// the same acquisition node is the in-process stand-in for the committed carrier changing
+    /// between two prepared runs.
+    #[test]
+    fn a_changed_carrier_content_is_not_served_the_value_derived_from_the_old_one() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = carried_input_fixture("ImplicitAcquisition");
+        install_pure_producer_share(&prepared).expect("the carried input installs and warms");
+        let frame = floor_authority_frame(&prepared, "v2.workflow.floor_pure_producer_share")
+            .expect("fixture frame");
+
+        // Re-bind the SAME acquisition node to a different content, exactly as a second prepared
+        // run over a changed carrier would.
+        let acquisition_node = frame
+            .lookup_fn_node("v2.workflow.floor_pure_producer_share.carrier_a")
+            .expect("the acquisition resolves");
+        let changed = v1_interpreter::acquire_prepared_effect_input(
+            &frame,
+            "v2.workflow.floor_pure_producer_share.carrier_b",
+        )
+        .expect("the second carrier acquires");
+        let first_digest = v1_interpreter::acquire_prepared_effect_input(
+            &frame,
+            "v2.workflow.floor_pure_producer_share.carrier_a",
+        )
+        .expect("the first carrier acquires")
+        .digest;
+        assert_ne!(
+            first_digest, changed.digest,
+            "two different carrier contents must not share a content identity"
+        );
+        v1_interpreter::install_prepared_effect_input(&acquisition_node, changed);
+
+        let (served, hits) =
+            evaluate_counting_hits(&frame, "v2.workflow.floor_pure_producer_share.consumer");
+        assert!(
+            !hits.iter().any(|h| h == "projection"),
+            "the producer must not be SERVED under a changed carrier: {hits:?}"
+        );
+        match &served {
+            v1_interpreter::Value::Str(s) => assert_eq!(
+                &**s, "projected:content-B",
+                "the producer must RECOMPUTE over the changed carrier; serving \
+                 'projected:content-A' is the stale serve the content key exists to make \
+                 unwritable"
+            ),
+            other => panic!("unexpected value: {other:?}"),
+        }
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// THE BINDING DIES WITH THE TIER. A carry outliving its prepared subject would serve a
+    /// later, differently-prepared evaluation a value acquired from ANOTHER COMMIT — a stale
+    /// serve the content key cannot catch, because the carried content would be exactly what is
+    /// wrong. After the tier is cleared the producer evaluates for itself again.
+    #[test]
+    fn the_prepared_input_binding_is_absent_after_the_tier_is_cleared() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = carried_input_fixture("ImplicitAcquisition");
+        install_pure_producer_share(&prepared).expect("the carried input installs and warms");
+        let frame = floor_authority_frame(&prepared, "v2.workflow.floor_pure_producer_share")
+            .expect("fixture frame");
+        let acquisition_node = frame
+            .lookup_fn_node("v2.workflow.floor_pure_producer_share.carrier_a")
+            .expect("the acquisition resolves");
+        assert!(
+            v1_interpreter::prepared_effect_input_is_bound(&acquisition_node),
+            "the binding must exist while the subject is prepared"
+        );
+        v1_interpreter::clear_cross_claim_pure_memos();
+        assert!(
+            !v1_interpreter::prepared_effect_input_is_bound(&acquisition_node),
+            "the binding must be cleared with the tier"
+        );
+        // And the producer still answers, for itself, with nothing carried.
+        let (recomputed, _) =
+            evaluate_counting_hits(&frame, "v2.workflow.floor_pure_producer_share.consumer");
+        match &recomputed {
+            v1_interpreter::Value::Str(s) => assert_eq!(&**s, "projected:content-A"),
+            other => panic!("unexpected value: {other:?}"),
+        }
+    }
+
+    /// A carried-input row naming an input nobody prepares stops the line: the value it declares
+    /// a dependence on would never be bound.
+    #[test]
+    fn a_carried_row_naming_an_unprepared_input_stops_the_line() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             fn carrier_a() -> String { \"content-A\" }\n\
+             fn projection() -> String { concat(\"projected:\", carrier_a()) }\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = []\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
+             type CarriedInputDependence =\n\
+                 BoundParameter { parameter: String }\n\
+               | ImplicitAcquisition\n\
+             type PreparedEffectInput {\n\
+               acquisition: String\n\
+               checkout_input: String\n\
+               ground: String\n\
+               measurement: String\n\
+             }\n\
+             type CarriedInputWarmRow {\n\
+               producer: String\n\
+               carried_input: String\n\
+               dependence: CarriedInputDependence\n\
+               measurement: String\n\
+             }\n\
+             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [\n\
+               CarriedInputWarmRow {\n\
+                 producer: \"v2.workflow.floor_pure_producer_share.projection\",\n\
+                 carried_input: \"v2.workflow.floor_pure_producer_share.carrier_a\",\n\
+                 dependence: ImplicitAcquisition,\n\
+                 measurement: \"fixture\"\n\
+               }\n\
+             ]\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+        )]);
+        let err = install_pure_producer_share(&prepared)
+            .expect_err("a row naming an unprepared input must stop the line");
+        assert!(
+            err.contains("CarriedInputWarmRowInputUnknown"),
+            "refusal must name the cause: {err}"
+        );
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// A NON-NULLARY ACQUISITION IS REFUSED, because a carried input WITH arguments is a
+    /// different concept: which argument row would preparation have acquired it under?
+    #[test]
+    fn a_non_nullary_acquisition_is_refused() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             fn carrier_a(seed: String) -> String { concat(\"content-\", seed) }\n\
+             fn projection() -> String { \"projected\" }\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = []\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
+             type CarriedInputDependence =\n\
+                 BoundParameter { parameter: String }\n\
+               | ImplicitAcquisition\n\
+             type PreparedEffectInput {\n\
+               acquisition: String\n\
+               checkout_input: String\n\
+               ground: String\n\
+               measurement: String\n\
+             }\n\
+             type CarriedInputWarmRow {\n\
+               producer: String\n\
+               carried_input: String\n\
+               dependence: CarriedInputDependence\n\
+               measurement: String\n\
+             }\n\
+             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [\n\
+               PreparedEffectInput {\n\
+                 acquisition: \"v2.workflow.floor_pure_producer_share.carrier_a\",\n\
+                 checkout_input: \"fixture/carrier.jsonl\",\n\
+                 ground: \"fixture\",\n\
+                 measurement: \"fixture\"\n\
+               }\n\
+             ]\n\
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+        )]);
+        let err = install_pure_producer_share(&prepared)
+            .expect_err("a non-nullary acquisition must stop the line");
+        assert!(
+            err.contains("PreparedEffectInputAcquisitionFailed") && err.contains("NULLARY"),
+            "refusal must name the cause and the reason: {err}"
+        );
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
     /// A warm row naming a producer the subject cannot resolve stops the line.
     #[test]
     fn a_stale_warm_row_stops_the_line() {
@@ -9560,7 +10438,25 @@ mod pure_producer_share_tests {
             "workspace/src/v2/workflow/floor_pure_producer_share.dag",
             "module v2.workflow.floor_pure_producer_share\n\
              data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_gone\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n",
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
+             type CarriedInputDependence =\n\
+                 BoundParameter { parameter: String }\n\
+               | ImplicitAcquisition\n\
+             type PreparedEffectInput {\n\
+               acquisition: String\n\
+               checkout_input: String\n\
+               ground: String\n\
+               measurement: String\n\
+             }\n\
+             type CarriedInputWarmRow {\n\
+               producer: String\n\
+               carried_input: String\n\
+               dependence: CarriedInputDependence\n\
+               measurement: String\n\
+             }\n\
+             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
+",
         )]);
         let err = install_pure_producer_share(&prepared)
             .expect_err("a stale warm row must stop the line");
@@ -10166,10 +11062,14 @@ mod changed_witness_projection_tests {
         .expect("fixture write");
         let mut touched = std::collections::HashSet::new();
         touched.insert("consumer.dag".to_string());
-        let (seeds, outside) =
+        let (seeds, outside, seeded) =
             module_seeds_from_touched_entry_files(&dir, &touched, &[".".to_string()])
                 .expect("seeds");
         assert_eq!(seeds, vec!["exhaust.consumer".to_string()]);
+        assert_eq!(
+            seeded,
+            vec![("consumer.dag".to_string(), "exhaust.consumer".to_string())]
+        );
         assert!(
             outside.is_empty(),
             "a file under the roots is a seed, got {outside:?}"
@@ -10193,7 +11093,7 @@ mod changed_witness_projection_tests {
         .expect("fixture write");
         let mut touched = std::collections::HashSet::new();
         touched.insert("src/v1/mirror/consumer.dag".to_string());
-        let (seeds, outside) = module_seeds_from_touched_entry_files(
+        let (seeds, outside, _) = module_seeds_from_touched_entry_files(
             &dir,
             &touched,
             &["dag".to_string(), "src/v2".to_string()],
@@ -10234,6 +11134,85 @@ mod changed_witness_projection_tests {
             "refusal must name the missing header, got {err}"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A DIFF THAT EDITS A MUST-NOT-RESOLVE PROBE plans it as a touched entry and preparation
+    /// stays green with the typed row: the seed is reported (`TouchedEntryExcludedFromPreparation`
+    /// names the `test/probe/` exclusion row) and `assemble_prepared_subject_closure` drops it
+    /// before Strict resolve. The control is the same subject without the probe. Measured before
+    /// this row: gunbc#11343 at 76923b733, run 34874099243 --
+    /// `[floor-phase] phase=touched-entry-compile-subject seeds=6 modules=[...,
+    /// "test.probe.bare_string_from_boundary_probe"]` and a refused preparation on the probe's
+    /// designed `SoleConstructorViolation`.
+    #[test]
+    fn an_edited_must_not_resolve_probe_is_seeded_then_excluded_and_preparation_stays_green() {
+        let probe = "module armset.probe\n\nimport armset.x { Signal }\n\n\
+fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
+        let fx = arm_set_fixture("probe", "head", &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)]);
+        std::fs::create_dir_all(fx.join("test/probe")).expect("probe dir");
+        std::fs::write(fx.join("test/probe/probe.dag"), probe).expect("probe source");
+        let rel = fx
+            .strip_prefix(process_workspace_root())
+            .expect("under workspace")
+            .to_string_lossy()
+            .into_owned();
+        // The seed derivation sees the probe as a touched entry under the roots...
+        let mut touched = std::collections::HashSet::new();
+        touched.insert("test/probe/probe.dag".to_string());
+        touched.insert("w.dag".to_string());
+        let (seeds, _, pairs) =
+            module_seeds_from_touched_entry_files(&fx, &touched, &[".".to_string()])
+                .expect("seeds");
+        assert_eq!(
+            seeds,
+            vec!["armset.probe".to_string(), "armset.w".to_string()]
+        );
+        let exclusions = floor_prepared_subject_exclusions();
+        let excluded: Vec<(String, String, String)> = pairs
+            .iter()
+            .filter_map(|(path, module)| {
+                prepared_subject_exclusion_row_for(path, module, &exclusions)
+                    .map(|row| (row.clone(), path.clone(), module.clone()))
+            })
+            .collect();
+        assert_eq!(
+            excluded,
+            vec![(
+                "test/probe/".to_string(),
+                "test/probe/probe.dag".to_string(),
+                "armset.probe".to_string()
+            )],
+            "the probe seed must be reported against the test/probe/ row"
+        );
+        // ...and preparation over the SAME seed list, under the floor's own exclusions, is green:
+        // the probe's designed refusal never reaches Strict resolve.
+        let root = fx.to_string_lossy().into_owned();
+        let roots = [root.clone()];
+        // ONE cwd guard for both preparations: the mutex is not reentrant.
+        let (_lock, previous) = enter_workspace_cwd();
+        let index = build_multi_entry_index(&roots);
+        let prepared = prepare_repository_closure(
+            &roots,
+            &floor_prepared_subject_exclusions(),
+            Some((&index, &[], &seeds)),
+        );
+        // THE DISCRIMINATOR: without the exclusion rows the same seed list refuses on the probe.
+        let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
+        leave_workspace_cwd(&previous);
+        let (prepared, views) = prepared.expect("the excluded probe must not refuse preparation");
+        let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
+        assert!(!modules.contains(&"armset.probe"), "{modules:?}");
+        assert!(modules.contains(&"armset.w"), "{modules:?}");
+        assert_eq!(prepared.modules_excluded, 1);
+        let _ = std::fs::remove_dir_all(&fx);
+        let refusal = refusal
+            .err()
+            .expect("without the row the probe's designed refusal blocks");
+        assert!(
+            refusal.contains("no_such_field") || refusal.contains("no field"),
+            "{refusal}"
+        );
+        assert!(rel.contains("target/"), "fixture under target/: {rel}");
     }
 
     // ── THE #11194 SHAPE, EXECUTED END TO END ──────────────────────────────────────────────

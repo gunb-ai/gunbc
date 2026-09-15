@@ -21,6 +21,9 @@ import extdeps.github.actions {
 import extdeps.github.expressions { Equals, ContextAccess, Github, StringLiteral, serialize_expression }
 import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
 import extdeps.tools.curl { curl_program }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 data gunbc_private_repository: Repository = Repository {
   owner: "gunb-ai",
@@ -69,6 +72,17 @@ fn shell_env_ref(name: String) -> String {
   concat("${", concat(name, "}"))
 }
 
+data private_witness_dispatch_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.private_witness_dispatch",
+    decl_name: "private_witness_dispatch_script",
+    field: WholeDeclaration
+  }
+}
+
+data private_witness_dispatch_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: private_witness_dispatch_script — concat-built foreign-executor (GitHub Actions run:) repository_dispatch runner; the dispatch URL, associated-pulls URL, auth env and client_payload keys are derived from extdeps.github.repository_dispatch, but the curl/python transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes GitHubEffect DispatchRepository through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
 fn private_witness_dispatch_script() -> String {
   let pulls_url = commit_associated_pulls_url(
     api_base: default_api_base,
@@ -83,6 +97,7 @@ fn private_witness_dispatch_script() -> String {
   let sha_key = client_payload_sha_key
   let pr_key = client_payload_pr_number_key
   join([
+    concat("# ", dissolution_description(condition: private_witness_dispatch_shell_emit_dissolution_trigger)),
     "set -eu",
     concat("PR_NUMBER=$(", curl_program as String, " -fsS -H \"Authorization: Bearer ", shell_env_ref(name: "GITHUB_TOKEN"), "\" -H \"Accept: ", github_json_accept, "\" \"", pulls_url, "\" | python3 -c ", "'", associated_pr_python(), "'", ")"),
     concat("if [ -z \"", shell_env_ref(name: "PR_NUMBER"), "\" ]; then echo no associated pull request >&2; exit 1; fi"),

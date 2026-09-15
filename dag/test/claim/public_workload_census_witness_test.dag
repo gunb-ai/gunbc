@@ -1,0 +1,1237 @@
+module test.claim.public_workload_census_witness
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.measure { hardware_thread_count }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.toolchain.types { X86_64 }
+import extdeps.github.workflow_runs {
+  WorkflowJobRun, Completed, Success,
+}
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.runner_label_resolution {
+  resolve_runner_label,
+  arm_standing,
+  ArmConfirmed,
+  NotArmConfirmed,
+  ArmUndetermined,
+  ProviderFromCatalog,
+  ProviderUnresolved,
+}
+import gunbc.public_workload_census {
+  DeclaredArm, DeclaredNotArm, DeclaredArchitectureUnresolved,
+  declared_architecture_standing, DeclaredExpression,
+  ObservedExecution, NoRunObserved, JobRunObserved, TestsExecuted, NoTestsExecuted,
+  observed_job_labels, observed_job_run_attempt, observed_label_standing,
+  ObservedLabel, NoRunObservedForLabel, JobResourceCarriedNoLabels,
+  JobResourceCarriedMultipleLabels,
+  baseline_admission, BaselineAdmitted, BaselineRefused,
+  candidate_run_identity, ObservedAtInspectedRevision, WorkflowEquivalentOnly,
+  architecture_join_standing, ArchitectureJoinOnInspectedRevision,
+  ArchitectureJoinOnWorkflowEquivalentOnly, ArchitectureJoinRefused,
+  RunIdentityMismatched, RunIdentityUnresolved,
+  inspected_yaml_job_name_join, inspected_yaml_job_names, InspectedYamlJobName, AuthoredName,
+  YamlJobNameBound, YamlJobNameUninspected,
+  inspected_leg_binding, InspectedLegBound, InspectedLegUninspected, InspectedLegNameMismatch,
+  InspectedLegAxisMismatch, JobsNamePrefixOnly, JobsNameMatrixParenthetical,
+  CandidateRejected, SelectedWorkload, CandidateUnresolved,
+  WorkloadCandidate, MatrixCombination, MatrixAxisAssignment, DeclaredLabel,
+  JobRunObserved, TestsExecuted, ReplayAdmitted, SpendUnobserved,
+  ResourceRequirementsObserved,
+  replay_derivation_note, spend_unobserved_note, trial_authorization_from_census,
+  DeclaredProviderKnown, DeclaredProviderUnresolved,
+  candidate_declared_architecture, candidate_observed_architecture,
+  candidate_declared_provider, candidate_observed_provider,
+  candidate_warm_cache_count,
+  effect_disposition, CoverageUpload, WorkflowArtifactUpload,
+  RemovedFromBothRealizations, RetainedAndTimed,
+  workload_census, selected_workloads, correctness_admitted_workloads,
+  rejected_candidates, unresolved_candidates,   census_contains_subject,
+  candidate_biome_test, candidate_pdns_dnsdist_arm, candidate_openobserve_arm_build,
+  candidate_openobserve_amd64, candidate_openobserve_manifest,
+  candidate_biome_test_windows, candidate_biome_test_macos, candidate_openobserve_summary,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data candidate_biome_blob_mismatch_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "037dec1fc6b583c991c2270927c3ca77bf73173f",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: SelectedWorkload {
+    rank: 99,
+    complementarity: "identity-join RED: an authored SelectedWorkload on a mismatched run must not enter selected_workloads",
+  },
+}
+
+data candidate_biome_matrix_selector_mismatch_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: same Jobs API name and observation as the Arm test leg, but the inspected matrix selector is a different combination",
+  },
+}
+
+data candidate_pdns_axis_name_mismatch_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "PowerDNS/pdns",
+  license_spdx: "GPL-2.0",
+  inspected_commit: "0f2df8380e89bb066e947a5818f6267016847d98",
+  workflow_path: ".github/workflows/build-and-test-all.yml",
+  workflow_blob_sha: "f9f3f705735c2fe01922f075194c735246fe97aa",
+  job_key: "build-dnsdist",
+  matrix_selector: MatrixCombination {
+    axes: [
+      MatrixAxisAssignment { axis: "sanitizers", value: "asan+ubsan" },
+      MatrixAxisAssignment { axis: "features", value: "full" },
+      MatrixAxisAssignment { axis: "cpu_family", value: "-arm" },
+    ],
+  },
+  declared_runner: DeclaredExpression {
+    expression: "( vars.REPOSITORY_USE_UBICLOUD == '1' ) && format('ubicloud-standard-4{0}-ubuntu-2404', matrix.architecture_suffix) || format('ubuntu-24.04{0}', matrix.architecture_suffix)",
+    alternatives: ["ubicloud-standard-4-arm-ubuntu-2404", "ubuntu-24.04-arm"],
+  },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 100984779675,
+      run_id: 33860869079,
+      run_attempt: 1,
+      name: "build dnsdist (asan+ubsan, full, -arm)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["ubuntu-24.04-arm"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T09:57:28Z" },
+      completed_at: Present { value: "2026-09-04T10:07:09Z" },
+    },
+    repository: "PowerDNS/pdns",
+    workflow_path: ".github/workflows/build-and-test-all.yml",
+    workflow_blob_sha_at_head: "f9f3f705735c2fe01922f075194c735246fe97aa",
+    head_sha: "0f2df8380e89bb066e947a5818f6267016847d98",
+    correctness: TestsExecuted {
+      step: "inv ci-dnsdist-run-unit-tests",
+    },
+  },
+  observation_time: "2026-09-04T09:57:28Z",
+  workload_commands: [
+    "inv install-dnsdist-build-deps",
+    "inv ci-dnsdist-configure full",
+    "inv ci-dnsdist-run-ninja",
+    "inv ci-dnsdist-run-unit-tests",
+  ],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 4),
+    uses_container: true,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: same values and Jobs API name as the admitted dnsdist Arm leg, but architecture_suffix is renamed so the selector is not the inspected workflow's axes",
+  },
+}
+
+data candidate_pdns_axis_name_swap_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "PowerDNS/pdns",
+  license_spdx: "GPL-2.0",
+  inspected_commit: "0f2df8380e89bb066e947a5818f6267016847d98",
+  workflow_path: ".github/workflows/build-and-test-all.yml",
+  workflow_blob_sha: "f9f3f705735c2fe01922f075194c735246fe97aa",
+  job_key: "build-dnsdist",
+  matrix_selector: MatrixCombination {
+    axes: [
+      MatrixAxisAssignment { axis: "features", value: "asan+ubsan" },
+      MatrixAxisAssignment { axis: "sanitizers", value: "full" },
+      MatrixAxisAssignment { axis: "architecture_suffix", value: "-arm" },
+    ],
+  },
+  declared_runner: DeclaredExpression {
+    expression: "( vars.REPOSITORY_USE_UBICLOUD == '1' ) && format('ubicloud-standard-4{0}-ubuntu-2404', matrix.architecture_suffix) || format('ubuntu-24.04{0}', matrix.architecture_suffix)",
+    alternatives: ["ubicloud-standard-4-arm-ubuntu-2404", "ubuntu-24.04-arm"],
+  },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 100984779675,
+      run_id: 33860869079,
+      run_attempt: 1,
+      name: "build dnsdist (asan+ubsan, full, -arm)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["ubuntu-24.04-arm"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T09:57:28Z" },
+      completed_at: Present { value: "2026-09-04T10:07:09Z" },
+    },
+    repository: "PowerDNS/pdns",
+    workflow_path: ".github/workflows/build-and-test-all.yml",
+    workflow_blob_sha_at_head: "f9f3f705735c2fe01922f075194c735246fe97aa",
+    head_sha: "0f2df8380e89bb066e947a5818f6267016847d98",
+    correctness: TestsExecuted {
+      step: "inv ci-dnsdist-run-unit-tests",
+    },
+  },
+  observation_time: "2026-09-04T09:57:28Z",
+  workload_commands: [
+    "inv install-dnsdist-build-deps",
+    "inv ci-dnsdist-configure full",
+    "inv ci-dnsdist-run-ninja",
+    "inv ci-dnsdist-run-unit-tests",
+  ],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 4),
+    uses_container: true,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: sanitizers/features names swapped, values left in place; declared-order lookup renders (full, asan+ubsan, -arm)",
+  },
+}
+
+data candidate_biome_job_key_mismatch_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "lint",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: same Jobs API name, matrix selector and observation as the Arm test leg, but the inspected job key is a different YAML job",
+  },
+}
+
+data candidate_biome_job_key_titlecase_uninspected_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "Test",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: job_key Test has no inspected YAML job-name row; absence of a mapping is not proof that name: is unset",
+  },
+}
+
+data candidate_biome_multi_label_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["self-hosted", "linux", "arm64"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "the job resource carried multiple labels; this census is scoped to single-label runners and does not take the first as the observed runner",
+  },
+}
+
+data candidate_empty_labels_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: [],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "the job resource carried an empty labels list",
+  },
+}
+
+data candidate_absent_conclusion_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Absent,
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "the observed job did not conclude success",
+  },
+}
+
+data candidate_run_attempt_zero_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 0,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "the job resource did not carry a positive run attempt",
+  },
+}
+
+data candidate_empty_matrix_axes_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  matrix_selector: MatrixCombination {
+    axes: [],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test ()",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "MatrixCombination with no axes is not a matrix leg",
+  },
+}
+
+data yaml_dup_name_fixture: List<InspectedYamlJobName> = [
+  InspectedYamlJobName {
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+    name: AuthoredName { prefix: "DupA" },
+  },
+  InspectedYamlJobName {
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+    name: AuthoredName { prefix: "DupB" },
+  },
+]
+
+data candidate_no_run_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: NoRunObserved {
+    obligation: "no public job run was joined to this inspected workload",
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "no run was observed",
+  },
+}
+
+fn catalog_not_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    NotArmConfirmed { label, architecture, snapshot } => architecture == X86_64
+    ArmConfirmed { label, snapshot } => false
+    ArmUndetermined { label, cause } => false
+  }
+}
+
+fn catalog_is_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    ArmConfirmed { label, snapshot } => true
+    NotArmConfirmed { label, architecture, snapshot } => false
+    ArmUndetermined { label, cause } => false
+  }
+}
+
+test fn witness_x64_catalog_label_is_never_arm_evidence() -> Bool {
+  catalog_not_arm(label: "ubicloud-standard-8", observed_at: "2026-09-01T10:02:15Z")
+    && catalog_not_arm(label: "ubicloud-standard-16", observed_at: "2026-09-01T10:02:15Z")
+    && catalog_not_arm(label: "depot-ubuntu-24.04-16", observed_at: "2026-09-04T16:03:32Z")
+    && catalog_not_arm(label: "ubuntu-24.04", observed_at: "2026-09-04T09:57:28Z")
+    && catalog_is_arm(label: "ubicloud-standard-16-arm", observed_at: "2026-09-01T10:02:21Z")
+    && catalog_is_arm(label: "depot-ubuntu-24.04-arm-16", observed_at: "2026-09-04T16:03:32Z")
+    && catalog_is_arm(label: "ubuntu-24.04-arm", observed_at: "2026-09-04T09:57:28Z")
+}
+
+test fn witness_an_unresolved_label_is_not_reported_as_x64() -> Bool {
+  match arm_standing(r: resolve_runner_label(label: "ubuntu-latest", observed_at: "2026-09-01T10:29:11Z")) {
+    ArmUndetermined { label, cause } => true
+    ArmConfirmed { label, snapshot } => false
+    NotArmConfirmed { label, architecture, snapshot } => false
+  }
+}
+
+test fn witness_selected_population_is_three_complementary_jobs() -> Bool {
+  let selected = selected_workloads()
+  count(selected) == 3
+    && census_contains_subject(rows: correctness_admitted_workloads(), needle: candidate_pdns_dnsdist_arm)
+    && !census_contains_subject(rows: correctness_admitted_workloads(), needle: candidate_biome_test)
+    && !census_contains_subject(rows: correctness_admitted_workloads(), needle: candidate_openobserve_arm_build)
+    && candidate_biome_test.job_key == "test"
+    && candidate_pdns_dnsdist_arm.job_key == "build-dnsdist"
+    && candidate_openobserve_arm_build.job_key == "build_pr_image_arm64"
+    && candidate_biome_test.repository != candidate_pdns_dnsdist_arm.repository
+}
+
+test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
+  census_contains_subject(rows: rejected_candidates(), needle: candidate_openobserve_amd64)
+    && census_contains_subject(rows: rejected_candidates(), needle: candidate_openobserve_manifest)
+    && census_contains_subject(rows: unresolved_candidates(), needle: candidate_biome_test_windows)
+    && census_contains_subject(rows: unresolved_candidates(), needle: candidate_biome_test_macos)
+    && census_contains_subject(rows: unresolved_candidates(), needle: candidate_openobserve_summary)
+    && census_contains_subject(rows: selected_workloads(), needle: candidate_biome_test)
+    && census_contains_subject(rows: selected_workloads(), needle: candidate_pdns_dnsdist_arm)
+    && census_contains_subject(rows: selected_workloads(), needle: candidate_openobserve_arm_build)
+    && match candidate_biome_blob_mismatch_control.selection {
+      SelectedWorkload { rank, complementarity } =>
+        match candidate_run_identity(c: candidate_biome_blob_mismatch_control) {
+          RunIdentityMismatched { cause } =>
+            !census_contains_subject(rows: workload_census, needle: candidate_biome_blob_mismatch_control)
+          ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+          WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+          RunIdentityUnresolved { cause } => false
+        }
+      CandidateRejected { reason } => false
+      CandidateUnresolved { obligation } => false
+    }
+}
+
+test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
+  all(workload_census, c => match candidate_run_identity(c: c) {
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } =>
+      revision == c.inspected_commit
+        && (repository as String) == (c.repository as String)
+        && (job_key as String) == (c.job_key as String)
+        && matrix_selector == c.matrix_selector
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
+      inspected == c.inspected_commit
+        && (blob as String) == (c.workflow_blob_sha as String)
+        && inspected != observed
+    RunIdentityMismatched { cause } => true
+    RunIdentityUnresolved { cause } => true
+  })
+}
+
+test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool {
+  let biome = match candidate_run_identity(c: candidate_biome_test) {
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
+      match baseline_admission(c: candidate_biome_test) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+    RunIdentityMismatched { cause } => false
+    RunIdentityUnresolved { cause } => false
+  }
+  let pdns = match baseline_admission(c: candidate_pdns_dnsdist_arm) {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
+    BaselineRefused { cause } => false
+  }
+  let openobserve = match baseline_admission(c: candidate_openobserve_arm_build) {
+    BaselineRefused { cause } => true
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+  }
+  biome && pdns && openobserve
+}
+
+test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_arm() -> Bool {
+  let declared = candidate_declared_architecture(c: candidate_pdns_dnsdist_arm)
+  let declared_unresolved = match declared {
+    DeclaredArchitectureUnresolved { via, cause } => true
+    DeclaredArm { via } => false
+    DeclaredNotArm { via, architecture } => false
+  }
+  let observed_arm = match candidate_observed_architecture(c: candidate_pdns_dnsdist_arm) {
+    ArmConfirmed { label, snapshot } => true
+    NotArmConfirmed { label, architecture, snapshot } => false
+    ArmUndetermined { label, cause } => false
+  }
+  declared_unresolved && observed_arm
+}
+
+test fn witness_declared_and_observed_providers_are_separate_readings() -> Bool {
+  let biome_declared = match candidate_declared_provider(c: candidate_biome_test) {
+    DeclaredProviderKnown { via, provider_module } =>
+      provider_module as String == "extdeps.ci_runner.depot"
+    DeclaredProviderUnresolved { via, cause } => false
+  }
+  let pdns_declared_open = match candidate_declared_provider(c: candidate_pdns_dnsdist_arm) {
+    DeclaredProviderUnresolved { via, cause } => true
+    DeclaredProviderKnown { via, provider_module } => false
+  }
+  let pdns_observed_github = match candidate_observed_provider(c: candidate_pdns_dnsdist_arm) {
+    ProviderFromCatalog { provider, label, snapshot } =>
+      provider.module_path == "extdeps.ci_runner.github_actions"
+    ProviderUnresolved { label, cause } => false
+  }
+  biome_declared && pdns_declared_open && pdns_observed_github
+}
+
+test fn witness_openobserve_amd64_is_catalog_x64_and_rejected() -> Bool {
+  let declared = candidate_declared_architecture(c: candidate_openobserve_amd64)
+  let not_arm = match declared {
+    DeclaredNotArm { via, architecture } => architecture == X86_64
+    DeclaredArm { via } => false
+    DeclaredArchitectureUnresolved { via, cause } => false
+  }
+  let rejected = match candidate_openobserve_amd64.selection {
+    CandidateRejected { reason } => true
+    SelectedWorkload { rank, complementarity } => false
+    CandidateUnresolved { obligation } => false
+  }
+  not_arm && rejected
+}
+
+test fn witness_observed_labels_and_attempt_are_read_from_the_job_resource() -> Bool {
+  match candidate_biome_test.observed {
+    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
+      observed_job_labels(job: job) == ["depot-ubuntu-24.04-arm-16"]
+        && observed_job_run_attempt(job: job) == 1
+    NoRunObserved { obligation } => false
+  }
+}
+
+test fn witness_unobserved_cache_is_never_warm() -> Bool {
+  count(filter(workload_census, c => candidate_warm_cache_count(c: c) > 0)) == 0
+}
+
+test fn witness_effect_disposition_is_derived_from_kind() -> Bool {
+  match effect_disposition(kind: CoverageUpload { service: "Coveralls" }) {
+    RemovedFromBothRealizations { cause } => match effect_disposition(kind: WorkflowArtifactUpload { artifact: "dnsdist binaries" }) {
+      RetainedAndTimed { cause } => true
+      RemovedFromBothRealizations { cause } => false
+    }
+    RetainedAndTimed { cause } => false
+  }
+}
+
+test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
+  let pdns_same = match candidate_run_identity(c: candidate_pdns_dnsdist_arm) {
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } =>
+      revision == candidate_pdns_dnsdist_arm.inspected_commit
+        && match jobs_name_join {
+          JobsNameMatrixParenthetical { standing } => match standing {
+            TranscribedUncited { read_obligation } => true
+            CitedToAuthority { authority } => false
+          }
+          JobsNamePrefixOnly => false
+        }
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+    RunIdentityMismatched { cause } => false
+    RunIdentityUnresolved { cause } => false
+  }
+  let biome_blob = match candidate_run_identity(c: candidate_biome_test) {
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
+      inspected != observed
+        && (blob as String) == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+    RunIdentityMismatched { cause } => false
+    RunIdentityUnresolved { cause } => false
+  }
+  pdns_same && biome_blob
+    && match architecture_join_standing(c: candidate_pdns_dnsdist_arm) {
+      ArchitectureJoinOnInspectedRevision => true
+      ArchitectureJoinOnWorkflowEquivalentOnly { inspected, observed, blob } => false
+      ArchitectureJoinRefused { cause } => false
+    }
+    && match architecture_join_standing(c: candidate_biome_test) {
+      ArchitectureJoinOnWorkflowEquivalentOnly { inspected, observed, blob } =>
+        inspected != observed
+      ArchitectureJoinOnInspectedRevision => false
+      ArchitectureJoinRefused { cause } => false
+    }
+    && match baseline_admission(c: candidate_pdns_dnsdist_arm) {
+      BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
+      BaselineRefused { cause } => false
+    }
+    && match baseline_admission(c: candidate_biome_test) {
+      BaselineRefused { cause } => true
+      BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+    }
+    && match inspected_leg_binding(
+      job_name: "build dnsdist (asan+ubsan, full, -arm)",
+      job_key: candidate_pdns_dnsdist_arm.job_key,
+      matrix: candidate_pdns_dnsdist_arm.matrix_selector,
+      repository: candidate_pdns_dnsdist_arm.repository,
+      workflow_path: candidate_pdns_dnsdist_arm.workflow_path,
+    ) {
+      InspectedLegBound { jobs_name_join } => match jobs_name_join {
+        JobsNameMatrixParenthetical { standing } => match standing {
+          TranscribedUncited { read_obligation } => true
+          CitedToAuthority { authority } => false
+        }
+        JobsNamePrefixOnly => false
+      }
+      InspectedLegNameMismatch => false
+      InspectedLegAxisMismatch => false
+      InspectedLegUninspected { cause } => false
+    }
+}
+
+test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool {
+  match candidate_run_identity(c: candidate_biome_blob_mismatch_control) {
+    RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_blob_mismatch_control) {
+      BaselineRefused { cause } => true
+      BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+    }
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+    RunIdentityUnresolved { cause } => false
+  }
+}
+
+test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match() -> Bool {
+  let same_matrix_different_key =
+    candidate_biome_job_key_mismatch_control.matrix_selector
+      == candidate_biome_test.matrix_selector
+      && (candidate_biome_job_key_mismatch_control.job_key as String)
+        != (candidate_biome_test.job_key as String)
+      && match inspected_leg_binding(
+        job_name: "Test (depot-ubuntu-24.04-arm-16)",
+        job_key: candidate_biome_job_key_mismatch_control.job_key,
+        matrix: candidate_biome_job_key_mismatch_control.matrix_selector,
+        repository: candidate_biome_job_key_mismatch_control.repository,
+        workflow_path: candidate_biome_job_key_mismatch_control.workflow_path,
+      ) {
+        InspectedLegUninspected { cause } => true
+        InspectedLegBound { jobs_name_join } => false
+        InspectedLegNameMismatch => false
+        InspectedLegAxisMismatch => false
+      }
+  same_matrix_different_key
+    && match candidate_run_identity(c: candidate_biome_job_key_mismatch_control) {
+      RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_biome_job_key_mismatch_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+      RunIdentityMismatched { cause } => false
+    }
+}
+
+test fn witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key() -> Bool {
+  (candidate_biome_job_key_titlecase_uninspected_control.job_key as String) == "Test"
+    && candidate_biome_job_key_titlecase_uninspected_control.matrix_selector
+      == candidate_biome_test.matrix_selector
+    && match candidate_run_identity(c: candidate_biome_job_key_titlecase_uninspected_control) {
+      RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_biome_job_key_titlecase_uninspected_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+      RunIdentityMismatched { cause } => false
+    }
+}
+
+test fn witness_multiple_labels_are_not_resolved_from_the_first() -> Bool {
+  match observed_label_standing(o: candidate_biome_multi_label_control.observed) {
+    JobResourceCarriedMultipleLabels { labels } =>
+      count(labels) > 1
+        && match candidate_observed_provider(c: candidate_biome_multi_label_control) {
+          ProviderUnresolved { label, cause } => match baseline_admission(c: candidate_biome_multi_label_control) {
+            BaselineRefused { cause } => true
+            BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+          }
+          ProviderFromCatalog { provider, label, snapshot } => false
+        }
+    ObservedLabel { label } => false
+    NoRunObservedForLabel { obligation } => false
+    JobResourceCarriedNoLabels { job_id } => false
+  }
+}
+
+test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() -> Bool {
+  let same_key_different_matrix =
+    (candidate_biome_matrix_selector_mismatch_control.job_key as String)
+      == (candidate_biome_test.job_key as String)
+      && candidate_biome_matrix_selector_mismatch_control.matrix_selector
+        != candidate_biome_test.matrix_selector
+      && match inspected_leg_binding(
+        job_name: "Test (depot-ubuntu-24.04-arm-16)",
+        job_key: candidate_biome_matrix_selector_mismatch_control.job_key,
+        matrix: candidate_biome_matrix_selector_mismatch_control.matrix_selector,
+        repository: candidate_biome_matrix_selector_mismatch_control.repository,
+        workflow_path: candidate_biome_matrix_selector_mismatch_control.workflow_path,
+      ) {
+        InspectedLegNameMismatch => true
+        InspectedLegBound { jobs_name_join } => false
+        InspectedLegUninspected { cause } => false
+        InspectedLegAxisMismatch => false
+      }
+  same_key_different_matrix
+    && match candidate_run_identity(c: candidate_biome_matrix_selector_mismatch_control) {
+      RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_matrix_selector_mismatch_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+      RunIdentityUnresolved { cause } => false
+    }
+}
+
+test fn witness_axis_name_mismatch_is_refused_when_values_and_display_name_match() -> Bool {
+  let same_values_wrong_axis =
+    (candidate_pdns_axis_name_mismatch_control.job_key as String)
+      == (candidate_pdns_dnsdist_arm.job_key as String)
+      && candidate_pdns_axis_name_mismatch_control.matrix_selector
+        != candidate_pdns_dnsdist_arm.matrix_selector
+      && match inspected_leg_binding(
+        job_name: "build dnsdist (asan+ubsan, full, -arm)",
+        job_key: candidate_pdns_axis_name_mismatch_control.job_key,
+        matrix: candidate_pdns_axis_name_mismatch_control.matrix_selector,
+        repository: candidate_pdns_axis_name_mismatch_control.repository,
+        workflow_path: candidate_pdns_axis_name_mismatch_control.workflow_path,
+      ) {
+        InspectedLegAxisMismatch => true
+        InspectedLegBound { jobs_name_join } => false
+        InspectedLegNameMismatch => false
+        InspectedLegUninspected { cause } => false
+      }
+  same_values_wrong_axis
+    && match candidate_run_identity(c: candidate_pdns_axis_name_mismatch_control) {
+      RunIdentityMismatched { cause } => match baseline_admission(c: candidate_pdns_axis_name_mismatch_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+      RunIdentityUnresolved { cause } => false
+    }
+}
+
+test fn witness_swapped_axis_names_are_refused_when_value_order_matches_the_observed_name() -> Bool {
+  let swapped_names_values_in_place =
+    (candidate_pdns_axis_name_swap_control.job_key as String)
+      == (candidate_pdns_dnsdist_arm.job_key as String)
+      && candidate_pdns_axis_name_swap_control.matrix_selector
+        != candidate_pdns_dnsdist_arm.matrix_selector
+      && match inspected_leg_binding(
+        job_name: "build dnsdist (asan+ubsan, full, -arm)",
+        job_key: candidate_pdns_axis_name_swap_control.job_key,
+        matrix: candidate_pdns_axis_name_swap_control.matrix_selector,
+        repository: candidate_pdns_axis_name_swap_control.repository,
+        workflow_path: candidate_pdns_axis_name_swap_control.workflow_path,
+      ) {
+        InspectedLegNameMismatch => true
+        InspectedLegBound { jobs_name_join } => false
+        InspectedLegAxisMismatch => false
+        InspectedLegUninspected { cause } => false
+      }
+  swapped_names_values_in_place
+    && match candidate_run_identity(c: candidate_pdns_axis_name_swap_control) {
+      RunIdentityMismatched { cause } => match baseline_admission(c: candidate_pdns_axis_name_swap_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+      RunIdentityUnresolved { cause } => false
+    }
+}
+
+test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool {
+  match candidate_openobserve_arm_build.observed {
+    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } => match correctness {
+      NoTestsExecuted { note } => match baseline_admission(c: candidate_openobserve_arm_build) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      TestsExecuted { step } => false
+    }
+    NoRunObserved { obligation } => false
+  }
+}
+
+test fn witness_empty_labels_are_not_an_architecture_reading() -> Bool {
+  match observed_label_standing(o: candidate_empty_labels_control.observed) {
+    JobResourceCarriedNoLabels { job_id } => match baseline_admission(c: candidate_empty_labels_control) {
+      BaselineRefused { cause } => true
+      BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+    }
+    ObservedLabel { label } => false
+    NoRunObservedForLabel { obligation } => false
+    JobResourceCarriedMultipleLabels { labels } => false
+  }
+}
+
+test fn witness_absent_conclusion_is_not_a_baseline() -> Bool {
+  match baseline_admission(c: candidate_absent_conclusion_control) {
+    BaselineRefused { cause } => true
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+  }
+}
+
+test fn witness_run_attempt_zero_is_not_attempt_one() -> Bool {
+  match candidate_run_attempt_zero_control.observed {
+    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
+      job.run_attempt == 0
+        && match baseline_admission(c: candidate_run_attempt_zero_control) {
+          BaselineRefused { cause } => true
+          BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+        }
+    NoRunObserved { obligation } => false
+  }
+}
+
+test fn witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical() -> Bool {
+  match inspected_leg_binding(
+    job_name: "Test ()",
+    job_key: candidate_empty_matrix_axes_control.job_key,
+    matrix: candidate_empty_matrix_axes_control.matrix_selector,
+    repository: candidate_empty_matrix_axes_control.repository,
+    workflow_path: candidate_empty_matrix_axes_control.workflow_path,
+  ) {
+    InspectedLegAxisMismatch => match baseline_admission(c: candidate_empty_matrix_axes_control) {
+      BaselineRefused { cause } => true
+      BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+    }
+    InspectedLegNameMismatch => false
+    InspectedLegBound { jobs_name_join } => false
+    InspectedLegUninspected { cause } => false
+  }
+}
+
+test fn witness_plural_yaml_job_name_rows_are_uninspected() -> Bool {
+  let fixture_plural = match inspected_yaml_job_name_join(
+    rows: yaml_dup_name_fixture,
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+  ) {
+    YamlJobNameUninspected { cause } =>
+      (cause as String) == "multiple inspected YAML job-name rows for this repository, workflow path, and job_key"
+    YamlJobNameBound { prefix } => false
+  }
+  let production_has_no_phantom = match inspected_yaml_job_name_join(
+    rows: inspected_yaml_job_names,
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+  ) {
+    YamlJobNameUninspected { cause } =>
+      (cause as String) == "no inspected YAML job-name row for this repository, workflow path, and job_key"
+    YamlJobNameBound { prefix } => false
+  }
+  fixture_plural && production_has_no_phantom
+}
+
+test fn witness_unread_job_run_is_unresolved_identity() -> Bool {
+  match candidate_no_run_control.observed {
+    NoRunObserved { obligation } => match candidate_run_identity(c: candidate_no_run_control) {
+      RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_no_run_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
+      RunIdentityMismatched { cause } => false
+    }
+    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } => false
+  }
+}
+
+test fn witness_empty_declared_alternatives_are_unresolved() -> Bool {
+  match declared_architecture_standing(
+    spec: DeclaredExpression { expression: "${{ matrix.os }}", alternatives: [] },
+    observed_at: "2026-09-04T16:03:32Z",
+  ) {
+    DeclaredArchitectureUnresolved { via, cause } => true
+    DeclaredArm { via } => false
+    DeclaredNotArm { via, architecture } => false
+  }
+}
+
+test fn witness_empty_declared_label_is_unresolved() -> Bool {
+  match declared_architecture_standing(
+    spec: DeclaredLabel { label: "" },
+    observed_at: "2026-09-04T16:03:32Z",
+  ) {
+    DeclaredArchitectureUnresolved { via, cause } => true
+    DeclaredArm { via } => false
+    DeclaredNotArm { via, architecture } => false
+  }
+}
+
+test fn witness_mixed_catalog_arm_and_not_arm_alternatives_are_unresolved() -> Bool {
+  match declared_architecture_standing(
+    spec: DeclaredExpression {
+      expression: "mix",
+      alternatives: ["ubuntu-24.04-arm", "ubuntu-24.04"],
+    },
+    observed_at: "2026-09-04T16:03:32Z",
+  ) {
+    DeclaredArchitectureUnresolved { via, cause } => true
+    DeclaredArm { via } => false
+    DeclaredNotArm { via, architecture } => false
+  }
+}
+
+fn all_claims_hold() -> Bool {
+  witness_x64_catalog_label_is_never_arm_evidence()
+    && witness_an_unresolved_label_is_not_reported_as_x64()
+    && witness_selected_population_is_three_complementary_jobs()
+    && witness_rejected_and_unresolved_remain_visible()
+    && witness_every_row_is_job_scoped_and_versioned()
+    && witness_biome_baseline_is_admitted_and_openobserve_is_not()
+    && witness_pdns_declared_architecture_stays_unresolved_while_observed_is_arm()
+    && witness_declared_and_observed_providers_are_separate_readings()
+    && witness_openobserve_amd64_is_catalog_x64_and_rejected()
+    && witness_observed_labels_and_attempt_are_read_from_the_job_resource()
+    && witness_unobserved_cache_is_never_warm()
+    && witness_effect_disposition_is_derived_from_kind()
+    && witness_admitted_same_revision_and_blob_equivalent_hold()
+    && witness_blob_mismatch_is_refused_even_when_tests_ran()
+    && witness_matrix_selector_mismatch_is_refused_when_display_name_matches()
+    && witness_axis_name_mismatch_is_refused_when_values_and_display_name_match()
+    && witness_swapped_axis_names_are_refused_when_value_order_matches_the_observed_name()
+    && witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
+    && witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key()
+    && witness_multiple_labels_are_not_resolved_from_the_first()
+    && witness_a_green_job_without_tests_is_not_a_baseline()
+    && witness_empty_labels_are_not_an_architecture_reading()
+    && witness_absent_conclusion_is_not_a_baseline()
+    && witness_run_attempt_zero_is_not_attempt_one()
+    && witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical()
+    && witness_plural_yaml_job_name_rows_are_uninspected()
+    && witness_unread_job_run_is_unresolved_identity()
+    && witness_empty_declared_alternatives_are_unresolved()
+    && witness_empty_declared_label_is_unresolved()
+    && witness_mixed_catalog_arm_and_not_arm_alternatives_are_unresolved()
+}
+
+fn public_workload_census_witness_main() -> ProcessExit {
+  if all_claims_hold() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "one or more public workload census claims did not hold" }
+  }
+}

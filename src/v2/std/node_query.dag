@@ -37,7 +37,6 @@ import v2.std.node {
   Typed,
   arrow_body_target_lookup,
   coproduct_nullary_payload_type_name,
-  name_occurrences,
   named_edge_sort_key
 }
 
@@ -315,46 +314,55 @@ fn node_envelope_without_named_coordinate_go(
   }
 }
 
-fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
+// A NAMED-CHILD LOOKUP IS TOTAL: a node has exactly one child under a name, none, or several, and all
+// three are answers. So the lookup is the primitive and find_named_child's Outcome is its projection
+// -- the direction v2.std.collection map_lookup already takes, for the same reason. The Outcome-first
+// shape made two costs. Every probe built a Diagnostic (an interned reason and a node locus) whether
+// or not anyone read it -- the fold even seeded itself with one on the hit path -- and callers that
+// only wanted "is it there" paid that on every miss: parse_production_emitted_identity_optional under
+// body lowering's subtree search put find_named_child at 12% of the native route's process (perf
+// --children, bounded K=64 root, after C4). And a caller that needed the three states had to decode
+// them back out of diagnostic reasons, which std.bounded_lattice_completeness did in its own
+// BlNamedChildLookup. One pass over the children decides all three.
+type NamedChildLookup
+  = NamedChildFound { target: Node }
+  | NamedChildMissing
+  | NamedChildAmbiguous
+
+fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
   match root.kind {
     TypeNode { connective: Conj } =>
-      let count = name_occurrences(name: name, children: root.children)
-      if count == 1 {
-        fold(
-          root.children,
-          init: outcome_rejected(d: Diagnostic {
-            reason: ^named_child_missing,
-            at: node_locus(node: root),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }),
-          f: fn(acc, e) {
-            match acc {
-              Accepted { value: _, diagnostics: _ } => acc
-              Rejected { diagnostics: _ } =>
-                match e.label {
-                  Named { name: edge_name } =>
-                    if edge_name == name { outcome_accepted(value: e.target) } else { acc }
-                  Positional => acc
-                }
+      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+        match e.label {
+          Positional => acc
+          Named { name: edge_name } =>
+            if edge_name == name {
+              match acc {
+                NamedChildMissing => NamedChildFound { target: e.target }
+                NamedChildFound { target: _ } => NamedChildAmbiguous
+                NamedChildAmbiguous => NamedChildAmbiguous
+              }
+            } else {
+              acc
             }
-          }
-        )
-      } else if count == 0 {
-        outcome_rejected(d: Diagnostic {
-          reason: ^named_child_missing,
-          at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        })
-      } else {
-        outcome_rejected(d: Diagnostic {
-          reason: ^named_child_ambiguous,
-          at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        })
-      }
-    _ =>
+        }
+      })
+    _ => NamedChildMissing
+  }
+}
+
+fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
+  match named_child_lookup(root: root, name: name) {
+    NamedChildFound { target: target } => outcome_accepted(value: target)
+    NamedChildMissing =>
       outcome_rejected(d: Diagnostic {
         reason: ^named_child_missing,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    NamedChildAmbiguous =>
+      outcome_rejected(d: Diagnostic {
+        reason: ^named_child_ambiguous,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
       })

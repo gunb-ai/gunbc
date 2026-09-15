@@ -13,6 +13,7 @@ import gunbc.witness_floor_workflow { required_lanes_aggregate_job, build_lane_j
 import gunbc.private_witness_dispatch {
   private_witness_dispatch_script,
   private_witness_dispatch_step_name,
+  private_witness_dispatch_step,
   private_witness_dispatch_uses_contents_write,
   private_witness_dispatch_if,
   github_actions_secret_expression,
@@ -132,18 +133,26 @@ fn step_continue_on_error(s: Step) -> Bool {
   }
 }
 
-test fn build_lane_hosts_push_only_private_dispatch_that_cannot_red_the_floor() -> Bool {
-  let hosted = fold(build_lane_job().steps, init: false, f: fn(acc, s) {
+test fn build_lane_hosts_the_private_dispatch_step() -> Bool {
+  fold(build_lane_job().steps, init: false, f: fn(acc, s) {
     acc || (
       step_name_or_empty(s: s) == private_witness_dispatch_step_name
         && step_if_or_empty(s: s) == private_witness_dispatch_if()
         && step_continue_on_error(s: s)
     )
   })
-  let absent_from_aggregate = !fold(required_lanes_aggregate_job().steps, init: false, f: fn(acc, s) {
+}
+
+test fn aggregate_job_does_not_host_the_private_dispatch_step() -> Bool {
+  !fold(required_lanes_aggregate_job().steps, init: false, f: fn(acc, s) {
     acc || step_name_or_empty(s: s) == private_witness_dispatch_step_name
   })
-  hosted && absent_from_aggregate
+}
+
+test fn private_dispatch_step_is_push_only_and_cannot_red_the_floor() -> Bool {
+  let step = private_witness_dispatch_step()
+  step_continue_on_error(s: step)
+    && step_if_or_empty(s: step) == private_witness_dispatch_if()
     && string_contains(s: private_witness_dispatch_if(), pattern: "github.event_name == 'push'")
     && string_contains(
       s: github_actions_secret_expression(secret_name: private_witness_dispatch_token.secret),
@@ -157,4 +166,5 @@ test fn dispatch_script_carries_only_sha_and_pr_payload_keys() -> Bool {
     && string_contains(s: s, pattern: concat("\\\"", concat(client_payload_pr_number_key, "\\\"")))
     && string_contains(s: s, pattern: public_main_dispatch_event_type as String)
     && string_contains(s: s, pattern: "no associated pull request")
+    && string_contains(s: s, pattern: "dissolve-on: private_witness_dispatch_script")
 }

@@ -573,6 +573,11 @@ mod terminal_ledger_publish_law {
                 "route-gap-filesystem-removal",
                 "route-gap-before-verdict",
             ),
+            // Same widening shape one arm over: `exit-failure` reads back to the dispositions
+            // `returned-false` reads back to, and what became newly representable is the return
+            // shape (typed `ProcessExit::ExitFailure` vs `Bool(false)`), carried with its reason
+            // in the detail field.
+            row("test.claim.gate", "exit-failure", "failed"),
         ];
         let published = publish_terminal_ledger(
             &roots(),

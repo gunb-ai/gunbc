@@ -199,6 +199,7 @@ jobs:
         if: always()
       - name: Dispatch private witnesses for this public merge
         run: |
+          # 🟡 dissolve-on: private_witness_dispatch_script — concat-built foreign-executor (GitHub Actions run:) repository_dispatch runner; the dispatch URL, associated-pulls URL, auth env and client_payload keys are derived from extdeps.github.repository_dispatch, but the curl/python transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes GitHubEffect DispatchRepository through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           set -eu
           PR_NUMBER=$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/gunb-ai/gunbc/commits/${PUBLIC_SHA}/pulls" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["number"] if d else "")')
           if [ -z "${PR_NUMBER}" ]; then echo no associated pull request >&2; exit 1; fi
@@ -581,6 +582,7 @@ jobs:
           if [ -e "docs/plans/discrete-cost-derivation.md" ]; then git add "docs/plans/discrete-cost-derivation.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/discrete-cost-derivation.md"; fi
           if [ -e "docs/plans/deploy-convergence-observed-side.md" ]; then git add "docs/plans/deploy-convergence-observed-side.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/deploy-convergence-observed-side.md"; fi
           if [ -e "docs/plans/floor-claim-cost-distribution.md" ]; then git add "docs/plans/floor-claim-cost-distribution.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/floor-claim-cost-distribution.md"; fi
+          if [ -e "docs/plans/demand-engine-program.md" ]; then git add "docs/plans/demand-engine-program.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/demand-engine-program.md"; fi
           PRIOR_HEAD=$(git rev-parse HEAD)
           if git diff --cached --quiet; then
             if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
