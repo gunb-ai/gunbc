@@ -1,0 +1,111 @@
+module v2.test.parse.ambiguous_choice_skip
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN AMBIGUOUS CHOICE THAT SKIPS A LEFT BRANCH WHICH CANNOT START MUST ANSWER WHAT BACKTRACKING DID.
+// The oracle is backtracking itself, on the same choice and the same tokens: marking the left branch's
+// FIRST fold nullable makes choice_left_cannot_start false for every class, so dispatch must take the
+// try-left-then-right path. The skip path is the same choice with its real fold. The two observations
+// compare acceptance, tokens remaining, the captured tree's content hash and the diagnostics -- the
+// memo table is deliberately not compared, because what a skipped attempt would have stored there is
+// the one thing the skip is allowed to change.
+//
+//   left  = a b          right = c d      (an Optional c variant exercises a nullable right)
+type ChoiceParseObservation
+  = ObservedAccepted { remaining: Int, captured: Hash, diagnostics: List<Diagnostic> }
+  | ObservedRejected { diagnostics: List<Diagnostic> }
+
+fn acs_token(token_class: Symbol, offset: Int) -> Token {
+  Token { class: token_class, lexeme: Empty, file: ^acs_file, start: offset, end: offset + 1 }
+}
+
+fn acs_terminal(token_class: Symbol) -> PreparedGrammarExpr {
+  PreparedTerminal { token_class: token_class, stamp: StampClass }
+}
+
+fn acs_left() -> PreparedGrammarExpr {
+  PreparedSequence { left: acs_terminal(token_class: ^acs_a), right: acs_terminal(token_class: ^acs_b) }
+}
+
+fn acs_left_first(nullable: Bool) -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: [^acs_a], nullable: nullable }
+}
+
+fn acs_choice(right: PreparedGrammarExpr, right_first: GrammarExprFirstFold, force_backtrack: Bool) -> PreparedGrammarExpr {
+  PreparedChoice {
+    left: acs_left(),
+    right: right,
+    left_first: acs_left_first(nullable: force_backtrack),
+    right_first: right_first,
+    ambiguous: true,
+    routes: empty_map(),
+    left_starts: choice_left_starts(left_first: acs_left_first(nullable: false))
+  }
+}
+
+fn acs_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^acs_start,
+    productions: Cons {
+      head: GrammarProduction { name: ^acs_start, expression: Terminal { token_class: ^acs_a, stamp: StampClass }, emitted: grammar_atom(identity: ^acs_start) },
+      tail: Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn acs_observe(expr: PreparedGrammarExpr, tokens: List<Token>) -> ChoiceParseObservation {
+  match parse_expr_with_first(expr: expr, tokens: tokens, all_tokens: tokens, root: acs_root(), table: parse_table_empty(), prov: parse_prov_initial()) {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diagnostics, prov: _, table: _ } =>
+      ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured), diagnostics: diagnostics }
+    ParseExprRejected { diagnostics: diagnostics, table: _ } =>
+      ObservedRejected { diagnostics: diagnostics }
+  }
+}
+
+fn acs_skip_matches_backtrack(right: PreparedGrammarExpr, right_first: GrammarExprFirstFold, tokens: List<Token>) -> Bool {
+  acs_observe(expr: acs_choice(right: right, right_first: right_first, force_backtrack: false), tokens: tokens)
+    == acs_observe(expr: acs_choice(right: right, right_first: right_first, force_backtrack: true), tokens: tokens)
+}
+
+fn acs_is_accepted(o: ChoiceParseObservation) -> Bool {
+  match o {
+    ObservedAccepted { remaining: _, captured: _, diagnostics: _ } => true
+    ObservedRejected { diagnostics: _ } => false
+  }
+}
+
+fn acs_right_cd() -> PreparedGrammarExpr {
+  PreparedSequence { left: acs_terminal(token_class: ^acs_c), right: acs_terminal(token_class: ^acs_d) }
+}
+
+fn acs_right_cd_first() -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: [^acs_c], nullable: false }
+}
+
+fn acs_right_optional_c() -> PreparedGrammarExpr {
+  PreparedOptional { element: acs_terminal(token_class: ^acs_c) }
+}
+
+fn acs_right_optional_c_first() -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: [^acs_c], nullable: true }
+}
+
+fn acs_tokens_cd() -> List<Token> { [acs_token(token_class: ^acs_c, offset: 0), acs_token(token_class: ^acs_d, offset: 1)] }
+fn acs_tokens_cx() -> List<Token> { [acs_token(token_class: ^acs_c, offset: 0), acs_token(token_class: ^acs_x, offset: 1)] }
+fn acs_tokens_x() -> List<Token> { [acs_token(token_class: ^acs_x, offset: 0)] }
+fn acs_tokens_ab() -> List<Token> { [acs_token(token_class: ^acs_a, offset: 0), acs_token(token_class: ^acs_b, offset: 1)] }
+
+// Each case is also pinned to the outcome it must have, so agreement between two wrong answers
+// cannot pass: c d accepts through right, c x rejects, x accepts through the nullable right with one
+// token left, a b accepts through left.
+test fn ambiguous_choice_skip_answers_what_backtracking_answered() -> Bool {
+  acs_skip_matches_backtrack(right: acs_right_cd(), right_first: acs_right_cd_first(), tokens: acs_tokens_cd())
+    && acs_is_accepted(o: acs_observe(expr: acs_choice(right: acs_right_cd(), right_first: acs_right_cd_first(), force_backtrack: false), tokens: acs_tokens_cd()))
+    && acs_skip_matches_backtrack(right: acs_right_cd(), right_first: acs_right_cd_first(), tokens: acs_tokens_cx())
+    && !acs_is_accepted(o: acs_observe(expr: acs_choice(right: acs_right_cd(), right_first: acs_right_cd_first(), force_backtrack: false), tokens: acs_tokens_cx()))
+    && acs_skip_matches_backtrack(right: acs_right_optional_c(), right_first: acs_right_optional_c_first(), tokens: acs_tokens_x())
+    && acs_is_accepted(o: acs_observe(expr: acs_choice(right: acs_right_optional_c(), right_first: acs_right_optional_c_first(), force_backtrack: false), tokens: acs_tokens_x()))
+    && acs_skip_matches_backtrack(right: acs_right_cd(), right_first: acs_right_cd_first(), tokens: acs_tokens_ab())
+    && acs_is_accepted(o: acs_observe(expr: acs_choice(right: acs_right_cd(), right_first: acs_right_cd_first(), force_backtrack: false), tokens: acs_tokens_ab()))
+}
