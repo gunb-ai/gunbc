@@ -1,0 +1,46 @@
+module test.claim.semantic_system_readout_witness
+
+import gunbc.demo.semantic_system_readout {
+  ReadoutSection,
+  any_line_fails,
+  live,
+  note,
+  open,
+  recorded,
+  render,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The readout's exit verdict is a function of its lines, discriminated in both directions over
+// supplied sections: the real witnesses it reads are exercised by the readout's own entry.
+fn section_of(first: Bool, joined: Bool) -> ReadoutSection {
+  ReadoutSection {
+    title: "S",
+    lines: [
+      live(text: "a", holds: first),
+      recorded(text: "b", joined: joined),
+      open(text: "c"),
+      note(text: "d"),
+    ],
+  }
+}
+
+test fn w_a_failing_live_line_fails_the_readout() -> Bool {
+  any_line_fails(sections: [section_of(first: false, joined: true)])
+}
+
+test fn w_a_stale_receipt_fails_the_readout() -> Bool {
+  any_line_fails(sections: [section_of(first: true, joined: false)])
+}
+
+// Open and note lines carry no verdict, so a section made of them cannot fail and cannot pass a
+// live line it does not have.
+test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
+  !any_line_fails(sections: [section_of(first: true, joined: true)])
+}
+
+test fn w_an_open_frontier_never_renders_as_pass() -> Bool {
+  render(sections: [ReadoutSection { title: "S", lines: [open(text: "c")] }]) == "ONE AUTHORITY, MANY REALIZATIONS\n\nS\n  OPEN      c\n\n"
+}
