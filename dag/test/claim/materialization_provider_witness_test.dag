@@ -31,7 +31,7 @@ import std.materialization_provider {
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   request_key, request_kind, request_required_outputs, request_declared_inputs,
-  request_judgment_contract,
+  request_judgment_contract, judgment_required_output_ids,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
   compiler_identity_input,
   output_parse_tree, output_typed_module_interface,
@@ -711,7 +711,7 @@ test fn request_projections_read_the_judgment_contract() -> Bool {
     let c = request_judgment_contract(req: r)
     (request_kind(req: r) == c.kind)
       && (request_declared_inputs(req: r) == c.declared_inputs)
-      && (request_required_outputs(req: r) == c.result.required_persisted_outputs)
+      && (request_required_outputs(req: r) == judgment_required_output_ids(contract: c))
   }) |> count()
   (n == 6) && (matched == 6)
 }
@@ -722,7 +722,7 @@ test fn request_projections_read_the_judgment_contract() -> Bool {
 // fails to typecheck by request_fold totality.
 test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
   let req = witness_closure_request()
-  let required = request_judgment_contract(req: req).result.required_persisted_outputs
+  let required = request_required_outputs(req: req)
   let refused = provider_serve(
     req: req,
     probe: ProbeFound {
@@ -731,7 +731,8 @@ test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
     }
   )
   let missing = lookup_refused_incomplete_missing(l: refused)
-  (required.count() == 3)
+  (required == judgment_required_output_ids(contract: request_judgment_contract(req: req)))
+    && (required.count() == 3)
     && (missing.count() == 1)
     && output_list_contains(xs: required, wanted: output_compile_clean_diagnostic_union)
     && output_list_contains(xs: missing, wanted: output_compile_clean_diagnostic_union)

@@ -239,25 +239,45 @@ type NativeModuleVerdictBundleSubject {
 // variant, and kind is the existing std.cache_identity ArtifactKindId row the contract carries.
 // Demand nature is std.materialization_ladder DemandNature, not a restatement.
 //
-// DECLARED FRONTIER (DESIGN §3c): demand_nature and result.occurrence_contract are classified here
-// so they cannot be restated later. Their production consumers are demand-engine-program M3 (share
-// admission reads demand_nature) and M2 (cross-graph load respects occurrence_contract). TRIGGER:
-// those milestones consume the fields; until then request_kind / request_declared_inputs /
-// request_required_outputs are the production readers of the contract, and omitting a family from
-// request_judgment_contract fails to typecheck by request_fold totality.
+// DECLARED FRONTIER (DESIGN §3c). Production today reads kind, declared_inputs, and each
+// PersistedOutputObligation.id (via request_required_outputs). The remaining axes are classified
+// here so they cannot be restated later:
+// - demand_nature: demand-engine-program M3 share/materialization admission. TRIGGER: M3's engine
+//   consumes DemandNature for in-flight attach vs refuse-fresh.
+// - result.carries_semantic_value, ordered_diagnostics, carries_effect_requests_receipts,
+//   carries_refusal_arm: demand-engine-program M5 observation-contract (law evidence over the
+//   complete observable result: value, diagnostic population and order, effect requests and order,
+//   refusal shape). TRIGGER: M5's AssociativeUnder<ObservationContract> (and siblings) read these
+//   axes from this ResultContract rather than minting a second observation vocabulary.
+// - PersistedOutputObligation.occurrence_contract (per output, not per family): demand-engine-program
+//   M1 remaining qualification — two parses of one program with different occurrence ids yield equal
+//   demand and materialization identities while occurrence-scoped outputs refuse cross-scope
+//   interpretation. TRIGGER: that M1 inhabitance witness; M2 does not own this field.
+// Omitting a family from request_judgment_contract fails to typecheck by request_fold totality.
 
 type OccurrencePersistenceContract
   = SemanticOnly
   | Scoped
   | Rebinding
 
+type PersistedOutputObligation {
+  id: ArtifactOutputId
+  occurrence_contract: OccurrencePersistenceContract
+}
+
 type ResultContract {
   carries_semantic_value: Bool
   ordered_diagnostics: Bool
-  occurrence_contract: OccurrencePersistenceContract
   carries_effect_requests_receipts: Bool
   carries_refusal_arm: Bool
-  required_persisted_outputs: List<ArtifactOutputId>
+  required_persisted_outputs: List<PersistedOutputObligation>
+}
+
+fn persisted_output(
+  id: ArtifactOutputId,
+  occurrence_contract: OccurrencePersistenceContract
+) -> PersistedOutputObligation {
+  PersistedOutputObligation { id: id, occurrence_contract: occurrence_contract }
 }
 
 type JudgmentContract {
@@ -267,6 +287,10 @@ type JudgmentContract {
   demand_nature: DemandNature
 }
 
+fn judgment_required_output_ids(contract: JudgmentContract) -> List<ArtifactOutputId> {
+  contract.result.required_persisted_outputs |> map(o => o.id)
+}
+
 fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: DeclaredInput) -> JudgmentContract {
   JudgmentContract {
     kind: parse_source_artifact_kind,
@@ -274,10 +298,12 @@ fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: De
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
-      occurrence_contract: Scoped,
       carries_effect_requests_receipts: false,
       carries_refusal_arm: true,
-      required_persisted_outputs: [output_parse_tree, output_parse_diagnostics]
+      required_persisted_outputs: [
+        persisted_output(id: output_parse_tree, occurrence_contract: Scoped),
+        persisted_output(id: output_parse_diagnostics, occurrence_contract: Scoped)
+      ]
     },
     demand_nature: PureComputation
   }
@@ -297,10 +323,12 @@ fn typecheck_module_judgment_contract(
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
-      occurrence_contract: Scoped,
       carries_effect_requests_receipts: false,
       carries_refusal_arm: true,
-      required_persisted_outputs: [output_typed_module_interface, output_typecheck_diagnostics]
+      required_persisted_outputs: [
+        persisted_output(id: output_typed_module_interface, occurrence_contract: SemanticOnly),
+        persisted_output(id: output_typecheck_diagnostics, occurrence_contract: Scoped)
+      ]
     },
     demand_nature: PureComputation
   }
@@ -313,13 +341,12 @@ fn resolve_closure_judgment_contract(closure_digest: Fnv1a64Structural, compiler
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
-      occurrence_contract: Scoped,
       carries_effect_requests_receipts: false,
       carries_refusal_arm: true,
       required_persisted_outputs: [
-        output_resolved_graph,
-        output_source_indices,
-        output_compile_clean_diagnostic_union
+        persisted_output(id: output_resolved_graph, occurrence_contract: Scoped),
+        persisted_output(id: output_source_indices, occurrence_contract: Scoped),
+        persisted_output(id: output_compile_clean_diagnostic_union, occurrence_contract: Scoped)
       ]
     },
     demand_nature: PureComputation
@@ -340,12 +367,11 @@ fn native_compiler_judgment_contract(generation: PreMaterializationIdentity) -> 
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
-      occurrence_contract: SemanticOnly,
       carries_effect_requests_receipts: true,
       carries_refusal_arm: true,
       required_persisted_outputs: [
-        output_native_compiler_executable,
-        output_native_compiler_build_diagnostics
+        persisted_output(id: output_native_compiler_executable, occurrence_contract: SemanticOnly),
+        persisted_output(id: output_native_compiler_build_diagnostics, occurrence_contract: SemanticOnly)
       ]
     },
     demand_nature: IdempotentEffect
@@ -359,12 +385,11 @@ fn universe_judgment_contract(tested_tree_identity: Fnv1a64Structural, route_bin
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: false,
-      occurrence_contract: SemanticOnly,
       carries_effect_requests_receipts: false,
       carries_refusal_arm: true,
       required_persisted_outputs: [
-        output_universe_test_identity_population,
-        output_universe_module_import_closures
+        persisted_output(id: output_universe_test_identity_population, occurrence_contract: SemanticOnly),
+        persisted_output(id: output_universe_module_import_closures, occurrence_contract: SemanticOnly)
       ]
     },
     demand_nature: PureComputation
@@ -378,12 +403,11 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
-      occurrence_contract: SemanticOnly,
       carries_effect_requests_receipts: true,
       carries_refusal_arm: true,
       required_persisted_outputs: [
-        output_module_test_verdicts,
-        output_module_preparation_diagnostics
+        persisted_output(id: output_module_test_verdicts, occurrence_contract: SemanticOnly),
+        persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: SemanticOnly)
       ]
     },
     demand_nature: FreshEffect
@@ -465,7 +489,7 @@ fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
 }
 
 fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
-  request_judgment_contract(req: req).result.required_persisted_outputs
+  judgment_required_output_ids(contract: request_judgment_contract(req: req))
 }
 
 fn declared_input_digest(input: DeclaredInput) -> Fnv1a64Structural {
