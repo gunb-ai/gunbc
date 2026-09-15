@@ -1907,324 +1907,397 @@ pub struct TransitionAdmission {
 /// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
 /// wave_admission_refusal charges consumed rows on that landing run. A separate
 /// cleanup PR must remove the consumed rows; this admission does not waive it.
+const SCM_SOURCE_RECOVERY_REHOME_LABEL: &str =
+    "gunbc#10729 scm source-recovery re-home into object_store 2026-09-10";
+const SCM_MERGE_BASE_COHOME_LABEL: &str =
+    "gunbc#10729 scm merge-base co-home into repository_envelope 2026-09-09";
+
+/// THE gunbc#11373 ROWS DISSOLVED HERE (2026-09-15), BY THE TRIGGER THE BLOCK ABOVE WROTE FOR
+/// THEM. That block says it plainly -- delete these rows after #11373 lands and the base resolves
+/// these bindings, and a separate cleanup does not waive it. #11373 is present at this merge's
+/// base, so the floor on gunbc#10729 measured 0 unadjudicated deltas, 0 stale admissions and all
+/// 32 CONSUMED, due on the roster's next touch. This merge IS that touch, so they go here rather
+/// than waiting for a cleanup PR that would have to re-derive the same join.
+///
+/// ADJUDICATED BY THE FLOOR'S OWN RECEIPT, not by this sentence: every one of the 32 reported
+/// `already satisfied at the base -- consumed by its own merge`, which is the run joining each
+/// row against the merged tree on its own tuple. The count is occurrences, not constants: 17
+/// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
+/// runner hardware observation, DGX PXE and PXE-rescue consumers.
+///
+/// gunbc#10729 REFILLS THE ROSTER, and the rows below are the SCM re-home cohort: merge-base and
+/// commit-subject authorities co-homed into `gunbc.scm.repository_envelope`. An earlier revision
+/// of this paragraph said main was carrying its own in-flight rows beside them. That was true of
+/// the tree this merge started from and is false of the tree it produced, for the reason the two
+/// paragraphs above give -- main's cohort was consumed by its own landing, so the roster holds one
+/// cohort again. The distinction that makes both readings safe is the same one: a row goes when
+/// its transition is PRESENT AT THE BASE, which is a fact about that row's own trigger and not
+/// about how full the array is.
+///
+/// FIVE OF THIS COHORT'S ROWS WENT ON THEIR OWN TRIGGER before this merge. Splitting
+/// `MergeBaseRefusal` out of `MergeBaseOutcome` removed the bindings they admitted, so the floor
+/// reported them CONSUMED and they were deleted rather than carried; `squash_merge`'s
+/// `MergeBaseDerived` row stays, because that route still matches the derived arm.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "r8169_claims_pci_device",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceMissing",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "realtek_pci_vendor",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "rtl8125_pci_device_id",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "rtl8126_pci_device_id",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceMissing",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "rtl8127_pci_device_id",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_first_boot_receipt",
-            in_declaration: "mtcollins1_igb_binding",
-            spelling: "PciAddress",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "LinuxDriverQualification",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "LinuxDriverQualification",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciClassPopulationObservation",
-            spelling: "PciClassCode",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciFunctionObservation",
-            spelling: "PciAddress",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciFunctionObservation",
-            spelling: "PciClassCode",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciFunctionObservation",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciFunctionObservation",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "i350_igb_qualification",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "i350_igb_qualification",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_observed_pci_functions",
-            spelling: "PciAddress",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_observed_pci_functions",
-            spelling: "PciClassCode",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_observed_pci_functions",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_observed_pci_functions",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_pci_mass_storage_population",
-            spelling: "PciClassCode",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.dgx_pxe_boot",
-            in_declaration: "PciDeviceIdentity",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.dgx_pxe_boot",
-            in_declaration: "PciDeviceIdentity",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceMissing",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.dgx_pxe_boot",
-            in_declaration: "SparkUnattendedPxeBootRefusalReason",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.dgx_pxe_boot",
-            in_declaration: "SparkUnattendedPxeBootRefusalReason",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            expected_candidates: &["gunbc.scm.object_store"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.pxe_rescue_observation",
-            in_declaration: "spark_2196_pci_device",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "gunbc.scm.squash_merge",
+            in_declaration: "squash_merge",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.pxe_rescue_observation",
-            in_declaration: "spark_2196_pci_vendor",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "gunbc.scm.squash_merge",
+            in_declaration: "squash_merge",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "gunbc.scm.squash_merge",
+            in_declaration: "SquashMergeOutcome",
+            spelling: "MergeSideName",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "witness_claimed_pci_device",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "witness_claimed_pci_vendor",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_an_independent_lineage_sharing_content_still_derives_its_base",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_replaying_the_consumed_source_itself_has_no_valid_base",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "merge_base",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "MergeBaseDerived",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_merge_base_witness",
+            in_declaration: "scm_mb_the_integration_record_survives_a_document_round_trip",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_squash_merge_witness",
+            in_declaration:
+                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
+            spelling: "MergeBaseHistoriesDisjoint",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_squash_merge_witness",
+            in_declaration:
+                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
+            spelling: "MergeBaseHistoryUnwalkable",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_squash_merge_witness",
+            in_declaration:
+                "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
+            spelling: "MergeBaseSourceAlreadyConsumed",
+            expected_candidates: &["gunbc.scm.repository_envelope"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
