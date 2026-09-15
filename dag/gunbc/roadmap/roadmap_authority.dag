@@ -1014,7 +1014,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "Run the native add/commit/merge spine for real",
-        boundary: "The native write spine is on main: add, commit, and squash merge publishing over a conditional-publication store, with a committed wet acceptance driver, tools.scm_acceptance, that launches every step as a separate process. The driver resolves clean but has never executed to green: it builds the binary it spends, so build and run must share an architecture, and the authoring sessions dispatched builds to amd64 from arm64. This node closes that execution gap. Its dependency on that spine landing is the declared edge to 2-scm-native-authority-program and is not restated here: an unreadable second copy in prose is what let this row sit on the workable frontier while its own text said it could not execute. Merge semantics are already ruled in docs/plans/scm-merge-design.md; this node consumes that design and does not re-author it.",
+        boundary: "The native write spine is on main: add, commit, and squash merge publishing over a conditional-publication store, with a committed wet acceptance driver, tools.scm_acceptance, that launches every step as a separate process. The driver resolves clean but has never executed to green: it builds the binary it spends, so build and run must share an architecture, and the authoring sessions dispatched builds to amd64 from arm64. This node closes that execution gap. Merge semantics are already ruled in docs/plans/scm-merge-design.md; this node consumes that design and does not re-author it.",
         displaced_cost: "Until the driver executes, the spine's end-to-end claim is specification without execution: CI lanes compile and witness it but never run add, commit and merge as separate processes against a real store, so a regression across a process boundary lands silently.",
         first_slice: "On a host whose cargo builds natively (CI's self-hosted ARM64 runner qualifies), run gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/scm_acceptance.dag --function scm_acceptance on main, from the exact full checked-out SHA in a CLEAN worktree, and record that SHA, the clean-worktree state, host, architecture, PATH-resolved cargo and toolchain identity, the canonical command and its exit code. The driver builds the binary it spends, so a dirty checkout would execute modified source while attributing the result to the recorded SHA; such a run is not a receipt. Exit 0 accepts the publication, merge and conflict scenarios; a nonzero exit is a located refusal and becomes the next work.",
         red_control: "The corrupt-generation refusal and probe-bound exhaustion scenarios, observed so far only through session-local scripts, execute from the committed driver and refuse with their typed causes; a scenario that shares an in-memory repository across a step boundary is refused rather than counted.",
@@ -2755,6 +2755,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
   ], guarantee_ladder_nodes())
 }
 
+// AN EDGE HOLDS A CHILD UNTIL ITS PARENT HAS AN ACCEPTANCE RECEIPT, so a parent is chosen for what
+// it OWES, never for what it historically preceded. `roadmap_program_view` puts a node in
+// ObligationDependencyHeld for every declared parent lacking a receipt, which is why
+// `2-scm-native-write-spine-acceptance` declares none: its only prerequisite was gunbc#10729
+// landing, a landed change is not a roadmap node, and the nearest node that WOULD carry it,
+// `2-scm-native-authority-program`, still owes the CAS slot consumers, the Git import wall and the
+// bridge cutover. Edging to it would hold an executable row behind an entire unfinished program --
+// the wrong dependency, made machine-readable, which is worse than the prose it replaced. Found by
+// external review after the edge was added on exactly that reasoning.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
@@ -2764,7 +2773,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
     edge(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine"),
     edge(child: "2-scm-native-authority-program", parent: "2-scm-p0-landing-spine"),
-    edge(child: "2-scm-native-write-spine-acceptance", parent: "2-scm-native-authority-program"),
 
     edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
