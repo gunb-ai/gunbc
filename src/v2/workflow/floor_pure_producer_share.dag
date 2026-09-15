@@ -974,3 +974,205 @@ fn share_roster_pending_collisions(
     }
   }))
 }
+
+// ── A THIRD FILL DISPOSITION: A PREPARED EFFECT INPUT, CARRIED ────────────────────────────
+//
+// THE ROW KIND THIS FILE COULD NOT SPELL. The two rosters above are the two dispositions a
+// fill can have: a WARM row is nullary and preparation-forceable, a CLAIM-FORCED row has
+// claim-shaped arguments and fills inside the fold. A producer whose value depends on ONE
+// READ OF A COMMITTED CARRIER fits neither, and the reason is in the KEY rather than in
+// anyone's taste: a stored entry is keyed on (resolved fn node, portable ARGUMENT ROW), and a
+// nullary call that reaches a read contributes NOTHING about what it read to that key. Warming
+// it would let two different carrier contents share one entry — the content form of the
+// ctx-blind homonym class this file already refuses by resolving every spelling to a node. So
+// such a producer could only ever be CLAIM-FORCED, where it re-derives once per claim frame:
+// the rostered class `shared_precondition_re_derived_once_per_claim_frame`.
+//
+// THE LIVE INSTANCE. `gunbc.roadmap_authority.roadmap_authority_projection` is one
+// `Filesystem.Read` of `dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl` followed by a
+// pure fold, demanded by seven required-lane claims and by gunbc#10994 — whose merge path is
+// blocked by an enrolment margin on exactly this shared precondition.
+//
+// WHY CARRYING IT IS BINDING AN INPUT AND NOT CACHING AN EFFECT, which is the whole licence for
+// this row kind. Hermetic evaluation ALREADY classifies this read as INPUT ACCESS: the
+// checkout-input carve-out in `v1_interpreter::eval_service_call` dispatches a readonly
+// `Filesystem.Read`/`List` wet when `hermetic_checkout_input_disposition` confirms the path
+// under the checkout root, and refuses — typed and located — everything it cannot confirm (an
+// out-of-root path, a `.git`/`target` component, an unresolvable path). The value is therefore a
+// function of the commit the run prepared, constant for the whole prepared subject, and
+// ACQUIRING IT ONCE IS BINDING AN INPUT THE RUN ALREADY HOLDS FIXED. A producer reaching host
+// state that wall cannot confirm is never carryable, because that wall refuses it first.
+//
+// WHAT PREPARATION DOES, and every arm of it stops the line rather than widening:
+//   1. resolve each acquisition to its fn node in a frame over the prepared subject;
+//   2. refuse any acquisition that is not nullary — a carried input WITH arguments is a
+//      different concept and must not arrive under this one;
+//   3. evaluate it ONCE under the shared-build observation, so it is billed to preparation and
+//      adjudicated by the same preparation refusal as every other shared build;
+//   4. reify the value TOTALLY to its portable form — the same total walk publication already
+//      performs — and take its structural digest as the carried CONTENT IDENTITY;
+//   5. bind it for the prepared subject's lifetime, cleared with the tier.
+//
+// NO STALE SERVE IS UNWRITABLE RATHER THAN GUARDED. The carried value IS the key material: a
+// changed carrier content produces a different portable argument row, the stored row fails to
+// match, and the producer recomputes. There is no staleness check to forget to run, which is
+// DESIGN section 5's construction-over-validation in the one place a cache usually gets it
+// backwards.
+//
+// THE FLOOR NEVER READS A DOMAIN TYPE. When an acquisition SUCCEEDS and returns its own
+// coproduct's refusal arm (`RoadmapAcceptanceEventHistoryLoadRefused` and its peers), the
+// carried value is that refusal, faithfully, and every claim receives the IDENTICAL typed value
+// it would have computed for itself. That is propagation, not widening: no claim passes where it
+// would otherwise have failed, and the alternative — the floor stopping on a named domain
+// variant — would make this module enumerate `gunbc.roadmap_authority`'s vocabulary, the section
+// 3 layer inversion (adjudicated 2026-09-14: fierce-lark-661 and bright-boar-435, both
+// approving, the second conditioning approval on the disposition being PRINTED so a run where
+// the carrier refused is diagnosable rather than silent — the floor's phase line carries the
+// carried value's outermost variant name and content digest for exactly that reason).
+//
+// SECTION 2's LADDER, WHICH IS THE STRUCTURAL AUTHORITY HERE AND IS CITED IN SOURCE RATHER THAN
+// IN A PLAN DOC. `std.materialization_ladder` is the authority this row kind answers to, and the
+// answer is stated at its own vocabulary: the demand's identity is the resolved declaration; the
+// obligation LCA is required-floor PREPARATION, which is the least common visible ancestor of
+// the consuming claims (each claim is an isolated frame, so the carry crosses an isolation
+// boundary and only a STORE tier may discharge it — `std.materialization_ladder.tier_axes`
+// derives that, this module does not restate it); the provider is the cross-claim tier, a
+// `MemoTier { keying: ContentKeyed }` whose coverage is the enrolled identities below and whose
+// retention is released at its scope's exit with an exact byte ceiling. The section 2 ordering is
+// respected in the direction the text writes it: the demand graph is MINIMIZED FIRST — the
+// repetition has a shared-state least common ancestor, so it is authored duplication whose repair
+// is to CARRY the first value, and the tier is merely where the carried value is held. The typed
+// THE FOUR OBLIGATIONS, EACH AS A TYPED VALUE DERIVED FROM THE ROW, and deliberately NOT as four
+// more String fields beside it. A row already carries its computation identity — the resolved
+// declaration in `acquisition` / `producer` — and the other three are properties of the provider,
+// not of the row, so copying them per row would be one fact in two places (section 3) and the
+// transcription section 6 forbids. They are derived and named here instead:
+//   computation identity -> the row's own `acquisition` / `producer`, consumed as the ladder
+//     demand's `identity` by `floor_prepared_effect_input_ladder.acquisition_demand` and
+//     `producer_demand`;
+//   declared inputs      -> the carried content digest, which IS the stored key's argument row;
+//     stated to the ladder as `MemoTier { keying: ContentKeyed }` and printed per run on the
+//     `phase=prepared-effect-input-acquire` line as `content_digest=`;
+//   provider scope       -> `floor_prepared_effect_input_ladder.floor_preparation_frame`, the
+//     obligation LCA of the consuming claims — and the ladder's verdict at a SHARED-STATE LCA is
+//     AuthoredDuplication rather than Discharged, which is the ladder refusing to let a provider
+//     stand in for the carry: section 2's repair there is to carry the first value, so the pair
+//     `every_carried_identity_is_authored_duplication_before_the_carry` /
+//     `every_carried_identity_is_a_single_demand_after_the_carry` states the transition this row
+//     kind performs instead of claiming a discharge the ladder would not give;
+//   retention            -> `floor_prepared_effect_input_ladder.cross_claim_tier_retention`,
+//     released at the provider's scope exit with the tier's exact byte ceiling.
+// The conformance rows and the fold that decides them live in
+// `v2.workflow.floor_prepared_effect_input_ladder`, one module out, because THIS module is a
+// declared closure seed of the required floor (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`) and
+// every import it grows widens the subject every required run must frame.
+
+// HOW A WARM ROW DECLARES ITS DEPENDENCE ON A CARRIED INPUT, and there are exactly two shapes
+// because there are exactly two ways a producer can reach the acquisition.
+//
+// `BoundParameter` — the producer TAKES the acquired value as a named argument, so a claim's own
+// call already carries the content in its argument row and the stored key needs no help. This is
+// the shape gunbc#11303 is moving the roadmap projections to.
+//
+// `ImplicitAcquisition` — the producer is nullary and reaches the acquisition INSIDE itself. The
+// carried input's content identity is folded into the key on both the warm and the serve, so the
+// entry is content-keyed exactly as the parameterised shape is. This arm carries one obligation
+// the other does not, and it is enforced by execution rather than by this sentence: with the
+// carry installed, the producer's warm must dispatch NO effect. A producer that still reaches
+// the world has a second input the key does not represent, and the floor refuses the row —
+// `PreparedEffectInputProducerStillDispatchesEffect` — rather than storing a value whose key is
+// incomplete. That is the one check that separates "its only input is this carrier" from "we
+// hope its only input is this carrier".
+type CarriedInputDependence
+  = BoundParameter { parameter: String }
+  | ImplicitAcquisition
+
+// `acquisition` is the nullary declaration whose evaluation acquires the input; `checkout_input`
+// is the committed path whose content IS the declared input, named so a reader can see WHAT the
+// carried identity is a digest of without running the floor. `ground` states why this is a
+// commit-determined input rather than host state; `measurement` names the instrument that
+// re-derives the row's present-vs-absent verdict and never transcribes its output.
+type PreparedEffectInput {
+  acquisition: String
+  checkout_input: String
+  ground: String
+  measurement: String
+}
+
+type CarriedInputWarmRow {
+  producer: String
+  carried_input: String
+  dependence: CarriedInputDependence
+  measurement: String
+}
+
+data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
+  PreparedEffectInput {
+    acquisition: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
+    checkout_input: "dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl",
+    ground: "A committed carrier under the checkout root, so hermetic evaluation already reads it as INPUT ACCESS rather than a host effect (v1_interpreter hermetic_checkout_input_disposition). Its content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same value every claim would have read for itself. Demanded by every claim that reaches the roadmap authority: the seven required-lane roadmap claims and gunbc#10994's forecast witness.",
+    measurement: "Present-vs-absent on this row, both arms by workflow_dispatch on a branch ref pinned to an exact sha per this module's corrected procedure, read over required_floor_claim_cost.tsv and the run's own [floor-shared-fill] ledger; the acquisition's own arm is the run's effect-dispatch count for this carrier, which is 1 with the row enrolled and one-per-consuming-claim without it."
+  }
+]
+
+data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
+  CarriedInputWarmRow {
+    producer: "gunbc.roadmap_authority.roadmap_authority_projection",
+    carried_input: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
+    dependence: ImplicitAcquisition,
+    measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. ImplicitAcquisition is the shape on main today: gunbc#11303 moves the live callers to the explicit-history spelling, at which point this row becomes BoundParameter and the producer's own nullary wrapper stops existing — the migration is a row edit, not a mechanism change."
+  }
+]
+
+// The carried-input producers as names, folded exactly like `refused_share_producers` and
+// `pending_share_producers`, for the reason those two state: the walls below need identities, and
+// a third spelling of this fold would be the duplicate this file exists to price.
+fn carried_input_warm_producers(rows: List<CarriedInputWarmRow>) -> List<String> {
+  reverse(fold(rows, init: [], f: fn(acc, row) { concat([row.producer], acc) }))
+}
+
+fn prepared_effect_input_acquisitions(inputs: List<PreparedEffectInput>) -> List<String> {
+  reverse(fold(inputs, init: [], f: fn(acc, row) { concat([row.acquisition], acc) }))
+}
+
+// THE WALL: A CARRIED-INPUT ROW MAY NOT NAME AN INPUT NOBODY PREPARES.
+//
+// A row whose `input` matches no `PreparedEffectInput.acquisition` declares a dependence on a
+// value that will never be bound. The floor refuses it at install, so this fold is the same fact
+// stated where a fixture can redden it: over the live rosters it is green and could be reddened
+// only by editing the corpus it guards, which DESIGN section 4b calls a decoration — as a
+// function of both populations the forbidden state is writable in a fixture and the live tree is
+// the positive control.
+fn carried_input_rows_without_a_prepared_input(
+  rows: List<CarriedInputWarmRow>,
+  inputs: List<PreparedEffectInput>
+) -> List<String> {
+  let prepared = prepared_effect_input_acquisitions(inputs: inputs)
+  reverse(fold(rows, init: [], f: fn(acc, row) {
+    if any(xs: prepared, predicate: fn(p) { p == row.carried_input }) {
+      acc
+    } else {
+      concat([row.producer], acc)
+    }
+  }))
+}
+
+// THE SECOND WALL: A PRODUCER MAY NOT CARRY AN INPUT AND ALSO STAND IN A PLAIN ROSTER.
+//
+// The two enrolments are different keys for one identity — a plain warm row stores under the
+// EMPTY argument row while a carried-input row stores under the carried content — so a producer
+// in both would have one value servable under a key that does not represent the carrier, which is
+// precisely the stale serve this row kind exists to make unwritable. One identity, one
+// disposition.
+fn carried_input_roster_collisions(
+  rows: List<CarriedInputWarmRow>,
+  admitted: List<String>
+) -> List<String> {
+  reverse(fold(carried_input_warm_producers(rows: rows), init: [], f: fn(acc, name) {
+    if any(xs: admitted, predicate: fn(d) { d == name }) {
+      concat([name], acc)
+    } else {
+      acc
+    }
+  }))
+}

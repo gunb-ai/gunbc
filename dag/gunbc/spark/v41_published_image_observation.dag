@@ -151,9 +151,68 @@ data v41_published_registry_observation: PublishedImageObservation = v41_publish
   instrument: "site-packages layer extracted from the registry API and read directly" as NonEmptyStr,
 )
 
+// ── WHAT THE IMAGE CAN DO WITH THE ENGRAM TABLES, READ OUT OF ITS OWN SOURCE ──────────────────
+//
+// THIS IS THE READING THAT ANSWERS A ROUTE QUESTION, AND IT ANSWERS IT IN THE NEGATIVE DIRECTION
+// WITHOUT BEING A FAILURE TO FIND ANYTHING. Engram placement has four candidate routes: resident,
+// per-host NVMe then page cache, NFS on the token-time path, and NFS fill then local NVMe. Three of
+// those need the runtime to materialize the component from STORAGE while serving. Whether this image
+// can do that is not a question about the tables' size; it is a question about what the code offers.
+//
+// WE LOOKED WHERE IT WOULD BE AND FOUND SOMETHING, which is a much stronger result than finding
+// nothing. vllm/config/engram.py exists and carries exactly ONE placement setting, cpu_offload, and
+// its implementation allocates a pinned HOST tensor. That is a memory-to-memory move: it changes
+// which pool holds the table, not whether a file holds it. There is no mmap, no O_DIRECT, no block
+// or file path, and no lazy per-lookup fetch anywhere in the setting's implementation.
+//
+// SO THE ABSENCE IS ESTABLISHED RATHER THAN UNREAD, and the distinction decides what a consumer may
+// do with it. An unread mechanism is an evidence obligation: somebody must go and look. An
+// established absence is decisive for exactly the runtime it was established on -- it excludes the
+// storage-backed routes on THIS image and says nothing about any other image, any patched build, or
+// any future revision. Both facts are needed, which is why the arm carries the setting it DID find
+// beside the capability it did not: "we found cpu_offload and it is memory-backed" is falsifiable by
+// pointing at code, and "we found nothing" would not be.
+//
+// AND IT SAYS NOTHING ABOUT WHETHER OFFLOADING HELPS. Whether moving a table into pinned host memory
+// frees anything is a property of the HOST -- on a unified-memory part the two are one pool -- and
+// that derivation belongs to the route authority, not to a reading of a Python file.
+type ImageEngramPlacementMechanism
+  = EngramPlacementMemoryBackedOnly { setting: NonEmptyStr, allocation: NonEmptyStr, absent_capabilities: NonEmptyStr }
+  | EngramPlacementStorageBacked { setting: NonEmptyStr, how: NonEmptyStr }
+  | EngramPlacementSettingsAbsent { searched: NonEmptyStr }
+
+data v41_published_engram_placement: ImageEngramPlacementMechanism = EngramPlacementMemoryBackedOnly {
+  setting: "cpu_offload, the only placement setting in vllm/config/engram.py" as NonEmptyStr,
+  allocation: "its implementation allocates with torch.empty at device cpu and pin_memory true -- pinned host memory, reached through the unified address space" as NonEmptyStr,
+  absent_capabilities: "no mmap, no O_DIRECT, no file or block path, no NVMe or NFS reference, and no per-lookup lazy fetch appears in the setting or its implementation, so no token-time storage materialization is offered by this image" as NonEmptyStr,
+}
+
+data v41_published_engram_placement_observation: PublishedImageObservation = v41_published_observation(
+  subject: "vllm/config/engram.py inside the arm64 image" as NonEmptyStr,
+  reading: "one placement setting, cpu_offload, allocating a pinned host tensor; no storage-backed or file-backed Engram materialization path is present" as NonEmptyStr,
+  instrument: "site-packages layer extracted from the registry API and read directly, the same instrument as the registry.py reading above" as NonEmptyStr,
+)
+
+
+// HOW THE ABSENCE READS TO A HUMAN, carried as a rendering of the fields rather than as a second
+// sentence that could drift from them.
+fn engram_placement_mechanism_render(m: ImageEngramPlacementMechanism) -> NonEmptyStr {
+  match m {
+    EngramPlacementMemoryBackedOnly { setting: st, allocation: al, absent_capabilities: ab } =>
+      join([
+        "the runtime offers ", st as String, ": ", al as String,
+        ". ", ab as String,
+      ], "") as NonEmptyStr
+    EngramPlacementStorageBacked { setting: st, how: h } =>
+      join(["the runtime offers ", st as String, " and materializes from storage: ", h as String], "") as NonEmptyStr
+    EngramPlacementSettingsAbsent { searched: sr } =>
+      join(["no Engram placement setting was found where one would be: ", sr as String], "") as NonEmptyStr
+  }
+}
+
 fn v41_published_observations() -> List<PublishedImageObservation> {
   concat(
-    [v41_published_tag_absent, v41_published_distribution_observation, v41_published_revision_public_standing, v41_published_registry_observation],
+    [v41_published_tag_absent, v41_published_distribution_observation, v41_published_revision_public_standing, v41_published_registry_observation, v41_published_engram_placement_observation],
     v41_published_arm64_config_observations,
   )
 }

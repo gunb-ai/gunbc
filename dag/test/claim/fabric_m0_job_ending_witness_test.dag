@@ -13,7 +13,7 @@ import product.fabric.work { MaterializedProgram,
   OutputObligation, OutputArtifactObligation, TerminalResultObligation,
   DeclaredOutputObligations,
 }
-import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
+import std.durable_compare_and_set { CasSlotObservationRefused, CasStoreRefused, CasUnreadableReadRefused }
 import extdeps.github.checks {
   Success,
   Failure,
@@ -89,7 +89,7 @@ fn our_slot() -> NonEmptyStr {
 fn answered() -> CommitTransportOutcome {
   StoreAnswered {
     slot: our_slot(),
-    outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } },
+    outcome: CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } },
   }
 }
 

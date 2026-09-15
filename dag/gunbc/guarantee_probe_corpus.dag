@@ -160,10 +160,11 @@ data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-fro
 
 // FIVE UNENROLLED FLOOR CLASSES (gap analysis sec 11 item 10, plus the parse-separator row beside
 // it). Each was measured ONCE by hand on 2026-08-01 and cited in a sec 1c Evidence cell; nothing
-// re-ran the measurement, so each rung was honest about that day and silent about today. FOUR of
-// them are BELOW-FLOOR HOLES, not walls: their probes declare ExpectSilentAcceptanceHole, which
-// pins a DEFECT and is not a passing control -- read that variant's note before treating a green
-// here as a guarantee. A SIXTH class was authored in this same pass and then DELETED from it: the
+// re-ran the measurement, so each rung was honest about that day and silent about today. Which of
+// them remain BELOW-FLOOR HOLES is `guarantee_probe_below_floor_hole_rows` (ExpectSilentAcceptanceHole),
+// not a count restated here: a hole that climbs to ExpectBlockingRefusal leaves that fold, and a
+// transcribed total would rot on the climb (floor_field_through_generics_hole_probe did). Read
+// ExpectSilentAcceptanceHole's note before treating a green hole probe as a guarantee. A SIXTH class was authored in this same pass and then DELETED from it: the
 // v2.-module direct-call argument-type exemption, which gunbc#8902 landed on main first as
 // direct_call_argument_type_class while this change was in flight. One concept, one authority
 // (DESIGN 3) -- that class is theirs, this file does not carry a second name for it, and the
@@ -635,9 +636,7 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       probe: floor_field_through_generics_hole_probe,
       class: floor_field_through_generics_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectSilentAcceptanceHole {
-        invalid_state: "a field access on a bare type parameter names a field no type declares and compiles with zero diagnostics" as NonEmptyStr,
-      },
+      expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: floor_generic_instantiation_green_probe,

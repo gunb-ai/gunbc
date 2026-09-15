@@ -64,11 +64,47 @@ test fn any_admitted_model_work_constructs_as_an_offered_service() -> Bool {
     })
 }
 
-// ONE WORK, EITHER SUPPLIER. The same AnyAdmittedModel requirement is admissible on a DeepSeek offer and
-// on a GLM offer; its Work is computed once, before any offer exists, from arguments no offer supplies.
-test fn any_admitted_model_is_one_work_admissible_on_either_unit() -> Bool {
+// THE MODEL SCREEN ADMITS EITHER UNIT UNDER AnyAdmittedModel. This row proves exactly that and no
+// more: it drives harness_requirement_admits over the two unit values. It does not construct two
+// supplier offers and does not run fabric fungibility, so it is not evidence that one Work binds
+// on either supplier -- that control belongs beside a stable pair of SupplierOffers, which the
+// harness admission change owes (gunbc#11411).
+test fn the_model_screen_admits_either_unit_under_any_admitted_model() -> Bool {
   harness_requirement_admits(requirement: AnyAdmittedModel, observed: DeepseekV4FlashOnVllm)
     && harness_requirement_admits(requirement: AnyAdmittedModel, observed: Glm53FlashOnVllm)
+}
+
+// RED: THE IDENTITY PREIMAGE IS INJECTIVE IN THE FIELD TUPLE. Two materialized programs that differ
+// only in which side of a field boundary a separator byte falls are different Work; a joined
+// preimage folded them onto one key. The same holds across the execution/steps boundary and inside
+// the step list.
+test fn a_separator_moved_across_a_field_boundary_is_different_work() -> Bool {
+  let service = serving_turn_contract(request: t_request(inputs: "probe.inputs"))
+  let req = t_requirements(requirement: AnyAdmittedModel)
+  let left = WorkContract {
+    execution: MaterializedProgram { program: "a", source: "b\u{1d}c", runtime_closure: "d" },
+    steps: service.steps, inputs: service.inputs, effect_contract: service.effect_contract,
+    output_contract: service.output_contract, output_obligations: service.output_obligations,
+  }
+  let right = WorkContract {
+    execution: MaterializedProgram { program: "a\u{1d}b", source: "c", runtime_closure: "d" },
+    steps: service.steps, inputs: service.inputs, effect_contract: service.effect_contract,
+    output_contract: service.output_contract, output_obligations: service.output_obligations,
+  }
+  let unit_left = WorkContract {
+    execution: MaterializedProgram { program: "a", source: "b", runtime_closure: "d\u{1f}" },
+    steps: service.steps, inputs: service.inputs, effect_contract: service.effect_contract,
+    output_contract: service.output_contract, output_obligations: service.output_obligations,
+  }
+  let unit_right = WorkContract {
+    execution: MaterializedProgram { program: "a", source: "b", runtime_closure: "d" },
+    steps: service.steps, inputs: service.inputs, effect_contract: service.effect_contract,
+    output_contract: service.output_contract, output_obligations: service.output_obligations,
+  }
+  (work_for(principal: "gunbc" as NonEmptyStr, contract: left, requirements: req).id.key as String)
+    != (work_for(principal: "gunbc" as NonEmptyStr, contract: right, requirements: req).id.key as String)
+    && (work_for(principal: "gunbc" as NonEmptyStr, contract: unit_left, requirements: req).id.key as String)
+      != (work_for(principal: "gunbc" as NonEmptyStr, contract: unit_right, requirements: req).id.key as String)
 }
 
 // RED: AN EXACT REQUIREMENT IS NOT WEAKENED. Exact DeepSeek and exact GLM are different Work, and each
