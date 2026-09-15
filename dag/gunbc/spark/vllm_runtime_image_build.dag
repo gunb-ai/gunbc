@@ -452,6 +452,10 @@ fn vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) 
   }
 }
 
+// A CLEAN CHECKOUT AT r.source. There is no apply of V41EnginePatch here. An image built from this
+// tree is vanilla at the pinned revision. gunbc.spark.v41_runtime_candidate
+// v41_patch_application_standing is the wall that keeps an observed patch population from being
+// read as if this function had applied it.
 fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
   uses net: Network
 {

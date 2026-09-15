@@ -4321,10 +4321,11 @@ pub(crate) fn floor_authority_frame(
 /// declared roster, install admission and the shared-fill observer, and warm every nullary
 /// row so its fill is billed to preparation. FAIL-CLOSED at every arm: the roster module is
 /// a declared closure seed (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`), so a subject that
-/// cannot frame it, a roster that cannot decode, a warm row whose module is gone, a warm
-/// that fails to evaluate, and a warm whose value the store refuses each stop the line — a
-/// skip at any of these arms would leave admission empty while CI reads green, memoizing
-/// nothing (a green over a flag that never ran).
+/// cannot frame it, a roster that cannot decode, a warm spelling whose module IS in this
+/// subject but names no declaration, a warm that fails to evaluate, and a warm whose value
+/// the store refuses each stop the line. A roster row whose module is simply not in this
+/// gate-bounded subject is printed and not admitted — that is not a skip of the roster
+/// module itself.
 // RETURNS ITS OBSERVATIONS RATHER THAN JUST ITS ERRORS, because the warm fills are a shared
 // preparation build and the preparation refusal is denominated over the observations its caller
 // collects. Before this, the warm ran, printed a wall figure and produced nothing the adjudicator
@@ -4373,11 +4374,18 @@ pub(crate) fn install_pure_producer_share(
     // Admission is by RESOLVED DECLARATION IDENTITY (review 57446 F1): each qualified
     // roster spelling resolves to its fn node in a frame over the prepared subject, and the
     // interpreter admits by that node set — a bare-name homonym in a non-rostered module is
-    // a different node and never eligible. A row whose module or declaration the subject
-    // cannot resolve is a stale row and stops the line, exactly like a stale warm row.
+    // a different node and never eligible.
+    //
+    // TWO ABSENCES, TWO ARMS. The roster is corpus-wide (live-deploy renders, parse fixtures).
+    // The prepared subject is gate prefixes plus the diff. A row whose MODULE is not in this
+    // subject is not stale: it is not a consumer of this subject, so it is not admitted here
+    // (receipt on stderr). A row whose module IS in the subject but whose spelling names no
+    // declaration is stale and stops the line — that is the arm `a_stale_warm_row_stops_the_line`
+    // holds. Conflating them made every spark-only floor refuse on `test.claim.live_deploy.emit`.
     let mut resolution_frames: std::collections::HashMap<String, v1_interpreter::InterpContext> =
         std::collections::HashMap::new();
     let mut admitted_nodes = Vec::new();
+    let mut admitted_qualified: Vec<String> = Vec::new();
     let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
     for qualified in warm_rows
         .iter()
@@ -4388,13 +4396,25 @@ pub(crate) fn install_pure_producer_share(
             Some((module, _)) => module.to_string(),
             None => qualified.clone(),
         };
+        if !prepared
+            .graph
+            .modules
+            .iter()
+            .any(|m| m.func_env.name == module)
+        {
+            eprintln!(
+                "[floor-plan] PureProducerShareProducerOutsideThisSubject producer={qualified} \
+                 module={module} — rostered for corpus-wide share; this prepared subject does \
+                 not contain the module, so the row is not admitted here"
+            );
+            continue;
+        }
         if !resolution_frames.contains_key(&module) {
             let frame = floor_authority_frame(prepared, &module).map_err(|why| {
                 format!(
                     "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerModuleOutsideSubject \
-                     producer={qualified} — the rostered producer's module is not in the \
-                     prepared subject; delete the stale roster row or restore its consumers: \
-                     {why}"
+                     producer={qualified} — the module is in the prepared graph but could not \
+                     be framed: {why}"
                 )
             })?;
             resolution_frames.insert(module.clone(), frame);
@@ -4409,6 +4429,7 @@ pub(crate) fn install_pure_producer_share(
                 )
             })?;
         admitted_nodes.push(node);
+        admitted_qualified.push(qualified.clone());
     }
     let refused = floor_decode_refused_share_candidates(
         &roster_frame,
@@ -4416,12 +4437,7 @@ pub(crate) fn install_pure_producer_share(
     )?;
     PURE_PRODUCER_SHARE_ROSTER.with(|r| {
         *r.borrow_mut() = Some(PureProducerShareRoster {
-            admitted_qualified: warm_rows
-                .iter()
-                .chain(claim_forced_rows.iter())
-                .chain(carried_producers.iter())
-                .cloned()
-                .collect(),
+            admitted_qualified,
             refused,
         });
     });
@@ -4470,10 +4486,23 @@ pub(crate) fn install_pure_producer_share(
             Some((module, _)) => module.to_string(),
             None => input.acquisition.clone(),
         };
+        if !prepared
+            .graph
+            .modules
+            .iter()
+            .any(|m| m.func_env.name == module)
+        {
+            eprintln!(
+                "[floor-plan] PreparedEffectInputOutsideThisSubject acquisition={} module={} — \
+                 not acquired for this prepared subject",
+                input.acquisition, module
+            );
+            continue;
+        }
         if !resolution_frames.contains_key(&module) {
             let frame = floor_authority_frame(prepared, &module).map_err(|why| {
                 format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputModuleOutsideSubject acquisition={} — the prepared input's module is not in the prepared subject; delete the stale roster row or restore it: {why}",
+                    "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputModuleOutsideSubject acquisition={} — the module is in the prepared graph but could not be framed: {why}",
                     input.acquisition
                 )
             })?;
@@ -4513,18 +4542,24 @@ pub(crate) fn install_pure_producer_share(
         ));
     }
     for row in &carried_rows {
+        let module = match row.producer.rsplit_once('.') {
+            Some((module, _)) => module.to_string(),
+            None => row.producer.clone(),
+        };
+        if !resolution_frames.contains_key(&module) {
+            eprintln!(
+                "[floor-plan] CarriedInputWarmRowOutsideThisSubject producer={} module={} — \
+                 not warmed for this prepared subject",
+                row.producer, module
+            );
+            continue;
+        }
         let acquisition_node = acquisition_nodes.get(&row.carried_input).ok_or_else(|| {
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputUnknown producer={} input={} — the row declares a dependence on an input no floor_cross_claim_prepared_effect_inputs row prepares, so the value it names would never be bound",
                 row.producer, row.carried_input
             )
         })?;
-        let module = match row.producer.rsplit_once('.') {
-            Some((module, _)) => module.to_string(),
-            None => row.producer.clone(),
-        };
-        // Resolution above already framed every rostered producer's module, carried-input rows
-        // included (they are part of the admitted population), so the frame is present.
         let frame = &resolution_frames[&module];
         let producer_node = frame.lookup_fn_node(&row.producer).ok_or_else(|| {
             format!(
@@ -4603,9 +4638,9 @@ pub(crate) fn install_pure_producer_share(
             Some((module, _)) => module.to_string(),
             None => qualified.clone(),
         };
-        // Resolution above already refused any row whose module the subject no longer
-        // carries, so the frame is present; reuse it rather than re-preparing the module.
-        let producer_frame = &resolution_frames[&module];
+        let Some(producer_frame) = resolution_frames.get(&module) else {
+            continue;
+        };
         // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
         // first revision of this line got that wrong in the direction DESIGN section 4b names.
         // It passed `already_built: false` unconditionally, on the reasoning that the outcome

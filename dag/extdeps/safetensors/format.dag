@@ -57,6 +57,27 @@ type SafetensorsDtype
   | SafeF64
 
 
+fn safetensors_dtype_token(d: SafetensorsDtype) -> NonEmptyStr {
+  match d {
+    SafeBool => "BOOL" as NonEmptyStr
+    SafeU8 => "U8" as NonEmptyStr
+    SafeI8 => "I8" as NonEmptyStr
+    SafeF8E5M2 => "F8_E5M2" as NonEmptyStr
+    SafeF8E4M3 => "F8_E4M3" as NonEmptyStr
+    SafeF8E8M0 => "F8_E8M0" as NonEmptyStr
+    SafeI16 => "I16" as NonEmptyStr
+    SafeU16 => "U16" as NonEmptyStr
+    SafeF16 => "F16" as NonEmptyStr
+    SafeBf16 => "BF16" as NonEmptyStr
+    SafeI32 => "I32" as NonEmptyStr
+    SafeU32 => "U32" as NonEmptyStr
+    SafeF32 => "F32" as NonEmptyStr
+    SafeI64 => "I64" as NonEmptyStr
+    SafeU64 => "U64" as NonEmptyStr
+    SafeF64 => "F64" as NonEmptyStr
+  }
+}
+
 fn safetensors_dtype_byte_width(d: SafetensorsDtype) -> ByteSize {
   match d {
     SafeBool => byte_size(count: 1)
