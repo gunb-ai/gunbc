@@ -13,6 +13,8 @@ import gunbc.spark.collective_transport_plan {
   transport_plan_interface, transport_plan_env,
   TransportPlanOutcome, TransportAsPlanned, TransportFellBackToSocket, TransportUnexpectedlyRdma,
   transport_plan_outcome,
+  TransportPrerequisite, RequiresVerbsDeviceMapping, RequiresIpcLockCapability, RequiresUnlimitedMemlock,
+  transport_prerequisite_wire, transport_plan_prerequisites,
   nccl_socket_ifname_env,
 }
 
@@ -29,6 +31,13 @@ data fx_roce_plan: CollectiveTransportPlan = RoceOverInterface {
 
 data fx_realized_socket: NcclRealizedTransport = NcclTransportSocket { read_from: "fixture" as NonEmptyStr }
 data fx_realized_ib: NcclRealizedTransport = NcclTransportIbVerbs { read_from: "fixture" as NonEmptyStr }
+
+// MEMBERSHIP OF A CLOSED SET IS ASKED OF THE SET. The first version of this file asserted the
+// fallback by grepping an English remediation paragraph for "/dev/infiniband" -- a .contains() read
+// of modelled values, which DESIGN section 5 names as not being a consumer.
+fn prereq_listed(rs: List<TransportPrerequisite>, r: TransportPrerequisite) -> Bool {
+  length(filter(rs, x => (transport_prerequisite_wire(r: x) as String) == (transport_prerequisite_wire(r: r) as String))) > 0
+}
 
 fn env_has(env: List<DockerEnvAssignment>, name: NonEmptyStr) -> Bool {
   length(filter(env, e => (e.name as String) == (name as String))) > 0
@@ -83,8 +92,10 @@ test fn w_the_roce_arm_projects_more_env_than_the_socket_arm() -> Bool {
 // stood for two and a half days with nothing disagreeing.
 test fn w_a_roce_plan_that_realized_socket_is_a_fallback_not_a_success() -> Bool {
   match transport_plan_outcome(p: fx_roce_plan, realized: fx_realized_socket) {
-    TransportFellBackToSocket { plan: _, realized: _, because: b } =>
-      (b as String).contains("/dev/infiniband") && (b as String).contains("IPC_LOCK")
+    TransportFellBackToSocket { plan: _, realized: _, unmet_candidates: u } =>
+      prereq_listed(rs: u, r: RequiresVerbsDeviceMapping)
+        && prereq_listed(rs: u, r: RequiresIpcLockCapability)
+        && prereq_listed(rs: u, r: RequiresUnlimitedMemlock)
     TransportAsPlanned { plan: _, realized: _ } => false
     TransportUnexpectedlyRdma { plan: _, realized: _ } => false
   }
@@ -94,7 +105,7 @@ test fn w_a_roce_plan_that_realized_socket_is_a_fallback_not_a_success() -> Bool
 test fn w_a_roce_plan_that_realized_rdma_is_as_planned() -> Bool {
   match transport_plan_outcome(p: fx_roce_plan, realized: fx_realized_ib) {
     TransportAsPlanned { plan: _, realized: _ } => true
-    TransportFellBackToSocket { plan: _, realized: _, because: _ } => false
+    TransportFellBackToSocket { plan: _, realized: _, unmet_candidates: _ } => false
     TransportUnexpectedlyRdma { plan: _, realized: _ } => false
   }
 }
@@ -102,7 +113,7 @@ test fn w_a_roce_plan_that_realized_rdma_is_as_planned() -> Bool {
 test fn w_a_socket_plan_that_realized_socket_is_as_planned() -> Bool {
   match transport_plan_outcome(p: fx_socket_plan, realized: fx_realized_socket) {
     TransportAsPlanned { plan: _, realized: _ } => true
-    TransportFellBackToSocket { plan: _, realized: _, because: _ } => false
+    TransportFellBackToSocket { plan: _, realized: _, unmet_candidates: _ } => false
     TransportUnexpectedlyRdma { plan: _, realized: _ } => false
   }
 }
@@ -115,7 +126,7 @@ test fn w_a_socket_plan_that_realized_rdma_is_reported_not_ignored() -> Bool {
   match transport_plan_outcome(p: fx_socket_plan, realized: fx_realized_ib) {
     TransportUnexpectedlyRdma { plan: _, realized: _ } => true
     TransportAsPlanned { plan: _, realized: _ } => false
-    TransportFellBackToSocket { plan: _, realized: _, because: _ } => false
+    TransportFellBackToSocket { plan: _, realized: _, unmet_candidates: _ } => false
   }
 }
 

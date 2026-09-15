@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
 import extdeps.nvidia.nccl {
   NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
-  NcclRoceGidSelection, nccl_roce_gid_selection_env, NcclEnvAssignment,
+  NcclRoceGidSelection, nccl_roce_gid_selection_env,
   nccl_realized_transport_wire, nccl_network_name_socket, nccl_network_name_ib,
 }
 
@@ -34,8 +34,8 @@ type CollectiveTransportPlan
 
 fn collective_transport_plan_wire(p: CollectiveTransportPlan) -> NonEmptyStr {
   match p {
-    SocketOverInterface { interface: i } => join(["socket@", i as String], "") as NonEmptyStr
-    RoceOverInterface { interface: i, gid_selection: _ } => join(["roce@", i as String], "") as NonEmptyStr
+    SocketOverInterface { interface: i } => join([nccl_network_name_socket as String, "@", i as String], "") as NonEmptyStr
+    RoceOverInterface { interface: i, gid_selection: _ } => join([nccl_network_name_ib as String, "@", i as String], "") as NonEmptyStr
   }
 }
 
@@ -113,9 +113,35 @@ fn transport_plan_env(p: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
 // disagreement about configuration, it is a silent capability loss: the deployment still serves, at a
 // fraction of the collective throughput, and every performance number taken under it describes a
 // transport nobody chose.
+// WHAT A RoCE PLAN REQUIRES OF THE CONTAINER, AS VALUES RATHER THAN AS A PARAGRAPH. A first version
+// of the fallback arm carried a multi-sentence English remediation string and the witness asserted
+// the defect by grepping it for "/dev/infiniband" and "IPC_LOCK" -- a .contains() read of a closed
+// set, which DESIGN section 5 names directly as not being a consumer. The prerequisites are three
+// modelled things; carried as values, a consumer can act on them and the witness stops reading prose.
+type TransportPrerequisite
+  = RequiresVerbsDeviceMapping
+  | RequiresIpcLockCapability
+  | RequiresUnlimitedMemlock
+
+fn transport_prerequisite_wire(r: TransportPrerequisite) -> NonEmptyStr {
+  match r {
+    RequiresVerbsDeviceMapping => "/dev/infiniband device mapping" as NonEmptyStr
+    RequiresIpcLockCapability => "IPC_LOCK capability" as NonEmptyStr
+    RequiresUnlimitedMemlock => "unlimited memlock ulimit" as NonEmptyStr
+  }
+}
+
+fn transport_plan_prerequisites(p: CollectiveTransportPlan) -> List<TransportPrerequisite> {
+  match p {
+    SocketOverInterface { interface: _ } => []
+    RoceOverInterface { interface: _, gid_selection: _ } =>
+      [RequiresVerbsDeviceMapping, RequiresIpcLockCapability, RequiresUnlimitedMemlock]
+  }
+}
+
 type TransportPlanOutcome
   = TransportAsPlanned { plan: NonEmptyStr, realized: NonEmptyStr }
-  | TransportFellBackToSocket { plan: NonEmptyStr, realized: NonEmptyStr, because: NonEmptyStr }
+  | TransportFellBackToSocket { plan: NonEmptyStr, realized: NonEmptyStr, unmet_candidates: List<TransportPrerequisite> }
   | TransportUnexpectedlyRdma { plan: NonEmptyStr, realized: NonEmptyStr }
 
 fn transport_plan_outcome(p: CollectiveTransportPlan, realized: NcclRealizedTransport) -> TransportPlanOutcome {
@@ -133,7 +159,7 @@ fn transport_plan_outcome(p: CollectiveTransportPlan, realized: NcclRealizedTran
         NcclTransportSocket { read_from: _ } => TransportFellBackToSocket {
           plan: planned,
           realized: got,
-          because: "the plan asked for RoCE and NCCL built Socket: the container could not open a verbs device. Check that the container carries the /dev/infiniband mapping, CAP_IPC_LOCK and an unlimited memlock ulimit this plan projects -- a launch assembled outside the projection is how those go missing while the interface name still reads correct" as NonEmptyStr,
+          unmet_candidates: transport_plan_prerequisites(p: p),
         }
       }
   }
