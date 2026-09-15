@@ -146,12 +146,6 @@ test fn instance_gap_carrier_declaration_refs_all_resolve() -> Bool {
   ) == 0
 }
 
-// THE LIST-MEMBERSHIP FLOORS MOVE TOGETHER. gunbc#9483 deleted the carrier's
-// gunbc.session_auto_publish write_set_refusals site (CitableThroughDeclIndex) with its lane and
-// lowered the site floor from 5 to 4, but left the citable-reference floor at 3: four sites, two of
-// them outside the index (asserted beside this), leaves two citable. The reference floor is 2 by
-// that deletion. The lambda gate's floor counts departed sites with the live ones, because a site
-// that left with its deleted caller was still a member of the three the intersection found.
 test fn instance_gap_carrier_ref_population_is_not_empty() -> Bool {
   length(xs: lambda_typing_gate_declaration_refs()) == length(xs: lambda_typing_gate_citable_sites())
     && length(xs: list_membership_gap_declaration_refs()) == length(xs: list_membership_gap_citable_sites())
