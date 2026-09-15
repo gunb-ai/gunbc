@@ -525,19 +525,18 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // a Spark group is owned hardware quoted at zero by gunbc.spark.serving_offer, and no prepaid-hours
 // ledger exists for it to read, so there is no commitment to be ignorant of.
 //
-// THE CAPABILITY IS THE REQUIREMENT'S, NOT THE OBSERVED MODEL'S, and the two are reconciled before
-// this is reached rather than here: the observed unit has already been checked against the
-// requirement, so binding the requirement's capability states exactly what was established -- this
-// route satisfies what the demand asked for -- and keeps the offer and the demand comparable by the
-// equality the fabric uses.
+// THE CAPABILITY IS THE ROUTE'S, THE MODEL IS THE OBSERVATION'S, THE REQUIREMENT IS THE REQUEST'S.
+// The offer binds the one stable token-serving capability; the model the launch was observed
+// serving rides on the projection (SparkOfferProjection.served_model) and is what the candidate
+// carries forward; the caller's requirement was screened against the observed unit before this
+// point and is part of the Work, never stamped onto the offer.
 //
-// AND THE REFUSAL SAYS THAT ADMISSION WAS NOT EVALUATED, NOT THAT IT PASSED. The sentence here once
-// read "the serving offer bound and its route is admissible", which outran its own execution: this
-// branch never calls spark_first_party_admission, so nothing evaluated provider-use admission for
-// this turn, and a reader -- including one reporting upward, which is how it reached the operator --
-// could take a producer's EXISTENCE for a producer having RUN. That distinction is the whole subject
-// of this arm, so the wording carries it: admission cannot yet be evaluated, and the producer exists
-// and has not run (operator-routed review of #11083).
+// A BOUND OFFER IS ADMITTED, AND ONLY AN ADMITTED ONE BECOMES A CANDIDATE. harness_admit_bound_offer
+// calls gunbc.spark.first_party_serving spark_first_party_admission under the turn's Demand and
+// Work and hands the result to product.fabric.selection bind_candidate; a refusal there is the
+// OfferNotAdmittedForUse note carrying the producer's own refusal_reason. An earlier arm here
+// refused unconditionally with a sentence about admission not having run (operator-routed review
+// of #11083); that arm is gone because the producer now runs.
 //
 // THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
 // through exactly what production passes. It states two absences, and both are real on this path:
@@ -580,7 +579,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
       harness_admit_bound_offer(
         acc: acc, group: group, endpoint: endpoint, launch: launch,
         realization: harness_serving_realization(group: group, launch: launch, readback: readback),
-        projection: projection, subject: subject, model: model, unit: unit, seats: seats,
+        projection: projection, subject: subject, unit: unit, seats: seats,
       )
   }
 }
@@ -588,7 +587,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
 // THE ADMISSION STEP OF A BOUND OFFER, separated so the realization it is judged on is an argument:
 // production passes harness_serving_realization, and a witness can drive the same step with fixture
 // evidence and observe exactly which admission arm the turn reached.
-fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, realization: SparkServingRealization, projection: SparkOfferProjection<NonEmptyStr>, subject: HarnessTurnSubject, model: NonEmptyStr, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
+fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, realization: SparkServingRealization, projection: SparkOfferProjection<NonEmptyStr>, subject: HarnessTurnSubject, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
   let offer = projection.offer
   match bind_candidate(
     offer: offer,
@@ -605,7 +604,7 @@ fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoin
       HarnessCandidates {
         candidates: concat(acc.candidates, [HarnessCandidate {
           key: offer.id.key, group: group, endpoint: endpoint, launch: launch,
-          model: model, unit: unit, ceiling: seats, offer: c,
+          model: projection.served_model, unit: unit, ceiling: seats, offer: c,
         }]),
         notes: acc.notes,
         retryable: acc.retryable,

@@ -130,7 +130,7 @@ test fn a_bound_offer_refused_by_admission_is_not_a_candidate_and_carries_the_ca
       let placed = harness_admit_bound_offer(
         acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(),
         realization: t_realization(), projection: projection, subject: subject,
-        model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
+        unit: DeepseekV4FlashOnVllm, seats: 1,
       )
       match spark_first_party_admission(
         realization: t_realization(),
