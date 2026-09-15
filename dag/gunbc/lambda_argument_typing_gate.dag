@@ -96,20 +96,6 @@ type GateMiss
 
 data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
   {
-    caller: decl_ref(module_path: "v2.compiler.parse", decl_name: "parse_lexeme_digest"),
-    index_coverage: CitableThroughDeclIndex,
-    callee_spelled: "fold_list",
-    miss: NearMissOfARosterName { roster_name: "fold" },
-    cause: StringDeclarationSiteAlias,
-    cause_receipt: MeasuredByCargoProbe {
-      probe_subject_entry: "src/v2/compiler/02_parse.dag",
-      emitted_file: "v2_compiler_parse.rs",
-      emitted_line: 532,
-      rustc_code: "E0282",
-      rustc_help_annotates: "ch (the element)",
-    },
-  },
-  {
     caller: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_effect_apply_callee"),
     index_coverage: CitableThroughDeclIndex,
     callee_spelled: "fold_list",
@@ -136,6 +122,40 @@ data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
       rustc_code: "E0282",
       rustc_help_annotates: "a (the element)",
     },
+  },
+]
+
+// A SITE WHOSE CALLER WAS DELETED LEAVES THE LIVE LIST, AND ITS DEPARTURE IS A TYPED FACT. The
+// rule above -- a site does not stop being a member of the set it was found in -- is about a site
+// whose CAUSE turned out to differ; it keeps a real, still-red position listed. It does not cover a
+// site whose position no longer exists: a caller citation to a deleted declaration is the stale
+// citation the enrollment projection below exists to refuse, and the dissolution trigger ("emits
+// and compiles with no inference-failure diagnostic at that position") has no position left to be
+// satisfied at, so keeping the row would leave it unretirable. The derivation stays recorded here:
+// the site was a member of the three found by the one intersection, with the cause and receipt it
+// was measured at.
+type LambdaTypingGateSiteDeparture
+  = CallerDeclarationDeleted {
+      caller_module: String
+      caller_decl: String
+      cause_at_departure: SiteCause
+      receipt_at_departure: CauseReceipt
+      deleted_by: String
+    }
+
+data lambda_typing_gate_departed_sites: List<LambdaTypingGateSiteDeparture> = [
+  CallerDeclarationDeleted {
+    caller_module: "v2.compiler.parse",
+    caller_decl: "parse_lexeme_digest",
+    cause_at_departure: StringDeclarationSiteAlias,
+    receipt_at_departure: MeasuredByCargoProbe {
+      probe_subject_entry: "src/v2/compiler/02_parse.dag",
+      emitted_file: "v2_compiler_parse.rs",
+      emitted_line: 532,
+      rustc_code: "E0282",
+      rustc_help_annotates: "ch (the element)",
+    },
+    deleted_by: "gunbc#11401 C1/C1b: the token-stream digest hashes a lexeme through its interned symbol; the fold_list over chars(s:) that carried this closure no longer exists. That is a deletion of the position, not a repair of the String declaration-site alias cause, which the tokenize row still carries.",
   },
 ]
 
@@ -256,7 +276,7 @@ data lambda_typing_gate_population_confidence: PopulationConfidence = UpperBound
 //
 // The replacement keys on the only fact that can honestly retire this row: the three sites emitting
 // and compiling without an inference failure. No repair of any mechanism satisfies it on its own.
-data lambda_typing_gate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: EVERY site in lambda_typing_gate_sites emits and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. The sites now carry TWO different causes, so no single repair can fire this trigger: the String declaration-site alias repair closes the parse and tokenize rows, and the untyped fold-init accumulator repair closes the target_model row, and this row survives until both have. NOT satisfied by any repair to v1.compiler.emit_rust emit_typed_call's bare-name gate -- that mechanism is refuted by lambda_typing_gate_mechanism and its removal is a separate cleanup with a measured zero emitted-byte delta.")
+data lambda_typing_gate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: EVERY site in lambda_typing_gate_sites emits and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. The sites now carry TWO different causes, so no single repair can fire this trigger: the String declaration-site alias repair closes the tokenize row, and the untyped fold-init accumulator repair closes the target_model row, and this row survives until both have. The parse row left with its caller (lambda_typing_gate_departed_sites) and is not a site this trigger can wait on. NOT satisfied by any repair to v1.compiler.emit_rust emit_typed_call's bare-name gate -- that mechanism is refuted by lambda_typing_gate_mechanism and its removal is a separate cleanup with a measured zero emitted-byte delta.")
 
 // MERGE NOTE. The trigger this replaced, and the reach paragraph that argued for it, came from main
 // and are DELETED here rather than kept beside the replacement: both were premised on the four-name
@@ -269,7 +289,7 @@ data lambda_typing_gate_dissolution_trigger: DissolutionCondition = unbound_diss
 // are `v1_compiler.declaration_index` at ingestion, which resolves every typed-literal citation
 // corpus-wide on every push, and `test.claim.long.carrier_reference_integrity_witness_test`,
 // which holds this carrier's population claims. The projection itself is unchanged. This carrier's entire content is citations, so nothing else in it is checkable:
-// rename `parse_lexeme_digest` and, before this projection existed, every required check stayed
+// rename a cited caller and, before this projection existed, every required check stayed
 // green while the row went quietly false. That is the stale-citation class living inside a
 // structural carrier, and enrollment is the remedy the lens's own law already names as its next
 // widening — every structural DeclarationRef carrier — so no second resolver is written here.
