@@ -482,11 +482,24 @@ type DepthDependentRate sole_constructor {
   provenance: NonEmptyStr
 }
 
-// THE DEPTH LAW'S SUBJECT IS FULLY STATED BY ITS OWN PROVENANCE -- TP=2, a 1,048,576 ceiling -- so
-// unlike the batch arms it is ESTABLISHED, and it is established as a DIFFERENT subject from them on
-// two axes at once. That is the fact this module could not previously express: read as one
-// `spark_group_a_*` population, the per-step amortisation result and this quadratic law describe one
-// profile, and they do not. Carrying the subject in the row is what makes the join refuse.
+// THE DEPTH LAW'S TOPOLOGY IS STATED BY ITS OWN PROVENANCE -- TP=2 at a 1,048,576 ceiling -- which
+// the batch arms' is not, and it is a DIFFERENT subject from them on two axes at once. That is the
+// fact this module could not previously express: read as one `spark_group_a_*` population, the
+// per-step amortisation result and this quadratic law describe one profile, and they do not.
+// Carrying the subject in the row is what makes the join refuse.
+//
+// THE STANDING THIS PRODUCES IS PARTIAL, NOT ESTABLISHED, and saying otherwise was the fourth
+// annotation in this lane to assert a guarantee the declaration does not carry. Nobody read NCCL's
+// verdict line for this launch, so `collective_transport` is absent and `serving_subject_standing`
+// answers SubjectPartial. That is the whole point of the constructor: prose cannot promote a subject
+// the axes do not support.
+//
+// THE SPECULATIVE POLICY IS READ RATHER THAN ASSUMED, and it is the one axis here with a cited
+// ground: the co-tenant section below states "This profile served no speculative decoding" and
+// corroborates it with a mechanism -- each step accepted exactly one decode token, which is what
+// makes the victim's inter-token latency equal the step duration. That is a statement about the
+// launch, not a guess from its behaviour, so this row carries a value where its sibling module,
+// which states nothing, carries absence.
 data spark_group_a_depth_rate: DepthDependentRate = DepthDependentRate {
   subject: serving_subject_standing(
     subject: serving_performance_subject(
