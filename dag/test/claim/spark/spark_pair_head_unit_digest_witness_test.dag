@@ -3,8 +3,9 @@ module test.claim.spark.spark_pair_head_unit_digest_witness
 import std.types { Bool, NonEmptyStr, String, List }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.content_hash {
-  ContentHash,
+  ContentHash, content_hash_atom,
   compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricLaneObserved }
@@ -21,6 +22,7 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_realizations, spark_pair_head_render_inputs_identity, spark_pair_publish_declared_head_artifact,
   spark_pair_seal_unit_render, spark_pair_head_render_inputs_identity_for_group,
   spark_pair_head_unit_unsigned,
+  spark_pair_snapshot_inputs_wire, spark_pair_engine_inputs_wire, spark_pair_lane_inputs_wire,
 }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, HubCachePlacement, spark_hub_cache_root,
@@ -91,6 +93,34 @@ fn w_head_text() -> String? {
         SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
         SparkPairUnitSealed { artifact: a } => Present { value: a.text }
         SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
+      }
+  }
+}
+
+// RED: a key that omits serve-surface / Ray cluster rows would treat a stale unit as current.
+test fn head_render_identity_refuses_a_key_that_omits_serve_surface_and_ray_cluster() -> Bool {
+  match spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityMeasured {
+    max_num_seqs: 32,
+    basis: "controlled fixture: this witness hashes renderer bytes, never a measured capacity" as NonEmptyStr,
+  }) {
+    SparkPairServingUnitRefused { group: _, cause: _ } => false
+    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
+      match compare_content_hash(
+        left: spark_pair_head_render_inputs_identity(
+          args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
+          snapshot: w_fixture_snapshot,
+          head: h.lane,
+        ),
+        right: artifact_realization_digest(inputs: [
+          ArtifactRealizationInput { identity: "unit_name" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_head_unit_name) },
+          ArtifactRealizationInput { identity: "snapshot" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_snapshot_inputs_wire(snapshot: w_fixture_snapshot)) },
+          ArtifactRealizationInput { identity: "engine" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_engine_inputs_wire(args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32))) },
+          ArtifactRealizationInput { identity: "head_lane" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_lane_inputs_wire(lane: h.lane)) },
+        ]),
+      ) {
+        ContentHashDifferent => true
+        ContentHashEqual => false
+        ContentHashCrossFamilyIncomparable => false
       }
   }
 }
