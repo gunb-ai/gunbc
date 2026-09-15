@@ -9,7 +9,7 @@
 
 **Goal.** An author writes ordinary, sequential-looking `.dag`. The compiler derives the semantic demands the program makes and their dependencies from program structure, effect contracts, external-input observations and established algebraic laws. A demand engine evaluates only what requested targets transitively need, releases dependents the moment a required result is available, produces each equal share-admitted demand once, serves repeated demands from a store, and places heavy work on leased local processes (later, remote executors). None of this is authored per feature.
 
-**Displaced cost.** The v2 native fold took about two hours. gunbc#11401 removed specific cost-shape defects -- a per-module rebuild of corpus-wide resolution state (R1, the one fix that is this program's class: a validated fact not carried, so every consumer recomputed it), C1 (a live cross-parse memo identity whose digest used the wrong unary byte domain, mapping every value above 255 to one tag), a whole-index provenance merge on memo hits (C2), per-token choice dispatch (C3) and per-position lexer rule scans (C4) -- byte-identical in driver rows at every step. What remains on the native-fold production route is structural: one sequential process over stage-wide folds, no reuse across runs on that route, no lawful decomposition. The instruments that re-derive the numbers are the fold's `[native-cost-partition]` and `[native-prepare-split]` stderr lines and the bounded concurrent A/B harness recorded on #11401.
+**Displaced cost.** gunbc#11401 removed specific cost-shape defects -- a per-module rebuild of corpus-wide resolution state (R1, the one fix that is this program's class: a validated fact not carried, so every consumer recomputed it), C1 (a live cross-parse memo identity whose digest used the wrong unary byte domain, mapping every value above 255 to one tag), a whole-index provenance merge on memo hits (C2), per-token choice dispatch (C3) and per-position lexer rule scans (C4) -- byte-identical in driver rows at every step. What remains on the native-fold production route is structural: one sequential process over stage-wide folds, no reuse across runs on that route, no lawful decomposition. Wall-clock and partition receipts are re-derived from the fold's `[native-cost-partition]` and `[native-prepare-split]` stderr lines and the bounded concurrent A/B harness recorded on #11401 -- those instruments are the citation; this paragraph does not copy their totals.
 
 ## 2. The model (terminal architecture)
 
@@ -109,21 +109,21 @@ This consumes the reduce-spine and idle-lane direction of `docs/plans/machine-sh
 
 ## 4. Current census: what each root's deletion breaks
 
-**DISCOVERY-ONLY** static dependents by module (production / test), counted from file mentions. These counts are not a census: every cut owes an exact producer/consumer/route/disposition census. The loud census is the fail-closed floor on a delete-first branch, run per milestone before its detailed plan.
+**DISCOVERY-ONLY roster of roots**, not a transcribed population. Re-derive dependents by file-mention grep of each root's symbols over production and test trees at the milestone's delete-first branch; do not copy hit counts into this document. Every cut still owes an exact producer/consumer/route/disposition census. The loud census is the fail-closed floor on that delete-first branch, run per milestone before its detailed plan.
 
-| Root | Production | Tests |
-| --- | --- | --- |
-| scheduler layers, executor, realization_runner, runtime_run | 6 (v2.program, module_resolution_plan, operand_flow, a plan row, doc_graph_roots, resolved_graph_cache.rs) | 6 |
-| hand-authored DependencyView rows | 5 | 21 |
-| v2.lens.parallelism (no independent arm; coupling evidence always unresolved) | 1 | 2 |
-| eval as a recursive child fold | 3 (00_compile native driver, v2.program, runtime_run) | 5 |
-| floor discovery width (DiscoveryWidthPolicy, CONTROLLED_WIDTH) | 3 Rust | 0 |
-| derived_realization_schedule.rs | 12 | 0 |
-| std.realize_pack advisory width | 10 | 2 |
-| std.realization_width fallback / minimum-one | 15 | 4 |
-| parse sweep unbounded threads | 16 (claim_executor, declaration_index, module_path_index, namespace_wave_admission) | 4 |
-| build parallelism (ci_compile_jobs, jobserver, CARGO_BUILD_JOBS) | 23 | 12 |
-| results indexed by occurrence identity crossing graphs | 48 files touch the allocator, minted ids or span index | 22 |
+| Root | Named production sites (symbols) |
+| --- | --- |
+| scheduler layers, executor, realization_runner, runtime_run | `v2.program`, `module_resolution_plan`, `operand_flow`, a plan row, `doc_graph_roots`, `resolved_graph_cache.rs` |
+| hand-authored DependencyView rows | `v2.program` `program_run_dependencies` and fixture rows |
+| v2.lens.parallelism (no independent arm; coupling evidence always unresolved) | `v2.lens.parallelism` |
+| eval as a recursive child fold | `00_compile` native driver, `v2.program`, `runtime_run` |
+| floor discovery width (`DiscoveryWidthPolicy`, `CONTROLLED_WIDTH`) | required-floor discovery Rust |
+| `derived_realization_schedule.rs` | `derived_realization_schedule.rs` |
+| `std.realize_pack` advisory width | `std.realize_pack` |
+| `std.realization_width` fallback / minimum-one | `std.realization_width` |
+| parse sweep unbounded threads | `claim_executor`, `declaration_index`, `module_path_index`, `namespace_wave_admission` |
+| build parallelism (`ci_compile_jobs`, jobserver, `CARGO_BUILD_JOBS`) | `ci_compile_jobs`, jobserver, `CARGO_BUILD_JOBS` |
+| results indexed by occurrence identity crossing graphs | allocator, minted ids, span index |
 
 ## 5. Milestones
 
