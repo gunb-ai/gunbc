@@ -1,6 +1,6 @@
 module extdeps.tools.sha256sum
 
-import std.types { NonEmptyStr, Bool, Unit, List }
+import std.types { NonEmptyStr, Bool, Unit }
 import std.string_type { String }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.external_authority { ExternalAuthority }

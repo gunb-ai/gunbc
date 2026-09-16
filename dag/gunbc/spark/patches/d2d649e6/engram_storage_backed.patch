@@ -1,12 +1,11 @@
+diff --git a/vllm/models/deepseek_v4_1/nvidia/engram.py b/vllm/models/deepseek_v4_1/nvidia/engram.py
+index b141b6c..9a43cb3 100644
 --- a/vllm/models/deepseek_v4_1/nvidia/engram.py
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram.py
-@@ -1,6 +1,9 @@
- # Engram storage-backed lookup: swap the MEMORY backing of
- # DPSharedEngramStorage / cpu_offload UVA for a rank-local file whose
- # identity is verified at open. Prefetch, cuda Stream, and bounded
- # staging buffers are unchanged. Do not cudaHostRegister the whole table.
-+# Applied to vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8 only.
-+
+@@ -38,6 +38,14 @@ from vllm.models.deepseek_v4_1.common.engram import (
+ from vllm.utils.platform_utils import is_uva_available
+ from vllm.utils.torch_utils import get_accelerator_view_from_cpu_tensor
+ 
 +from vllm.models.deepseek_v4_1.nvidia.engram_file_backed import (
 +    ExpectedRowStoreIdentity,
 +    FileBackedEngramStorage,
@@ -14,3 +13,7 @@
 +    EngramFullTablePinned,
 +    allocate_file_backed,
 +)
++
+ logger = init_logger(__name__)
+ 
+ 

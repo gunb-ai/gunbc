@@ -223,22 +223,19 @@ fn v41_place_declared_patch(target: SshTarget, context: FleetSshExecutionContext
   let local = Filesystem.Read(path: patch.path as String)
   match filesystem_read_outcome(content: local.content, success: local.success, error: local.error) {
     FilesystemReadRefused { error: why } => Present { value: join(["could not read declared patch ", patch.path as String, ": ", why], "") }
-    FilesystemReadSucceeded { content: bytes } =>
-      match typed_remote_file_write_seal(
+    FilesystemReadSucceeded { content: bytes } => {
+      let admission = typed_remote_file_write_seal(
         path: v41_remote_declared_patch_path(path: patch.path) as FilePath,
         content: bytes,
         allowed_scope: FileTreeScope { root_path: vllm_build_root() },
-      ) {
+      )
+      match admission {
         TypedRemoteFileWriteAdmissionRefused { cause: why } => Present { value: why as String }
         TypedRemoteFileWriteAdmitted { write: _ } =>
           match converge_typed_remote_file(
             target: target,
             context: context,
-            admission: typed_remote_file_write_seal(
-              path: v41_remote_declared_patch_path(path: patch.path) as FilePath,
-              content: bytes,
-              allowed_scope: FileTreeScope { root_path: vllm_build_root() },
-            ),
+            admission: admission,
             mode: RemoteFileModeOwnerReadWrite,
             privilege: RemoteFileAsSessionPrincipal,
           ) {
@@ -246,6 +243,7 @@ fn v41_place_declared_patch(target: SshTarget, context: FleetSshExecutionContext
             TypedRemoteFileConverged { converged: _ } => none
           }
       }
+    }
   }
 }
 
@@ -314,19 +312,11 @@ fn v41_observe_member(target: SshTarget, context: FleetSshExecutionContext, patc
 fn v41_observe_members(target: SshTarget, context: FleetSshExecutionContext, patches: List<V41EnginePatch>) -> List<V41PatchMemberRead>?
   uses net: Network
 {
-  let placed = fold(patches, init: none, f: (acc, p) => match acc {
-    Present { value: _ } => acc
-    Absent => v41_place_declared_patch(target: target, context: context, patch: p)
-  })
-  match placed {
-    Present { value: _ } => none
-    Absent =>
-      let rows = map(patches, p => v41_observe_member(target: target, context: context, patch: p))
-      if any(rows, r => match r { Absent => true Present { value: _ } => false }) {
-        none
-      } else {
-        Present { value: flat_map(rows, r => match r { Absent => [] as List<V41PatchMemberRead> Present { value: m } => [m] }) }
-      }
+  let rows = map(patches, p => v41_observe_member(target: target, context: context, patch: p))
+  if any(rows, r => match r { Absent => true Present { value: _ } => false }) {
+    none
+  } else {
+    Present { value: flat_map(rows, r => match r { Absent => [] as List<V41PatchMemberRead> Present { value: m } => [m] }) }
   }
 }
 
