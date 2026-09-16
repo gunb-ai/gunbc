@@ -149,9 +149,19 @@ type MalformedBridgeRow {
   name: String
 }
 
+// THE OBSERVED ARM HAS NO REQUIRED EXECUTING ROUTE YET. The XL-1 tap gates on
+// memory_governor whole_corpus_compile_admission before it reads a single file; the required
+// floor never holds whole-corpus headroom mid-run, so on that route the tap refuses in
+// microseconds and only its refusal arms are executed evidence (gunbc#11461 run
+// 35074340220). The Observed arm answers on the route that can run it - a session host or
+// the one-time capture run (test.claim.long.xl1_live_tap_observed_arm_witness) - and that
+// is not a required consumer. `evidence_route` names the witness that executes it;
+// `restoring_receipt` names what retires this cause: a PersistedLegacyBaseline held against
+// the pinned pre-cut base (the capture taken, which is ACT-0's BaselineCaptureReceipt).
 type LegacyBaselineCaptureRefusal
   = ObserverNeverReachedDecision {}
   | BridgeRowSpellingEmpty { malformed: List<MalformedBridgeRow> }
+  | ObservedArmUnexercisedOnRequiredRoute { evidence_route: String, restoring_receipt: String }
 
 // THE SUBJECT FIELD THAT DISAGREED IS NAMED RATHER THAN COUNTED, because the seven digests have
 // different owners and different repairs: a source-set mismatch means the tree was not the one
@@ -356,16 +366,21 @@ type LegacyBaselineCaptureCapability
   = CaptureBlocked { phase: LegacyBaselineCapturePhase, cause: LegacyBaselineCaptureRefusal }
   | CaptureAvailable
 
-// CaptureAvailable IS A REPORT OF EXECUTED EVIDENCE, NOT A CONSTANT BY FIAT. The value is
-// authored here because the capability is a fact about the tree (the tap's Observed arm
-// exists and answers), and the evidence that keeps it honest is enrolled and executing:
-// dag/test/claim/legacy_repair_tap_live_bridge_witness_test
-// a_fixture_root_reaches_the_observed_arm_with_repair_rows_and_transport reaches
-// Xl1PrimaryRootObserved with rows and bindings over a committed root, beside the refusal
-// controls. If that claim reds, this value is a lie and the honest arm is
-// CaptureBlocked { RepairCensusPhase, ... } with the refusal it observed (review 66841).
+// THE CAPABILITY IS A REPORT OF EXECUTED EVIDENCE ON A REQUIRED ROUTE, NOT A CONSTANT BY FIAT.
+// The tap's refusal arms execute on the required floor; its Observed arm does not (the
+// whole-corpus admission gate refuses there before discovery), so CaptureAvailable would be a
+// rung read off controls the required route cannot run (review 66841 on gunbc#11461, DESIGN
+// 4b(1)). The honest arm is CaptureBlocked naming the route that DOES execute the Observed
+// arm and the receipt that retires the block. The stage carrier folds this into
+// StageXL1BaselineCapture's standing, so XL-1 reads outstanding until the capture is taken.
 fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
-  CaptureAvailable
+  CaptureBlocked {
+    phase: RepairCensusPhase,
+    cause: ObservedArmUnexercisedOnRequiredRoute {
+      evidence_route: "test.claim.long.xl1_live_tap_observed_arm_witness (a session-host claim_batch run or the one-time capture run; off the required floor by the whole-corpus admission gate)",
+      restoring_receipt: "a PersistedLegacyBaseline held against the pinned pre-cut base - the capture taken (ACT-0 BaselineCaptureReceipt)"
+    }
+  }
 }
 
 fn capture_blocked_reason(c: LegacyBaselineCaptureCapability) -> List<String> {
@@ -391,5 +406,7 @@ fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
     ObserverNeverReachedDecision {} => "the observer never reached its decision stage"
     BridgeRowSpellingEmpty { malformed: m } =>
       concat("the repair bridge emitted a row with an empty spelling (", concat(to_string(list_length(items: m)), " row(s), located by index)"))
+    ObservedArmUnexercisedOnRequiredRoute { evidence_route: r, restoring_receipt: t } =>
+      concat("the live tap's Observed arm executes only on ", concat(r, concat("; retired by ", t)))
   }
 }

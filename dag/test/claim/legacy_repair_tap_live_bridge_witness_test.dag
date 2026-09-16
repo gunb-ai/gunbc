@@ -1,6 +1,6 @@
 module test.claim.legacy_repair_tap_live_bridge_witness
 
-import std.types { String, Bool, List, list_length }
+import std.types { String, Bool, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.content_hash { structural_content_hash }
 import std.decl_ref { decl_ref }
@@ -30,36 +30,14 @@ import v2.workflow.legacy_repair_tap {
 // inside the seed arm, not mint an Observed encoding. Executes emit_rust_reference_derived_rows_bridge.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE POSITIVE CONTROL FOR THE OBSERVED ARM (review 66841 on gunbc#11461): the refusal claims
-// below prove the tap refuses; nothing proved it ANSWERS. legacy_baseline_capture_capability
-// reports CaptureAvailable, and the stage carrier folds that into Clear, so an executed mint of
-// the Observed encoding over a real source root is the evidence that standing rests on. The
-// XL-4 fixture corpus (eleven committed modules) is the smallest root the seed emitter can
-// compile; deleting the Observed arm of compile_xl1_primary_root_tap in
-// src/v1/stage0/src/cli_run/emit_host.rs turns this red, which is the mutation the review
-// found every prior control survived. Rows AND the occurrence transport must come back
-// together - the widening ruling admitted one arm carrying both halves.
-test fn a_fixture_root_reaches_the_observed_arm_with_repair_rows_and_transport() -> Bool {
-  match emit_rust_reference_derived_rows_bridge(["dag/test/fixture/reference_derived_graph"]) {
-    Xl1PrimaryRootRefused { cause: _ } => false
-    Xl1PrimaryRootObserved {
-      primary_root: root,
-      repair_rows: rows,
-      occurrence_transport: _,
-      binding_rows: bindings
-    } =>
-      list_length(items: rows) > 0
-        && list_length(items: bindings) > 0
-        && root == "dag/test/fixture/reference_derived_graph"
-  }
-}
-
-test fn the_live_census_over_a_fixture_root_counts_its_rows() -> Bool {
-  match xl1_live_repair_tap_census(source_roots: ["dag/test/fixture/reference_derived_graph"]) {
-    Xl1LiveRepairTapUnavailable { cause: _ } => false
-    Xl1LiveRepairTapRows { count: n } => n > 0
-  }
-}
+// THE OBSERVED ARM'S POSITIVE CONTROLS LIVE IN test.claim.long.xl1_live_tap_observed_arm_witness,
+// OFF THE REQUIRED FLOOR BY ROUTE, NOT BY CHOICE: the tap gates on
+// memory_governor whole_corpus_compile_admission before it reads a single file, and the
+// required floor never has whole-corpus headroom mid-run (gunbc#11461 run 35074340220: both
+// controls refused in under 300 microseconds - the admission, not the emitter). The refusal
+// claims below are what the floor CAN execute. legacy_baseline_capture_capability reports
+// that gap honestly as CaptureBlocked rather than reading Clear off controls the required
+// route cannot run.
 
 test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool {
   match emit_rust_reference_derived_rows_bridge([]) {

@@ -53,7 +53,9 @@ import v2.workflow.legacy_baseline_capture {
   subject_field_label,
   legacy_baseline_capture_capability,
   CaptureBlocked,
-  CaptureAvailable
+  CaptureAvailable,
+  RepairCensusPhase,
+  ObservedArmUnexercisedOnRequiredRoute
 }
 import v2.workflow.legacy_repair_observation { repair_subject_field_label }
 
@@ -453,10 +455,24 @@ test fn a_roster_whose_identity_is_not_the_subject_digest_refuses_as_repair_rost
   }
 }
 
-test fn the_reported_capability_is_available_once_the_named_base_tap_entry_exists() -> Bool {
+// The tap entry exists, and that is NOT the capability: the Observed arm has no required
+// executing route (whole-corpus admission refuses on the floor), so the report is
+// CaptureBlocked at the repair census naming the route that executes it and the receipt that
+// retires the block. This claim reds if anyone reads Clear off an unexercised arm again.
+test fn the_reported_capability_is_blocked_until_the_observed_arm_executes_on_a_required_route() -> Bool {
   match legacy_baseline_capture_capability() {
-    CaptureAvailable => true
-    CaptureBlocked { phase: _, cause: _ } => false
+    CaptureAvailable => false
+    CaptureBlocked { phase: p, cause: c } =>
+      match p {
+        RepairCensusPhase =>
+          match c {
+            ObservedArmUnexercisedOnRequiredRoute { evidence_route: r, restoring_receipt: t } =>
+              string_contains(s: r, pattern: "xl1_live_tap_observed_arm_witness")
+                && string_contains(s: t, pattern: "PersistedLegacyBaseline")
+            _ => false
+          }
+        _ => false
+      }
   }
 }
 
