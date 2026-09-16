@@ -64,8 +64,7 @@ import std.materialization_provider {
   lookup_is_refused_kind_mismatch,
   lookup_is_refused_wrong_artifact, lookup_is_refused_wrong_content,
   lookup_is_refused_cross_family_content_hash,
-  lookup_is_refused_evaluation_preimage_mismatch,
-  lookup_is_refused_unqualified_persisted_format,
+  lookup_fold, ProviderLookup,
   lookup_refused_incomplete_missing, lookup_served_identity,
   serve_resolved_graph_stored_disk_probe,
   serve_resolved_graph_incomplete_stored_disk_probe,
@@ -85,6 +84,38 @@ import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => true,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
+  )
+}
+
+fn lookup_is_refused_unqualified_persisted_format(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => true
+  )
+}
 
 // Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework
 // blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions

@@ -13,7 +13,7 @@ import std.materialization_provider {
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  provider_serve, persisted_probe, lookup_is_hit, lookup_is_refused_evaluation_preimage_mismatch,
+  provider_serve, persisted_probe, lookup_is_hit, lookup_fold, ProviderLookup,
   request_key, request_kind, request_required_outputs, request_declared_inputs,
   request_judgment_contract, evaluation_store_address, evaluation_store_admitted_address,
   evaluation_store_address_preimage,
@@ -57,6 +57,22 @@ import extdeps.realization.materialization_store_local {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => true,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
+  )
+}
 
 // HERMETIC CONTROLS FOR THE PROVIDER SPINE: the native route's three request families, and the
 // store semantics of std.materialization_object driven through its OBSERVATION coproducts, so every

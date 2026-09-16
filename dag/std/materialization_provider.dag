@@ -2057,54 +2057,6 @@ fn lookup_is_refused_cross_family_content_hash(l: ProviderLookup) -> Bool {
   )
 }
 
-fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
-  lookup_fold(
-    l: l,
-    hit: (a, i) => false,
-    miss: k => false,
-    kind_mismatch: (k, r, f) => false,
-    wrong_artifact: (k, fk) => false,
-    wrong_content: (k, r, o) => false,
-    cross_family: (k, f) => false,
-    incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => true,
-    store_family_refused: (k, f, sc) => false,
-    unqualified_persisted_format: k => false
-  )
-}
-
-fn lookup_is_refused_store_family(l: ProviderLookup) -> Bool {
-  lookup_fold(
-    l: l,
-    hit: (a, i) => false,
-    miss: k => false,
-    kind_mismatch: (k, r, f) => false,
-    wrong_artifact: (k, fk) => false,
-    wrong_content: (k, r, o) => false,
-    cross_family: (k, f) => false,
-    incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => true,
-    unqualified_persisted_format: k => false
-  )
-}
-
-fn lookup_is_refused_unqualified_persisted_format(l: ProviderLookup) -> Bool {
-  lookup_fold(
-    l: l,
-    hit: (a, i) => false,
-    miss: k => false,
-    kind_mismatch: (k, r, f) => false,
-    wrong_artifact: (k, fk) => false,
-    wrong_content: (k, r, o) => false,
-    cross_family: (k, f) => false,
-    incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
-    unqualified_persisted_format: k => true
-  )
-}
-
 fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
   lookup_fold(
     l: l,
