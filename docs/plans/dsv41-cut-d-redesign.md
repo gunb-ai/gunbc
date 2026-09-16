@@ -161,6 +161,32 @@ So the withdrawal removes Group A from the convergence claim without touching en
 route stays askable, the hosts stop being converged, and no new mechanism is required. It is the
 established remedy applied a second time, with a modeled separation built to support it.
 
+**Does the withdrawal also remove the host admissibility or launch authority D1 and D2 need?**
+It has to be asked, because a fix that revoked the authority to be on the hosts at all would
+defeat itself. Traced: `serving_deployment_selection` gets its candidate domain from
+`gunbc.spark.host_commitment` `spark_serving_admissible_hosts`, which derives from
+`spark_host_standings` — and one of that fold's six inputs IS
+`spark_claimed_serving_group_members()`, built by mapping `spark_pair_serving_groups` over
+`fabric_group_hosts`. So the withdrawal does reach admissibility.
+
+It reaches it in the **loosening** direction, and the module states the principle itself: *"A
+commitment is not a capability. Nothing here says a host cannot serve or cannot build. It says
+some other authority has already placed work on it or reserved it, so a lane that places NEW
+work"* must account for that. Removing Group A from the claimed set removes a reason those
+hosts are **committed**, which makes them more available to a lane placing new work, not less.
+It revokes a competing claim, which is the entire objective.
+
+D1's own right to be there does not come from that roster in any case: it launches under the
+exact, time-bounded experimental authorization above. The roster governs **convergence**, not
+experiments.
+
+**One honest edge.** The same module records that with Group B reserved, `SparkHostUncommitted`
+has no production inhabitant today — "nothing is free" is currently a *shown* fact rather than
+an assumed one. Withdrawing Group A's claim changes that fold's inputs and could inhabit that
+arm for the first time. That is not a hazard, but it is a state transition production has never
+taken, and a cut that triggers it should expect the arm to be reached rather than be surprised
+by it.
+
 **THREE SUBJECTS, THREE NAMES.** An earlier draft used one word — "baseline" — for the state
 D0 records and the state D1 returns to. Those are mutually exclusive, and the ambiguity sat in
 the one sentence that tells a rollout worker where to leave the hosts.
