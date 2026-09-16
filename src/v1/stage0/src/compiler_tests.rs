@@ -480,6 +480,20 @@ mod compiler_tests {
             "{}",
             err
         );
+        // pattern and interface are BlockBody forms whose constructor stamps ModuleItemFunction,
+        // so a check on the parsed kind admits them; these two rows are what discriminate it.
+        for src in [
+            "module test\n\ntest pattern P(x: Int) {\n  x\n}\n",
+            "module test\n\ntest interface I(x: Int) {\n  x\n}\n",
+        ] {
+            let err =
+                parse_item_kinds(src).expect_err("a test-marked block-bodied form must refuse");
+            assert!(
+                err.contains("the `test` marker applies only to a fn or data item"),
+                "{}",
+                err
+            );
+        }
     }
 
     fn tco_slot(name: &str) -> String {

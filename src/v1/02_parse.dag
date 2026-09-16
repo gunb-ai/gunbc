@@ -679,25 +679,40 @@ fn leads_with_test_marker(tokens: TokenStream) -> Bool {
 // serving code. It is sugar on an ordinary fn or data item: the item keeps its kind and gains
 // TestMarked. Any other marked item form is refused rather than silently treated as unmarked,
 // which is what dropping the marker used to do.
-fn test_marked_item_result(r: ItemResult) -> ItemResult {
+//
+// ADMISSIBILITY IS DECIDED FROM THE AUTHORED FORM, BEFORE THE ITEM IS PARSED. The resulting
+// module_item_kind cannot decide it: `pattern` and `interface` are BlockBody forms and their
+// constructor stamps ModuleItemFunction, so a kind-based check admitted `test pattern` and
+// `test interface` (found in review of gunbc#11478). The ItemForm's body_kind is the modeled axis
+// that separates the fn form (ExprBody) and the data form (ValueBody) from every other form.
+fn test_marker_admits_form(form: ItemForm?) -> Bool {
+  match form {
+    Present { value: f } => match f.body_kind {
+      ExprBody => true
+      ValueBody => true
+      BlockBody => false
+      TypeBody => false
+      NoBody => false
+      ServiceBody => false
+      ResourceBody => false
+      AliasBody => false
+    }
+    Absent => false
+  }
+}
+
+fn test_marked_item_result(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
+  let form = find_item_form(forms: ctx.env.syntax_spec.item_forms, keyword: tok_keyword_text(tok: token_stream_first(stream: tokens)))
+  if !test_marker_admits_form(form: form) {
+    let span = token_span(tok: token_stream_first(stream: tokens))
+    return ItemResult { item: Node { occurrence_identity: OccurrenceSynthetic, name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemUnrecognized, declaration_marker: Unmarked, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "the `test` marker applies only to a fn or data item", span: span) } }
+  }
+  let r = parse_unmarked_item(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
   let n = r.item
-  let markable = match n.module_item_kind {
-    ModuleItemFunction => true
-    ModuleItemDataValue => true
-    ModuleItemTypeDeclaration => false
-    ModuleItemService => false
-    ModuleItemResource => false
-    ModuleItemUnrecognized => false
-    NotAModuleItem => false
-  }
-  if markable {
-    ItemResult {
-      item: Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: TestMarked, expr_data: n.expr_data },
-      tokens: r.tokens, ctx: r.ctx, err: none
-    }
-  } else {
-    ItemResult { item: n, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: "the `test` marker applies only to a fn or data item", span: n.span) } }
+  ItemResult {
+    item: Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: TestMarked, expr_data: n.expr_data },
+    tokens: r.tokens, ctx: r.ctx, err: none
   }
 }
 fn type_body_tokens_after_modifiers(tokens: TokenStream) -> TokenStream {
@@ -2380,7 +2395,7 @@ fn find_item_form(forms: List<ItemForm>, keyword: String) -> ItemForm? {
 fn parse_item(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let tokens = skip_newlines(tokens: tokens)
   if leads_with_test_marker(tokens: tokens) {
-    return test_marked_item_result(r: parse_unmarked_item(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx))
+    return test_marked_item_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
   }
   parse_unmarked_item(tokens: tokens, ctx: ctx)
 }

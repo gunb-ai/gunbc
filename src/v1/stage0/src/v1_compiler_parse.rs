@@ -1665,61 +1665,97 @@ pub fn leads_with_test_marker(tokens: Rc<TokenStream>) -> bool {
             != "".to_string()))
 }
 
-pub fn test_marked_item_result(r: Rc<ItemResult>) -> Rc<ItemResult> {
+pub fn test_marker_admits_form(form: Option<Rc<ItemForm>>) -> bool {
+    match form.clone() {
+        Some(f) => match f.body_kind.clone() {
+            BodyKind::ExprBody => true,
+            BodyKind::ValueBody => true,
+            BodyKind::BlockBody => false,
+            BodyKind::TypeBody => false,
+            BodyKind::NoBody => false,
+            BodyKind::ServiceBody => false,
+            BodyKind::ResourceBody => false,
+            BodyKind::AliasBody => false,
+        },
+        std::option::Option::None => false,
+    }
+}
+
+pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
+        let form = find_item_form(
+            ctx.env.clone().syntax_spec.clone().item_forms.clone(),
+            tok_keyword_text(token_stream_first(tokens.clone())),
+        );
+        if !test_marker_admits_form(form.clone()) {
+            {
+                let span = token_span(token_stream_first(tokens.clone()));
+                return Rc::new(ItemResult {
+                    item: Rc::new(Node {
+                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                        name: "<unknown>".to_string(),
+                        span: span.clone(),
+                        ident_span: Some(span.clone()),
+                        children: Rc::new(vec![]),
+                        params: Rc::new(vec![]),
+                        inferred: std::option::Option::None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: std::option::Option::None,
+                        connective: Connective::NoConnective,
+                        transport: std::option::Option::None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: std::option::Option::None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::ModuleItemUnrecognized,
+                        declaration_marker: DeclarationMarker::Unmarked,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    }),
+                    tokens: tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: Some(parse_error(
+                        "the `test` marker applies only to a fn or data item".to_string(),
+                        span.clone(),
+                    )),
+                });
+            }
+        }
+        let r = parse_unmarked_item(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return r;
         }
         let n = r.item.clone();
-        let markable = match n.module_item_kind.clone() {
-            ParsedModuleItemKind::ModuleItemFunction => true,
-            ParsedModuleItemKind::ModuleItemDataValue => true,
-            ParsedModuleItemKind::ModuleItemTypeDeclaration => false,
-            ParsedModuleItemKind::ModuleItemService => false,
-            ParsedModuleItemKind::ModuleItemResource => false,
-            ParsedModuleItemKind::ModuleItemUnrecognized => false,
-            ParsedModuleItemKind::NotAModuleItem => false,
-        };
-        if markable.clone() {
-            Rc::new(ItemResult {
-                item: Rc::new(Node {
-                    occurrence_identity: n.occurrence_identity.clone(),
-                    name: n.name.clone(),
-                    ident: n.ident.clone(),
-                    span: n.span.clone(),
-                    ident_span: n.ident_span.clone(),
-                    children: n.children.clone(),
-                    connective: n.connective.clone(),
-                    params: n.params.clone(),
-                    inferred: n.inferred.clone(),
-                    return_cardinality: n.return_cardinality.clone(),
-                    uses: n.uses.clone(),
-                    body: n.body.clone(),
-                    transport: n.transport.clone(),
-                    properties: n.properties.clone(),
-                    type_annotation: n.type_annotation.clone(),
-                    is_self_recursive: n.is_self_recursive.clone(),
-                    has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                    match_pattern: n.match_pattern.clone(),
-                    module_item_kind: n.module_item_kind.clone(),
-                    declaration_marker: DeclarationMarker::TestMarked,
-                    expr_data: n.expr_data.clone(),
-                }),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: std::option::Option::None,
-            })
-        } else {
-            Rc::new(ItemResult {
-                item: n.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: Some(parse_error(
-                    "the `test` marker applies only to a fn or data item".to_string(),
-                    n.span.clone(),
-                )),
-            })
-        }
+        Rc::new(ItemResult {
+            item: Rc::new(Node {
+                occurrence_identity: n.occurrence_identity.clone(),
+                name: n.name.clone(),
+                ident: n.ident.clone(),
+                span: n.span.clone(),
+                ident_span: n.ident_span.clone(),
+                children: n.children.clone(),
+                connective: n.connective.clone(),
+                params: n.params.clone(),
+                inferred: n.inferred.clone(),
+                return_cardinality: n.return_cardinality.clone(),
+                uses: n.uses.clone(),
+                body: n.body.clone(),
+                transport: n.transport.clone(),
+                properties: n.properties.clone(),
+                type_annotation: n.type_annotation.clone(),
+                is_self_recursive: n.is_self_recursive.clone(),
+                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                match_pattern: n.match_pattern.clone(),
+                module_item_kind: n.module_item_kind.clone(),
+                declaration_marker: DeclarationMarker::TestMarked,
+                expr_data: n.expr_data.clone(),
+            }),
+            tokens: r.tokens.clone(),
+            ctx: r.ctx.clone(),
+            err: std::option::Option::None,
+        })
     }
 }
 
@@ -4277,10 +4313,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     {
         let tokens = skip_newlines(tokens.clone());
         if leads_with_test_marker(tokens.clone()) {
-            return test_marked_item_result(parse_unmarked_item(
-                token_stream_advance(tokens.clone(), 1),
-                ctx.clone(),
-            ));
+            return test_marked_item_result(token_stream_advance(tokens.clone(), 1), ctx.clone());
         }
         parse_unmarked_item(tokens.clone(), ctx.clone())
     }

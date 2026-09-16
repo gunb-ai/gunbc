@@ -4775,6 +4775,12 @@ fn ct_test_marker_item_kind_test() -> String {
     "    fn test_marker_on_a_type_declaration_is_refused() {\n",
     "        let err = parse_item_kinds(\"module test\\n\\ntest type T {\\n  a: Bool\\n}\\n\").expect_err(\"a test-marked type declaration must refuse\");\n",
     "        assert!(err.contains(\"the `test` marker applies only to a fn or data item\"), \"{}\", err);\n",
+    "        // pattern and interface are BlockBody forms whose constructor stamps ModuleItemFunction,\n",
+    "        // so a check on the parsed kind admits them; these two rows are what discriminate it.\n",
+    "        for src in [\"module test\\n\\ntest pattern P(x: Int) {\\n  x\\n}\\n\", \"module test\\n\\ntest interface I(x: Int) {\\n  x\\n}\\n\"] {\n",
+    "            let err = parse_item_kinds(src).expect_err(\"a test-marked block-bodied form must refuse\");\n",
+    "            assert!(err.contains(\"the `test` marker applies only to a fn or data item\"), \"{}\", err);\n",
+    "        }\n",
     "    }\n",
     "\n"
   )
