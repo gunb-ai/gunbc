@@ -1,0 +1,107 @@
+module test.claim.scm.scm_wet_execution_receipt_witness
+
+import std.decl_ref { decl_ref }
+import std.types { Bool, Int, NonEmptyStr, String }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.scm.scm_wet_execution_receipt {
+  ScmWetExecutionProvenance,
+  ExecutableIdentityStanding,
+  ExecutableStableAcrossRun,
+  ExecutableReplacedDuringRun,
+  ScmWetExecutionAccepted,
+  ScmWetExecutionRefused,
+  WorktreeClean,
+  scm_acceptance_wet_execution_receipt,
+  executable_identity_standing,
+}
+import tools.scm_acceptance { scm_acceptance }
+
+// THE SUBJECT MUST JOIN A DECLARED NODE, because a receipt whose node identity matches nothing is
+// evidence filed against a row that does not exist -- and the identity is the durable one rather
+// than the slug precisely so a rename cannot orphan it. The fabricated-identity control is what
+// makes the positive claim discriminating: without it, a join that matched everything would pass.
+fn declared_nodes_carrying_identity(identity: String) -> Int {
+  declared_roadmap_nodes()
+    |> filter(n => (n.identity as String) == identity)
+    |> count
+}
+
+test fn wet_receipt_subject_joins_exactly_one_declared_roadmap_node() -> Bool {
+  let receipt = scm_acceptance_wet_execution_receipt()
+  return declared_nodes_carrying_identity(
+    identity: receipt.partial_evidence.node as String,
+  ) == 1
+}
+
+test fn a_fabricated_wet_subject_identity_joins_no_declared_node() -> Bool {
+  return declared_nodes_carrying_identity(identity: "rn_NOT_A_DECLARED_NODE_IDENTITY") == 0
+}
+
+// THE CITATION MUST NAME THE SYMBOL THIS MODULE IMPORTS, not a string that merely looks like it.
+// The import above is what makes the claim real: if the instrument's entry is renamed or moved, the
+// import fails to resolve and this file stops compiling, which is a louder failure than a stale
+// string comparison would ever produce.
+test fn wet_receipt_cites_the_executed_instrument_symbol() -> Bool {
+  let receipt = scm_acceptance_wet_execution_receipt()
+  let cited = receipt.partial_evidence.executed_evidence
+  return cited.module_path == "tools.scm_acceptance"
+    && cited.decl_name == "scm_acceptance"
+}
+
+// EQUAL DIGESTS AT BOTH ENDS ARE THE ANTI-ALIASING CLAIM, and the planted pair is its RED. The
+// shared CARGO_TARGET_DIR on a session host lets a sibling build replace the executable in place,
+// which already invalidated one run of this instrument after the fact. A receipt whose digests
+// differ describes an execution nobody can identify, and the standing says so rather than the
+// consumer having to compare two strings and remember why.
+test fn this_wet_execution_held_one_executable_across_the_run() -> Bool {
+  let receipt = scm_acceptance_wet_execution_receipt()
+  match executable_identity_standing(provenance: receipt.provenance) {
+    ExecutableStableAcrossRun => true
+    ExecutableReplacedDuringRun { before: _, after: _ } => false
+  }
+}
+
+fn planted_provenance(before: NonEmptyStr, after: NonEmptyStr) -> ScmWetExecutionProvenance {
+  let actual = scm_acceptance_wet_execution_receipt()
+  return ScmWetExecutionProvenance {
+    host: actual.provenance.host,
+    kernel: actual.provenance.kernel,
+    architecture: actual.provenance.architecture,
+    resolved_cargo: actual.provenance.resolved_cargo,
+    cargo_version: actual.provenance.cargo_version,
+    rustc_version: actual.provenance.rustc_version,
+    executable_digest_before: before,
+    executable_digest_after: after,
+    worktree_before: WorktreeClean,
+    worktree_after: WorktreeClean,
+    started_at: actual.provenance.started_at,
+    ended_at: actual.provenance.ended_at,
+    outcome: ScmWetExecutionAccepted,
+  }
+}
+
+test fn an_executable_replaced_mid_run_is_named_rather_than_admitted() -> Bool {
+  match executable_identity_standing(
+    provenance: planted_provenance(
+      before: "aaaa000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+      after: "bbbb000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+    ),
+  ) {
+    ExecutableReplacedDuringRun { before: b, after: a } =>
+      b == "aaaa000000000000000000000000000000000000000000000000000000000000"
+        && a == "bbbb000000000000000000000000000000000000000000000000000000000000"
+    ExecutableStableAcrossRun => false
+  }
+}
+
+// THE RECEIPT RECORDS AN ACCEPTED RUN, and the arm carries no exit code because success has nothing
+// to compare. The refusal arm is matched here so that a later edit flipping the inhabitant to a
+// refusal cannot pass this file unnoticed.
+test fn the_recorded_wet_outcome_is_the_accepting_arm() -> Bool {
+  let receipt = scm_acceptance_wet_execution_receipt()
+  match receipt.provenance.outcome {
+    ScmWetExecutionAccepted => true
+    ScmWetExecutionRefused { exit_code: _ } => false
+  }
+}
