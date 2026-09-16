@@ -292,6 +292,22 @@ fn docker_image_inspect_names_no_such_image(stderr: String) -> Bool {
   string_contains(s: stderr, pattern: "No such image")
 }
 
+// THE DAEMON'S OWN WORDS FOR "THAT NAME IS NOT TAKEN", AND WHY THE DISTINCTION IS LOAD-BEARING.
+// `docker container inspect` exits non-zero for a container that does not exist AND for a daemon that
+// could not be reached, a socket permission failure, and a document this side could not parse. A
+// caller asking "is this name free" and reading any non-zero exit as "free" has answered yes for
+// every one of those -- which is the absorbing arm of DESIGN section 5 in the one place it costs an
+// outage, because the caller then renames onto a name that was taken and finds out after stopping
+// the thing it was protecting.
+//
+// SO THE MARKER IS CITED RATHER THAN THE EXIT CODE. This is the same shape as the image reader above
+// and carries the same limitation honestly: it is a string upstream prints, not a typed error code
+// the API surfaces, so a wording change upstream turns a free-name answer into an unread one -- which
+// is the safe direction, because an unread name refuses.
+fn docker_container_inspect_names_no_such_container(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "No such container")
+}
+
 type DockerImageInspectIdRead
   = DockerImageInspectId { id: NonEmptyStr }
   | DockerImageInspectIdUnreadable { cause: String }

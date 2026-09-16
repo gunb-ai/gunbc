@@ -28,6 +28,7 @@ import gunbc.spark.serving_rank_observe {
   ObservedRankSubject, observed_rank_subject, observed_rank_subject_text,
   RankObservationRefusal, rank_observation_refusal_text,
   RankInspectReading, RankInspected, RankInspectRefused, observe_rank_container,
+  ContainerPresence, ContainerPresent, ContainerAbsent, ContainerPresenceUnread, observe_container_presence,
   RankTransportObservation, RankTransportObserved, RankTransportRefused, RankTransportVerdict,
   observe_rank_transport, rank_transport_verdict_text,
 }
@@ -139,15 +140,19 @@ data relaunch_unobservable_fields: List<UnobservableField> = [
 
 type FieldComparison
   = FieldAgrees { field: SpecField }
-  | FieldDiffersOnAxis { field: SpecField, axis: RelaunchAxis, planned: String, observed: String }
+  | FieldDiffersOnAxis { field: SpecField, axes: List<RelaunchAxis>, planned: String, observed: String }
   | FieldDiffersOffAxis { field: SpecField, planned: String, observed: String }
   | FieldUnreadable { field: SpecField, cause: NonEmptyStr }
 
 fn field_comparison_text(c: FieldComparison) -> String {
   match c {
     FieldAgrees { field: f } => join([spec_field_wire(f: f) as String, " agrees"], "")
-    FieldDiffersOnAxis { field: f, axis: a, planned: p, observed: o } =>
-      join([spec_field_wire(f: f) as String, " differs on the ", relaunch_axis_wire(a: a) as String, " axis: planned ", p, ", observed ", o], "")
+    FieldDiffersOnAxis { field: f, axes: axs, planned: p, observed: o } =>
+      join([
+        spec_field_wire(f: f) as String, " differs on ",
+        join(map(axs, a => relaunch_axis_wire(a: a) as String), " and "),
+        ": planned ", p, ", observed ", o,
+      ], "")
     FieldDiffersOffAxis { field: f, planned: p, observed: o } =>
       join([spec_field_wire(f: f) as String, " differs OFF every declared axis: planned ", p, ", observed ", o], "")
     FieldUnreadable { field: f, cause: c } =>
@@ -244,7 +249,7 @@ fn compare_env_field(spec: DockerCreateSpec, observed: ContainerInspect, gid_sel
             Absent => FieldAgrees { field: SpecEnv }
             Present { value: _ } => FieldDiffersOnAxis {
               field: SpecEnv,
-              axis: TransportAxis,
+              axes: [TransportAxis],
               planned: join(map(differences, d => join([d.name as String, "=", d.planned], "")), ", "),
               observed: join(map(differences, d => env_difference_observed_text(d: d)), ", "),
             }
@@ -401,7 +406,7 @@ fn compare_text_field(field: SpecField, planned: String, observed: String?) -> F
         FieldAgrees { field: field }
       } else {
         match container_field_axis(f: field) {
-          Present { value: axis } => FieldDiffersOnAxis { field: field, axis: axis, planned: planned, observed: o }
+          Present { value: axis } => FieldDiffersOnAxis { field: field, axes: [axis], planned: planned, observed: o }
           Absent => FieldDiffersOffAxis { field: field, planned: planned, observed: o }
         }
       }
@@ -410,9 +415,31 @@ fn compare_text_field(field: SpecField, planned: String, observed: String?) -> F
 
 // ── THE DELTA VERDICT ─────────────────────────────────────────────────────────────────────────
 
+// BOTH ARMS CARRY THE WHOLE COMPARISON, and the refusing one carries it for the same reason the
+// admitting one does: the verdict is which arm, and the evidence is every field that was asked. A
+// first cut had the refusal carry only its offending rows, which made "what DID agree" unanswerable
+// from a refusal -- so an operator reading a refused delta could not tell a container that differed
+// in one place from one that differed in eleven, and the off-axis rows were also carried twice, once
+// in the refusal and once wherever a reader re-derived the rest.
 type RelaunchDelta
   = DeltaOnlyIntended { comparisons: List<FieldComparison>, unobservable: List<UnobservableField> }
-  | DeltaRefused { off_axis: List<FieldComparison>, unreadable: List<FieldComparison> }
+  | DeltaRefused { comparisons: List<FieldComparison>, unobservable: List<UnobservableField> }
+
+// THE OFFENDING SUBSET IS A PROJECTION OF THE EVIDENCE, NOT A SECOND COPY OF IT.
+fn delta_off_axis(comparisons: List<FieldComparison>) -> List<FieldComparison> {
+  filter(comparisons, c => comparison_is_off_axis(c: c))
+}
+
+fn delta_unreadable(comparisons: List<FieldComparison>) -> List<FieldComparison> {
+  filter(comparisons, c => comparison_is_unreadable(c: c))
+}
+
+fn delta_comparisons(d: RelaunchDelta) -> List<FieldComparison> {
+  match d {
+    DeltaOnlyIntended { comparisons: cs, unobservable: _ } => cs
+    DeltaRefused { comparisons: cs, unobservable: _ } => cs
+  }
+}
 
 // AN UNREADABLE FIELD REFUSES THE TRANSACTION JUST AS AN OFF-AXIS DIFFERENCE DOES, and this is the
 // arm most likely to be argued with. "I could not read the mounts" is not "the mounts agree"; a
@@ -422,10 +449,8 @@ type RelaunchDelta
 // the only ones admitted uncompared.
 fn relaunch_delta(spec: DockerCreateSpec, observed: ContainerInspect, gid_selection: NcclRoceGidSelection) -> RelaunchDelta {
   let comparisons = relaunch_comparisons(spec: spec, observed: observed, gid_selection: gid_selection)
-  let off_axis = filter(comparisons, c => comparison_is_off_axis(c: c))
-  let unreadable = filter(comparisons, c => comparison_is_unreadable(c: c))
-  if count(off_axis) > 0 || count(unreadable) > 0 {
-    DeltaRefused { off_axis: off_axis, unreadable: unreadable }
+  if count(delta_off_axis(comparisons: comparisons)) > 0 || count(delta_unreadable(comparisons: comparisons)) > 0 {
+    DeltaRefused { comparisons: comparisons, unobservable: relaunch_unobservable_fields }
   } else {
     DeltaOnlyIntended { comparisons: comparisons, unobservable: relaunch_unobservable_fields }
   }
@@ -435,7 +460,7 @@ fn comparison_is_off_axis(c: FieldComparison) -> Bool {
   match c {
     FieldDiffersOffAxis { field: _, planned: _, observed: _ } => true
     FieldAgrees { field: _ } => false
-    FieldDiffersOnAxis { field: _, axis: _, planned: _, observed: _ } => false
+    FieldDiffersOnAxis { field: _, axes: _, planned: _, observed: _ } => false
     FieldUnreadable { field: _, cause: _ } => false
   }
 }
@@ -444,7 +469,7 @@ fn comparison_is_unreadable(c: FieldComparison) -> Bool {
   match c {
     FieldUnreadable { field: _, cause: _ } => true
     FieldAgrees { field: _ } => false
-    FieldDiffersOnAxis { field: _, axis: _, planned: _, observed: _ } => false
+    FieldDiffersOnAxis { field: _, axes: _, planned: _, observed: _ } => false
     FieldDiffersOffAxis { field: _, planned: _, observed: _ } => false
   }
 }
@@ -537,20 +562,40 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
           Absent =>
             match differences.first() {
               Absent => FieldAgrees { field: SpecCommand }
-              Present { value: d } =>
-                match argv_difference_axis(planned: spec.command, d: d) {
-                  Absent => FieldDiffersOffAxis { field: SpecCommand, planned: d.planned, observed: d.observed }
-                  Present { value: axis } => FieldDiffersOnAxis {
-                    field: SpecCommand,
-                    axis: axis,
-                    planned: join(map(differences, x => join(["word ", to_string(x.index), " = ", x.planned], "")), ", "),
-                    observed: join(map(differences, x => x.observed), ", "),
-                  }
-                }
+              Present { value: _ } => FieldDiffersOnAxis {
+                field: SpecCommand,
+                axes: argv_difference_axes(planned: spec.command, differences: differences),
+                planned: join(map(differences, x => join([
+                  "word ", to_string(x.index), " (",
+                  match argv_difference_axis(planned: spec.command, d: x) {
+                    Present { value: a } => relaunch_axis_wire(a: a) as String
+                    Absent => "no axis"
+                  },
+                  ") = ", x.planned,
+                ], "")), ", "),
+                observed: join(map(differences, x => x.observed), ", "),
+              }
             }
         }
       }
   }
+}
+
+// THE ARGV CAN MOVE ON TWO AXES AT ONCE AND THE VERDICT SAYS BOTH. This relaunch changes
+// `--max-num-seqs` and `--gpu-memory-utilization` together, so a comparison reporting the axis of the
+// FIRST differing word would name batching and stay silent about utilization -- a true sentence that
+// leaves out half of what moved, which is the readback reporting less than it read.
+fn argv_difference_axes(planned: List<String>, differences: List<ArgvDifference>) -> List<RelaunchAxis> {
+  fold(differences, init: [], f: (acc, d) =>
+    match argv_difference_axis(planned: planned, d: d) {
+      Absent => acc
+      Present { value: a } =>
+        if count(filter(acc, x => (relaunch_axis_wire(a: x) as String) == (relaunch_axis_wire(a: a) as String))) > 0 {
+          acc
+        } else {
+          concat(acc, [a])
+        }
+    })
 }
 
 fn axis_is_absent(a: RelaunchAxis?) -> Bool {
@@ -614,12 +659,18 @@ fn relaunch_delta_text(d: RelaunchDelta) -> String {
           "    ", spec_field_wire(f: u.field) as String, ": ", u.reason as String, "\n      ", u.trigger as String,
         ], "")), "\n"),
       ], "")
-    DeltaRefused { off_axis: offs, unreadable: uns } =>
+    DeltaRefused { comparisons: cs, unobservable: us } =>
       join([
-        "the successor spec is REFUSED: it differs from the incumbent in ", to_string(count(offs)),
-        " place(s) that no declared axis explains, and ", to_string(count(uns)),
-        " field(s) could not be read back at all:\n",
-        join(map(concat(offs, uns), c => join(["  ", field_comparison_text(c: c)], "")), "\n"),
+        "the successor spec is REFUSED: it differs from the incumbent in ",
+        to_string(count(delta_off_axis(comparisons: cs))),
+        " place(s) that no declared axis explains, and ",
+        to_string(count(delta_unreadable(comparisons: cs))),
+        " field(s) could not be read back at all. Every field that was asked:\n",
+        join(map(cs, c => join(["  ", field_comparison_text(c: c)], "")), "\n"),
+        "\n  NOT COMPARED, declared rather than omitted:\n",
+        join(map(us, u => join([
+          "    ", spec_field_wire(f: u.field) as String, ": ", u.reason as String, "\n      ", u.trigger as String,
+        ], "")), "\n"),
       ], "")
   }
 }
@@ -680,6 +731,9 @@ type RelaunchStep
   | StepStartSuccessor
   | StepReadBackSuccessor
   | StepVerifyTransport
+  | StepRemoveSuccessor
+  | StepRestoreIncumbentName
+  | StepStartRestoredIncumbent
 
 fn relaunch_step_wire(s: RelaunchStep) -> NonEmptyStr {
   match s {
@@ -691,8 +745,19 @@ fn relaunch_step_wire(s: RelaunchStep) -> NonEmptyStr {
     StepStartSuccessor => "start-successor" as NonEmptyStr
     StepReadBackSuccessor => "read-back-successor" as NonEmptyStr
     StepVerifyTransport => "verify-transport-flipped" as NonEmptyStr
+    StepRemoveSuccessor => "rollback-remove-successor" as NonEmptyStr
+    StepRestoreIncumbentName => "rollback-restore-incumbent-name" as NonEmptyStr
+    StepStartRestoredIncumbent => "rollback-start-restored-incumbent" as NonEmptyStr
   }
 }
+
+// THE ROLLBACK'S OWN STEPS ARE STEPS, not strings beside a step that did not run. A previous revision
+// labelled the successor removal with `StepCreateSuccessor` and the restore-start with
+// `StepStartSuccessor`, so `relaunch_leg` -- which prefixes every cause with the step's wire word --
+// handed an operator mid-outage a `RollbackFailed { step: remove-successor }` whose cause text began
+// `create-successor:`. DESIGN section 5 requires a diagnostic to be LOCATED, and a diagnostic naming
+// an operation that did not happen is located wrongly, which is worse than unlocated because it is
+// believed.
 
 // THE ROLLBACK IS A PATH, NOT A SENTENCE, and it is reachable from every step that has already
 // changed the host. A transaction whose rollback is prose is a transaction with no rollback: the
@@ -705,7 +770,7 @@ fn relaunch_step_wire(s: RelaunchStep) -> NonEmptyStr {
 type RollbackOutcome
   = NothingToRollBack
   | RolledBack { restored: NonEmptyStr }
-  | RollbackFailed { step: NonEmptyStr, cause: NonEmptyStr }
+  | RollbackFailed { step: RelaunchStep, cause: NonEmptyStr }
 
 fn relaunch_leg(
   ctx: SparkMaterializeContext,
@@ -741,18 +806,18 @@ fn rollback_to_preserved(
   uses net: Network
 {
   let removed = if successor_exists {
-    relaunch_leg(ctx: ctx, step: StepCreateSuccessor, command: docker_remove_force_command(name: name))
+    relaunch_leg(ctx: ctx, step: StepRemoveSuccessor, command: docker_remove_force_command(name: name))
   } else {
     none
   }
   match removed {
-    Present { value: why } => RollbackFailed { step: "remove-successor" as NonEmptyStr, cause: why }
+    Present { value: why } => RollbackFailed { step: StepRemoveSuccessor, cause: why }
     Absent =>
-      match relaunch_leg(ctx: ctx, step: StepPreserveIncumbent, command: docker_rename_command(name: preserved, new_name: name)) {
-        Present { value: why } => RollbackFailed { step: "restore-incumbent-name" as NonEmptyStr, cause: why }
+      match relaunch_leg(ctx: ctx, step: StepRestoreIncumbentName, command: docker_rename_command(name: preserved, new_name: name)) {
+        Present { value: why } => RollbackFailed { step: StepRestoreIncumbentName, cause: why }
         Absent =>
-          match relaunch_leg(ctx: ctx, step: StepStartSuccessor, command: docker_start_command(name: name)) {
-            Present { value: why } => RollbackFailed { step: "start-restored-incumbent" as NonEmptyStr, cause: why }
+          match relaunch_leg(ctx: ctx, step: StepStartRestoredIncumbent, command: docker_start_command(name: name)) {
+            Present { value: why } => RollbackFailed { step: StepStartRestoredIncumbent, cause: why }
             Absent => RolledBack { restored: name }
           }
       }
@@ -765,8 +830,8 @@ fn rollback_to_preserved(
 fn rollback_restart_incumbent(ctx: SparkMaterializeContext, name: NonEmptyStr) -> RollbackOutcome
   uses net: Network
 {
-  match relaunch_leg(ctx: ctx, step: StepStartSuccessor, command: docker_start_command(name: name)) {
-    Present { value: why } => RollbackFailed { step: "restart-stopped-incumbent" as NonEmptyStr, cause: why }
+  match relaunch_leg(ctx: ctx, step: StepStartRestoredIncumbent, command: docker_start_command(name: name)) {
+    Present { value: why } => RollbackFailed { step: StepStartRestoredIncumbent, cause: why }
     Absent => RolledBack { restored: name }
   }
 }
@@ -867,12 +932,12 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
       CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
     RankInspected { subject: _, container: incumbent } =>
       match relaunch_delta(spec: plan.spec, observed: incumbent, gid_selection: plan.gid_selection) {
-        DeltaRefused { off_axis: offs, unreadable: uns } =>
+        DeltaRefused { comparisons: cs, unobservable: us } =>
           CaptureAcc {
             captures: [],
             causes: [join([
               observed_rank_subject_text(s: plan.subject), ": ",
-              relaunch_delta_text(d: DeltaRefused { off_axis: offs, unreadable: uns }),
+              relaunch_delta_text(d: DeltaRefused { comparisons: cs, unobservable: us }),
             ], "") as NonEmptyStr],
           }
         DeltaOnlyIntended { comparisons: _, unobservable: _ } =>
@@ -917,9 +982,15 @@ fn preserved_name_is_free(
 ) -> NonEmptyStr?
   uses net: Network
 {
-  match observe_rank_container(ctx: ctx, subject: observed_rank_subject(host: subject.host, container: preserved)) {
-    RankInspectRefused { refusal: _ } => none
-    RankInspected { subject: _, container: existing } => Present { value: join([
+  match observe_container_presence(ctx: ctx, subject: observed_rank_subject(host: subject.host, container: preserved)) {
+    ContainerAbsent => none
+    ContainerPresenceUnread { refusal: r } => Present { value: join([
+      observed_rank_subject_text(s: subject), ": whether the name this transaction would preserve the incumbent under, ",
+      preserved as String, ", is already taken could not be read -- ", rank_observation_refusal_text(r: r),
+      ". Nothing has been stopped. An unread name is not a free name, and proceeding would discover a ",
+      "collision at the rename with the whole arm already down.",
+    ], "") as NonEmptyStr }
+    ContainerPresent { container: existing } => Present { value: join([
       observed_rank_subject_text(s: subject), ": the name this transaction would preserve the incumbent under, ",
       preserved as String, ", is already held by container ", existing.id,
       ". Nothing has been stopped. Remove or rename that object first -- this transaction will not choose a second name, ",
@@ -1203,6 +1274,6 @@ fn rollback_outcome_text(o: RollbackOutcome) -> String {
     NothingToRollBack => "nothing on the host had been changed"
     RolledBack { restored: n } => join([n as String, " is restored and started"], "")
     RollbackFailed { step: s, cause: c } =>
-      join(["THE ROLLBACK ITSELF FAILED at ", s as String, " -- this host needs a human: ", c as String], "")
+      join(["THE ROLLBACK ITSELF FAILED at ", relaunch_step_wire(s: s) as String, " -- this host needs a human: ", c as String], "")
   }
 }

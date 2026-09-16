@@ -8,6 +8,7 @@ import product.placement_supply { HostIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
   docker_container_inspect_command, docker_logs_command,
+  docker_container_inspect_names_no_such_container,
   docker_exec_command, DockerEnvAssignment,
 }
 import extdeps.docker.container_inspect {
@@ -84,7 +85,7 @@ fn rank_observation_refusal_text(r: RankObservationRefusal) -> String {
 // make an unreachable host read as a broken container.
 type RankLegOutcome
   = RankLegRan { stdout: String }
-  | RankLegFailed { refusal: RankObservationRefusal }
+  | RankLegFailed { refusal: RankObservationRefusal, stderr: String }
 
 fn rank_leg(
   ctx: SparkMaterializeContext,
@@ -96,14 +97,17 @@ fn rank_leg(
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
     RemoteUnreachable { cause: why } =>
-      RankLegFailed { refusal: RankObservationRefusal { subject: subject, step: step, cause: why as NonEmptyStr } }
+      RankLegFailed { refusal: RankObservationRefusal { subject: subject, step: step, cause: why as NonEmptyStr }, stderr: "" }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {
-        RankLegFailed { refusal: RankObservationRefusal {
-          subject: subject,
-          step: step,
-          cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") as NonEmptyStr,
-        } }
+        RankLegFailed {
+          refusal: RankObservationRefusal {
+            subject: subject,
+            step: step,
+            cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") as NonEmptyStr,
+          },
+          stderr: err,
+        }
       } else {
         RankLegRan { stdout: out }
       }
@@ -118,17 +122,50 @@ type RankInspectReading
 
 data rank_inspect_step: NonEmptyStr = "container-inspect" as NonEmptyStr
 
-fn observe_rank_container(ctx: SparkMaterializeContext, subject: ObservedRankSubject) -> RankInspectReading
+// ── PRESENCE IS THREE-VALUED, AND THE THIRD VALUE IS THE ONE THAT MATTERS ─────────────────────
+//
+// "THE DAEMON SAYS NO SUCH CONTAINER" AND "I COULD NOT ASK" ARE DIFFERENT FACTS. A caller deciding
+// whether a name is free reads the first as yes and MUST NOT read the second as anything: an
+// unreachable host, a socket permission failure and a document this side could not parse all exit
+// non-zero, and treating them as absence is the arm that renames onto a taken name and discovers it
+// after stopping a serving arm. Only the daemon's own `No such container` answers the question.
+type ContainerPresence
+  = ContainerPresent { container: ContainerInspect }
+  | ContainerAbsent
+  | ContainerPresenceUnread { refusal: RankObservationRefusal }
+
+fn observe_container_presence(ctx: SparkMaterializeContext, subject: ObservedRankSubject) -> ContainerPresence
   uses net: Network
 {
   match rank_leg(ctx: ctx, subject: subject, step: rank_inspect_step, command: docker_container_inspect_command(name: subject.container)) {
-    RankLegFailed { refusal: r } => RankInspectRefused { refusal: r }
+    RankLegFailed { refusal: r, stderr: err } =>
+      if docker_container_inspect_names_no_such_container(stderr: err) {
+        ContainerAbsent
+      } else {
+        ContainerPresenceUnread { refusal: r }
+      }
     RankLegRan { stdout: out } =>
       match container_inspect_from_stdout(stdout: out) {
         ContainerInspectUnreadable { cause: why } =>
-          RankInspectRefused { refusal: RankObservationRefusal { subject: subject, step: rank_inspect_step, cause: why as NonEmptyStr } }
-        ContainerInspectDecoded { container: c } => RankInspected { subject: subject, container: c }
+          ContainerPresenceUnread { refusal: RankObservationRefusal { subject: subject, step: rank_inspect_step, cause: why as NonEmptyStr } }
+        ContainerInspectDecoded { container: c } => ContainerPresent { container: c }
       }
+  }
+}
+
+// THE RANK'S OWN CONTAINER MUST EXIST, so absence is a refusal on this route rather than an answer --
+// a rank whose container the daemon does not name is a rank this observation has nothing to say about.
+fn observe_rank_container(ctx: SparkMaterializeContext, subject: ObservedRankSubject) -> RankInspectReading
+  uses net: Network
+{
+  match observe_container_presence(ctx: ctx, subject: subject) {
+    ContainerPresenceUnread { refusal: r } => RankInspectRefused { refusal: r }
+    ContainerAbsent => RankInspectRefused { refusal: RankObservationRefusal {
+      subject: subject,
+      step: rank_inspect_step,
+      cause: "the daemon names no container by this name on this host" as NonEmptyStr,
+    } }
+    ContainerPresent { container: c } => RankInspected { subject: subject, container: c }
   }
 }
 
@@ -215,7 +252,7 @@ fn capture_rank_log(ctx: SparkMaterializeContext, subject: ObservedRankSubject, 
   uses net: Network
 {
   match rank_leg(ctx: ctx, subject: subject, step: step, command: docker_logs_command(name: subject.container)) {
-    RankLegFailed { refusal: r } => RankLogRefused { refusal: r }
+    RankLegFailed { refusal: r, stderr: _ } => RankLogRefused { refusal: r }
     RankLegRan { stdout: out } => RankLogCaptured { text: out }
   }
 }
@@ -305,7 +342,7 @@ fn observe_rank_vllm_revision(ctx: SparkMaterializeContext, subject: ObservedRan
     step: rank_revision_step,
     command: docker_exec_command(name: subject.container, env: [], argv: vllm_version_probe_argv),
   ) {
-    RankLegFailed { refusal: r } => RankRevisionRefused { refusal: r }
+    RankLegFailed { refusal: r, stderr: _ } => RankRevisionRefused { refusal: r }
     RankLegRan { stdout: out } => {
       let text = trim(s: out)
       if text == "" {

@@ -32,11 +32,11 @@ import gunbc.spark.model_snapshot_materialize {
 }
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
-  glm_native_concurrent_profile,
+  glm_native_concurrent_profile, ArmIntent, ArmBoundedExperiment,
 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
-  plan_arm_launch, arm_rail_gid_selection, glm_native_container_name,
+  plan_arm_launch_for, arm_rail_gid_selection, glm_native_container_name,
 }
 import gunbc.spark.serving_rank_observe {
   ObservedRankSubject, observed_rank_subject, observed_rank_subject_text,
@@ -247,6 +247,13 @@ fn glm_group_b_observe_wet() -> ProcessExit
 // decision. A relaunch that built its own spec would be a second authority for the thing the
 // incident was about.
 //
+// THE INTENT IS A BOUNDED EXPERIMENT, WHICH IS WHAT THIS RELAUNCH ACTUALLY IS. The profile it plans
+// carries no execution receipt: no engine running sixteen sequences at 8567 basis points has been
+// observed serving, which is precisely why someone wants to relaunch onto it. Asking for normal
+// serving would be asserting the receipt this arm does not have, and gunbc.spark.serving_arm_launch
+// intent_refusal refuses exactly that. When an engine on this profile IS observed serving, the
+// subject gains its receipt and the intent becomes a real question again rather than a formality.
+//
 // AND THE RANK IN THE PLAN IS THE PLANNER'S, WHICH THE TRANSACTION THEN CHECKS AGAINST THE
 // CONTAINER'S OWN ARGV. Group B's rank order is not its address order, so the transaction refuses
 // rather than reconciling if the two disagree.
@@ -265,11 +272,12 @@ type ArmPlanRoster
   | ArmPlanRefused { cause: NonEmptyStr }
 
 fn glm_group_b_rank_plans() -> ArmPlanRoster {
-  match plan_arm_launch(
+  match plan_arm_launch_for(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     group: glm_group_b_group,
+    intent: ArmBoundedExperiment,
     profile: glm_native_concurrent_profile,
   ) {
     ArmLaunchRefused { cause: why } => ArmPlanRefused { cause: why }
