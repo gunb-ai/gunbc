@@ -57,8 +57,9 @@ import extdeps.container.oci.digest { oci_content_digest_from_validated_sha256 }
 import gunbc.spark.v41_engram_staging {
   v41_staging_request, v41_stage, V41StagingVerified, V41StagingRefused, V41StagingUnestablished,
   v41_group_a_staging_standing, v41_staged_matching, v41_staged_with_readback,
-  v41_engram_disk_justification,
+  v41_engram_disk_justification_standing,
 }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
 
 data w_closed_population: SafetensorsPopulationStanding = safetensors_population_standing(
   members: deepseek_v4_1_flash_engram_index_members,
@@ -420,13 +421,43 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
               (o as String).contains("proud-deer-538")
                 && (o as String).contains("stages around")
                 && (o as String).contains("Fill is Unestablished")
-                && (v41_engram_disk_justification() as String).contains("2.2 GiB")
-                && (v41_engram_disk_justification() as String).contains("49.5")
+                && (o as String).contains("v41_engram_disk_justification_standing")
+                && (match v41_engram_disk_justification_standing {
+                  TranscribedUncited { read_obligation: _ } => match cited_figure_read_obligation(standing: v41_engram_disk_justification_standing) {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
+                  CitedToAuthority { authority: _ } => false
+                })
             V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
             V41StagingRefused { defects: _ } => false
           })
       }
     }
+  }
+}
+
+test fn rank_store_identity_is_global_ascending_not_supply_order() -> Bool {
+  let reversed = [w_row(i: 7), w_row(i: 6), w_row(i: 5), w_row(i: 4), w_row(i: 3), w_row(i: 2), w_row(i: 1), w_row(i: 0)]
+  match v41_transform_fixture(source: w_source(), spec: w_tiny_spec()) {
+    V41FixtureCorrespondenceHolds { subject: _, placed: fwd, encoding: a } =>
+      match v41_transform_fixture(source: reversed, spec: w_tiny_spec()) {
+        V41FixtureCorrespondenceHolds { subject: _, placed: rev, encoding: b } =>
+          match v41_encoding_digest_of(e: a) {
+            Absent => false
+            Present { value: da } => match v41_encoding_digest_of(e: b) {
+              Absent => false
+              Present { value: db } =>
+                serialize_content_hash(hash: da) as String == serialize_content_hash(hash: db) as String
+                  && !any(fwd, p => any(fwd, q => q.rank == p.rank && q.global_row < p.global_row && byte_size_count(b: q.offset) >= byte_size_count(b: p.offset)))
+                  && !any(rev, p => any(rev, q => q.rank == p.rank && q.global_row < p.global_row && byte_size_count(b: q.offset) >= byte_size_count(b: p.offset)))
+            }
+          }
+        V41PublishedTransformUnestablished { obligation: _ } => false
+        V41TransformUnfaithful { defects: _ } => false
+      }
+    V41PublishedTransformUnestablished { obligation: _ } => false
+    V41TransformUnfaithful { defects: _ } => false
   }
 }
 

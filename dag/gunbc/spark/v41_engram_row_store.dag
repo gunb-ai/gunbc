@@ -23,7 +23,7 @@ import gunbc.fabric.engram_materialization { engram_component_identity }
 //
 // Encoding identity is a function of values the executing code consumes, or a fold over them —
 // not a parallel prose checklist. rank_map is what dest_rank/local_row match; row_order is what
-// rank_payload concatenates; dtypes go through SafetensorsDtype + safetensors_dtype_token; endianness
+// rank_payload concatenates (offsets on a rank follow global_row, not the caller's list order); dtypes go through SafetensorsDtype + safetensors_dtype_token; endianness
 // is Endianness + endianness_token. Alignment is not a key field: nothing pads, and packed 264-byte
 // records would disagree with a 64-byte alignment sentence. The digest is THIS encoding's; it does
 // not inherit a safetensors shard digest.
@@ -396,20 +396,28 @@ type V41TransformResult
   | V41PublishedTransformUnestablished { obligation: NonEmptyStr }
   | V41TransformUnfaithful { defects: List<NonEmptyStr> }
 
-fn v41_count_on_rank_before(rows: List<V41SourceRow>, index: Nat, rank: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
-  length(filter(enumerate(rows), p => p.first < index && match v41_dest_rank(global_row: p.second.global_row, spec: spec) {
+fn v41_source_row_precedes(before: V41SourceRow, after: V41SourceRow) -> Bool {
+  before.global_row < after.global_row || (before.global_row == after.global_row && (before.tensor as String) < (after.tensor as String))
+}
+
+fn v41_placed_row_precedes(before: V41PlacedRow, after: V41PlacedRow) -> Bool {
+  before.global_row < after.global_row || (before.global_row == after.global_row && (before.tensor as String) < (after.tensor as String))
+}
+
+fn v41_count_on_rank_before(rows: List<V41SourceRow>, row: V41SourceRow, rank: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
+  length(filter(rows, r => v41_source_row_precedes(before: r, after: row) && match v41_dest_rank(global_row: r.global_row, spec: spec) {
     Present { value: d } => d == rank
     Absent => false
   }))
 }
 
 fn v41_place_all(rows: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> List<V41PlacedRow> {
-  flat_map(enumerate(rows), p => match v41_dest_rank(global_row: p.second.global_row, spec: spec) {
+  flat_map(rows, row => match v41_dest_rank(global_row: row.global_row, spec: spec) {
     Absent => [] as List<V41PlacedRow>
     Present { value: rank } => match v41_place_row(
-      row: p.second,
+      row: row,
       spec: spec,
-      prior_on_rank: v41_count_on_rank_before(rows: rows, index: p.first, rank: rank, spec: spec),
+      prior_on_rank: v41_count_on_rank_before(rows: rows, row: row, rank: rank, spec: spec),
     ) {
       Present { value: placed } => [placed]
       Absent => [] as List<V41PlacedRow>
@@ -455,7 +463,10 @@ fn v41_correspondence_defects(source: List<V41SourceRow>, placed: List<V41Placed
       Present { value: d } => p.rank != d
     }),
     p => join(["row ", to_string(p.global_row), " placed on rank ", to_string(p.rank), " against the declared partition rule"], "") as NonEmptyStr)
-  concat(concat(concat(count_mismatch, lost), dup), wrong_rank)
+  let not_ascending = map(
+    filter(placed, p => any(placed, q => q.rank == p.rank && v41_placed_row_precedes(before: q, after: p) && byte_size_count(b: q.offset) >= byte_size_count(b: p.offset))),
+    p => join(["rank ", to_string(p.rank), " offset order is not global-ascending; row ", to_string(p.global_row), " is not after every preceding global_row on that rank"], "") as NonEmptyStr)
+  concat(concat(concat(concat(count_mismatch, lost), dup), wrong_rank), not_ascending)
 }
 
 fn v41_transform_fixture(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V41TransformResult {
