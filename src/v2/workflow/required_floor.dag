@@ -656,8 +656,32 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.memory_stall_refusal_witness",
     "test.claim.docs_projection_gate_test",
     "test.claim.if_join_pool_binding_witness_test",
+    "test.claim.runner_slot_provision",
   ]
 }
+
+// THE ALLOCATION-TO-DEPLOY SEAM IS ADMITTED AT MODULE GRAIN, AND THE ROW THAT FORCED IT IS
+// `no_deploy_row_out_commits_the_memory_budget`.
+//
+// That claim states the law over every fleet deploy row -- `runner_count > 0` and no row exceeding
+// its admitted width -- and the 26/25 GiB transition drove srv2's derived width to zero, so the row
+// became the executable statement of whether a refused host had been flattened into an operational
+// deploy desiring nothing. It was not executed. The exact-head disposition ledger recorded it
+// `declined_outside_required_gate`, because this module carried no admitted prefix.
+//
+// THE AGGREGATE DID NOT SHOW THIS AND COULD NOT. A run reporting `planned=3938 executed=3938` says
+// every SELECTED claim reached a verdict; the same ledger recorded 273 claims declined outside the
+// gate, and an invariant in that population is indistinguishable from one that passed unless the
+// disposition rows are read per identity. Reading the aggregate as "nothing relevant was refused
+// before evaluation" is the execution-provenance conflation DESIGN names: a claim that never ran and
+// a claim that ran clean rendered identically.
+//
+// IT IS ADMITTED RATHER THAN EXPECTED-RED BECAUSE IT IS AN INVARIANT THE BRANCH INTENDS TO SATISFY,
+// not accepted debt. The module's other rows are admitted with it at module grain: they are ordinary
+// laws about slot provisioning -- ownership, grammar membership, retirement-gated teardown -- and
+// carrying one identity into the gate while its siblings stay outside would make the seam's coverage
+// depend on which single row someone remembered to enroll.
+data required_gate_allocation_deploy_seam_note: String = "test.claim.runner_slot_provision is admitted to the required gate because no_deploy_row_out_commits_the_memory_budget is the executable statement of the positive-width law at the allocation-to-deploy seam; it was declined_outside_required_gate at 890c264be36 while srv2 carried a zero-width operational deploy row"
 
 // THE WORKFLOW-CONSOLIDATION MODULE IS ADMITTED AT EXACT MODULE GRAIN. Three declared rung
 // drops cite its `w_RED_the_deleted_lanes_do_not_return` row as the countable refusal if a cut
