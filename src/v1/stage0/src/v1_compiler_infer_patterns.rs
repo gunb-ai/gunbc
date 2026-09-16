@@ -1137,11 +1137,11 @@ pub fn render_constructor_witness(
             },
         );
         if ((parts.clone().len() as i64) == 0) {
-            ctor
+            ctor.clone()
         } else {
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(ctor, " { ".to_string()),
+                    v1_rt::concat(ctor.clone(), " { ".to_string()),
                     parts.clone().join(&", ".to_string()),
                 ),
                 " }".to_string(),
