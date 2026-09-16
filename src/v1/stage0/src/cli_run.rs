@@ -15404,6 +15404,12 @@ fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> 
                     .to_string(),
             )
         }
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat => {
+            Some(
+                "resolved-graph-cache provider refused disk hit: unqualified persisted format"
+                    .to_string(),
+            )
+        }
         ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),

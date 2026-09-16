@@ -124,8 +124,12 @@ fn stored_disk_probe_hit_builds_provider_ctx_once() {
         &semantic,
         &parts,
     )
-    .expect("valid v3 probe must hit");
-    assert_eq!(outcome, ResolvedGraphProviderOutcome::Hit);
+    .expect("admitted FNV disk parts must reach a typed lookup");
+    assert_eq!(
+        outcome,
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat,
+        "disk objects do not yet carry ObservedEvaluationPreimage; synthesizing the request preimage is refused"
+    );
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),
         builds_before,
@@ -138,8 +142,11 @@ fn stored_disk_probe_hit_builds_provider_ctx_once() {
         &semantic,
         &parts,
     )
-    .expect("second hit must reuse ctx");
-    assert_eq!(outcome2, ResolvedGraphProviderOutcome::Hit);
+    .expect("second serve must reuse ctx");
+    assert_eq!(
+        outcome2,
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat
+    );
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),
         builds_before,
@@ -162,7 +169,11 @@ fn stored_disk_probe_wrong_request_key_refuses() {
         &parts,
     )
     .expect("wrong stored request key must refuse");
-    assert_eq!(outcome, ResolvedGraphProviderOutcome::RefusedWrongArtifact);
+    assert_eq!(
+        outcome,
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat,
+        "format wall precedes key comparison until PersistedProbe is inhabited from disk"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -182,8 +193,8 @@ fn stored_disk_probe_wrong_semantic_digest_refuses() {
     .expect("wrong stored semantic digest must refuse via provider_serve");
     assert_eq!(
         outcome,
-        ResolvedGraphProviderOutcome::RefusedWrongContent,
-        "modeled provider_serve must own semantic digest comparison"
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat,
+        "format wall precedes content comparison until PersistedProbe is inhabited from disk"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -199,6 +210,18 @@ fn incomplete_provider_outcome_maps_to_typed_refusal_message() {
     assert!(
         msg.contains("incomplete") && msg.contains("compile_clean_diagnostic_union"),
         "typed incomplete refusal: {msg}"
+    );
+}
+
+#[test]
+fn unqualified_persisted_format_outcome_maps_to_typed_refusal_message() {
+    let msg = v1_compiler::cli_run::provider_integrity_refusal_message_for_test(
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat,
+    )
+    .expect("unqualified persisted format must refuse");
+    assert!(
+        msg.contains("unqualified persisted format"),
+        "typed unqualified-format refusal: {msg}"
     );
 }
 
@@ -224,11 +247,11 @@ fn synthetic_wrong_semantic_parts_refuse_via_provider_serve() {
         "0000000000000000",
         &parts,
     )
-    .expect("wrong stored semantic digest must refuse via provider_serve");
+    .expect("synthetic FNV disk parts must refuse via provider_serve");
     assert_eq!(
         outcome,
-        ResolvedGraphProviderOutcome::RefusedWrongContent,
-        "stored header semantic digest must disagree with derived artifact content"
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat,
+        "format wall precedes content comparison until PersistedProbe is inhabited from disk"
     );
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),

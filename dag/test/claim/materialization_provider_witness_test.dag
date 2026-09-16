@@ -68,6 +68,7 @@ import std.materialization_provider {
   lookup_is_refused_unqualified_persisted_format,
   lookup_refused_incomplete_missing, lookup_served_identity,
   serve_resolved_graph_stored_disk_probe,
+  serve_resolved_graph_incomplete_stored_disk_probe,
   admission_is_admitted, admission_evicted_keys,
   admission_is_budget_exhausted, admission_refused_incomplete_missing,
   admission_is_refused_incomplete_write, admission_is_refused_kind_mismatch_write,
@@ -350,6 +351,31 @@ test fn red_sha256_at_fnv1a64_seam_refuses_without_alias() -> Bool {
       }
     Absent => false
   }
+}
+
+test fn stored_disk_probe_admitted_fnv_parts_refuse_unqualified_persisted_format() -> Bool {
+  let fnv = as_content_hash_structural(structural: content_hash_atom(value: "closure-fnv-1"))
+  lookup_is_refused_unqualified_persisted_format(l: serve_resolved_graph_stored_disk_probe(
+    closure_digest: fnv,
+    compiler_digest: as_content_hash_structural(structural: content_hash_atom(value: "compiler-identity-1")),
+    stored_request_key: fnv,
+    stored_semantic_digest: fnv,
+    graph_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-graph-1")),
+    graph_bytes: byte_size(count: 60),
+    indices_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-indices-1")),
+    indices_bytes: byte_size(count: 25),
+    union_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-diagnostics-1")),
+    union_bytes: byte_size(count: 15)
+  ))
+    && lookup_is_refused_unqualified_persisted_format(l: serve_resolved_graph_incomplete_stored_disk_probe(
+      closure_digest: fnv,
+      compiler_digest: as_content_hash_structural(structural: content_hash_atom(value: "compiler-identity-1")),
+      stored_request_key: fnv,
+      graph_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-graph-1")),
+      graph_bytes: byte_size(count: 60),
+      indices_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-indices-1")),
+      indices_bytes: byte_size(count: 25)
+    ))
 }
 
 test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bool {
