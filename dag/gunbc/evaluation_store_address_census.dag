@@ -42,7 +42,7 @@ data evaluation_store_address_home_modules: List<String> = [
 
 data evaluation_store_address_production_exclude: List<String> = ["/test/"]
 
-data evaluation_store_address_exact_resolution_roots: List<String> = [
+data evaluation_store_address_caller_horizon_roots: List<String> = [
   "dag"
 ]
 
@@ -84,7 +84,7 @@ fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
   compile_dag_callsite_resolved_call_edges(
     evaluation_store_address_home_modules,
     evaluation_store_address_production_exclude,
-    evaluation_store_address_exact_resolution_roots,
+    evaluation_store_address_caller_horizon_roots,
     evaluation_store_address_production_leaves
   )
 }
@@ -94,7 +94,7 @@ fn evaluation_store_address_production_coverage() -> EvaluationStoreAddressProdu
     evaluation_store_address_production_exclude,
     evaluation_store_address_zero_candidate_guard_roots,
     evaluation_store_address_production_leaves,
-    evaluation_store_address_exact_resolution_roots
+    evaluation_store_address_caller_horizon_roots
   )
 }
 
@@ -103,7 +103,7 @@ fn evaluation_store_address_zero_candidate_plant_coverage() -> EvaluationStoreAd
     [],
     evaluation_store_address_zero_candidate_plant_roots,
     evaluation_store_address_production_leaves,
-    evaluation_store_address_exact_resolution_roots
+    evaluation_store_address_caller_horizon_roots
   )
 }
 
