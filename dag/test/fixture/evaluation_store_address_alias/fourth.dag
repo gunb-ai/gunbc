@@ -1,0 +1,15 @@
+module test.fixture.evaluation_store_address_alias.fourth
+
+import std.materialization_provider {
+  ArtifactRequest,
+  EvaluationStoreAddressAdmission,
+  evaluation_store_address
+}
+
+fn esa(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
+  evaluation_store_address(req: req)
+}
+
+fn fourth_module_aliased_call(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
+  esa(req: req)
+}

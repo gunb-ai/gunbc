@@ -12,6 +12,7 @@ import std.content_hash {
   sha256_hex_digest,
   sha1_hex_digest,
   as_content_hash_sha1,
+  content_hash_family,
 }
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.cache_identity {
@@ -54,7 +55,8 @@ import std.materialization_provider {
   admit_hash_family_for_scope, evaluation_result_binding_outcome,
   artifact_request_key,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
-  compiler_identity_input, in_process_probe, in_process_probe_for_request,
+  compiler_identity_input, in_process_materialization,
+  in_process_fnv_producer_observation_frontier,
   output_parse_tree, output_typed_module_interface,
   output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union,
   output_list_contains,
@@ -193,8 +195,16 @@ fn witness_v1_shape_digest() -> ContentHash {
   artifact_content_digest(artifact: witness_v1_shape_closure_artifact())
 }
 
+fn minted_in_process(
+  req: ArtifactRequest,
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash
+) -> ProviderProbe {
+  in_process_materialization(req: req, artifact: artifact, observed_digest: observed_digest)
+}
+
 fn witness_good_probe() -> ProviderProbe {
-  in_process_probe_for_request(
+  minted_in_process(
     req: witness_closure_request(),
     artifact: witness_complete_closure_artifact(),
     observed_digest: witness_closure_digest()
@@ -264,7 +274,7 @@ test fn absent_probe_is_a_miss() -> Bool {
 test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe_for_request(
+    probe: minted_in_process(
       req: witness_closure_request(),
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
@@ -276,7 +286,7 @@ test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
 test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bool {
   let stale = provider_serve(
     req: witness_typecheck_request_changed_input(),
-    probe: in_process_probe_for_request(
+    probe: minted_in_process(
       req: witness_closure_request(),
       artifact: witness_stale_typed_artifact(),
       observed_digest: witness_stale_typed_digest()
@@ -288,7 +298,7 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
 test fn red_wrong_content_refuses_never_hits() -> Bool {
   let poisoned = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe_for_request(
+    probe: minted_in_process(
       req: witness_closure_request(),
       artifact: witness_complete_closure_artifact(),
       observed_digest: Fnv1a64(content_hash_atom(value: "closure-payload-corrupt"))
@@ -345,7 +355,7 @@ test fn red_sha256_at_fnv1a64_seam_refuses_without_alias() -> Bool {
 test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe_for_request(
+    probe: minted_in_process(
       req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
@@ -478,7 +488,7 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
 test fn red_forged_output_roster_refuses_as_wrong_content_on_serve() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe_for_request(
+    probe: minted_in_process(
       req: witness_closure_request(),
       artifact: witness_complete_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
@@ -657,7 +667,7 @@ test fn served_hit_carries_a_derived_structural_grade() -> Bool {
 test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
   let mismatched = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe_for_request(
+    probe: minted_in_process(
       req: witness_closure_request(),
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
@@ -670,7 +680,7 @@ test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
 test fn incomplete_artifact_derives_unknown_identity() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe_for_request(
+    probe: minted_in_process(
       req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
@@ -774,7 +784,7 @@ test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
   let required = request_required_outputs(req: req)
   let refused = provider_serve(
     req: req,
-    probe: in_process_probe_for_request(
+    probe: minted_in_process(
       req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
@@ -835,22 +845,36 @@ test fn persist_sha1_bucket_is_typed_family_refused() -> Bool {
 
 test fn in_process_probe_same_bucket_foreign_identity_is_not_a_hit() -> Bool {
   let req = witness_parse_request()
-  let foreign = request_evaluation_identity(req: witness_typecheck_request())
+  let foreign_req = ParseModuleRequest {
+    source_digest: content_hash_atom(value: "module-source-foreign"),
+    compiler: witness_compiler()
+  }
   let artifact = ParsedArtifact {
     request_key: request_key(req: req),
     parse_tree: witness_graph_part(),
     parse_diagnostics: witness_indices_part()
   }
-  let served = provider_serve(
+  let digest = request_key(req: req)
+  let served_substituted = provider_serve(
     req: req,
-    probe: in_process_probe(
-      artifact: artifact,
-      observed_digest: request_key(req: req),
-      observed_evaluation_identity: foreign
-    )
+    probe: minted_in_process(req: foreign_req, artifact: artifact, observed_digest: digest)
   )
-  lookup_is_refused_evaluation_preimage_mismatch(l: served)
-    && (lookup_is_hit(l: served) == false)
+  lookup_is_refused_evaluation_preimage_mismatch(l: served_substituted)
+    && (lookup_is_hit(l: served_substituted) == false)
+    && lookup_is_hit(l: provider_serve(
+      req: witness_closure_request(),
+      probe: minted_in_process(
+        req: witness_closure_request(),
+        artifact: witness_complete_closure_artifact(),
+        observed_digest: witness_closure_digest()
+      )
+    ))
+    && (content_hash_family(hash: digest) == Fnv1a64StructuralFamily)
+    && (content_hash_family(hash: request_key(req: foreign_req)) == Fnv1a64StructuralFamily)
+}
+
+test fn in_process_fnv_producer_observation_is_declared_frontier() -> Bool {
+  dissolution_description(condition: in_process_fnv_producer_observation_frontier).length() > 0
 }
 
 test fn demand_canonical_encoding_is_injective_and_c1_lossy_collapses() -> Bool {

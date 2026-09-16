@@ -586,7 +586,8 @@ type EvaluationBucket sole_constructor {
 fn evaluation_bucket_for_request(req: ArtifactRequest) -> EvaluationBucket admit_callers: [
   decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address"),
   decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
-  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve")
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "in_process_materialization")
 ] {
   let identity = request_evaluation_identity(req: req)
   EvaluationBucket {
@@ -1460,13 +1461,15 @@ fn observed_evaluation_preimage_from_object(encoded: NonEmptyStr) -> ObservedEva
   ObservedEvaluationPreimage { encoded: encoded }
 }
 
+type InProcessMaterialization sole_constructor {
+  artifact: MaterializedArtifact
+  observed_digest: ContentHash
+  bucket: EvaluationBucket
+}
+
 type ProviderProbe
   = ProbeAbsent
-  | InProcessProbe {
-      artifact: MaterializedArtifact,
-      observed_digest: ContentHash,
-      observed_evaluation_identity: EvaluationIdentity
-    }
+  | InProcessProbe { observation: InProcessMaterialization }
   | PersistedProbe {
       artifact: MaterializedArtifact,
       observed_digest: ContentHash,
@@ -1489,28 +1492,26 @@ data resolved_graph_disk_format_unqualified_frontier: DissolutionCondition = unb
   description: "resolved-graph disk objects persist ObservedEvaluationPreimage and ResultContentIdentity; serve_resolved_graph_stored_disk_probe then uses PersistedProbe. Until that format migrates, this route refuses UnqualifiedPersistedFormat rather than synthesizing the request preimage or serving from FNV part digests alone."
 )
 
-fn in_process_probe(
-  artifact: MaterializedArtifact,
-  observed_digest: ContentHash,
-  observed_evaluation_identity: EvaluationIdentity
-) -> ProviderProbe {
-  InProcessProbe {
-    artifact: artifact,
-    observed_digest: observed_digest,
-    observed_evaluation_identity: observed_evaluation_identity
-  }
-}
+data in_process_fnv_producer_observation_frontier: DissolutionCondition = unbound_dissolution(
+  description: "A production producer must mint InProcessMaterialization at the seam that holds both the executed ArtifactRequest and the constructed artifact. Until that seam exists, in-process FNV sharing is not an admitted production route: only inhabitance claims and floor-preparation witnesses may call in_process_materialization, and a consumer must not derive the observed identity from the lookup request."
+)
 
-fn in_process_probe_for_request(
+fn in_process_materialization(
   req: ArtifactRequest,
   artifact: MaterializedArtifact,
   observed_digest: ContentHash
-) -> ProviderProbe {
-  in_process_probe(
-    artifact: artifact,
-    observed_digest: observed_digest,
-    observed_evaluation_identity: request_evaluation_identity(req: req)
-  )
+) -> ProviderProbe admit_callers: [
+  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "minted_in_process"),
+  decl_ref(module_path: "test.claim.floor_preparation_witness", decl_name: "probe_for"),
+  decl_ref(module_path: "test.claim.floor_preparation_witness", decl_name: "wrong_artifact_key_refuses")
+] {
+  InProcessProbe {
+    observation: InProcessMaterialization {
+      artifact: artifact,
+      observed_digest: observed_digest,
+      bucket: evaluation_bucket_for_request(req: req)
+    }
+  }
 }
 
 fn persisted_probe(
@@ -1567,10 +1568,15 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
   let key = bucket.digest
   match probe {
     ProbeAbsent => ProviderMiss { key: key }
-    InProcessProbe { artifact: a, observed_digest: obs, observed_evaluation_identity: observed_id } => {
-      let found = evaluation_identity_canonical(evaluation: observed_id)
+    InProcessProbe { observation: observed } => {
+      let found = observed.bucket.canonical_preimage
       if (found as String) == (bucket.canonical_preimage as String) {
-        provider_binding_lookup(req: req, key: key, artifact: a, observed_digest: obs)
+        provider_binding_lookup(
+          req: req,
+          key: key,
+          artifact: observed.artifact,
+          observed_digest: observed.observed_digest
+        )
       } else {
         ProviderRefusedEvaluationPreimageMismatch {
           key: key,

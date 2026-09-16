@@ -1,6 +1,6 @@
 module test.claim.evaluation_store_address_census_witness
 
-import std.types { Bool, Int, List }
+import std.types { Bool, List }
 import std.decl_ref { DeclarationRef }
 import gunbc.materialization_provider_targets {
   evaluation_store_address_producer,
@@ -16,7 +16,10 @@ import gunbc.evaluation_store_address_census {
   evaluation_store_address_observed_direct_callers,
   evaluation_store_address_observed_persist_callers,
   evaluation_store_address_observed_admitted_consumers,
-  evaluation_store_address_observed_duplicate_producers
+  evaluation_store_address_observed_duplicate_producers,
+  evaluation_store_address_alias_mutation_callers,
+  evaluation_store_address_path_bounded_spelling_callers,
+  evaluation_store_address_ref_named
 }
 
 fn census_lists_agree(expected: List<DeclarationRef>, observed: List<DeclarationRef>) -> Bool {
@@ -37,4 +40,17 @@ test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> 
     && ((evaluation_store_address_duplicate_consumers(xs: direct) |> count()) == 0)
     && ((evaluation_store_address_producer.decl_name as String) == "evaluation_store_address")
     && ((direct |> count()) != (persist |> count()))
+}
+
+test fn evaluation_store_address_aliased_fourth_module_is_visible_only_on_complete_resolved_graph() -> Bool {
+  let mutation = evaluation_store_address_alias_mutation_callers()
+  let path_bounded = evaluation_store_address_path_bounded_spelling_callers()
+  let production = evaluation_store_address_observed_direct_callers()
+  evaluation_store_address_ref_named(name: "esa", xs: mutation)
+    && evaluation_store_address_ref_named(name: "fourth_module_aliased_call", xs: mutation)
+    && (evaluation_store_address_ref_named(name: "decoy_caller", xs: mutation) == false)
+    && (evaluation_store_address_ref_named(name: "esa", xs: path_bounded) == false)
+    && (evaluation_store_address_ref_named(name: "fourth_module_aliased_call", xs: path_bounded) == false)
+    && (evaluation_store_address_ref_named(name: "esa", xs: production) == false)
+    && (evaluation_store_address_ref_named(name: "fourth_module_aliased_call", xs: production) == false)
 }
