@@ -58,9 +58,10 @@ import extdeps.container.oci.digest { oci_content_digest_from_validated_sha256 }
 import gunbc.spark.v41_engram_staging {
   v41_staging_request, v41_stage, V41StagingVerified, V41StagingRefused, V41StagingUnestablished,
   v41_group_a_staging_standing, v41_staged_matching, v41_staged_with_readback,
-  v41_engram_disk_justification_standing,
+  v41_engram_goes_to_disk_because,
 }
-import extdeps.external_authority { CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
+import gunbc.spark.serving_deployment_selection { id_component_budget_authority }
+import std.decl_ref { declaration_ref_eq }
 
 data w_closed_population: SafetensorsPopulationStanding = safetensors_population_standing(
   members: deepseek_v4_1_flash_engram_index_members,
@@ -431,14 +432,8 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
               (o as String).contains("proud-deer-538")
                 && (o as String).contains("stages around")
                 && (o as String).contains("Fill is Unestablished")
-                && (o as String).contains("v41_engram_disk_justification_standing")
-                && (match v41_engram_disk_justification_standing {
-                  TranscribedUncited { read_obligation: _ } => match cited_figure_read_obligation(standing: v41_engram_disk_justification_standing) {
-                    Present { value: _ } => true
-                    Absent => false
-                  }
-                  CitedToAuthority { authority: _ } => false
-                })
+                && (o as String).contains("candidate_component_budget")
+                && declaration_ref_eq(a: v41_engram_goes_to_disk_because(), b: id_component_budget_authority)
             V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
             V41StagingRefused { defects: _ } => false
           })
