@@ -633,37 +633,6 @@ fn project_resolved_rust_fn_signatures(
     rows
 }
 
-fn collect_alias_call_edges(
-    node: Rc<crate::v1_std_core::Node>,
-    source_indices: Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-    alias_targets: &std::collections::HashMap<String, (String, String)>,
-    caller_module: &str,
-    caller_decl: &str,
-    edges: &mut Vec<crate::cli_run::ResolvedCallEdgeRow>,
-) {
-    if let crate::v1_std_core::ExprData::ExprCall { .. } = &*node.expr_data {
-        let spelling = crate::v1_std_core::expr_call_func_at(node.clone(), source_indices.clone());
-        if let Some((callee_module, callee_decl)) = alias_targets.get(&spelling) {
-            edges.push(crate::cli_run::ResolvedCallEdgeRow {
-                caller_module: caller_module.to_string(),
-                caller_decl: caller_decl.to_string(),
-                callee_module: callee_module.clone(),
-                callee_decl: callee_decl.clone(),
-            });
-        }
-    }
-    for child in node.children.iter() {
-        collect_alias_call_edges(
-            child.clone(),
-            source_indices.clone(),
-            alias_targets,
-            caller_module,
-            caller_decl,
-            edges,
-        );
-    }
-}
-
 fn enclosing_declaration_name(
     reference_containment: Rc<crate::std_occurrence_identity::OccurrenceContainmentPath>,
     declarations: &[Rc<crate::std_occurrence_identity::DeclarationOccurrence>],
@@ -688,13 +657,35 @@ fn enclosing_declaration_name(
     best.map(|(_, name)| name).unwrap_or_default()
 }
 
+fn resolved_call_edges_from_graph(
+    graph: &v1_compiler_compile::ResolvedGraph,
+) -> Vec<crate::cli_run::ResolvedCallEdgeRow> {
+    use crate::cli_run::ResolvedCallEdgeRow;
+    use crate::v1_compiler_infer_service::{build_module_callees, CalleeEdge};
+    let mut edges = Vec::new();
+    for callees in build_module_callees(graph.modules.clone()).iter() {
+        for item in callees.items.iter() {
+            for edge in item.called.iter() {
+                if let CalleeEdge::ResolvedCallee { identity } = &**edge {
+                    edges.push(ResolvedCallEdgeRow {
+                        caller_module: item.item_identity.owner_module_path.clone(),
+                        caller_decl: item.item_identity.decl_name.clone(),
+                        callee_module: identity.owner_module_path.clone(),
+                        callee_decl: identity.decl_name.clone(),
+                    });
+                }
+            }
+        }
+    }
+    edges
+}
+
 pub fn compile_dag_resolved_call_edges(
     paths: &[String],
     contents: &[String],
     entry: &str,
 ) -> crate::cli_run::ResolvedCallEdgeCensus {
-    use crate::cli_run::{ResolvedCallEdgeCensus, ResolvedCallEdgeRow};
-    use crate::v1_compiler_infer_service::{build_module_callees, CalleeEdge};
+    use crate::cli_run::ResolvedCallEdgeCensus;
     let graph = if paths.len() == 1
         && contents.len() == 1
         && contents[0] == "__WORKSPACE_CHECKOUT__"
@@ -761,76 +752,83 @@ pub fn compile_dag_resolved_call_edges(
         };
         graph
     };
-    let mut edges = Vec::new();
-    let module_callees = build_module_callees(graph.modules.clone());
-    for (typed, callees) in graph.modules.iter().zip(module_callees.iter()) {
-        let source_indices = typed.type_env.source_indices.clone();
-        let mut alias_targets: std::collections::HashMap<String, (String, String)> =
-            std::collections::HashMap::new();
-        for alias_item in crate::v1_std_core::module_items(typed.module.clone()).iter() {
-            if !crate::v1_compiler_infer::is_namespace_alias_item(
-                alias_item.clone(),
-                source_indices.clone(),
-            ) {
-                continue;
+    ResolvedCallEdgeCensus::Observed {
+        edges: resolved_call_edges_from_graph(&graph),
+    }
+}
+
+static IMPORTER_RESOLVED_CALL_EDGE_CACHE: OnceLock<
+    Mutex<HashMap<(Vec<String>, Vec<String>), crate::cli_run::ResolvedCallEdgeCensus>>,
+> = OnceLock::new();
+
+pub fn compile_dag_importer_resolved_call_edges(
+    import_modules: &[String],
+    exclude_substrings: &[String],
+) -> crate::cli_run::ResolvedCallEdgeCensus {
+    use crate::cli_run::ResolvedCallEdgeCensus;
+    if import_modules.iter().any(|m| m.trim().is_empty()) {
+        return ResolvedCallEdgeCensus::Refused {
+            cause: "importer resolved call edges: every import module must be nonempty".to_string(),
+        };
+    }
+    let mut cache_modules = import_modules.to_vec();
+    cache_modules.sort();
+    let mut cache_excludes = exclude_substrings.to_vec();
+    cache_excludes.sort();
+    let cache_key = (cache_modules, cache_excludes);
+    {
+        let cache = IMPORTER_RESOLVED_CALL_EDGE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        if let Ok(guard) = cache.lock() {
+            if let Some(hit) = guard.get(&cache_key) {
+                return hit.clone();
             }
-            let alias_name =
-                crate::v1_std_core::authored_name_at(source_indices.clone(), alias_item.clone());
-            let Some(target_path) = crate::v1_compiler_infer::namespace_alias_target_path(
-                alias_item.clone(),
-                source_indices.clone(),
-            ) else {
-                continue;
-            };
-            let Some((callee_module, callee_decl)) = target_path.rsplit_once('.') else {
-                continue;
-            };
-            alias_targets.insert(
-                alias_name,
-                (callee_module.to_string(), callee_decl.to_string()),
-            );
         }
-        for item in callees.items.iter() {
-            for edge in item.called.iter() {
-                match &**edge {
-                    CalleeEdge::ResolvedCallee { identity } => {
-                        edges.push(ResolvedCallEdgeRow {
-                            caller_module: item.item_identity.owner_module_path.clone(),
-                            caller_decl: item.item_identity.decl_name.clone(),
-                            callee_module: identity.owner_module_path.clone(),
-                            callee_decl: identity.decl_name.clone(),
-                        });
-                    }
-                    CalleeEdge::LocalBindingCallee { name }
-                    | CalleeEdge::UnresolvedCallee { spelling: name } => {
-                        if let Some((callee_module, callee_decl)) = alias_targets.get(name) {
-                            edges.push(ResolvedCallEdgeRow {
-                                caller_module: item.item_identity.owner_module_path.clone(),
-                                caller_decl: item.item_identity.decl_name.clone(),
-                                callee_module: callee_module.clone(),
-                                callee_decl: callee_decl.clone(),
-                            });
-                        }
-                    }
-                    _ => {}
+    }
+    let computed =
+        compile_dag_importer_resolved_call_edges_uncached(import_modules, exclude_substrings);
+    if let Ok(mut guard) = IMPORTER_RESOLVED_CALL_EDGE_CACHE
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        guard.insert(cache_key, computed.clone());
+    }
+    computed
+}
+
+fn compile_dag_importer_resolved_call_edges_uncached(
+    import_modules: &[String],
+    exclude_substrings: &[String],
+) -> crate::cli_run::ResolvedCallEdgeCensus {
+    use crate::cli_run::ResolvedCallEdgeCensus;
+    let roots = default_source_roots();
+    let homes: HashSet<String> = import_modules.iter().cloned().collect();
+    let mut entries: HashSet<String> = HashSet::new();
+    for fact in import_resolution_facts(&roots, &roots, exclude_substrings) {
+        if homes.contains(&fact.import_module) {
+            entries.insert(fact.path);
+        }
+    }
+    for decl in module_declaration_facts(&roots) {
+        if homes.contains(&decl.module) {
+            entries.insert(decl.path);
+        }
+    }
+    if entries.is_empty() {
+        return ResolvedCallEdgeCensus::Refused {
+            cause: "importer resolved call edges: no production importer or home path".to_string(),
+        };
+    }
+    let mut entries: Vec<String> = entries.into_iter().collect();
+    entries.sort();
+    let mut edges = Vec::new();
+    for entry in entries {
+        match resolve_entry_graph_shared(&roots, &entry) {
+            Ok((graph, _)) => edges.extend(resolved_call_edges_from_graph(&graph)),
+            Err(cause) => {
+                return ResolvedCallEdgeCensus::Refused {
+                    cause: format!("importer resolved call edges: {entry}: {cause}"),
                 }
             }
-        }
-        for item_node in typed.items.iter() {
-            let Some(body) = item_node.body.clone() else {
-                continue;
-            };
-            let caller_decl =
-                crate::v1_std_core::authored_name_at(source_indices.clone(), item_node.clone());
-            let caller_module = typed.type_env.module_path.clone();
-            collect_alias_call_edges(
-                body,
-                source_indices.clone(),
-                &alias_targets,
-                &caller_module,
-                &caller_decl,
-                &mut edges,
-            );
         }
     }
     ResolvedCallEdgeCensus::Observed { edges }

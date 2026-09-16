@@ -141,10 +141,8 @@ data evaluation_store_address_persist_callers_expected: List<DeclarationRef> = [
 
 data evaluation_store_address_admitted_consumers_expected: List<DeclarationRef> = [
   target_decl(module_path: "std.materialization_object", decl_name: "store_lookup_from_address"),
-  target_decl(module_path: "std.materialization_object", decl_name: "store_lookup_decide_present"),
   target_decl(module_path: "std.materialization_object", decl_name: "store_commit_prepare_admitted"),
-  target_decl(module_path: "std.materialization_object", decl_name: "store_object_name"),
-  target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup")
+  target_decl(module_path: "std.materialization_object", decl_name: "store_object_name")
 ]
 
 fn evaluation_store_address_ref_in(wanted: DeclarationRef, xs: List<DeclarationRef>) -> Bool {
