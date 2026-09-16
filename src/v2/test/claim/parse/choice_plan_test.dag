@@ -361,7 +361,6 @@ test fn compile_choice_alts_stamp_split_is_choice_token_prefix() -> Bool {
     alts: Cons { head: stamp_left_fold, tail: Cons { head: stamp_right_fold, tail: Empty } },
     nullable_set: Empty,
     first_rows: empty_map(),
-    production: ^pcp_start,
     token_dispatch: true
   )
   match stamp_bucket.plan {

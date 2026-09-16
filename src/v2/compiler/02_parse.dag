@@ -722,10 +722,6 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
   list_append(left: [ned.head], right: ned.tail)
 }
 
-fn parse_prov_frame_len(prov: ParseProvenanceState) -> Int {
-  length(xs: prov.frame)
-}
-
 fn parse_prov_initial() -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: occurrence_id_allocator_initial(),
@@ -2002,7 +1998,7 @@ fn ordered_backtrack_row(
   }
 }
 
-fn ordered_backtrack_emit(alts: List<PreparedExprFold>, production: Symbol) -> ChoicePlanEmit {
+fn ordered_backtrack_emit(alts: List<PreparedExprFold>) -> ChoicePlanEmit {
   ChoicePlanEmit {
     plan: ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) },
     residue: std.algebra.Empty
@@ -2022,7 +2018,6 @@ fn compile_choice_alts(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>,
-  production: Symbol,
   token_dispatch: Bool
 ) -> ChoicePlanEmit {
   match length(xs: alts) {
@@ -2053,7 +2048,6 @@ fn compile_choice_alts(
                     alts: suffixes,
                     nullable_set: nullable_set,
                     first_rows: first_rows,
-                    production: production,
                     token_dispatch: token_dispatch
                   )
                   ChoicePlanEmit {
@@ -2064,14 +2058,14 @@ fn compile_choice_alts(
                   match choice_token_prefix_rows(alts: alts, need: 2) {
                     Present { value: rows } =>
                       ChoicePlanEmit { plan: ChoiceTokenPrefix { rows: rows }, residue: std.algebra.Empty }
-                    Absent => ordered_backtrack_emit(alts: alts, production: production)
+                    Absent => ordered_backtrack_emit(alts: alts)
                   }
               }
             Absent =>
               match choice_token_prefix_rows(alts: alts, need: 2) {
                 Present { value: rows } =>
                   ChoicePlanEmit { plan: ChoiceTokenPrefix { rows: rows }, residue: std.algebra.Empty }
-                Absent => ordered_backtrack_emit(alts: alts, production: production)
+                Absent => ordered_backtrack_emit(alts: alts)
               }
           }
       }
@@ -2082,7 +2076,6 @@ fn compile_choice_plan(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>,
-  production: Symbol,
   token_dispatch: Bool
 ) -> ChoicePlanEmit {
   if token_dispatch {
@@ -2095,7 +2088,6 @@ fn compile_choice_plan(
             alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
             nullable_set: nullable_set,
             first_rows: first_rows,
-            production: production,
             token_dispatch: token_dispatch
           )
           TokenCompileAcc {
@@ -2108,7 +2100,6 @@ fn compile_choice_plan(
         alts: choice_alts_nullable(alts: alts),
         nullable_set: nullable_set,
         first_rows: first_rows,
-        production: production,
         token_dispatch: token_dispatch
       )
       ChoicePlanEmit {
@@ -2120,7 +2111,7 @@ fn compile_choice_plan(
         residue: list_append(left: token_fold.residue, right: nullable_emit.residue)
       }
   } else {
-    ordered_backtrack_emit(alts: alts, production: production)
+    ordered_backtrack_emit(alts: alts)
   }
 }
 
@@ -2168,7 +2159,6 @@ fn prepare_grammar_expr(
         alts: prepared_alts,
         nullable_set: nullable_set,
         first_rows: first_rows,
-        production: production,
         token_dispatch: token_dispatch
       )
       let union_first = choice_alts_union_first(alts: prepared_alts)
