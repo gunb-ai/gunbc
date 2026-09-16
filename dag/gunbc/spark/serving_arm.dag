@@ -768,6 +768,31 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
   ], "")
 }
 
+// ── THE ADMITTED SEQUENCE COUNT, RAISED BY OPERATOR RULING 2026-09-16 ─────────────────────────
+//
+// WHAT 1 WAS, SO THE RAISE IS NOT READ AS A CORRECTION OF A MISTAKE. One admitted sequence was never a
+// claim that the engine can serve only one. It said the runtime sequence capacity is unmeasured AND the
+// KV-resident capacity is unmeasured, and that until both exist the interactive overlap policy admits
+// the one value that cannot over-commit -- which made an unmodelled co-tenant externality structurally
+// impossible while the arm came online, and replaced an earlier 4 that had nothing behind it.
+//
+// WHY IT MOVES NOW. The cost of that conservatism is measured rather than supposed: the live engine on
+// Group B reports one running request with a second queued behind it and 7% KV occupancy at a
+// 262,144-token window, so the bound is serialising every caller while most of the cache sits idle.
+//
+// 16 IS A CHOICE AND NOT A MEASUREMENT, AND CONFLATING THOSE IS A NAMED FAILURE ON THIS FLEET.
+// gunbc.spark.pair_serving_desired SparkPairServingSeqCapacity exists precisely because one route's
+// chosen --max-num-seqs 32 was recorded as though an engine had reported it, and then travelled to
+// every model after it; that type's own basis ends by ruling that the number may not travel across
+// model, quantisation or KV layout and that a GLM arm carries its own. This is that arm's own number,
+// nothing derives it, and the operator's stated reasoning is that over-provisioning is the cheaper
+// error here -- "better to have too many than too little".
+//
+// WHAT WOULD RETIRE THE GUESS: a concurrency run against KV occupancy on this checkpoint at this
+// topology, which is the measurement neither 1 nor 16 ever had. Until it exists this value carries no
+// more evidential weight than the 1 it replaces -- it is a better-judged bound, not a better-grounded
+// one. Refusing to launch until measured is NOT the alternative: that was tried on this fleet and
+// deadlocked it, because the engine that would supply the measurement could never start.
 // ITS PREFIX CACHING IS ENABLED AND ASKED FOR RATHER THAN ASSUMED. Measured by constructing the model
 // configuration inside the derived image on srv9 2026-09-13 -- no engine, no weights -- where
 // zai-org/GLM-5.3-Flash reports runner_type=generate, is_hybrid=True and is_prefix_caching_supported=True,
@@ -776,7 +801,7 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
 data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: 262144,
   max_num_batched_tokens: 2048,
-  max_num_seqs: 1,
+  max_num_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
   speculation_enabled: false,

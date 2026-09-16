@@ -83,7 +83,7 @@ test fn w_every_rank_keeps_the_transport_evidence_producer_on() -> Bool {
 
 // ── THE ENGINE ARGUMENTS CARRY THE BATCHING BOUNDS AS DECLARED, NOT AS REMEMBERED ─────────────
 //
-// max_num_seqs 1 is why the live aggregate reads as a single stream, and 2048 is an explicit flag
+// max_num_seqs is why the live aggregate reads as a single stream at 1, and 2048 is an explicit flag
 // rather than a default nobody chose. Both are asserted against the profile rather than a literal,
 // so the row states that the argv AGREES WITH THE PROFILE and does not quietly re-declare a policy.
 test fn w_the_engine_argv_states_the_profiles_batching_bounds() -> Bool {
