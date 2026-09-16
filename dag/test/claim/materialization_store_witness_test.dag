@@ -633,11 +633,37 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
                     }
                     && match parse_recorded_store_key(key_text: serialize_content_hash(hash: k256) as String) {
                       Absent => false
-                      Present { value: p } => p == k256
+                      Present { value: p } =>
+                        (p == k256) && ((serialize_content_hash(hash: p) as String) == (serialize_content_hash(hash: k256) as String))
+                    }
+                    && match parse_recorded_store_key(key_text: serialize_content_hash(hash: k512) as String) {
+                      Absent => false
+                      Present { value: p } =>
+                        (p == k512) && ((serialize_content_hash(hash: p) as String) == (serialize_content_hash(hash: k512) as String))
                     }
               }
           }
         }
       }
+  }
+}
+
+test fn parse_recorded_store_key_refuses_trailing_repeated_prefix() -> Bool {
+  match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: sha } => {
+      let h = as_content_hash_cryptographic(digest: sha)
+      let canon = serialize_content_hash(hash: h) as String
+      let alias = concat(canon, "sha256:ignored")
+      match parse_recorded_store_key(key_text: alias) {
+        Present { value: _ } => false
+        Absent =>
+          match parse_recorded_store_key(key_text: canon) {
+            Absent => false
+            Present { value: p } =>
+              (p == h) && ((serialize_content_hash(hash: p) as String) == canon)
+          }
+      }
+    }
   }
 }

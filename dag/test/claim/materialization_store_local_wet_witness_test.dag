@@ -250,8 +250,8 @@ test fn a_second_writer_converges_on_the_committed_artifact_by_real_execution() 
   verdict && removed.success
 }
 
-// a second writer with DIFFERENT content for the same key is a conflict; the committed artifact is
-// untouched and is what every reader gets.
+// a second writer with DIFFERENT content for the same key is result_content_conflict; the committed
+// artifact is untouched and is what every reader gets.
 test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
@@ -265,7 +265,7 @@ test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_executio
         Present { value: v } => v == "a.t1 pass"
         Absent => false
       }
-      commit_tag(c: first) == "committed" && commit_tag(c: second) == "conflict" && still_first
+      commit_tag(c: first) == "committed" && commit_tag(c: second) == "result_content_conflict" && still_first
     }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)

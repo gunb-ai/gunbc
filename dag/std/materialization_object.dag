@@ -270,7 +270,7 @@ fn store_object_line(line: String) -> StoreObjectLine {
   }
 }
 
-fn parse_recorded_store_key(key_text: String) -> ContentHash? {
+fn parse_recorded_store_key_candidate(key_text: String) -> ContentHash? {
   if starts_with(s: key_text, prefix: "sha256:") {
     match get(xs: split(s: key_text, delimiter: "sha256:"), index: 1) {
       Absent => none
@@ -291,6 +291,18 @@ fn parse_recorded_store_key(key_text: String) -> ContentHash? {
     }
   } else {
     content_hash_from_structural_digest(digest: key_text)
+  }
+}
+
+fn parse_recorded_store_key(key_text: String) -> ContentHash? {
+  match parse_recorded_store_key_candidate(key_text: key_text) {
+    Absent => none
+    Present { value: parsed } =>
+      if (serialize_content_hash(hash: parsed) as String) == key_text {
+        Present { value: parsed }
+      } else {
+        none
+      }
   }
 }
 
@@ -647,7 +659,6 @@ type StoreCommitRefusal
   | StoreCommitContractRefused { binding: RequestArtifactBinding }
   | StoreCommitPublishRefused { fault: StoreFault }
   | StoreCommitReadBackRefused { read_back: StoreLookup }
-  | StoreCommitConflict { committed: ContentHash, offered: ContentHash }
   | StoreCommitStoreFamilyRefused { family: HashFamily, scope: KeyingScope }
   | StoreCommitResultContentConflict { binding: EvaluationResultBinding, observed: ResultContentIdentity }
   | StoreCommitResultHashFamilyIncomparable { left: HashFamily, right: HashFamily }
@@ -879,7 +890,6 @@ fn store_commit_refusal_tag(c: StoreCommit) -> String {
       StoreCommitContractRefused { binding: _ } => "contract_refused"
       StoreCommitPublishRefused { fault: _ } => "publish_refused"
       StoreCommitReadBackRefused { read_back: _ } => "read_back_refused"
-      StoreCommitConflict { committed: _, offered: _ } => "conflict"
       StoreCommitStoreFamilyRefused { family: _, scope: _ } => "store_family_refused"
       StoreCommitResultContentConflict { binding: _, observed: _ } => "result_content_conflict"
       StoreCommitResultHashFamilyIncomparable { left: _, right: _ } => "result_hash_family_incomparable"
