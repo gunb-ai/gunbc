@@ -761,7 +761,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
 // would claim an argument the launch never sent.
 data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: token_count(count: 262144),
-  max_num_batched_tokens: 7168,
+  max_num_batched_tokens: token_count(count: 7168),
   max_num_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 9000),
   kv_cache_dtype_wire: "fp8" as NonEmptyStr,

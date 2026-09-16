@@ -16,7 +16,6 @@ import v2.std.optional { Present, Absent }
 // happens to serve it. The two modules are peers and neither may answer for the other -- which is the
 // whole point of authoring this one rather than repointing the harness's DeepSeek import, since a
 // repointed import is the same fork under a new name.
-
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
