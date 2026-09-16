@@ -140,8 +140,8 @@ test fn upstream_disables_only_on_exact_one() -> Bool {
 // could assert the do-not-track marker present and green admission (review 66882).
 test fn the_observer_never_disables_without_an_observed_env_term() -> Bool {
   match t_observe(inspect_stdout: t_inspect(env: ["OTHER=1"], id: t_container_id)) {
-    ServingUsageStatsObserved { launch: _, container_id: _, standing: st, receipt: _ } =>
-      match st {
+    ServingUsageStatsObserved { evidence: ev } =>
+      match ev.subject.standing {
         UsageStatsLaunchUnread { obligation: o } => (o as String) == (spark_usage_stats_marker_unread_obligation as String)
         UsageStatsDisabledByLaunch { mechanism: _ } => false
         UsageStatsEnabledByDefault { basis: _, destination: _ } => false
@@ -671,6 +671,33 @@ test fn an_observation_of_another_launch_does_not_absent_the_path() -> Bool {
   }
 }
 
+// RED: A CONTRADICTING READING OF THE SAME LAUNCH DOES NOT ABSENT THE PATH. Same group, invocation
+// and container as the answering incarnation, but a different unit digest: same_launch reports a
+// contradiction, not a match, and the disabled standing is not trusted.
+test fn a_contradicting_reading_of_the_same_launch_does_not_absent_the_path() -> Bool {
+  let contradicting = vllm_serving_launch(
+    group: FabricGroupA,
+    head: operator_host_srv6,
+    systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
+    container_id: t_container_id as NonEmptyStr,
+    executable_digest: t_sha256(hex: "7777777777777777777777777777777777777777777777777777777777777777"),
+    unit_digest: t_sha256(hex: "6666666666666666666666666666666666666666666666666666666666666666"),
+    started_at: 1788907506,
+  )
+  match spark_usage_stats_telemetry_path(
+    realization: t_realization_observed(),
+    usage_stats: spark_serving_usage_stats_observe(
+      launch: contradicting,
+      inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
+      receipt: t_receipt as ObservationReceiptRef,
+    ),
+  ) {
+    ProviderPathAbsent { evidence: _ } => false
+    ProviderPathUnread { obligation: _, consulted: _ } => true
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+  }
+}
+
 fn observe_witness_main() -> ProcessExit {
   let all_pass = upstream_disables_only_on_exact_one()
     && true_does_not_disable_the_launch()
@@ -701,6 +728,8 @@ fn observe_witness_main() -> ProcessExit {
     && canonical_enabled_is_refused_never_located()
     && non_default_destination_cannot_use_default_enrollment()
     && an_observation_of_another_launch_does_not_absent_the_path()
+    && a_contradicting_reading_of_the_same_launch_does_not_absent_the_path()
+    && the_observer_never_disables_without_an_observed_env_term()
   if all_pass {
     ExitSuccess
   } else {

@@ -36,7 +36,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
 }
 import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
-  EndpointIncarnationObservation, launch_wire,
+  EndpointIncarnationObservation, launch_wire, same_launch, SameLaunch, DifferentLaunch, LaunchContradiction,
 }
 import gunbc.spark.serving_usage_stats_observe {
   ServingUsageStatsObservation, ServingUsageStatsObserved, ServingUsageStatsUnobserved,
@@ -726,18 +726,19 @@ fn spark_serving_usage_stats_standing(
       match usage_stats {
         ServingUsageStatsUnobserved { obligation: o } =>
           UsageStatsLaunchUnread { obligation: o }
-        ServingUsageStatsObserved { launch: observed_launch, container_id: observed_container, standing: observed_standing, receipt: _ } =>
+        ServingUsageStatsObserved { evidence: ev } =>
           match realization.incarnation {
             EndpointIncarnationUnobserved { obligation: o } =>
               UsageStatsLaunchUnread { obligation: o }
             EndpointIncarnationObserved { observation: obs } =>
               match spark_incarnation_observation_agreement(realization: realization, observation: obs) {
                 ObservationAgreesWithThisRealization =>
-                  if (launch_wire(i: observed_launch) != launch_wire(i: obs.launch))
-                      || ((observed_container as String) != (obs.launch.container_id as String)) {
-                    UsageStatsLaunchUnread { obligation: spark_usage_stats_observation_names_another_launch_obligation }
-                  } else {
-                    observed_standing
+                  match same_launch(a: ev.subject.launch, b: obs.launch) {
+                    SameLaunch => ev.subject.standing
+                    DifferentLaunch { left: _, right: _ } =>
+                      UsageStatsLaunchUnread { obligation: spark_usage_stats_observation_names_another_launch_obligation }
+                    LaunchContradiction { invocation: _, field: f } =>
+                      UsageStatsLaunchUnread { obligation: join([spark_usage_stats_observation_contradicts_launch_obligation as String, " (field: ", f as String, ")"], "") as NonEmptyStr }
                   }
                 ObservationNamesAnotherEndpoint { observed: ob, answering: an } =>
                   UsageStatsLaunchUnread {
@@ -756,6 +757,12 @@ fn spark_serving_usage_stats_standing(
       }
   }
 }
+
+// THE LAUNCH JOIN IS same_launch, THE ONE AUTHORITY. An earlier spelling compared launch_wire (group
+// and invocation) plus container id -- a second, weaker join that let two readings contradicting
+// each other about one launch's unit or image digest still Absent the path (review, side-chat
+// 2026-09-16). same_launch compares every identity field and separates turnover from contradiction.
+data spark_usage_stats_observation_contradicts_launch_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the usage-stats observation and the incarnation observation name the same launch invocation but disagree about its identity, so neither reading is trusted and the telemetry path stays unread" as NonEmptyStr
 
 data spark_usage_stats_observation_names_another_launch_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the usage-stats observation is bound to a launch or container other than the incarnation observed answering this route, so its standing is not a reading of the answering process and cannot Absent the telemetry path." as NonEmptyStr
 

@@ -43,19 +43,31 @@ data spark_usage_stats_container_id_mismatch_obligation: NonEmptyStr = "gunbc.sp
 //
 // DECLARED FRONTIER (DESIGN 3c). No live producer calls spark_serving_usage_stats_observe yet; it is
 // executed by test.claim.spark.spark_serving_usage_stats_observe_witness_test over supplied stdout.
-// THE NAMED PRODUCER is the one authorized `docker container inspect` that #11362 executes for the
-// endpoint-incarnation observation (gunbc.spark.vllm_serving_launch endpoint_incarnation_observation):
-// one inspect, projected here into the usage-stats observation and there into incarnation identity.
-// TRIGGER: #11362's live inspect landing, SUFFICIENT FOR its stdout to be handed to this function in
-// the same operation that mints the EndpointIncarnationObservation, with the raw stdout discarded at
-// that operation's boundary.
+// THE NAMED PRODUCER is the one authorized `docker container inspect` that gunbc#11362 (landed)
+// executes for the endpoint-incarnation observation (gunbc.spark.serving_incarnation_observe): it
+// holds the successful inspect's raw stdout at exactly the point where its .Id/.Image projection is
+// taken. TRIGGER: that operation hands the same stdout to this function beside its identity
+// projection -- one inspect, two narrow projections, raw stdout discarded at that boundary --
+// SUFFICIENT FOR a launch whose env disables the reporter to reach ProviderPathAbsent in
+// gunbc.spark.first_party_serving. The missing edge is that projection-and-carry inside the
+// existing inspect operation, not a live inspect.
+//
+// THE POSITIVE ARM IS SEALED. ServingUsageStatsEvidence is a sole-constructor record whose only
+// mint is spark_serving_usage_stats_observe, so an Observed arm cannot be authored around the
+// decoder: a caller cannot hand policy a launch with a Disabled standing it never observed. The
+// subject names the launch (which carries its own container_id) and the standing.
+type ServingUsageStatsSubject {
+  launch: VllmServingLaunch
+  standing: VllmUsageStatsLaunchStanding
+  receipt: ObservationReceiptRef
+}
+
+type ServingUsageStatsEvidence sole_constructor {
+  subject: ServingUsageStatsSubject
+}
+
 type ServingUsageStatsObservation
-  = ServingUsageStatsObserved {
-      launch: VllmServingLaunch,
-      container_id: NonEmptyStr,
-      standing: VllmUsageStatsLaunchStanding,
-      receipt: ObservationReceiptRef,
-    }
+  = ServingUsageStatsObserved { evidence: ServingUsageStatsEvidence }
   | ServingUsageStatsUnobserved { obligation: NonEmptyStr }
 
 fn spark_usage_stats_marker_unread() -> VllmDoNotTrackMarkerStanding {
@@ -100,9 +112,8 @@ fn spark_serving_usage_stats_observe(
       }
   }
   ServingUsageStatsObserved {
-    launch: launch,
-    container_id: launch.container_id,
-    standing: standing,
-    receipt: receipt,
+    evidence: ServingUsageStatsEvidence {
+      subject: ServingUsageStatsSubject { launch: launch, standing: standing, receipt: receipt },
+    },
   }
 }
