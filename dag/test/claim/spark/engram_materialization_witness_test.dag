@@ -1980,6 +1980,11 @@ fn closed_membership_population() -> SafetensorsPopulationStanding {
   )
 }
 
+// THIS REPLACES THE LIVE-POPULATION FIXTURE RATHER THAN SITTING BESIDE IT. The variant that built this
+// subject over deepseek_v4_1_flash_engram_population had no callers left once the relation controls moved,
+// and leaving it standing would be the attractor: the next author reaches for the obvious-looking fixture,
+// gets a scoped membership, and their relation control goes Open for a reason that has nothing to do with
+// the relation -- silently vacuous, exactly the defect this pair of commits exists to remove.
 fn closed_subject_with_published_identity(i: EncodingIdentity) -> ComponentSubjectStanding {
   establish_component_subject(subject: component_subject(
     identity: engram_component_identity,
@@ -1996,17 +2001,6 @@ fn closed_membership_standing() -> ComponentSubjectStanding {
   closed_subject_with_published_identity(i: engram_published_identity)
 }
 
-fn subject_with_published_identity(i: EncodingIdentity) -> ComponentSubjectStanding {
-  establish_component_subject(subject: component_subject(
-    identity: engram_component_identity,
-    label: "fixture: the Engram subject with a substituted published identity" as NonEmptyStr,
-    upstream_revision: "fixture-revision" as NonEmptyStr,
-    population: deepseek_v4_1_flash_engram_population,
-    published_encoding: engram_published_encoding,
-    published_identity: i,
-    population_standing: deepseek_v4_1_flash_engram_population_standing,
-  ))
-}
 
 test fn an_unestablished_actual_source_identity_is_an_obligation_rather_than_faithful() -> Bool {
   let rel = relation_with_target(t: repacked_artifact().identity)
