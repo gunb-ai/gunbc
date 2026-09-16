@@ -338,3 +338,13 @@ test fn search_query_keys_on_app_properties_and_excludes_trashed() -> Bool {
 test fn drive_token_env_matches_the_configured_literal() -> Bool {
   drive_token_env == "GUNBC_REVIEW_SHEET_TOKEN"
 }
+
+
+// The property NAME is a literal in the create body because the body builder emits field names as
+// written. This claim is the same kind of pin as the env-var one, and it exists because the first
+// live run failed exactly here: a mismatch between the name written into the file and the name
+// searched for produces a file that exists and cannot be found, which reads as "the create did not
+// take" rather than "the create wrote a different name".
+test fn app_property_key_matches_the_created_property() -> Bool {
+  (review_sheet_app_property_key as String) == "gunbcReviewSheet"
+}

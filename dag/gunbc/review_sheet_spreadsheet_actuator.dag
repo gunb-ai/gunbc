@@ -120,7 +120,6 @@ fn perform_spreadsheet_create(
     name: plan.name as String,
     mime_type: google_sheet_mime_type as String,
     parent_id: plan.drive_id as String,
-    app_properties_key: plan.app_property_key as String,
     app_properties_value: plan.app_property_value as String,
   )
   match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
