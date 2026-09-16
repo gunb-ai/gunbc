@@ -152,10 +152,12 @@ type MalformedBridgeRow {
 // THE OBSERVED ARM HAS NO REQUIRED EXECUTING ROUTE YET. The XL-1 tap gates on
 // memory_governor whole_corpus_compile_admission before it reads a single file; the required
 // floor never holds whole-corpus headroom mid-run, so on that route the tap refuses in
-// microseconds and only its refusal arms are executed evidence (gunbc#11461 run
-// 35074340220). The Observed arm answers on the route that can run it - a session host or
-// the one-time capture run (test.claim.long.xl1_live_tap_observed_arm_witness) - and that
-// is not a required consumer. `evidence_route` names the witness that executes it;
+// microseconds and only its refusal arms are executed evidence (gunbc#11461 runs
+// 35074340220 and 35079253040 - the second after the controls moved to a long home, which
+// the floor still executes once for a changed witness). The Observed arm answers on the
+// route that can run it - a session host or the one-time capture run - and that is not a
+// required consumer; the class is rowed as
+// gunbc.recurring_failure_mode.a_gate_sized_for_the_largest_subject_refuses_every_smaller_one. `evidence_route` names the witness that executes it;
 // `restoring_receipt` names what retires this cause: a PersistedLegacyBaseline held against
 // the pinned pre-cut base (the capture taken, which is ACT-0's BaselineCaptureReceipt).
 type LegacyBaselineCaptureRefusal
@@ -377,7 +379,7 @@ fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
   CaptureBlocked {
     phase: RepairCensusPhase,
     cause: ObservedArmUnexercisedOnRequiredRoute {
-      evidence_route: "test.claim.long.xl1_live_tap_observed_arm_witness (a session-host claim_batch run or the one-time capture run; off the required floor by the whole-corpus admission gate)",
+      evidence_route: "a session host or the one-time capture run - xl1_live_repair_tap_census over a committed root answers Xl1LiveRepairTapRows there; on the required floor the tap's whole-corpus admission gate refuses before discovery, so no enrolled control can exercise the arm (gunbc.recurring_failure_mode.a_gate_sized_for_the_largest_subject_refuses_every_smaller_one)",
       restoring_receipt: "a PersistedLegacyBaseline held against the pinned pre-cut base - the capture taken (ACT-0 BaselineCaptureReceipt)"
     }
   }

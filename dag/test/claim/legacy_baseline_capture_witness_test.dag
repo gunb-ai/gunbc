@@ -467,7 +467,7 @@ test fn the_reported_capability_is_blocked_until_the_observed_arm_executes_on_a_
         RepairCensusPhase =>
           match c {
             ObservedArmUnexercisedOnRequiredRoute { evidence_route: r, restoring_receipt: t } =>
-              string_contains(s: r, pattern: "xl1_live_tap_observed_arm_witness")
+              string_contains(s: r, pattern: "xl1_live_repair_tap_census")
                 && string_contains(s: t, pattern: "PersistedLegacyBaseline")
             _ => false
           }

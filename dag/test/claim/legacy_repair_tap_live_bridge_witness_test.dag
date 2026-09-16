@@ -30,14 +30,14 @@ import v2.workflow.legacy_repair_tap {
 // inside the seed arm, not mint an Observed encoding. Executes emit_rust_reference_derived_rows_bridge.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE OBSERVED ARM'S POSITIVE CONTROLS LIVE IN test.claim.long.xl1_live_tap_observed_arm_witness,
-// OFF THE REQUIRED FLOOR BY ROUTE, NOT BY CHOICE: the tap gates on
-// memory_governor whole_corpus_compile_admission before it reads a single file, and the
-// required floor never has whole-corpus headroom mid-run (gunbc#11461 run 35074340220: both
-// controls refused in under 300 microseconds - the admission, not the emitter). The refusal
-// claims below are what the floor CAN execute. legacy_baseline_capture_capability reports
-// that gap honestly as CaptureBlocked rather than reading Clear off controls the required
-// route cannot run.
+// THE OBSERVED ARM HAS NO ENROLLED POSITIVE CONTROL, and that is stated rather than hidden:
+// the tap gates on memory_governor whole_corpus_compile_admission before it reads a single
+// file, the required floor never has whole-corpus headroom mid-run, and the floor executes
+// a changed witness once even in a long home - so any enrolled Observed-arm control refuses
+// there before the emitter runs (gunbc#11461 runs 35074340220, 35079253040). The refusal
+// claims below are what the floor CAN execute; the arm's evidence route and the class are
+// on legacy_baseline_capture_capability and
+// gunbc.recurring_failure_mode.a_gate_sized_for_the_largest_subject_refuses_every_smaller_one.
 
 test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool {
   match emit_rust_reference_derived_rows_bridge([]) {
