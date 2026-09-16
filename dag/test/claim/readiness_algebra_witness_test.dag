@@ -1,6 +1,6 @@
 module test.claim.readiness_algebra_witness
 
-import std.types { Bool, String, FilePath, NonEmptyStr, Port }
+import std.types { Bool, String, FilePath, NonEmptyStr }
 import v2.std.collection { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.readiness {
@@ -167,7 +167,7 @@ test fn witness_red_control_observe_unplaced_executable_runs_the_producer() -> B
       layout: witness_unplaced_executable_layout(),
       root: "/witness/root" as FilePath,
       serve_function: "witness_handler" as NonEmptyStr,
-      listen_port: 19998 as Port,
+      listen_port: 19998,
       source_anchor_ref: "refs/heads/witness-anchor" as NonEmptyStr,
       actuation: DashboardActuating,
       provision_transport: DashboardLocalProvision,
