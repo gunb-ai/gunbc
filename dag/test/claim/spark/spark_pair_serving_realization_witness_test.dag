@@ -7,10 +7,10 @@ import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_bak
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
-  DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+  RenderedUnitDigested, RenderedUnitDigestUnavailable,
   spark_pair_realization, spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
   spark_pair_head_unit_unsigned, spark_pair_container_spec, spark_pair_container_env,
-  spark_pair_head_unit_name, spark_pair_declared_unit_digest,
+  spark_pair_head_unit_name, spark_pair_rendered_unit_digest,
 }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_with, SeqCapacityMeasured,
@@ -265,17 +265,17 @@ test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> 
 }
 
 // A RENDER REFUSAL IS AN UNAVAILABLE STANDING, AND IT CARRIES THE RENDER'S OWN CAUSE. This drives
-// THE REAL MINT, spark_pair_declared_unit_digest, and stays hermetic because the refused arm is
-// decided before sha256sum is reached: DigestStdin is only called on SparkPairUnitRendered.
-// RED if the mint ever fabricated a digest for a refused render, or replaced the render's cause
+// the real byte-level fold, spark_pair_rendered_unit_digest, and stays hermetic because the refused
+// arm is decided before sha256sum is reached: DigestStdin is only called on SparkPairUnitRendered.
+// RED if the fold ever fabricated a digest for a refused render, or replaced the render's cause
 // with a generic one.
 test fn a_render_refusal_is_an_unavailable_declared_digest() -> Bool {
-  match spark_pair_declared_unit_digest(render: SparkPairUnitRenderRefused {
+  match spark_pair_rendered_unit_digest(render: SparkPairUnitRenderRefused {
     unit_name: spark_pair_head_unit_name,
     cause: "fixture render refusal" as NonEmptyStr,
   }) {
-    DeclaredUnitDigestUnavailable { obligation: o } => (o as String) == "fixture render refusal"
-    DeclaredUnitDigested { evidence: _ } => false
+    RenderedUnitDigestUnavailable { obligation: o } => (o as String) == "fixture render refusal"
+    RenderedUnitDigested { unit_name: _, digest: _ } => false
   }
 }
 
@@ -287,12 +287,12 @@ test fn a_render_refusal_is_an_unavailable_declared_digest() -> Bool {
 // make sha256sum fail on demand. Those two arms are therefore UNEXERCISED, and the fold is written
 // so each is a typed Unavailable rather than a fabricated digest (DESIGN section 5).
 test fn an_empty_render_is_an_unavailable_declared_digest() -> Bool {
-  match spark_pair_declared_unit_digest(render: SparkPairUnitRendered {
+  match spark_pair_rendered_unit_digest(render: SparkPairUnitRendered {
     unit_name: spark_pair_head_unit_name,
     text: "",
   }) {
-    DeclaredUnitDigestUnavailable { obligation: o } => (o as String) == "rendered unit text is empty"
-    DeclaredUnitDigested { evidence: _ } => false
+    RenderedUnitDigestUnavailable { obligation: o } => (o as String) == "rendered unit text is empty"
+    RenderedUnitDigested { unit_name: _, digest: _ } => false
   }
 }
 

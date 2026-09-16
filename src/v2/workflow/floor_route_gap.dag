@@ -1051,7 +1051,7 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
 }
 
 // THE DECLARED-UNIT DIGEST MINT IS THE ONE ROUTE GAP THESE IDENTITIES SHARE.
-// gunbc.spark.pair_serving_realization spark_pair_declared_unit_digest calls
+// gunbc.spark.pair_serving_realization spark_pair_rendered_unit_digest calls
 // extdeps.tools.sha256sum Sha256.DigestStdin, which declares no mock_response, so the hermetic
 // floor has no route that can run it. DeclaredUnitDigestEvidence is a sole_constructor record, so
 // no fixture can route around that by authoring a standing -- which is the point rather than a

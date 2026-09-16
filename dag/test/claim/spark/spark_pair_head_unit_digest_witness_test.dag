@@ -8,24 +8,26 @@ import std.content_hash {
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_realization {
   SparkPairUnitRender, SparkPairUnitRendered,
-  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
-  spark_pair_declared_unit_digest, spark_pair_declared_head_digest,
+  RenderedUnitDigestStanding, RenderedUnitDigested, RenderedUnitDigestUnavailable,
+  DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+  spark_pair_rendered_unit_digest, spark_pair_declared_head_digest,
   spark_pair_head_unit_render_for_group, spark_pair_head_unit_name,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE MINT IS EXECUTED FOR REAL HERE. spark_pair_declared_unit_digest calls
+// REAL EXECUTION HERE. spark_pair_rendered_unit_digest and spark_pair_declared_head_digest call
 // extdeps.tools.sha256sum Sha256.DigestStdin, which has no mock_response, so every row in this file
 // runs on the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal
 // local_repo_wet_schedule). The rows that do NOT need a digest -- render refusal, empty render --
 // are hermetic and live in test.claim.spark.spark_pair_serving_realization_witness instead.
 //
-// THE INPUT IS A SUPPLIED RENDER, WHICH IS THE ONLY WAY A FIXTURE CAN OBTAIN A STANDING.
-// DeclaredUnitDigestEvidence is a sole_constructor record, so no fixture can build one; supplying
-// SparkPairUnitRendered (an ordinary variant) to the real mint is the sanctioned route, and it is
-// what makes this file the inhabitance claim DESIGN section 3's pairing obligation requires for
-// every witness that supplies a DeclaredUnitDigestStanding downstream.
+// TWO PROPOSITIONS, TWO SETS OF ROWS, MATCHING THE PRODUCTION SPLIT. The byte-level rows below
+// drive spark_pair_rendered_unit_digest, whose result is UNSEALED -- they supply fixture bytes, so
+// there is nothing to protect and no seal to bypass. The Group A row drives
+// spark_pair_declared_head_digest, the corpus's only constructor of DeclaredUnitDigestEvidence,
+// which takes a modeled group and renders from the production declaration. THIS FILE CANNOT MINT
+// SEALED EVIDENCE OVER BYTES OF ITS OWN, and that is the point rather than a limitation.
 
 data w_unit_text: String = "[Unit]\nDescription=gunbc spark pair head\n\n[Service]\nExecStart=/bin/true\n"
 
@@ -33,19 +35,20 @@ fn w_render(text: String) -> SparkPairUnitRender {
   SparkPairUnitRendered { unit_name: spark_pair_head_unit_name, text: text }
 }
 
-fn w_digest_of(text: String) -> DeclaredUnitDigestStanding {
-  spark_pair_declared_unit_digest(render: w_render(text: text))
+fn w_digest_of(text: String) -> RenderedUnitDigestStanding {
+  spark_pair_rendered_unit_digest(render: w_render(text: text))
 }
 
 // POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice.
 test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
   match w_digest_of(text: w_unit_text) {
-    DeclaredUnitDigestUnavailable { obligation: _ } => false
-    DeclaredUnitDigested { evidence: e1 } =>
+    RenderedUnitDigestUnavailable { obligation: _ } => false
+    RenderedUnitDigested { unit_name: n1, digest: d1 } =>
       match w_digest_of(text: w_unit_text) {
-        DeclaredUnitDigestUnavailable { obligation: _ } => false
-        DeclaredUnitDigested { evidence: e2 } =>
-          match compare_content_hash(left: e1.digest, right: e2.digest) {
+        RenderedUnitDigestUnavailable { obligation: _ } => false
+        RenderedUnitDigested { unit_name: _, digest: d2 } =>
+          (n1 as String) == (spark_pair_head_unit_name as String)
+            && match compare_content_hash(left: d1, right: d2) {
             ContentHashEqual => true
             ContentHashDifferent => false
             ContentHashCrossFamilyIncomparable => false
@@ -58,12 +61,12 @@ test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
 // a constant, or hashed the unit NAME rather than the bytes, would still pass the stability row.
 test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
   match w_digest_of(text: w_unit_text) {
-    DeclaredUnitDigestUnavailable { obligation: _ } => false
-    DeclaredUnitDigested { evidence: e } =>
+    RenderedUnitDigestUnavailable { obligation: _ } => false
+    RenderedUnitDigested { unit_name: _, digest: d } =>
       match w_digest_of(text: join([w_unit_text, " "], "")) {
-        DeclaredUnitDigestUnavailable { obligation: _ } => false
-        DeclaredUnitDigested { evidence: e2 } =>
-          match compare_content_hash(left: e.digest, right: e2.digest) {
+        RenderedUnitDigestUnavailable { obligation: _ } => false
+        RenderedUnitDigested { unit_name: _, digest: d2 } =>
+          match compare_content_hash(left: d, right: d2) {
             ContentHashDifferent => true
             ContentHashEqual => false
             ContentHashCrossFamilyIncomparable => false
@@ -84,10 +87,10 @@ test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> 
   match spark_pair_declared_head_digest(group: FabricGroupA) {
     DeclaredUnitDigestUnavailable { obligation: _ } => false
     DeclaredUnitDigested { evidence: e } =>
-      match spark_pair_declared_unit_digest(render: spark_pair_head_unit_render_for_group(group: FabricGroupA)) {
-        DeclaredUnitDigestUnavailable { obligation: _ } => false
-        DeclaredUnitDigested { evidence: again } =>
-          match compare_content_hash(left: e.digest, right: again.digest) {
+      match spark_pair_rendered_unit_digest(render: spark_pair_head_unit_render_for_group(group: FabricGroupA)) {
+        RenderedUnitDigestUnavailable { obligation: _ } => false
+        RenderedUnitDigested { unit_name: _, digest: again } =>
+          match compare_content_hash(left: e.digest, right: again) {
             ContentHashEqual => true
             ContentHashDifferent => false
             ContentHashCrossFamilyIncomparable => false

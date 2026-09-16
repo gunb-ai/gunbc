@@ -1,0 +1,100 @@
+module test.claim.spark.spark_declared_unit_digest_seal_probe_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THIS FILE ESTABLISHES TODAY, STATED BEFORE ANYTHING ELSE SO IT IS NOT MISREAD AS COVERAGE.
+// This module declares ReadsLiveTree, because its probe sources IMPORT REAL CORPUS MODULES and the
+// census must resolve them against the tree. v2.workflow.floor_route_gap records that a file with
+// that disposition has every identity DECLINED BEFORE EXECUTION
+// (RequiredFloorDisposition.DeclinedLiveTree), and that claim_executor --required-floor is the only
+// witness-executing consumer in the tree -- so a declined identity RUNS NOWHERE. Until that decline
+// is lifted these rows are ENROLLED AND NOT EXECUTED, and they are cited as such: DESIGN 4b calls a
+// check that cannot run a decoration, worse than absent because it gets counted as coverage.
+// NEXT-RUNG TRIGGER, A CAPABILITY: discovery admission executing ReadsLiveTree claims (or this
+// census reaching a disposition that does execute), SUFFICIENT FOR these four rows to run on the
+// required floor. The disposition each row actually receives is printed by the floor run itself;
+// read that, not this sentence.
+//
+// WHAT IS WALLED WITHOUT THIS FILE, and it is the larger half: the split itself is enforced by
+// ORDINARY COMPILATION for every module in the corpus. spark_pair_rendered_unit_digest returns the
+// UNSEALED RenderedUnitDigestStanding, so no in-corpus caller can turn bytes into a sealed standing
+// without a typecheck refusal, and DeclaredUnitDigestEvidence's sole_constructor refuses a forge at
+// its own position. That holds on every floor compile. What these rows add is the same claim about
+// FOREIGN source text, which is a fixture-boundary question the corpus compile cannot ask.
+//
+// THE SEAL IS MEASURED BY COMPILING SOURCE THAT TRIES TO BREAK IT, not by reading the declaration.
+// DESIGN 4b: at the top rung, ask whether the check's RED is AUTHORABLE before writing the check.
+// It is authorable here, because the subject is source text handed to the compiler by a fixture, and
+// a compiler is precisely a thing whose regression probes are invalid programs. Declining to enroll
+// it would be specification-without-execution.
+//
+// WHY THIS FILE EXISTS AT ALL. An earlier revision of this change exported ONE mint,
+// spark_pair_declared_unit_digest(render: SparkPairUnitRender), returning the SEALED standing.
+// SparkPairUnitRendered is an ordinary constructible variant, so any module could hand it
+// caller-authored bytes and receive DeclaredUnitDigested over a digest of its choosing: the record
+// was sealed and the seal did nothing. The repair split the propositions -- bytes -> UNSEALED
+// RenderedUnitDigestStanding, current declaration -> SEALED DeclaredUnitDigestEvidence -- and these
+// two rows are what keep the repair honest rather than merely stated.
+// Class: gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn total_row_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// FORM 1: forge the sealed record directly, cross-module.
+data forge_record_source: String = "module probe_declared_unit_digest_forge\nimport gunbc.spark.pair_serving_realization { DeclaredUnitDigestEvidence }\nimport std.content_hash { ContentHash }\nfn forged(h: ContentHash) -> DeclaredUnitDigestEvidence {\n  DeclaredUnitDigestEvidence { digest: h }\n}\n"
+
+test fn foreign_code_cannot_construct_declared_unit_digest_evidence() -> Bool {
+  violation_count(source: forge_record_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// FORM 2: THE EGRESS ROUTE, which is the one that was actually open. Import the byte-level helper,
+// hand it a caller-authored render, and try to use the result where the SEALED standing is wanted.
+// The byte-level fold returns RenderedUnitDigestStanding, so this cannot typecheck -- there is no
+// bytes-to-sealed-evidence path for a foreign module to walk. RED here is exactly the defect the
+// side-chat refusal found: if this compiles clean, the seal is bypassable through the sanctioned
+// mint again.
+data bytes_to_sealed_source: String = "module probe_declared_unit_digest_bytes_egress\nimport gunbc.spark.pair_serving_realization { DeclaredUnitDigestStanding, SparkPairUnitRendered, spark_pair_rendered_unit_digest, spark_pair_head_unit_name }\nfn forged() -> DeclaredUnitDigestStanding {\n  spark_pair_rendered_unit_digest(render: SparkPairUnitRendered { unit_name: spark_pair_head_unit_name, text: \"caller-authored bytes\" })\n}\n"
+
+test fn caller_authored_bytes_cannot_yield_a_sealed_declared_standing() -> Bool {
+  total_row_count(source: bytes_to_sealed_source) >= 1
+}
+
+// CALIBRATION, so a passing row above is never read as "the probe did not run". Both sources must
+// actually reach the compiler (CensusObserved, not the -1 CensusNotRunnable sentinel), and the
+// SANCTIONED route must compile CLEAN -- otherwise the two rows above would pass for any reason at
+// all, including a typo in the import.
+data sanctioned_route_source: String = "module probe_declared_unit_digest_sanctioned\nimport gunbc.spark.pair_serving_realization { DeclaredUnitDigestStanding, spark_pair_declared_head_digest }\nimport gunbc.spark.fabric_switch_observed { FabricGroupA }\nfn sanctioned() -> DeclaredUnitDigestStanding {\n  spark_pair_declared_head_digest(group: FabricGroupA)\n}\n"
+
+test fn the_sanctioned_group_route_compiles_clean() -> Bool {
+  total_row_count(source: sanctioned_route_source) == 0
+}
+
+test fn both_forge_probes_actually_reached_the_compiler() -> Bool {
+  total_row_count(source: forge_record_source) >= 1
+    && total_row_count(source: bytes_to_sealed_source) >= 1
+}

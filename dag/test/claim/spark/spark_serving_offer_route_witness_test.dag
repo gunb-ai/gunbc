@@ -20,7 +20,7 @@ import gunbc.spark.vllm_observed {
 import gunbc.spark.pair_serving_realization {
   spark_pair_model_path_in_container, spark_pair_desired_snapshot, spark_pair_head_unit_name,
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
-  SparkPairUnitRendered, spark_pair_declared_unit_digest,
+  spark_pair_declared_head_digest,
 }
 import std.measure { token_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
@@ -146,7 +146,7 @@ fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
   EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
 }
 
-data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production reaches this arm when the head unit does not render or the digest leg fails, at gunbc.spark.pair_serving_realization spark_pair_declared_unit_digest" as NonEmptyStr
+data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production reaches this arm when the head unit does not render or the digest leg fails, at gunbc.spark.pair_serving_realization spark_pair_declared_head_digest" as NonEmptyStr
 
 fn t_unit_unavailable() -> DeclaredUnitDigestStanding {
   DeclaredUnitDigestUnavailable { obligation: t_declared_unit_unavailable_obligation }
@@ -540,50 +540,52 @@ fn t_sha256(hex: String) -> ContentHash {
   Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
 }
 
-// THE DECLARED DIGESTS ARE MINTED, NOT WRITTEN DOWN. DeclaredUnitDigestEvidence is a
-// sole_constructor record, so this file cannot author one; it supplies an ordinary
-// SparkPairUnitRendered to the real mint (spark_pair_declared_unit_digest) and takes what comes
-// back. That is a real DigestStdin, which is why this file is on the required floor's local-repo wet
-// lane. The observed launch fixtures then take their unit_digest FROM the minted evidence, so the
-// agreeing arms agree on bytes rather than on a hex literal two fixtures happened to share.
-data t_unit_text: String = "[Unit]\nDescription=gunbc spark pair head (route witness fixture A)\n"
-data t_other_unit_text: String = "[Unit]\nDescription=gunbc spark pair head (route witness fixture B)\n"
+// THE DECLARED SIDE COMES FROM THE PRODUCTION MINT, AND THIS FILE COULD NOT AUTHOR IT IF IT WANTED
+// TO. DeclaredUnitDigestEvidence is a sole_constructor record whose only constructor in the corpus
+// is spark_pair_declared_head_digest(group), which renders the CURRENT Group A declaration and
+// hashes it. There is no byte-level door: spark_pair_rendered_unit_digest returns the UNSEALED
+// RenderedUnitDigestStanding, so no amount of fixture text produces a DeclaredUnitDigested. Hence
+// this file executes a real DigestStdin over the production declaration and lives on the required
+// floor's local-repo wet lane.
+//
+// THE OBSERVED SIDE IS ORDINARY AND IS WHERE THE DISCRIMINATION LIVES. VllmServingLaunch is freely
+// constructible, so the agreeing rows build their launch's unit_digest FROM the minted evidence's
+// digest, and the disagreeing rows use a fixed foreign hex instead. That keeps every arm
+// discriminating without an alternate mint: what varies across the rows is the OBSERVATION, which is
+// exactly the fact the route is deciding about.
+data t_other_unit_hex: String = "6666666666666666666666666666666666666666666666666666666666666666"
 data t_image_hex: String = "7777777777777777777777777777777777777777777777777777777777777777"
 
-fn t_declared_of(text: String) -> DeclaredUnitDigestStanding {
-  spark_pair_declared_unit_digest(render: SparkPairUnitRendered { unit_name: spark_pair_head_unit_name, text: text })
-}
-
 fn t_declared() -> DeclaredUnitDigestStanding {
-  t_declared_of(text: t_unit_text)
+  spark_pair_declared_head_digest(group: FabricGroupA)
 }
 
-fn t_other_declared() -> DeclaredUnitDigestStanding {
-  t_declared_of(text: t_other_unit_text)
-}
-
-// THE UNAVAILABLE ARM YIELDS A STRUCTURAL FINGERPRINT ON PURPOSE. If the mint ever stops producing
-// evidence, the observed fixtures below carry an Fnv1a64 digest against a SHA-256 declared one,
-// which is INCOMPARABLE -- so the agreeing rows go red rather than green on a fabricated match.
+// THE UNAVAILABLE ARM YIELDS A STRUCTURAL FINGERPRINT ON PURPOSE. If the production mint ever stops
+// producing evidence, the observed fixtures below carry an Fnv1a64 digest against a SHA-256 declared
+// one, which is INCOMPARABLE -- so the agreeing rows go red rather than green on a fabricated match.
 // This arm is fail-closed, not a fallback answer (DESIGN section 5).
-fn t_digest_of(standing: DeclaredUnitDigestStanding) -> ContentHash {
-  match standing {
+fn t_declared_digest() -> ContentHash {
+  match t_declared() {
     DeclaredUnitDigested { evidence: e } => e.digest
     DeclaredUnitDigestUnavailable { obligation: _ } =>
       content_hash_of_value(value: "fixture: the declared-unit mint returned no evidence" as NonEmptyStr)
   }
 }
 
-fn t_incarnation() -> VllmServingLaunch {
+fn t_launch_with_unit(unit: ContentHash) -> VllmServingLaunch {
   vllm_serving_launch(
     group: FabricGroupA,
     head: operator_host_srv5,
     systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
     container_id: "fixture-container-1" as NonEmptyStr,
     executable_digest: t_sha256(hex: t_image_hex),
-    unit_digest: t_digest_of(standing: t_declared()),
+    unit_digest: unit,
     started_at: 1788907506,
   )
+}
+
+fn t_incarnation() -> VllmServingLaunch {
+  t_launch_with_unit(unit: t_declared_digest())
 }
 
 fn t_observed(endpoint: VllmEndpointProcessLaunch, launch: VllmServingLaunch) -> EndpointIncarnationStanding {
@@ -671,7 +673,7 @@ test fn an_incarnation_on_another_host_refuses() -> Bool {
   let elsewhere = vllm_serving_launch(
     group: FabricGroupA, head: operator_host_srv1,
     systemd_invocation: "fixture-invocation-1" as NonEmptyStr, container_id: "fixture-container-1" as NonEmptyStr,
-    executable_digest: t_sha256(hex: t_image_hex), unit_digest: t_digest_of(standing: t_declared()), started_at: 1788907506,
+    executable_digest: t_sha256(hex: t_image_hex), unit_digest: t_declared_digest(), started_at: 1788907506,
   )
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: elsewhere)),
@@ -708,8 +710,8 @@ test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool
 // RED -- THE INCARNATION WAS LAUNCHED FROM A DIFFERENT UNIT.
 test fn an_incarnation_from_a_different_unit_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
-    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_other_declared(),
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_launch_with_unit(unit: t_sha256(hex: t_other_unit_hex)))),
+    declared_unit: t_declared(),
   )) {
     Present { value: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: _, declared: _ } } } => true
     _ => false
@@ -730,14 +732,8 @@ test fn an_observed_digest_in_another_family_is_incomparable_and_refuses() -> Bo
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(
       base: t_covered_matching(),
-      incarnation: t_observed(endpoint: t_launch(), launch: vllm_serving_launch(
-        group: FabricGroupA,
-        head: operator_host_srv5,
-        systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
-        container_id: "fixture-container-1" as NonEmptyStr,
-        executable_digest: t_sha256(hex: t_image_hex),
-        unit_digest: content_hash_of_value(value: "fixture: a structural fingerprint is the wrong family" as NonEmptyStr),
-        started_at: 1788907506,
+      incarnation: t_observed(endpoint: t_launch(), launch: t_launch_with_unit(
+        unit: content_hash_of_value(value: "fixture: a structural fingerprint is the wrong family" as NonEmptyStr),
       )),
     ),
     declared_unit: t_declared(),

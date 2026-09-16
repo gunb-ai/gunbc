@@ -336,7 +336,7 @@ type SparkServiceIdentityCause
 
 // THE DECLARED SIDE OF THE UNIT COMPARISON IS SEALED DIGEST EVIDENCE
 // (gunbc.spark.pair_serving_realization DeclaredUnitDigestEvidence): SHA-256 of the exact unit bytes
-// the CURRENT declaration renders, minted once per bind by spark_pair_declared_unit_digest. This
+// the CURRENT declaration renders, minted once per bind by spark_pair_declared_head_digest. This
 // module consumes that standing; it does not render, it does not hash and it does not DigestStdin.
 // The evidence carries no text, so there is no second field for the digest to disagree with. A
 // render refusal or a failed digest leg arrives as DeclaredUnitDigestUnavailable. A structural
