@@ -1621,6 +1621,7 @@ type PreparedGrammarExpr
   | PreparedChoice { plan: PreparedChoicePlan, first: GrammarExprFirstFold }
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
+  | PreparedLookahead { pattern: PreparedGrammarExpr }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -2185,10 +2186,11 @@ fn prepare_grammar_expr(
         residue: list_append(left: concat_prepared_alt_residue(alts: prepared_alts), right: compiled.residue)
       }
     Lookahead { pattern: pattern } =>
-      let pattern_prepared = prepare_grammar_expr(expr: pattern, nullable_set: nullable_set, first_rows: first_rows)
+      let pattern_prepared = prepare_grammar_expr(expr: pattern, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedLookahead { pattern: pattern_prepared.tree },
-        first: GrammarExprFirstFold { terminals: pattern_prepared.first.terminals, nullable: true }
+        first: GrammarExprFirstFold { terminals: pattern_prepared.first.terminals, nullable: true },
+        residue: pattern_prepared.residue
       }
     Optional { element: element } =>
       let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
