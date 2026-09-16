@@ -97,7 +97,10 @@ one.
 
 ## What follows, stated as consequences rather than edits
 
-### 1. There is no drain, and calling a reclaim a drain would claim a property we do not have
+### 1. On the incumbent-absent branch there is no drain, and calling a reclaim a drain would claim a property we do not have
+
+**Everything in this section is scoped to `IncumbentAbsent`.** If D0 finds a live incumbent, the
+original drain-and-preserve transaction applies instead and none of what follows does.
 
 The original sequence was *withdraw the incumbent offer → stop the incumbent*. A drain exists
 to preserve continuity for live traffic. There is no live traffic and no offer being served,
@@ -267,10 +270,43 @@ consumer:
 
 ```
 PairServingGroupAuthority
-  = PairServingActive { group }
-  | SuspendedForAuthorizedSuccessor { group, authorization, successor_subject, lease, cleanup }
+  = PairServingActive { group, exact_realization }
+  | SuspensionPendingReconciliation { group, transaction, lease }      // both actuators disabled
+  | SuspendedForAuthorizedSuccessor { group, authorization,
+                                      exact_candidate_realization,
+                                      lease, cleanup }
+  | FencedRefusal { group, cause, disposition_authority }              // foreign / unread
   | ReleasedToFleet { group, release_receipt }
 ```
+
+**Every state the rest of this document requires is in that list.**
+`SuspensionPendingReconciliation` and `FencedRefusal` are authority states, not diagnostic
+labels — D0 holds the fleet in the first while both actuators are disabled, and the second is
+the long-lived terminal for foreign or unread occupancy. A coproduct without them cannot express
+the state machine D0 declares total.
+
+And the realization must survive in the genealogy: `PairServingActive { group }` alone cannot
+distinguish V4 from V4.1, because both deliberately share `PairServingUnitOn { FabricGroupA }`.
+A successor is discriminated by its exact authorization and candidate realization, never by
+subject identity.
+
+**THE LEASE NEEDS AN EXPIRY TRANSITION, and the lifetime rule above does not give it one.** The
+three ways it ends — D2 assumes the authority, the prior authority is restored,
+`FleetReleasedBaseline` is selected — are all deliberate acts. A bounded lease also ends by
+*running out*, and each silent answer is unsafe: expiry releasing the reservation lets another
+lane take a host with no cleanup or readback; expiry restoring the old authority may restart
+convergence over drifted, foreign or unread state; expiry changing nothing makes "bounded" a
+word rather than a property. So:
+
+```
+authorization expires
+→ launch, offer and seat authority are GONE
+→ cleanup and fencing authority REMAIN
+→ release or restoration only after the required receipt
+```
+
+Expiry removes the right to *start* things and keeps the right to *finish* them, which is the
+only arrangement where a lease can expire mid-transaction without stranding the fleet.
 
 with each consumer told explicitly what it sees:
 
@@ -311,8 +347,9 @@ So the obligation is the annotation above `spark_pair_serving_groups` in
 about it. Read it there.
 
 The roster also reaches **build and probe admission** and **capacity**, not only convergence —
-so "suspend the claim" is a fleet-wide change wearing the costume of a one-line edit. The
-authorization must name what it empties, not merely what it withdraws.
+which is precisely why the accepted design is suspension and **not** a roster edit: a suspension
+that emptied this row would reclassify the hosts it is trying to hold. The authorization names
+the authority it suspends and the reservation it retains; it empties nothing.
 
 **THREE SUBJECTS, THREE NAMES.** An earlier draft used one word — "baseline" — for the state
 D0 records and the state D1 returns to. Those are mutually exclusive, and the ambiguity sat in
@@ -359,9 +396,11 @@ stated reason: the entry state is an instance of a desired authority we are susp
 from ending the experiment. D1 ends the experiment; restoring pair-serving authority is its own
 step with its own evidence.
 
-### 3. The risk profile inverts, and that makes P1 Cut 3 more important rather than less
+### 3. On the same branch the risk profile inverts, and that makes P1 Cut 3 more important rather than less
 
-The original cut's danger was **breaking a live service**. That danger is gone. The remaining
+**Also scoped to `IncumbentAbsent`.** The original cut's danger was **breaking a live service**.
+On this branch that danger is absent — not abolished, and it returns the moment D0 answers
+`IncumbentLive`. The remaining
 danger is **not being able to give the hosts back** — a partial or stalled launch leaving
 ranks up, seats held, and 121 GiB per node unavailable, with no incumbent whose restoration
 would incidentally clear it.
@@ -422,7 +461,24 @@ claim held across that interval, something can become live between observing and
 and the transaction would proceed on a stale premise. That is the same defect this whole
 document exists to correct, one level down.
 
-**D0 asks a reconciliation question, not an inventory question.** Not *what is here*, but:
+**THE QUESTIONS ARE ORDERED, because an earlier draft's branches overlapped on the load-bearing
+state.** It asked occupancy reconciliation and incumbent presence as if independent — but this
+document establishes that a *converged* declared realization would be answering, so
+`DeclaredOccupantObserved { converged }` and "a live serving incumbent" are the **same state**,
+sent by one branch into the reclaim redesign and by the other into the original transaction. The
+incumbent question is asked **first**:
+
+```
+under SuspensionPendingReconciliation, both actuators disabled:
+
+  incumbent live
+      → hand off to the original drain-and-preserve transaction,
+        or a typed fenced refusal
+  incumbent absent
+      → reconcile the remaining occupancy (below)
+```
+
+**Then** the reconciliation question. Not *what is here*, but:
 
 ```
 does the observed container / image / unit population reconcile
@@ -433,10 +489,10 @@ with four answers, each leading somewhere different:
 
 | answer | meaning | disposition |
 |---|---|---|
-| `DeclaredOccupantObserved` | declared **and** shown converged | proceed via the atomic transfer into suspension of §2 — not a withdrawal |
-| `DeclaredOccupantDrifted` | declared lineage, convergence not established — **the expected answer on the readings above** | proceed via the same transfer, record the drift; the drifted state is not a target |
-| `ForeignOccupantObserved` | something we do not declare | **refuse** — not ours to reclaim |
-| `OccupancyUnread` | the question could not be answered | **refuse** — unread is not empty |
+| `DeclaredOccupantObserved` | declared, and shown converged **without answering** — a narrow case, since a converged realization would ordinarily answer | `SuspensionPendingReconciliation → SuspendedForAuthorizedSuccessor` |
+| `DeclaredOccupantDrifted` | declared lineage, convergence not established — **the expected answer on the readings above** | `SuspensionPendingReconciliation → SuspendedForAuthorizedSuccessor`, drift recorded; the drifted state is not a target |
+| `ForeignOccupantObserved` | something we do not declare | `→ FencedRefusal` — not ours to reclaim; needs operator disposition |
+| `OccupancyUnread` | the question could not be answered | `→ FencedRefusal` — unread is not empty |
 
 **EVERY ARM NEEDS AN AUTHORITY-STATE TERMINAL, including the refusing ones.** The transfer
 happens before the readings — that is what closes the overlap and gap arms — so a refusal fires
@@ -474,8 +530,30 @@ used and free, absence of a serving process, absence of an answer on the enrolle
 free disk. That receipt is evidence of **what changed** and forensic record. It is not the
 rollback target.
 
-Terminal: a claim is held, occupancy is reconciled to one of the four answers, an entry-state
-receipt exists for all four ranks, and no host state was altered.
+**D0'S TERMINAL IS TWO SHAPES, NOT ONE, because an earlier draft required a complete receipt on
+every arm — including the arm where the instrument answered "unread".** If occupancy could not
+be read, D0 cannot produce the entry-state facts an `EntryStateReceipt` is defined to contain,
+and demanding one anyway would force either a fabricated receipt or an unreachable terminal:
+
+```
+D0Eligible {
+    entry_state_receipt : EntryStateReceipt,          // complete, all four ranks
+    authority           : SuspendedForAuthorizedSuccessor,
+}
+
+D0Refused {
+    partial_readings    : whatever was read,
+    cause               : foreign | unread | incumbent-live,
+    authority           : FencedRefusal,
+}
+```
+
+Equivalently, `EntryStateReceipt` could itself be total, with per-rank unread arms carrying their
+causes. What must not happen is a complete positive receipt being required after the instrument
+has already said it could not read.
+
+Terminal: the authority is in exactly one of `SuspendedForAuthorizedSuccessor` or
+`FencedRefusal`, the corresponding receipt exists, and no host state was altered.
 
 ### D1 — reclaim, bounded experiment, mandatory return to the RELEASED state
 
@@ -535,8 +613,9 @@ acquires a seat to serve that request, any failure after acquisition can strand 
 seat P1 Cut 3 exists to invalidate.
 
 Every stage capable of preventing a later observation carries a terminal disposition: ranks
-stopped, claims released, hosts at the released state, that state read back — or a typed refusal
-naming the missing cleanup evidence. A failure arm that cannot reach it is the one outcome that must
+stopped, rank and process claims released, offers and seats released, live allocations released,
+**the host reservation retained or released exactly as the named baseline requires**, that
+baseline read back — or a typed refusal naming the missing cleanup evidence. A failure arm that cannot reach it is the one outcome that must
 stop the line loudly, because it is the risk this cut actually carries.
 
 ### D1a — the route reaches a process, which is the only model-independent half
