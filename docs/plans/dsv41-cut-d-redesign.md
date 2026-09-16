@@ -46,35 +46,87 @@ The distinction is not cosmetic. A drain's safety property is "no in-flight requ
 a reclaim has no such property and needs none. Keeping the word would assert a guarantee the
 step does not provide — §4b rung honesty applied to a transaction step.
 
-### 2. The rollback target must change, and the honest one is weaker
+**But dropping the drain obligation does not drop the QUIESCENCE obligation, and an earlier
+draft read as though it did.** No answering front door means no demonstrated serving traffic.
+It does not mean the occupant is safe to stop: those Ray workers hold ~100 GiB each, and what
+they are holding it for is unread. Before the reclaim, D0 must establish or revoke — never
+assume — Ray jobs, actors and placement groups; serving offers and new-admission eligibility;
+acquired or stranded seats; host claims, leases and ownership; and any actuator that could
+recreate the occupant after it is stopped. So the operation is:
 
-*Restore V4 Flash and prove one real request through it* is unsatisfiable: V4 Flash is not
-there to restore. The available targets are:
+```
+fence new acquisition
+→ establish or revoke active work, claims and seats
+→ stop the occupying realization
+→ verify resource release
+```
 
-- **restore the occupant** — reproduce the `gunbc-spark-pair` Ray container. Rejected: it is a
-  leftover with no consumer, we did not create it and do not hold a declaration that produces
-  it, so "restore" would mean *reconstruct from an observation*, which is not a restoration
-  and cannot be verified against anything;
-- **release to a verified empty state** — hosts carrying no serving process, no occupant, and
-  memory returned to its idle reading. **This is the target.** It is weaker than the original
-  but it is checkable, and it is the state the experiment must be able to reach from any
-  failure arm.
+A reclaim with no in-flight-request obligation still has a fencing one. And note that
+enrollment says only that Group A is a route that *may be asked* — it does not say the route
+is live, and availability is separately three-valued (Available / Unavailable / **Unread**).
+Unread is where Group A sits, and unread is not empty.
 
-**TWO STATES, TWO NAMES, because an earlier draft of this document used one word for both and
-that was a meaning fork.** They are not the same state and the cut turns on the difference:
+### 2. The occupant is DECLARED, not residue — and that changes the rollback question entirely
 
-| name | what it is | who records it | is it a return target |
+An earlier draft of this document rejected "restore the occupant" on the grounds that *we hold
+no declaration that produces that Ray container, so restoring it would mean reconstructing from
+an observation*. **That sentence is false**, and the correction matters more than the error.
+
+The corpus declares exactly what was observed:
+
+- `extdeps.docker.images.sparkrun_vllm_ds4_gb10` `gunbc_spark_pair_runtime_image_tag` is
+  `gunbc-spark-pair-runtime:ray-2.58.0` — the observed image, with its pinned base and its
+  exact `ray[default]==2.58.0` requirement;
+- `gunbc.spark.pair_serving_realization` `spark_pair_container_name` is `gunbc-spark-pair` —
+  the observed container, with head and worker units and a one-container-per-host realization;
+- `gunbc.spark.pair_serving_desired` `spark_pair_serving_groups` still contains
+  **`FabricGroupA`**, and `spark_pair_realization` maps that desired set into realizations.
+
+So the ranks are not carrying residue. They are carrying **the declared pair-serving
+realization, converged onto the hosts this cut wants to take.**
+
+**The consequence is a design break, not a wording fix.** If Group A remains in the desired set,
+an existing apply path can recreate exactly what D1 would call residue. "Return to a released
+empty state" is then *not a converged state*: a converger reasserting the desired realization
+would undo D1's terminal, and nothing in the transaction would notice. A terminal that another
+authority can silently reverse is not a terminal.
+
+So the question is not *may we restore the occupant* — it is **under whose authority do the
+hosts sit while V4.1 is on them**, and the plan must answer it explicitly:
+
+- **withdraw or suspend Group A's pair-serving desired authority** for the experiment's
+  duration, so the released state is a converged state rather than a race; and
+- record that withdrawal as part of the authorization, so the hosts are never in a position
+  where two authorities both believe they own them.
+
+That is a real decision with its own consequences — it means Group A is deliberately not
+pair-serving while this runs — and it belongs in the authorization, not in a footnote.
+
+**THREE SUBJECTS, THREE NAMES.** An earlier draft used one word — "baseline" — for the state
+D0 records and the state D1 returns to. Those are mutually exclusive, and the ambiguity sat in
+the one sentence that tells a rollout worker where to leave the hosts.
+
+| subject | what it is | who produces it | is it a return target |
 |---|---|---|---|
-| **entry state** | the ranks as found — occupied by the Ray container, ~108 GiB held | D0 | **no** |
-| **released state** | no occupant, no serving process, memory at its idle reading | D1's terminal | **yes** |
+| **`EntryStateReceipt`** | the ranks as found — occupant present, ~108 GiB held | D0 | **no** |
+| **`ReleasedBaselineSpec`** | the *desired* post-experiment state: no ranks, no engine, no serving offer, no seat, no host claim, no occupying container, no live device allocation | declared before D1 runs | it is the target |
+| **`ReleasedBaselineReceipt`** | a readback establishing that the spec holds | D1's terminal | — |
 
-D1 returns to the RELEASED state, not to the entry state. Returning to the entry state would
-mean reconstructing the occupant, which §2 rejects above. So the entry receipt is evidence of
-*what we changed*, never a thing to restore — and any sentence that says "return to baseline"
-without saying which one is ambiguous in the one place ambiguity is expensive.
+A spec and its readback are two facts, and collapsing them is how "we returned to baseline"
+becomes an assertion instead of a reading.
 
-So the rollback proof changes shape: from *the incumbent serves again* to *the hosts reach the
-declared released state and it is read back*. Cut D must not claim the stronger one.
+**What may remain.** The released state releases *processes, claims, seats and live memory* —
+not bytes at rest. The exact runtime image and the content-addressed row stores may stay on
+local storage. Rematerialising hundreds of gigabytes to satisfy a definition would be redundant
+work, and immutable content-addressed artifacts carry no live runtime across the authorization
+boundary. The spec says so explicitly rather than leaving a later reader to decide whether a
+staged row store violates "released".
+
+The **released state** remains the return target rather than the entry state, but now for a
+stated reason: the entry state is a converged instance of a desired authority we are
+withdrawing, so returning to it means *restoring that authority*, which is a separate decision
+from ending the experiment. D1 ends the experiment; restoring pair-serving authority is its own
+step with its own evidence.
 
 ### 3. The risk profile inverts, and that makes P1 Cut 3 more important rather than less
 
@@ -85,9 +137,21 @@ would incidentally clear it.
 
 The original brief said P1 Cut 3 "should block" ordinary production promotion. Against an
 incumbent, that hedge was defensible because restoring the incumbent was itself a cleanup path.
-Without one it is not: **promotion must refuse** unless P1 Cut 3 lands or an equivalent cleanup
-realization is modeled, authorized, and demonstrated to stop partial ranks, withdraw offers,
-release every held seat, and return the hosts to the released state.
+Without one it is not: **promotion must refuse.** But the condition is CONJUNCTIVE, and an
+earlier draft joined two different problems with `or`:
+
+```
+(P1 Cut 3, or an exact seat-lifecycle equivalent)
+AND
+(a demonstrated rank / process / offer / claim cleanup path to ReleasedBaselineSpec)
+```
+
+P1 Cut 2 detects an exporter still live over an engine that has stopped advancing and
+explicitly leaves held-seat invalidation to Cut 3. That is Cut 3's subject: **seat and
+incarnation invalidation.** It is not the same fact as killing partial ranks, withdrawing
+offers, releasing host claims, stopping containers and returning unified memory — those are
+host and runtime cleanup. A single realization may discharge both, but only if its evidence
+actually proves both, and writing `or` invites treating either one as sufficient.
 
 ### 4. The serving route is declared and unfulfilled, and the experiment must not paper over it
 
@@ -103,15 +167,46 @@ carries a request is its own precondition, and it is stated as one below.
 
 ## The replacement cut
 
-### D0 — capture the ENTRY state as a receipt (no mutation)
+### D0 — take the claim, reconcile the occupancy, then record the ENTRY state
 
-Before anything is stopped, record per rank: occupant container identity and creation time,
-memory used and free, absence of a serving process, absence of an answer on the enrolled
-endpoint, and free disk. This is simultaneously the **rollback reference**, the evidence that
-the transaction changed what it claims to have changed, and the record that makes the occupant
-reconstructible-in-principle if the decision in §2 is ever revisited.
+**D0 takes the exclusive claim FIRST, or brackets its readings with one.** "No incumbent was
+observed" is a dated observation, not a property of Group A — the two SSH readings above are
+14 hours apart and say nothing about the interval between the last one and the stop. Without a
+claim held across that interval, something can become live between observing and reclaiming,
+and the transaction would proceed on a stale premise. That is the same defect this whole
+document exists to correct, one level down.
 
-Terminal: an entry-state receipt exists for all four ranks, and no host state was altered.
+**D0 asks a reconciliation question, not an inventory question.** Not *what is here*, but:
+
+```
+does the observed container / image / unit population reconcile
+with the declared pair-serving realization?
+```
+
+with four answers, each leading somewhere different:
+
+| answer | meaning | disposition |
+|---|---|---|
+| `DeclaredOccupantObserved` | it is the declared realization, converged | proceed via the authority withdrawal of §2 |
+| `DeclaredOccupantDrifted` | declared, but not as declared | proceed, and record the drift; do not treat the drifted state as a target |
+| `ForeignOccupantObserved` | something we do not declare | **refuse** — not ours to reclaim |
+| `OccupancyUnread` | the question could not be answered | **refuse** — unread is not empty |
+
+And it branches on the incumbent rather than assuming its absence:
+
+```
+live serving incumbent observed      → the original drain/preserve path, or refuse this one
+no incumbent + quiescent declared occupant → the reclaim path below
+foreign, active, or unread occupancy → refuse
+```
+
+Only then does it record the entry state per rank: occupant identity and creation time, memory
+used and free, absence of a serving process, absence of an answer on the enrolled endpoint, and
+free disk. That receipt is evidence of **what changed** and forensic record. It is not the
+rollback target.
+
+Terminal: a claim is held, occupancy is reconciled to one of the four answers, an entry-state
+receipt exists for all four ranks, and no host state was altered.
 
 ### D1 — reclaim, bounded experiment, mandatory return to the RELEASED state
 
@@ -129,6 +224,7 @@ claim the four ranks
 → complete model load
 → complete graph/runtime initialisation
 → answer semantic and differential probes
+→ ONE NORMAL ROUTED REQUEST, while the candidate is still live
 → RETURN TO THE RELEASED STATE, unconditionally
 → read back the released state
 ```
@@ -140,6 +236,18 @@ against it.
 
 Weight loading is not success. Acceptance begins after runtime initialisation and one valid
 semantic completion. An HTTP 200 discharges nothing.
+
+**The normal routed request happens INSIDE this window, and an earlier draft had it outside.**
+The end-to-end join — router request, selected offer, authorization, four agreeing ranks,
+produced completion — binds the exact realization D1 created. Deferring it past the teardown
+would mean relaunching V4.1 to perform it, which is a second fleet-mutating experiment, or
+performing it against a different model, which establishes nothing about this candidate's
+offer and rank wiring. The original Cut D placed it correctly and this redesign keeps that
+ordering.
+
+**The cleanup closure D2 requires is needed HERE too**, not only at promotion: once D1
+acquires a seat to serve that request, any failure after acquisition can strand exactly the
+seat P1 Cut 3 exists to invalidate.
 
 Every stage capable of preventing a later observation carries a terminal disposition: ranks
 stopped, claims released, hosts at the released state, that state read back — or a typed refusal
@@ -177,9 +285,9 @@ A new authorization over the already-proven realization. Promotion **refuses** u
 - the candidate is realized, not merely keyed — produced image digest, applied patch
   population, four row-store identities;
 - row-store faithfulness is established over the **published** population, not a fixture;
-- D1 completed and returned to the released state;
-- D1a established that the enrolled route reaches a process, and D1 produced the end-to-end join;
-- **P1 Cut 3 or a demonstrated equivalent cleanup path exists**;
+- D1 completed and its `ReleasedBaselineReceipt` was read back;
+- D1a established that the enrolled route reaches a process, and D1 produced the end-to-end join while the candidate was live;
+- **P1 Cut 3 (or an exact seat-lifecycle equivalent) AND a demonstrated cleanup path to `ReleasedBaselineSpec`** — two facts, not one;
 - a second convergence run mutates no unit, image, row store or route.
 
 Capacity calibration is a follow-up. Record steady resident bytes, cache retention, local read
