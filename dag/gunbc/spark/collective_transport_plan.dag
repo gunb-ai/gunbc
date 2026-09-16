@@ -34,6 +34,21 @@ import extdeps.nvidia.nccl {
 // can only call a comparison a one-axis cut when exactly one axis moved; hand-counting device,
 // capability, ulimit and four env vars as separate changes would make every Socket-to-RoCE
 // comparison a seven-axis change that attributes nothing.
+// ── THE COMPARISON HALF IS DELIBERATELY NOT HERE ──────────────────────────────────────────────
+//
+// A first version of this module carried `TransportPlanOutcome` -- a fold joining a plan to an
+// observed NcclRealizedTransport, with a fallback arm for "asked for RoCE, got Socket". It is
+// removed rather than kept behind a declared frontier, and the reason is that it was ALREADY KNOWN
+// to be inadequate: it reduced both sides to string projections and discarded
+// NcclRealizedTransport.read_from, so it could not bind its answer to an incarnation, a rank, a
+// communicator or the raw log line it came from. Landing a comparison that loses the provenance of
+// the thing it compares would make the eventual real one a replacement rather than a first.
+//
+// WHAT THE REAL COMPARISON NEEDS, so the next author does not re-derive it: a verdict receipt
+// carrying the incarnation, the rank, the communicator and the raw carrier the verdict was read
+// from, joined to the plan the route intended. That belongs with the producer that can supply those
+// -- the serving throughput instrument reading NCCL's own `Using network` line off a running engine
+// -- and it does not exist yet. Until it does, this module projects a plan and does not judge one.
 type CollectiveTransportPlan
   = SocketOverInterface { interface: NonEmptyStr }
   | RoceOverInterface { interface: NonEmptyStr, rdma_device: NonEmptyStr, gid_selection: NcclRoceGidSelection }
@@ -119,19 +134,3 @@ fn transport_plan_env(p: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
         map(nccl_roce_gid_selection_env(s: g), a => DockerEnvAssignment { name: a.name, value: a.value }))
   }
 }
-
-// ── THE COMPARISON HALF IS DELIBERATELY NOT HERE ──────────────────────────────────────────────
-//
-// A first version of this module carried `TransportPlanOutcome` -- a fold joining a plan to an
-// observed NcclRealizedTransport, with a fallback arm for "asked for RoCE, got Socket". It is
-// removed rather than kept behind a declared frontier, and the reason is that it was ALREADY KNOWN
-// to be inadequate: it reduced both sides to string projections and discarded
-// NcclRealizedTransport.read_from, so it could not bind its answer to an incarnation, a rank, a
-// communicator or the raw log line it came from. Landing a comparison that loses the provenance of
-// the thing it compares would make the eventual real one a replacement rather than a first.
-//
-// WHAT THE REAL COMPARISON NEEDS, so the next author does not re-derive it: a verdict receipt
-// carrying the incarnation, the rank, the communicator and the raw carrier the verdict was read
-// from, joined to the plan the route intended. That belongs with the producer that can supply those
-// -- the serving throughput instrument reading NCCL's own `Using network` line off a running engine
-// -- and it does not exist yet. Until it does, this module projects a plan and does not judge one.
