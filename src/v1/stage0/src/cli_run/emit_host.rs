@@ -697,10 +697,12 @@ fn dag_ident_continue(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
 }
 
-/// Byte prefilter matching `first_call_form_leaf`: a target leaf at an identifier
-/// boundary, then whitespace, then `(`. Avoids tokenizing files that only mention the
-/// leaf in a non-call position.
-fn content_has_call_form_leaf(content: &str, leaves: &HashSet<String>) -> bool {
+/// Broad raw prefilter only: exact target-leaf bytes at an identifier boundary.
+/// Not a call-form detector. `//` annotations sit between a leaf and `(` in source
+/// bytes while the tokenizer elides them and treats newline as trivia, so a `(`
+/// proximity test here is a false-negative class. `first_call_form_leaf` remains
+/// the sole call-form authority after this filter admits a file to tokenize.
+fn content_has_target_leaf_at_ident_boundary(content: &str, leaves: &HashSet<String>) -> bool {
     let bytes = content.as_bytes();
     for leaf in leaves {
         let needle = leaf.as_bytes();
@@ -717,13 +719,7 @@ fn content_has_call_form_leaf(content: &str, leaves: &HashSet<String>) -> bool {
             let after = i + needle.len();
             let after_ok = after == bytes.len() || !dag_ident_continue(bytes[after]);
             if before_ok && after_ok {
-                let mut j = after;
-                while j < bytes.len() && matches!(bytes[j], b' ' | b'\t' | b'\n' | b'\r') {
-                    j += 1;
-                }
-                if j < bytes.len() && bytes[j] == b'(' {
-                    return true;
-                }
+                return true;
             }
             i += 1;
         }
@@ -864,7 +860,7 @@ pub fn compile_dag_call_form_leaf_guard(
                 };
             }
         };
-        if !content_has_call_form_leaf(&content, &leaves) {
+        if !content_has_target_leaf_at_ident_boundary(&content, &leaves) {
             continue;
         }
         match first_call_form_leaf(&content, &rel, &leaves) {
@@ -1091,7 +1087,7 @@ fn load_reference_form_pool(
         })?;
         if require_leaf_bytes
             && !call_form_leaves.is_empty()
-            && !content_has_call_form_leaf(&content, &call_form_leaves)
+            && !content_has_target_leaf_at_ident_boundary(&content, &call_form_leaves)
         {
             continue;
         }
