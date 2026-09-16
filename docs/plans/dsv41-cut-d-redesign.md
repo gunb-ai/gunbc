@@ -14,6 +14,21 @@ original bought.
 the transaction's own claim, because something can become live between a reading and a stop.
 This document records what was observed, what follows, and the cut that replaces the original.
 
+> ## ⛔ THIS CUT CANNOT BE EXECUTED TODAY
+>
+> It describes a transaction that depends on **suspending Group A's pair-serving authority** —
+> the realization disabled while all four hosts stay held for the named successor, build and
+> probe admission still fenced, under a bounded lease with cleanup.
+>
+> **No carrier provides that.** The model can express *withdrawal* only, as
+> `spark_pair_serving_groups` shrinking — and for Group A, which is that roster's sole member,
+> shrinking means **emptying**, which reclassifies the hosts the cut needs and hands two of them
+> to any lane that asks. Emptying the roster is not a suspension substitute.
+>
+> So this is a **design with a named prerequisite**, not an instruction sheet. Modelling
+> `PairServingGroupAuthority` (§2) is the work that has to land before D0 can take its first
+> step. Everything below assumes that operation exists.
+
 **HOW TO READ THIS DOCUMENT.** It went through nine review rounds and several of its own
 premises were rejected along the way. Rejected premises are marked **⚠ REJECTED PREMISE** and
 kept only so they are not re-derived; everything else is operative. Nothing here should require
