@@ -358,7 +358,7 @@ data claim_right_recursive_parse_succeeds: TestClaim = EqualsClaim {
 }
 
 data claim_choice_ambiguity_detected: TestClaim = EqualsClaim {
-  label: "grammar_has_choice_ambiguity returns true when Choice branches share a FIRST terminal",
+  label: "grammar_has_choice_ambiguity returns true when the prepared plan contains OrderedBacktrack (unfactored overlapping starts)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_choice_ambiguity(root: validation_ambiguous_choice_root)),
   rhs: validation_bool_atom(b: true),
@@ -374,7 +374,7 @@ data claim_disjoint_choice_not_ambiguous: TestClaim = EqualsClaim {
 }
 
 data claim_validate_accepts_overlap_with_counted_residue: TestClaim = EqualsClaim {
-  label: "grammar_validate_for_parse accepts non-nullable Choice FIRST overlap as counted typed residue (reason parse_grammar_choice_overlap_residue); runtime interprets the prepared plan, with OrderedBacktrack as the unproven residue",
+  label: "grammar_validate_for_parse accepts non-nullable OrderedBacktrack as counted typed residue (reason parse_grammar_choice_overlap_residue); the roster is the compiled plan's ChoiceOrderedBacktrack nodes",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_overlap_choice_validate_accepts_with_residue()),
   rhs: validation_bool_atom(b: true),

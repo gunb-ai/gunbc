@@ -1,5 +1,37 @@
 module v2.test.parse.choice_plan
 
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.collection { List, empty_map }
+import v2.std.compilers.lexing { Token }
+import v2.std.grammar {
+  Choice,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  Optional,
+  Sequence,
+  StampClass,
+  StampLexeme,
+  Terminal,
+  TerminalStampMode,
+  grammar_atom,
+  grammar_empty_sync_tokens
+}
+import v2.compiler.parse {
+  ChoiceTokenPrefix,
+  ParseExprAccepted,
+  ParseExprRejected,
+  compile_choice_alts,
+  parse_expr,
+  parse_prov_initial,
+  parse_table_empty,
+  prepare_grammar_expr
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.node { Hash, Symbol, content_hash }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE PRE-CUTOVER INTERPRETER, restated as the oracle: ordered try-left-then-right.
@@ -77,6 +109,10 @@ fn term(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
+fn term_stamp(token_class: Symbol, stamp: TerminalStampMode) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: stamp }
+}
+
 fn seq(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Sequence { left: left, right: right }
 }
@@ -98,18 +134,42 @@ test fn prepared_choice_plan_agrees_with_the_inline_dispatch_rule() -> Bool {
   let a_then_b = [pcp_token(token_class: ^pcp_a), pcp_token(token_class: ^pcp_b)]
   let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
   let ab = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_b))
-  let bb = seq(left: term(token_class: ^pcp_b), right: term(token_class: ^pcp_b))
   let both_nullable = Choice {
     left: aa,
     right: Choice { left: opt(element: term(token_class: ^pcp_b)), right: opt(element: term(token_class: ^pcp_b)) }
   }
   let shared_prefix = Choice { left: ab, right: aa }
-  let token_prefix = Choice { left: aa, right: bb }
+  let stamp_split_left = seq(left: term_stamp(token_class: ^pcp_a, stamp: StampClass), right: term(token_class: ^pcp_a))
+  let stamp_split_right = seq(left: term_stamp(token_class: ^pcp_a, stamp: StampLexeme), right: term(token_class: ^pcp_b))
+  let stamp_split = Choice { left: stamp_split_left, right: stamp_split_right }
+  let stamp_left_fold = prepare_grammar_expr(
+    expr: stamp_split_left,
+    nullable_set: Empty,
+    first_rows: empty_map(),
+    production: ^pcp_start
+  )
+  let stamp_right_fold = prepare_grammar_expr(
+    expr: stamp_split_right,
+    nullable_set: Empty,
+    first_rows: empty_map(),
+    production: ^pcp_start
+  )
+  let stamp_bucket = compile_choice_alts(
+    alts: Cons { head: stamp_left_fold, tail: Cons { head: stamp_right_fold, tail: Empty } },
+    nullable_set: Empty,
+    first_rows: empty_map(),
+    production: ^pcp_start
+  )
+  let token_prefix_arm = match stamp_bucket.plan {
+    ChoiceTokenPrefix { rows: rows } => length(xs: rows) == 2
+    _ => false
+  }
   (pcp_observe(expr: expr, tokens: tokens_a) == oracle_parse_choice(left: left, right: right, tokens: tokens_a))
     && ((pcp_observe(expr: expr, tokens: tokens_a) == pcp_observe(expr: expr, tokens: tokens_b)) == false)
     && (pcp_observe(expr: both_nullable, tokens: tokens_a) == oracle_parse_choice(left: aa, right: opt(element: term(token_class: ^pcp_b)), tokens: tokens_a))
     && (pcp_observe(expr: shared_prefix, tokens: a_then_b) == oracle_parse_choice(left: ab, right: aa, tokens: a_then_b))
-    && (pcp_observe(expr: token_prefix, tokens: two_a) == oracle_parse_choice(left: aa, right: bb, tokens: two_a))
+    && token_prefix_arm
+    && (pcp_observe(expr: stamp_split, tokens: two_a) == oracle_parse_choice(left: stamp_split_left, right: stamp_split_right, tokens: two_a))
 }
 
 test fn grammar_lookahead_consumes_no_token_and_wrong_class_rejects() -> Bool {

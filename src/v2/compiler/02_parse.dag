@@ -1404,6 +1404,7 @@ type GrammarFirstAnalysis {
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
   grammar_digest: Hash
   productions_by_name: Map<Symbol, GrammarProduction>
+  choice_residue: List<GrammarChoiceAmbiguityRow>
 }
 
 fn grammar_empty_terminal_list() -> List<Symbol> {
@@ -1595,14 +1596,6 @@ fn compute_production_first_rows(
   )
 }
 
-fn choice_branches_ambiguous(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> Bool {
-  if left.nullable && right.nullable {
-    true
-  } else {
-    !is_empty(xs: first_list_intersect(left: left.terminals, right: right.terminals))
-  }
-}
-
 // A prepared grammar expression is the parse-time carrier for FIRST knowledge and for the
 // execution plan of each ordered Choice. Nested binary Choice spines are flattened here into one
 // ordered alternative list; runtime interprets that plan and does not scan FIRST, flatten, or
@@ -1645,6 +1638,17 @@ type PreparedGrammarExpr
 type PreparedExprFold {
   tree: PreparedGrammarExpr
   first: GrammarExprFirstFold
+  residue: List<GrammarChoiceAmbiguityRow>
+}
+
+type ChoicePlanEmit {
+  plan: PreparedChoicePlan
+  residue: List<GrammarChoiceAmbiguityRow>
+}
+
+type TokenCompileAcc {
+  on_token: Map<Symbol, PreparedChoicePlan>
+  residue: List<GrammarChoiceAmbiguityRow>
 }
 
 fn prepared_expr_fold_tree(alt: PreparedExprFold) -> PreparedGrammarExpr {
@@ -1653,6 +1657,18 @@ fn prepared_expr_fold_tree(alt: PreparedExprFold) -> PreparedGrammarExpr {
 
 fn prepared_expr_fold_first(alt: PreparedExprFold) -> GrammarExprFirstFold {
   alt.first
+}
+
+fn prepared_expr_fold_residue(alt: PreparedExprFold) -> List<GrammarChoiceAmbiguityRow> {
+  alt.residue
+}
+
+fn concat_prepared_alt_residue(alts: List<PreparedExprFold>) -> List<GrammarChoiceAmbiguityRow> {
+  fold_list(
+    xs: alts,
+    empty: std.algebra.Empty,
+    cons: fn(acc, alt) { list_append(left: acc, right: prepared_expr_fold_residue(alt: alt)) }
+  )
 }
 
 fn token_prefix_row_prefix(row: TokenPrefixRow) -> List<Symbol> {
@@ -1735,9 +1751,7 @@ fn choice_alts_terminal_universe(alts: List<PreparedExprFold>) -> List<Symbol> {
   choice_alts_union_first(alts: alts).terminals
 }
 
-// C3 `choice_branches_ambiguous` sent a binary choice to ordered backtrack when both
-// sides were nullable, even with disjoint FIRST. Flattened n-way: if two or more
-// alternatives are nullable, each token bucket must still carry those nullable
+// Flattened n-way: if two or more alternatives are nullable, each token bucket must still carry those nullable
 // alternatives in authored order (they match empty after a FIRST-alt rejects).
 // One nullable alternative stays FIRST-only, matching C3's unambiguous refusal.
 fn choice_alts_for_present_token(alts: List<PreparedExprFold>, token_class: Symbol) -> List<PreparedExprFold> {
@@ -1857,7 +1871,8 @@ fn choice_shared_prefix_suffixes(
                       expr: right,
                       nullable_set: nullable_set,
                       first_rows: first_rows
-                    )
+                    ),
+                    residue: std.algebra.Empty
                   }
                 ))
               } else {
@@ -1902,21 +1917,77 @@ fn expr_first_fold_from_prepared(
   }
 }
 
+fn ordered_backtrack_row(
+  production: Symbol,
+  alternatives: List<PreparedGrammarExpr>,
+  reason: OrderedBacktrackReason,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<Symbol>>
+) -> GrammarChoiceAmbiguityRow {
+  let empty_first = GrammarExprFirstFold { terminals: grammar_empty_terminal_list(), nullable: false }
+  let folds = fold_list(
+    xs: alternatives,
+    empty: std.algebra.Empty,
+    cons: fn(acc, expr) {
+      list_snoc_item(
+        xs: acc,
+        item: expr_first_fold_from_prepared(expr: expr, nullable_set: nullable_set, first_rows: first_rows)
+      )
+    }
+  )
+  let left = match list_head(xs: folds) {
+    HeadFound { value: f } => f
+    HeadAbsent => empty_first
+  }
+  let right = match list_tail(xs: folds) {
+    TailFound { tail: rest } =>
+      fold_list(
+        xs: rest,
+        empty: empty_first,
+        cons: fn(acc, f) { expr_first_fold_choice(left: acc, right: f) }
+      )
+    TailAbsent => empty_first
+  }
+  match reason {
+    BacktrackOverlappingStarts =>
+      GrammarChoiceAmbiguityRow {
+        production: production,
+        left_first_terminals: left.terminals,
+        right_first_terminals: right.terminals,
+        overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
+        both_nullable: left.nullable && right.nullable
+      }
+    BacktrackUnprovenFactoring =>
+      GrammarChoiceAmbiguityRow {
+        production: production,
+        left_first_terminals: left.terminals,
+        right_first_terminals: right.terminals,
+        overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
+        both_nullable: left.nullable && right.nullable
+      }
+  }
+}
+
 fn compile_choice_alts(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
-) -> PreparedChoicePlan {
+  first_rows: Map<Symbol, List<Symbol>>,
+  production: Symbol
+) -> ChoicePlanEmit {
   match length(xs: alts) {
-    0 => ChoiceReject
+    0 => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
     1 =>
       match list_head(xs: alts) {
-        HeadFound { value: alt } => ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) }
-        HeadAbsent => ChoiceReject
+        HeadFound { value: alt } =>
+          ChoicePlanEmit {
+            plan: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) },
+            residue: std.algebra.Empty
+          }
+        HeadAbsent => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
       }
     _ =>
       match list_head(xs: alts) {
-        HeadAbsent => ChoiceReject
+        HeadAbsent => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
         HeadFound { value: first_alt } =>
           match prepared_sequence_left_atom(expr: prepared_expr_fold_tree(alt: first_alt)) {
             Present { value: prefix } =>
@@ -1927,31 +1998,59 @@ fn compile_choice_alts(
                 first_rows: first_rows
               ) {
                 Present { value: suffixes } =>
-                  ChoiceSharedPrefix {
-                    prefix: prefix,
-                    suffix: compile_choice_plan(
-                      alts: suffixes,
-                      nullable_set: nullable_set,
-                      first_rows: first_rows
-                    )
+                  let suffix_emit = compile_choice_plan(
+                    alts: suffixes,
+                    nullable_set: nullable_set,
+                    first_rows: first_rows,
+                    production: production
+                  )
+                  ChoicePlanEmit {
+                    plan: ChoiceSharedPrefix { prefix: prefix, suffix: suffix_emit.plan },
+                    residue: suffix_emit.residue
                   }
                 Absent =>
                   match choice_token_prefix_rows(alts: alts, need: 2) {
-                    Present { value: rows } => ChoiceTokenPrefix { rows: rows }
+                    Present { value: rows } =>
+                      ChoicePlanEmit { plan: ChoiceTokenPrefix { rows: rows }, residue: std.algebra.Empty }
                     Absent =>
-                      ChoiceOrderedBacktrack {
-                        alternatives: choice_alt_trees(alts: alts),
-                        reason: BacktrackUnprovenFactoring
+                      ChoicePlanEmit {
+                        plan: ChoiceOrderedBacktrack {
+                          alternatives: choice_alt_trees(alts: alts),
+                          reason: BacktrackUnprovenFactoring
+                        },
+                        residue: Cons {
+                          head: ordered_backtrack_row(
+                            production: production,
+                            alternatives: choice_alt_trees(alts: alts),
+                            reason: BacktrackUnprovenFactoring,
+                            nullable_set: nullable_set,
+                            first_rows: first_rows
+                          ),
+                          tail: std.algebra.Empty
+                        }
                       }
                   }
               }
             Absent =>
               match choice_token_prefix_rows(alts: alts, need: 2) {
-                Present { value: rows } => ChoiceTokenPrefix { rows: rows }
+                Present { value: rows } =>
+                  ChoicePlanEmit { plan: ChoiceTokenPrefix { rows: rows }, residue: std.algebra.Empty }
                 Absent =>
-                  ChoiceOrderedBacktrack {
-                    alternatives: choice_alt_trees(alts: alts),
-                    reason: BacktrackOverlappingStarts
+                  ChoicePlanEmit {
+                    plan: ChoiceOrderedBacktrack {
+                      alternatives: choice_alt_trees(alts: alts),
+                      reason: BacktrackOverlappingStarts
+                    },
+                    residue: Cons {
+                      head: ordered_backtrack_row(
+                        production: production,
+                        alternatives: choice_alt_trees(alts: alts),
+                        reason: BacktrackOverlappingStarts,
+                        nullable_set: nullable_set,
+                        first_rows: first_rows
+                      ),
+                      tail: std.algebra.Empty
+                    }
                   }
               }
           }
@@ -1962,58 +2061,68 @@ fn compile_choice_alts(
 fn compile_choice_plan(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
-) -> PreparedChoicePlan {
+  first_rows: Map<Symbol, List<Symbol>>,
+  production: Symbol
+) -> ChoicePlanEmit {
   let universe = choice_alts_terminal_universe(alts: alts)
-  let on_token = fold_list(
+  let token_fold = fold_list(
     xs: universe,
-    empty: empty_map(),
+    empty: TokenCompileAcc { on_token: empty_map(), residue: std.algebra.Empty },
     cons: fn(acc, token_class) {
-      map_insert(
-        m: acc,
-        key: token_class,
-        value: compile_choice_alts(
-          alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
-          nullable_set: nullable_set,
-          first_rows: first_rows
-        )
+      let bucket = compile_choice_alts(
+        alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        production: production
       )
+      TokenCompileAcc {
+        on_token: map_insert(m: acc.on_token, key: token_class, value: bucket.plan),
+        residue: list_append(left: acc.residue, right: bucket.residue)
+      }
     }
   )
-  let nullable_plan = compile_choice_alts(
+  let nullable_emit = compile_choice_alts(
     alts: choice_alts_nullable(alts: alts),
     nullable_set: nullable_set,
-    first_rows: first_rows
+    first_rows: first_rows,
+    production: production
   )
-  ChoiceByToken {
-    on_token: on_token,
-    on_other: nullable_plan,
-    on_end: nullable_plan
+  ChoicePlanEmit {
+    plan: ChoiceByToken {
+      on_token: token_fold.on_token,
+      on_other: nullable_emit.plan,
+      on_end: nullable_emit.plan
+    },
+    residue: list_append(left: token_fold.residue, right: nullable_emit.residue)
   }
 }
 
 fn prepare_grammar_expr(
   expr: GrammarExpr,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
+  first_rows: Map<Symbol, List<Symbol>>,
+  production: Symbol
 ) -> PreparedExprFold {
   match expr {
     Terminal { token_class: token_class, stamp: stamp } =>
       PreparedExprFold {
         tree: PreparedTerminal { token_class: token_class, stamp: stamp },
-        first: expr_first_fold_terminal(token_class: token_class)
+        first: expr_first_fold_terminal(token_class: token_class),
+        residue: std.algebra.Empty
       }
-    Nonterminal { production: production } =>
+    Nonterminal { production: production_name } =>
       PreparedExprFold {
-        tree: PreparedNonterminal { production: production },
-        first: expr_first_fold_nonterminal(name: production, nullable_set: nullable_set, first_rows: first_rows)
+        tree: PreparedNonterminal { production: production_name },
+        first: expr_first_fold_nonterminal(name: production_name, nullable_set: nullable_set, first_rows: first_rows),
+        residue: std.algebra.Empty
       }
     Sequence { left: left, right: right } =>
-      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows)
-      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows, production: production)
+      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows, production: production)
       PreparedExprFold {
         tree: PreparedSequence { left: left_prepared.tree, right: right_prepared.tree },
-        first: expr_first_fold_sequence(left: left_prepared.first, right: right_prepared.first)
+        first: expr_first_fold_sequence(left: left_prepared.first, right: right_prepared.first),
+        residue: list_append(left: left_prepared.residue, right: right_prepared.residue)
       }
     Choice { left: left, right: right } =>
       let alts = flatten_choice_exprs(expr: Choice { left: left, right: right })
@@ -2023,21 +2132,23 @@ fn prepare_grammar_expr(
         cons: fn(acc, alt) {
           list_snoc_item(
             xs: acc,
-            item: prepare_grammar_expr(expr: alt, nullable_set: nullable_set, first_rows: first_rows)
+            item: prepare_grammar_expr(expr: alt, nullable_set: nullable_set, first_rows: first_rows, production: production)
           )
         }
       )
-      let first = choice_alts_union_first(alts: prepared_alts)
+      let compiled = compile_choice_plan(
+        alts: prepared_alts,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        production: production
+      )
       PreparedExprFold {
         tree: PreparedChoice {
-          plan: compile_choice_plan(
-            alts: prepared_alts,
-            nullable_set: nullable_set,
-            first_rows: first_rows
-          ),
-          first: first
+          plan: compiled.plan,
+          first: choice_alts_union_first(alts: prepared_alts)
         },
-        first: first
+        first: choice_alts_union_first(alts: prepared_alts),
+        residue: list_append(left: concat_prepared_alt_residue(alts: prepared_alts), right: compiled.residue)
       }
     Lookahead { pattern: pattern } =>
       let pattern_prepared = prepare_grammar_expr(expr: pattern, nullable_set: nullable_set, first_rows: first_rows)
@@ -2046,16 +2157,18 @@ fn prepare_grammar_expr(
         first: GrammarExprFirstFold { terminals: pattern_prepared.first.terminals, nullable: true }
       }
     Optional { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production)
       PreparedExprFold {
         tree: PreparedOptional { element: element_prepared.tree },
-        first: expr_first_fold_optional(element: element_prepared.first)
+        first: expr_first_fold_optional(element: element_prepared.first),
+        residue: element_prepared.residue
       }
     Repeat { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production)
       PreparedExprFold {
         tree: PreparedRepeat { element: element_prepared.tree },
-        first: expr_first_fold_repeat(element: element_prepared.first)
+        first: expr_first_fold_repeat(element: element_prepared.first),
+        residue: element_prepared.residue
       }
   }
 }
@@ -2069,106 +2182,15 @@ fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -
   match v2.std.collection.map_get(m: table.prepared_exprs, key: production.name) {
     Accepted { value: Present { value: prepared }, diagnostics: _ } => prepared
     Accepted { value: Absent, diagnostics: _ } =>
-      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows).tree
+      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows, production: production.name).tree
     Rejected { diagnostics: _ } =>
-      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows).tree
+      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows, production: production.name).tree
   }
 }
 
-fn append_choice_ambiguity_row(
-  acc: List<GrammarChoiceAmbiguityRow>,
-  production: Symbol,
-  left: GrammarExprFirstFold,
-  right: GrammarExprFirstFold
-) -> List<GrammarChoiceAmbiguityRow> {
-  if choice_branches_ambiguous(left: left, right: right) {
-    list_snoc_item(
-      xs: acc,
-      item: GrammarChoiceAmbiguityRow {
-        production: production,
-        left_first_terminals: left.terminals,
-        right_first_terminals: right.terminals,
-        overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
-        both_nullable: left.nullable && right.nullable
-      }
-    )
-  } else {
-    acc
-  }
-}
-
-fn collect_choice_ambiguities_in_expr(
-  expr: GrammarExpr,
-  production: Symbol,
-  nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>,
-  acc: List<GrammarChoiceAmbiguityRow>
-) -> List<GrammarChoiceAmbiguityRow> {
-  match expr {
-    Terminal { token_class: _, stamp: _ } => acc
-    Nonterminal { production: _ } => acc
-    Sequence { left: left, right: right } =>
-      collect_choice_ambiguities_in_expr(
-        expr: right,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: collect_choice_ambiguities_in_expr(
-          expr: left,
-          production: production,
-          nullable_set: nullable_set,
-          first_rows: first_rows,
-          acc: acc
-        )
-      )
-    Choice { left: left, right: right } => {
-      let left_first = expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows)
-      let right_first = expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)
-      let acc1 = append_choice_ambiguity_row(
-        acc: acc,
-        production: production,
-        left: left_first,
-        right: right_first
-      )
-      collect_choice_ambiguities_in_expr(
-        expr: right,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: collect_choice_ambiguities_in_expr(
-          expr: left,
-          production: production,
-          nullable_set: nullable_set,
-          first_rows: first_rows,
-          acc: acc1
-        )
-      )
-    }
-    Optional { element: element } =>
-      collect_choice_ambiguities_in_expr(
-        expr: element,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: acc
-      )
-    Repeat { element: element } =>
-      collect_choice_ambiguities_in_expr(
-        expr: element,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: acc
-      )
-    Lookahead { pattern: pattern } =>
-      collect_choice_ambiguities_in_expr(
-        expr: pattern,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: acc
-      )
-  }
+type AnalysisPrepAcc {
+  prepared_exprs: Map<Symbol, PreparedGrammarExpr>
+  residue: List<GrammarChoiceAmbiguityRow>
 }
 
 fn compute_grammar_first_analysis_given(
@@ -2176,22 +2198,29 @@ fn compute_grammar_first_analysis_given(
   nullable_set: List<Symbol>
 ) -> GrammarFirstAnalysis {
   let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
+  let prep = fold_list(
+    xs: root.productions,
+    empty: AnalysisPrepAcc { prepared_exprs: empty_map(), residue: std.algebra.Empty },
+    cons: fn(acc, p) {
+      let folded = prepare_grammar_expr(
+        expr: p.expression,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        production: p.name
+      )
+      AnalysisPrepAcc {
+        prepared_exprs: map_insert(m: acc.prepared_exprs, key: p.name, value: folded.tree),
+        residue: list_append(left: acc.residue, right: folded.residue)
+      }
+    }
+  )
   GrammarFirstAnalysis {
     nullable_set: nullable_set,
     first_rows: first_rows,
-    prepared_exprs: fold_list(
-      xs: root.productions,
-      empty: empty_map(),
-      cons: fn(acc, p) {
-        map_insert(
-          m: acc,
-          key: p.name,
-          value: prepare_grammar_expr(expr: p.expression, nullable_set: nullable_set, first_rows: first_rows).tree
-        )
-      }
-    ),
+    prepared_exprs: prep.prepared_exprs,
     grammar_digest: parse_grammar_digest(validated: ValidatedGrammarRoot { root: root }),
-    productions_by_name: grammar_production_index(productions: root.productions)
+    productions_by_name: grammar_production_index(productions: root.productions),
+    choice_residue: prep.residue
   }
 }
 
@@ -2203,19 +2232,7 @@ fn grammar_choice_ambiguity_roster_from_analysis(
   root: GrammarRoot,
   analysis: GrammarFirstAnalysis
 ) -> List<GrammarChoiceAmbiguityRow> {
-  fold_list(
-    xs: root.productions,
-    empty: std.algebra.Empty,
-    cons: fn(acc, p) {
-      collect_choice_ambiguities_in_expr(
-        expr: p.expression,
-        production: p.name,
-        nullable_set: analysis.nullable_set,
-        first_rows: analysis.first_rows,
-        acc: acc
-      )
-    }
-  )
+  analysis.choice_residue
 }
 
 fn grammar_choice_ambiguity_roster(root: GrammarRoot) -> List<GrammarChoiceAmbiguityRow> {
@@ -3188,7 +3205,7 @@ fn parse_expr(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   parse_expr_with_first(
-    expr: prepare_grammar_expr(expr: expr, nullable_set: table.nullable_set, first_rows: table.first_rows).tree,
+    expr: prepare_grammar_expr(expr: expr, nullable_set: table.nullable_set, first_rows: table.first_rows, production: root.start).tree,
     tokens: tokens,
     all_tokens: all_tokens,
     root: root,
