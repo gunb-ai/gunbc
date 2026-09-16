@@ -4,6 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash, content_hash_of_value }
 import std.measure { byte_size, byte_size_count }
 import std.realization { LocalFilesystem, RemoteNetwork }
@@ -20,7 +21,7 @@ import gunbc.spark.v41_runtime_candidate {
   V41EngramResidencyPartition,
   V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_partition, v41_candidate_recipe,
-  v41_storage_backed_patch_population,
+  v41_storage_backed_patch_population, v41_engram_file_backed_overlay_path,
 }
 import extdeps.toolchain.architecture_profile { BigEndian }
 import extdeps.safetensors.format {
@@ -33,7 +34,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingSpec, V41SourceRow, V41FixtureRows, V41PublishedEngramShards, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
-  v41_tensor_slice, v41_source_row, v41_encoding_spec_with_slices, v41_encoding_spec_with_geometry, v41_encoding_spec_override_endianness, v41_encoding_spec_override_rank_map, v41_encoding_spec_override_row_order, v41_encoding_spec_key,
+  v41_tensor_slice, v41_source_row, v41_encoding_spec_with_slices, v41_encoding_spec_with_geometry, v41_encoding_spec_override_endianness, v41_encoding_spec_override_rank_map, v41_encoding_spec_override_row_order, v41_encoding_spec_key, v41_encoding_spec_inputs, v41_row_store_magic,
   v41_row_geometry_of, v41_row_store_spec, v41_layer_index_from_tensor_name,
   v41_transform_fixture, v41_published_transform_standing, v41_identify_row_store,
   v41_tampered_payload_is_unfaithful, v41_dropped_source_row_is_unfaithful, v41_sample_agrees, v41_rank_digest_of,
@@ -576,4 +577,17 @@ test fn the_encoding_spec_key_moves_with_endianness() -> Bool {
   let a = v41_encoding_spec_key(spec: base)
   let b = v41_encoding_spec_key(spec: v41_encoding_spec_override_endianness(spec: base, endianness: BigEndian))
   serialize_content_hash(hash: a) as String != serialize_content_hash(hash: b) as String
+}
+
+test fn encoding_identity_includes_the_row_store_magic_open_checks() -> Bool {
+  let spec = v41_encoding_spec_with_slices(partition: v41_candidate_partition, slices: [v41_tensor_slice(name: "layers.1.engram.embed.weight" as NonEmptyStr, global_rows: 8, layer: 1)])
+  any(v41_encoding_spec_inputs(spec: spec), i => (i.identity as String) == "magic")
+    && (v41_row_store_magic as String).starts_with(prefix: "ENGR1")
+}
+
+test fn overlay_magic_cites_the_row_store_authority() -> Bool {
+  let local = Filesystem.Read(path: v41_engram_file_backed_overlay_path as String)
+  local.success
+    && (local.content as String).contains("v41_row_store_magic")
+    && (local.content as String).contains("ENGR1")
 }
