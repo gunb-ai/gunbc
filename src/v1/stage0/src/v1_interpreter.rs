@@ -20677,15 +20677,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.compile_dag_resolved_call_edges" { "compile_dag_resolved_call_edges" } => {
-                let paths = expect_str_list($positional.first().copied(), $name)?;
-                let contents = expect_str_list($positional.get(1).copied(), $name)?;
-                let entry = expect_str($positional.get(2).copied(), $name)?;
-                Ok(Some(resolved_call_edge_census_value(
-                    crate::cli_run::compile_dag_resolved_call_edges(&paths, &contents, &entry), $ctx,
-                )))
-            },
-
             arm "free_call.compile_dag_importer_resolved_call_edges" { "compile_dag_importer_resolved_call_edges" } => {
                 let import_modules = expect_str_list($positional.first().copied(), $name)?;
                 let exclude_substrings = expect_str_list($positional.get(1).copied(), $name)?;

@@ -43,18 +43,8 @@ data evaluation_store_address_fixture_leaves: List<String> = [
   "evaluation_store_address"
 ]
 
-fn workspace_resolved_call_edges(entry: NonEmptyStr) -> ResolvedCallEdgeCensus {
-  compile_dag_resolved_call_edges(
-    [entry as String],
-    ["__WORKSPACE_CHECKOUT__"],
-    entry as String
-  )
-}
-
 fn evaluation_store_address_mutation_census() -> ResolvedCallEdgeCensus {
-  workspace_resolved_call_edges(
-    entry: "dag/test/fixture/evaluation_store_address_alias/mutation_entry.dag" as NonEmptyStr
-  )
+  evaluation_store_address_fixture_callsite_census()
 }
 
 fn evaluation_store_address_import_only_census() -> ResolvedCallEdgeCensus {

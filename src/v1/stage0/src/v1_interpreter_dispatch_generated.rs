@@ -106,7 +106,6 @@ pub enum EvalBuiltinArm {
     FreeCallCompileDagMultiModuleFixture,
     FreeCallClaimScopeDagMultiModuleFixture,
     FreeCallCompileDagReferenceOccurrenceBindingCensus,
-    FreeCallCompileDagResolvedCallEdges,
     FreeCallCompileDagImporterResolvedCallEdges,
     FreeCallCompileDagCallsiteResolvedCallEdges,
     FreeCallObserveDeclaredImportClosureSymbolBinding,
@@ -252,7 +251,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "compile_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture),
         "claim_scope_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallClaimScopeDagMultiModuleFixture),
         "compile_dag_reference_occurrence_binding_census" => Some(EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus),
-        "compile_dag_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagResolvedCallEdges),
         "compile_dag_importer_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges),
         "compile_dag_callsite_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges),
         "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
@@ -396,7 +394,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.compile_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture };
     ("free_call.claim_scope_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClaimScopeDagMultiModuleFixture };
     ("free_call.compile_dag_reference_occurrence_binding_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus };
-    ("free_call.compile_dag_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagResolvedCallEdges };
     ("free_call.compile_dag_importer_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges };
     ("free_call.compile_dag_callsite_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges };
     ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };

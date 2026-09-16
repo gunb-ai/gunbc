@@ -52,14 +52,6 @@ type ReferenceOccurrenceBindingCensus
       observations: List<ReferenceOccurrenceBindingRow>
     }
 
-fn workspace_reference_occurrence_binding_census(entry: NonEmptyStr) -> ReferenceOccurrenceBindingCensus {
-  compile_dag_reference_occurrence_binding_census(
-    [entry as String],
-    ["__WORKSPACE_CHECKOUT__"],
-    entry as String
-  )
-}
-
 fn reference_occurrence_binding_census(
   sources: List<FixtureSource>,
   entry: NonEmptyStr

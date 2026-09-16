@@ -159,8 +159,7 @@ pub(crate) use emit_host::*;
 pub use emit_host::{
     compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
     compile_dag_multi_module_fixture, compile_dag_reference_occurrence_binding_census,
-    compile_dag_resolved_call_edges, emit_module_storage_binding_manifest,
-    emit_source_root_ingest_manifest,
+    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
 };
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,

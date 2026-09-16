@@ -680,83 +680,6 @@ fn resolved_call_edges_from_graph(
     edges
 }
 
-pub fn compile_dag_resolved_call_edges(
-    paths: &[String],
-    contents: &[String],
-    entry: &str,
-) -> crate::cli_run::ResolvedCallEdgeCensus {
-    use crate::cli_run::ResolvedCallEdgeCensus;
-    let graph = if paths.len() == 1
-        && contents.len() == 1
-        && contents[0] == "__WORKSPACE_CHECKOUT__"
-        && paths[0] == entry
-    {
-        let roots = default_source_roots();
-        match resolve_entry_graph_shared(&roots, entry) {
-            Ok((graph, _)) => graph,
-            Err(cause) => return ResolvedCallEdgeCensus::Refused { cause },
-        }
-    } else {
-        if paths.len() != contents.len() || paths.is_empty() {
-            return ResolvedCallEdgeCensus::Refused {
-                cause: "resolved call edges: manifest is empty or ragged".to_string(),
-            };
-        }
-        let sources: Vec<MultiModuleFixtureSource> = paths
-            .iter()
-            .zip(contents.iter())
-            .map(|(path, content)| MultiModuleFixtureSource {
-                path: path.clone(),
-                content: content.clone(),
-            })
-            .collect();
-        let mut seen = HashSet::new();
-        if sources
-            .iter()
-            .any(|source| source.path.trim().is_empty() || !seen.insert(source.path.clone()))
-        {
-            return ResolvedCallEdgeCensus::Refused {
-                cause: "resolved call edges: every source path must be nonempty and unique"
-                    .to_string(),
-            };
-        }
-        if !sources.iter().any(|source| source.path == entry) {
-            return ResolvedCallEdgeCensus::Refused {
-                cause: format!("resolved call edges: entry '{entry}' names no supplied source"),
-            };
-        }
-        let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
-            .iter()
-            .map(|source| {
-                Rc::new(v1_compiler_compile::SourceFile {
-                    path: source.path.clone(),
-                    content: source.content.clone(),
-                })
-            })
-            .collect();
-        let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
-        })) {
-            Ok(value) => value,
-            Err(_) => {
-                return ResolvedCallEdgeCensus::Refused {
-                    cause: "resolved call edges: frontend panicked before producing a graph"
-                        .to_string(),
-                }
-            }
-        };
-        let Some(graph) = resolved.graph.clone() else {
-            return ResolvedCallEdgeCensus::Refused {
-                cause: "resolved call edges: frontend produced no resolved graph".to_string(),
-            };
-        };
-        graph
-    };
-    ResolvedCallEdgeCensus::Observed {
-        edges: resolved_call_edges_from_graph(&graph),
-    }
-}
-
 static IMPORTER_RESOLVED_CALL_EDGE_CACHE: OnceLock<
     Mutex<
         HashMap<
@@ -1145,74 +1068,59 @@ pub fn compile_dag_reference_occurrence_binding_census(
     entry: &str,
 ) -> ReferenceOccurrenceBindingCensus {
     let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
-    let (graph, source_digest) = if paths.len() == 1
-        && contents.len() == 1
-        && contents[0] == "__WORKSPACE_CHECKOUT__"
-        && paths[0] == entry
+    if paths.len() != contents.len() || paths.is_empty() {
+        return ReferenceOccurrenceBindingCensus::Refused {
+            cause: "reference binding census: manifest is empty or ragged".to_string(),
+        };
+    }
+    let sources: Vec<MultiModuleFixtureSource> = paths
+        .iter()
+        .zip(contents.iter())
+        .map(|(path, content)| MultiModuleFixtureSource {
+            path: path.clone(),
+            content: content.clone(),
+        })
+        .collect();
+    let mut seen = HashSet::new();
+    if sources
+        .iter()
+        .any(|source| source.path.trim().is_empty() || !seen.insert(source.path.clone()))
     {
-        let roots = default_source_roots();
-        match resolve_entry_graph_shared(&roots, entry) {
-            Ok((graph, _)) => (graph, format!("workspace:{entry}")),
-            Err(cause) => return ReferenceOccurrenceBindingCensus::Refused { cause },
-        }
-    } else {
-        if paths.len() != contents.len() || paths.is_empty() {
-            return ReferenceOccurrenceBindingCensus::Refused {
-                cause: "reference binding census: manifest is empty or ragged".to_string(),
-            };
-        }
-        let sources: Vec<MultiModuleFixtureSource> = paths
-            .iter()
-            .zip(contents.iter())
-            .map(|(path, content)| MultiModuleFixtureSource {
-                path: path.clone(),
-                content: content.clone(),
+        return ReferenceOccurrenceBindingCensus::Refused {
+            cause: "reference binding census: every source path must be nonempty and unique"
+                .to_string(),
+        };
+    }
+    if !sources.iter().any(|source| source.path == entry) {
+        return ReferenceOccurrenceBindingCensus::Refused {
+            cause: format!("reference binding census: entry '{entry}' names no supplied source"),
+        };
+    }
+    let source_digest = multi_module_fixture_source_digest(&sources, entry);
+    let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
+        .iter()
+        .map(|source| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: source.path.clone(),
+                content: source.content.clone(),
             })
-            .collect();
-        let mut seen = HashSet::new();
-        if sources
-            .iter()
-            .any(|source| source.path.trim().is_empty() || !seen.insert(source.path.clone()))
-        {
+        })
+        .collect();
+    let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
+    })) {
+        Ok(value) => value,
+        Err(_) => {
             return ReferenceOccurrenceBindingCensus::Refused {
-                cause: "reference binding census: every source path must be nonempty and unique"
+                cause: "reference binding census: frontend panicked before producing a graph"
                     .to_string(),
-            };
-        }
-        if !sources.iter().any(|source| source.path == entry) {
-            return ReferenceOccurrenceBindingCensus::Refused {
-                cause: format!(
-                    "reference binding census: entry '{entry}' names no supplied source"
-                ),
-            };
-        }
-        let source_digest = multi_module_fixture_source_digest(&sources, entry);
-        let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
-            .iter()
-            .map(|source| {
-                Rc::new(v1_compiler_compile::SourceFile {
-                    path: source.path.clone(),
-                    content: source.content.clone(),
-                })
-            })
-            .collect();
-        let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
-        })) {
-            Ok(value) => value,
-            Err(_) => {
-                return ReferenceOccurrenceBindingCensus::Refused {
-                    cause: "reference binding census: frontend panicked before producing a graph"
-                        .to_string(),
-                }
             }
+        }
+    };
+    let Some(graph) = resolved.graph.clone() else {
+        return ReferenceOccurrenceBindingCensus::Refused {
+            cause: "reference binding census: frontend produced no resolved graph".to_string(),
         };
-        let Some(graph) = resolved.graph.clone() else {
-            return ReferenceOccurrenceBindingCensus::Refused {
-                cause: "reference binding census: frontend produced no resolved graph".to_string(),
-            };
-        };
-        (graph, source_digest)
     };
 
     match observed_occurrence_transport_and_bindings(graph.as_ref()) {
