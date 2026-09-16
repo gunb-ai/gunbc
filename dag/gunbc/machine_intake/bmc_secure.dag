@@ -2,7 +2,6 @@ module gunbc.machine_intake_bmc_secure
 
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.bmc.ipmi_channel {
@@ -1084,16 +1083,3 @@ fn bmc_secure_phase_receipt(
     previous_receipt: previous_receipt,
   }
 }
-
-// UNIT-1 BmcSecureStanding + SecretRef ARE A FRONTIER, NOT THIS CHANGE.
-// No MachineIntakeSubject for Mt. Collins unit 1 exists on main. Minting a
-// SecretRef (bmc-mtcollins1-gunbc) without the standing would dangle (DESIGN
-// §3c). The standing cannot land until that subject exists and is handed to
-// derive_bmc_secure with a census observation. Today's true arm, when minted,
-// is DisabledNotRetired with FirmwareResetRestoresPublishedAccount; Retired
-// waits on an operator-authorized user-2 rotation. Consumer: this module's
-// derive_bmc_secure, via a later change that authors the subject and the
-// observation together.
-data mtcollins1_bmc_secure_standing_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a MachineIntakeSubject for Mt. Collins unit 1 exists on the public path and derive_bmc_secure mints a BmcSecureStanding for that subject from a channel-census observation together with SecretRef bmc-mtcollins1-gunbc; evidence for that observation must be a git-tracked artifact bound into the channel-census observation at mint time; the user3-route artifact alone is not a trigger; NOT satisfied by this fold typechecking, by the witness suite, or by a SecretRef row alone" as NonEmptyStr,
-)
