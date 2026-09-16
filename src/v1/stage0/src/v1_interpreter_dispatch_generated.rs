@@ -73,6 +73,7 @@ pub enum EvalBuiltinArm {
     FreeCallExportSignatureFacts,
     FreeCallDeclFacts,
     FreeCallDeclFactsAt,
+    FreeCallTypeDeclarerQualifiedNames,
     FreeCallModuleDeclarationFacts,
     FreeCallModuleDeclarationFactsAt,
     FreeCallFactCardinalityDeclFacts,
@@ -95,12 +96,14 @@ pub enum EvalBuiltinArm {
     FreeCallDocGraphAdmittedRootCount,
     FreeCallDocGraphDanglingLinkCount,
     FreeCallDocGraphDocCount,
+    FreeCallFloorDiscoverySourceInventory,
     FreeCallParsedImportStatements,
     FreeCallNamespaceStructuralObservationAdmissions,
     FreeCallEmitRustReferenceDerivedRowsBridge,
     FreeCallCompileDagRustEmitCheck,
     FreeCallCompileDagDiagnosticCensus,
     FreeCallCompileDagMultiModuleFixture,
+    FreeCallClaimScopeDagMultiModuleFixture,
     FreeCallCompileDagReferenceOccurrenceBindingCensus,
     FreeCallObserveDeclaredImportClosureSymbolBinding,
     FreeCallClassBImportClosureGateNotAffectedSkip,
@@ -212,6 +215,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
         "decl_facts" => Some(EvalBuiltinArm::FreeCallDeclFacts),
         "decl_facts_at" => Some(EvalBuiltinArm::FreeCallDeclFactsAt),
+        "type_declarer_qualified_names" => Some(EvalBuiltinArm::FreeCallTypeDeclarerQualifiedNames),
         "module_declaration_facts" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFacts),
         "module_declaration_facts_at" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFactsAt),
         "fact_cardinality_decl_facts" => Some(EvalBuiltinArm::FreeCallFactCardinalityDeclFacts),
@@ -234,12 +238,14 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "doc_graph_admitted_root_count" => Some(EvalBuiltinArm::FreeCallDocGraphAdmittedRootCount),
         "doc_graph_dangling_link_count" => Some(EvalBuiltinArm::FreeCallDocGraphDanglingLinkCount),
         "doc_graph_doc_count" => Some(EvalBuiltinArm::FreeCallDocGraphDocCount),
+        "floor_discovery_source_inventory" => Some(EvalBuiltinArm::FreeCallFloorDiscoverySourceInventory),
         "parsed_import_statements" => Some(EvalBuiltinArm::FreeCallParsedImportStatements),
         "namespace_structural_observation_admissions" => Some(EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions),
         "emit_rust_reference_derived_rows_bridge" => Some(EvalBuiltinArm::FreeCallEmitRustReferenceDerivedRowsBridge),
         "compile_dag_rust_emit_check" => Some(EvalBuiltinArm::FreeCallCompileDagRustEmitCheck),
         "compile_dag_diagnostic_census" => Some(EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus),
         "compile_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture),
+        "claim_scope_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallClaimScopeDagMultiModuleFixture),
         "compile_dag_reference_occurrence_binding_census" => Some(EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus),
         "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
         "class_b_import_closure_gate_not_affected_skip" => Some(EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip),
@@ -349,6 +355,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
     ("free_call.decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFacts };
     ("free_call.decl_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFactsAt };
+    ("free_call.type_declarer_qualified_names") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTypeDeclarerQualifiedNames };
     ("free_call.module_declaration_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFacts };
     ("free_call.module_declaration_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFactsAt };
     ("free_call.fact_cardinality_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFactCardinalityDeclFacts };
@@ -371,12 +378,14 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.doc_graph_admitted_root_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphAdmittedRootCount };
     ("free_call.doc_graph_dangling_link_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphDanglingLinkCount };
     ("free_call.doc_graph_doc_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphDocCount };
+    ("free_call.floor_discovery_source_inventory") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFloorDiscoverySourceInventory };
     ("free_call.parsed_import_statements") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParsedImportStatements };
     ("free_call.namespace_structural_observation_admissions") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions };
     ("free_call.emit_rust_reference_derived_rows_bridge") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEmitRustReferenceDerivedRowsBridge };
     ("free_call.compile_dag_rust_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagRustEmitCheck };
     ("free_call.compile_dag_diagnostic_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus };
     ("free_call.compile_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture };
+    ("free_call.claim_scope_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClaimScopeDagMultiModuleFixture };
     ("free_call.compile_dag_reference_occurrence_binding_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus };
     ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };
     ("free_call.class_b_import_closure_gate_not_affected_skip") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip };
@@ -549,27 +558,6 @@ macro_rules! eval_algebra_method_inner_arm {
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeStdNodeReflectionArm {
-    V4BridgeResolveTypeNode,
-    V4BridgeCoproductNullaryInhabitants,
-}
-
-#[rustfmt::skip]
-pub fn lookup_eval_call_bridge_std_node_reflection(spelling: &str) -> Option<EvalCallBridgeStdNodeReflectionArm> {
-    match spelling {
-        "resolve_type_node" => Some(EvalCallBridgeStdNodeReflectionArm::V4BridgeResolveTypeNode),
-        "coproduct_nullary_inhabitants" => Some(EvalCallBridgeStdNodeReflectionArm::V4BridgeCoproductNullaryInhabitants),
-        _ => None,
-    }
-}
-
-#[rustfmt::skip]
-macro_rules! eval_call_bridge__v2_std_node_reflection_arm {
-    ("v4_bridge.resolve_type_node") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeReflectionArm::V4BridgeResolveTypeNode };
-    ("v4_bridge.coproduct_nullary_inhabitants") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeReflectionArm::V4BridgeCoproductNullaryInhabitants };
-}
-#[rustfmt::skip]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdCompilersLexingArm {
     V4BridgeSymbolInternLexeme,
     V4BridgeSymbolLexeme,
@@ -606,6 +594,24 @@ pub fn lookup_eval_call_bridge_std_qualified_name(spelling: &str) -> Option<Eval
 #[rustfmt::skip]
 macro_rules! eval_call_bridge__v2_std_qualified_name_arm {
     ("v4_bridge.qualified_name_from_dotted_string") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdQualifiedNameArm::V4BridgeQualifiedNameFromDottedString };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdNodeReflectionArm {
+    V4BridgeCoproductNullaryInhabitants,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_node_reflection(spelling: &str) -> Option<EvalCallBridgeStdNodeReflectionArm> {
+    match spelling {
+        "coproduct_nullary_inhabitants" => Some(EvalCallBridgeStdNodeReflectionArm::V4BridgeCoproductNullaryInhabitants),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_node_reflection_arm {
+    ("v4_bridge.coproduct_nullary_inhabitants") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeReflectionArm::V4BridgeCoproductNullaryInhabitants };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
