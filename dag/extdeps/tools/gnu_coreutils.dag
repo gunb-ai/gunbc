@@ -89,6 +89,30 @@ fn printf_command(format: String, values: List<String>) -> ArgvCommand {
   argv_command(program: printf_program, arguments: append([format], items: values))
 }
 
+// ln(1) — GNU coreutils, "Making links". -s makes a SYMBOLIC link; -f removes an existing
+// destination first, which is what makes a re-run converge to the same link instead of failing on
+// the second run. The two flags are one operation here for the same reason rm_force_command's -f
+// is: ensure-link-if-different is one meaning, and a caller wanting the refusing exact form needs
+// its own builder, not a flags parameter here.
+data ln_program: NonEmptyStr = "ln"
+data ln_symbolic_force_flags: NonEmptyStr = "-sf"
+
+fn ln_symbolic_force_command(target: String, link: String) -> ArgvCommand {
+  argv_command(program: ln_program, arguments: [ln_symbolic_force_flags as String, target, link])
+}
+
+// rmdir(1) — GNU coreutils, "Removing files or directories": removes an EMPTY directory and
+// REFUSES a non-empty one or an absent one. There is deliberately no ignore-absent variant minted
+// beside it: the shell era spelled that intent as `rmdir p 2>/dev/null || true` — suppression
+// baked into rendered text — and "what to do when the directory is already gone" is a realization
+// concern for the transport that runs the plan, not a property of the argv. A caller with that
+// need models it where its transport can answer it.
+data rmdir_program: NonEmptyStr = "rmdir"
+
+fn rmdir_command(path: String) -> ArgvCommand {
+  argv_command(program: rmdir_program, arguments: [path])
+}
+
 // true(1) does nothing and exits 0. It is a real utility rather than a placeholder, and it is here
 // because a control that asks "does the runner report success for a command that succeeds and
 // prints nothing" needs a program whose whole contract is exactly that.

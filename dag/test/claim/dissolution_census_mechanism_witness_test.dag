@@ -9,7 +9,6 @@ module test.claim.dissolution_census_mechanism_witness_test
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { bound_dissolution, unbound_dissolution, retires_dissolution, dissolution_is_bound }
 import extdeps.bmc.serial_console { sol_console_send_bash_emit_dissolution_trigger }
-import extdeps.linux.usb_gadget { configfs_op_render_dissolution_trigger }
 import extdeps.storage.nbd { nbd_server_config_render_dissolution_trigger }
 import extdeps.cache.sccache { sccache_install_dissolution_trigger }
 import extdeps.container.docker_ce { docker_ce_install_dissolution_trigger }
@@ -99,13 +98,16 @@ test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool {
     && !frontier_expiry_clean(report: gone)
 }
 
-// THE PRODUCTION CONSUMERS. Three live retirement obligations whose condition was a
+// THE PRODUCTION CONSUMERS. Live retirement obligations whose condition was a
 // description string until this change and is now a trigger the fold can answer.
 // `dissolution_is_bound` was FALSE for all three before the migration, which is what
 // makes this an executing before/after rather than a restatement of the constructor.
+// The configfs renderer row (extdeps.linux.usb_gadget configfs_op_render_dissolution_trigger)
+// is no longer in this list: the shell-typed-invocation work deleted `configfs_op_line`
+// together with its trigger, which is the retirement firing — the obligation is PAID, not
+// unbound, and a paid obligation does not keep standing in a roster of live ones.
 test fn migrated_production_retirement_conditions_are_bound() -> Bool {
   dissolution_is_bound(condition: sol_console_send_bash_emit_dissolution_trigger)
-    && dissolution_is_bound(condition: configfs_op_render_dissolution_trigger)
     && dissolution_is_bound(condition: nbd_server_config_render_dissolution_trigger)
     && dissolution_is_bound(condition: sccache_install_dissolution_trigger)
     && dissolution_is_bound(condition: docker_ce_install_dissolution_trigger)

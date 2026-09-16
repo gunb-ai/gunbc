@@ -1,11 +1,11 @@
 module extdeps.linux.usb_gadget
 
-import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution }
-import std.decl_ref { decl_ref }
-
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.mkdir { mkdir_path_resolved_program, mkdir_parents_command_at }
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, rm_force_command, rmdir_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -89,37 +89,121 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
   ]
 }
 
-// The ConfigfsOp list is the typed authority for the structure; each op is nonetheless
-// rendered to a POSIX shell line because a configfs attribute write is a remote file
-// write with no argv-only form (`printf > sysfs` needs a redirect) and the BMC transport
-// is SSH. This single per-variant renderer replaced 32 scattered concats.
+// THE DESCRIBED FORM OF A CONFIGFS OPERATION. The ConfigfsOp list above is the typed authority for
+// the structure; this mapping is what carries it to a transport, and it replaces the per-variant
+// shell-line renderer (`configfs_op_line`) that used to sit here — the renderer prefixed the setup
+// with `set -e`, joined lines carrying `2>/dev/null || true`, and was the last caller-shaped shell
+// text in this module. Each op becomes ONE of two typed things:
 //
-// It dissolves when host_effect_apply binds ConfigfsOp directly to a remote
-// Filesystem.Write effect — WriteAttr to Filesystem.Write, Mkdir/Symlink/Rmdir to typed
-// FS ops — over the ssh transport. That removal is observable exactly as the
-// disappearance of `configfs_op_line`, which is what the trigger names.
-data configfs_op_render_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "configfs_op_line")
-)
+// - a typed argv invocation (extdeps.exec.command ArgvCommand, minted through the named builders)
+//   for the operations that ARE process invocations — mkdir, ln, rm, rmdir; or
+// - a typed file write for the attribute writes, which are not process invocations at all. A
+//   configfs attribute write has no argv-only form (the shell era spelled it `printf '%s' 'v' >
+//   path`, a redirect), so its faithful description is these bytes at this path. That form also
+//   removes a class the shell spelling carried: a value containing a single quote broke the
+//   hand-rolled `printf '%s' '` … `'` quoting — a latent injection the builders' quoting never
+//   saw, because the value never reached them. A file write carries bytes as data; there is no
+//   quoting to break, so the class is structurally gone rather than escaped correctly.
+//
+// THE REFUSAL IS PART OF THE OPERATION. An op naming a path outside the gadget's own configfs
+// directory refuses as a typed outcome before any command is built — the same property the
+// acceptance oracle asserts positively of the live fixture, enforced here at the mapping instead
+// of checked afterwards. Bad arguments therefore never reach a transport, shell or otherwise.
+//
+// WHAT IS DELIBERATELY NOT CARRIED: the `2>/dev/null || true` suppressions. `rm -f` already makes
+// an absent file a success, so its suppression was dead text; `rmdir` genuinely refuses an absent
+// directory, and "what to do when it is already gone" is a realization concern for the transport
+// that runs the plan — not a property of the argv, and not something to re-bake into rendered
+// text. When host_effect_apply binds ConfigfsOp directly to typed remote filesystem effects (the
+// dissolution the shell-era note here used to name), that concern gets its typed home.
+type ConfigfsOpCommand
+  = ConfigfsCommandArgv { command: ArgvCommand }
+  | ConfigfsCommandWriteFile { path: NonEmptyStr, content: String }
 
-fn configfs_op_line(op: ConfigfsOp) -> String {
-  match op {
-    ConfigfsMkdir { path: p } => join(["mkdir -p ", p as String], "")
-    ConfigfsWriteAttr { path: p, value: v } => join(["printf '%s' '", v, "' > ", p as String], "")
-    ConfigfsSymlink { target: t, link: l } => join(["ln -sf ", t as String, " ", l as String], "")
-    ConfigfsRemoveLink { link: l } => join(["rm -f ", l as String, " 2>/dev/null || true"], "")
-    ConfigfsRmdir { path: p } => join(["rmdir ", p as String, " 2>/dev/null || true"], "")
+type ConfigfsOpRefusalCause
+  = ConfigfsPathOutsideGadgetRoot { path: NonEmptyStr, root: NonEmptyStr }
+
+type ConfigfsOpCommandOutcome
+  = ConfigfsOpCommandBuilt { command: ConfigfsOpCommand }
+  | ConfigfsOpCommandRefused { cause: ConfigfsOpRefusalCause }
+
+fn configfs_path_within_root(root: NonEmptyStr, path: NonEmptyStr) -> Bool {
+  let p = path as String
+  let r = root as String
+  p == r || starts_with(s: p, prefix: concat(r, "/"))
+}
+
+fn configfs_refuse_outside_root(root: NonEmptyStr, path: NonEmptyStr) -> ConfigfsOpCommandOutcome {
+  ConfigfsOpCommandRefused {
+    cause: ConfigfsPathOutsideGadgetRoot { path: path, root: root },
   }
 }
 
-fn configfs_ops_script(ops: List<ConfigfsOp>) -> String {
-  fold(ops, init: "", f: (acc, op) => join([acc, configfs_op_line(op: op), "\n"], ""))
+// THE PROGRAM IS SPELLED PATH-RESOLVED ON PURPOSE, and the reason lives at the call site rather
+// than in extdeps.tools.mkdir's default: this plan's target is an unobserved OpenBMC image reached
+// over ssh, where mkdir is a BusyBox applet and nobody has read where that image installs it —
+// the exact case mkdir_parents_command_at's own note carves out (gunbc.bmc_netboot_serve is its
+// precedent). Writing /usr/bin/mkdir here would fabricate a host fact (DESIGN section 5).
+fn configfs_op_command(op: ConfigfsOp, root: NonEmptyStr) -> ConfigfsOpCommandOutcome {
+  match op {
+    ConfigfsMkdir { path: p } =>
+      if configfs_path_within_root(root: root, path: p) {
+        ConfigfsOpCommandBuilt {
+          command: ConfigfsCommandArgv {
+            command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: p as String),
+          },
+        }
+      } else {
+        configfs_refuse_outside_root(root: root, path: p)
+      }
+    ConfigfsWriteAttr { path: p, value: v } =>
+      if configfs_path_within_root(root: root, path: p) {
+        ConfigfsOpCommandBuilt {
+          command: ConfigfsCommandWriteFile { path: p, content: v },
+        }
+      } else {
+        configfs_refuse_outside_root(root: root, path: p)
+      }
+    ConfigfsSymlink { target: t, link: l } =>
+      if configfs_path_within_root(root: root, path: t) {
+        if configfs_path_within_root(root: root, path: l) {
+          ConfigfsOpCommandBuilt {
+            command: ConfigfsCommandArgv {
+              command: ln_symbolic_force_command(target: t as String, link: l as String),
+            },
+          }
+        } else {
+          configfs_refuse_outside_root(root: root, path: l)
+        }
+      } else {
+        configfs_refuse_outside_root(root: root, path: t)
+      }
+    ConfigfsRemoveLink { link: l } =>
+      if configfs_path_within_root(root: root, path: l) {
+        ConfigfsOpCommandBuilt {
+          command: ConfigfsCommandArgv {
+            command: rm_force_command(path: l as String),
+          },
+        }
+      } else {
+        configfs_refuse_outside_root(root: root, path: l)
+      }
+    ConfigfsRmdir { path: p } =>
+      if configfs_path_within_root(root: root, path: p) {
+        ConfigfsOpCommandBuilt {
+          command: ConfigfsCommandArgv {
+            command: rmdir_command(path: p as String),
+          },
+        }
+      } else {
+        configfs_refuse_outside_root(root: root, path: p)
+      }
+  }
 }
 
-fn usb_gadget_setup_script(gadget: UsbGadget) -> String {
-  join(["set -e", "\n", configfs_ops_script(ops: usb_gadget_setup_ops(gadget: gadget))], "")
-}
-
-fn usb_gadget_teardown_script(gadget: UsbGadget) -> String {
-  configfs_ops_script(ops: usb_gadget_teardown_ops(gadget: gadget))
+// The whole-op-list form a caller of a gadget plan reaches for: the root is derived from the
+// gadget's own configfs directory, so a caller never hands a root and an op list that disagree.
+// Works for the setup ops and the teardown ops alike — the mapping is total over ConfigfsOp.
+fn usb_gadget_op_commands(gadget: UsbGadget, ops: List<ConfigfsOp>) -> List<ConfigfsOpCommandOutcome> {
+  map(ops, op => configfs_op_command(op: op, root: usb_gadget_dir(gadget: gadget)))
 }
