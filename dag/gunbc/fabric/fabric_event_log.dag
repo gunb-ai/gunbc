@@ -197,14 +197,14 @@ fn cat_file_chasing_remote(layout: EventLogLayout, oid: String) -> String? {
     Present { value: r.content }
   } else {
     match event_log_remote_word(remote: layout.remote) {
-      Absent => Absent
+      Absent => none
       Present { value: remote } => {
         let f = git.Core.FetchForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: oid)
         if f.exit_code != 0 {
-          Absent
+          none
         } else {
           let r2 = git.Core.CatFileBlobInRepo(repo: layout.mirror, oid: oid)
-          if r2.success { Present { value: r2.content } } else { Absent }
+          if r2.success { Present { value: r2.content } } else { none }
         }
       }
     }
