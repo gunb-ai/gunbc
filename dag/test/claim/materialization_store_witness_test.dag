@@ -1,7 +1,11 @@
 module test.claim.materialization_store_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value, serialize_content_hash }
+import std.content_hash {
+  ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value, serialize_content_hash,
+  sha256_hex_digest, sha512_hex_digest, as_content_hash_cryptographic, as_content_hash_sha512,
+  content_hash_family, Sha256Family, Sha512Family, Sha1Family, Fnv1a64StructuralFamily
+}
 import std.cache_identity { CacheInterfaceId }
 import std.measure { byte_size }
 import std.materialization_provider {
@@ -9,9 +13,10 @@ import std.materialization_provider {
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  provider_serve, ProbeFound, lookup_is_hit, lookup_is_refused_evaluation_preimage_mismatch,
+  provider_serve, persisted_probe, lookup_is_hit, lookup_is_refused_evaluation_preimage_mismatch,
   request_key, request_kind, request_required_outputs, request_declared_inputs,
-  request_judgment_contract, evaluation_store_address_admitted, stored_evaluation_preimage_for_request,
+  request_judgment_contract, evaluation_store_address, evaluation_store_admitted_address,
+  evaluation_store_address_preimage,
   evaluation_identity_canonical, ResultContentIdentity, result_content_identity,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
@@ -32,6 +37,7 @@ import std.materialization_object {
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
   encode_store_object, decode_store_object, percent_encode_payload, percent_decode_payload,
+  parse_recorded_store_key, persisted_probe,
   result_content_canonical, store_object_name, store_object_magic, store_object_format_version,
   StoreObjectDecoded, StoreObjectMalformed,
   store_observed_digest, artifact_from_manifest, ManifestDecoded,
@@ -125,7 +131,10 @@ fn witness_store() -> OpenedMaterializationStore {
 }
 
 fn eval_preimage(req: ArtifactRequest) -> NonEmptyStr {
-  stored_evaluation_preimage_for_request(req: req)
+  match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+    Present { value: a } => evaluation_store_address_preimage(address: a)
+    Absent => "unreachable-family-refused" as NonEmptyStr
+  }
 }
 
 fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
@@ -304,7 +313,7 @@ test fn commit_settles_only_on_a_verified_read_back() -> Bool {
   ]))
   settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublished, read_back: ours) == "committed"
     && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: ours) == "converged_on_prior_commit"
-    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: theirs) == "conflict"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: theirs) == "result_content_conflict"
     && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublished, read_back: StoreLookupMiss { key: key }) == "read_back_refused"
     && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: lookup_present(req: bundle_req(), object: "garbage")) == "read_back_refused"
     && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: "ENOSPC" } }, read_back: ours) == "publish_refused"
@@ -542,12 +551,12 @@ test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
         ManifestDecoded { artifact: a } =>
           lookup_is_refused_evaluation_preimage_mismatch(l: provider_serve(
             req: req,
-            probe: ProbeFound {
+            probe: persisted_probe(
               artifact: a,
               observed_digest: store_observed_digest(manifest: m, payloads: ps),
-              stored_evaluation_preimage: p
-            }
-          )) && ((p as String) == (expected as String)) == false
+              observed_evaluation_preimage: p
+            )
+          )) && ((p.encoded as String) == (expected as String)) == false
         _ => false
       }
   }
@@ -555,7 +564,7 @@ test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
 
 test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bool {
   let req = bundle_req()
-  match evaluation_store_address_admitted(req: req) {
+  match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
     Absent => false
     Present { value: addr } => {
       let name = store_object_name(address: addr)
@@ -573,5 +582,62 @@ test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bo
         StoreObjectDecoded { manifest: _, payloads: _, evaluation_preimage: _, result_preimage: _ } => false
       }
     }
+  }
+}
+
+test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
+  let req = bundle_req()
+  let part = payload_part(payload: ArtifactPayload { id: output_module_test_verdicts, content: "x" })
+  let payloads = [ArtifactPayload { id: output_module_test_verdicts, content: "x" }]
+  let pre = eval_preimage(req: req)
+  let result = result_content_canonical(parts: [part], payloads: payloads)
+  match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: sha } =>
+      match sha512_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+        Absent => false
+        Present { value: s512 } => {
+          let k256 = as_content_hash_cryptographic(digest: sha)
+          let k512 = as_content_hash_sha512(digest: s512)
+          let o256 = encode_store_object(
+            manifest: ArtifactManifest { kind: request_kind(req: req), request_key: k256, parts: [part] },
+            payloads: payloads,
+            evaluation_preimage: pre,
+            result_preimage: result
+          )
+          let o512 = encode_store_object(
+            manifest: ArtifactManifest { kind: request_kind(req: req), request_key: k512, parts: [part] },
+            payloads: payloads,
+            evaluation_preimage: pre,
+            result_preimage: result
+          )
+          match decode_store_object(content: o256) {
+            StoreObjectMalformed { cause: _ } => false
+            StoreObjectDecoded { manifest: m256, payloads: _, evaluation_preimage: _, result_preimage: _ } =>
+              match decode_store_object(content: o512) {
+                StoreObjectMalformed { cause: _ } => false
+                StoreObjectDecoded { manifest: m512, payloads: _, evaluation_preimage: _, result_preimage: _ } =>
+                  m256.request_key == k256
+                    && m512.request_key == k512
+                    && match content_hash_family(hash: m256.request_key) {
+                      Sha256Family => true
+                      Fnv1a64StructuralFamily => false
+                      Sha1Family => false
+                      Sha512Family => false
+                    }
+                    && match content_hash_family(hash: m512.request_key) {
+                      Sha512Family => true
+                      Fnv1a64StructuralFamily => false
+                      Sha1Family => false
+                      Sha256Family => false
+                    }
+                    && match parse_recorded_store_key(key_text: serialize_content_hash(hash: k256) as String) {
+                      Absent => false
+                      Present { value: p } => p == k256
+                    }
+              }
+          }
+        }
+      }
   }
 }

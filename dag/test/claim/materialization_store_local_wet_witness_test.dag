@@ -8,7 +8,8 @@ import std.materialization_provider {
   DeclaredInput, ArtifactRequest, ArtifactManifest,
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  request_key, request_kind, evaluation_store_address_admitted, stored_evaluation_preimage_for_request, request_judgment_contract,
+  request_key, request_kind, evaluation_store_address, evaluation_store_admitted_address,
+  evaluation_store_address_preimage, request_judgment_contract,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
 }
@@ -95,11 +96,14 @@ fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> Str
 }
 
 fn evaluation_preimage_wire(req: ArtifactRequest) -> String {
-  percent_encode_payload(s: stored_evaluation_preimage_for_request(req: req) as String)
+  match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+    Absent => ""
+    Present { value: a } => percent_encode_payload(s: evaluation_store_address_preimage(address: a) as String)
+  }
 }
 
 fn object_path(root_path: String, req: ArtifactRequest) -> String {
-  match evaluation_store_address_admitted(req: req) {
+  match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
     Absent => ""
     Present { value: addr } => store_path(root_path: root_path, name: store_object_name(address: addr))
   }
@@ -203,7 +207,10 @@ test fn incomplete_refuses_by_real_execution() -> Bool {
           parts: [payload_part(payload: verdicts_only)]
         },
         payloads: [verdicts_only],
-        evaluation_preimage: stored_evaluation_preimage_for_request(req: req),
+        evaluation_preimage: match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+          Absent => "unreachable" as NonEmptyStr
+          Present { value: a } => evaluation_store_address_preimage(address: a)
+        },
         result_preimage: result_content_canonical(
           parts: [payload_part(payload: verdicts_only)],
           payloads: [verdicts_only]

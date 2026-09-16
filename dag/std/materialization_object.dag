@@ -7,6 +7,10 @@ import std.content_hash {
   content_hash_atom,
   content_hash_from_structural_digest,
   fnv1a64_structural_hex_digest,
+  sha256_hex_digest,
+  sha512_hex_digest,
+  as_content_hash_cryptographic,
+  as_content_hash_sha512,
   serialize_content_hash,
 }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
@@ -22,16 +26,18 @@ import std.materialization_provider {
   RequestArtifactBinding, BindingOk, BindingKindMismatch, BindingWrongArtifact, BindingWrongContent,
   BindingIncomplete,
   ProviderLookup,
-  ProbeFound,
   RealizationReceipt, RealizationDisposition,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
   EvaluationIdentity, EvaluationResultBinding, EvaluationResultConsistent, EvaluationContentConflict,
   EvaluationResultHashFamilyIncomparable, EvaluationResultUnverifiable, ResultContentIdentity,
   EvaluationStoreAddress,
+  evaluation_store_address, evaluation_store_address_digest,
+  evaluation_store_address_preimage,
   request_key, request_kind,
-  evaluation_store_address_admitted, evaluation_store_address_digest,
-  evaluation_store_address_preimage, stored_evaluation_preimage_for_request,
-  request_evaluation_identity, length_prefixed_encode, result_content_identity, probe_found,
+  request_evaluation_identity, length_prefixed_encode, result_content_identity, persisted_probe,
+  observed_evaluation_preimage_from_object, ObservedEvaluationPreimage,
+  CryptographicAddressAdmitted, PreimageVerifiedBucketAdmitted, FamilyRefused,
+  HashFamily, KeyingScope,
   evaluation_result_binding_outcome,
   artifact_manifest, artifact_from_manifest, artifact_content_digest, artifact_kind, artifact_carried_outputs,
   carried_outputs_digest, request_artifact_binding, provider_serve, lookup_fold,
@@ -264,11 +270,35 @@ fn store_object_line(line: String) -> StoreObjectLine {
   }
 }
 
+fn parse_recorded_store_key(key_text: String) -> ContentHash? {
+  if starts_with(s: key_text, prefix: "sha256:") {
+    match get(xs: split(s: key_text, delimiter: "sha256:"), index: 1) {
+      Absent => none
+      Present { value: hex } =>
+        match sha256_hex_digest(hex: hex) {
+          Absent => none
+          Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
+        }
+    }
+  } else if starts_with(s: key_text, prefix: "sha512:") {
+    match get(xs: split(s: key_text, delimiter: "sha512:"), index: 1) {
+      Absent => none
+      Present { value: hex } =>
+        match sha512_hex_digest(hex: hex) {
+          Absent => none
+          Present { value: d } => Present { value: as_content_hash_sha512(digest: d) }
+        }
+    }
+  } else {
+    content_hash_from_structural_digest(digest: key_text)
+  }
+}
+
 type StoreObjectDecode
   = StoreObjectDecoded {
       manifest: ArtifactManifest,
       payloads: List<ArtifactPayload>,
-      evaluation_preimage: NonEmptyStr,
+      evaluation_preimage: ObservedEvaluationPreimage,
       result_preimage: NonEmptyStr
     }
   | StoreObjectMalformed { cause: String }
@@ -365,8 +395,8 @@ fn decode_store_object(content: String) -> StoreObjectDecode {
             match store_object_header_value(lines: lines, index: 2, tag: "request_key") {
               Absent => StoreObjectMalformed { cause: "line 3 is not a `request_key <key>` header" }
               Present { value: key_text } =>
-                match content_hash_from_structural_digest(digest: key_text) {
-                  Absent => StoreObjectMalformed { cause: concat("the recorded request key is not a structural digest: ", key_text) }
+                match parse_recorded_store_key(key_text: key_text) {
+                  Absent => StoreObjectMalformed { cause: concat("the recorded request key is not a ContentHash wire form: ", key_text) }
                   Present { value: key } =>
                     match store_object_header_value(lines: lines, index: 3, tag: "evaluation_preimage") {
                       Absent => StoreObjectMalformed { cause: "line 4 is not an `evaluation_preimage <canonical>` header" }
@@ -385,7 +415,9 @@ fn decode_store_object(content: String) -> StoreObjectDecode {
                               parts: store_object_parts(body: body)
                             },
                             payloads: store_object_payloads(body: body),
-                            evaluation_preimage: percent_decode_payload(s: preimage_text) as NonEmptyStr,
+                            evaluation_preimage: observed_evaluation_preimage_from_object(
+                              encoded: percent_decode_payload(s: preimage_text) as NonEmptyStr
+                            ),
                             result_preimage: percent_decode_payload(s: result_text) as NonEmptyStr
                           }
                         } else {
@@ -445,6 +477,7 @@ type StoreLookupRefusal
   | StoreLookupPayloadRepeated { part: ArtifactOutputId }
   | StoreLookupContractRefused { lookup: ProviderLookup }
   | StoreLookupEvaluationPreimageMismatch { expected: NonEmptyStr, found: NonEmptyStr }
+  | StoreLookupStoreFamilyRefused { family: HashFamily, scope: KeyingScope }
 
 type StoreLookup
   = StoreLookupHit {
@@ -517,7 +550,20 @@ fn store_lookup_decide(
   read: StoreObjectRead
 ) -> StoreLookup {
   let key = request_key(req: req)
-  let expected_preimage = stored_evaluation_preimage_for_request(req: req)
+  match evaluation_store_address(req: req) {
+    FamilyRefused { family: f, scope: sc } =>
+      StoreLookupRefused { key: key, refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc } }
+    CryptographicAddressAdmitted { address: _ } => store_lookup_decide_present(store: store, req: req, key: key, read: read)
+    PreimageVerifiedBucketAdmitted { address: _ } => store_lookup_decide_present(store: store, req: req, key: key, read: read)
+  }
+}
+
+fn store_lookup_decide_present(
+  store: OpenedMaterializationStore,
+  req: ArtifactRequest,
+  key: ContentHash,
+  read: StoreObjectRead
+) -> StoreLookup {
   match read {
     StoreObjectAbsent => StoreLookupMiss { key: key }
     StoreObjectUnavailable { fault: f } =>
@@ -527,12 +573,7 @@ fn store_lookup_decide(
         StoreObjectMalformed { cause: cause } =>
           StoreLookupRefused { key: key, refusal: StoreLookupObjectMalformed { cause: cause } }
         StoreObjectDecoded { manifest: m, payloads: ps, evaluation_preimage: stored_preimage, result_preimage: stored_result } =>
-          if (stored_preimage == expected_preimage) == false {
-            StoreLookupRefused {
-              key: key,
-              refusal: StoreLookupEvaluationPreimageMismatch { expected: expected_preimage, found: stored_preimage }
-            }
-          } else if ((stored_result as String) == (result_content_canonical(parts: m.parts, payloads: ps) as String)) == false {
+          if ((stored_result as String) == (result_content_canonical(parts: m.parts, payloads: ps) as String)) == false {
             StoreLookupRefused {
               key: key,
               refusal: StoreLookupObjectMalformed { cause: "stored result_preimage disagrees with payload encoding" }
@@ -546,10 +587,10 @@ fn store_lookup_decide(
                     ManifestDecoded { artifact: a } => {
                       let served = provider_serve(
                         req: req,
-                        probe: probe_found(
+                        probe: persisted_probe(
                           artifact: a,
                           observed_digest: store_observed_digest(manifest: m, payloads: ps),
-                          stored_evaluation_preimage: stored_preimage
+                          observed_evaluation_preimage: stored_preimage
                         )
                       )
                       lookup_fold(
@@ -573,7 +614,15 @@ fn store_lookup_decide(
                         wrong_content: (k, r, o) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
                         cross_family: (k, f) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
                         incomplete: (k, missing) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
-                        evaluation_preimage_mismatch: (k, e, f) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } }
+                        evaluation_preimage_mismatch: (k, e, f) => StoreLookupRefused {
+                          key: key,
+                          refusal: StoreLookupEvaluationPreimageMismatch { expected: e, found: f }
+                        },
+                        store_family_refused: (k, f, sc) => StoreLookupRefused {
+                          key: key,
+                          refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc }
+                        },
+                        unqualified_persisted_format: k => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } }
                       )
                     }
                     ManifestKindUndeclared { kind: _ } =>
@@ -599,6 +648,10 @@ type StoreCommitRefusal
   | StoreCommitPublishRefused { fault: StoreFault }
   | StoreCommitReadBackRefused { read_back: StoreLookup }
   | StoreCommitConflict { committed: ContentHash, offered: ContentHash }
+  | StoreCommitStoreFamilyRefused { family: HashFamily, scope: KeyingScope }
+  | StoreCommitResultContentConflict { binding: EvaluationResultBinding, observed: ResultContentIdentity }
+  | StoreCommitResultHashFamilyIncomparable { left: HashFamily, right: HashFamily }
+  | StoreCommitResultIdentityUnverifiable { cause: String }
 
 type StoreCommit
   = StoreCommitSettled { receipt: RealizationReceipt }
@@ -628,11 +681,23 @@ fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>) -
       match binding {
         BindingOk => {
           let offered_result = result_content_identity_from_payloads(parts: artifact_carried_outputs(artifact: a), payloads: payloads)
-          match evaluation_store_address_admitted(req: req) {
-            Absent => StoreCommitNotPrepared {
-              commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: decode } }
+          match evaluation_store_address(req: req) {
+            FamilyRefused { family: f, scope: sc } => StoreCommitNotPrepared {
+              commit: StoreCommitRefused { key: key, refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc } }
             }
-            Present { value: addr } => StoreCommitPrepared {
+            CryptographicAddressAdmitted { address: addr } => StoreCommitPrepared {
+          key: key,
+          object_name: store_object_name(address: addr),
+          object: encode_store_object(
+            manifest: artifact_manifest(artifact: a),
+            payloads: payloads,
+            evaluation_preimage: evaluation_store_address_preimage(address: addr),
+            result_preimage: offered_result.canonical_preimage
+          ),
+          offered_digest: offered_digest,
+          offered_result: offered_result
+        }
+            PreimageVerifiedBucketAdmitted { address: addr } => StoreCommitPrepared {
           key: key,
           object_name: store_object_name(address: addr),
           object: encode_store_object(
@@ -703,7 +768,6 @@ fn store_commit_verify(
 ) -> StoreCommit {
   match read_back {
     StoreLookupHit { artifact: a, payloads: ps, receipt: r, evaluation_identity: eval } => {
-      let committed = artifact_content_digest(artifact: a)
       let recorded = result_content_identity_from_payloads(parts: artifact_carried_outputs(artifact: a), payloads: ps)
       let binding = EvaluationResultBinding {
         evaluation_identity: eval,
@@ -721,12 +785,12 @@ fn store_commit_verify(
               disposition: disposition
             }
           }
-        EvaluationContentConflict { binding: _, observed: _ } =>
-          StoreCommitRefused { key: key, refusal: StoreCommitConflict { committed: committed, offered: offered } }
-        EvaluationResultHashFamilyIncomparable { left: _, right: _ } =>
-          StoreCommitRefused { key: key, refusal: StoreCommitConflict { committed: committed, offered: offered } }
-        EvaluationResultUnverifiable { cause: _ } =>
-          StoreCommitRefused { key: key, refusal: StoreCommitReadBackRefused { read_back: read_back } }
+        EvaluationContentConflict { binding: b, observed: o } =>
+          StoreCommitRefused { key: key, refusal: StoreCommitResultContentConflict { binding: b, observed: o } }
+        EvaluationResultHashFamilyIncomparable { left: lf, right: rt } =>
+          StoreCommitRefused { key: key, refusal: StoreCommitResultHashFamilyIncomparable { left: lf, right: rt } }
+        EvaluationResultUnverifiable { cause: c } =>
+          StoreCommitRefused { key: key, refusal: StoreCommitResultIdentityUnverifiable { cause: c } }
       }
     }
     StoreLookupMiss { key: _ } =>
@@ -786,6 +850,7 @@ fn store_lookup_refusal_tag(l: StoreLookup) -> String {
       StoreLookupPayloadRepeated { part: _ } => "payload_repeated"
       StoreLookupContractRefused { lookup: pl } => concat("contract_", provider_lookup_outcome_tag(l: pl))
       StoreLookupEvaluationPreimageMismatch { expected: _, found: _ } => "evaluation_preimage_mismatch"
+      StoreLookupStoreFamilyRefused { family: _, scope: _ } => "store_family_refused"
     }
   )
 }
@@ -815,6 +880,10 @@ fn store_commit_refusal_tag(c: StoreCommit) -> String {
       StoreCommitPublishRefused { fault: _ } => "publish_refused"
       StoreCommitReadBackRefused { read_back: _ } => "read_back_refused"
       StoreCommitConflict { committed: _, offered: _ } => "conflict"
+      StoreCommitStoreFamilyRefused { family: _, scope: _ } => "store_family_refused"
+      StoreCommitResultContentConflict { binding: _, observed: _ } => "result_content_conflict"
+      StoreCommitResultHashFamilyIncomparable { left: _, right: _ } => "result_hash_family_incomparable"
+      StoreCommitResultIdentityUnverifiable { cause: _ } => "result_identity_unverifiable"
     }
   )
 }

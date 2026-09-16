@@ -10,6 +10,8 @@ import std.content_hash {
   Fnv1a64Structural,
   HashFamily, Fnv1a64StructuralFamily, Sha256Family, Sha1Family,
   sha256_hex_digest,
+  sha1_hex_digest,
+  as_content_hash_sha1,
 }
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.cache_identity {
@@ -33,7 +35,7 @@ import std.materialization_provider {
   ArtifactOutputId, CarriedOutput, ArtifactPart,
   ParsedArtifact, TypedModuleArtifact, ResolvedGraphArtifact, LegacyIncompleteArtifact,
   artifact_content_digest, artifact_bytes, artifact_carried_outputs, artifact_kind,
-  ProviderProbe, ProbeAbsent, ProbeFound,
+  ProviderProbe, ProbeAbsent,
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
@@ -46,13 +48,13 @@ import std.materialization_provider {
   HashFamilyAdmittedForScope, StructuralFingerprintRefusedAsStoreKey, FamilyNotAdmittedForRelation,
   CryptographicAddressAdmitted, PreimageVerifiedBucketAdmitted, FamilyRefused,
   demand_identity_canonical, demand_identity_decode,
-  evaluation_identity_canonical, evaluation_store_address, evaluation_store_address_admitted,
+  evaluation_store_address, persist_evaluation_store_address,
   request_evaluation_identity, result_content_identity,
   two_parses_occurrence_qualification_frontier,
   admit_hash_family_for_scope, evaluation_result_binding_outcome,
   artifact_request_key,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
-  compiler_identity_input, probe_found_for_request,
+  compiler_identity_input, in_process_probe,
   output_parse_tree, output_typed_module_interface,
   output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union,
   output_list_contains,
@@ -61,6 +63,7 @@ import std.materialization_provider {
   lookup_is_refused_wrong_artifact, lookup_is_refused_wrong_content,
   lookup_is_refused_cross_family_content_hash,
   lookup_is_refused_evaluation_preimage_mismatch,
+  lookup_is_refused_unqualified_persisted_format,
   lookup_refused_incomplete_missing, lookup_served_identity,
   serve_resolved_graph_stored_disk_probe,
   admission_is_admitted, admission_evicted_keys,
@@ -76,12 +79,8 @@ import gunbc.materialization_provider_targets {
   materialization_provider_targets_all_bound,
   evaluation_store_address_producer,
   evaluation_store_address_production_consumers,
-  evaluation_store_address_duplicate_derivations,
-  evaluation_store_address_joined,
-  evaluation_store_address_unresolved,
-  evaluation_store_address_missing_expected,
-  evaluation_store_address_duplicate_consumers,
-  target_decl
+  evaluation_store_address_reference_census_frontier,
+  evaluation_store_address_duplicate_consumers
 }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -199,8 +198,7 @@ fn witness_v1_shape_digest() -> ContentHash {
 }
 
 fn witness_good_probe() -> ProviderProbe {
-  probe_found_for_request(
-    req: witness_closure_request(),
+  in_process_probe(
     artifact: witness_complete_closure_artifact(),
     observed_digest: witness_closure_digest()
   )
@@ -269,8 +267,7 @@ test fn absent_probe_is_a_miss() -> Bool {
 test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: probe_found_for_request(
-      req: witness_closure_request(),
+    probe: in_process_probe(
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
     )
@@ -281,8 +278,7 @@ test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
 test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bool {
   let stale = provider_serve(
     req: witness_typecheck_request_changed_input(),
-    probe: probe_found_for_request(
-      req: witness_typecheck_request_changed_input(),
+    probe: in_process_probe(
       artifact: witness_stale_typed_artifact(),
       observed_digest: witness_stale_typed_digest()
     )
@@ -293,8 +289,7 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
 test fn red_wrong_content_refuses_never_hits() -> Bool {
   let poisoned = provider_serve(
     req: witness_closure_request(),
-    probe: probe_found_for_request(
-      req: witness_closure_request(),
+    probe: in_process_probe(
       artifact: witness_complete_closure_artifact(),
       observed_digest: Fnv1a64(content_hash_atom(value: "closure-payload-corrupt"))
     )
@@ -350,8 +345,7 @@ test fn red_sha256_at_fnv1a64_seam_refuses_without_alias() -> Bool {
 test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: probe_found_for_request(
-      req: witness_closure_request(),
+    probe: in_process_probe(
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     )
@@ -483,8 +477,7 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
 test fn red_forged_output_roster_refuses_as_wrong_content_on_serve() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: probe_found_for_request(
-      req: witness_closure_request(),
+    probe: in_process_probe(
       artifact: witness_complete_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     )
@@ -662,8 +655,7 @@ test fn served_hit_carries_a_derived_structural_grade() -> Bool {
 test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
   let mismatched = provider_serve(
     req: witness_closure_request(),
-    probe: probe_found_for_request(
-      req: witness_closure_request(),
+    probe: in_process_probe(
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
     )
@@ -675,8 +667,7 @@ test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
 test fn incomplete_artifact_derives_unknown_identity() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: probe_found_for_request(
-      req: witness_closure_request(),
+    probe: in_process_probe(
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     )
@@ -779,8 +770,7 @@ test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
   let required = request_required_outputs(req: req)
   let refused = provider_serve(
     req: req,
-    probe: probe_found_for_request(
-      req: req,
+    probe: in_process_probe(
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     )
@@ -806,20 +796,28 @@ test fn parse_and_typecheck_store_addresses_are_preimage_verified_fnv_buckets() 
   match evaluation_store_address(req: parse_req) {
     PreimageVerifiedBucketAdmitted { address: _ } =>
       match evaluation_store_address(req: typed_req) {
-        PreimageVerifiedBucketAdmitted { address: _ } =>
-          match evaluation_store_address_admitted(req: parse_req) {
-            Absent => false
-            Present { value: _ } =>
-              match evaluation_store_address_admitted(req: typed_req) {
-                Absent => false
-                Present { value: _ } => true
-              }
-          }
+        PreimageVerifiedBucketAdmitted { address: _ } => true
         CryptographicAddressAdmitted { address: _ } => false
         FamilyRefused { family: _, scope: _ } => false
       }
     CryptographicAddressAdmitted { address: _ } => false
     FamilyRefused { family: _, scope: _ } => false
+  }
+}
+
+test fn persist_sha1_bucket_is_typed_family_refused() -> Bool {
+  let identity = request_evaluation_identity(req: witness_parse_request())
+  match sha1_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: d } =>
+      match persist_evaluation_store_address(identity: identity, digest: as_content_hash_sha1(digest: d)) {
+        FamilyRefused { family: _, scope: _ } =>
+          (request_key(req: witness_parse_request()) == as_content_hash_structural(
+            structural: content_hash_atom(value: "evaluation_store_family_refused")
+          )) == false
+        CryptographicAddressAdmitted { address: _ } => false
+        PreimageVerifiedBucketAdmitted { address: _ } => false
+      }
   }
 }
 
@@ -964,31 +962,13 @@ test fn two_parses_occurrence_qualification_is_an_explicit_frontier() -> Bool {
     && d.contains("split-on-whitespace")
 }
 
-data evaluation_store_address_observed_production_call_sites: List<DeclarationRef> = [
-  target_decl(module_path: "std.materialization_provider", decl_name: "request_key"),
-  target_decl(module_path: "std.materialization_provider", decl_name: "provider_serve"),
-  target_decl(module_path: "std.materialization_provider", decl_name: "serve_resolved_graph_stored_disk_probe"),
-  target_decl(module_path: "std.materialization_provider", decl_name: "artifact_request_key"),
-  target_decl(module_path: "std.materialization_object", decl_name: "store_object_name"),
-  target_decl(module_path: "std.materialization_object", decl_name: "store_lookup_decide"),
-  target_decl(module_path: "std.materialization_object", decl_name: "store_commit_prepare"),
-  target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup")
-]
-
-test fn evaluation_store_address_consumer_census_joins_independently_observed_sites() -> Bool {
+test fn evaluation_store_address_consumer_census_is_an_explicit_reference_index_frontier() -> Bool {
   let expected = evaluation_store_address_production_consumers
-  let observed = evaluation_store_address_observed_production_call_sites
-  let joined = evaluation_store_address_joined(expected: expected, observed: observed)
-  let unresolved = evaluation_store_address_unresolved(expected: expected, observed: observed)
-  let missing = evaluation_store_address_missing_expected(expected: expected, observed: observed)
   let expected_dups = evaluation_store_address_duplicate_consumers(xs: expected)
-  let observed_dups = evaluation_store_address_duplicate_consumers(xs: observed)
+  let d = dissolution_description(condition: evaluation_store_address_reference_census_frontier)
   (evaluation_store_address_producer.decl_name == "evaluation_store_address")
-    && ((joined |> count()) == (expected |> count()))
-    && ((unresolved |> count()) == 0)
-    && ((missing |> count()) == 0)
-    && ((expected_dups |> count()) == 0)
-    && ((observed_dups |> count()) == 0)
-    && ((evaluation_store_address_duplicate_derivations |> count()) == 0)
     && ((expected |> count()) > 1)
+    && ((expected_dups |> count()) == 0)
+    && d.contains("reference index")
+    && d.contains("second authored observed roster")
 }

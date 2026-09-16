@@ -354,7 +354,7 @@ type EvaluationIdentityCollisionDisposition
   = FnvBucketPreimageVerified { restoration_trigger: NonEmptyStr }
 
 data evaluation_identity_fnv_store_preimage_exception: EvaluationIdentityCollisionDisposition = FnvBucketPreimageVerified {
-  restoration_trigger: "in-memory HashFamily cryptographic member callable from .dag without a host file effect, sufficient for request_key and store_object_name to derive EvaluationIdentity under that family for PersistentStoreScope and CrossRunScope"
+  restoration_trigger: "parse_recorded_store_key (algorithm-qualified ContentHash wire, inverse of serialize_content_hash) round-trips Sha256Family and Sha512Family object headers, and every persistent consumer of EvaluationStoreAddress — store_object_name, store_lookup_decide, store_commit_prepare, local_store_lookup, provider_serve PersistedProbe — derives EvaluationIdentity from evaluation_bucket under that family for PersistentStoreScope and CrossRunScope"
 }
 
 type EvaluationStoreAddressStanding
@@ -581,9 +581,7 @@ fn evaluation_bucket(identity: EvaluationIdentity) -> ContentHash {
   }
 }
 
-fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
-  let identity = request_evaluation_identity(req: req)
-  let digest = evaluation_bucket(identity: identity)
+fn persist_evaluation_store_address(identity: EvaluationIdentity, digest: ContentHash) -> EvaluationStoreAddressAdmission {
   let preimage = evaluation_identity_canonical(evaluation: identity)
   let family = content_hash_family(hash: digest)
   match admit_hash_family_for_scope(family: family, scope: PersistentStoreScope) {
@@ -610,12 +608,9 @@ fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmis
   }
 }
 
-fn evaluation_store_address_admitted(req: ArtifactRequest) -> EvaluationStoreAddress? {
-  match evaluation_store_address(req: req) {
-    CryptographicAddressAdmitted { address: a } => Present { value: a }
-    PreimageVerifiedBucketAdmitted { address: a } => Present { value: a }
-    FamilyRefused { family: _, scope: _ } => none
-  }
+fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
+  let identity = request_evaluation_identity(req: req)
+  persist_evaluation_store_address(identity: identity, digest: evaluation_bucket(identity: identity))
 }
 
 fn evaluation_store_address_digest(address: EvaluationStoreAddress) -> ContentHash {
@@ -629,10 +624,11 @@ fn evaluation_store_address_preimage(address: EvaluationStoreAddress) -> NonEmpt
   address.canonical_preimage
 }
 
-fn stored_evaluation_preimage_for_request(req: ArtifactRequest) -> NonEmptyStr {
-  match evaluation_store_address_admitted(req: req) {
-    Present { value: a } => evaluation_store_address_preimage(address: a)
-    Absent => "evaluation-store-family-refused" as NonEmptyStr
+fn evaluation_store_admitted_address(admission: EvaluationStoreAddressAdmission) -> EvaluationStoreAddress? {
+  match admission {
+    CryptographicAddressAdmitted { address: a } => Present { value: a }
+    PreimageVerifiedBucketAdmitted { address: a } => Present { value: a }
+    FamilyRefused { family: _, scope: _ } => none
   }
 }
 
@@ -938,10 +934,7 @@ fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
 // is witnessed by execution rather than asserted.
 
 fn request_key(req: ArtifactRequest) -> ContentHash {
-  match evaluation_store_address_admitted(req: req) {
-    Present { value: a } => evaluation_store_address_digest(address: a)
-    Absent => as_content_hash_structural(structural: content_hash_atom(value: "evaluation_store_family_refused"))
-  }
+  evaluation_bucket(identity: request_evaluation_identity(req: req))
 }
 
 // Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape
@@ -1441,12 +1434,26 @@ fn binding_identity_grade(b: RequestArtifactBinding) -> ComputationIdentity {
   }
 }
 
+type ObservedEvaluationPreimage sole_constructor {
+  encoded: NonEmptyStr
+}
+
+fn observed_evaluation_preimage_from_object(encoded: NonEmptyStr) -> ObservedEvaluationPreimage admit_callers: [
+  decl_ref(module_path: "std.materialization_object", decl_name: "decode_store_object")
+] {
+  ObservedEvaluationPreimage { encoded: encoded }
+}
+
 type ProviderProbe
   = ProbeAbsent
-  | ProbeFound {
+  | InProcessProbe {
+      artifact: MaterializedArtifact,
+      observed_digest: ContentHash
+    }
+  | PersistedProbe {
       artifact: MaterializedArtifact,
       observed_digest: ContentHash,
-      stored_evaluation_preimage: NonEmptyStr
+      observed_evaluation_preimage: ObservedEvaluationPreimage
     }
 
 type ProviderLookup
@@ -1458,6 +1465,86 @@ type ProviderLookup
   | ProviderRefusedCrossFamilyContentHash { key: ContentHash, family: HashFamily }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
   | ProviderRefusedEvaluationPreimageMismatch { key: ContentHash, expected: NonEmptyStr, found: NonEmptyStr }
+  | ProviderRefusedStoreFamily { key: ContentHash, family: HashFamily, scope: KeyingScope }
+  | ProviderRefusedUnqualifiedPersistedFormat { key: ContentHash }
+
+data resolved_graph_disk_format_unqualified_frontier: DissolutionCondition = unbound_dissolution(
+  description: "resolved-graph disk objects persist ObservedEvaluationPreimage and ResultContentIdentity; serve_resolved_graph_stored_disk_probe then uses PersistedProbe. Until that format migrates, this route refuses UnqualifiedPersistedFormat rather than synthesizing the request preimage or serving from FNV part digests alone."
+)
+
+fn in_process_probe(
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash
+) -> ProviderProbe {
+  InProcessProbe { artifact: artifact, observed_digest: observed_digest }
+}
+
+fn persisted_probe(
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash,
+  observed_evaluation_preimage: ObservedEvaluationPreimage
+) -> ProviderProbe {
+  PersistedProbe {
+    artifact: artifact,
+    observed_digest: observed_digest,
+    observed_evaluation_preimage: observed_evaluation_preimage
+  }
+}
+
+fn provider_binding_lookup(req: ArtifactRequest, key: ContentHash, artifact: MaterializedArtifact, observed_digest: ContentHash) -> ProviderLookup {
+  match request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest) {
+    BindingOk =>
+      ProviderHit {
+        artifact: artifact,
+        identity: binding_identity_grade(b: request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest))
+      }
+    BindingKindMismatch { requested: rk, found: fk } =>
+      ProviderRefusedKindMismatch { key: key, requested: rk, found: fk }
+    BindingWrongArtifact { key: k, found_key: fk } =>
+      ProviderRefusedWrongArtifact { key: k, found_key: fk }
+    BindingWrongContent { recorded: r, observed: o } =>
+      ProviderRefusedWrongContent { key: key, recorded: r, observed: o }
+    BindingIncomplete { missing: m } =>
+      ProviderRefusedIncomplete { key: key, missing: m }
+  }
+}
+
+fn provider_serve_persisted(
+  req: ArtifactRequest,
+  key: ContentHash,
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash,
+  observed: ObservedEvaluationPreimage,
+  address: EvaluationStoreAddress
+) -> ProviderLookup {
+  if (observed.encoded as String) == (evaluation_store_address_preimage(address: address) as String) {
+    provider_binding_lookup(req: req, key: key, artifact: artifact, observed_digest: observed_digest)
+  } else {
+    ProviderRefusedEvaluationPreimageMismatch {
+      key: key,
+      expected: evaluation_store_address_preimage(address: address),
+      found: observed.encoded
+    }
+  }
+}
+
+fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
+  let key = request_key(req: req)
+  match probe {
+    ProbeAbsent => ProviderMiss { key: key }
+    InProcessProbe { artifact: a, observed_digest: obs } =>
+      provider_binding_lookup(req: req, key: key, artifact: a, observed_digest: obs)
+    PersistedProbe { artifact: a, observed_digest: obs, observed_evaluation_preimage: observed } =>
+      match evaluation_store_address(req: req) {
+        FamilyRefused { family: f, scope: sc } =>
+          ProviderRefusedStoreFamily { key: key, family: f, scope: sc }
+        CryptographicAddressAdmitted { address: addr } =>
+          provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, address: addr)
+        PreimageVerifiedBucketAdmitted { address: addr } =>
+          provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, address: addr)
+      }
+  }
+}
 
 type Fnv1a64StructuralAdmission
   = Fnv1a64StructuralAdmitted { digest: Fnv1a64Structural }
@@ -1470,58 +1557,6 @@ type ResolveClosureRequestKeyOutcome
 type ResolvedGraphPartsSemanticDigestOutcome
   = ResolvedGraphPartsSemanticDigestReady { digest: ContentHash }
   | ResolvedGraphPartsSemanticDigestRefused { lookup: ProviderLookup }
-
-fn probe_found(
-  artifact: MaterializedArtifact,
-  observed_digest: ContentHash,
-  stored_evaluation_preimage: NonEmptyStr
-) -> ProviderProbe {
-  ProbeFound {
-    artifact: artifact,
-    observed_digest: observed_digest,
-    stored_evaluation_preimage: stored_evaluation_preimage
-  }
-}
-
-fn probe_found_for_request(
-  req: ArtifactRequest,
-  artifact: MaterializedArtifact,
-  observed_digest: ContentHash
-) -> ProviderProbe {
-  probe_found(
-    artifact: artifact,
-    observed_digest: observed_digest,
-    stored_evaluation_preimage: stored_evaluation_preimage_for_request(req: req)
-  )
-}
-
-fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
-  let key = request_key(req: req)
-  let expected_preimage = stored_evaluation_preimage_for_request(req: req)
-  match probe {
-    ProbeAbsent => ProviderMiss { key: key }
-    ProbeFound { artifact: a, observed_digest: obs, stored_evaluation_preimage: stored } =>
-      if (stored as String) == (expected_preimage as String) {
-        match request_artifact_binding(req: req, artifact: a, observed_digest: obs) {
-        BindingOk =>
-          ProviderHit {
-            artifact: a,
-            identity: binding_identity_grade(b: request_artifact_binding(req: req, artifact: a, observed_digest: obs))
-          }
-        BindingKindMismatch { requested: rk, found: fk } =>
-          ProviderRefusedKindMismatch { key: key, requested: rk, found: fk }
-        BindingWrongArtifact { key: k, found_key: fk } =>
-          ProviderRefusedWrongArtifact { key: k, found_key: fk }
-        BindingWrongContent { recorded: r, observed: o } =>
-          ProviderRefusedWrongContent { key: key, recorded: r, observed: o }
-        BindingIncomplete { missing: m } =>
-          ProviderRefusedIncomplete { key: key, missing: m }
-        }
-      } else {
-        ProviderRefusedEvaluationPreimageMismatch { key: key, expected: expected_preimage, found: stored }
-      }
-  }
-}
 
 type ProviderAdmission
   = ProviderAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
@@ -1770,37 +1805,8 @@ fn serve_resolved_graph_stored_disk_probe(
               match fnv1a64_structural_if_admitted(hash: indices_digest) {
                 Present { value: indices_admitted } =>
                   match fnv1a64_structural_if_admitted(hash: union_digest) {
-                    Present { value: union_admitted } => {
-                      let req = ResolveClosureRequest {
-                        closure_digest: closure_admitted,
-                        compiler: compiler_identity_input(
-                          digest: compiler_admitted
-                        )
-                      }
-                      let artifact = ResolvedGraphArtifact {
-                        request_key: stored_request_key,
-                        resolved_graph: ArtifactPart {
-                          digest: graph_admitted,
-                          bytes: graph_bytes
-                        },
-                        source_indices: ArtifactPart {
-                          digest: indices_admitted,
-                          bytes: indices_bytes
-                        },
-                        compile_clean_diagnostic_union: ArtifactPart {
-                          digest: union_admitted,
-                          bytes: union_bytes
-                        }
-                      }
-                      provider_serve(
-                        req: req,
-                        probe: probe_found_for_request(
-                          req: req,
-                          artifact: artifact,
-                          observed_digest: stored_semantic_digest
-                        )
-                      )
-                    }
+                    Present { value: union_admitted } =>
+                      ProviderRefusedUnqualifiedPersistedFormat { key: stored_request_key }
                     Absent =>
                       provider_refused_cross_family_from_admission(
                         key: closure_digest,
@@ -1849,42 +1855,8 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
           match fnv1a64_structural_if_admitted(hash: graph_digest) {
             Present { value: graph_admitted } =>
               match fnv1a64_structural_if_admitted(hash: indices_digest) {
-                Present { value: indices_admitted } => {
-                  let req = ResolveClosureRequest {
-                    closure_digest: closure_admitted,
-                    compiler: compiler_identity_input(
-                      digest: compiler_admitted
-                    )
-                  }
-                  let artifact = LegacyIncompleteArtifact {
-                    kind: resolved_graph_artifact_kind,
-                    request_key: stored_request_key,
-                    carried_outputs: [
-                      positioned_part(
-                        id: output_resolved_graph,
-                        part: ArtifactPart {
-                          digest: graph_admitted,
-                          bytes: graph_bytes
-                        }
-                      ),
-                      positioned_part(
-                        id: output_source_indices,
-                        part: ArtifactPart {
-                          digest: indices_admitted,
-                          bytes: indices_bytes
-                        }
-                      )
-                    ]
-                  }
-                  provider_serve(
-                    req: req,
-                    probe: probe_found_for_request(
-                      req: req,
-                      artifact: artifact,
-                      observed_digest: artifact_content_digest(artifact: artifact)
-                    )
-                  )
-                }
+                Present { value: indices_admitted } =>
+                  ProviderRefusedUnqualifiedPersistedFormat { key: stored_request_key }
                 Absent =>
                   provider_refused_cross_family_from_admission(
                     key: closure_digest,
@@ -1927,7 +1899,9 @@ fn lookup_fold<T>(
   wrong_content: fn(ContentHash, ContentHash, ContentHash) -> T,
   cross_family: fn(ContentHash, HashFamily) -> T,
   incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T,
-  evaluation_preimage_mismatch: fn(ContentHash, NonEmptyStr, NonEmptyStr) -> T
+  evaluation_preimage_mismatch: fn(ContentHash, NonEmptyStr, NonEmptyStr) -> T,
+  store_family_refused: fn(ContentHash, HashFamily, KeyingScope) -> T,
+  unqualified_persisted_format: fn(ContentHash) -> T
 ) -> T {
   match l {
     ProviderHit { artifact: a, identity: i } => hit(a, i)
@@ -1938,6 +1912,8 @@ fn lookup_fold<T>(
     ProviderRefusedCrossFamilyContentHash { key: k, family: f } => cross_family(k, f)
     ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
     ProviderRefusedEvaluationPreimageMismatch { key: k, expected: e, found: f } => evaluation_preimage_mismatch(k, e, f)
+    ProviderRefusedStoreFamily { key: k, family: f, scope: sc } => store_family_refused(k, f, sc)
+    ProviderRefusedUnqualifiedPersistedFormat { key: k } => unqualified_persisted_format(k)
   }
 }
 
@@ -1951,7 +1927,9 @@ fn lookup_is_hit(l: ProviderLookup) -> Bool {
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => false
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
   )
 }
 
@@ -1965,7 +1943,9 @@ fn lookup_is_miss(l: ProviderLookup) -> Bool {
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => false
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
   )
 }
 
@@ -1979,7 +1959,9 @@ fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => false
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
   )
 }
 
@@ -1993,7 +1975,9 @@ fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => false
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
   )
 }
 
@@ -2007,7 +1991,9 @@ fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
     wrong_content: (k, r, o) => true,
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => false
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
   )
 }
 
@@ -2021,7 +2007,9 @@ fn lookup_is_refused_cross_family_content_hash(l: ProviderLookup) -> Bool {
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => true,
     incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => false
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
   )
 }
 
@@ -2035,7 +2023,41 @@ fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
-    evaluation_preimage_mismatch: (k, e, f) => true
+    evaluation_preimage_mismatch: (k, e, f) => true,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
+  )
+}
+
+fn lookup_is_refused_store_family(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => true,
+    unqualified_persisted_format: k => false
+  )
+}
+
+fn lookup_is_refused_unqualified_persisted_format(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => true
   )
 }
 
@@ -2049,7 +2071,9 @@ fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
     wrong_content: (k, r, o) => IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
     cross_family: (k, f) => IdentityUnknown { cause: MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
     incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } },
-    evaluation_preimage_mismatch: (k, e, f) => IdentityUnknown { cause: MissingEnforcement { detail: "stored evaluation preimage disagrees with the request" } }
+    evaluation_preimage_mismatch: (k, e, f) => IdentityUnknown { cause: MissingEnforcement { detail: "stored evaluation preimage disagrees with the request" } },
+    store_family_refused: (k, f, sc) => IdentityUnknown { cause: MissingEnforcement { detail: "hash family is refused for persistent store admission" } },
+    unqualified_persisted_format: k => IdentityUnknown { cause: MissingEnforcement { detail: "persisted format carries no evaluation or result preimage" } }
   )
 }
 
@@ -2063,7 +2087,9 @@ fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId
     wrong_content: (k, r, o) => no_output_ids,
     cross_family: (k, f) => no_output_ids,
     incomplete: (k, m) => m,
-    evaluation_preimage_mismatch: (k, e, f) => no_output_ids
+    evaluation_preimage_mismatch: (k, e, f) => no_output_ids,
+    store_family_refused: (k, f, sc) => no_output_ids,
+    unqualified_persisted_format: k => no_output_ids
   )
 }
 
@@ -2077,7 +2103,9 @@ fn provider_lookup_outcome_tag(l: ProviderLookup) -> String {
     wrong_content: (k, r, o) => "wrong_content",
     cross_family: (k, f) => "cross_family_hash",
     incomplete: (k, m) => "incomplete",
-    evaluation_preimage_mismatch: (k, e, f) => "evaluation_preimage_mismatch"
+    evaluation_preimage_mismatch: (k, e, f) => "evaluation_preimage_mismatch",
+    store_family_refused: (k, f, sc) => "store_family_refused",
+    unqualified_persisted_format: k => "unqualified_persisted_format"
   )
 }
 

@@ -38,7 +38,10 @@ import std.access { Permit, Deny }
 import std.effect_grant { Verb, Read, Write, NamespacePosition }
 import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame }
-import std.materialization_provider { ArtifactRequest, request_key, evaluation_store_address_admitted }
+import std.materialization_provider {
+  ArtifactRequest, request_key, evaluation_store_address,
+  CryptographicAddressAdmitted, PreimageVerifiedBucketAdmitted, FamilyRefused
+}
 import std.materialization_store_grant {
   MaterializationStoreRoot,
   MaterializationStoreDurability,
@@ -263,20 +266,16 @@ fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializati
         key: request_key(req: req),
         refusal: StoreLookupObjectUnavailable { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("read grant refused for ", root_path) } }
       }
-    Permit =>
-      match evaluation_store_address_admitted(req: req) {
-        Absent =>
-          StoreLookupRefused {
-            key: request_key(req: req),
-            refusal: StoreLookupObjectMalformed { cause: "evaluation store family refused" }
-          }
-        Present { value: addr } =>
-      store_lookup_decide(
-        store: store,
-        req: req,
-        read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
-      )
+    Permit => {
+      let read = match evaluation_store_address(req: req) {
+        FamilyRefused { family: _, scope: _ } => StoreObjectAbsent
+        CryptographicAddressAdmitted { address: addr } =>
+          store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
+        PreimageVerifiedBucketAdmitted { address: addr } =>
+          store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
       }
+      store_lookup_decide(store: store, req: req, read: read)
+    }
   }
 }
 
