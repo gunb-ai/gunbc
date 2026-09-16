@@ -45,10 +45,9 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 // authority that picks them for a reset.
 //
 // THE VALUES ARE IMPORTED, NEVER RE-SPELLED. gunbc.machine_intake_mtcollins1_actuate already carries
-// them as measured rows -- the device word, the exact text ipmitool renders for it, the cycle verb
-// the unit's own SEL confirmed takes effect, and the administrator account measured as the only
-// enabled one on the channel. Copying any of them here would be a §3 fork of a MEASUREMENT, which is
-// the worst kind: the copy keeps reading correct long after the unit stops agreeing with it.
+// the device word, the exact text ipmitool renders for it, and the cycle verb the unit's SEL
+// confirmed. The username is mtcollins1_bmc_username — the BmcSecured managed account, not a
+// factory literal. A host that is not BmcSecured is not a reset candidate.
 type ResetSubjectCandidate {
   host: HostIdentity
   observation: BmcAccessObservation
@@ -69,17 +68,21 @@ type ResetSubjectCandidate {
 // BmcAccessObservation in the repository and no host, srv3 included, has ever authored one. A second
 // host joins this list the day it authors an observation, and nobody edits a roster to let it.
 fn reset_subject_candidates() -> List<ResetSubjectCandidate> {
-  [
-    ResetSubjectCandidate {
-      host: operator_host_mtcollins1,
-      observation: mtcollins1_access_observation,
-      capability_row: mtcollins1_capability_row,
-      username: mtcollins1_bmc_username,
-      boot_device: mtcollins1_cdrom_device,
-      boot_readback_rendering: mtcollins1_cdrom_readback_rendering,
-      power_action: mtcollins1_power_action,
-    },
-  ]
+  match mtcollins1_bmc_username {
+    Absent => []
+    Present { value: username } =>
+      [
+        ResetSubjectCandidate {
+          host: operator_host_mtcollins1,
+          observation: mtcollins1_access_observation,
+          capability_row: mtcollins1_capability_row,
+          username: username,
+          boot_device: mtcollins1_cdrom_device,
+          boot_readback_rendering: mtcollins1_cdrom_readback_rendering,
+          power_action: mtcollins1_power_action,
+        },
+      ]
+  }
 }
 
 fn reset_subject_admission(candidate: ResetSubjectCandidate) -> OobBootHandoffAdmission {
