@@ -1638,14 +1638,20 @@ type TokenCompileAcc {
   residue: List<GrammarChoiceAmbiguityRow>
 }
 
+fn prepared_expr_fold_tree(alt: PreparedExprFold) -> PreparedGrammarExpr { alt.tree }
+fn prepared_expr_fold_first(alt: PreparedExprFold) -> GrammarExprFirstFold { alt.first }
+fn prepared_expr_fold_residue(alt: PreparedExprFold) -> List<GrammarChoiceAmbiguityRow> { alt.residue }
+fn token_prefix_row_prefix(row: TokenPrefixRow) -> List<Symbol> { row.prefix }
+fn token_prefix_row_next(row: TokenPrefixRow) -> PreparedChoicePlan { row.next }
+
 fn concat_prepared_alt_residue(alts: List<PreparedExprFold>) -> List<GrammarChoiceAmbiguityRow> {
   match list_head(xs: alts) {
     HeadAbsent => std.algebra.Empty
     HeadFound { value: alt } =>
       match list_tail(xs: alts) {
-        TailAbsent => alt.residue
+        TailAbsent => prepared_expr_fold_residue(alt: alt)
         TailFound { tail: rest } =>
-          list_append(left: alt.residue, right: concat_prepared_alt_residue(alts: rest))
+          list_append(left: prepared_expr_fold_residue(alt: alt), right: concat_prepared_alt_residue(alts: rest))
       }
   }
 }
@@ -1725,11 +1731,11 @@ fn choice_alts_union_first_from(
     HeadAbsent => acc
     HeadFound { value: alt } =>
       match list_tail(xs: alts) {
-        TailAbsent => expr_first_fold_choice(left: acc, right: alt.first)
+        TailAbsent => expr_first_fold_choice(left: acc, right: prepared_expr_fold_first(alt: alt))
         TailFound { tail: rest } =>
           choice_alts_union_first_from(
             alts: rest,
-            acc: expr_first_fold_choice(left: acc, right: alt.first)
+            acc: expr_first_fold_choice(left: acc, right: prepared_expr_fold_first(alt: alt))
           )
       }
   }
@@ -1758,7 +1764,7 @@ fn choice_alts_for_present_token_from(
   match list_head(xs: alts) {
     HeadAbsent => std.algebra.Empty
     HeadFound { value: alt } =>
-      let first = alt.first
+      let first = prepared_expr_fold_first(alt: alt)
       let keep =
         if symbol_list_contains(xs: first.terminals, item: token_class) {
           true
@@ -1778,11 +1784,14 @@ fn choice_alts_for_present_token_from(
             include_nullables: include_nullables
           )
       }
-      if keep {
-        list_append(left: Cons { head: alt, tail: std.algebra.Empty }, right: more)
-      } else {
-        more
-      }
+      list_append(
+        left: if keep {
+          Cons { head: alt, tail: std.algebra.Empty }
+        } else {
+          std.algebra.Empty
+        },
+        right: more
+      )
   }
 }
 
@@ -1790,15 +1799,19 @@ fn choice_alts_nullable(alts: List<PreparedExprFold>) -> List<PreparedExprFold> 
   match list_head(xs: alts) {
     HeadAbsent => std.algebra.Empty
     HeadFound { value: alt } =>
+      let first = prepared_expr_fold_first(alt: alt)
       let more = match list_tail(xs: alts) {
         TailAbsent => std.algebra.Empty
         TailFound { tail: rest } => choice_alts_nullable(alts: rest)
       }
-      if alt.first.nullable {
-        list_append(left: Cons { head: alt, tail: std.algebra.Empty }, right: more)
-      } else {
-        more
-      }
+      list_append(
+        left: if first.nullable {
+          Cons { head: alt, tail: std.algebra.Empty }
+        } else {
+          std.algebra.Empty
+        },
+        right: more
+      )
   }
 }
 
@@ -1806,14 +1819,13 @@ fn choice_alt_trees(alts: List<PreparedExprFold>) -> List<PreparedGrammarExpr> {
   match list_head(xs: alts) {
     HeadAbsent => std.algebra.Empty
     HeadFound { value: alt } =>
-      match list_tail(xs: alts) {
-        TailAbsent => Cons { head: alt.tree, tail: std.algebra.Empty }
-        TailFound { tail: rest } =>
-          list_append(
-            left: Cons { head: alt.tree, tail: std.algebra.Empty },
-            right: choice_alt_trees(alts: rest)
-          )
-      }
+      list_append(
+        left: Cons { head: prepared_expr_fold_tree(alt: alt), tail: std.algebra.Empty },
+        right: match list_tail(xs: alts) {
+          TailAbsent => std.algebra.Empty
+          TailFound { tail: rest } => choice_alt_trees(alts: rest)
+        }
+      )
   }
 }
 
@@ -1851,7 +1863,7 @@ fn token_prefix_row_conflicts(rows: List<TokenPrefixRow>, prefix: List<Symbol>) 
   match list_head(xs: rows) {
     HeadAbsent => false
     HeadFound { value: row } =>
-      if zip_eq(a: row.prefix, b: prefix, eq: fn(x, y) { x == y }) {
+      if zip_eq(a: token_prefix_row_prefix(row: row), b: prefix, eq: fn(x, y) { x == y }) {
         true
       } else {
         match list_tail(xs: rows) {
@@ -1874,7 +1886,7 @@ fn choice_token_prefix_rows_from(
   match list_head(xs: alts) {
     HeadAbsent => optional_present(value: rows)
     HeadFound { value: alt } =>
-      match prepared_terminal_prefix(expr: alt.tree, need: need) {
+      match prepared_terminal_prefix(expr: prepared_expr_fold_tree(alt: alt), need: need) {
         Absent => optional_absent()
         Present { value: prefix } =>
           if token_prefix_row_conflicts(rows: rows, prefix: prefix) {
@@ -1884,7 +1896,7 @@ fn choice_token_prefix_rows_from(
               TailAbsent =>
                 optional_present(value: list_snoc_item(
                   xs: rows,
-                  item: TokenPrefixRow { prefix: prefix, next: ChoiceParseOne { expr: alt.tree } }
+                  item: TokenPrefixRow { prefix: prefix, next: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) } }
                 ))
               TailFound { tail: rest } =>
                 choice_token_prefix_rows_from(
@@ -1892,7 +1904,7 @@ fn choice_token_prefix_rows_from(
                   need: need,
                   rows: list_snoc_item(
                     xs: rows,
-                    item: TokenPrefixRow { prefix: prefix, next: ChoiceParseOne { expr: alt.tree } }
+                    item: TokenPrefixRow { prefix: prefix, next: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) } }
                   )
                 )
             }
@@ -1926,7 +1938,7 @@ fn choice_shared_prefix_suffixes_from(
   match list_head(xs: alts) {
     HeadAbsent => optional_present(value: suffixes)
     HeadFound { value: alt } =>
-      match alt.tree {
+      match prepared_expr_fold_tree(alt: alt) {
         PreparedSequence { left: left, right: right } =>
           if prepared_prefix_atom_eq(left: left, right: prefix) {
             let next_suffixes = list_snoc_item(
@@ -1994,32 +2006,15 @@ fn expr_first_fold_from_prepared(
 
 fn ordered_backtrack_row(
   production: Symbol,
-  alternatives: List<PreparedGrammarExpr>,
-  nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
+  alts: List<PreparedExprFold>
 ) -> GrammarChoiceAmbiguityRow {
   let empty_first = GrammarExprFirstFold { terminals: grammar_empty_terminal_list(), nullable: false }
-  let folds = fold_list(
-    xs: alternatives,
-    empty: std.algebra.Empty,
-    cons: fn(acc, expr) {
-      list_snoc_item(
-        xs: acc,
-        item: expr_first_fold_from_prepared(expr: expr, nullable_set: nullable_set, first_rows: first_rows)
-      )
-    }
-  )
-  let left = match list_head(xs: folds) {
-    HeadFound { value: f } => f
+  let left = match list_head(xs: alts) {
+    HeadFound { value: alt } => prepared_expr_fold_first(alt: alt)
     HeadAbsent => empty_first
   }
-  let right = match list_tail(xs: folds) {
-    TailFound { tail: rest } =>
-      fold_list(
-        xs: rest,
-        empty: empty_first,
-        cons: fn(acc, f) { expr_first_fold_choice(left: acc, right: f) }
-      )
+  let right = match list_tail(xs: alts) {
+    TailFound { tail: rest } => choice_alts_union_first_from(alts: rest, acc: empty_first)
     TailAbsent => empty_first
   }
   GrammarChoiceAmbiguityRow {
@@ -2028,6 +2023,16 @@ fn ordered_backtrack_row(
     right_first_terminals: right.terminals,
     overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
     both_nullable: left.nullable && right.nullable
+  }
+}
+
+fn ordered_backtrack_emit(alts: List<PreparedExprFold>, production: Symbol) -> ChoicePlanEmit {
+  ChoicePlanEmit {
+    plan: ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) },
+    residue: Cons {
+      head: ordered_backtrack_row(production: production, alts: alts),
+      tail: std.algebra.Empty
+    }
   }
 }
 
@@ -2043,7 +2048,7 @@ fn compile_choice_alts(
       match list_head(xs: alts) {
         HeadFound { value: alt } =>
           ChoicePlanEmit {
-            plan: ChoiceParseOne { expr: alt.tree },
+            plan: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) },
             residue: std.algebra.Empty
           }
         HeadAbsent => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
@@ -2052,7 +2057,7 @@ fn compile_choice_alts(
       match list_head(xs: alts) {
         HeadAbsent => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
         HeadFound { value: first_alt } =>
-          match prepared_sequence_left_atom(expr: first_alt.tree) {
+          match prepared_sequence_left_atom(expr: prepared_expr_fold_tree(alt: first_alt)) {
             Present { value: prefix } =>
               match choice_shared_prefix_suffixes(
                 alts: alts,
@@ -2075,42 +2080,14 @@ fn compile_choice_alts(
                   match choice_token_prefix_rows(alts: alts, need: 2) {
                     Present { value: rows } =>
                       ChoicePlanEmit { plan: ChoiceTokenPrefix { rows: rows }, residue: std.algebra.Empty }
-                    Absent =>
-                      ChoicePlanEmit {
-                        plan: ChoiceOrderedBacktrack {
-                          alternatives: choice_alt_trees(alts: alts)
-                        },
-                        residue: Cons {
-                          head: ordered_backtrack_row(
-                            production: production,
-                            alternatives: choice_alt_trees(alts: alts),
-                            nullable_set: nullable_set,
-                            first_rows: first_rows
-                          ),
-                          tail: std.algebra.Empty
-                        }
-                      }
+                    Absent => ordered_backtrack_emit(alts: alts, production: production)
                   }
               }
             Absent =>
               match choice_token_prefix_rows(alts: alts, need: 2) {
                 Present { value: rows } =>
                   ChoicePlanEmit { plan: ChoiceTokenPrefix { rows: rows }, residue: std.algebra.Empty }
-                Absent =>
-                  ChoicePlanEmit {
-                    plan: ChoiceOrderedBacktrack {
-                      alternatives: choice_alt_trees(alts: alts)
-                    },
-                    residue: Cons {
-                      head: ordered_backtrack_row(
-                        production: production,
-                        alternatives: choice_alt_trees(alts: alts),
-                        nullable_set: nullable_set,
-                        first_rows: first_rows
-                      ),
-                      tail: std.algebra.Empty
-                    }
-                  }
+                Absent => ordered_backtrack_emit(alts: alts, production: production)
               }
           }
       }
@@ -2201,12 +2178,13 @@ fn prepare_grammar_expr(
         first_rows: first_rows,
         production: production
       )
+      let union_first = choice_alts_union_first(alts: prepared_alts)
       PreparedExprFold {
         tree: PreparedChoice {
           plan: compiled.plan,
-          first: choice_alts_union_first(alts: prepared_alts)
+          first: union_first
         },
-        first: choice_alts_union_first(alts: prepared_alts),
+        first: union_first,
         residue: list_append(left: concat_prepared_alt_residue(alts: prepared_alts), right: compiled.residue)
       }
     Lookahead { pattern: pattern } =>
@@ -2922,8 +2900,8 @@ fn choice_token_prefix_select(rows: List<TokenPrefixRow>, prefix: List<Symbol>) 
   match list_head(xs: rows) {
     HeadAbsent => optional_absent()
     HeadFound { value: row } =>
-      if zip_eq(a: row.prefix, b: prefix, eq: fn(x, y) { x == y }) {
-        optional_present(value: row.next)
+      if zip_eq(a: token_prefix_row_prefix(row: row), b: prefix, eq: fn(x, y) { x == y }) {
+        optional_present(value: token_prefix_row_next(row: row))
       } else {
         match list_tail(xs: rows) {
           TailAbsent => optional_absent()
@@ -2998,7 +2976,7 @@ fn parse_choice_plan(
       match list_head(xs: rows) {
         HeadAbsent => ParseExprRejected { diagnostics: [], table: table }
         HeadFound { value: first_row } =>
-          match token_classes_take(tokens: tokens, need: length(xs: first_row.prefix)) {
+          match token_classes_take(tokens: tokens, need: length(xs: token_prefix_row_prefix(row: first_row))) {
             Absent => ParseExprRejected { diagnostics: [], table: table }
             Present { value: prefix } =>
               match choice_token_prefix_select(rows: rows, prefix: prefix) {
