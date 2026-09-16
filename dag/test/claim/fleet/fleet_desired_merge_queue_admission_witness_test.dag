@@ -306,18 +306,19 @@ test fn a_push_payload_without_after_refuses_naming_the_member() -> Bool {
 }
 
 // THE EMITTED TRIGGER AND ROUTING. The push route exists in the workflow only if the emission says
-// so; both triggers are present during the transition, each decide step runs its own entry, and only
-// the push step carries the forge token.
-test fn the_emitted_fleet_desired_workflow_routes_push_and_workflow_run_to_their_own_entries() -> Bool {
+// so, and it is now the ONLY route: the workflow_run trigger and its decide step were deleted with
+// the push-on-main required run (gunbc.witness_floor_workflow witness_floor_triggers), which is the
+// event that route keyed on. The two NOT-contains are the discriminating RED for that deletion --
+// restoring either the trigger or the entry reds this row -- and `actions: read` stays because the
+// push route reads the forge for the revision's merge_group runs.
+test fn the_emitted_fleet_desired_workflow_routes_push_to_its_entry_and_carries_no_floor_event_route() -> Bool {
   match expected_fleet_desired_yml() {
     FleetDesiredGenerated { content: y } =>
-      contains(y, "workflow_run:")
-        && contains(y, "push:")
-        && contains(y, "if: github.event_name == 'push'")
+      contains(y, "push:")
         && contains(y, "--function admit_fleet_desired_from_push_wet")
-        && contains(y, "if: github.event_name == 'workflow_run'")
-        && contains(y, "--function admit_fleet_desired_from_floor_event_wet")
         && contains(y, "actions: read")
+        && !contains(y, "workflow_run")
+        && !contains(y, "admit_fleet_desired_from_floor_event_wet")
     FleetDesiredGenerationRefused { reason: _ } => false
   }
 }

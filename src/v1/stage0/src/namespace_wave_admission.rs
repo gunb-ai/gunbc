@@ -1921,9 +1921,11 @@ pub struct TransitionAdmission {
 /// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
 /// runner hardware observation, DGX PXE and PXE-rescue consumers.
 ///
-/// THE gunbc#11177 ROWS DISSOLVED HERE (2026-09-16, gunbc#11441). #11177 landed as `74ba3ba2d5`
-/// with two `process_identity_eq` rows and the instruction to remove them once consumed at the
-/// base; they are consumed at this merge's base and come due on this roster touch.
+/// THE gunbc#11177 ROWS DISSOLVED HERE (2026-09-16), by the trigger their own comment wrote:
+/// "remove these permissions once consumed at the base". #11177 is on main, so the relocation
+/// of process_identity_eq into gunbc.build_cache_instance is PRESENT AT THE BASE and both
+/// TargetChanged bindings report consumed. runner_connectivity_recovery_witness_test and
+/// runner_canary_receipt_witness_test stay enrolled as the executed evidence of the relocation.
 ///
 /// gunbc#11441 json_string_list hoist (2026-09-15). One TargetChanged: `json_string_list` in
 /// `container_image_config_env_from_json` now binds `extdeps.languages.json.parse`.
