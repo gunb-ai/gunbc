@@ -18,6 +18,22 @@ type ResolvedCallEdgeCensus
   = ResolvedCallEdgeCensusRefused { cause: NonEmptyStr }
   | ResolvedCallEdgeCensusObserved { edges: List<ResolvedCallEdge> }
 
+type EvaluationStoreAddressProductionCoverage
+  = ProductionCoverageQualified {
+      exact_resolved_roots: List<String>
+      zero_candidate_roots: List<String>
+    }
+  | ProductionCoverageRefused {
+      root: String
+      path: String
+      cause: String
+    }
+  | CandidateOutsideExactResolution {
+      root: String
+      path: String
+      target_leaf: String
+    }
+
 data evaluation_store_address_home_modules: List<String> = [
   "std.materialization_provider",
   "std.materialization_object",
@@ -26,8 +42,12 @@ data evaluation_store_address_home_modules: List<String> = [
 
 data evaluation_store_address_production_exclude: List<String> = ["/test/"]
 
-data evaluation_store_address_production_roots: List<String> = [
+data evaluation_store_address_exact_resolution_roots: List<String> = [
   "dag"
+]
+
+data evaluation_store_address_zero_candidate_guard_roots: List<String> = [
+  "src/v2"
 ]
 
 data evaluation_store_address_fixture_home_modules: List<String> = [
@@ -36,6 +56,10 @@ data evaluation_store_address_fixture_home_modules: List<String> = [
 
 data evaluation_store_address_fixture_roots: List<String> = [
   "dag/test/fixture/evaluation_store_address_alias"
+]
+
+data evaluation_store_address_zero_candidate_plant_roots: List<String> = [
+  "dag/test/fixture/evaluation_store_address_zero_candidate_plant"
 ]
 
 data evaluation_store_address_production_leaves: List<String> = [
@@ -50,6 +74,8 @@ data evaluation_store_address_fixture_leaves: List<String> = [
 
 data evaluation_store_address_alias_discovery_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v2.std.namespace_alias resolution/normalize consumes AliasBindingRow as ordinary binding nodes (the follow-on consumer named on that module), AND this census requalifies alias/re-export discovery with an authorable RED: alias Provider = home-module; alias Address = Provider.evaluation_store_address; a third source calling Address(...) containing neither the leaf nor the original path; import-only misses that caller; callsite census observes its ResolvedCallee. Until that consumer lands, alias-chain discovery is inadmissible and this census does not claim it — a reverse-alias walk with no ResolvedCallee discriminator is not coverage.")
 
+data evaluation_store_address_production_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: option A — the floor exposes its accepted live-tree resolution/index product (or an equivalent exact query interface) and this census derives resolver-produced call edges over the complete production roots (dag ∪ src/v2) without building another corpus index per witness; then delete the partition and restore one exact join.")
+
 fn evaluation_store_address_mutation_census() -> ResolvedCallEdgeCensus {
   evaluation_store_address_fixture_callsite_census()
 }
@@ -58,9 +84,41 @@ fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
   compile_dag_callsite_resolved_call_edges(
     evaluation_store_address_home_modules,
     evaluation_store_address_production_exclude,
-    evaluation_store_address_production_roots,
+    evaluation_store_address_exact_resolution_roots,
     evaluation_store_address_production_leaves
   )
+}
+
+fn evaluation_store_address_production_coverage() -> EvaluationStoreAddressProductionCoverage {
+  compile_dag_call_form_leaf_guard(
+    evaluation_store_address_production_exclude,
+    evaluation_store_address_zero_candidate_guard_roots,
+    evaluation_store_address_production_leaves,
+    evaluation_store_address_exact_resolution_roots
+  )
+}
+
+fn evaluation_store_address_zero_candidate_plant_coverage() -> EvaluationStoreAddressProductionCoverage {
+  compile_dag_call_form_leaf_guard(
+    [],
+    evaluation_store_address_zero_candidate_plant_roots,
+    evaluation_store_address_production_leaves,
+    evaluation_store_address_exact_resolution_roots
+  )
+}
+
+fn evaluation_store_address_production_coverage_qualified(
+  coverage: EvaluationStoreAddressProductionCoverage
+) -> Bool {
+  match coverage {
+    ProductionCoverageQualified { exact_resolved_roots, zero_candidate_roots } =>
+      ((exact_resolved_roots |> count()) == 1)
+        && ((zero_candidate_roots |> count()) == 1)
+        && (exact_resolved_roots |> fold(init: false, f: (acc, r) => acc || r == "dag"))
+        && (zero_candidate_roots |> fold(init: false, f: (acc, r) => acc || r == "src/v2"))
+    ProductionCoverageRefused { root: _, path: _, cause: _ } => false
+    CandidateOutsideExactResolution { root: _, path: _, target_leaf: _ } => false
+  }
 }
 
 fn evaluation_store_address_fixture_import_only_census() -> ResolvedCallEdgeCensus {

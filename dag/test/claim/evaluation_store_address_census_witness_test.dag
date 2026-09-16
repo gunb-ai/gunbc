@@ -17,13 +17,20 @@ import gunbc.evaluation_store_address_census {
   ResolvedCallEdge,
   ResolvedCallEdgeCensusRefused,
   ResolvedCallEdgeCensusObserved,
+  ProductionCoverageQualified,
+  ProductionCoverageRefused,
+  CandidateOutsideExactResolution,
   evaluation_store_address_production_census,
+  evaluation_store_address_production_coverage,
+  evaluation_store_address_production_coverage_qualified,
+  evaluation_store_address_zero_candidate_plant_coverage,
   evaluation_store_address_mutation_census,
   evaluation_store_address_fixture_import_only_census,
   evaluation_store_address_fixture_callsite_census,
   bound_callers_of_edges,
   evaluation_store_address_ref_in_module,
-  evaluation_store_address_alias_discovery_dissolve_on
+  evaluation_store_address_alias_discovery_dissolve_on,
+  evaluation_store_address_production_partition_dissolve_on
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -37,6 +44,7 @@ test fn evaluation_store_address_expected_rosters_are_well_formed() -> Bool {
     && ((evaluation_store_address_duplicate_consumers(xs: admitted) |> count()) == 0)
     && ((evaluation_store_address_producer.decl_name as String) == "evaluation_store_address")
     && (dissolution_description(condition: evaluation_store_address_alias_discovery_dissolve_on) != "")
+    && (dissolution_description(condition: evaluation_store_address_production_partition_dissolve_on) != "")
 }
 
 fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool {
@@ -84,7 +92,22 @@ fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool
 test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
   match evaluation_store_address_production_census() {
     ResolvedCallEdgeCensusRefused { cause: _ } => false
-    ResolvedCallEdgeCensusObserved { edges } => evaluation_store_address_join_observed(edges: edges)
+    ResolvedCallEdgeCensusObserved { edges } =>
+      evaluation_store_address_join_observed(edges: edges)
+        && evaluation_store_address_production_coverage_qualified(
+          coverage: evaluation_store_address_production_coverage()
+        )
+  }
+}
+
+test fn evaluation_store_address_zero_candidate_guard_reports_planted_call() -> Bool {
+  match evaluation_store_address_zero_candidate_plant_coverage() {
+    CandidateOutsideExactResolution { root, path, target_leaf } =>
+      (root == "dag/test/fixture/evaluation_store_address_zero_candidate_plant")
+        && (target_leaf == "evaluation_store_address_digest")
+        && (path == "dag/test/fixture/evaluation_store_address_zero_candidate_plant/digest_call.dag")
+    ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots: _ } => false
+    ProductionCoverageRefused { root: _, path: _, cause: _ } => false
   }
 }
 

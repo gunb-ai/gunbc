@@ -686,6 +686,151 @@ pub fn compile_dag_callsite_resolved_call_edges(
     )
 }
 
+fn token_is_trivia(token: &crate::v1_std_core::Token) -> bool {
+    matches!(
+        token.shape,
+        crate::v1_std_core::TokenShape::ShNewline | crate::v1_std_core::TokenShape::ShEof
+    )
+}
+
+fn first_call_form_leaf(
+    content: &str,
+    rel: &str,
+    leaves: &HashSet<String>,
+) -> Result<Option<String>, String> {
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        content.to_string(),
+        rel.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    if tokens
+        .iter()
+        .any(|token| token.shape == crate::v1_std_core::TokenShape::ShUnknown)
+    {
+        return Err(format!(
+            "call-form leaf guard: {rel}: tokenizer produced an unknown token"
+        ));
+    }
+    let tokens: Vec<Rc<crate::v1_std_core::Token>> = tokens.iter().cloned().collect();
+    let mut i = 0;
+    while i < tokens.len() {
+        if token_is_trivia(&tokens[i]) {
+            i += 1;
+            continue;
+        }
+        if let Some(ident) = token_ident(&tokens[i]) {
+            if leaves.contains(ident) {
+                let mut j = i + 1;
+                while j < tokens.len() && token_is_trivia(&tokens[j]) {
+                    j += 1;
+                }
+                if tokens
+                    .get(j)
+                    .map(|token| token.shape == crate::v1_std_core::TokenShape::ShLParen)
+                    .unwrap_or(false)
+                {
+                    return Ok(Some(ident.to_string()));
+                }
+            }
+        }
+        i += 1;
+    }
+    Ok(None)
+}
+
+/// Fail-closed call-form candidate guard over a declared pool. Tokenizes every admitted `.dag`
+/// under `pool_roots`; a leaf identifier followed by `(` after trivia is a candidate. Does not
+/// resolve. Empty candidate set is `ProductionCoverageQualified`; a hit is
+/// `CandidateOutsideExactResolution`; unreadable or untokenizable input is `ProductionCoverageRefused`.
+pub fn compile_dag_call_form_leaf_guard(
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    target_leaves: &[String],
+    exact_resolved_roots: &[String],
+) -> crate::cli_run::EvaluationStoreAddressProductionCoverage {
+    use crate::cli_run::EvaluationStoreAddressProductionCoverage;
+    if pool_roots.iter().any(|r| r.trim().is_empty()) || pool_roots.is_empty() {
+        return EvaluationStoreAddressProductionCoverage::Refused {
+            root: pool_roots.first().cloned().unwrap_or_default(),
+            path: String::new(),
+            cause: "call-form leaf guard: every scan root must be nonempty".to_string(),
+        };
+    }
+    if target_leaves.iter().any(|l| l.trim().is_empty()) || target_leaves.is_empty() {
+        return EvaluationStoreAddressProductionCoverage::Refused {
+            root: pool_roots[0].clone(),
+            path: String::new(),
+            cause: "call-form leaf guard: every target leaf must be nonempty".to_string(),
+        };
+    }
+    let leaves: HashSet<String> = target_leaves.iter().cloned().collect();
+    let abs_roots = pool_roots_abs(pool_roots);
+    let mut files = Vec::new();
+    for (authored, abs) in pool_roots.iter().zip(abs_roots.iter()) {
+        let root_path = Path::new(abs);
+        if !root_path.is_dir() {
+            return EvaluationStoreAddressProductionCoverage::Refused {
+                root: authored.clone(),
+                path: authored.clone(),
+                cause: format!(
+                    "call-form leaf guard: declared root '{authored}' is not an inspectable directory"
+                ),
+            };
+        }
+        if let Err(cause) = collect_dag_files_complete(root_path, &mut files) {
+            return EvaluationStoreAddressProductionCoverage::Refused {
+                root: authored.clone(),
+                path: authored.clone(),
+                cause,
+            };
+        }
+    }
+    files.sort();
+    for file in files {
+        let rel = rel_path_for_layer_import(&file);
+        if is_excluded_import_path(&rel, exclude_substrings) {
+            continue;
+        }
+        let owning_root = pool_roots
+            .iter()
+            .zip(abs_roots.iter())
+            .find(|(_, abs)| file.starts_with(abs))
+            .map(|(authored, _)| authored.clone())
+            .unwrap_or_else(|| pool_roots[0].clone());
+        let content = match std::fs::read_to_string(&file) {
+            Ok(content) => content,
+            Err(e) => {
+                return EvaluationStoreAddressProductionCoverage::Refused {
+                    root: owning_root,
+                    path: rel,
+                    cause: format!("call-form leaf guard: cannot read: {e}"),
+                };
+            }
+        };
+        match first_call_form_leaf(&content, &rel, &leaves) {
+            Ok(Some(target_leaf)) => {
+                return EvaluationStoreAddressProductionCoverage::CandidateOutsideExactResolution {
+                    root: owning_root,
+                    path: rel,
+                    target_leaf,
+                };
+            }
+            Ok(None) => {}
+            Err(cause) => {
+                return EvaluationStoreAddressProductionCoverage::Refused {
+                    root: owning_root,
+                    path: rel,
+                    cause,
+                };
+            }
+        }
+    }
+    EvaluationStoreAddressProductionCoverage::Qualified {
+        exact_resolved_roots: exact_resolved_roots.to_vec(),
+        zero_candidate_roots: pool_roots.to_vec(),
+    }
+}
+
 fn compile_dag_candidate_resolved_call_edges(
     import_modules: &[String],
     exclude_substrings: &[String],

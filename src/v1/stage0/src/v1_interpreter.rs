@@ -13653,6 +13653,65 @@ fn resolved_call_edge_census_value(
     }
 }
 
+fn evaluation_store_address_production_coverage_value(
+    coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
+    ctx: &InterpContext,
+) -> Value {
+    match coverage {
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::Qualified {
+            exact_resolved_roots,
+            zero_candidate_roots,
+        } => Value::Variant {
+            type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+            variant_name: ctx.sym("ProductionCoverageQualified"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("exact_resolved_roots"),
+                    list_value(
+                        exact_resolved_roots
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("zero_candidate_roots"),
+                    list_value(
+                        zero_candidate_roots
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::Refused { root, path, cause } => {
+            Value::Variant {
+                type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+                variant_name: ctx.sym("ProductionCoverageRefused"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("root"), str_value(root)),
+                    (ctx.sym("path"), str_value(path)),
+                    (ctx.sym("cause"), str_value(cause)),
+                ])),
+            }
+        }
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::CandidateOutsideExactResolution {
+            root,
+            path,
+            target_leaf,
+        } => Value::Variant {
+            type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+            variant_name: ctx.sym("CandidateOutsideExactResolution"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("root"), str_value(root)),
+                (ctx.sym("path"), str_value(path)),
+                (ctx.sym("target_leaf"), str_value(target_leaf)),
+            ])),
+        },
+    }
+}
+
 fn reference_occurrence_binding_census_value(
     census: crate::cli_run::ReferenceOccurrenceBindingCensus,
     ctx: &InterpContext,
@@ -20696,6 +20755,22 @@ macro_rules! v1_builtin_arms {
                         &exclude_substrings,
                         &pool_roots,
                         &target_leaves,
+                    ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_call_form_leaf_guard" { "compile_dag_call_form_leaf_guard" } => {
+                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
+                let target_leaves = expect_str_list($positional.get(2).copied(), $name)?;
+                let exact_resolved_roots = expect_str_list($positional.get(3).copied(), $name)?;
+                Ok(Some(evaluation_store_address_production_coverage_value(
+                    crate::cli_run::compile_dag_call_form_leaf_guard(
+                        &exclude_substrings,
+                        &pool_roots,
+                        &target_leaves,
+                        &exact_resolved_roots,
                     ),
                     $ctx,
                 )))
