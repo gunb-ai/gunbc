@@ -356,6 +356,14 @@ type LegacyBaselineCaptureCapability
   = CaptureBlocked { phase: LegacyBaselineCapturePhase, cause: LegacyBaselineCaptureRefusal }
   | CaptureAvailable
 
+// CaptureAvailable IS A REPORT OF EXECUTED EVIDENCE, NOT A CONSTANT BY FIAT. The value is
+// authored here because the capability is a fact about the tree (the tap's Observed arm
+// exists and answers), and the evidence that keeps it honest is enrolled and executing:
+// dag/test/claim/legacy_repair_tap_live_bridge_witness_test
+// a_fixture_root_reaches_the_observed_arm_with_repair_rows_and_transport reaches
+// Xl1PrimaryRootObserved with rows and bindings over a committed root, beside the refusal
+// controls. If that claim reds, this value is a lie and the honest arm is
+// CaptureBlocked { RepairCensusPhase, ... } with the refusal it observed (review 66841).
 fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
   CaptureAvailable
 }
