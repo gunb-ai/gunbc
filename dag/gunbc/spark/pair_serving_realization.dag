@@ -449,6 +449,13 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
 // fails at evaluation, so `evidence` is never passed where a ContentHash is wanted; consumers read
 // `evidence.digest` explicitly.
 
+// THE RENDER ITSELF: a unit name with its exact bytes, or a typed refusal carrying the cause. This
+// is ordinary and freely constructible -- it is the INPUT to the byte-level digest below, and
+// sealing it would wall nothing, since the bytes are the caller's either way.
+type SparkPairUnitRender
+  = SparkPairUnitRendered { unit_name: NonEmptyStr, text: String }
+  | SparkPairUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
+
 type RenderedUnitDigestStanding
   = RenderedUnitDigested { unit_name: NonEmptyStr, digest: ContentHash }
   | RenderedUnitDigestUnavailable { obligation: NonEmptyStr }
