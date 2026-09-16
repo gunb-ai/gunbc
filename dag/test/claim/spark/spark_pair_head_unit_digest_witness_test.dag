@@ -37,8 +37,7 @@ fn w_digest_of(text: String) -> DeclaredUnitDigestStanding {
   spark_pair_declared_unit_digest(render: w_render(text: text))
 }
 
-// POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice, and the evidence names
-// the unit it was minted for.
+// POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice.
 test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
   match w_digest_of(text: w_unit_text) {
     DeclaredUnitDigestUnavailable { obligation: _ } => false
@@ -46,13 +45,11 @@ test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
       match w_digest_of(text: w_unit_text) {
         DeclaredUnitDigestUnavailable { obligation: _ } => false
         DeclaredUnitDigested { evidence: e2 } =>
-          (e1.unit_name as String) == (spark_pair_head_unit_name as String)
-            && (e2.unit_name as String) == (spark_pair_head_unit_name as String)
-            && match compare_content_hash(left: e1.digest, right: e2.digest) {
-              ContentHashEqual => true
-              ContentHashDifferent => false
-              ContentHashCrossFamilyIncomparable => false
-            }
+          match compare_content_hash(left: e1.digest, right: e2.digest) {
+            ContentHashEqual => true
+            ContentHashDifferent => false
+            ContentHashCrossFamilyIncomparable => false
+          }
       }
   }
 }
@@ -90,12 +87,11 @@ test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> 
       match spark_pair_declared_unit_digest(render: spark_pair_head_unit_render_for_group(group: FabricGroupA)) {
         DeclaredUnitDigestUnavailable { obligation: _ } => false
         DeclaredUnitDigested { evidence: again } =>
-          (e.unit_name as String) == (spark_pair_head_unit_name as String)
-            && match compare_content_hash(left: e.digest, right: again.digest) {
-              ContentHashEqual => true
-              ContentHashDifferent => false
-              ContentHashCrossFamilyIncomparable => false
-            }
+          match compare_content_hash(left: e.digest, right: again.digest) {
+            ContentHashEqual => true
+            ContentHashDifferent => false
+            ContentHashCrossFamilyIncomparable => false
+          }
       }
   }
 }

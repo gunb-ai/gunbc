@@ -396,11 +396,26 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
 // stand as the declared digest: compared with the observed unit digest it would be incomparable,
 // never agreement.
 //
-// THE EVIDENCE IS SEALED AND CARRIES NO TEXT. DeclaredUnitDigestEvidence is a `sole_constructor`
-// RECORD -- sole_constructor on the coproduct would not seal direct variant construction -- so the
-// only way to obtain one is spark_pair_declared_unit_digest below, over a render. There is
-// deliberately no `text` field: a record pairing text with its digest can be handed to a consumer in
-// a state where the two disagree, and nothing downstream needs the bytes once the digest is minted.
+// THE EVIDENCE IS SEALED AND CARRIES NOTHING BUT THE DIGEST. DeclaredUnitDigestEvidence is a
+// `sole_constructor` RECORD -- sole_constructor on the coproduct would not seal direct variant
+// construction -- so the only way to obtain one is spark_pair_declared_unit_digest below, over a
+// render. There is deliberately no `text` field: a record pairing text with its digest can be handed
+// to a consumer in a state where the two disagree, and nothing downstream needs the bytes once the
+// digest is minted.
+//
+// AND NO `unit_name` FIELD, FOR THE SAME REASON ONE TURN FURTHER (review 67007). The mint wrote a
+// unit name that no consumer read: spark_serving_offer spark_service_from_observation takes the
+// digest alone, and WHICH unit was compared is already fixed by the group the route is deciding for,
+// so carrying the name here would be a second authority for a fact the caller holds. A field nothing
+// reads is DESIGN §3c red however well shaped, and the honest repair is to delete it rather than to
+// add a reader that exists to justify it.
+//
+// KNOWN HAZARD OF THE ONE-FIELD SHAPE, stated rather than discovered later:
+// gunbc.recurring_failure_mode sole_constructor_wrapper_satisfies_a_typecheck_declared_for_its_payload
+// records that a single-field sole-constructor carrier is ACCEPTED where its payload type is
+// declared and then fails at evaluation. So `evidence` must never be passed where a ContentHash is
+// wanted; consumers read `evidence.digest` explicitly, as spark_serving_route_standing does. That
+// class's wall is a compiler trigger, not a field kept here to pad the record.
 //
 // EGRESS (gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress). The
 // question is not who may call the mint but WHAT MAY LEAVE. Every exported function whose return
@@ -417,7 +432,6 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
 // next-rung trigger is the emitted mirror carrying the construction confinement, which is that
 // item's to close and not this module's.
 type DeclaredUnitDigestEvidence sole_constructor {
-  unit_name: NonEmptyStr
   digest: ContentHash
 }
 
@@ -436,7 +450,7 @@ fn spark_pair_declared_unit_digest(render: SparkPairUnitRender) -> DeclaredUnitD
   match render {
     SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
       DeclaredUnitDigestUnavailable { obligation: c }
-    SparkPairUnitRendered { unit_name: n, text: t } =>
+    SparkPairUnitRendered { unit_name: _, text: t } =>
       if (t as String) == "" {
         DeclaredUnitDigestUnavailable { obligation: "rendered unit text is empty" as NonEmptyStr }
       } else {
@@ -453,7 +467,7 @@ fn spark_pair_declared_unit_digest(render: SparkPairUnitRender) -> DeclaredUnitD
                   DeclaredUnitDigestUnavailable { obligation: "the sha256sum hex for the rendered unit bytes did not inhabit Sha256Digest" as NonEmptyStr }
                 Present { value: h } =>
                   DeclaredUnitDigested {
-                    evidence: DeclaredUnitDigestEvidence { unit_name: n, digest: h },
+                    evidence: DeclaredUnitDigestEvidence { digest: h },
                   }
               }
           }
