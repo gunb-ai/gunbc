@@ -70,6 +70,8 @@ fn spark_native_host_apply_script(unit_name: NonEmptyStr, unit_text: String) -> 
     "if docker container inspect ", ctr, " >/dev/null 2>&1; then docker update --restart=no ", ctr, " >/dev/null 2>&1 || true; fi\n",
     "systemctl enable ", unit_name as String, " >/dev/null 2>&1\n",
     "if [ \"$changed\" = 1 ] || ! systemctl is-active --quiet ", unit_name as String, "; then systemctl restart ", unit_name as String, "; echo restarted; else echo unchanged; fi\n",
+    "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if docker container inspect ", ctr, " >/dev/null 2>&1; then echo container-present; break; fi; sleep 2; done\n",
+    "docker container inspect ", ctr, " >/dev/null 2>&1\n",
     "systemctl is-active ", unit_name as String, "\n",
   ], "")
 }
