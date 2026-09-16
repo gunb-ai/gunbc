@@ -6435,6 +6435,60 @@ pub fn run_required_floor(
         }
         out
     };
+    // THE DECLARED 4b(3) DROP'S POPULATION, READ FROM THE POLICY MODEL THE FLOOR DECIDES WITH.
+    // `v2.workflow.required_floor` `claim_eval_step_standing_for_identity` is the authority: an
+    // over-budget standing for an identity in `v2.workflow.floor_eval_step_cost_drop` is
+    // `EvalStepsOverBudgetUnderDeclaredDrop`, which does not block. This set is the host MIRROR of
+    // that membership test, joined to it by reading the SAME list through the SAME policy frame the
+    // grandfathered roster is read through, for the same measured reason (one decode, O(1) per
+    // claim). It lowers ONLY the eval-step comparison below: members still execute, eval_steps are
+    // still recorded in the claim_cost row, and a semantic red or a wall crossing still blocks.
+    //
+    // A FAILED OR AMBIGUOUS READ REFUSES, NEVER ADMITS. An empty decode, a duplicate or a non-string
+    // is what a renamed producer or a truncated read looks like; applying it would turn a decode
+    // fault into an exemption (DESIGN §5: a failure arm must refuse, never widen).
+    // WHAT RETIRES THIS MIRROR: `v2.workflow.required_floor` `claim_ceiling_tier_host_mirror_dissolve_on`,
+    // which covers BOTH host mirrors of a floor policy roster -- this decode and the grandfathered one.
+    // The capability is the roster fold being SERVED once across claim frames rather than re-derived per
+    // claim; on that climb this branch is deleted and the runner calls `claim_eval_step_standing_for_identity`
+    // through the frame it already holds, rather than keeping the HashSet beside the call.
+    let eval_step_cost_drop: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_eval_step_cost_drop.floor_eval_step_cost_drop_members",
+            false,
+        )
+        .map_err(|e| format!("floor_eval_step_cost_drop_members: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_eval_step_cost_drop_members: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_eval_step_cost_drop_members: duplicate identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_eval_step_cost_drop_members: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        if out.is_empty() {
+            return Err(
+                "REQUIRED-FLOOR REFUSAL cause=EvalStepCostDropPopulationEmpty \
+                 v2.workflow.floor_eval_step_cost_drop.floor_eval_step_cost_drop_members decoded \
+                 to zero identities; a declared drop must name its population."
+                    .to_string(),
+            );
+        }
+        out
+    };
     // MEASURE-TYPED SINCE THE BUDGETS BECAME `EvalStepCount`, so they are read with the Measure
     // reader rather than the bare-Int one. `floor_required_int` demands a bare `Int` and would
     // refuse the single-field record a `std.measure` carrier arrives as -- loudly, which is the
@@ -7979,8 +8033,13 @@ pub fn run_required_floor(
         // quantised by whichever poll stopped it and is a lower bound on nothing anyone asked
         // about; that row is already reported through `interrupted_before_verdict`, and adding a
         // budget sentence to it would report the same occurrence twice under two remedies.
+        //
+        // THE 4b(3) DROP SKIPS ONLY THIS GATE, mirroring `claim_eval_step_standing_for_identity`'s
+        // `EvalStepsOverBudgetUnderDeclaredDrop` arm. Membership does not skip execution and does
+        // not skip the claim_cost row above — eval_steps stay observed and recorded.
         if matches!(terminality, ClaimTerminality::VerdictReached { .. })
             && receipt.eval_steps > claim.eval_step_budget
+            && !eval_step_cost_drop.contains(&claim.qualified)
         {
             // WHICH TIER REFUSED, NAMED IN THE SENTENCE THAT BLOCKS. The two are different facts
             // with different remedies: a grandfathered row over 500ms-equivalent has grown past the

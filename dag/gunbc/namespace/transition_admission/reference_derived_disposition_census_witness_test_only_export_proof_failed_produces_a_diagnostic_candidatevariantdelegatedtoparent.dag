@@ -1,0 +1,21 @@
+module gunbc.namespace.transition_admission.reference_derived_disposition_census_witness_test_only_export_proof_failed_produces_a_diagnostic_candidatevariantdelegatedtoparent
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, PullRequest }
+
+// gunbc#11461 (XL-4 reference-derived graph): the local CandidateVariantDelegatedToParent binding inside
+// v1.tests.claim.reference_derived_disposition_census_witness_test only_export_proof_failed_produces_a_diagnostic now resolves to the gunbc.reference_derived_candidate authority.
+data reference_derived_disposition_census_witness_test_only_export_proof_failed_produces_a_diagnostic_candidatevariantdelegatedtoparent: TransitionAdmission = TransitionAdmission {
+  label: "gunbc#11461 v1.tests.claim.reference_derived_disposition_census_witness_test only_export_proof_failed_produces_a_diagnostic CandidateVariantDelegatedToParent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("v1.tests.claim.reference_derived_disposition_census_witness_test", "only_export_proof_failed_produces_a_diagnostic"),
+    spelling: "CandidateVariantDelegatedToParent" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.reference_derived_candidate", "CandidateVariantDelegatedToParent")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: PullRequest { number: 11466 as UInt32 },
+  owner_pull_request: 11461 as UInt32,
+}

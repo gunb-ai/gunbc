@@ -65,6 +65,7 @@ import gunbc.v1_interpreter_opaque_host_call {
 // only the step overrun could not tell a reader whether the CPU observation survived the change.
 test fn w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption() -> Bool {
   match claim_safety_outcome(
+    identity: "test.claim.fixture.an_identity_in_no_floor_roster",
     reached_verdict: true,
     observed_cpu_ms: 60317,
     observed_wall_ms: 100,
@@ -109,6 +110,7 @@ test fn w_completed_past_safety_limit_blocks() -> Bool {
 
 test fn w_genuine_interrupt_is_not_relabelled_completed() -> Bool {
   match claim_safety_outcome(
+    identity: "test.claim.fixture.an_identity_in_no_floor_roster",
     reached_verdict: false,
     observed_cpu_ms: 5200,
     observed_wall_ms: 5200,
@@ -139,6 +141,7 @@ data red_control_note: String = "THE DISCRIMINATION CONTROL: an ordinary claim s
 
 test fn w_within_limits_does_not_block() -> Bool {
   match claim_safety_outcome(
+    identity: "test.claim.fixture.an_identity_in_no_floor_roster",
     reached_verdict: true,
     observed_cpu_ms: 42,
     observed_wall_ms: 42,

@@ -198,7 +198,7 @@ fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
     principal: "gunbc" as NonEmptyStr,
     executor: "spark-a" as NonEmptyStr,
     launch: t_launch(),
-    model: "test-model" as NonEmptyStr,
+    served_model: "test-model" as NonEmptyStr,
     trust_domain: "gunbc.trust.spark" as TrustDomainRef,
     isolation: IsolationProfile { guarantees: [] },
     seats: 1,

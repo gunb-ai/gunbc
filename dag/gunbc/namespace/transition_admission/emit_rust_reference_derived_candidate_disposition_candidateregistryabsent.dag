@@ -1,0 +1,21 @@
+module gunbc.namespace.transition_admission.emit_rust_reference_derived_candidate_disposition_candidateregistryabsent
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, PullRequest }
+
+// gunbc#11461 (XL-4 reference-derived graph): the local CandidateRegistryAbsent binding inside
+// v1.compiler.emit_rust reference_derived_candidate_disposition now resolves to the gunbc.reference_derived_candidate authority.
+data emit_rust_reference_derived_candidate_disposition_candidateregistryabsent: TransitionAdmission = TransitionAdmission {
+  label: "gunbc#11461 v1.compiler.emit_rust reference_derived_candidate_disposition CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("v1.compiler.emit_rust", "reference_derived_candidate_disposition"),
+    spelling: "CandidateRegistryAbsent" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.reference_derived_candidate", "CandidateRegistryAbsent")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: PullRequest { number: 11466 as UInt32 },
+  owner_pull_request: 11461 as UInt32,
+}
