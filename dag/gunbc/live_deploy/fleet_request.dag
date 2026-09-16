@@ -47,6 +47,7 @@ import gunbc.live_deploy.member_identity {
   MemberRefused,
   decide_member,
   decision_member,
+  observed_member_member,
   converged_member_eq,
   converged_member_label,
   release_member_roster,
@@ -98,20 +99,12 @@ fn observed_of_member(observed: List<ObservedMember>, member: ConvergedMember) -
     match acc {
       Present { value: v } => Present { value: v }
       Absent =>
-        if converged_member_eq(a: member_of_observed(o: o), b: member) {
+        if converged_member_eq(a: observed_member_member(o: o), b: member) {
           Present { value: o }
         } else {
           none
         }
     })
-}
-
-fn member_of_observed(o: ObservedMember) -> ConvergedMember {
-  match o {
-    MemberObserved { identity: i } => member_identity_member(i: i)
-    MemberAbsentOnHost { member: m } => m
-    MemberUnobservable { member: m, cause: _ } => m
-  }
 }
 
 fn roster_missing_from_observed(
