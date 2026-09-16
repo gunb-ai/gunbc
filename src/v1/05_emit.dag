@@ -1760,24 +1760,6 @@ fn tco_loop_slot_name(param_name: String) -> String {
   concat("__tco_loop_", param_name)
 }
 
-fn tco_loop_iteration_lets(params: List<Node>, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
-  params |> map(p =>
-    let n = param_node_name_at(n: p, source_indices: source_indices)
-    let authored = emit_ident(name: n, target: Rust)
-    let slot = emit_ident(name: tco_loop_slot_name(param_name: n), target: Rust)
-    concat(
-      make_indent(level: depth),
-      "#[allow(unused_mut)]\n",
-      make_indent(level: depth),
-      "let mut ",
-      authored,
-      " = ",
-      slot,
-      ";\n"
-    )
-  ) |> join(separator: "")
-}
-
 fn tco_reassign_core(
   ordered_args: List<String>,
   param_names: List<String>,
