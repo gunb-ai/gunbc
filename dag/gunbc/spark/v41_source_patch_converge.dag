@@ -97,6 +97,13 @@ fn v41_source_is_clean(porcelain: String) -> Bool {
   trim(s: porcelain) == ""
 }
 
+fn v41_porcelain_has_untracked(porcelain: String) -> Bool {
+  any(split(s: porcelain, delimiter: "\n"), line => {
+    let t = trim(s: line)
+    t.starts_with(prefix: "??") || t.starts_with(prefix: "!!")
+  })
+}
+
 fn v41_sha256_of_bytes(content: String) -> Sha256Digest? {
   match sha256sum_stdin_digest_via_shell(content: content) {
     Sha256FileDigestUnavailable { path: _, reason: _ } => none
@@ -133,6 +140,8 @@ fn v41_source_patch_decision(
         })
         if length(digest_mismatches) != 0 {
           Refuse { reason: join(["digest mismatch: ", join(map(digest_mismatches, p => p.path as String), ", ")], "") as NonEmptyStr }
+        } else if v41_porcelain_has_untracked(porcelain: read.porcelain) {
+          Refuse { reason: "untracked paths are not in git diff --binary HEAD, so a tree identity hashed from that diff would omit them" as NonEmptyStr }
         } else if length(desired_patches) == 0 {
           if v41_source_is_clean(porcelain: read.porcelain) {
             Noop

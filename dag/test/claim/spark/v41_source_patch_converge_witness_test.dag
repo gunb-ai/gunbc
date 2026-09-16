@@ -8,6 +8,7 @@ import std.realization_reconcile { Applied, NotApplied, classify_reconciled, Eff
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.vllm.source_build { vllm_d2d649e6_revision }
 import gunbc.spark.v41_runtime_candidate { v41_engine_patch, V41EnginePatch, v41_storage_backed_patch_population, V41PatchesObserved, V41PatchesUnestablished, V41PatchesAbsentByObservation }
+import extdeps.git { git_apply_args }
 import gunbc.spark.v41_source_patch_converge {
   V41PatchMemberRead, V41SourceTreeRead, V41SourcePatchPlan,
   v41_source_patch_decision, v41_source_patch_reconcile, v41_sha256_of_bytes,
@@ -153,5 +154,26 @@ test fn empty_diff_has_a_real_digest() -> Bool {
   match v41_sha256_of_bytes(content: "") {
     Absent => false
     Present { value: d } => (d.hex as String).length() == 64
+  }
+}
+
+test fn git_apply_updates_the_index_so_diff_head_covers_new_modules() -> Bool {
+  any(git_apply_args(repository_dir: "/tmp/vllm", patch_path: "engram_file_backed.py.patch"), a => a == "--index")
+}
+
+test fn an_untracked_new_module_refuses_rather_than_sharing_a_diff_head_identity() -> Bool {
+  let ps = w_patch(path: "engram_file_backed.py.patch", c: "1")
+  match v41_source_patch_decision(
+    desired_revision: vllm_d2d649e6_revision,
+    desired_patches: ps,
+    read: w_read(
+      head: vllm_d2d649e6_revision.full_revision as String,
+      porcelain: "?? vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py",
+      members: [w_member(path: "engram_file_backed.py.patch", c: "1", reverse_applicable: true, forward_applicable: false)],
+    ),
+  ) {
+    Refuse { reason: r } => (r as String).contains("untracked")
+    Noop => false
+    Apply { plan: _ } => false
   }
 }

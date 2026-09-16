@@ -280,7 +280,7 @@ fn v41_patch_application_standing(source: VllmSourceRevision, patches: V41PatchP
         V41PatchApplicationRefused { defects: defects }
       } else {
         V41PatchApplicationUnestablished {
-          obligation: "a patched source tree is minted only by converge_vllm_source growing desired state with caller-supplied P, DigestFile of each member, std.upsert_decision Noop|Apply|Refuse, and a readback of the tree (git diff --binary HEAD) that grounds the image key; this fold does not choose P and does not treat the intended patch list as the consumed identity" as NonEmptyStr,
+          obligation: "a patched source tree is minted only by converge_vllm_source growing desired state with caller-supplied P, DigestFile of each member, std.upsert_decision Noop|Apply|Refuse, git apply --index so create-file members are in the index, and a readback of the tree (git diff --binary HEAD) that grounds the image key; this fold does not choose P and does not treat the intended patch list as the consumed identity" as NonEmptyStr,
         }
       }
     }
