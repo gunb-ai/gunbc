@@ -134,12 +134,14 @@ fn evaluation_store_address_observed_admitted_consumers() -> List<DeclarationRef
 fn evaluation_store_address_observed_duplicate_producers() -> List<DeclarationRef> {
   evaluation_store_address_observed_persist_callers() |> fold(
     init: [],
-    f: (acc, r) =>
-      if (r.decl_name as String) == "evaluation_store_address" {
+    f: (acc, r) => {
+      let n = r.decl_name as String
+      if n == "evaluation_store_address" || n == "provider_serve" {
         acc
       } else {
         concat(acc, [r])
       }
+    }
   )
 }
 

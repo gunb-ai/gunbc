@@ -37,7 +37,7 @@ import std.materialization_object {
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
   encode_store_object, decode_store_object, percent_encode_payload, percent_decode_payload,
-  parse_recorded_store_key, persisted_probe,
+  parse_recorded_store_key,
   result_content_canonical, store_object_name, store_object_magic, store_object_format_version,
   StoreObjectDecoded, StoreObjectMalformed,
   store_observed_digest, artifact_from_manifest, ManifestDecoded,

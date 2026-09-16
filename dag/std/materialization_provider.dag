@@ -559,10 +559,10 @@ fn request_evaluation_identity(req: ArtifactRequest) -> EvaluationIdentity {
   EvaluationIdentity { demand: request_judgment_contract(req: req).demand_identity }
 }
 
-fn request_evaluation_bucket(req: ArtifactRequest) -> ContentHash {
+fn request_evaluation_bucket(identity: EvaluationIdentity, req: ArtifactRequest) -> ContentHash {
   request_fold(
     req: req,
-    parse_module: (sd, c) => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req)),
+    parse_module: (sd, c) => evaluation_identity_fnv_bucket(evaluation: identity),
     typecheck_module: (sd, ii, c) =>
       as_content_hash_structural(
         structural: typed_module_key(
@@ -570,51 +570,53 @@ fn request_evaluation_bucket(req: ArtifactRequest) -> ContentHash {
           compiler_identity: c.digest
         )
       ),
-    resolve_closure: (cd, c) => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req)),
-    native_compiler: g => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req)),
-    universe: (tt, rb) => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req)),
-    module_verdict_bundle: s => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req))
+    resolve_closure: (cd, c) => evaluation_identity_fnv_bucket(evaluation: identity),
+    native_compiler: g => evaluation_identity_fnv_bucket(evaluation: identity),
+    universe: (tt, rb) => evaluation_identity_fnv_bucket(evaluation: identity),
+    module_verdict_bundle: s => evaluation_identity_fnv_bucket(evaluation: identity)
   )
 }
 
 type EvaluationBucket sole_constructor {
   identity: EvaluationIdentity
   digest: ContentHash
+  canonical_preimage: NonEmptyStr
 }
 
 fn evaluation_bucket_for_request(req: ArtifactRequest) -> EvaluationBucket admit_callers: [
   decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address"),
-  decl_ref(module_path: "std.materialization_provider", decl_name: "request_key")
+  decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve")
 ] {
+  let identity = request_evaluation_identity(req: req)
   EvaluationBucket {
-    identity: request_evaluation_identity(req: req),
-    digest: request_evaluation_bucket(req: req)
+    identity: identity,
+    digest: request_evaluation_bucket(identity: identity, req: req),
+    canonical_preimage: evaluation_identity_canonical(evaluation: identity)
   }
 }
 
 fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStoreAddressAdmission admit_callers: [
-  decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address")
+  decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve")
 ] {
-  let identity = bucket.identity
-  let digest = bucket.digest
-  let preimage = evaluation_identity_canonical(evaluation: identity)
-  let family = content_hash_family(hash: digest)
+  let family = content_hash_family(hash: bucket.digest)
   match admit_hash_family_for_scope(family: family, scope: PersistentStoreScope) {
     HashFamilyAdmittedForScope { family: admitted, scope: _ } =>
       CryptographicAddressAdmitted {
         address: EvaluationStoreAddress {
-          identity: identity,
-          digest: digest,
-          canonical_preimage: preimage,
+          identity: bucket.identity,
+          digest: bucket.digest,
+          canonical_preimage: bucket.canonical_preimage,
           standing: CryptographicAddressStanding { family: admitted }
         }
       }
     StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
       PreimageVerifiedBucketAdmitted {
         address: EvaluationStoreAddress {
-          identity: identity,
-          digest: digest,
-          canonical_preimage: preimage,
+          identity: bucket.identity,
+          digest: bucket.digest,
+          canonical_preimage: bucket.canonical_preimage,
           standing: PreimageVerifiedBucketStanding { disposition: evaluation_identity_fnv_store_preimage_exception }
         }
       }
@@ -1547,43 +1549,44 @@ fn provider_serve_persisted(
   artifact: MaterializedArtifact,
   observed_digest: ContentHash,
   observed: ObservedEvaluationPreimage,
-  address: EvaluationStoreAddress
+  expected_preimage: NonEmptyStr
 ) -> ProviderLookup {
-  if (observed.encoded as String) == (evaluation_store_address_preimage(address: address) as String) {
+  if (observed.encoded as String) == (expected_preimage as String) {
     provider_binding_lookup(req: req, key: key, artifact: artifact, observed_digest: observed_digest)
   } else {
     ProviderRefusedEvaluationPreimageMismatch {
       key: key,
-      expected: evaluation_store_address_preimage(address: address),
+      expected: expected_preimage,
       found: observed.encoded
     }
   }
 }
 
 fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
-  let key = request_key(req: req)
+  let bucket = evaluation_bucket_for_request(req: req)
+  let key = bucket.digest
   match probe {
     ProbeAbsent => ProviderMiss { key: key }
     InProcessProbe { artifact: a, observed_digest: obs, observed_evaluation_identity: observed_id } => {
-      let expected_id = request_evaluation_identity(req: req)
-      if (evaluation_identity_canonical(evaluation: observed_id) as String) == (evaluation_identity_canonical(evaluation: expected_id) as String) {
+      let found = evaluation_identity_canonical(evaluation: observed_id)
+      if (found as String) == (bucket.canonical_preimage as String) {
         provider_binding_lookup(req: req, key: key, artifact: a, observed_digest: obs)
       } else {
         ProviderRefusedEvaluationPreimageMismatch {
           key: key,
-          expected: evaluation_identity_canonical(evaluation: expected_id),
-          found: evaluation_identity_canonical(evaluation: observed_id)
+          expected: bucket.canonical_preimage,
+          found: found
         }
       }
     }
     PersistedProbe { artifact: a, observed_digest: obs, observed_evaluation_preimage: observed } =>
-      match evaluation_store_address(req: req) {
+      match persist_evaluation_store_address(bucket: bucket) {
         FamilyRefused { family: f, scope: sc } =>
           ProviderRefusedStoreFamily { key: key, family: f, scope: sc }
         CryptographicAddressAdmitted { address: addr } =>
-          provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, address: addr)
+          provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, expected_preimage: addr.canonical_preimage)
         PreimageVerifiedBucketAdmitted { address: addr } =>
-          provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, address: addr)
+          provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, expected_preimage: addr.canonical_preimage)
       }
   }
 }

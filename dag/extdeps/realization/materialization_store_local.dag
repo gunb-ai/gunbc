@@ -61,7 +61,7 @@ import std.materialization_object {
   StoreLookupStoreFamilyRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
-  store_object_name, store_lookup_decide, store_commit_prepare, store_commit_settle,
+  store_object_name, store_lookup_decide, store_lookup_from_address, store_commit_prepare, store_commit_settle,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -275,15 +275,17 @@ fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializati
             refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc }
           }
         CryptographicAddressAdmitted { address: addr } =>
-          store_lookup_decide(
+          store_lookup_from_address(
             store: store,
             req: req,
+            address: addr,
             read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
           )
         PreimageVerifiedBucketAdmitted { address: addr } =>
-          store_lookup_decide(
+          store_lookup_from_address(
             store: store,
             req: req,
+            address: addr,
             read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
           )
       }

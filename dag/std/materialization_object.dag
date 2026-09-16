@@ -34,13 +34,14 @@ import std.materialization_provider {
   evaluation_store_address, evaluation_store_address_digest,
   evaluation_store_address_preimage,
   request_key, request_kind,
-  request_evaluation_identity, length_prefixed_encode, result_content_identity, persisted_probe,
+  length_prefixed_encode, result_content_identity,
+  provider_serve_persisted,
   observed_evaluation_preimage_from_object, ObservedEvaluationPreimage,
   CryptographicAddressAdmitted, PreimageVerifiedBucketAdmitted, FamilyRefused,
   HashFamily, KeyingScope,
   evaluation_result_binding_outcome,
   artifact_manifest, artifact_from_manifest, artifact_content_digest, artifact_kind, artifact_carried_outputs,
-  carried_outputs_digest, request_artifact_binding, provider_serve, lookup_fold,
+  carried_outputs_digest, request_artifact_binding, lookup_fold,
   provider_lookup_outcome_tag,
 }
 
@@ -556,17 +557,36 @@ fn store_observed_digest(manifest: ArtifactManifest, payloads: List<ArtifactPayl
   ))
 }
 
+fn store_lookup_from_address(
+  store: OpenedMaterializationStore,
+  req: ArtifactRequest,
+  address: EvaluationStoreAddress,
+  read: StoreObjectRead
+) -> StoreLookup {
+  store_lookup_decide_present(
+    store: store,
+    req: req,
+    key: evaluation_store_address_digest(address: address),
+    read: read,
+    address: address
+  )
+}
+
 fn store_lookup_decide(
   store: OpenedMaterializationStore,
   req: ArtifactRequest,
   read: StoreObjectRead
 ) -> StoreLookup {
-  let key = request_key(req: req)
   match evaluation_store_address(req: req) {
     FamilyRefused { family: f, scope: sc } =>
-      StoreLookupRefused { key: key, refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc } }
-    CryptographicAddressAdmitted { address: _ } => store_lookup_decide_present(store: store, req: req, key: key, read: read)
-    PreimageVerifiedBucketAdmitted { address: _ } => store_lookup_decide_present(store: store, req: req, key: key, read: read)
+      StoreLookupRefused {
+        key: request_key(req: req),
+        refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc }
+      }
+    CryptographicAddressAdmitted { address: addr } =>
+      store_lookup_from_address(store: store, req: req, address: addr, read: read)
+    PreimageVerifiedBucketAdmitted { address: addr } =>
+      store_lookup_from_address(store: store, req: req, address: addr, read: read)
   }
 }
 
@@ -574,7 +594,8 @@ fn store_lookup_decide_present(
   store: OpenedMaterializationStore,
   req: ArtifactRequest,
   key: ContentHash,
-  read: StoreObjectRead
+  read: StoreObjectRead,
+  address: EvaluationStoreAddress
 ) -> StoreLookup {
   match read {
     StoreObjectAbsent => StoreLookupMiss { key: key }
@@ -597,13 +618,13 @@ fn store_lookup_decide_present(
                   let decode = artifact_from_manifest(m: m)
                   match decode {
                     ManifestDecoded { artifact: a } => {
-                      let served = provider_serve(
+                      let served = provider_serve_persisted(
                         req: req,
-                        probe: persisted_probe(
-                          artifact: a,
-                          observed_digest: store_observed_digest(manifest: m, payloads: ps),
-                          observed_evaluation_preimage: stored_preimage
-                        )
+                        key: key,
+                        artifact: a,
+                        observed_digest: store_observed_digest(manifest: m, payloads: ps),
+                        observed: stored_preimage,
+                        expected_preimage: evaluation_store_address_preimage(address: address)
                       )
                       lookup_fold(
                         l: served,
@@ -618,7 +639,7 @@ fn store_lookup_decide_present(
                             store_instance: store.instance,
                             disposition: RealizationServed
                           },
-                          evaluation_identity: request_evaluation_identity(req: req)
+                          evaluation_identity: address.identity
                         },
                         miss: k => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
                         kind_mismatch: (k, r, f) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
@@ -678,7 +699,27 @@ type StoreCommitPreparation
 // payload, or a missing required output is refused here, before any byte is published, by the same
 // authorities the read side uses.
 fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> StoreCommitPreparation {
-  let key = request_key(req: req)
+  match evaluation_store_address(req: req) {
+    FamilyRefused { family: f, scope: sc } =>
+      StoreCommitNotPrepared {
+        commit: StoreCommitRefused {
+          key: request_key(req: req),
+          refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc }
+        }
+      }
+    CryptographicAddressAdmitted { address: addr } =>
+      store_commit_prepare_admitted(req: req, payloads: payloads, address: addr)
+    PreimageVerifiedBucketAdmitted { address: addr } =>
+      store_commit_prepare_admitted(req: req, payloads: payloads, address: addr)
+  }
+}
+
+fn store_commit_prepare_admitted(
+  req: ArtifactRequest,
+  payloads: List<ArtifactPayload>,
+  address: EvaluationStoreAddress
+) -> StoreCommitPreparation {
+  let key = evaluation_store_address_digest(address: address)
   let offered = ArtifactManifest {
     kind: request_kind(req: req),
     request_key: key,
@@ -692,34 +733,17 @@ fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>) -
       match binding {
         BindingOk => {
           let offered_result = result_content_identity_from_payloads(parts: artifact_carried_outputs(artifact: a), payloads: payloads)
-          match evaluation_store_address(req: req) {
-            FamilyRefused { family: f, scope: sc } => StoreCommitNotPrepared {
-              commit: StoreCommitRefused { key: key, refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc } }
-            }
-            CryptographicAddressAdmitted { address: addr } => StoreCommitPrepared {
-          key: key,
-          object_name: store_object_name(address: addr),
-          object: encode_store_object(
-            manifest: artifact_manifest(artifact: a),
-            payloads: payloads,
-            evaluation_preimage: evaluation_store_address_preimage(address: addr),
-            result_preimage: offered_result.canonical_preimage
-          ),
-          offered_digest: offered_digest,
-          offered_result: offered_result
-        }
-            PreimageVerifiedBucketAdmitted { address: addr } => StoreCommitPrepared {
-          key: key,
-          object_name: store_object_name(address: addr),
-          object: encode_store_object(
-            manifest: artifact_manifest(artifact: a),
-            payloads: payloads,
-            evaluation_preimage: evaluation_store_address_preimage(address: addr),
-            result_preimage: offered_result.canonical_preimage
-          ),
-          offered_digest: offered_digest,
-          offered_result: offered_result
-        }
+          StoreCommitPrepared {
+            key: key,
+            object_name: store_object_name(address: address),
+            object: encode_store_object(
+              manifest: artifact_manifest(artifact: a),
+              payloads: payloads,
+              evaluation_preimage: evaluation_store_address_preimage(address: address),
+              result_preimage: offered_result.canonical_preimage
+            ),
+            offered_digest: offered_digest,
+            offered_result: offered_result
           }
         }
         BindingKindMismatch { requested: _, found: _ } =>

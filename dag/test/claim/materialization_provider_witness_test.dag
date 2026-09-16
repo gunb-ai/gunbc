@@ -48,8 +48,8 @@ import std.materialization_provider {
   HashFamilyAdmittedForScope, StructuralFingerprintRefusedAsStoreKey, FamilyNotAdmittedForRelation,
   CryptographicAddressAdmitted, PreimageVerifiedBucketAdmitted, FamilyRefused,
   demand_identity_canonical, demand_identity_decode,
-  evaluation_store_address,
-  request_evaluation_identity, result_content_identity,
+  evaluation_store_address, evaluation_store_address_digest, evaluation_store_address_preimage,
+  request_evaluation_identity, result_content_identity, evaluation_identity_canonical,
   two_parses_occurrence_qualification_frontier,
   admit_hash_family_for_scope, evaluation_result_binding_outcome,
   artifact_request_key,
@@ -805,6 +805,18 @@ test fn parse_and_typecheck_store_addresses_are_preimage_verified_fnv_buckets() 
         CryptographicAddressAdmitted { address: _ } => false
         FamilyRefused { family: _, scope: _ } => false
       }
+    CryptographicAddressAdmitted { address: _ } => false
+    FamilyRefused { family: _, scope: _ } => false
+  }
+}
+
+test fn admitted_store_address_carries_the_request_bucket_digest_and_preimage() -> Bool {
+  let req = witness_parse_request()
+  match evaluation_store_address(req: req) {
+    PreimageVerifiedBucketAdmitted { address: a } =>
+      (request_key(req: req) == evaluation_store_address_digest(address: a))
+        && ((evaluation_store_address_preimage(address: a) as String)
+          == (evaluation_identity_canonical(evaluation: request_evaluation_identity(req: req)) as String))
     CryptographicAddressAdmitted { address: _ } => false
     FamilyRefused { family: _, scope: _ } => false
   }
