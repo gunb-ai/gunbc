@@ -33,8 +33,10 @@ import gunbc.spark.v41_runtime_candidate { V41EnginePatch, v41_patch_applicabili
 import gunbc.spark.vllm_runtime_image_build {
   VllmSourceState, VllmSourceAtRevision, VllmSourceRefused, VllmImageBuild, VllmImageBuildRefused,
   ImageLegRan, ImageLegFailed, ImageUncheckedRan, ImageUncheckedFailed,
-  vllm_source_dir, vllm_build_root, vllm_source_head, vllm_materialize_source_steps, vllm_image_run_steps,
+  VllmWorkingTreeMayBeDirty,
+  vllm_source_dir, vllm_build_root, vllm_source_head,
   vllm_image_leg, vllm_image_leg_unchecked, vllm_image_build_key_with_observed_tree, converge_vllm_image_keyed,
+  converge_vllm_source_to_revision,
 }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 
@@ -393,40 +395,6 @@ fn v41_patched_source_converged(c: V41PatchedSourceConverge) -> Bool {
   }
 }
 
-fn v41_ensure_revision(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
-  uses net: Network
-{
-  match vllm_source_head(target: target, context: context) {
-    Present { value: head } =>
-      if head != (r.source.full_revision as String) {
-        VllmSourceRefused {
-          step: "source-head" as NonEmptyStr,
-          cause: join(["the source tree at ", vllm_source_dir() as String, " is checked out at ", head, " and this build wants ", r.source.full_revision as String], ""),
-        }
-      } else {
-        VllmSourceAtRevision { revision: r.source.full_revision, already_present: true }
-      }
-    Absent =>
-      match vllm_image_run_steps(target: target, context: context, step: "source-materialize" as NonEmptyStr, commands: vllm_materialize_source_steps(r: r)) {
-        Present { value: failure } =>
-          match failure {
-            ImageLegFailed { step: st, cause: why } => VllmSourceRefused { step: st, cause: why }
-            ImageLegRan { stdout: _ } => VllmSourceRefused { step: "source-materialize" as NonEmptyStr, cause: "unreachable: a successful leg is never recorded as a failure" }
-          }
-        Absent =>
-          match vllm_source_head(target: target, context: context) {
-            Absent => VllmSourceRefused { step: "source-readback" as NonEmptyStr, cause: "the tree was materialized and HEAD still could not be read" }
-            Present { value: head } =>
-              if head != (r.source.full_revision as String) {
-                VllmSourceRefused { step: "source-readback" as NonEmptyStr, cause: join(["checkout reported success and HEAD reads ", head], "") }
-              } else {
-                VllmSourceAtRevision { revision: r.source.full_revision, already_present: false }
-              }
-          }
-      }
-  }
-}
-
 fn converge_vllm_source_with_patches(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -435,7 +403,7 @@ fn converge_vllm_source_with_patches(
 ) -> V41PatchedSourceConverge
   uses net: Network
 {
-  match v41_ensure_revision(target: target, context: context, r: r) {
+  match converge_vllm_source_to_revision(target: target, context: context, r: r, working_tree: VllmWorkingTreeMayBeDirty) {
     VllmSourceRefused { step: st, cause: why } => V41PatchedSourceRefused { step: st, cause: why }
     VllmSourceAtRevision { revision: _, already_present: _ } =>
       match vllm_image_leg(target: target, context: context, step: "declared-patches-dir" as NonEmptyStr, command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: join([vllm_build_root() as String, "/declared-patches"], ""))) {

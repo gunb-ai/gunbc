@@ -479,7 +479,40 @@ fn vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) 
 // A CLEAN CHECKOUT AT r.source WHEN THE DESIRED PATCH POPULATION IS EMPTY. Nonempty P is
 // converge_vllm_source_with_patches: std.upsert_decision over DigestFile'd members plus a
 // working-tree readback. This function does not choose P and does not apply V41EnginePatch.
-fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
+//
+// WORKING-TREE CLEANLINESS IS A PARAMETER OF THIS LADDER, not a second copy of it. Vanilla image
+// builds require a clean tree so the image is not stamped with a revision it was not built from.
+// A patched desired state is dirty by construction; porcelain is judged by
+// v41_source_patch_decision, not here.
+type VllmWorkingTreeRequirement
+  = VllmWorkingTreeMustBeClean
+  | VllmWorkingTreeMayBeDirty
+
+fn vllm_source_after_revision(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  already_present: Bool,
+  working_tree: VllmWorkingTreeRequirement,
+) -> VllmSourceState
+  uses net: Network
+{
+  match working_tree {
+    VllmWorkingTreeMayBeDirty => VllmSourceAtRevision { revision: r.source.full_revision, already_present: already_present }
+    VllmWorkingTreeMustBeClean =>
+      match vllm_source_tree_clean(target: target, context: context) {
+        Present { value: refusal } => refusal
+        Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: already_present }
+      }
+  }
+}
+
+fn converge_vllm_source_to_revision(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  working_tree: VllmWorkingTreeRequirement,
+) -> VllmSourceState
   uses net: Network
 {
   match vllm_source_head(target: target, context: context) {
@@ -490,10 +523,7 @@ fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r:
           cause: join(["the source tree at ", vllm_source_dir() as String, " is checked out at ", head, " and this build wants ", r.source.full_revision as String, "; it is not moved from under a build that may be reading it"], ""),
         }
       } else {
-        match vllm_source_tree_clean(target: target, context: context) {
-          Present { value: refusal } => refusal
-          Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: true }
-        }
+        vllm_source_after_revision(target: target, context: context, r: r, already_present: true, working_tree: working_tree)
       }
     Absent =>
       match vllm_image_run_steps(target: target, context: context, step: "source-materialize" as NonEmptyStr, commands: vllm_materialize_source_steps(r: r)) {
@@ -509,14 +539,17 @@ fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r:
               if head != (r.source.full_revision as String) {
                 VllmSourceRefused { step: "source-readback" as NonEmptyStr, cause: join(["checkout reported success and HEAD reads ", head], "") }
               } else {
-                match vllm_source_tree_clean(target: target, context: context) {
-                  Present { value: refusal } => refusal
-                  Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: false }
-                }
+                vllm_source_after_revision(target: target, context: context, r: r, already_present: false, working_tree: working_tree)
               }
           }
       }
   }
+}
+
+fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
+  uses net: Network
+{
+  converge_vllm_source_to_revision(target: target, context: context, r: r, working_tree: VllmWorkingTreeMustBeClean)
 }
 
 // ── THE IMAGE ─────────────────────────────────────────────────────────────────────────────────
