@@ -344,11 +344,21 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
   }
 }
-
-// NCCL_DEBUG STAYS AT INFO WITH INIT,NET SUBSYSTEMS because that is the producer of the one line this
-// whole repair is judged by: `NET/IB : No device found.` versus `Using network IB`. Turning it down would
-// remove the only evidence that distinguishes a RoCE launch from a socket launch at runtime.
-data glm_native_shm_size: ByteSize = byte_size(count: 10737418240)
+// THE SHARED-MEMORY SIZE IS THIS ARM'S OBSERVED VALUE, NOT THE PAIR ROUTE'S.
+//
+// A PREVIOUS REVISION SPELLED 10737418240 HERE AND HAD NO BASIS FOR IT. That is the pair route's
+// figure (gunbc.spark.pair_serving_realization), copied across because it was the nearest serving
+// container in the corpus -- which is the borrowed-value substitution this fleet already has a
+// recurring-failure-mode row for, committed a second time on a different field. Every rank of the
+// native arm runs 67108864, on both the socket and the RoCE incarnation, read from the captured
+// docker inspect of all four hosts (artifacts/spark/glm-group-b-2026-09-16).
+//
+// IT IS NEARLY INERT AND STILL MUST BE RIGHT. These containers run with IPC namespace host, so the
+// container's own /dev/shm sizing is not what the engine's shared memory comes from. That is a
+// reason the wrong value did no harm, NOT a reason a spec may state a number nobody chose: a
+// readback comparing plan against observation reports disagreement on exactly this field, which is
+// how it was found.
+data glm_native_shm_size: ByteSize = byte_size(count: 67108864)
 
 
 // ── THE ENGINE'S OWN ARGUMENTS, NAMED APART FROM THE DOCKER LINE THAT CARRIES THEM ─────────────
