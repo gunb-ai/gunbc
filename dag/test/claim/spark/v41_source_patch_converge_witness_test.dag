@@ -146,7 +146,12 @@ test fn noop_readback_grounds_and_apply_without_after_read_does_not() -> Bool {
 
 test fn digestfile_inhabits_the_committed_patch_population() -> Bool {
   match v41_storage_backed_patch_population() {
-    V41PatchesObserved { patches: ps, partition: _ } => length(ps) == 2
+    V41PatchesObserved { patches: ps, partition: _ } =>
+      length(ps) == 2
+        && match get(xs: ps, index: 1) {
+          Absent => false
+          Present { value: p } => (p.purpose as String).contains("not rebound")
+        }
     V41PatchesAbsentByObservation => false
     V41PatchesUnestablished { obligation: _ } => false
   }

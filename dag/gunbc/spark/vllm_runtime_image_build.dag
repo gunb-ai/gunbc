@@ -300,8 +300,12 @@ fn vllm_image_build_key(r: VllmContainerBuildRecipe) -> ContentHash {
   artifact_realization_digest(inputs: vllm_image_build_key_inputs(r: r))
 }
 
+fn vllm_image_tag_for_key(key: ContentHash) -> NonEmptyStr {
+  join([vllm_image_repository as String, ":", serialize_content_hash(hash: key) as String], "") as NonEmptyStr
+}
+
 fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
-  join([vllm_image_repository as String, ":", serialize_content_hash(hash: vllm_image_build_key(r: r)) as String], "") as NonEmptyStr
+  vllm_image_tag_for_key(key: vllm_image_build_key(r: r))
 }
 
 // ── THE INVOCATION ────────────────────────────────────────────────────────────────────────────
@@ -405,10 +409,6 @@ fn vllm_image_leg_unchecked(target: SshTarget, context: FleetSshExecutionContext
 
 fn vllm_image_build_key_with_observed_tree(r: VllmContainerBuildRecipe, extras: List<ArtifactRealizationInput>) -> ContentHash {
   artifact_realization_digest(inputs: concat(vllm_image_build_key_inputs(r: r), extras))
-}
-
-fn vllm_image_tag_for_key(key: ContentHash) -> NonEmptyStr {
-  join([vllm_image_repository as String, ":", serialize_content_hash(hash: key) as String], "") as NonEmptyStr
 }
 
 // SOURCE MATERIALIZATION IS CONVERGENT, AND THE READBACK COMES FIRST. A tree already sitting at the

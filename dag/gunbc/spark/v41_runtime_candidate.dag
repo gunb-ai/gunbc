@@ -720,6 +720,10 @@ fn v41_digest_declared_patch(path: NonEmptyStr) -> Sha256Digest? {
   }
 }
 
+// V41PatchesObserved HERE MEANS THE PATCH FILES WERE DIGESTED, not that Engram lookup is
+// storage-backed. The overlay adds FileBackedEngramStorage. The second member imports those
+// names into engram.py and does not rebind ParallelEngramEmbedding._allocate_weights; that
+// dispatch is the wiring trigger.
 fn v41_storage_backed_patch_population() -> V41PatchPopulation {
   match v41_digest_declared_patch(path: v41_engram_file_backed_overlay_path) {
     Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the file-backed overlay patch at dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch" as NonEmptyStr }
@@ -728,10 +732,10 @@ fn v41_storage_backed_patch_population() -> V41PatchPopulation {
         Absent => V41PatchesUnestablished { obligation: "DigestFile of the overlay patch was not a sha256 digest" as NonEmptyStr }
         Present { value: overlay } =>
           match v41_digest_declared_patch(path: v41_engram_storage_hook_path) {
-            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the storage-backed hook patch at dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr }
+            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the engram.py import member at dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr }
             Present { value: hook_digest } =>
-              match v41_engine_patch(path: v41_engram_storage_hook_path, applies_to: vllm_d2d649e6_revision, sha256_hex: hook_digest.hex as String, purpose: "storage-backed Engram lookup hook" as NonEmptyStr) {
-                Absent => V41PatchesUnestablished { obligation: "DigestFile of the hook patch was not a sha256 digest" as NonEmptyStr }
+              match v41_engine_patch(path: v41_engram_storage_hook_path, applies_to: vllm_d2d649e6_revision, sha256_hex: hook_digest.hex as String, purpose: "import of file-backed overlay symbols into engram.py; ParallelEngramEmbedding._allocate_weights is not rebound" as NonEmptyStr) {
+                Absent => V41PatchesUnestablished { obligation: "DigestFile of the engram.py import member was not a sha256 digest" as NonEmptyStr }
                 Present { value: hook } => V41PatchesObserved { patches: [overlay, hook], partition: PartitionByLaunchConfiguration }
               }
           }
