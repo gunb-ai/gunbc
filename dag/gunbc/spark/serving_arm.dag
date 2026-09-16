@@ -4,7 +4,9 @@ import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, BasisPoint, basis_point, basis_point_count }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_published_min_version, glm_5_3_flash_vllm_prerelease_image_nvidia }
+import extdeps.zhipu.glm_5_3_flash {
+  glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_integration_commit,
+}
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804 }
 import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
@@ -504,7 +506,7 @@ data vllm_openai_glm53_flash_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: VllmOpenaiGlm53Flash,
   artifact: runtime_artifact_identity(
     pin: PinnedByDigest { reference: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr },
-    source_revision: "385dce36bcee42309924a5ece951a96db3dce7f2" as NonEmptyStr,
+    source_revision: glm_5_3_flash_vllm_integration_commit,
     patch_set: [],
     provenance: "the image upstream prescribes for this model, pinned to the digest the group's hosts actually resolved on 2026-09-10. NO patches: this is the stock artifact, which is why its NoPE MLA refusal is a fact about upstream rather than about a local build" as NonEmptyStr,
   ),
