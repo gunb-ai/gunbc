@@ -1,6 +1,7 @@
 module extdeps.linux.procfs
 
-import std.types { NonEmptyStr, List, Bool, String }
+import std.types { NonEmptyStr, List, Bool, Unit }
+import std.string_type { String }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -56,6 +57,68 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcSwaps,
   ProcSysKernelHostname,
 ]
+
+// THE TRANSPORT FOR READING procfs ON A HOST THAT MAY NOT BE THIS ONE. Every earlier procfs read in
+// this repository was of the reading process's own /proc/self, taken through the Rust seed's
+// filesystem read. A fleet observer reading ANOTHER host's process table needs the read as a modeled
+// operation with a shell transport, so gunbc.host_operation_exec can carry it over whichever
+// transport the caller holds (DESIGN 3: the transport is a realization bound to this shape, never
+// a fact about procfs). `cat` is the whole realization: procfs files are read-once text and the
+// kernel synthesizes them on open, so there is nothing to seek, follow or lock. Three operations
+// and not one generic ReadFile, so that the operation's identity says which file it reads and an
+// argv over an arbitrary path cannot be materialized from this service.
+service linux.Procfs {
+  operation ReadStat {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/stat"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/stat read failed"
+    }
+    mock_response {
+      0 => { value: "cpu  1 0 1 1 0 0 0 0 0 0\nbtime 1789000000\nprocesses 1\n", success: true } "hermetic linux.Procfs.ReadStat"
+    }
+  }
+
+  operation ReadPidStat {
+    input { pid: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/{pid}/stat"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/<pid>/stat read failed"
+    }
+    mock_response {
+      0 => { value: "1 (cat) R 0 1 1 0 -1 4194304 0 0 0 0 0 0 0 0 20 0 1 0 100 0 0 18446744073709551615 0 0 0 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n", success: true } "hermetic linux.Procfs.ReadPidStat"
+    }
+  }
+
+  operation ReadPidCgroup {
+    input { pid: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/{pid}/cgroup"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/<pid>/cgroup read failed"
+    }
+    mock_response {
+      0 => { value: "0::/system.slice/hermetic.service\n", success: true } "hermetic linux.Procfs.ReadPidCgroup"
+    }
+  }
+}
 
 // Provision is a total match over std.os.types.KernelFamily rather than a roster of platforms that happen to have it, so adding a kernel family to that closed enum forces an answer here instead of silently defaulting. LinuxGuestOnWindows answers TRUE deliberately and is the arm most likely to be got wrong by pattern-matching on the name: WSL2 runs a real Linux kernel and synthesizes a real procfs, so a consumer that treated it as a Windows platform would refuse observations the host can actually serve. Darwin and WindowsNt answer false — each has its own mechanism for the same facts (Mach task_info, sysctl, the Windows process API), and modeling those is a separate job this module does not attempt.
 fn kernel_provides_procfs(kernel: KernelFamily) -> Bool {

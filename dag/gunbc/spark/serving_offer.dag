@@ -24,7 +24,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
 }
 import gunbc.spark.vllm_serving_launch {
-  EndpointIncarnationObservation, EndpointIncarnationStanding,
+  EndpointIncarnationObservation,
   EndpointIncarnationObserved, EndpointIncarnationUnobserved,
   LaunchUnitProvenance, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
   launch_unit_provenance, launch_wire,
@@ -32,7 +32,6 @@ import gunbc.spark.vllm_serving_launch {
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
-import gunbc.serving.turn_demand { TurnComponentStanding, TurnComponentObserved, TurnComponentUnobserved }
 import gunbc.serving.serving_availability {
   ServingAvailability, ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
 }
@@ -175,11 +174,13 @@ fn spark_serving_readiness_of(verdict: ServingFrontDoorAvailabilityVerdict, laun
 // the half nobody had looked at.
 // WHICH ROUTE-BEARING ARM IS REACHABLE, AND FROM WHAT. ServingRouteObserved is unreachable from the
 // standing: no producer observes the region of a unit the operator holds. ServingRouteOperatorAsserted
-// is reachable ONLY FROM FIXTURE EVIDENCE. It needs an EndpointIncarnationObservation, and no
-// production producer constructs one (gunbc.spark.vllm_serving_launch names the trigger). The
-// production caller, gunbc.harness.harness_seat harness_serving_realization, passes
-// EndpointIncarnationUnobserved, so in production this standing refuses on every input. That is the
-// only rung claimed for the production path. The arm carries the observation it rests on, so an
+// needs an EndpointIncarnationObservation, and gunbc.spark.serving_incarnation_observe now constructs
+// one in production over the fleet key session (it was previously reachable only from fixture
+// evidence). The production caller, gunbc.harness.harness_seat harness_serving_realization, takes the
+// standing that producer returns: on a host where the observation is obtained the asserted arm is
+// reachable, and on one where it is not -- no fleet context, the inspect grant not held, hidepid, or
+// no process matching the exported start -- the producer returns EndpointIncarnationUnobserved with
+// that specific cause and this standing refuses. The arm carries the observation it rests on, so an
 // asserted route can always be traced to the incarnation that answered.
 type SparkServingRoute
   = ServingRouteObserved { route: ProviderRoute }
@@ -259,7 +260,7 @@ fn spark_serving_route_uncovered_obligation(uncovered: List<HostIdentity>) -> No
 // launches sharing a configuration, and a refusal is not a detection. The claim is only the narrow
 // one -- matching configuration does not establish the specific deployment service -- which is why
 // the region, resting on evidence of a different kind, survives untouched.
-data spark_serving_route_service_identity_obligation: NonEmptyStr = "gunbc.spark.serving_offer: gunbc.spark.first_party_serving spark_first_party_route names gunbc.spark.pair_serving_desired spark_pair_serving_desired as the service, which is a claim about WHICH DEPLOYMENT ANSWERED. Host coverage says only where the machines sit, and the models-route readback establishes at most that the process reports the configuration we declared, which two deployments can share. The service is named only when three separate facts hold together: an observation binds the answering endpoint process to an engine incarnation (gunbc.spark.vllm_serving_launch EndpointIncarnationObservation), that incarnation was launched from the digest of the unit we render (LaunchedFromDeclaredUnit), and the readback agrees with the declared configuration. The second and third are about our declaration and can never stand in for the first. No production producer constructs the first today."
+data spark_serving_route_service_identity_obligation: NonEmptyStr = "gunbc.spark.serving_offer: gunbc.spark.first_party_serving spark_first_party_route names gunbc.spark.pair_serving_desired spark_pair_serving_desired as the service, which is a claim about WHICH DEPLOYMENT ANSWERED. Host coverage says only where the machines sit, and the models-route readback establishes at most that the process reports the configuration we declared, which two deployments can share. The service is named only when three separate facts hold together: an observation binds the answering endpoint process to an engine incarnation (gunbc.spark.vllm_serving_launch EndpointIncarnationObservation), that incarnation was launched from the digest of the unit we render (LaunchedFromDeclaredUnit), and the readback agrees with the declared configuration. The second and third are about our declaration and can never stand in for the first. The first is produced in production by gunbc.spark.serving_incarnation_observe, which binds the answering endpoint to an engine launch over the fleet key session; this obligation is the one carried when that producer returned no observation on the bind, and it is concatenated after the specific cause so a reader sees which of the three facts was missing."
 
 // THE CAUSE THE IDENTITY JOIN REPORTS, carried into the refusal so a reader learns WHICH situation
 // obtained. The refusal is the same for all four; the diagnosis is not, and a reader who cannot tell
@@ -333,7 +334,7 @@ type DeclaredUnitDigestStanding
 
 data spark_pair_head_unit_digest_unavailable_obligation: NonEmptyStr = "gunbc.spark.serving_offer: no operation available to this path computes a SHA-256 over the rendered bytes of gunbc.spark.pair_serving_realization spark_pair_head_unit_file, so there is no declared unit digest in the family the host's unit_sha is read in, and whether the answering incarnation was launched from our declaration cannot be compared. TRIGGER: a SHA-256 digest of the rendered head unit bytes, SUFFICIENT FOR DeclaredUnitDigested to be compared with VllmServingLaunch.unit_digest through gunbc.spark.vllm_serving_launch launch_unit_provenance"
 
-data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark.serving_offer: nothing on this path observes which engine incarnation the answering endpoint process belongs to. gunbc.instruments.fabric_capacity_standing launch_from_fields reads an incarnation from a probe but never which exporter belongs to it, and its live host read is a frontier. TRIGGER: an observation on the live host binding the answering endpoint process to a gunbc.spark.vllm_serving_launch VllmServingLaunch, SUFFICIENT FOR gunbc.harness.harness_seat harness_serving_realization to carry EndpointIncarnationObserved. ACCESS PRECEDES IT: no principal this fleet runs as can read a running container on the Sparks (gunbc-automation holds no passwordless grant that reaches docker and is in no docker group), so that observation needs gunbc.spark.managed_access_bootstrap InspectServingContainer installed through gunbc.spark.managed_grant_install. The grant is necessary and not sufficient: it reads the container, and binding the answering socket to a process inside it is a further observation"
+data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark.serving_offer: the engine incarnation the answering endpoint process belongs to was not observed on this bind. gunbc.spark.serving_incarnation_observe is the producer -- it binds the answering exporter to a gunbc.spark.vllm_serving_launch VllmServingLaunch over the fleet key session -- and this standing is reached when that producer returned no observation for a specific reason it names: no fleet ssh context on this bind, the process not found or ambiguous at the exported start instant, hidepid hiding /proc, or the container image id unread. That last needs gunbc.spark.managed_access_bootstrap InspectServingContainer (installed through gunbc.spark.managed_grant_install): the unprivileged facts -- unit, start-tick identity, cgroup container id -- are established without it, but the image digest that completes the launch is read only through the inspect leg, so a host without that grant fails the inspect command (sudo denies) with the container named"
 
 fn spark_launch_unit_provenance_text(provenance: LaunchUnitProvenance) -> String {
   match provenance {
@@ -435,21 +436,6 @@ fn spark_serving_route_standing(realization: SparkServingRealization, declared_u
           spark_service_from_observation(realization: realization, declared_unit: declared_unit, observation: obs)
       }
     }
-  }
-}
-
-// ── THE RUNTIME COMPONENT OF A SERVING TURN'S SOURCE ───────────────────────────────────────────
-//
-// The runtime is the container image the answering incarnation was created from, and it is read ONLY
-// through the endpoint-to-incarnation observation. An image digest from the probe with no binding to
-// the answering endpoint would be a fact about some launch on those hosts, not about the one serving
-// this turn. Weights and tokenizer have no counterpart here: VllmServingLaunch carries no digest of
-// the bytes an engine loaded, so gunbc.serving.turn_demand keeps them unobserved.
-fn spark_serving_turn_runtime(incarnation: EndpointIncarnationStanding) -> TurnComponentStanding {
-  match incarnation {
-    EndpointIncarnationUnobserved { obligation: o } => TurnComponentUnobserved { obligation: o }
-    EndpointIncarnationObserved { observation: obs } =>
-      TurnComponentObserved { digest: obs.launch.executable_digest, receipt: obs.receipt }
   }
 }
 

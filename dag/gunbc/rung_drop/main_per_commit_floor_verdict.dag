@@ -1,10 +1,20 @@
 module gunbc.rung_drop.main_per_commit_floor_verdict
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 // DECLARED 2026-09-11 with P0a.1 occupancy grouping (gunbc#10981, review 63340).
+// RETIRED 2026-09-15 BY ITS OWN TRIGGER, NOT BY ITS ARTIFACT. The trigger asked for a terminal
+// adjudication BOUND TO EACH LANDED SHA of every required acceptance obligation, and the merge
+// queue supplies exactly that: the required workflow runs on the queue's COMPOSED revision, and
+// that revision is the one that lands -- measured, not assumed, on gunb-ai/gunbc runs 34920079447
+// and the merge_group runs whose head_sha (4f304608f2c4a0961f4e1dd92a5f98db393f1b4a,
+// fe85902a07b...) is the sha main carries afterwards. The group those runs occupy is mg-<sha>
+// (gunbc#10981 / gunbc#11052), one member per landing, so no landing's verdict can be replaced by
+// another's. The population itself is then removed rather than merely emptied: the push-on-main
+// trigger is cut from gunbc.witness_floor_workflow witness_floor_triggers, so a push event on
+// refs/heads/main starts no run of this workflow and there is nothing left to supersede.
 // The 2026-08-17 unique-run_id grouping stated that every push to main must finish, because sharing
 // one main group drops queued observations. The 2026-09-10 occupancy ruling replaces that key with
 // github.ref for push events, so GitHub may replace pending members of the main group. Running
@@ -18,7 +28,9 @@ data main_per_commit_floor_verdict: RungDrop = RungDrop {
 
   declared: "2026-09-11",
 
-  standing: Standing,
+  standing: Retired {
+    trigger_fired: "2026-09-15 -- every landed main sha now obtains its terminal verdict from the merge_group run on the composed revision it lands as, in a per-sha concurrency group with no other member; and the superseded population is gone with the push-on-main trigger it was declared over" as NonEmptyStr
+  },
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,

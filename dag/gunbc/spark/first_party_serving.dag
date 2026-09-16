@@ -477,7 +477,10 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // THE ENDPOINT AND THE INCARNATION ARE THE SERVICE HALF'S EVIDENCE. The endpoint is the process the
 // route answered on; the incarnation standing says whether anything observed which engine launch that
 // process belongs to. The production caller, gunbc.harness.harness_seat harness_serving_realization,
-// has no such observer and says so with EndpointIncarnationUnobserved. Only
+// takes that standing from gunbc.spark.serving_incarnation_observe -- the producer that binds the
+// answering endpoint to an engine launch over the fleet key session -- so it carries
+// EndpointIncarnationObserved on a bind that observed and EndpointIncarnationUnobserved (with the
+// specific cause) on one that did not. Only
 // gunbc.spark.serving_offer spark_serving_route_standing reads them. The telemetry standing does not,
 // and should not: knowing which incarnation answered is not a reading of its effective environment.
 type SparkServingRealization {
@@ -765,13 +768,15 @@ fn spark_first_party_use_scope<P>(
 // a state only a fixture could construct.
 //
 // DECLARED FRONTIER (DESIGN section 3c). The production consumer of this function is
-// gunbc.harness.harness_seat, which cannot call it yet: product.fabric.selection bind_candidate
-// needs a demand identity and a work identity, a WorkKey comes only from product.fabric.work
-// derive_work_key, and gunbc.serving.turn_demand serving_turn_contract refuses to produce the source
-// manifest that would feed it until the weights, tokenizer and runtime components are each observed.
-// TRIGGER: observers of the loaded weight and tokenizer bytes and of the answering incarnation, SUFFICIENT FOR gunbc.serving.turn_demand
-// serving_turn_work to return TurnWorkBound for a harness turn. Until then this producer is executed
-// by test.claim.spark.spark_first_party_serving_witness_test, which exercises both arms.
+// gunbc.harness.harness_seat, which does not call it yet. Work identity is no longer the obstacle:
+// gunbc.serving.turn_demand serving_turn_work constructs an OfferedService Work from the request
+// alone. The obstacle is that harness_bind_seat receives no normalized turn request -- no interface,
+// inputs or output contract -- so it cannot construct that Work and its Demand once at the request
+// boundary, and constructing them per offer would put request identity beneath supplier
+// enumeration. TRIGGER: harness_bind_seat carries a normalized ServingTurnRequest, SUFFICIENT FOR
+// constructing one Work and one Demand before candidate enumeration and passing both, with this
+// admission, to product.fabric.selection bind_candidate. Until then this producer is executed by
+// test.claim.spark.spark_first_party_serving_witness_test, which exercises both arms.
 fn spark_first_party_admission<P>(
   realization: SparkServingRealization,
   scope: ProviderUseScope<P>,

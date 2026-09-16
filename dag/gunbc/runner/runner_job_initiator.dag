@@ -1,0 +1,32 @@
+module gunbc.runner.runner_job_initiator
+
+import std.types { NonEmptyStr }
+import product.fabric.identity { FabricIdentity, WorkKey }
+import std.scoped_authorization { AttemptIdentity }
+import std.decl_ref { DeclarationRef }
+import std.content_hash { Sha256Digest }
+
+// Product provenance, not GitHub's account.type. A bot account can carry human-requested work;
+// an agent can use a human account. Classifying by login spelling would silently invent intent.
+type JobInitiatorClass
+  = HumanInitiated
+  | AgentInitiated
+  | AutomationInitiated
+
+// An artifact reference identifies preserved input bytes; it does not assert that they were read
+// or authenticated. The live producer owes that observation. Fixtures exercise only the pure fold.
+type RunnerEvidenceSource {
+  producer: DeclarationRef
+  artifact: NonEmptyStr
+  digest: Sha256Digest
+}
+
+type JobInitiatorProvenance<P>
+  = JobInitiatorObserved {
+      work: FabricIdentity<P, WorkKey>,
+      attempt: AttemptIdentity,
+      class: JobInitiatorClass,
+      principal: NonEmptyStr,
+      evidence: RunnerEvidenceSource,
+    }
+  | JobInitiatorUnobserved { cause: NonEmptyStr }

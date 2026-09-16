@@ -2,6 +2,7 @@ module test.claim.build_cache_endpoint_observe
 
 import gunbc.build_cache_instance { ProcessIdentity }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
+import std.materialization_ladder { string_list_contains }
 
 // THIS MODULE IMPORTS ProcessIdentity EXPLICITLY BECAUSE THE BARE NAME IS AMBIGUOUS CORPUS-WIDE,
 // AND THE AMBIGUITY RESOLVES SILENTLY. Two types carry that name -- gunbc.build_cache_instance
@@ -586,9 +587,20 @@ test fn witness_stat_type_word_decodes_socket_and_absence() -> Bool {
 // of '(sc cache (x) )' whose naive split lands three tokens off. Both fixtures must yield their own
 // start time, so the witness reds if the parse ever regresses to splitting the line.
 
+fn owner_start_time_of(text: String) -> String {
+  match gunbc.build_cache_endpoint_observe.owner_identity(
+    pid: 3975946,
+    currency: ObservationCurrent { observed_at_boot: "boot" as NonEmptyStr },
+    proc_stat: gunbc.build_cache_endpoint_observe.HostReadText { text: text },
+  ) {
+    gunbc.build_cache_endpoint_observe.OwnerIdentityObserved { identity: id } => id.start_time as String
+    gunbc.build_cache_endpoint_observe.OwnerIdentityUnread { detail: _ } => ""
+  }
+}
+
 test fn witness_starttime_reads_after_the_final_paren() -> Bool {
-  gunbc.build_cache_endpoint_observe.starttime_of_proc_stat_text(text: observe_proc_stat_text) == "79870020"
-    && gunbc.build_cache_endpoint_observe.starttime_of_proc_stat_text(text: observe_proc_stat_adversarial_comm_text) == "51501010"
+  owner_start_time_of(text: observe_proc_stat_text) == "79870020"
+    && owner_start_time_of(text: observe_proc_stat_adversarial_comm_text) == "51501010"
 }
 
 test fn witness_unreadable_boot_id_leaves_currency_unknown() -> Bool {

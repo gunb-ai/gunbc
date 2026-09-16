@@ -1921,6 +1921,11 @@ pub struct TransitionAdmission {
 /// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
 /// runner hardware observation, DGX PXE and PXE-rescue consumers.
 ///
+/// THE gunbc#11177 ROWS DISSOLVED HERE (2026-09-16), by the trigger their own comment wrote:
+/// "remove these permissions once consumed at the base". #11177 is on main, so the relocation
+/// of process_identity_eq into gunbc.build_cache_instance is PRESENT AT THE BASE and both
+/// TargetChanged bindings report consumed. runner_connectivity_recovery_witness_test and
+/// runner_canary_receipt_witness_test stay enrolled as the executed evidence of the relocation.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
