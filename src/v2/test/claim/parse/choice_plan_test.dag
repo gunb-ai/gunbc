@@ -9,6 +9,7 @@ import v2.std.grammar {
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
+  Nonterminal,
   Optional,
   Sequence,
   StampClass,
@@ -99,11 +100,15 @@ fn pcp_root() -> GrammarRoot {
 }
 
 fn pcp_observe(expr: GrammarExpr, tokens: List<Token>) -> ChoiceParseObservation {
+  pcp_observe_root(root: pcp_root(), expr: expr, tokens: tokens)
+}
+
+fn pcp_observe_root(root: GrammarRoot, expr: GrammarExpr, tokens: List<Token>) -> ChoiceParseObservation {
   match parse_expr(
     expr: expr,
     tokens: tokens,
     all_tokens: tokens,
-    root: pcp_root(),
+    root: root,
     table: parse_table_empty(),
     prov: parse_prov_initial()
   ) {
@@ -173,6 +178,63 @@ test fn prepared_choice_discriminates_disjoint_first_tokens() -> Bool {
   (pcp_observe(expr: expr, tokens: tokens_a) == pcp_observe(expr: expr, tokens: tokens_b)) == false
 }
 
+// Unanalyzed table (`parse_table_empty`): NT-headed Choice must not compile ChoiceByToken
+// from empty FIRST. Token `b` is only in the right production.
+test fn prepared_choice_nonterminal_alts_empty_table_agrees_with_ordered_oracle() -> Bool {
+  let left_nt = Nonterminal { production: ^pcp_left_nt }
+  let right_nt = Nonterminal { production: ^pcp_right_nt }
+  let expr = Choice { left: left_nt, right: right_nt }
+  let root = GrammarRoot {
+    start: ^pcp_start,
+    productions: [
+      GrammarProduction {
+        name: ^pcp_start,
+        expression: expr,
+        emitted: grammar_atom(identity: ^pcp_start)
+      },
+      GrammarProduction {
+        name: ^pcp_left_nt,
+        expression: term(token_class: ^pcp_a),
+        emitted: grammar_atom(identity: ^pcp_left_nt)
+      },
+      GrammarProduction {
+        name: ^pcp_right_nt,
+        expression: term(token_class: ^pcp_b),
+        emitted: grammar_atom(identity: ^pcp_right_nt)
+      }
+    ],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+  let tokens_b = [pcp_token(token_class: ^pcp_b)]
+  let observed = pcp_observe_root(root: root, expr: expr, tokens: tokens_b)
+  let oracle = match parse_expr(
+    expr: left_nt,
+    tokens: tokens_b,
+    all_tokens: tokens_b,
+    root: root,
+    table: parse_table_empty(),
+    prov: parse_prov_initial()
+  ) {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>
+      ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured) }
+    ParseExprRejected { diagnostics: _, table: _ } =>
+      match parse_expr(
+        expr: right_nt,
+        tokens: tokens_b,
+        all_tokens: tokens_b,
+        root: root,
+        table: parse_table_empty(),
+        prov: parse_prov_initial()
+      ) {
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>
+          ObservedAccepted { remaining: length(xs: remaining), captured: content_hash(n: captured) }
+        ParseExprRejected { diagnostics: _, table: _ } =>
+          ObservedRejected
+      }
+  }
+  observed == oracle
+}
+
 // One nullable sibling: aa | b? on [a]. Ordered try-left-then-right tries aa, rejects, then b?
 // matches empty. The count>=2 heuristic used to drop b? from the `a` bucket and reject.
 test fn prepared_choice_one_nullable_alt_agrees_after_aa_rejects() -> Bool {
@@ -208,19 +270,22 @@ test fn compile_choice_alts_stamp_split_is_choice_token_prefix() -> Bool {
     expr: stamp_split_left,
     nullable_set: Empty,
     first_rows: empty_map(),
-    production: ^pcp_start
+    production: ^pcp_start,
+    token_dispatch: true
   )
   let stamp_right_fold = prepare_grammar_expr(
     expr: stamp_split_right,
     nullable_set: Empty,
     first_rows: empty_map(),
-    production: ^pcp_start
+    production: ^pcp_start,
+    token_dispatch: true
   )
   let stamp_bucket = compile_choice_alts(
     alts: Cons { head: stamp_left_fold, tail: Cons { head: stamp_right_fold, tail: Empty } },
     nullable_set: Empty,
     first_rows: empty_map(),
-    production: ^pcp_start
+    production: ^pcp_start,
+    token_dispatch: true
   )
   match stamp_bucket.plan {
     ChoiceTokenPrefix { rows: rows } => length(xs: rows) == 2

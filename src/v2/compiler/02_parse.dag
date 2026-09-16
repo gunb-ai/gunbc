@@ -2024,7 +2024,8 @@ fn compile_choice_alts(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>,
-  production: Symbol
+  production: Symbol,
+  token_dispatch: Bool
 ) -> ChoicePlanEmit {
   match length(xs: alts) {
     0 => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
@@ -2054,7 +2055,8 @@ fn compile_choice_alts(
                     alts: suffixes,
                     nullable_set: nullable_set,
                     first_rows: first_rows,
-                    production: production
+                    production: production,
+                    token_dispatch: token_dispatch
                   )
                   ChoicePlanEmit {
                     plan: ChoiceSharedPrefix { prefix: prefix, suffix: suffix_emit.plan },
@@ -2082,38 +2084,45 @@ fn compile_choice_plan(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>,
-  production: Symbol
+  production: Symbol,
+  token_dispatch: Bool
 ) -> ChoicePlanEmit {
-  let universe = choice_alts_terminal_universe(alts: alts)
-  let token_fold = fold_list(
-    xs: universe,
-    empty: TokenCompileAcc { on_token: empty_map(), residue: std.algebra.Empty },
-    cons: fn(acc, token_class) {
-      let bucket = compile_choice_alts(
-        alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
+  if token_dispatch {
+      let universe = choice_alts_terminal_universe(alts: alts)
+      let token_fold = fold_list(
+        xs: universe,
+        empty: TokenCompileAcc { on_token: empty_map(), residue: std.algebra.Empty },
+        cons: fn(acc, token_class) {
+          let bucket = compile_choice_alts(
+            alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
+            nullable_set: nullable_set,
+            first_rows: first_rows,
+            production: production,
+            token_dispatch: token_dispatch
+          )
+          TokenCompileAcc {
+            on_token: map_insert(m: acc.on_token, key: token_class, value: bucket.plan),
+            residue: list_append(left: acc.residue, right: bucket.residue)
+          }
+        }
+      )
+      let nullable_emit = compile_choice_alts(
+        alts: choice_alts_nullable(alts: alts),
         nullable_set: nullable_set,
         first_rows: first_rows,
-        production: production
+        production: production,
+        token_dispatch: token_dispatch
       )
-      TokenCompileAcc {
-        on_token: map_insert(m: acc.on_token, key: token_class, value: bucket.plan),
-        residue: list_append(left: acc.residue, right: bucket.residue)
+      ChoicePlanEmit {
+        plan: ChoiceByToken {
+          on_token: token_fold.on_token,
+          on_other: nullable_emit.plan,
+          on_end: nullable_emit.plan
+        },
+        residue: list_append(left: token_fold.residue, right: nullable_emit.residue)
       }
-    }
-  )
-  let nullable_emit = compile_choice_alts(
-    alts: choice_alts_nullable(alts: alts),
-    nullable_set: nullable_set,
-    first_rows: first_rows,
-    production: production
-  )
-  ChoicePlanEmit {
-    plan: ChoiceByToken {
-      on_token: token_fold.on_token,
-      on_other: nullable_emit.plan,
-      on_end: nullable_emit.plan
-    },
-    residue: list_append(left: token_fold.residue, right: nullable_emit.residue)
+  } else {
+    ordered_backtrack_emit(alts: alts, production: production)
   }
 }
 
@@ -2121,7 +2130,8 @@ fn prepare_grammar_expr(
   expr: GrammarExpr,
   nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>,
-  production: Symbol
+  production: Symbol,
+  token_dispatch: Bool
 ) -> PreparedExprFold {
   match expr {
     Terminal { token_class: token_class, stamp: stamp } =>
@@ -2137,8 +2147,8 @@ fn prepare_grammar_expr(
         residue: std.algebra.Empty
       }
     Sequence { left: left, right: right } =>
-      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows, production: production)
-      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows, production: production)
+      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedSequence { left: left_prepared.tree, right: right_prepared.tree },
         first: expr_first_fold_sequence(left: left_prepared.first, right: right_prepared.first),
@@ -2152,7 +2162,7 @@ fn prepare_grammar_expr(
         cons: fn(acc, alt) {
           list_snoc_item(
             xs: acc,
-            item: prepare_grammar_expr(expr: alt, nullable_set: nullable_set, first_rows: first_rows, production: production)
+            item: prepare_grammar_expr(expr: alt, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
           )
         }
       )
@@ -2160,7 +2170,8 @@ fn prepare_grammar_expr(
         alts: prepared_alts,
         nullable_set: nullable_set,
         first_rows: first_rows,
-        production: production
+        production: production,
+        token_dispatch: token_dispatch
       )
       let union_first = choice_alts_union_first(alts: prepared_alts)
       PreparedExprFold {
@@ -2178,14 +2189,14 @@ fn prepare_grammar_expr(
         first: GrammarExprFirstFold { terminals: pattern_prepared.first.terminals, nullable: true }
       }
     Optional { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedOptional { element: element_prepared.tree },
         first: expr_first_fold_optional(element: element_prepared.first),
         residue: element_prepared.residue
       }
     Repeat { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedRepeat { element: element_prepared.tree },
         first: expr_first_fold_repeat(element: element_prepared.first),
@@ -2194,18 +2205,39 @@ fn prepare_grammar_expr(
   }
 }
 
-// The on-the-fly arm for tables whose analysis did not carry prepared trees (parse_table_empty
-// and test-built tables): identical folds, computed at call time. Tables built by
-// parse_table_for_production_analyzed always resolve Present here — both maps are folded from
-// the same root.productions, so Absent-after-Holds is unreachable by construction, and this arm
-// computes the same value rather than widening anything.
+fn parse_table_token_dispatch(table: ParseTable, production: Symbol) -> Bool {
+  match map_lookup(m: table.first_rows, key: production) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The on-the-fly arm for tables whose analysis did not carry prepared trees
+// (`parse_table_empty` and test-built tables). Token dispatch is compiled only when
+// this production is a key in `first_rows`. An empty map is not "every nonterminal
+// has empty FIRST / not nullable" — that would mint `ChoiceByToken { on_token: {},
+// on_other: ChoiceReject }` and reject NT-headed Choice with empty diagnostics.
+// When the key is absent the Choice plan is ordered backtrack, the pre-cutover
+// interpreter. Analyzed tables always resolve Present here.
 fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -> PreparedGrammarExpr {
   match v2.std.collection.map_get(m: table.prepared_exprs, key: production.name) {
     Accepted { value: Present { value: prepared }, diagnostics: _ } => prepared
     Accepted { value: Absent, diagnostics: _ } =>
-      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows, production: production.name).tree
+      prepare_grammar_expr(
+        expr: production.expression,
+        nullable_set: table.nullable_set,
+        first_rows: table.first_rows,
+        production: production.name,
+        token_dispatch: parse_table_token_dispatch(table: table, production: production.name)
+      ).tree
     Rejected { diagnostics: _ } =>
-      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows, production: production.name).tree
+      prepare_grammar_expr(
+        expr: production.expression,
+        nullable_set: table.nullable_set,
+        first_rows: table.first_rows,
+        production: production.name,
+        token_dispatch: parse_table_token_dispatch(table: table, production: production.name)
+      ).tree
   }
 }
 
@@ -2227,7 +2259,8 @@ fn compute_grammar_first_analysis_given(
         expr: p.expression,
         nullable_set: nullable_set,
         first_rows: first_rows,
-        production: p.name
+        production: p.name,
+        token_dispatch: true
       )
       AnalysisPrepAcc {
         prepared_exprs: map_insert(m: acc.prepared_exprs, key: p.name, value: folded.tree),
@@ -3223,7 +3256,13 @@ fn parse_expr(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   parse_expr_with_first(
-    expr: prepare_grammar_expr(expr: expr, nullable_set: table.nullable_set, first_rows: table.first_rows, production: root.start).tree,
+    expr: prepare_grammar_expr(
+      expr: expr,
+      nullable_set: table.nullable_set,
+      first_rows: table.first_rows,
+      production: root.start,
+      token_dispatch: parse_table_token_dispatch(table: table, production: root.start)
+    ).tree,
     tokens: tokens,
     all_tokens: all_tokens,
     root: root,

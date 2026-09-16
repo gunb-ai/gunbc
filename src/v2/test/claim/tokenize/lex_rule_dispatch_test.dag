@@ -7,12 +7,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // compiled rule in declared order -- the pre-dispatch behaviour, which lex_try_rules still computes
 // when handed the full list. One short specimen per kind of FIRST set, rather than every suffix of a
 // long one (which cost ~831k eval steps and was refused at enrolment): a keyword against an
-// identifier that begins with it; operators that share a first character with a shorter one; the
-// empty scrutinee literal, which is nullable and so reachable from every character; the character
-// classes (identifier, digits, whitespace); a string literal carrying non-ASCII text; a line
-// comment; an atom; a character no rule starts on; and the empty source, where every rule is tried.
+// identifier that begins with it (`iffy`/`if`, `fnord`/`fn`); operators that share a first
+// character with a shorter one, including the one-character forms (`= `, `| `) and a
+// bang-started identifier (`!x`); the empty scrutinee literal, which is nullable and so
+// reachable from every character; the character classes (identifier, digits, whitespace);
+// a string literal carrying non-ASCII text; a line comment; an atom; a character no rule
+// starts on (`{`, and a bare non-ASCII `λ`); and the empty source, where every rule is tried.
 data lex_rule_dispatch_specimens: List<String> = [
+<<<<<<< HEAD
   "iffy", "if x", "->", "-1", "=>", "==", "= ", "|>", "||", "| ", "!=",
+=======
+  "iffy", "if x", "fnord", "->", "-1", "=>", "==", "= ", "|>", "||", "| ", "!=", "!x",
+>>>>>>> a3010aec9ee (Do not compile ChoiceByToken from an unanalyzed FIRST table.)
   "\"λ\"", "// c", "^a", "42", " \n", "{", "λ", ""
 ]
 
