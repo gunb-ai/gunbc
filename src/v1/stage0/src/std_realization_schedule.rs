@@ -801,8 +801,15 @@ pub fn schedule_witness_entry_roster_contains(
         })
 }
 
-pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
+pub fn string_list_eq(
+    mut __tco_loop_left: Rc<Vec<String>>,
+    mut __tco_loop_right: Rc<Vec<String>>,
+) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut left = __tco_loop_left;
+        #[allow(unused_mut)]
+        let mut right = __tco_loop_right;
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
         } else {
@@ -819,8 +826,8 @@ pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> 
                             Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                         let __tco_1 =
                             Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-                        left = __tco_0;
-                        right = __tco_1;
+                        __tco_loop_left = __tco_0;
+                        __tco_loop_right = __tco_1;
                         continue;
                     }
                 }
@@ -830,10 +837,14 @@ pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> 
 }
 
 pub fn schedule_witness_entry_list_eq(
-    mut left: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-    mut right: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+    mut __tco_loop_left: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+    mut __tco_loop_right: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
 ) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut left = __tco_loop_left;
+        #[allow(unused_mut)]
+        let mut right = __tco_loop_right;
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
         } else {
@@ -846,8 +857,8 @@ pub fn schedule_witness_entry_list_eq(
                     {
                         let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-left = __tco_0;
-right = __tco_1;
+__tco_loop_left = __tco_0;
+__tco_loop_right = __tco_1;
 continue;
 }
 }
@@ -923,10 +934,14 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
 }
 
 pub fn runnable_batch_eq(
-    mut left: Rc<Vec<Rc<Runnable>>>,
-    mut right: Rc<Vec<Rc<Runnable>>>,
+    mut __tco_loop_left: Rc<Vec<Rc<Runnable>>>,
+    mut __tco_loop_right: Rc<Vec<Rc<Runnable>>>,
 ) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut left = __tco_loop_left;
+        #[allow(unused_mut)]
+        let mut right = __tco_loop_right;
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
         } else {
@@ -939,8 +954,8 @@ pub fn runnable_batch_eq(
                     {
                         let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-left = __tco_0;
-right = __tco_1;
+__tco_loop_left = __tco_0;
+__tco_loop_right = __tco_1;
 continue;
 }
 }
@@ -949,8 +964,12 @@ continue;
     }
 }
 
-pub fn schedule_eq(mut left: Schedule, mut right: Schedule) -> bool {
+pub fn schedule_eq(mut __tco_loop_left: Schedule, mut __tco_loop_right: Schedule) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut left = __tco_loop_left;
+        #[allow(unused_mut)]
+        let mut right = __tco_loop_right;
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
         } else {
@@ -963,8 +982,8 @@ pub fn schedule_eq(mut left: Schedule, mut right: Schedule) -> bool {
                     {
                         let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-left = __tco_0;
-right = __tco_1;
+__tco_loop_left = __tco_0;
+__tco_loop_right = __tco_1;
 continue;
 }
 }
