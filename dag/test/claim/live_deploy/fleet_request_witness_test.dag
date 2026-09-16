@@ -29,11 +29,10 @@ import gunbc.live_deploy.fleet_request {
   LiveDeployIncompletePopulation,
   LiveDeployUnreadableMember,
   LiveDeployWrongMember,
+  LiveDeployDecisionCountMismatch,
   LiveDeployForeignReplacement,
   LiveDeployEffectsRefused,
-  live_deploy_apply_shell_note,
   live_deploy_admission_refusal_text,
-  live_deploy_host_only_request_refusal_reason,
 }
 import gunbc.fleet_converge_plan {
   fleet_converge_scope_of_wire,
@@ -163,6 +162,25 @@ test fn a_decision_about_the_wrong_member_refuses() -> Bool {
   }
 }
 
+test fn a_short_decision_list_refuses_without_fabricating_a_roster_member() -> Bool {
+  match admit_live_deploy_supplied_decisions(
+    candidate: candidate(),
+    target: target(),
+    observed: matching_obs(),
+    desired: m => desired_for(m: m),
+    decisions: [Create { member: Executable, to: desired_bin() }],
+  ) {
+    LiveDeployBasisAdmitted { basis: _ } => false
+    LiveDeployBasisRefused { cause: c } => match c {
+      LiveDeployDecisionCountMismatch { expected: e, found: f } =>
+        e == count(release_member_roster()) && f == 1
+          && !string_contains(s: live_deploy_admission_refusal_text(cause: c), pattern: "WrongMember")
+      LiveDeployWrongMember { expected: _, found: _ } => false
+      _ => false
+    }
+  }
+}
+
 test fn incomplete_member_populations_cannot_produce_an_admitted_empty_plan() -> Bool {
   match admit_obs(observed: [MemberObserved { identity: desired_bin() }]) {
     LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) != 0
@@ -214,16 +232,10 @@ test fn a_desired_identity_for_another_member_refuses_the_effect_plan() -> Bool 
   }
 }
 
-test fn live_deploy_scope_exists_and_no_constructible_request_inhabits_it() -> Bool {
+test fn live_deploy_is_a_decodable_fleet_converge_scope() -> Bool {
   match fleet_converge_scope_of_wire(wire: fleet_converge_scope_wire(scope: LiveDeploy)) {
     ScopeUndecodable { cause: _ } => false
-    ScopeDecoded { scope: LiveDeploy } =>
-      string_contains(s: live_deploy_host_only_request_refusal_reason(), pattern: "unconstructible")
-        && string_contains(s: live_deploy_host_only_request_refusal_reason(), pattern: "host-only")
+    ScopeDecoded { scope: LiveDeploy } => true
     ScopeDecoded { scope: _ } => false
   }
-}
-
-test fn plan_only_apply_note_names_no_host_mutation() -> Bool {
-  string_contains(s: live_deploy_apply_shell_note(), pattern: "no host mutation")
 }

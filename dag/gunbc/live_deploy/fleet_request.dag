@@ -25,7 +25,6 @@ import gunbc.host_convergence_protocol {
 import gunbc.live_deploy.candidate { CandidateRelease }
 import gunbc.live_deploy.member_identity {
   ConvergedMember,
-  TreePublication,
   Executable,
   DirectoryRoot,
   MemberIdentity,
@@ -35,7 +34,6 @@ import gunbc.live_deploy.member_identity {
   member_identity_member,
   decide_release_members,
   decision_label,
-  HostUnobservable,
   ObservedMember,
   MemberObserved,
   MemberAbsentOnHost,
@@ -87,6 +85,7 @@ type LiveDeployAdmissionRefusal
   = LiveDeployIncompletePopulation { missing: List<String> }
   | LiveDeployUnreadableMember { member: ConvergedMember, cause: String }
   | LiveDeployWrongMember { expected: ConvergedMember, found: ConvergedMember }
+  | LiveDeployDecisionCountMismatch { expected: Int, found: Int }
   | LiveDeployForeignReplacement { member: ConvergedMember }
   | LiveDeployEffectsRefused { refusals: List<MemberDecision> }
 
@@ -226,22 +225,29 @@ fn first_unreadable(observed: List<ObservedMember>) -> LiveDeployAdmissionRefusa
 }
 
 fn first_wrong_decision(roster: List<ConvergedMember>, decisions: List<MemberDecision>) -> LiveDeployAdmissionRefusal? {
-  fold(
-    zip_roster_decisions(roster: roster, decisions: decisions),
-    init: none,
-    f: (acc, pair) =>
-      match acc {
-        Present { value: v } => Present { value: v }
-        Absent =>
-          if converged_member_eq(a: pair.expected, b: pair.found) {
-            none
-          } else {
-            Present {
-              value: LiveDeployWrongMember { expected: pair.expected, found: pair.found },
+  let zipped = zip_roster_decisions(roster: roster, decisions: decisions)
+  if zipped.truncated || (count(decisions) != count(roster)) {
+    Present {
+      value: LiveDeployDecisionCountMismatch { expected: count(roster), found: count(decisions) },
+    }
+  } else {
+    fold(
+      zipped.out,
+      init: none,
+      f: (acc, pair) =>
+        match acc {
+          Present { value: v } => Present { value: v }
+          Absent =>
+            if converged_member_eq(a: pair.expected, b: pair.found) {
+              none
+            } else {
+              Present {
+                value: LiveDeployWrongMember { expected: pair.expected, found: pair.found },
+              }
             }
-          }
-      },
-  )
+        },
+    )
+  }
 }
 
 type RosterDecisionPair {
@@ -252,34 +258,31 @@ type RosterDecisionPair {
 fn zip_roster_decisions(
   roster: List<ConvergedMember>,
   decisions: List<MemberDecision>,
-) -> List<RosterDecisionPair> {
-  fold(roster, init: ZipAcc { at: 0, out: [] }, f: (acc, m) => {
-    let d = decision_at(decisions: decisions, index: acc.at)
-    ZipAcc {
-      at: acc.at + 1,
-      out: concat(acc.out, [RosterDecisionPair { expected: m, found: decision_member(d: d) }]),
-    }
-  }).out
+) -> ZipAcc {
+  fold(roster, init: ZipAcc { at: 0, out: [], truncated: false }, f: (acc, m) =>
+    match decision_at(decisions: decisions, index: acc.at) {
+      Present { value: d } => ZipAcc {
+        at: acc.at + 1,
+        out: concat(acc.out, [RosterDecisionPair { expected: m, found: decision_member(d: d) }]),
+        truncated: acc.truncated,
+      }
+      Absent => ZipAcc { at: acc.at + 1, out: acc.out, truncated: true }
+    })
 }
 
 type ZipAcc {
   at: Int
   out: List<RosterDecisionPair>
+  truncated: Bool
 }
 
-fn decision_at(decisions: List<MemberDecision>, index: Int) -> MemberDecision {
-  match fold(decisions, init: AtAcc { at: 0, found: none }, f: (acc, d) =>
+fn decision_at(decisions: List<MemberDecision>, index: Int) -> MemberDecision? {
+  fold(decisions, init: AtAcc { at: 0, found: none }, f: (acc, d) =>
     if acc.at == index {
       AtAcc { at: acc.at + 1, found: Present { value: d } }
     } else {
       AtAcc { at: acc.at + 1, found: acc.found }
-    }).found {
-    Present { value: v } => v
-    Absent => MemberRefused {
-      member: TreePublication,
-      cause: HostUnobservable { cause: "decision list shorter than roster" },
-    }
-  }
+    }).found
 }
 
 type AtAcc {
@@ -402,6 +405,8 @@ fn live_deploy_admission_refusal_text(cause: LiveDeployAdmissionRefusal) -> Stri
         " found=",
         converged_member_label(m: f),
       ], "")
+    LiveDeployDecisionCountMismatch { expected: e, found: f } =>
+      join(["LiveDeployDecisionCountMismatch expected=", e as String, " found=", f as String], "")
     LiveDeployForeignReplacement { member: m } =>
       join(["LiveDeployForeignReplacement ", converged_member_label(m: m)], "")
     LiveDeployEffectsRefused { refusals: _ } =>
@@ -411,8 +416,4 @@ fn live_deploy_admission_refusal_text(cause: LiveDeployAdmissionRefusal) -> Stri
 
 fn live_deploy_host_only_request_refusal_reason() -> String {
   "live-deploy FleetConvergeRequest is unconstructible until DesiredDeployment lands; a host-only LiveDeploy request has no spelling"
-}
-
-fn live_deploy_apply_shell_note() -> String {
-  "scope:live-deploy — PLAN-ONLY; this script emits no host mutation (CONVERGENCE-ONE C8 is the first wet action)"
 }
