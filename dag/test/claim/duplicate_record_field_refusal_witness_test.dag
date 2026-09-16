@@ -3,7 +3,7 @@ module test.claim.duplicate_record_field_refusal_witness
 import std.types { String, Int, Bool }
 import v2.std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -11,10 +11,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // A RECORD LITERAL THAT ASSIGNS ONE FIELD TWICE MUST REFUSE, AND THE SAME LITERAL ASSIGNING EACH
 // FIELD ONCE MUST BE ACCEPTED.
 //
-// THIS RED FAILS TODAY AND THAT IS ITS POINT. Measured at main 4b7371d1f64: the duplicate is
-// ACCEPTED and the LAST assignment wins -- `{ a: 1, a: 2, b: 3 }` answers 2 -- so the wall this
-// witness asserts does not exist yet. The identity is enrolled in `v2.workflow.floor_expected_red`
-// and that enrolment is retired by the wall landing, not by anyone editing this file. The class is
+// THIS RED IS NOW A REGRESSION CONTROL (DESIGN section 4b(4)). It was enrolled in
+// `v2.workflow.floor_expected_red` while the duplicate was ACCEPTED and the LAST assignment won --
+// measured at main 4b7371d1f64, `{ a: 1, a: 2, b: 3 }` answered 2. The wall landed in the one fold
+// over a record literal's field list, `v1.compiler.parse` `parse_field_init_list_acc`, which refuses
+// the repeated key naming the field and both positions; the enrolment was retired by that landing,
+// and the pair stays enrolled as the evidence the wall still stands. The class is
 // `gunbc.recurring_failure_mode.duplicate_record_literal_field_silently_last_wins`.
 //
 // WHY THE SUBJECT IS A SOURCE STRING RATHER THAN AN INLINE LITERAL, which is the only shape that
@@ -71,6 +73,17 @@ data green_each_field_once_source: String = "module probe_single_record_field\nt
 
 test fn a_record_literal_assigning_one_field_twice_refuses() -> Bool {
   blocking_parse_error_count(source: red_duplicate_field_source) >= 1
+}
+
+// THE REFUSAL IS ABOUT THE REPEATED KEY AND NAMES BOTH POSITIONS. A ParseError count alone is
+// satisfied by any malformed source; this reads the refusal's own subject, which for a parse error
+// is its message, and requires the field name and the line:col of BOTH assignments -- line 7,
+// columns 21 and 27 in the fixture above.
+test fn the_refusal_names_the_field_and_both_positions() -> Bool {
+  match census_blocking_count_for_subject(census: census_of(source: red_duplicate_field_source), wanted_class: "ParseError", wanted_subject: "duplicate field 'a' in record literal: first at 7:21, again at 7:27") {
+    Present { value: n } => n == 1
+    Absent => false
+  }
 }
 
 test fn the_same_literal_assigning_each_field_once_is_accepted() -> Bool {
