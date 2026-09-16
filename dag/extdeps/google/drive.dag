@@ -115,12 +115,27 @@ fn drive_permission_role_wire(r: DrivePermissionRole) -> String {
 }
 
 fn drive_permission_role_from_wire(raw: String) -> DrivePermissionRole? {
-  if raw == "organizer" { Present { value: RoleOrganizer } }
-  else if raw == "fileOrganizer" { Present { value: RoleFileOrganizer } }
-  else if raw == "writer" { Present { value: RoleWriter } }
-  else if raw == "commenter" { Present { value: RoleCommenter } }
-  else if raw == "reader" { Present { value: RoleReader } }
-  else { Absent }
+  if raw == drive_permission_role_wire(r: RoleOrganizer) {
+    Present { value: RoleOrganizer }
+  } else {
+    if raw == drive_permission_role_wire(r: RoleFileOrganizer) {
+      Present { value: RoleFileOrganizer }
+    } else {
+      if raw == drive_permission_role_wire(r: RoleWriter) {
+        Present { value: RoleWriter }
+      } else {
+        if raw == drive_permission_role_wire(r: RoleCommenter) {
+          Present { value: RoleCommenter }
+        } else {
+          if raw == drive_permission_role_wire(r: RoleReader) {
+            Present { value: RoleReader }
+          } else {
+            none
+          }
+        }
+      }
+    }
+  }
 }
 
 // A service account is type "user" to Drive. It is NOT a distinct principal kind on the wire,

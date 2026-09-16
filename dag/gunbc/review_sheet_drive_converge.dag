@@ -228,15 +228,17 @@ fn spreadsheet_from_complete_list(list: DriveFileList) -> ReviewSpreadsheetObser
 fn spreadsheet_from_files(files: List<DriveFile>) -> ReviewSpreadsheetObservation {
   if count(files) == 0 {
     SheetAbsent
-  } else if count(files) > 1 {
-    SheetDuplicated { file_ids: map(files, f => f.id) }
   } else {
-    match first(files) {
-      Absent =>
-        SheetSearchUnreadable {
-          reason: "a single-element list yielded no first file" as NonEmptyStr
-        }
-      Present { value: only } => SheetObservedOne { file_id: only.id as NonEmptyStr }
+    if count(files) > 1 {
+      SheetDuplicated { file_ids: map(files, f => f.id) }
+    } else {
+      match first(files) {
+        Absent =>
+          SheetSearchUnreadable {
+            reason: "a single-element list yielded no first file" as NonEmptyStr
+          }
+        Present { value: only } => SheetObservedOne { file_id: only.id as NonEmptyStr }
+      }
     }
   }
 }
