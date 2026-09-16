@@ -5,7 +5,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
-import std.measure { EvalStepCount, eval_step_count }
 import std.types { NonEmptyStr }
 
 // THE POLICY HALF OF THE DECLARED 4b(3) DROP `gunbc.rung_drop`
@@ -26,12 +25,14 @@ import std.types { NonEmptyStr }
 // would silently cover every witness later added beside these four, which is the widening the
 // drop's bounded population exists to forbid.
 //
-// `observed_eval_steps` IS A RECORDED READING, NOT AN ORACLE. It is transcribed from the run named in
-// `measured_by`, so no check in this tree may compare it against the budget and call that evidence
-// the drop is still needed or may retire: both sides of such a comparison would be authored here and
-// it could not go red (DESIGN section 5, a measurement copied from the same tree is not an oracle).
-// Whether a member still overruns is read from a LIVE floor's `required_floor_claim_cost.tsv`, out
-// of band, with `tools.floor_cost_distribution_instrument`.
+// THE ROW CARRIES NO TRANSCRIBED COUNT, AND THAT IS THE POINT. An earlier revision held an
+// `observed_eval_steps` figure per member. Its only consumer was a check comparing those numbers to
+// the budget -- both sides authored here, so it could never go red -- and when that check was
+// removed the field was left behind, read by nothing. DESIGN section 6 names the remedy: name the
+// instrument, never transcribe its output, because a copied number is unreachable from the thing
+// that owns it and rots without anyone touching either end. `measured_by` IS that citation: it names
+// the producing run and artifact. Whether a member still overruns is read from a LIVE floor's
+// `required_floor_claim_cost.tsv`, out of band, with `tools.floor_cost_distribution_instrument`.
 //
 // IT MAY ONLY SHRINK. A row leaves when its identity measures inside the new-witness budget on the
 // acceptance path and the prepared-input capability the drop's trigger names has landed; a row is
@@ -39,29 +40,24 @@ import std.types { NonEmptyStr }
 // reason, not growth of this one.
 type EvalStepCostDropMeasurement {
   identity: NonEmptyStr
-  observed_eval_steps: EvalStepCount
   measured_by: NonEmptyStr
 }
 
 data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges" as NonEmptyStr,
-    observed_eval_steps: eval_step_count(count: 318227),
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt" as NonEmptyStr,
-    observed_eval_steps: eval_step_count(count: 226622),
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal" as NonEmptyStr,
-    observed_eval_steps: eval_step_count(count: 441871),
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection" as NonEmptyStr,
-    observed_eval_steps: eval_step_count(count: 370743),
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
 ]

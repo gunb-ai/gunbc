@@ -34,15 +34,15 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 //
 // CLAUSE (ii) OF THE TRIGGER IS NOT VERIFIED BY ANY ENROLLED CHECK, stated plainly. It asks whether
 // each identity measures under the new-witness budget ON THE ACCEPTANCE PATH, which is a LIVE
-// reading. The roster's `observed_eval_steps` are recorded readings from the run in `measured_by`;
-// a check comparing them to the budget would be authored on both sides and could never go red, so
-// none exists. Clause (ii) is verified by reading the live floor's `required_floor_claim_cost.tsv`
+// reading. The roster carries NO transcribed counts -- it names the producing run in `measured_by`
+// instead, because a check comparing authored numbers to the budget would have both sides authored
+// here and could never go red, so neither the numbers nor such a check exist. Clause (ii) is verified by reading the live floor's `required_floor_claim_cost.tsv`
 // out of band with `tools.floor_cost_distribution_instrument`, whose load refuses an empty or
 // unreadable run. Its next-rung trigger is a claim harness able to consume a live required-floor
 // cost artifact as a supplied input with a typed refusal; the floor witness cannot read the cost
 // artifact of the run executing it, and `test.claim.floor_cost_distribution_witness_test` declares
 // `SubstrateInputsOnly` for that reason.
-data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, observed_eval_steps in v2.workflow.floor_eval_step_cost_drop; "), m.measured_by))
+data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop; measured by "), m.measured_by))
 
 data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "roadmap_live_projection_new_witness_eval_step_cost" as NonEmptyStr,
