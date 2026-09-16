@@ -3,7 +3,7 @@ module test.claim.spark.spark_serving_usage_stats_evidence_seal_probe_test
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
-  CensusObserved, CensusNotRunnable, compile_dag_diagnostic_census, census_rows_of_class, census_total_count,
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_rows_of_class, census_total_count,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -22,8 +22,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // on the record, so neither a literal nor a cast reaches the Observed arm.
 data forged_evidence_source: String = "module probe_forged_usage_stats_evidence\nimport std.types { NonEmptyStr, String }\nimport product.fabric.demand { ObservationReceiptRef }\nimport gunbc.spark.vllm_serving_launch { VllmServingLaunch }\nimport extdeps.vllm.usage_stats { UsageStatsDisabledByLaunch }\nimport gunbc.spark.serving_incarnation_observe { ServingUsageStatsEvidence, ServingUsageStatsSubject, ServingUsageStatsObservation, ServingUsageStatsObserved }\nfn forged(launch: VllmServingLaunch) -> ServingUsageStatsObservation {\n  ServingUsageStatsObserved { evidence: ServingUsageStatsEvidence { subject: ServingUsageStatsSubject { launch: launch, standing: UsageStatsDisabledByLaunch { mechanism: \"VLLM_NO_USAGE_STATS\" as NonEmptyStr }, receipt: \"forged\" as ObservationReceiptRef } } }\n}\n"
 
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
 test fn caller_authored_evidence_refuses_to_compile() -> Bool {
-  match compile_dag_diagnostic_census(forged_evidence_source) {
+  match census_of(source: forged_evidence_source) {
     CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation")) >= 1
     CensusNotRunnable { cause: _ } => false
   }
