@@ -8,6 +8,7 @@ import gunbc.demo.semantic_system_readout {
   ReadoutSection,
   RecordedRunJoined,
   any_line_fails,
+  line_fails,
   live,
   note,
   open,
@@ -17,6 +18,15 @@ import gunbc.demo.semantic_system_readout {
   render,
   standing_tag,
   workflow_line,
+  workflow_line_for,
+  workflow_line_text,
+}
+import gunbc.generated_artifact { GitignoreArtifact, WitnessFloorYamlArtifact }
+import gunbc.generated_artifact_assessment {
+  GeneratedArtifactCommittedAbsent,
+  GeneratedArtifactObservation,
+  GeneratedArtifactObservationRefused,
+  GeneratedArtifactObserved,
 }
 import std.types { List, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -94,8 +104,56 @@ test fn w_the_live_dogfooding_line_executes_the_real_observer() -> Bool {
   }
 }
 
-test fn w_the_live_dogfooding_line_prints_as_a_pass() -> Bool {
-  standing_tag(s: workflow_line().standing) == "  PASS      "
+// THE MAPPING, DISCRIMINATED AT ITS OWN INTERFACE. Each of these supplies one
+// GeneratedArtifactObservation arm and asserts what the readout makes of it. They reach nothing: no
+// listing, no committed read, no projection of the workflow. That is DESIGN section 3's standing
+// rule applied to the rows the floor measured at 383k and 396k eval steps -- the evaluation was
+// dominated by one call whose RESULT SHAPE was all the claim inspected, so the shape is supplied and
+// the call is left to the one live claim below.
+fn observed(generated: String, committed: String) -> GeneratedArtifactObservation {
+  GeneratedArtifactObserved {
+    artifact: GitignoreArtifact,
+    path: "supplied/observation",
+    generated_content: generated,
+    committed_content: committed,
+    extra_validation: true,
+  }
+}
+
+test fn w_matching_content_is_a_live_pass() -> Bool {
+  let l = workflow_line_for(observation: observed(generated: "same", committed: "same"))
+  (l.text == workflow_line_text) && (standing_tag(s: l.standing) == "  PASS      ") && !line_fails(l: l)
+}
+
+// DIFFERING CONTENT IS A FAIL AND NOT A REFUSAL, which is the distinction the whole line exists to
+// keep: drift is an answer, and it is not the same fact as being unable to look.
+test fn w_differing_content_is_a_live_fail_not_a_refusal() -> Bool {
+  let l = workflow_line_for(observation: observed(generated: "authority", committed: "hand edited"))
+  (standing_tag(s: l.standing) == "  FAIL      ") && line_fails(l: l)
+}
+
+test fn w_an_absent_committed_artifact_refuses_and_names_the_path() -> Bool {
+  let l = workflow_line_for(observation: GeneratedArtifactCommittedAbsent {
+    artifact: WitnessFloorYamlArtifact,
+    path: ".github/workflows/witnesses.yml",
+    detail: "no such entry in the directory listing",
+  })
+  (standing_tag(s: l.standing) == "  REFUSED   ")
+    && line_fails(l: l)
+    && string_contains(s: render(sections: [ReadoutSection { title: "S", lines: [l] }]), pattern: ".github/workflows/witnesses.yml")
+}
+
+// AN UNREADABLE ARTIFACT REFUSES RATHER THAN REPORTING DRIFT, which is the arm review 66747 was
+// about: a verdict about the repository must never be established from the failure of our own read.
+test fn w_an_unreadable_artifact_refuses_rather_than_reporting_drift() -> Bool {
+  let l = workflow_line_for(observation: GeneratedArtifactObservationRefused {
+    artifact: WitnessFloorYamlArtifact,
+    path: ".github/workflows/witnesses.yml",
+    cause: "permission denied",
+  })
+  (standing_tag(s: l.standing) == "  REFUSED   ")
+    && line_fails(l: l)
+    && !string_contains(s: render(sections: [ReadoutSection { title: "S", lines: [l] }]), pattern: "FAIL")
 }
 
 // THE WHOLE JOIN, EXECUTED (review 66759). The claim above exercises the one host-touching line; this

@@ -114,18 +114,40 @@ fn emitted<R>(e: BoardEmission<R>) -> Bool {
 // .generated_artifact_observation folds both channels through filesystem_read_outcome, generates
 // the adorned bytes through the same boundary, and returns the three states that are actually
 // distinguishable. Each maps to the standing that tells the truth about what was learned.
+data workflow_line_text: String = "required witness workflow equals its .dag projection"
+
+// THE MAPPING IS SPLIT FROM THE OBSERVATION, so a claim can discriminate it at ONE INTERFACE. This
+// function decides what an observation MEANS for the readout and reaches nothing: hand it the three
+// arms and it yields PASS, REFUSED-absent and REFUSED-unreadable. DESIGN section 3's standing rule
+// asks for exactly this shape -- a witness's inputs belong at the boundary as supplied values rather
+// than as the output of executing the layers beneath it -- and the measurement says the same thing
+// in numbers: the live claims that folded observation and mapping together cost 383k to 1,225k eval
+// steps to inspect which arm came back, which is the rule's own tell (a claim whose evaluation is
+// dominated by one call whose RESULT SHAPE is all it inspects).
+//
+// WHAT THIS SPLIT MAY NOT DO IS REMOVE THE LAST EXECUTION OF THE REAL PATH, which the same rule
+// states and which is the whole reason `workflow_line` below still exists and is still claimed. The
+// supplied-arm claims establish the mapping; the live claim establishes that the real observer
+// reaches it. Neither substitutes for the other.
+fn workflow_line_for(observation: GeneratedArtifactObservation) -> ReadoutLine {
+  match observation {
+    GeneratedArtifactObserved { artifact: _, path: _, generated_content: g, committed_content: c, extra_validation: _ } =>
+      live(text: workflow_line_text, holds: g == c)
+    GeneratedArtifactCommittedAbsent { artifact: _, path: p, detail: d } =>
+      refused(text: workflow_line_text, cause: concat(concat("committed artifact absent: ", p), concat(" — ", d)))
+    GeneratedArtifactObservationRefused { artifact: _, path: p, cause: c } =>
+      refused(text: workflow_line_text, cause: concat(concat("observation refused: ", p), concat(" — ", c)))
+  }
+}
+
+// THE LIVE HALF, AND IT IS DELIBERATELY THIN: take the observation, delegate the meaning. Everything
+// expensive is on this side of the seam -- the directory listing, the committed read folded through
+// filesystem_read_outcome, and the adorned projection of the whole workflow -- and none of it is
+// re-executed by a claim that only needs to know what an arm means.
 fn workflow_line() -> ReadoutLine {
   let a = WitnessFloorYamlArtifact
   let rows = observe_directory_listings(directories: [artifact_directory(a: a)])
-  let text = "required witness workflow equals its .dag projection"
-  match observe_generated_artifact_with(a: a, rows: rows) {
-    GeneratedArtifactObserved { artifact: _, path: _, generated_content: g, committed_content: c, extra_validation: _ } =>
-      live(text: text, holds: g == c)
-    GeneratedArtifactCommittedAbsent { artifact: _, path: p, detail: d } =>
-      refused(text: text, cause: concat(concat("committed artifact absent: ", p), concat(" — ", d)))
-    GeneratedArtifactObservationRefused { artifact: _, path: p, cause: c } =>
-      refused(text: text, cause: concat(concat("observation refused: ", p), concat(" — ", c)))
-  }
+  workflow_line_for(observation: observe_generated_artifact_with(a: a, rows: rows))
 }
 
 fn readout_sections() -> List<ReadoutSection> {
