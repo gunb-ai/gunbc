@@ -114,11 +114,17 @@ data approval_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-mac-key"
 // key means the materialization frontier has not run; an unreadable one means it ran and the unit
 // cannot read what it wrote -- a permission on the file, not a missing step. Reading `content`
 // alone and calling "" absent would report the second as the first, which fails toward good news.
-type ApprovalKeyringRead
-  = ApprovalKeyLoaded { key: MacKey }
-  | ApprovalKeyFileAbsent { path: NonEmptyStr }
+// THE FAILURES ARE THEIR OWN COPRODUCT so a refusal downstream can carry exactly a failure and
+// never the loaded key (review 67005: a refusal arm that could hold the success state validates
+// instead of constructing).
+type ApprovalKeyringRefusal
+  = ApprovalKeyFileAbsent { path: NonEmptyStr }
   | ApprovalKeyFileUnreadable { path: NonEmptyStr, error: String }
   | ApprovalKeyMalformed { path: NonEmptyStr, length: Int }
+
+type ApprovalKeyringRead
+  = ApprovalKeyLoaded { key: MacKey }
+  | ApprovalKeyringRefused { cause: ApprovalKeyringRefusal }
 
 // Code points: '0'..'9' are 48..57, 'a'..'f' are 97..102.
 fn is_lower_hex_code_point(cp: Int) -> Bool {
@@ -135,7 +141,7 @@ fn is_lower_hex(s: String) -> Bool {
 // filesystem's answer, established by the exact read below, never inferred from empty content.
 fn approval_keyring_from_content(content: String) -> ApprovalKeyringRead {
   if content.length() != 64 || !is_lower_hex(s: content) {
-    ApprovalKeyMalformed { path: approval_mac_key_path, length: content.length() }
+    ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: approval_mac_key_path, length: content.length() } }
   } else {
     ApprovalKeyLoaded { key: MacKey { id: approval_mac_key_id, suite: approval_mac_key_suite, material: content as Secret } }
   }
@@ -144,9 +150,9 @@ fn approval_keyring_from_content(content: String) -> ApprovalKeyringRead {
 fn approval_keyring_from_exact_read(exact: FilesystemExactRead) -> ApprovalKeyringRead {
   match exact {
     FilesystemExactPathRead { path: _, content: c } => approval_keyring_from_content(content: c)
-    FilesystemExactPathAbsent { path: _ } => ApprovalKeyFileAbsent { path: approval_mac_key_path }
-    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ApprovalKeyFileUnreadable { path: approval_mac_key_path, error: e }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ApprovalKeyFileUnreadable { path: approval_mac_key_path, error: concat(o, concat(": ", e)) }
+    FilesystemExactPathAbsent { path: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_mac_key_path } }
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: approval_mac_key_path, error: e } }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: approval_mac_key_path, error: concat(o, concat(": ", e)) } }
   }
 }
 
@@ -519,8 +525,8 @@ type StoreRedemption
   | RedemptionSegmentMalformed { detail: NonEmptyStr }
   | RedemptionEscalationNotFiled { escalation_id: NonEmptyStr }
   | RedemptionStoreUnreadable { detail: NonEmptyStr }
-  | RedemptionKeyringUnavailable { read: ApprovalKeyringRead }
-  | RedemptionIdentityUntrusted { standing: IdentityTrustStanding }
+  | RedemptionKeyringUnavailable { cause: ApprovalKeyringRefusal }
+  | RedemptionIdentityUntrusted { blocker: NonEmptyStr }
   | RedemptionBrokerRefused { cause: RedemptionRefusal }
   | RedemptionLostTheRace
   | RedemptionCommitRefused { detail: NonEmptyStr }
@@ -533,16 +539,12 @@ fn store_redemption_reason(r: StoreRedemption) -> String {
     RedemptionSegmentMalformed { detail: d } => d as String
     RedemptionEscalationNotFiled { escalation_id: e } => concat("no request is filed under escalation ", e as String)
     RedemptionStoreUnreadable { detail: d } => concat("approval store unreadable: ", d as String)
-    RedemptionKeyringUnavailable { read: k } => match k {
-      ApprovalKeyLoaded { key: _ } => "keyring loaded"
+    RedemptionKeyringUnavailable { cause: k } => match k {
       ApprovalKeyFileAbsent { path: p } => concat("approval MAC key file is absent: ", p as String)
       ApprovalKeyFileUnreadable { path: p, error: e } => concat("approval MAC key file is unreadable: ", concat(p as String, concat(" -- ", e)))
       ApprovalKeyMalformed { path: p, length: n } => concat("approval MAC key file is malformed (", concat(to_string(n), concat(" chars): ", p as String)))
     }
-    RedemptionIdentityUntrusted { standing: s } => match s {
-      IdentityHeaderTrustEstablished { evidence: _ } => "identity header trusted"
-      IdentityHeaderTrustNotEstablished { blocker: b } => concat("the identity header cannot be trusted on this deployment: ", b as String)
-    }
+    RedemptionIdentityUntrusted { blocker: b } => concat("the identity header cannot be trusted on this deployment: ", b as String)
     RedemptionBrokerRefused { cause: c } => redemption_refusal_reason(r: c)
     RedemptionLostTheRace => "another decision landed first; this tap changed nothing"
     RedemptionCommitRefused { detail: d } => concat("decision could not be committed: ", d as String)
@@ -567,7 +569,7 @@ fn redeem_over_store(
   observed_at: Timestamp,
 ) -> StoreRedemption {
   match trust {
-    IdentityHeaderTrustNotEstablished { blocker: _ } => RedemptionIdentityUntrusted { standing: trust }
+    IdentityHeaderTrustNotEstablished { blocker: b } => RedemptionIdentityUntrusted { blocker: b }
     IdentityHeaderTrustEstablished { evidence: _ } =>
       match parse_capability_segment(segment: segment) {
         CapabilitySegmentMalformed { detail: d } => RedemptionSegmentMalformed { detail: d }
@@ -613,7 +615,7 @@ fn redeem_over_store(
                     }
                   }
                 }
-                other => RedemptionKeyringUnavailable { read: other }
+                ApprovalKeyringRefused { cause: c } => RedemptionKeyringUnavailable { cause: c }
               }
           }
       }

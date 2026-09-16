@@ -7,7 +7,7 @@ import gunbc.auth.approval_decision_store {
   RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionSegmentMalformed, RedemptionEscalationNotFiled,
   RedemptionBrokerRefused, RedemptionLostTheRace, RedemptionStoreUnreadable, RedemptionKeyringUnavailable,
   RedemptionIdentityUntrusted, RedemptionCommitRefused,
-  IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, ApprovalKeyFileAbsent, approval_mac_key_path,
+  IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
 }
 import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
@@ -553,10 +553,9 @@ fn approval_confirm_page_response(
 // refusal naming the blocker -- which is the honest successor to the 501 it used to answer, not a
 // silent 200 and not a decision nobody recorded.
 //
-// STATUS CODES: 200 for a redemption that changed or reported the store's state (approved,
-// denied, already decided); 403 for a refusal the caller's own presentation caused (identity,
-// MAC, expiry, method); 503 for the store or keyring being unavailable, or the deployment not yet
-// vouching for the header -- the operator did nothing wrong and should try again after the deploy.
+// A 503 IS THE DEPLOYMENT'S OR THE STORE'S FAULT, never the operator's: it names what to fix
+// before trying again, and it is the honest successor to the 501 this route answered while the
+// store did not exist.
 //
 // THE CLOCK AND THE KEYRING ARE READ ONLY PAST THE TRUST GATE. Both are effects, and an effect
 // performed on the way to a refusal is work the refusal should have prevented -- it is also what
@@ -571,7 +570,7 @@ fn approval_decide_response(
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
   }
   let keyring = match approval_identity_trust {
-    IdentityHeaderTrustNotEstablished { blocker: _ } => ApprovalKeyFileAbsent { path: approval_mac_key_path }
+    IdentityHeaderTrustNotEstablished { blocker: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_mac_key_path } }
     IdentityHeaderTrustEstablished { evidence: _ } => read_approval_keyring()
   }
   let outcome = redeem_over_store(
@@ -592,8 +591,8 @@ fn approval_decide_response(
     RedemptionBrokerRefused { cause: _ } => 403
     RedemptionLostTheRace => 409
     RedemptionStoreUnreadable { detail: _ } => 503
-    RedemptionKeyringUnavailable { read: _ } => 503
-    RedemptionIdentityUntrusted { standing: _ } => 503
+    RedemptionKeyringUnavailable { cause: _ } => 503
+    RedemptionIdentityUntrusted { blocker: _ } => 503
     RedemptionCommitRefused { detail: _ } => 503
   }
   serve_text_response(

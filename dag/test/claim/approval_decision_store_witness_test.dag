@@ -8,7 +8,7 @@ import extdeps.tailscale.identity { tailnet_identity_of }
 import extdeps.filesystem.filesystem_io { filesystem_exact_read }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_decision_store {
-  ApprovalKeyLoaded, ApprovalKeyFileAbsent, ApprovalKeyFileUnreadable, ApprovalKeyMalformed, approval_keyring_from_content, approval_keyring_from_exact_read,
+  ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, ApprovalKeyFileUnreadable, ApprovalKeyMalformed, approval_keyring_from_content, approval_keyring_from_exact_read,
   approval_mac_key_id, approval_mac_key_suite,
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed,
   StoredDecisionParsed, StoredRecordUnreadable,
@@ -51,16 +51,16 @@ fn fixture_request() -> StoredApprovalRequest {
 
 test fn keyring_loads_sixty_four_lower_hex_and_refuses_the_rest() -> Bool {
   match approval_keyring_from_content(content: fixture_key_hex) { ApprovalKeyLoaded { key: k } => k.suite == approval_mac_key_suite  _ => false }
-    && match approval_keyring_from_content(content: "") { ApprovalKeyMalformed { path: _, length: 0 } => true  _ => false }
-    && match approval_keyring_from_content(content: concat(fixture_key_hex, "\n")) { ApprovalKeyMalformed { path: _, length: n } => n == 65  _ => false }
-    && match approval_keyring_from_content(content: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") { ApprovalKeyMalformed { path: _, length: _ } => true  _ => false }
+    && match approval_keyring_from_content(content: "") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: 0 } } => true  _ => false }
+    && match approval_keyring_from_content(content: concat(fixture_key_hex, "\n")) { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: n } } => n == 65  _ => false }
+    && match approval_keyring_from_content(content: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: _ } } => true  _ => false }
 }
 
 // ABSENT IS THE FILESYSTEM'S ANSWER AND UNREADABLE IS A DIFFERENT ONE: a missing file and a
 // permission failure both arrive with empty content, and only the exact read tells them apart.
 test fn keyring_absent_and_unreadable_are_two_refusals() -> Bool {
-  match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "No such file or directory (os error 2)", error_kind: "not_found")) { ApprovalKeyFileAbsent { path: _ } => true  _ => false }
-    && match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "Permission denied (os error 13)", error_kind: "permission_denied")) { ApprovalKeyFileUnreadable { path: _, error: _ } => true  _ => false }
+  match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "No such file or directory (os error 2)", error_kind: "not_found")) { ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: _ } } => true  _ => false }
+    && match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "Permission denied (os error 13)", error_kind: "permission_denied")) { ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: _, error: _ } } => true  _ => false }
     && match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: fixture_key_hex, success: true, error: "", error_kind: "")) { ApprovalKeyLoaded { key: _ } => true  _ => false }
 }
 
@@ -120,5 +120,5 @@ test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool {
       segment: capability_path_segment(escalation_id: "esc-mtc1-boot-1", decision: ProposeApprove, tag_hex: fixture_approve_tag) as String,
       presented_identity: tailnet_identity_of(header_value: "briansrls@gmail.com"),
       observed_at: "2026-09-16T21:00:00Z",
-    ) { RedemptionIdentityUntrusted { standing: _ } => true  _ => false }
+    ) { RedemptionIdentityUntrusted { blocker: _ } => true  _ => false }
 }
