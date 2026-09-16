@@ -509,8 +509,11 @@ fn group_report(group: FabricGroup) -> GroupStanding {
 // THE BOUND IS THE REPAIR, NOT A DIFFERENT PREDICATE. The length guard below conjoins with the same
 // `all`, exactly as the failure-mode row prescribes, and the sibling actuator already does it --
 // gunbc.spark.pair_serving_apply refuses on an empty plan list rather than succeeding over one.
-fn fabric_capacity_standing() -> ProcessExit {
-  let standings = map(spark_pair_serving_groups, g => group_report(group: g))
+// THE VERDICT TAKES ITS ROSTER, AND THAT SPLIT IS THE POINT. Folding the roster read into the entry
+// point would leave the guard below reachable only by deleting the live row, so its refusal would be
+// unauthorable and the wall would carry no executed evidence. The controls that exercise both arms
+// live on test.claim.spark.fabric_capacity_standing_witness, against this seam rather than a copy.
+fn capacity_standing_verdict(standings: List<GroupStanding>) -> ProcessExit {
   if length(standings) == 0 {
     exit_failure(reason: "fabric capacity standing: no serving group is claimed, so this instrument has no subject -- an empty roster is a missing subject rather than a passing fleet" as NonEmptyStr)
   } else if all(standings, st => st.admitting) {
@@ -518,4 +521,8 @@ fn fabric_capacity_standing() -> ProcessExit {
   } else {
     exit_failure(reason: join(concat(["fabric capacity standing"], map(standings, st => st.text)), "\n"))
   }
+}
+
+fn fabric_capacity_standing() -> ProcessExit {
+  capacity_standing_verdict(standings: map(spark_pair_serving_groups, g => group_report(group: g)))
 }

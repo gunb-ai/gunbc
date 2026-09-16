@@ -1,6 +1,7 @@
 module test.claim.spark.fabric_capacity_standing_witness
 
 import std.types { Bool, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure { concurrent_request_hundredths_count, token_count }
@@ -16,6 +17,7 @@ import gunbc.instruments.fabric_capacity_standing {
   ProbeFieldName, Invocation, UnitSha, Container, ImageSha, StartedAt, PoolLine, ConcurrencyLine,
   AllocatorBlocks, BlockSize, MaxModelLen,
   LaunchRead, LaunchIdentified, LaunchUnidentified, launch_from_fields,
+  GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing,
 }
 
 fn w_cell(name: ProbeFieldName) -> String {
@@ -237,4 +239,61 @@ test fn a_synthesized_or_bare_integer_is_not_a_startup_line() -> Bool {
           Absent => true
           Present { value: _ } => false
         })
+}
+
+// THE BOUNDARY CONTROLS FOR THE EMPTY-DOMAIN WALL. The instrument's own roster carries exactly one
+// member, so the vacuous case cannot be driven through the live entry point without deleting that row;
+// a guard whose refusal nothing executes is a decoration rather than a wall (section 4b asks whether a
+// check's RED is authorable before the check is written). capacity_standing_verdict takes the standings
+// as a parameter for exactly this reason, and fabric_capacity_standing is the thin binding that supplies
+// the live ones -- these controls exercise the production seam, not a parallel reimplementation.
+//
+// The two populated claims are not decoration either: the empty claim alone would stay green if the
+// verdict degenerated into a constant refusal, so the admitting case is what keeps the empty arm from
+// passing for the wrong reason, and the mixed case keeps the universal from collapsing into existence.
+fn w_admitting_standing() -> GroupStanding {
+  GroupStanding { text: "witness: admitting", admitting: true }
+}
+
+fn w_refusing_standing() -> GroupStanding {
+  GroupStanding { text: "witness: refusing", admitting: false }
+}
+
+fn w_refused(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+}
+
+test fn an_empty_standing_roster_refuses_instead_of_passing_vacuously() -> Bool {
+  w_refused(exit: capacity_standing_verdict(standings: []))
+}
+
+test fn a_wholly_admitting_standing_roster_still_succeeds() -> Bool {
+  match capacity_standing_verdict(standings: [w_admitting_standing(), w_admitting_standing()]) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
+  w_refused(exit: capacity_standing_verdict(standings: [w_admitting_standing(), w_refusing_standing()]))
+}
+
+// THE PAIRING OBLIGATION FOR THE SUPPLIED STANDINGS. The three claims above hand
+// capacity_standing_verdict its population instead of computing it, which is what lets the empty case
+// exist at all -- but supplied inputs may never be the only thing that runs. This claim executes the
+// real route end to end: the live roster, the real group_report producer, and the binding that joins
+// them. Delete that binding, or stop group_report emitting a GroupStanding, and this goes red while
+// the supplied claims stay green, which is the discrimination the pairing exists to provide.
+//
+// It asserts refusal rather than success on purpose, and the reason is a frontier rather than a
+// defect: gunbc.instruments.fabric_capacity_standing live_inventory_host_effect_frontier records that
+// the entry refuses until a modeled host-effect realizes remote inventory, so refusal IS today's
+// correct answer on the live path. When that frontier fires this claim flips, and it should -- it is
+// the control that notices, rather than a green that would have said nothing either way.
+test fn the_live_entry_point_runs_its_real_producer_and_refuses_today() -> Bool {
+  let live = group_report(group: FabricGroupA)
+  (live.admitting == false) && w_refused(exit: fabric_capacity_standing())
 }
