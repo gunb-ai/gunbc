@@ -60,8 +60,9 @@ import gunbc.host_convergence_census {
 // observer as a Reconciliation whose type arguments were a readiness
 // effect and evidence, and expressing provider readiness in the launcher
 // as a five-arm status coproduct beside apply. Discriminating REDs remain
-// enrolled (test.claim.readiness_algebra_witness; live_deploy readiness
-// pending-vs-refused). Isolated compile_fixture still cannot import live
+// enrolled (test.claim.readiness_algebra_witness pending-vs-refused classify
+// controls; test.claim.live_deploy.apply
+// witness_red_control_pending_readiness_cannot_converge). Isolated compile_fixture still cannot import live
 // types; that residual is control 1's compile instrument, not this class.
 
 data ensure_decide_id: DeclarationRef = decl_ref(
