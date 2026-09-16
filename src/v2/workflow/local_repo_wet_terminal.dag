@@ -309,15 +309,27 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit" },
+      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
+      function: "spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "unit_text_differing_by_one_byte_gives_a_different_digest" },
       entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
       function: "unit_text_differing_by_one_byte_gives_a_different_digest",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit" },
-      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
-      function: "spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit",
+      identity: WitnessIdentity { module_path: "test.claim.serving.serving_availability_bind_wet_witness", function: "a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path" },
+      entry: "dag/test/claim/serving/serving_availability_bind_wet_witness_test.dag",
+      function: "a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving.serving_availability_bind_wet_witness", function: "a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation" },
+      entry: "dag/test/claim/serving/serving_availability_bind_wet_witness_test.dag",
+      function: "a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -327,9 +339,141 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.serving.serving_availability_bind_wet_witness", function: "a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation" },
-      entry: "dag/test/claim/serving/serving_availability_bind_wet_witness_test.dag",
-      function: "a_withdrawn_roster_is_refused_at_the_declared_unit_not_the_incarnation",
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "a_different_reported_path_does_not_bind_an_offer" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_different_reported_path_does_not_bind_an_offer",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "a_different_reported_path_refuses_the_service_without_claiming_a_different_launch" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_different_reported_path_refuses_the_service_without_claiming_a_different_launch",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "a_host_outside_the_allocation_refuses_and_names_it" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_host_outside_the_allocation_refuses_and_names_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "a_matching_configuration_does_not_bind_an_offer" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_matching_configuration_does_not_bind_an_offer",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "a_matching_configuration_does_not_establish_the_specific_service" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_matching_configuration_does_not_establish_the_specific_service",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_agreeing_unit_digest_without_an_observation_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_agreeing_unit_digest_without_an_observation_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_incarnation_from_a_different_unit_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_incarnation_from_a_different_unit_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_incarnation_on_another_host_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_incarnation_on_another_host_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_observation_about_a_replaced_endpoint_process_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_observation_about_a_replaced_endpoint_process_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_observed_declared_incarnation_with_a_disagreeing_readback_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_observed_declared_incarnation_with_a_disagreeing_readback_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_observed_digest_in_another_family_is_incomparable_and_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_observed_digest_in_another_family_is_incomparable_and_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_observed_incarnation_without_a_declared_unit_digest_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_observed_incarnation_without_a_declared_unit_digest_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_observed_route_binds_and_the_offer_carries_it" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_observed_route_binds_and_the_offer_carries_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_unidentified_service_does_not_bind_an_offer" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_unidentified_service_does_not_bind_an_offer",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_unobserved_region_refuses_naming_its_obligation" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_unobserved_region_refuses_naming_its_obligation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "an_unreadable_group_membership_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_unreadable_group_membership_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_the_region" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_the_region",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "fixture_evidence_of_all_three_facts_binds_an_offer" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "fixture_evidence_of_all_three_facts_binds_an_offer",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "the_allocation_survives_a_service_refusal_with_its_date" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "the_allocation_survives_a_service_refusal_with_its_date",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "the_declared_unit_is_refused_before_the_incarnation" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "the_declared_unit_is_refused_before_the_incarnation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "the_production_route_consumes_an_observed_incarnation" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "the_production_route_consumes_an_observed_incarnation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness", function: "the_production_route_refuses_because_no_incarnation_is_observed" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "the_production_route_refuses_because_no_incarnation_is_observed",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

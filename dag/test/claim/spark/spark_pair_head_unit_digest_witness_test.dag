@@ -1,99 +1,54 @@
 module test.claim.spark.spark_pair_head_unit_digest_witness
 
-import std.types { Bool, NonEmptyStr, String, List }
-import v2.std.optional { Present, Absent }
+import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash {
-  ContentHash,
   compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricLaneObserved }
-import gunbc.spark.pair_serving_desired {
-  spark_pair_serving_unit_with, SeqCapacityMeasured, SparkPairServingUnitReady, SparkPairServingUnitRefused,
-  spark_pair_serving_engine_args,
-}
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_realization {
-  SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
-  SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
+  SparkPairUnitRender, SparkPairUnitRendered,
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
-  SparkPairDeclaredHeadPublish, SparkPairDeclaredHeadPublished, SparkPairDeclaredHeadPublishRefused,
-  spark_pair_rendered_unit_artifact, spark_pair_container_spec,
-  spark_pair_container_env, spark_pair_head_unit_name, spark_pair_lookup_declared_head_digest,
-  spark_pair_realizations, spark_pair_publish_declared_head_artifact,
-  spark_pair_seal_unit_render,
-  spark_pair_head_unit_unsigned,
+  spark_pair_declared_unit_digest, spark_pair_declared_head_digest,
+  spark_pair_head_unit_render_for_group, spark_pair_head_unit_name,
 }
-import gunbc.spark.model_snapshot_acquisition {
-  ModelSnapshotDesired, ModelSnapshotPinned, HubCachePlacement, spark_hub_cache_root,
-}
-import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data w_fixture_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
-  identity: "fixture-model" as NonEmptyStr,
-  repo: HubRepoId { kind: HubModelRepo, path: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr },
-  revision: "fixture0000000000000000000000000000000000" as NonEmptyStr,
-  revision_provenance: "controlled fixture: this witness hashes renderer bytes, never a resolved revision" as NonEmptyStr,
-  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+// THE MINT IS EXECUTED FOR REAL HERE. spark_pair_declared_unit_digest calls
+// extdeps.tools.sha256sum Sha256.DigestStdin, which has no mock_response, so every row in this file
+// runs on the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule). The rows that do NOT need a digest -- render refusal, empty render --
+// are hermetic and live in test.claim.spark.spark_pair_serving_realization_witness instead.
+//
+// THE INPUT IS A SUPPLIED RENDER, WHICH IS THE ONLY WAY A FIXTURE CAN OBTAIN A STANDING.
+// DeclaredUnitDigestEvidence is a sole_constructor record, so no fixture can build one; supplying
+// SparkPairUnitRendered (an ordinary variant) to the real mint is the sanctioned route, and it is
+// what makes this file the inhabitance claim DESIGN section 3's pairing obligation requires for
+// every witness that supplies a DeclaredUnitDigestStanding downstream.
+
+data w_unit_text: String = "[Unit]\nDescription=gunbc spark pair head\n\n[Service]\nExecStart=/bin/true\n"
+
+fn w_render(text: String) -> SparkPairUnitRender {
+  SparkPairUnitRendered { unit_name: spark_pair_head_unit_name, text: text }
 }
 
-fn w_sealed_head(head: FabricLaneObserved) -> SparkPairUnitRender {
-  spark_pair_seal_unit_render(
-    render: spark_pair_head_unit_unsigned(
-      args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
-      snapshot: w_fixture_snapshot,
-      head: head,
-      spec: spark_pair_container_spec(env: spark_pair_container_env(lane: head)),
-    ),
-  )
+fn w_digest_of(text: String) -> DeclaredUnitDigestStanding {
+  spark_pair_declared_unit_digest(render: w_render(text: text))
 }
 
-fn w_head_render() -> DeclaredUnitDigestStanding {
-  match spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityMeasured {
-    max_num_seqs: 32,
-    basis: "controlled fixture: this witness hashes renderer bytes, never a measured capacity" as NonEmptyStr,
-  }) {
-    SparkPairServingUnitRefused { group: _, cause: c } =>
-      DeclaredUnitDigestUnavailable { obligation: c }
-    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
-      match w_sealed_head(head: h.lane) {
-        SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
-          DeclaredUnitDigestUnavailable { obligation: c }
-        SparkPairUnitSealed { artifact: a } =>
-          DeclaredUnitDigested { unit_name: a.unit_name, digest: a.digest }
-        SparkPairUnitRendered { unit_name: _, text: _ } =>
-          DeclaredUnitDigestUnavailable { obligation: "unsigned unit bytes are not a declared digest; seal at apply publish" as NonEmptyStr }
-      }
-  }
-}
-
-fn w_head_text() -> String? {
-  match spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityMeasured {
-    max_num_seqs: 32,
-    basis: "controlled fixture: this witness hashes renderer bytes, never a measured capacity" as NonEmptyStr,
-  }) {
-    SparkPairServingUnitRefused { group: _, cause: _ } => none
-    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
-      match w_sealed_head(head: h.lane) {
-        SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
-        SparkPairUnitSealed { artifact: a } => Present { value: a.text }
-        SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
-      }
-  }
-}
-
-// POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice.
+// POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice, and the evidence names
+// the unit it was minted for.
 test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
-  match w_head_render() {
+  match w_digest_of(text: w_unit_text) {
     DeclaredUnitDigestUnavailable { obligation: _ } => false
-    DeclaredUnitDigested { unit_name: n1, digest: d1 } =>
-      match w_head_render() {
+    DeclaredUnitDigested { evidence: e1 } =>
+      match w_digest_of(text: w_unit_text) {
         DeclaredUnitDigestUnavailable { obligation: _ } => false
-        DeclaredUnitDigested { unit_name: n2, digest: d2 } =>
-          (n1 as String) == (spark_pair_head_unit_name as String)
-            && (n2 as String) == (spark_pair_head_unit_name as String)
-            && match compare_content_hash(left: d1, right: d2) {
+        DeclaredUnitDigested { evidence: e2 } =>
+          (e1.unit_name as String) == (spark_pair_head_unit_name as String)
+            && (e2.unit_name as String) == (spark_pair_head_unit_name as String)
+            && match compare_content_hash(left: e1.digest, right: e2.digest) {
               ContentHashEqual => true
               ContentHashDifferent => false
               ContentHashCrossFamilyIncomparable => false
@@ -102,62 +57,45 @@ test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
   }
 }
 
-// RED: one extra byte in the unit text is a different digest.
+// RED: one extra byte in the unit text is a different digest. Without this row a mint that returned
+// a constant, or hashed the unit NAME rather than the bytes, would still pass the stability row.
 test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
-  match w_head_text() {
-    Absent => false
-    Present { value: t } =>
-      match spark_pair_rendered_unit_artifact(unit_name: spark_pair_head_unit_name, text: t) {
-        SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
-        SparkPairUnitRendered { unit_name: _, text: _ } => false
-        SparkPairUnitSealed { artifact: a } =>
-          match spark_pair_rendered_unit_artifact(unit_name: spark_pair_head_unit_name, text: join([t, " "], "")) {
-            SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
-            SparkPairUnitRendered { unit_name: _, text: _ } => false
-            SparkPairUnitSealed { artifact: a2 } =>
-              match compare_content_hash(left: a.digest, right: a2.digest) {
-                ContentHashDifferent => true
-                ContentHashEqual => false
-                ContentHashCrossFamilyIncomparable => false
-              }
+  match w_digest_of(text: w_unit_text) {
+    DeclaredUnitDigestUnavailable { obligation: _ } => false
+    DeclaredUnitDigested { evidence: e } =>
+      match w_digest_of(text: join([w_unit_text, " "], "")) {
+        DeclaredUnitDigestUnavailable { obligation: _ } => false
+        DeclaredUnitDigested { evidence: e2 } =>
+          match compare_content_hash(left: e.digest, right: e2.digest) {
+            ContentHashDifferent => true
+            ContentHashEqual => false
+            ContentHashCrossFamilyIncomparable => false
           }
       }
   }
 }
 
-// PRODUCTION PUBLISH THEN LOOKUP: apply seals the unsigned realized head unit and writes text plus
-// digest; lookup re-renders the unsigned unit and requires the stored text to match. Placement does
-// not DigestStdin.
+// THE PRODUCTION GROUP-A PRODUCER, EXECUTED. spark_pair_declared_head_digest renders the head unit
+// from the CURRENT declarations and digests exactly those bytes -- no store, no receipt, no
+// currency check. This is the function harness_bind_seat calls once per bind, so deleting the
+// render-to-DigestStdin wire inside it turns this row red.
+//
+// AND IT IS THE SAME BYTES: re-digesting the group's render through the supplied-input mint above
+// must agree with what the group-level producer returned. RED if the group producer ever digested
+// something other than the unit text it renders.
 test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> Bool {
-  match first(spark_pair_realizations()) {
-    Absent => false
-    Present { value: r } =>
-      match r {
-        SparkPairRealizationRefused { group: g, cause: _ } =>
-          match spark_pair_lookup_declared_head_digest(group: g) {
-            DeclaredUnitDigestUnavailable { obligation: _ } => true
-            DeclaredUnitDigested { unit_name: _, digest: _ } => false
-          }
-        SparkPairRealized { group: g, head: h, workers: _ } =>
-          match spark_pair_publish_declared_head_artifact(realization: r) {
-            SparkPairDeclaredHeadPublishRefused { cause: _ } => false
-            SparkPairDeclaredHeadPublished { group: _, digest: _ } =>
-              match spark_pair_seal_unit_render(render: h.unit) {
-                SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
-                SparkPairUnitRendered { unit_name: _, text: _ } => false
-                SparkPairUnitSealed { artifact: a } =>
-                  match spark_pair_lookup_declared_head_digest(group: g) {
-                    DeclaredUnitDigestUnavailable { obligation: _ } => false
-                    DeclaredUnitDigested { unit_name: n, digest: from_store } =>
-                      (n as String) == (spark_pair_head_unit_name as String)
-                        && match compare_content_hash(left: a.digest, right: from_store) {
-                          ContentHashEqual => true
-                          ContentHashDifferent => false
-                          ContentHashCrossFamilyIncomparable => false
-                        }
-                  }
-              }
-          }
+  match spark_pair_declared_head_digest(group: FabricGroupA) {
+    DeclaredUnitDigestUnavailable { obligation: _ } => false
+    DeclaredUnitDigested { evidence: e } =>
+      match spark_pair_declared_unit_digest(render: spark_pair_head_unit_render_for_group(group: FabricGroupA)) {
+        DeclaredUnitDigestUnavailable { obligation: _ } => false
+        DeclaredUnitDigested { evidence: again } =>
+          (e.unit_name as String) == (spark_pair_head_unit_name as String)
+            && match compare_content_hash(left: e.digest, right: again.digest) {
+              ContentHashEqual => true
+              ContentHashDifferent => false
+              ContentHashCrossFamilyIncomparable => false
+            }
       }
   }
 }

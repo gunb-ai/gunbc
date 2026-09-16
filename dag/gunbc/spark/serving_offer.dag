@@ -334,11 +334,12 @@ type SparkServiceIdentityCause
   | ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitProvenance }
   | ServiceConfigurationDisagrees { configuration: SparkRealizationIdentity }
 
-// THE DECLARED SIDE OF THE UNIT COMPARISON IS THE DIGEST FIELD OF THE MATERIALIZED ARTIFACT
-// (gunbc.spark.pair_serving_realization spark_pair_lookup_declared_head_digest): SHA-256 of the
-// exact rendered systemd unit bytes, written at apply publish. This module consumes that standing;
-// it does not hash and it does not DigestStdin. Lookup re-renders the unsigned unit as a pure fold
-// and requires the stored text to match. A miss is DeclaredUnitDigestUnavailable. A structural
+// THE DECLARED SIDE OF THE UNIT COMPARISON IS SEALED DIGEST EVIDENCE
+// (gunbc.spark.pair_serving_realization DeclaredUnitDigestEvidence): SHA-256 of the exact unit bytes
+// the CURRENT declaration renders, minted once per bind by spark_pair_declared_unit_digest. This
+// module consumes that standing; it does not render, it does not hash and it does not DigestStdin.
+// The evidence carries no text, so there is no second field for the digest to disagree with. A
+// render refusal or a failed digest leg arrives as DeclaredUnitDigestUnavailable. A structural
 // fingerprint remains the wrong family.
 
 data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark.serving_offer: the engine incarnation the answering endpoint process belongs to was not observed on this bind. gunbc.spark.serving_incarnation_observe is the producer -- it binds the answering exporter to a gunbc.spark.vllm_serving_launch VllmServingLaunch over the fleet key session -- and this standing is reached when that producer returned no observation for a specific reason it names: no fleet ssh context on this bind, the process not found or ambiguous at the exported start instant, hidepid hiding /proc, or the container image id unread. That last needs gunbc.spark.managed_access_bootstrap InspectServingContainer (installed through gunbc.spark.managed_grant_install): the unprivileged facts -- unit, start-tick identity, cgroup container id -- are established without it, but the image digest that completes the launch is read only through the inspect leg, so a host without that grant fails the inspect command (sudo denies) with the container named"
@@ -439,7 +440,7 @@ fn spark_serving_route_standing(realization: SparkServingRealization, declared_u
       match declared_unit {
         DeclaredUnitDigestUnavailable { obligation: o } =>
           spark_service_unidentified(realization: realization, cause: ServiceDeclaredUnitDigestUnavailable { obligation: o })
-        DeclaredUnitDigested { unit_name: _, digest: declared } =>
+        DeclaredUnitDigested { evidence: e } =>
           match realization.incarnation {
             EndpointIncarnationUnobserved { obligation: o } =>
               spark_service_unidentified(realization: realization, cause: ServiceIncarnationUnobserved {
@@ -447,7 +448,7 @@ fn spark_serving_route_standing(realization: SparkServingRealization, declared_u
                 obligation: o,
               })
             EndpointIncarnationObserved { observation: obs } =>
-              spark_service_from_observation(realization: realization, declared: declared, observation: obs)
+              spark_service_from_observation(realization: realization, declared: e.digest, observation: obs)
           }
       }
     }

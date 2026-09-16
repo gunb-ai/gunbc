@@ -1,17 +1,16 @@
 module test.claim.spark.spark_pair_serving_realization_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
 import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_baked_interface_env_names, sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names, sparkrun_vllm_ds4_gb10_digest_sha256_hex, gunbc_spark_pair_runtime_dockerfile }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
-  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitSealed, SparkPairUnitRenderRefused,
+  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
   DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
   spark_pair_realization, spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
   spark_pair_head_unit_unsigned, spark_pair_container_spec, spark_pair_container_env,
-  spark_pair_head_unit_name, spark_pair_head_unit_text_of, spark_pair_standing_from_artifact_body,
+  spark_pair_head_unit_name, spark_pair_declared_unit_digest,
 }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_with, SeqCapacityMeasured,
@@ -68,7 +67,6 @@ fn w_fixture_unit() -> SparkPairServingUnit {
 fn w_unit_text(u: SparkPairUnitRender) -> String {
   match u {
     SparkPairUnitRendered { unit_name: _, text: t } => t
-    SparkPairUnitSealed { artifact: a } => a.text
     SparkPairUnitRenderRefused { unit_name: _, cause: _ } => ""
   }
 }
@@ -132,7 +130,6 @@ test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -
         spec: spark_pair_container_spec(lane: h.lane),
       ) {
         SparkPairUnitRendered { unit_name: _, text: _ } => false
-        SparkPairUnitSealed { artifact: _ } => false
         SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
           string_contains(s: c as String, pattern: "no pinned revision")
       }
@@ -170,7 +167,6 @@ test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout()
         spec: spark_pair_container_spec(lane: h.lane),
       ) {
         SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
-        SparkPairUnitSealed { artifact: _ } => false
         SparkPairUnitRendered { unit_name: _, text: t } =>
           string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split")
             && string_contains(s: t, pattern: "--tool-call-parser deepseek_v4")
@@ -268,16 +264,35 @@ test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> 
   })
 }
 
-// A RENDER REFUSAL IS NOT A DIGEST. Hashing is only reached on SparkPairUnitRendered; this row
-// stays hermetic because it never calls sha256sum.
-test fn a_render_refusal_is_not_a_declared_digest() -> Bool {
-  match SparkPairUnitRenderRefused {
+// A RENDER REFUSAL IS AN UNAVAILABLE STANDING, AND IT CARRIES THE RENDER'S OWN CAUSE. This drives
+// THE REAL MINT, spark_pair_declared_unit_digest, and stays hermetic because the refused arm is
+// decided before sha256sum is reached: DigestStdin is only called on SparkPairUnitRendered.
+// RED if the mint ever fabricated a digest for a refused render, or replaced the render's cause
+// with a generic one.
+test fn a_render_refusal_is_an_unavailable_declared_digest() -> Bool {
+  match spark_pair_declared_unit_digest(render: SparkPairUnitRenderRefused {
     unit_name: spark_pair_head_unit_name,
     cause: "fixture render refusal" as NonEmptyStr,
-  } {
-    SparkPairUnitRenderRefused { unit_name: _, cause: o } => (o as String) == "fixture render refusal"
-    SparkPairUnitSealed { artifact: _ } => false
-    SparkPairUnitRendered { unit_name: _, text: _ } => false
+  }) {
+    DeclaredUnitDigestUnavailable { obligation: o } => (o as String) == "fixture render refusal"
+    DeclaredUnitDigested { evidence: _ } => false
+  }
+}
+
+// EMPTY RENDERED BYTES ARE NOT DIGESTED. The mint refuses before DigestStdin rather than hashing
+// the empty string and presenting that as the declared unit, so this row is hermetic too.
+// WHAT THIS ROW DOES NOT COVER: the sha256sum-refused and malformed-hex arms of the same fold.
+// Both are below DigestStdin and there is no mock_response for that operation, so no hermetic
+// witness can express them; they are reached only by the wet lane's real execution, which cannot
+// make sha256sum fail on demand. Those two arms are therefore UNEXERCISED, and the fold is written
+// so each is a typed Unavailable rather than a fabricated digest (DESIGN section 5).
+test fn an_empty_render_is_an_unavailable_declared_digest() -> Bool {
+  match spark_pair_declared_unit_digest(render: SparkPairUnitRendered {
+    unit_name: spark_pair_head_unit_name,
+    text: "",
+  }) {
+    DeclaredUnitDigestUnavailable { obligation: o } => (o as String) == "rendered unit text is empty"
+    DeclaredUnitDigested { evidence: _ } => false
   }
 }
 
@@ -293,28 +308,3 @@ test fn an_env_that_leaves_the_gid_index_to_the_image_is_not_covering() -> Bool 
     ))
 }
 
-// RED: stored bytes that are not the current unsigned render are not a current digest. Lookup
-// compares text, so this is the same wall without DigestStdin.
-test fn stored_unit_text_that_is_not_the_current_render_is_unavailable() -> Bool {
-  match spark_pair_realization(unit: w_fixture_unit()) {
-    SparkPairRealizationRefused { group: _, cause: _ } => false
-    SparkPairRealized { group: _, head: h, workers: _ } =>
-      match spark_pair_head_unit_text_of(render: h.unit) {
-        Absent => false
-        Present { value: current } =>
-          match spark_pair_standing_from_artifact_body(
-            expected_text: current,
-            body: join([
-              spark_pair_head_unit_name as String,
-              "\n",
-              serialize_content_hash(hash: content_hash_of_value(value: "stale-unit-fixture" as NonEmptyStr)) as String,
-              "\n",
-              "not the current unit text\n",
-            ], ""),
-          ) {
-            DeclaredUnitDigestUnavailable { obligation: _ } => (current as String) != "not the current unit text\n"
-            DeclaredUnitDigested { unit_name: _, digest: _ } => false
-          }
-      }
-  }
-}

@@ -3,16 +3,10 @@ module gunbc.spark.pair_serving_realization
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash_wire }
+import std.content_hash { ContentHash }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.tools.sha256sum
 import gunbc.output_policy { OutcomeIsData }
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  FilesystemExactPathRead, FilesystemExactPathAbsent,
-  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
-  filesystem_exact_read, filesystem_listing_names_entry,
-}
 import std.measure { token_count_value, millisecond_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
@@ -386,68 +380,85 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
   }
 }
 
-// THE RENDER RESULT IS ONE ARTIFACT. Apply writes artifact.text; serving admission reads
-// artifact.digest. Both are produced here, when the unit text is serialized, so a token turn cannot
-// be a second producer of the digest. DigestStdin is the SHA-256 of those exact bytes (FIPS 180-4),
-// the same family as the host probe's unit_sha. A structural fingerprint of the Dag value is a
-// different family and must not stand as the declared digest: compared with the observed unit digest
-// it would be incomparable, never agreement.
+// THE DECLARED DIGEST IS DERIVED FROM THE RENDER, NOT STORED BESIDE IT. The fact the route needs is
+// "does the unit digest observed on the answering launch equal the digest of the unit bytes the
+// CURRENT declaration renders?" -- one demand, in one placement transaction. An apply-written
+// receipt would answer a DIFFERENT question ("did an earlier apply publish what it rendered?"),
+// which has no consumer here, and would add write/read/parse/currency-check plus its own integrity
+// obligation to the dependency graph. DESIGN §2: minimize the demand graph before materializing its
+// answers; materialization comes only after unavoidable recurrence with a justified provider,
+// identity, scope and lifetime. The least common ancestor of the single demand is
+// gunbc.harness.harness_seat harness_bind_seat, which computes this ONCE per bind and carries the
+// standing across every round and candidate -- so there is no recurrence to materialize.
 //
-// MATERIALIZATION CONFORMANCE (DESIGN §3b). The digest is a content-keyed fact: SHA-256 of the
-// exact unit bytes, minted once at apply via DigestStdin. Placement does not DigestStdin. Staleness
-// is construction, not a second encoding of the renderer inputs: the store keeps those bytes, lookup
-// re-renders the unsigned unit (a pure fold) and requires byte equality. A knob added to the
-// renderer changes the text, so a stored artifact is current only while it still is that text.
+// DigestStdin is the SHA-256 of those exact rendered bytes (FIPS 180-4), the same family as the host
+// probe's unit_sha. A structural fingerprint of the Dag value is a different family and must not
+// stand as the declared digest: compared with the observed unit digest it would be incomparable,
+// never agreement.
 //
-// DIVERGENCE, STATED: this named slot is not `extdeps.realization.materialization_store_local`.
-// That realization is WriteOnce / MissThenCreate / ContentAddressLookup under a grant-admitted
-// root and an identity marker (`put-if-absent`; a second writer of the same object name is
-// Occupied). Apply must REPLACE the current head-unit receipt for a fabric group on every
-// publish, which is a named replaceable slot, not a content-addressed write-once object. Opening
-// that store also refuses an uninitialized root as unavailable (so a missing volume is not an
-// empty store of misses). This receipt lives under the checkout `target/` tree the wet lane
-// already writes; it does not initialize a materialization-store marker. Review 66796.
-type RenderedUnitArtifact {
+// THE EVIDENCE IS SEALED AND CARRIES NO TEXT. DeclaredUnitDigestEvidence is a `sole_constructor`
+// RECORD -- sole_constructor on the coproduct would not seal direct variant construction -- so the
+// only way to obtain one is spark_pair_declared_unit_digest below, over a render. There is
+// deliberately no `text` field: a record pairing text with its digest can be handed to a consumer in
+// a state where the two disagree, and nothing downstream needs the bytes once the digest is minted.
+//
+// EGRESS (gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress). The
+// question is not who may call the mint but WHAT MAY LEAVE. Every exported function whose return
+// type contains DeclaredUnitDigestEvidence either takes one as input (so it propagates and never
+// mints) or takes no value a caller can aim the digest with: this mint takes a render and hashes
+// exactly its bytes, and spark_pair_declared_head_digest / the harness roster functions take only a
+// FabricGroup and render from the production declarations. A foreign caller can therefore reach a
+// standing, but cannot choose the digest inside it.
+//
+// RUNG HONESTY (DESIGN §4b). On the source-to-.dag acceptance path the seal is STRUCTURALLY
+// GUARANTEED: a DeclaredUnitDigestEvidence record literal outside this module is refused. It is NOT
+// structural on the emitted-Rust path, where a sole_constructor type's emitted mirror is a public
+// struct with public fields (extdeps.filesystem.filesystem_io records the same boundary); the
+// next-rung trigger is the emitted mirror carrying the construction confinement, which is that
+// item's to close and not this module's.
+type DeclaredUnitDigestEvidence sole_constructor {
   unit_name: NonEmptyStr
-  text: String
   digest: ContentHash
 }
 
 type SparkPairUnitRender
   = SparkPairUnitRendered { unit_name: NonEmptyStr, text: String }
-  | SparkPairUnitSealed { artifact: RenderedUnitArtifact }
   | SparkPairUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
 
 type DeclaredUnitDigestStanding
-  = DeclaredUnitDigested { unit_name: NonEmptyStr, digest: ContentHash }
+  = DeclaredUnitDigested { evidence: DeclaredUnitDigestEvidence }
   | DeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
 
-fn spark_pair_rendered_unit_artifact(unit_name: NonEmptyStr, text: String) -> SparkPairUnitRender {
-  if (text as String) == "" {
-    SparkPairUnitRenderRefused { unit_name: unit_name, cause: "rendered unit text is empty" as NonEmptyStr }
-  } else {
-    let observed = sha256sum.Sha256.DigestStdin(content: text, expect: OutcomeIsData)
-    if observed.success == false {
-      SparkPairUnitRenderRefused { unit_name: unit_name, cause: "sha256sum could not digest the rendered unit bytes" as NonEmptyStr }
-    } else {
-      match sha256sum_line_digest(line: observed.line) {
-        Absent =>
-          SparkPairUnitRenderRefused { unit_name: unit_name, cause: "sha256sum printed no digest field for the rendered unit bytes" as NonEmptyStr }
-        Present { value: d } =>
-          match sha256_digest_content_hash(digest: d) {
+// THE SOLE MINT. Only a successful DigestStdin whose hex inhabits Sha256Digest yields evidence;
+// a render refusal carries its own cause forward, and every failure of the digest leg is a typed
+// Unavailable rather than a fabricated or omitted digest (DESIGN §5).
+fn spark_pair_declared_unit_digest(render: SparkPairUnitRender) -> DeclaredUnitDigestStanding {
+  match render {
+    SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
+      DeclaredUnitDigestUnavailable { obligation: c }
+    SparkPairUnitRendered { unit_name: n, text: t } =>
+      if (t as String) == "" {
+        DeclaredUnitDigestUnavailable { obligation: "rendered unit text is empty" as NonEmptyStr }
+      } else {
+        let observed = sha256sum.Sha256.DigestStdin(content: t, expect: OutcomeIsData)
+        if observed.success == false {
+          DeclaredUnitDigestUnavailable { obligation: "sha256sum could not digest the rendered unit bytes" as NonEmptyStr }
+        } else {
+          match sha256sum_line_digest(line: observed.line) {
             Absent =>
-              SparkPairUnitRenderRefused { unit_name: unit_name, cause: "the sha256sum hex for the rendered unit bytes did not inhabit Sha256Digest" as NonEmptyStr }
-            Present { value: h } =>
-              SparkPairUnitSealed {
-                artifact: RenderedUnitArtifact {
-                  unit_name: unit_name,
-                  text: text,
-                  digest: h,
-                },
+              DeclaredUnitDigestUnavailable { obligation: "sha256sum printed no digest field for the rendered unit bytes" as NonEmptyStr }
+            Present { value: d } =>
+              match sha256_digest_content_hash(digest: d) {
+                Absent =>
+                  DeclaredUnitDigestUnavailable { obligation: "the sha256sum hex for the rendered unit bytes did not inhabit Sha256Digest" as NonEmptyStr }
+                Present { value: h } =>
+                  DeclaredUnitDigested {
+                    evidence: DeclaredUnitDigestEvidence { unit_name: n, digest: h },
+                  }
               }
           }
+        }
       }
-    }
   }
 }
 
@@ -536,15 +547,6 @@ fn spark_pair_worker_unit_unsigned(head: FabricLaneObserved, self: FabricLaneObs
   }
 }
 
-fn spark_pair_seal_unit_render(render: SparkPairUnitRender) -> SparkPairUnitRender {
-  match render {
-    SparkPairUnitRenderRefused { unit_name: _, cause: _ } => render
-    SparkPairUnitSealed { artifact: _ } => render
-    SparkPairUnitRendered { unit_name: n, text: t } =>
-      spark_pair_rendered_unit_artifact(unit_name: n, text: t)
-  }
-}
-
 type SparkPairHostRealization {
   host: HostIdentity
   container: DockerCreateSpec
@@ -600,166 +602,31 @@ fn spark_pair_realizations() -> List<SparkPairRealization> {
 
 data spark_pair_no_realization_names_group_obligation: NonEmptyStr = "no pair realization names this fabric group, so there are no rendered head-unit bytes to digest" as NonEmptyStr
 
-data spark_pair_declared_unit_artifact_unavailable_obligation: NonEmptyStr = "no materialized declared-unit artifact matches the current head-unit text; placement does not DigestStdin" as NonEmptyStr
-
-data spark_pair_declared_unit_artifact_store_unlistable_obligation: NonEmptyStr = "the declared-unit artifact directory could not be listed, so absence is not established" as NonEmptyStr
-
-data spark_pair_declared_unit_artifact_store_unreadable_obligation: NonEmptyStr = "the declared-unit artifact is present in the listing and could not be read" as NonEmptyStr
-
-data spark_pair_declared_unit_artifact_dir: String = "target"
-
-fn spark_pair_declared_unit_artifact_entry_name(group: FabricGroup) -> String {
-  join(["spark-pair-declared-head-", fabric_group_wire(g: group) as String], "")
-}
-
-fn spark_pair_declared_unit_artifact_path(group: FabricGroup) -> String {
-  join([spark_pair_declared_unit_artifact_dir, "/", spark_pair_declared_unit_artifact_entry_name(group: group)], "")
-}
-
-fn spark_pair_head_unit_text_of(render: SparkPairUnitRender) -> String? {
-  match render {
-    SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
-    SparkPairUnitSealed { artifact: a } => Present { value: a.text }
-    SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
-  }
-}
-
-fn spark_pair_head_unit_text_for_group(group: FabricGroup) -> String? {
+// THE GROUP-LEVEL PRODUCER: render the head unit for this group once, digest it once. Callers hold
+// the resulting standing for the lifetime of their transaction rather than calling this again --
+// harness_bind_seat is the least common ancestor of every consumer and calls it once per bind.
+fn spark_pair_head_unit_render_for_group(group: FabricGroup) -> SparkPairUnitRender {
   match first(filter(spark_pair_realizations(), r =>
     match r {
       SparkPairRealizationRefused { group: g, cause: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
       SparkPairRealized { group: g, head: _, workers: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
     })) {
-    Absent => none
+    Absent =>
+      SparkPairUnitRenderRefused {
+        unit_name: spark_pair_head_unit_name,
+        cause: spark_pair_no_realization_names_group_obligation,
+      }
     Present { value: r } =>
       match r {
-        SparkPairRealizationRefused { group: _, cause: _ } => none
-        SparkPairRealized { group: _, head: h, workers: _ } => spark_pair_head_unit_text_of(render: h.unit)
+        SparkPairRealizationRefused { group: _, cause: c } =>
+          SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: c }
+        SparkPairRealized { group: _, head: h, workers: _ } => h.unit
       }
   }
 }
 
-type SparkPairDeclaredHeadArtifactRecord {
-  unit_name: NonEmptyStr
-  digest: ContentHash
-  text: String
-}
-
-// One Write publishes name, the apply-time DigestStdin receipt, and the unit bytes. Lookup
-// treats the body as current only when it equals a fresh unsigned render. It does not re-hash:
-// DigestStdin at placement is the path this change closes. A truncated record fails parse.
-// Re-deriving the digest from the stored text at lookup would be a second DigestStdin on the
-// token turn (review 66796 finding 3).
-
-fn spark_pair_declared_head_artifact_record_text(record: SparkPairDeclaredHeadArtifactRecord) -> String {
-  join([
-    record.unit_name as String,
-    "\n",
-    serialize_content_hash(hash: record.digest) as String,
-    "\n",
-    record.text,
-  ], "")
-}
-
-fn spark_pair_declared_head_artifact_record_parse(body: String) -> SparkPairDeclaredHeadArtifactRecord? {
-  let lines = split(s: body, delimiter: "\n")
-  match first(lines) {
-    Absent => none
-    Present { value: name } =>
-      match lines.skip(n: 1).first() {
-        Absent => none
-        Present { value: digest_wire } =>
-          match parse_content_hash_wire(wire: digest_wire) {
-            Absent => none
-            Present { value: digest } =>
-              Present { value: SparkPairDeclaredHeadArtifactRecord {
-                unit_name: name as NonEmptyStr,
-                digest: digest,
-                text: join(lines.skip(n: 2), "\n"),
-              } }
-          }
-      }
-  }
-}
-
-type SparkPairDeclaredHeadPublish
-  = SparkPairDeclaredHeadPublished { group: FabricGroup, digest: ContentHash }
-  | SparkPairDeclaredHeadPublishRefused { cause: NonEmptyStr }
-
-fn spark_pair_write_declared_head_artifact(group: FabricGroup, artifact: RenderedUnitArtifact) -> SparkPairDeclaredHeadPublish {
-  let body = spark_pair_declared_head_artifact_record_text(record: SparkPairDeclaredHeadArtifactRecord {
-    unit_name: artifact.unit_name,
-    digest: artifact.digest,
-    text: artifact.text,
-  })
-  let wr = Filesystem.Write(path: spark_pair_declared_unit_artifact_path(group: group), content: body)
-  if wr.success {
-    SparkPairDeclaredHeadPublished { group: group, digest: artifact.digest }
-  } else {
-    SparkPairDeclaredHeadPublishRefused {
-      cause: join(["Filesystem.Write of the declared head-unit artifact failed: ", wr.error], "") as NonEmptyStr,
-    }
-  }
-}
-
-fn spark_pair_publish_declared_head_artifact(realization: SparkPairRealization) -> SparkPairDeclaredHeadPublish {
-  match realization {
-    SparkPairRealizationRefused { group: _, cause: c } =>
-      SparkPairDeclaredHeadPublishRefused { cause: c }
-    SparkPairRealized { group: g, head: h, workers: _ } =>
-      match spark_pair_seal_unit_render(render: h.unit) {
-        SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
-          SparkPairDeclaredHeadPublishRefused { cause: c }
-        SparkPairUnitRendered { unit_name: _, text: _ } =>
-          SparkPairDeclaredHeadPublishRefused { cause: "unsigned unit bytes are not a declared digest; seal at apply publish" as NonEmptyStr }
-        SparkPairUnitSealed { artifact: a } => spark_pair_write_declared_head_artifact(group: g, artifact: a)
-      }
-  }
-}
-
-fn spark_pair_standing_from_artifact_body(expected_text: String, body: String) -> DeclaredUnitDigestStanding {
-  match spark_pair_declared_head_artifact_record_parse(body: body) {
-    Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-    Present { value: record } =>
-      if (record.text as String) == expected_text {
-        DeclaredUnitDigested { unit_name: record.unit_name, digest: record.digest }
-      } else {
-        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-      }
-  }
-}
-
-fn spark_pair_lookup_declared_head_digest_at(group: FabricGroup, expected_text: String) -> DeclaredUnitDigestStanding {
-  let dir = spark_pair_declared_unit_artifact_dir
-  let name = spark_pair_declared_unit_artifact_entry_name(group: group)
-  let path = spark_pair_declared_unit_artifact_path(group: group)
-  let listing = Filesystem.List(path: dir)
-  if !listing.success {
-    DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_store_unlistable_obligation }
-  } else if !filesystem_listing_names_entry(listing: listing.entries, name: name) {
-    DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-  } else {
-    let rd = Filesystem.Read(path: path)
-    match filesystem_exact_read(path: path, content: rd.content, success: rd.success, error: rd.error, error_kind: rd.error_kind) {
-      FilesystemExactPathRead { path: _, content: body } =>
-        spark_pair_standing_from_artifact_body(expected_text: expected_text, body: body)
-      FilesystemExactPathAbsent { path: _ } =>
-        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-      FilesystemExactPathUnreadable { path: _, kind: _, error: _ } =>
-        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_store_unreadable_obligation }
-      FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } =>
-        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_store_unreadable_obligation }
-    }
-  }
-}
-
-fn spark_pair_lookup_declared_head_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
-  match spark_pair_head_unit_text_for_group(group: group) {
-    Absent =>
-      DeclaredUnitDigestUnavailable { obligation: spark_pair_no_realization_names_group_obligation }
-    Present { value: expected_text } =>
-      spark_pair_lookup_declared_head_digest_at(group: group, expected_text: expected_text)
-  }
+fn spark_pair_declared_head_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
+  spark_pair_declared_unit_digest(render: spark_pair_head_unit_render_for_group(group: group))
 }
 
 // Which unit a host carries, from the realized pairs: the head unit on a head, the worker unit on a
