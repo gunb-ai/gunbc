@@ -374,7 +374,7 @@ data claim_disjoint_choice_not_ambiguous: TestClaim = EqualsClaim {
 }
 
 data claim_validate_accepts_overlap_with_counted_residue: TestClaim = EqualsClaim {
-  label: "grammar_validate_for_parse accepts non-nullable OrderedBacktrack as counted typed residue (reason parse_grammar_choice_overlap_residue); the roster is the compiled plan's ChoiceOrderedBacktrack nodes",
+  label: "grammar_validate_for_parse accepts non-nullable FIRST-overlap OrderedBacktrack as counted typed residue (reason parse_grammar_choice_overlap_residue); the roster is overlap/both-nullable rows, not every backtrack node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_overlap_choice_validate_accepts_with_residue()),
   rhs: validation_bool_atom(b: true),

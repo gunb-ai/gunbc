@@ -2011,11 +2011,13 @@ fn ordered_backtrack_row(
 }
 
 fn ordered_backtrack_emit(alts: List<PreparedExprFold>, production: Symbol) -> ChoicePlanEmit {
+  let row = ordered_backtrack_row(production: production, alts: alts)
   ChoicePlanEmit {
     plan: ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) },
-    residue: Cons {
-      head: ordered_backtrack_row(production: production, alts: alts),
-      tail: std.algebra.Empty
+    residue: if !is_empty(xs: row.overlap_terminals) || row.both_nullable {
+      Cons { head: row, tail: std.algebra.Empty }
+    } else {
+      std.algebra.Empty
     }
   }
 }

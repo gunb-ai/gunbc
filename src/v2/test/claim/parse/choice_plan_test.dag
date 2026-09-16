@@ -40,7 +40,7 @@ import v2.compiler.parse {
 }
 import v2.std.optional { Absent, Present }
 import v2.std.algebra { length }
-import v2.std.diagnostic { Accepted, Rejected, invariant_port_locus }
+import v2.std.diagnostic { Accepted, None, Rejected, Some, invariant_port_locus }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, content_hash }
 
@@ -73,12 +73,13 @@ fn pcp_choice_root(expr: GrammarExpr) -> GrammarRoot {
   }
 }
 
-fn pcp_validate_accepts(expr: GrammarExpr) -> Bool {
+fn pcp_validate_accepts_without_overlap_residue(expr: GrammarExpr) -> Bool {
   match grammar_validate_for_parse(
     root: pcp_choice_root(expr: expr),
     at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^pcp_grammar_contract)
   ) {
-    Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: _, diagnostics: None } => true
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
     Rejected { diagnostics: _ } => false
   }
 }
@@ -309,7 +310,7 @@ test fn prepared_choice_one_nullable_alt_agrees_after_aa_rejects() -> Bool {
   let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
   let expr = Choice { left: aa, right: opt(element: term(token_class: ^pcp_b)) }
   let tokens_a = [pcp_token(token_class: ^pcp_a)]
-  pcp_validate_accepts(expr: expr)
+  pcp_validate_accepts_without_overlap_residue(expr: expr)
     && match pcp_choice_plan(expr: expr) {
       ChoiceByToken { on_token: _, on_other: _, on_end: _ } =>
         pcp_observe(expr: expr, tokens: tokens_a) == oracle_parse_choice(left: aa, right: opt(element: term(token_class: ^pcp_b)), tokens: tokens_a)
