@@ -639,38 +639,4 @@ test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
     )
 }
 
-// Deleted apply-witness identities in this cut, each with a disposition:
-//
-// dashboard_named_session_absent_creates, dashboard_no_tmux_server_creates,
-// dashboard_session_present_replaces_not_duplicate, dashboard_permission_denied_refuses_no_create,
-// dashboard_transport_refused_refuses_no_create — subject was tmux create/replace/refuse for
-// dashboard_ensure_service. That launch path is deleted. No successor.
-//
-// dashboard_service_is_named_and_scoped_off_production — subject was the lab tmux session name
-// (`gunbc-dashboard-srv1-lab-…`) and new-session argv (lab handler, port 18081) being disjoint
-// from production's tmux. It was a keystone conjunct AND it was deleted with the launch path, so
-// "every remaining conjunct is still an enrolled test fn" does not apply to this one. Lab apply
-// no longer launches a service; there is no lab session left to name. Production systemd
-// isolation from a twin is a different subject: test.claim.live_deploy.emit_test
-// a_twin_deployment_on_one_host_collides_with_nothing (unit_name, port, paths). That test does
-// not cover srv1_lab because deployment_spec_srv1 is srv1_live only.
-//
-// dashboard_ensure_release_revision_is_admitted_not_head — subject was
-// dashboard_ensure_service_new_session_argv containing the admitted CommitSha and not HEAD /
-// rev-parse. That argv died with dashboard_ensure_service. The production launch property
-// (ExecStart carries the admitted revision, not another candidate, not a missing flag) is
-// test.claim.live_deploy.emit_test witness_execstart_carries_exactly_the_admitted_revision.
-// Readiness still refuses a reported revision that is not the admitted one:
-// test.claim.live_deploy.running_release_identity_witness_test
-// witness_readiness_refuses_when_reported_revision_is_not_the_admitted_one.
-//
-// dashboard_poll_interval_is_a_usable_duration — subject was the poll constants used only by
-// dashboard_verify_health_after_attempts. That provision op is deleted with the launch cut
-// (review 38602). Observe-path health (dashboard_read_instance_health / dashboard_health_names_instance)
-// remains. No successor for the poll interval.
-//
-// The apply-witness keystone that AND-joined the remaining tests is deleted too. Each of those
-// conjuncts that still exist is its own enrolled test fn; re-running them in one identity was
-// duplicated work, not coverage. The tmux naming conjunct above is the exception: it left with
-// the launch path, not with the keystone-only deletion.
 
