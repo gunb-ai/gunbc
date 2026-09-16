@@ -218,6 +218,13 @@ service drive.Drives {
   }
 }
 
+// supportsAllDrives is a constant on every operation below, never a caller parameter. Without it
+// the API answers about My Drive only and a shared-drive id reads as absent -- a 404 meaning "you
+// did not ask about shared drives" rather than "it is not there" -- and a caller that could pass
+// false could ask a question whose refusal it would misread.
+//
+// sendNotificationEmail is false on the create because the grantee is a service account: there is
+// no inbox to notify, and Drive refuses a notification to a non-notifiable grantee.
 service drive.Permissions {
   config {
     endpoint: drive_api_base
@@ -225,10 +232,6 @@ service drive.Permissions {
     auth_input: access_token
   }
 
-  // supportsAllDrives is required on EVERY shared-drive call. Without it the API answers about My
-  // Drive only and a shared-drive id reads as absent -- a 404 that means "you did not ask about
-  // shared drives", not "it is not there". It is a constant here rather than a caller parameter
-  // because a caller that could pass false could ask a question whose refusal it would misread.
   operation ListPermissions {
     input { access_token: Secret, file_id: String }
     output { list: DrivePermissionList, outcome: RestOutcome }
@@ -251,8 +254,6 @@ service drive.Permissions {
     }
   }
 
-  // sendNotificationEmail is false because the grantee is a service account: there is no inbox to
-  // notify, and Drive refuses the combination of a notification and a non-notifiable grantee.
   operation CreatePermission {
     input {
       access_token: Secret
@@ -284,6 +285,17 @@ service drive.Permissions {
   }
 }
 
+// corpora=drive with driveId is what makes ListFiles read THAT drive rather than the caller's own
+// corpus, and includeItemsFromAllDrives must accompany supportsAllDrives or the result set comes
+// back silently empty for a shared drive -- which would read as absence and authorize a duplicate
+// create. incompleteSearch is carried on the response for the same reason: a partial search that
+// found nothing is not an observation of absence.
+//
+// CreateFile IS NOT IDEMPOTENT. Every successful call mints a new file with a new id, and a
+// transport refusal leaves the caller unable to say whether one was minted. The recovery is the
+// app_properties_key supplied before the call: it is written onto the file at creation, so a later
+// ListFiles filtered on that key recovers the exact file a lost answer may have created. A key
+// derived from the RESPONSE would be unrecoverable in precisely the case it is needed.
 service drive.Files {
   config {
     endpoint: drive_api_base
@@ -291,11 +303,6 @@ service drive.Files {
     auth_input: access_token
   }
 
-  // corpora=drive with driveId is what makes the search read THAT drive rather than the caller's
-  // own corpus; includeItemsFromAllDrives must accompany supportsAllDrives or the result set is
-  // silently empty for a shared drive, which would read as "absent" and authorize a duplicate
-  // create. incompleteSearch is carried on the response for the same reason: a partial search that
-  // found nothing is not an observation of absence.
   operation ListFiles {
     input { access_token: Secret, drive_id: String, query: String }
     output { list: DriveFileList, outcome: RestOutcome }
@@ -323,11 +330,6 @@ service drive.Files {
     }
   }
 
-  // THIS OPERATION IS NOT IDEMPOTENT. Every successful call mints a new file with a new id, and a
-  // transport refusal leaves the caller unable to say whether one was minted. The recovery is the
-  // app_properties_key supplied HERE, before the call: it is written onto the file at creation, so
-  // a later ListFiles filtered on that key recovers the exact file a lost answer may have created.
-  // A key derived from the RESPONSE would be unrecoverable in precisely the case it is needed.
   operation CreateFile {
     input {
       access_token: Secret

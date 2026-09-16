@@ -83,6 +83,29 @@ fn permission_names_writer(p: DrivePermission, writer: ServiceAccountEmail) -> B
 // An unreadable ROLE is not an absent member. A permission row that names the writer but carries a
 // role string this model does not know is reported as unreadable, never folded to absent, because
 // absence would authorize a create against a principal that is already present.
+fn membership_from_matched_rows(matched: List<DrivePermission>) -> DriveMembershipObservation {
+  if count(matched) == 0 {
+    MembershipAbsent
+  } else {
+    match first(matched) {
+      Absent =>
+        MembershipUnreadable {
+          reason: "a non-empty match yielded no first row" as NonEmptyStr
+        }
+      Present { value: row } =>
+        match drive_permission_role_from_wire(raw: row.role) {
+          Absent =>
+            MembershipUnreadable {
+              reason: join(["writer is present with an unmodeled role: ", row.role], "") as NonEmptyStr
+            }
+          Present { value: r } => MembershipObserved { role: r }
+        }
+    }
+  }
+}
+
+// An absent permissions FIELD is not an empty permission list: one is a response we could not
+// read, the other is a drive with no members, and only the second may authorize a create.
 fn membership_from_permissions(
   list: DrivePermissionList,
   writer: ServiceAccountEmail,
@@ -93,17 +116,9 @@ fn membership_from_permissions(
         reason: "permissions field absent from the response; an unread list is not an empty one" as NonEmptyStr
       }
     Present { value: rows } =>
-      match filter(rows, p => permission_names_writer(p: p, writer: writer)) {
-        [] => MembershipAbsent
-        [first, ..._rest] =>
-          match drive_permission_role_from_wire(raw: first.role) {
-            Absent =>
-              MembershipUnreadable {
-                reason: join(["writer is present with an unmodeled role: ", first.role], "") as NonEmptyStr
-              }
-            Present { value: r } => MembershipObserved { role: r }
-          }
-      }
+      membership_from_matched_rows(
+        matched: filter(rows, p => permission_names_writer(p: p, writer: writer))
+      )
   }
 }
 
@@ -192,24 +207,37 @@ type SpreadsheetCreatePlan {
 // absent is how a converge mints a duplicate of a file it simply failed to look for.
 fn spreadsheet_from_file_list(list: DriveFileList) -> ReviewSpreadsheetObservation {
   match list.incompleteSearch {
-    Present { value: true } => SheetSearchIncomplete
-    Present { value: false } => spreadsheet_from_complete_list(list: list)
+    Present { value: incomplete } =>
+      if incomplete { SheetSearchIncomplete } else { spreadsheet_from_complete_list(list: list) }
     Absent => spreadsheet_from_complete_list(list: list)
   }
 }
 
+// An absent files FIELD is unreadable for the same reason an absent permissions field is.
 fn spreadsheet_from_complete_list(list: DriveFileList) -> ReviewSpreadsheetObservation {
   match list.files {
     Absent =>
       SheetSearchUnreadable {
         reason: "files field absent from the response; an unread result is not an empty one" as NonEmptyStr
       }
-    Present { value: files } =>
-      match files {
-        [] => SheetAbsent
-        [only] => SheetObservedOne { file_id: only.id as NonEmptyStr }
-        [_first, _second, ..._rest] => SheetDuplicated { file_ids: map(files, f => f.id) }
-      }
+    Present { value: files } => spreadsheet_from_files(files: files)
+  }
+}
+
+// Exactly one is the only adoptable answer. Zero authorizes a create; two or more refuses.
+fn spreadsheet_from_files(files: List<DriveFile>) -> ReviewSpreadsheetObservation {
+  if count(files) == 0 {
+    SheetAbsent
+  } else if count(files) > 1 {
+    SheetDuplicated { file_ids: map(files, f => f.id) }
+  } else {
+    match first(files) {
+      Absent =>
+        SheetSearchUnreadable {
+          reason: "a single-element list yielded no first file" as NonEmptyStr
+        }
+      Present { value: only } => SheetObservedOne { file_id: only.id as NonEmptyStr }
+    }
   }
 }
 
