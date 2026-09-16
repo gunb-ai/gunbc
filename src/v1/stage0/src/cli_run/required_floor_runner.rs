@@ -5427,11 +5427,8 @@ pub fn run_required_floor(
     // exclusion frontier, so nothing pulled them in. A lane that cannot reach its own members
     // cannot support the route claim `std.witness_admission` makes for its cadence, so the
     // schedule joins the seed list rather than the executor learning to run outside the subject.
-    let (required_gate_prefixes, local_repo_wet_schedule_rows, share_producer_modules) = {
-        let policy_seed = [
-            REQUIRED_FLOOR_POLICY_MODULE.to_string(),
-            "v2.workflow.floor_pure_producer_share".to_string(),
-        ];
+    let (required_gate_prefixes, local_repo_wet_schedule_rows) = {
+        let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
         let (policy_prepared, _) = prepare_repository_closure(
             source_roots,
             &floor_prepared_subject_exclusions(),
@@ -5449,51 +5446,7 @@ pub fn run_required_floor(
             "v2.workflow.required_floor.required_gate_prefixes",
         )?;
         let schedule = local_repo_wet_schedule(&policy_frame)?;
-        // WARM / CLAIM-FORCED / CARRIED-INPUT PRODUCERS ARE THE SAME SEED CLASS AS THE WET
-        // SCHEDULE: they are named by a roster that lives on a runtime-authority seed, but their
-        // MODULES are often outside `required_gate_prefixes` (test.claim.live_deploy.emit is the
-        // specimen: two nullary renders enrolled on main, never a gate prefix). The first CI
-        // merge that carried those rows onto a PR whose compile-subject did not already include
-        // that module refused PureProducerShareProducerModuleOutsideSubject. Decode the rosters
-        // here, in the policy closure, and join their modules to the seed list — same motion as
-        // local_repo_wet_schedule_rows, not a second prepared subject.
-        let share_scope =
-            claim_scope_for(&policy_prepared, "v2.workflow.floor_pure_producer_share")?;
-        let share_frame = evaluation_frame(
-            &share_scope,
-            v1_interpreter::ExecutionMode::Hermetic,
-            None,
-            None,
-        );
-        let mut share_modules: Vec<String> = Vec::new();
-        let mut push_producer_module = |qualified: &str| {
-            let module = qualified
-                .rsplit_once('.')
-                .map(|(module, _)| module)
-                .unwrap_or(qualified);
-            share_modules.push(module.to_string());
-        };
-        for qualified in floor_decode_module_prefix_roster(
-            &share_frame,
-            "v2.workflow.floor_pure_producer_share.floor_cross_claim_pure_producers_warm",
-        )? {
-            push_producer_module(&qualified);
-        }
-        for qualified in floor_decode_module_prefix_roster(
-            &share_frame,
-            "v2.workflow.floor_pure_producer_share.floor_cross_claim_pure_producers_claim_forced",
-        )? {
-            push_producer_module(&qualified);
-        }
-        for row in floor_decode_carried_input_warm_rows(
-            &share_frame,
-            "v2.workflow.floor_pure_producer_share.floor_cross_claim_carried_input_warm_rows",
-        )? {
-            push_producer_module(&row.producer);
-        }
-        share_modules.sort();
-        share_modules.dedup();
-        (prefixes, schedule, share_modules)
+        (prefixes, schedule)
     };
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
@@ -5646,7 +5599,6 @@ pub fn run_required_floor(
                 .iter()
                 .map(|row| row.entry_module.clone()),
         )
-        .chain(share_producer_modules.iter().cloned())
         .collect();
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
