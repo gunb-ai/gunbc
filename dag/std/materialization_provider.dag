@@ -17,6 +17,8 @@ import std.content_hash {
   as_content_hash_structural,
   structural_content_hash,
   serialize_content_hash,
+  fnv1a64_structural_hex_digest,
+  content_hash_family,
 }
 import std.interface_summary { InterfaceHash, ModuleKey, TypedModuleKey, module_key, typed_module_key }
 import std.cache_identity {
@@ -300,7 +302,8 @@ type EvaluationIdentity {
 }
 
 type ResultContentIdentity {
-  digest: ContentHash
+  bucket: ContentHash
+  canonical_preimage: NonEmptyStr
 }
 
 type EvaluationResultBinding {
@@ -311,6 +314,8 @@ type EvaluationResultBinding {
 type EvaluationResultBindingOutcome
   = EvaluationResultConsistent
   | EvaluationContentConflict { binding: EvaluationResultBinding, observed: ResultContentIdentity }
+  | EvaluationResultHashFamilyIncomparable { left: HashFamily, right: HashFamily }
+  | EvaluationResultUnverifiable { cause: String }
 
 type KeyingScope
   = InProcessIndexScope
@@ -320,6 +325,7 @@ type KeyingScope
 type HashFamilyScopeAdmission
   = HashFamilyAdmittedForScope { family: HashFamily, scope: KeyingScope }
   | StructuralFingerprintRefusedAsStoreKey { family: HashFamily, scope: KeyingScope }
+  | FamilyNotAdmittedForRelation { family: HashFamily, scope: KeyingScope }
 
 type EvaluationIdentityCollisionDisposition
   = FnvBucketPreimageVerified { restoration_trigger: NonEmptyStr }
@@ -328,39 +334,183 @@ data evaluation_identity_fnv_store_preimage_exception: EvaluationIdentityCollisi
   restoration_trigger: "in-memory HashFamily cryptographic member callable from .dag without a host file effect, sufficient for request_key and store_object_name to derive EvaluationIdentity under that family for PersistentStoreScope and CrossRunScope"
 }
 
-type JudgmentIdentityDerivation {
-  demand_identity: DemandIdentity
-  evaluation_identity: EvaluationIdentity
-  collision_disposition: EvaluationIdentityCollisionDisposition
+type EvaluationStoreAddress
+  = CryptographicEvaluationAddress { identity: EvaluationIdentity, digest: ContentHash }
+  | PreimageVerifiedBucketAddress {
+      bucket: ContentHash,
+      canonical_preimage: NonEmptyStr,
+      disposition: EvaluationIdentityCollisionDisposition
+    }
+
+type LengthPrefixedField {
+  value: String
+  rest: String
 }
 
-fn judgment_identity_derivation(
-  kind: ArtifactKindId,
-  subject: Fnv1a64Structural,
-  declared_inputs: List<DeclaredInput>
-) -> JudgmentIdentityDerivation {
-  let demand = DemandIdentity { kind: kind, subject: subject, declared_inputs: declared_inputs }
-  JudgmentIdentityDerivation {
-    demand_identity: demand,
-    evaluation_identity: EvaluationIdentity { demand: demand },
-    collision_disposition: evaluation_identity_fnv_store_preimage_exception
+type LengthPrefixedScan {
+  i: Int
+  hit: Int?
+}
+
+type DecodedDeclaredInputs {
+  inputs: List<DeclaredInput>
+  rest: String
+}
+
+fn string_from_code_points(cs: List<Int>) -> String {
+  join(cs |> map(c => from_code_point(cp: c)), "")
+}
+
+fn length_prefixed_encode(s: String) -> String {
+  join([to_string(s.length()), "#", s], "")
+}
+
+fn length_prefixed_decode(s: String) -> LengthPrefixedField? {
+  let cs = chars(s: s)
+  let scan = cs |> fold(
+    init: LengthPrefixedScan { i: 0, hit: none },
+    f: (st, c) =>
+      match st.hit {
+        Present { value: _ } => st
+        Absent =>
+          if c == 35 {
+            LengthPrefixedScan { i: st.i, hit: Present { value: st.i } }
+          } else {
+            LengthPrefixedScan { i: st.i + 1, hit: none }
+          }
+      }
+  )
+  match scan.hit {
+    Absent => none
+    Present { value: hash_at } => {
+      let len_text = string_from_code_points(cs: cs |> take(n: hash_at))
+      let after = string_from_code_points(cs: cs |> skip(n: hash_at + 1))
+      match parse_int(s: len_text) {
+        Absent => none
+        Present { value: n } =>
+          if n < 0 {
+            none
+          } else {
+            let after_cs = chars(s: after)
+            if (after_cs |> count()) < n {
+              none
+            } else {
+              Present {
+                value: LengthPrefixedField {
+                  value: string_from_code_points(cs: after_cs |> take(n: n)),
+                  rest: string_from_code_points(cs: after_cs |> skip(n: n))
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn decode_declared_inputs(remaining: Int, rest: String, acc: List<DeclaredInput>) -> DecodedDeclaredInputs? {
+  if remaining == 0 {
+    Present { value: DecodedDeclaredInputs { inputs: acc, rest: rest } }
+  } else {
+    match length_prefixed_decode(s: rest) {
+      Absent => none
+      Present { value: ref_f } =>
+        match length_prefixed_decode(s: ref_f.rest) {
+          Absent => none
+          Present { value: dig_f } =>
+            match fnv1a64_structural_hex_digest(hex: dig_f.value) {
+              Absent => none
+              Present { value: digest } =>
+                decode_declared_inputs(
+                  remaining: remaining - 1,
+                  rest: dig_f.rest,
+                  acc: concat(acc, [DeclaredInput { ref: ref_f.value as NonEmptyStr, digest: digest }])
+                )
+            }
+        }
+    }
   }
 }
 
 fn demand_identity_canonical(demand: DemandIdentity) -> NonEmptyStr {
+  let inputs_enc = demand.declared_inputs |> fold(
+    init: "",
+    f: (acc, i) => concat(
+      concat(acc, length_prefixed_encode(s: i.ref as String)),
+      length_prefixed_encode(s: i.digest.digest as String)
+    )
+  )
+  concat(
+    concat(
+      concat(
+        length_prefixed_encode(s: "demand"),
+        length_prefixed_encode(s: demand.kind as String)
+      ),
+      length_prefixed_encode(s: demand.subject.digest as String)
+    ),
+    concat(length_prefixed_encode(s: to_string(demand.declared_inputs |> count())), inputs_enc)
+  ) as NonEmptyStr
+}
+
+fn demand_identity_decode(encoded: String) -> DemandIdentity? {
+  match length_prefixed_decode(s: encoded) {
+    Absent => none
+    Present { value: tag } =>
+      if (tag.value == "demand") == false {
+        none
+      } else {
+        match length_prefixed_decode(s: tag.rest) {
+          Absent => none
+          Present { value: kind_f } =>
+            match length_prefixed_decode(s: kind_f.rest) {
+              Absent => none
+              Present { value: sub_f } =>
+                match length_prefixed_decode(s: sub_f.rest) {
+                  Absent => none
+                  Present { value: n_f } =>
+                    match parse_int(s: n_f.value) {
+                      Absent => none
+                      Present { value: n } =>
+                        match fnv1a64_structural_hex_digest(hex: sub_f.value) {
+                          Absent => none
+                          Present { value: subject } =>
+                            match decode_declared_inputs(remaining: n, rest: n_f.rest, acc: []) {
+                              Absent => none
+                              Present { value: decoded } =>
+                                if decoded.rest == "" {
+                                  Present {
+                                    value: DemandIdentity {
+                                      kind: kind_f.value as ArtifactKindId,
+                                      subject: subject,
+                                      declared_inputs: decoded.inputs
+                                    }
+                                  }
+                                } else {
+                                  none
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn evaluation_identity_canonical(evaluation: EvaluationIdentity) -> NonEmptyStr {
+  concat(
+    length_prefixed_encode(s: "evaluation"),
+    demand_identity_canonical(demand: evaluation.demand) as String
+  ) as NonEmptyStr
+}
+
+fn demand_identity_canonical_c1_lossy(demand: DemandIdentity) -> NonEmptyStr {
   let input_preimage = demand.declared_inputs |> fold(
     init: join(["n", to_string(demand.declared_inputs |> count())], ""),
     f: (acc, i) => join([acc, i.ref as String, i.digest.digest as String], ":")
   )
   join(["demand", demand.kind as String, demand.subject.digest as String, input_preimage], "/") as NonEmptyStr
-}
-
-fn evaluation_identity_canonical(evaluation: EvaluationIdentity) -> NonEmptyStr {
-  join(["evaluation", demand_identity_canonical(demand: evaluation.demand) as String], "/") as NonEmptyStr
-}
-
-fn demand_identity_canonical_c1_lossy(demand: DemandIdentity) -> NonEmptyStr {
-  join(["demand", demand.kind as String, "collapsed"], "/") as NonEmptyStr
 }
 
 fn evaluation_identity_fnv_bucket(evaluation: EvaluationIdentity) -> ContentHash {
@@ -394,11 +544,52 @@ fn typecheck_evaluation_index(demand: DemandIdentity) -> ContentHash {
   }
 }
 
-fn evaluation_identity_index(derivation: JudgmentIdentityDerivation) -> ContentHash {
-  if derivation.demand_identity.kind == typed_module_artifact_kind {
-    typecheck_evaluation_index(demand: derivation.demand_identity)
+fn request_evaluation_identity(req: ArtifactRequest) -> EvaluationIdentity {
+  EvaluationIdentity { demand: request_judgment_contract(req: req).demand_identity }
+}
+
+fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddress {
+  let identity = request_evaluation_identity(req: req)
+  if identity.demand.kind == typed_module_artifact_kind {
+    CryptographicEvaluationAddress {
+      identity: identity,
+      digest: typecheck_evaluation_index(demand: identity.demand)
+    }
   } else {
-    evaluation_identity_fnv_bucket(evaluation: derivation.evaluation_identity)
+    match admit_hash_family_for_scope(family: Fnv1a64StructuralFamily, scope: PersistentStoreScope) {
+      StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
+        PreimageVerifiedBucketAddress {
+          bucket: evaluation_identity_fnv_bucket(evaluation: identity),
+          canonical_preimage: evaluation_identity_canonical(evaluation: identity),
+          disposition: evaluation_identity_fnv_store_preimage_exception
+        }
+      HashFamilyAdmittedForScope { family: _, scope: _ } =>
+        CryptographicEvaluationAddress {
+          identity: identity,
+          digest: evaluation_identity_fnv_bucket(evaluation: identity)
+        }
+      FamilyNotAdmittedForRelation { family: _, scope: _ } =>
+        PreimageVerifiedBucketAddress {
+          bucket: evaluation_identity_fnv_bucket(evaluation: identity),
+          canonical_preimage: evaluation_identity_canonical(evaluation: identity),
+          disposition: evaluation_identity_fnv_store_preimage_exception
+        }
+    }
+  }
+}
+
+fn evaluation_store_address_digest(address: EvaluationStoreAddress) -> ContentHash {
+  match address {
+    CryptographicEvaluationAddress { identity: _, digest: d } => d
+    PreimageVerifiedBucketAddress { bucket: b, canonical_preimage: _, disposition: FnvBucketPreimageVerified { restoration_trigger: _ } } => b
+  }
+}
+
+fn evaluation_store_address_preimage(address: EvaluationStoreAddress) -> NonEmptyStr {
+  match address {
+    CryptographicEvaluationAddress { identity: id, digest: _ } =>
+      evaluation_identity_canonical(evaluation: id)
+    PreimageVerifiedBucketAddress { bucket: _, canonical_preimage: p, disposition: FnvBucketPreimageVerified { restoration_trigger: _ } } => p
   }
 }
 
@@ -410,39 +601,42 @@ fn admit_hash_family_for_scope(family: HashFamily, scope: KeyingScope) -> HashFa
         Sha256Family => HashFamilyAdmittedForScope { family: family, scope: scope }
         Sha512Family => HashFamilyAdmittedForScope { family: family, scope: scope }
         Fnv1a64StructuralFamily => StructuralFingerprintRefusedAsStoreKey { family: family, scope: scope }
-        Sha1Family => StructuralFingerprintRefusedAsStoreKey { family: family, scope: scope }
+        Sha1Family => FamilyNotAdmittedForRelation { family: family, scope: scope }
       }
     CrossRunScope =>
       match family {
         Sha256Family => HashFamilyAdmittedForScope { family: family, scope: scope }
         Sha512Family => HashFamilyAdmittedForScope { family: family, scope: scope }
         Fnv1a64StructuralFamily => StructuralFingerprintRefusedAsStoreKey { family: family, scope: scope }
-        Sha1Family => StructuralFingerprintRefusedAsStoreKey { family: family, scope: scope }
+        Sha1Family => FamilyNotAdmittedForRelation { family: family, scope: scope }
       }
   }
-}
-
-fn result_content_identity_from_digest(digest: ContentHash) -> ResultContentIdentity {
-  ResultContentIdentity { digest: digest }
 }
 
 fn evaluation_result_binding_outcome(
   binding: EvaluationResultBinding,
   observed: ResultContentIdentity
 ) -> EvaluationResultBindingOutcome {
-  if binding.result_content_identity.digest == observed.digest {
-    EvaluationResultConsistent
+  let left = binding.result_content_identity
+  if (left.canonical_preimage as String).length() == 0 || (observed.canonical_preimage as String).length() == 0 {
+    EvaluationResultUnverifiable { cause: "result content preimage is empty" }
   } else {
-    EvaluationContentConflict { binding: binding, observed: observed }
+    let fam = content_hash_family(hash: left.bucket)
+    let ofam = content_hash_family(hash: observed.bucket)
+    if (fam == ofam) == false {
+      EvaluationResultHashFamilyIncomparable { left: fam, right: ofam }
+    } else if (left.canonical_preimage as String) == (observed.canonical_preimage as String) {
+      EvaluationResultConsistent
+    } else {
+      EvaluationContentConflict { binding: binding, observed: observed }
+    }
   }
 }
 
 type JudgmentContract {
-  kind: ArtifactKindId
-  declared_inputs: List<DeclaredInput>
+  demand_identity: DemandIdentity
   result: ResultContract
   demand_nature: DemandNature
-  identity_derivation: JudgmentIdentityDerivation
 }
 
 fn judgment_required_output_ids(contract: JudgmentContract) -> List<ArtifactOutputId> {
@@ -451,8 +645,11 @@ fn judgment_required_output_ids(contract: JudgmentContract) -> List<ArtifactOutp
 
 fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: DeclaredInput) -> JudgmentContract {
   JudgmentContract {
-    kind: parse_source_artifact_kind,
-    declared_inputs: [compiler],
+    demand_identity: DemandIdentity {
+      kind: parse_source_artifact_kind,
+      subject: source_digest,
+      declared_inputs: [compiler]
+    },
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
@@ -463,12 +660,7 @@ fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: De
         persisted_output(id: output_parse_diagnostics, occurrence_contract: Scoped)
       ]
     },
-    demand_nature: PureComputation,
-    identity_derivation: judgment_identity_derivation(
-      kind: parse_source_artifact_kind,
-      subject: source_digest,
-      declared_inputs: [compiler]
-    )
+    demand_nature: PureComputation
   }
 }
 
@@ -478,11 +670,14 @@ fn typecheck_module_judgment_contract(
   compiler: DeclaredInput
 ) -> JudgmentContract {
   JudgmentContract {
-    kind: typed_module_artifact_kind,
-    declared_inputs: concat(
-      direct_import_interfaces |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }),
-      [compiler]
-    ),
+    demand_identity: DemandIdentity {
+      kind: typed_module_artifact_kind,
+      subject: source_digest,
+      declared_inputs: concat(
+        direct_import_interfaces |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }),
+        [compiler]
+      )
+    },
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
@@ -493,22 +688,17 @@ fn typecheck_module_judgment_contract(
         persisted_output(id: output_typecheck_diagnostics, occurrence_contract: Scoped)
       ]
     },
-    demand_nature: PureComputation,
-    identity_derivation: judgment_identity_derivation(
-      kind: typed_module_artifact_kind,
-      subject: source_digest,
-      declared_inputs: concat(
-        direct_import_interfaces |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }),
-        [compiler]
-      )
-    )
+    demand_nature: PureComputation
   }
 }
 
 fn resolve_closure_judgment_contract(closure_digest: Fnv1a64Structural, compiler: DeclaredInput) -> JudgmentContract {
   JudgmentContract {
-    kind: resolved_graph_artifact_kind,
-    declared_inputs: [compiler],
+    demand_identity: DemandIdentity {
+      kind: resolved_graph_artifact_kind,
+      subject: closure_digest,
+      declared_inputs: [compiler]
+    },
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
@@ -520,38 +710,13 @@ fn resolve_closure_judgment_contract(closure_digest: Fnv1a64Structural, compiler
         persisted_output(id: output_compile_clean_diagnostic_union, occurrence_contract: Scoped)
       ]
     },
-    demand_nature: PureComputation,
-    identity_derivation: judgment_identity_derivation(
-      kind: resolved_graph_artifact_kind,
-      subject: closure_digest,
-      declared_inputs: [compiler]
-    )
+    demand_nature: PureComputation
   }
 }
 
 fn native_compiler_judgment_contract(generation: PreMaterializationIdentity) -> JudgmentContract {
   JudgmentContract {
-    kind: native_compiler_artifact_kind,
-    declared_inputs: [
-      DeclaredInput { ref: "generation.producer_compiler", digest: generation.producer_compiler },
-      DeclaredInput { ref: "generation.source_closure", digest: generation.source_closure },
-      DeclaredInput { ref: "generation.target_model", digest: generation.target_model },
-      DeclaredInput { ref: "generation.toolchain", digest: generation.toolchain },
-      DeclaredInput { ref: "generation.build_configuration", digest: generation.build_configuration },
-      DeclaredInput { ref: "generation.required_lens_contract", digest: generation.required_lens_contract }
-    ],
-    result: ResultContract {
-      carries_semantic_value: true,
-      ordered_diagnostics: true,
-      carries_effect_requests_receipts: false,
-      carries_refusal_arm: true,
-      required_persisted_outputs: [
-        persisted_output(id: output_native_compiler_executable, occurrence_contract: SemanticOnly),
-        persisted_output(id: output_native_compiler_build_diagnostics, occurrence_contract: SemanticOnly)
-      ]
-    },
-    demand_nature: IdempotentEffect,
-    identity_derivation: judgment_identity_derivation(
+    demand_identity: DemandIdentity {
       kind: native_compiler_artifact_kind,
       subject: pre_materialization_digest(pre: generation),
       declared_inputs: [
@@ -562,14 +727,28 @@ fn native_compiler_judgment_contract(generation: PreMaterializationIdentity) -> 
         DeclaredInput { ref: "generation.build_configuration", digest: generation.build_configuration },
         DeclaredInput { ref: "generation.required_lens_contract", digest: generation.required_lens_contract }
       ]
-    )
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_native_compiler_executable, occurrence_contract: SemanticOnly),
+        persisted_output(id: output_native_compiler_build_diagnostics, occurrence_contract: SemanticOnly)
+      ]
+    },
+    demand_nature: IdempotentEffect
   }
 }
 
 fn universe_judgment_contract(tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput) -> JudgmentContract {
   JudgmentContract {
-    kind: native_test_universe_artifact_kind,
-    declared_inputs: [route_binary],
+    demand_identity: DemandIdentity {
+      kind: native_test_universe_artifact_kind,
+      subject: tested_tree_identity,
+      declared_inputs: [route_binary]
+    },
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: false,
@@ -580,19 +759,17 @@ fn universe_judgment_contract(tested_tree_identity: Fnv1a64Structural, route_bin
         persisted_output(id: output_universe_module_import_closures, occurrence_contract: SemanticOnly)
       ]
     },
-    demand_nature: PureComputation,
-    identity_derivation: judgment_identity_derivation(
-      kind: native_test_universe_artifact_kind,
-      subject: tested_tree_identity,
-      declared_inputs: [route_binary]
-    )
+    demand_nature: PureComputation
   }
 }
 
 fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSubject) -> JudgmentContract {
   JudgmentContract {
-    kind: native_module_verdict_bundle_artifact_kind,
-    declared_inputs: [],
+    demand_identity: DemandIdentity {
+      kind: native_module_verdict_bundle_artifact_kind,
+      subject: module_verdict_bundle_subject_digest(subject: subject),
+      declared_inputs: []
+    },
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
@@ -603,12 +780,7 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
         persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: SemanticOnly)
       ]
     },
-    demand_nature: IdempotentEffect,
-    identity_derivation: judgment_identity_derivation(
-      kind: native_module_verdict_bundle_artifact_kind,
-      subject: module_verdict_bundle_subject_digest(subject: subject),
-      declared_inputs: []
-    )
+    demand_nature: IdempotentEffect
   }
 }
 
@@ -667,7 +839,7 @@ fn module_verdict_bundle_subject_digest(subject: NativeModuleVerdictBundleSubjec
 }
 
 fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
-  request_judgment_contract(req: req).kind
+  request_judgment_contract(req: req).demand_identity.kind
 }
 
 fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
@@ -683,7 +855,7 @@ fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
 }
 
 fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
-  request_judgment_contract(req: req).declared_inputs
+  request_judgment_contract(req: req).demand_identity.declared_inputs
 }
 
 fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
@@ -725,7 +897,7 @@ fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
 // is witnessed by execution rather than asserted.
 
 fn request_key(req: ArtifactRequest) -> ContentHash {
-  evaluation_identity_index(derivation: request_judgment_contract(req: req).identity_derivation)
+  evaluation_store_address_digest(address: evaluation_store_address(req: req))
 }
 
 // Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape

@@ -8,7 +8,7 @@ import std.materialization_provider {
   DeclaredInput, ArtifactRequest,
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  request_key, request_judgment_contract, evaluation_identity_canonical,
+  request_key, evaluation_store_address, evaluation_store_address_preimage, request_judgment_contract,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
 }
@@ -88,21 +88,19 @@ fn universe_payloads() -> List<ArtifactPayload> {
 
 fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
   match store_commit_prepare(req: req, payloads: payloads) {
-    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _ } => o
+    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
     StoreCommitNotPrepared { commit: _ } => ""
   }
 }
 
 fn evaluation_preimage_wire(req: ArtifactRequest) -> String {
   percent_encode_payload(
-    s: evaluation_identity_canonical(
-      evaluation: request_judgment_contract(req: req).identity_derivation.evaluation_identity
-    ) as String
+    s: evaluation_store_address_preimage(address: evaluation_store_address(req: req)) as String
   )
 }
 
 fn object_path(root_path: String, req: ArtifactRequest) -> String {
-  store_path(root_path: root_path, name: store_object_name(key: request_key(req: req)))
+  store_path(root_path: root_path, name: store_object_name(address: evaluation_store_address(req: req)))
 }
 
 fn commit_tag(c: StoreCommit) -> String {

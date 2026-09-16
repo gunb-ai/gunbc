@@ -11,7 +11,8 @@ import std.materialization_provider {
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
   provider_serve, ProbeFound, lookup_is_hit,
   request_key, request_kind, request_required_outputs, request_declared_inputs,
-  request_judgment_contract, evaluation_identity_canonical,
+  request_judgment_contract, evaluation_store_address, evaluation_store_address_preimage,
+  evaluation_identity_canonical, ResultContentIdentity,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
   output_native_compiler_executable, output_native_compiler_build_diagnostics,
@@ -31,6 +32,7 @@ import std.materialization_object {
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
   encode_store_object, decode_store_object, percent_encode_payload, percent_decode_payload,
+  result_content_canonical, store_object_name, store_object_magic,
   StoreObjectDecoded, StoreObjectMalformed,
   store_observed_digest, artifact_from_manifest, ManifestDecoded,
 }
@@ -122,9 +124,13 @@ fn witness_store() -> OpenedMaterializationStore {
   }
 }
 
+fn eval_preimage(req: ArtifactRequest) -> NonEmptyStr {
+  evaluation_store_address_preimage(address: evaluation_store_address(req: req))
+}
+
 fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
   match store_commit_prepare(req: req, payloads: payloads) {
-    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _ } => o
+    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
     StoreCommitNotPrepared { commit: _ } => ""
   }
 }
@@ -229,16 +235,8 @@ test fn a_foreign_object_refuses_as_evaluation_preimage_mismatch() -> Bool {
 test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
   let lookup = bundle_req()
   let universe = prepared_object(req: universe_req(), payloads: universe_payloads())
-  let expected = percent_encode_payload(
-    s: evaluation_identity_canonical(
-      evaluation: request_judgment_contract(req: lookup).identity_derivation.evaluation_identity
-    ) as String
-  )
-  let stored = percent_encode_payload(
-    s: evaluation_identity_canonical(
-      evaluation: request_judgment_contract(req: universe_req()).identity_derivation.evaluation_identity
-    ) as String
-  )
+  let expected = percent_encode_payload(s: eval_preimage(req: lookup) as String)
+  let stored = percent_encode_payload(s: eval_preimage(req: universe_req()) as String)
   let forged = replace(universe, stored, expected)
   store_lookup_refusal_tag(l: lookup_present(req: lookup, object: forged)) == "contract_kind_mismatch"
 }
@@ -264,9 +262,8 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
       parts: [payload_part(payload: verdicts)]
     },
     payloads: [verdicts],
-    evaluation_preimage: evaluation_identity_canonical(
-      evaluation: request_judgment_contract(req: bundle_req()).identity_derivation.evaluation_identity
-    )
+    evaluation_preimage: eval_preimage(req: bundle_req()),
+    result_preimage: result_content_canonical(parts: [payload_part(payload: verdicts)], payloads: [verdicts])
   )
   store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: incomplete)) == "contract_incomplete"
 }
@@ -285,13 +282,13 @@ test fn the_write_door_refuses_before_publishing() -> Bool {
 fn preparation_tag(p: StoreCommitPreparation) -> String {
   match p {
     StoreCommitNotPrepared { commit: c } => store_commit_refusal_tag(c: c)
-    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _ } => "prepared"
+    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _, offered_result: _ } => "prepared"
   }
 }
 
 fn offered_digest(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ContentHash {
   match store_commit_prepare(req: req, payloads: payloads) {
-    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: d } => d
+    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: d, offered_result: _ } => d
     StoreCommitNotPrepared { commit: _ } => request_key(req: req)
   }
 }
@@ -299,22 +296,30 @@ fn offered_digest(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> Cont
 test fn commit_settles_only_on_a_verified_read_back() -> Bool {
   let key = request_key(req: bundle_req())
   let offered = offered_digest(req: bundle_req(), payloads: bundle_payloads())
+  let offered_result = offered_result_of(req: bundle_req(), payloads: bundle_payloads())
   let ours = lookup_present(req: bundle_req(), object: prepared_object(req: bundle_req(), payloads: bundle_payloads()))
   let theirs = lookup_present(req: bundle_req(), object: prepared_object(req: bundle_req(), payloads: [
     ArtifactPayload { id: output_module_test_verdicts, content: "v2.test.alpha.t1 fail" },
     ArtifactPayload { id: output_module_preparation_diagnostics, content: "" },
   ]))
-  settle_tag(key: key, offered: offered, publish: StoreObjectPublished, read_back: ours) == "committed"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: ours) == "converged_on_prior_commit"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: theirs) == "conflict"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectPublished, read_back: StoreLookupMiss { key: key }) == "read_back_refused"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: lookup_present(req: bundle_req(), object: "garbage")) == "read_back_refused"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: "ENOSPC" } }, read_back: ours) == "publish_refused"
+  settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublished, read_back: ours) == "committed"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: ours) == "converged_on_prior_commit"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: theirs) == "conflict"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublished, read_back: StoreLookupMiss { key: key }) == "read_back_refused"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: lookup_present(req: bundle_req(), object: "garbage")) == "read_back_refused"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: "ENOSPC" } }, read_back: ours) == "publish_refused"
 }
 
-fn settle_tag(key: ContentHash, offered: ContentHash, publish: StoreObjectPublish, read_back: StoreLookup) -> String {
+fn offered_result_of(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ResultContentIdentity {
+  match store_commit_prepare(req: req, payloads: payloads) {
+    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _, offered_result: r } => r
+    StoreCommitNotPrepared { commit: _ } => ResultContentIdentity { bucket: request_key(req: req), canonical_preimage: "missing" as NonEmptyStr }
+  }
+}
+
+fn settle_tag(key: ContentHash, offered: ContentHash, offered_result: ResultContentIdentity, publish: StoreObjectPublish, read_back: StoreLookup) -> String {
   store_commit_refusal_tag(c: store_commit_settle(
-    store: witness_store(), prepared_key: key, offered_digest: offered, publish: publish, read_back: read_back))
+    store: witness_store(), prepared_key: key, offered_digest: offered, offered_result: offered_result, publish: publish, read_back: read_back))
 }
 
 test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
@@ -514,12 +519,8 @@ test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
 test fn store_hit_requires_evaluation_preimage() -> Bool {
   let req = bundle_req()
   let good = prepared_object(req: req, payloads: bundle_payloads())
-  let foreign = evaluation_identity_canonical(
-    evaluation: request_judgment_contract(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta"))).identity_derivation.evaluation_identity
-  )
-  let expected = evaluation_identity_canonical(
-    evaluation: request_judgment_contract(req: req).identity_derivation.evaluation_identity
-  )
+  let foreign = eval_preimage(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
+  let expected = eval_preimage(req: req)
   let tampered = replace(good, percent_encode_payload(s: expected as String), percent_encode_payload(s: foreign as String))
   store_lookup_is_hit(l: lookup_present(req: req, object: good))
     && store_lookup_refusal_tag(l: lookup_present(req: req, object: tampered)) == "evaluation_preimage_mismatch"
@@ -528,16 +529,12 @@ test fn store_hit_requires_evaluation_preimage() -> Bool {
 test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
   let req = bundle_req()
   let good = prepared_object(req: req, payloads: bundle_payloads())
-  let foreign = evaluation_identity_canonical(
-    evaluation: request_judgment_contract(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta"))).identity_derivation.evaluation_identity
-  )
-  let expected = evaluation_identity_canonical(
-    evaluation: request_judgment_contract(req: req).identity_derivation.evaluation_identity
-  )
+  let foreign = eval_preimage(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
+  let expected = eval_preimage(req: req)
   let tampered = replace(good, percent_encode_payload(s: expected as String), percent_encode_payload(s: foreign as String))
   match decode_store_object(content: tampered) {
     StoreObjectMalformed { cause: _ } => false
-    StoreObjectDecoded { manifest: m, payloads: ps, evaluation_preimage: p } =>
+    StoreObjectDecoded { manifest: m, payloads: ps, evaluation_preimage: p, result_preimage: _ } =>
       match artifact_from_manifest(m: m) {
         ManifestDecoded { artifact: a } =>
           lookup_is_hit(l: provider_serve(
@@ -546,5 +543,20 @@ test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
           )) && ((p as String) == (expected as String)) == false
         _ => false
       }
+  }
+}
+
+test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bool {
+  let req = bundle_req()
+  let addr = evaluation_store_address(req: req)
+  let name = store_object_name(address: addr)
+  let v1_name = concat(serialize_content_hash(hash: request_key(req: req)) as String, ".materialization")
+  let v1_object = replace(prepared_object(req: req, payloads: bundle_payloads()), store_object_magic, "gunbc-materialization-object v1")
+  match decode_store_object(content: v1_object) {
+    StoreObjectMalformed { cause: c } =>
+      (name == v1_name) == false
+        && (name |> split(delimiter: ".") |> filter(p => p == "v2") |> count()) == 1
+        && (c |> split(delimiter: "v2") |> count()) > 1
+    StoreObjectDecoded { manifest: _, payloads: _, evaluation_preimage: _, result_preimage: _ } => false
   }
 }
