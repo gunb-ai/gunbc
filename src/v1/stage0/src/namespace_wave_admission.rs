@@ -1947,6 +1947,676 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
+    // gunbc#11461 (integration of XL-1 gunbc#11209, commit 42323e5bab "Give
+    // ReferenceDerivedCandidateRow its generated module home"): the reference-derived candidate
+    // row and disposition types moved from v1.compiler.emit_rust to their one dag home
+    // gunbc.reference_derived_candidate, so that the v2 capture producer
+    // (v2.workflow.legacy_repair_tap) and the seed emitter share ONE row authority (DESIGN
+    // section 3). Every binding below is the SAME declaration reached at its new home; the
+    // required floor on the integration head named exactly these sixty-six
+    // (run 35056157979, base a2bf3b9c10). TRIGGER: these rows go when gunbc#11461 merges - the base
+    // then carries the new home, the deltas stop being producible, and CONSUMED comes due on the
+    // roster's next touch.
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "qualified_type_reference_row_for_info",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "qualified_type_reference_row_for_info",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "qualified_type_reference_row_for_info",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateLeafAmbiguous: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "qualified_type_reference_rows",
+            spelling: "CandidateLeafAmbiguous",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "qualified_type_reference_rows",
+            spelling: "CandidateRegistryAbsent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "qualified_type_reference_rows",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "qualified_type_reference_use_lines",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "qualified_type_reference_use_lines",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_disposition",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateLeafAmbiguous: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_disposition",
+            spelling: "CandidateLeafAmbiguous",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateOwnModule: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_disposition",
+            spelling: "CandidateOwnModule",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_disposition",
+            spelling: "CandidateRegistryAbsent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_disposition",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantDelegatedToParent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_disposition",
+            spelling: "CandidateVariantDelegatedToParent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantParentUnresolved: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_disposition",
+            spelling: "CandidateVariantParentUnresolved",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateDisposition: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_disposition",
+            spelling: "ReferenceDerivedCandidateDisposition",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_survived",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateDisposition: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_candidate_survived",
+            spelling: "ReferenceDerivedCandidateDisposition",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_census",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateLeafAmbiguous: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_census",
+            spelling: "CandidateLeafAmbiguous",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateOwnModule: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_census",
+            spelling: "CandidateOwnModule",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_census",
+            spelling: "CandidateRegistryAbsent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_census",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantDelegatedToParent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_census",
+            spelling: "CandidateVariantDelegatedToParent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantParentUnresolved: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_census",
+            spelling: "CandidateVariantParentUnresolved",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_census",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_disposition_name",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateLeafAmbiguous: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_disposition_name",
+            spelling: "CandidateLeafAmbiguous",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateOwnModule: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_disposition_name",
+            spelling: "CandidateOwnModule",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_disposition_name",
+            spelling: "CandidateRegistryAbsent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_disposition_name",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantDelegatedToParent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_disposition_name",
+            spelling: "CandidateVariantDelegatedToParent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantParentUnresolved: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_disposition_name",
+            spelling: "CandidateVariantParentUnresolved",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateDisposition: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_disposition_name",
+            spelling: "ReferenceDerivedCandidateDisposition",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_row_diagnostics",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateLeafAmbiguous: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_row_diagnostics",
+            spelling: "CandidateLeafAmbiguous",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateOwnModule: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_row_diagnostics",
+            spelling: "CandidateOwnModule",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_row_diagnostics",
+            spelling: "CandidateRegistryAbsent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_row_diagnostics",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantDelegatedToParent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_row_diagnostics",
+            spelling: "CandidateVariantDelegatedToParent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantParentUnresolved: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_row_diagnostics",
+            spelling: "CandidateVariantParentUnresolved",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_row_diagnostics",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.compiler.emit_rust)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "reference_derived_use_line_plan",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantParentUnresolved: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "an_unresolved_parent_is_not_reported_as_registry_absent",
+            spelling: "CandidateVariantParentUnresolved",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantParentUnresolved: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing",
+            spelling: "CandidateVariantParentUnresolved",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "census_counts_each_arm_separately",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateOwnModule: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "census_counts_each_arm_separately",
+            spelling: "CandidateOwnModule",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "census_counts_each_arm_separately",
+            spelling: "CandidateRegistryAbsent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "census_counts_each_arm_separately",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantDelegatedToParent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "census_counts_each_arm_separately",
+            spelling: "CandidateVariantDelegatedToParent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantParentUnresolved: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "census_counts_each_arm_separately",
+            spelling: "CandidateVariantParentUnresolved",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "census_counts_each_arm_separately",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "cross_module_candidate_with_export_proof_survives",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantDelegatedToParent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "known_variant_is_delegated_to_its_parent_not_registry_absent",
+            spelling: "CandidateVariantDelegatedToParent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "only_export_proof_failed_produces_a_diagnostic",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateOwnModule: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "only_export_proof_failed_produces_a_diagnostic",
+            spelling: "CandidateOwnModule",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "only_export_proof_failed_produces_a_diagnostic",
+            spelling: "CandidateRegistryAbsent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateSurvived: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "only_export_proof_failed_produces_a_diagnostic",
+            spelling: "CandidateSurvived",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateVariantDelegatedToParent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "only_export_proof_failed_produces_a_diagnostic",
+            spelling: "CandidateVariantDelegatedToParent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "only_export_proof_failed_produces_a_diagnostic",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateRegistryAbsent: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "registry_absent_produces_no_diagnostic",
+            spelling: "CandidateRegistryAbsent",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "registry_absent_produces_no_diagnostic",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "the_export_unproven_diagnostic_is_advisory",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "the_export_unproven_diagnostic_is_advisory",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 CandidateExportProofFailed: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "the_export_unproven_message_names_its_own_remedy",
+            spelling: "CandidateExportProofFailed",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11461 ReferenceDerivedCandidateRow: v1.compiler.emit_rust -> gunbc.reference_derived_candidate (v1.tests.claim.reference_derived_disposition_census_witness_test)",
+        subject: AdmissionSubject::Binding {
+            module: "v1.tests.claim.reference_derived_disposition_census_witness_test",
+            in_declaration: "the_export_unproven_message_names_its_own_remedy",
+            spelling: "ReferenceDerivedCandidateRow",
+            expected_candidates: &["gunbc.reference_derived_candidate"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
 ];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an

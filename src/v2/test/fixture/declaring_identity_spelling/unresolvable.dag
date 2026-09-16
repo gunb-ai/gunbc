@@ -1,3 +1,0 @@
-module v2.test.fixture.declaring_identity_spelling.unresolvable
-
-data row: ThisNameIsNotDeclaredInThisFixture = 0

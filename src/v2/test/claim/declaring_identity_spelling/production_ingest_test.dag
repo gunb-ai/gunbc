@@ -56,7 +56,7 @@ data value_outside_call_path: String = "src/v2/test/fixture/declaring_identity_s
 
 data shorter_path: String = "src/v2/test/fixture/declaring_identity_spelling/shorter.dag"
 
-data unresolvable_path: String = "src/v2/test/fixture/declaring_identity_spelling/unresolvable.dag"
+data unresolvable_path: String = "dag/test/probe/declaring_identity_spelling_unresolvable_probe.dag"
 
 data call_only_path: String = "src/v2/test/fixture/declaring_identity_spelling/call_only.dag"
 
