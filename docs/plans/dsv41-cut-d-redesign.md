@@ -5,10 +5,19 @@ live V4 Flash incumbent: drain its offer, stop it, launch V4.1 TP4, probe, then 
 restore V4 Flash**, with promotion gated on *rollback demonstrated* — an incumbent request
 served again after the experiment.
 
-**That incumbent does not exist.** Every terminal in the original cut that names V4 Flash has
-no subject, so the cut cannot be executed as written, and executing a lightly-edited version
-would silently drop safety properties the original bought. This document records what was
-observed, what follows from it, and the cut that replaces it.
+**No incumbent was observed**, twice, 14 hours apart. Every terminal in the original cut that
+names V4 Flash therefore has no subject *on those readings*, so the cut cannot be executed as
+written, and executing a lightly-edited version would silently drop safety properties the
+original bought.
+
+**That absence is a dated observation, not a property of Group A** — D0 re-establishes it under
+the transaction's own claim, because something can become live between a reading and a stop.
+This document records what was observed, what follows, and the cut that replaces the original.
+
+**HOW TO READ THIS DOCUMENT.** It went through nine review rounds and several of its own
+premises were rejected along the way. Rejected premises are marked **⚠ REJECTED PREMISE** and
+kept only so they are not re-derived; everything else is operative. Nothing here should require
+inferring that a later section supersedes an earlier one.
 
 ## What was observed
 
@@ -150,8 +159,9 @@ authority can silently reverse is not a terminal.
 So the question is not *may we restore the occupant* — it is **under whose authority do the
 hosts sit while V4.1 is on them**, and the plan must answer it explicitly:
 
-- **withdraw or suspend Group A's pair-serving desired authority** for the experiment's
-  duration, so the released state is a converged state rather than a race; and
+- **suspend Group A's pair-serving desired authority** for the experiment's duration, so the
+  released state is a converged state rather than a race — *suspend*, not *withdraw*: they are
+  different operations and only withdrawal is expressible today (see below); and
 - record that withdrawal as part of the authorization, so the hosts are never in a position
   where two authorities both believe they own them.
 
@@ -175,10 +185,14 @@ serving_enrolled_groups   = [FabricGroupA, FabricGroupB]   ← who may be ASKED
 spark_pair_serving_groups = [FabricGroupA]                 ← whose hosts we CLAIM and converge
 ```
 
-**Group B is already enrolled-but-not-claimed — precisely the state this cut needs for Group A.**
-So the withdrawal removes Group A from the convergence claim without touching enrollment: the
-route stays askable, the hosts stop being converged, and no new mechanism is required. It is the
-established remedy applied a second time, with a modeled separation built to support it.
+**⚠ REJECTED PREMISE, kept only so it is not re-derived.** An earlier draft concluded from this
+that Group B is "precisely the state this cut needs for Group A", that withdrawal therefore
+needs "no new mechanism", and that the precedent could simply be applied a second time. **That
+is wrong and the next subsection says why.** Group B's withdrawal was a removal from a roster
+that still had another member; Group A's would empty it, and Group A is the row that speaks for
+srv7 and srv8 whereas Group B's hosts were claimed by another authority that wanted them. The
+precedent establishes that the enrolled/claimed split exists and that a claim can be withdrawn —
+it does **not** establish that this withdrawal is safe.
 
 **Does the withdrawal also remove the host admissibility or launch authority D1 and D2 need?**
 **Yes — and an earlier version of this section answered that wrongly.** It traced admissibility
@@ -277,7 +291,7 @@ the one sentence that tells a rollout worker where to leave the hosts.
 | subject | what it is | who produces it | is it a return target |
 |---|---|---|---|
 | **`EntryStateReceipt`** | the ranks as found — occupant present, ~108 GiB held | D0 | **no** |
-| **`ReleasedBaselineSpec`** | the *desired* post-experiment state: no ranks, no engine, no serving offer, no seat, no host claim, no occupying container, no live device allocation | declared before D1 runs | it is the target |
+| **`ReleasedBaselineSpec`** | the *desired* post-experiment state: no ranks, no engine, no serving offer, no seat, no occupying container, no live device allocation. **Whether a host reservation remains is the choice made below** — for the ordinary D1→D2 path it does | declared before D1 runs | it is the target |
 | **`ReleasedBaselineReceipt`** | a readback establishing that the spec holds | D1's terminal | — |
 
 A spec and its readback are two facts, and collapsing them is how "we returned to baseline"
@@ -311,8 +325,7 @@ boundary. The spec says so explicitly rather than leaving a later reader to deci
 staged row store violates "released".
 
 The **released state** remains the return target rather than the entry state, but now for a
-stated reason: the entry state is a converged instance of a desired authority we are
-withdrawing, so returning to it means *restoring that authority*, which is a separate decision
+stated reason: the entry state is an instance of a desired authority we are suspending, so returning to it means *restoring that authority*, which is a separate decision
 from ending the experiment. D1 ends the experiment; restoring pair-serving authority is its own
 step with its own evidence.
 
@@ -390,8 +403,8 @@ with four answers, each leading somewhere different:
 
 | answer | meaning | disposition |
 |---|---|---|
-| `DeclaredOccupantObserved` | it is the declared realization, converged | proceed via the authority withdrawal of §2 |
-| `DeclaredOccupantDrifted` | declared, but not as declared | proceed, and record the drift; do not treat the drifted state as a target |
+| `DeclaredOccupantObserved` | declared **and** shown converged | proceed via the atomic transfer into suspension of §2 — not a withdrawal |
+| `DeclaredOccupantDrifted` | declared lineage, convergence not established — **the expected answer on the readings above** | proceed via the same transfer, record the drift; the drifted state is not a target |
 | `ForeignOccupantObserved` | something we do not declare | **refuse** — not ours to reclaim |
 | `OccupancyUnread` | the question could not be answered | **refuse** — unread is not empty |
 
@@ -428,8 +441,9 @@ claim the four ranks
 → complete graph/runtime initialisation
 → answer semantic and differential probes
 → ONE NORMAL ROUTED REQUEST, while the candidate is still live
-→ RETURN TO THE RELEASED STATE, unconditionally
-→ read back the released state
+→ RETURN TO THE BASELINE THE AUTHORIZATION NAMED, unconditionally
+   (QuiescentReservedBaseline on the ordinary D1→D2 path)
+→ read back that baseline's receipt
 ```
 
 D1 **always** ends at the released state — not at the entry state, which it deliberately does
