@@ -222,7 +222,7 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 13
+  count(plan) == 15
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -356,76 +356,6 @@ test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
   ) {
     DashboardInstanceRefused { reason } =>
       string_contains(s: reason as String, pattern: "source revision read-back refused")
-    _ => false
-  }
-}
-
-// C6 DELETED THE MKDIRS FROM THIS PLAN. If absence of those roots still selected Apply, apply
-// would succeed and reconcile would stay not-converged. The RED is Apply; the GREEN is Refuse
-// naming live_deploy. Holding every other Converged conjunct true isolates the two bits this
-// apply no longer owns.
-test fn dashboard_reconcile_refuses_missing_live_deploy_dispatch_roots() -> Bool {
-  let ready = lab_observed(
-    production_untouched: true,
-    source_anchor_matches: true,
-    source_revision_observed: true,
-    source_revision_current: true,
-    health_current: true,
-  )
-  let missing_attempts = DashboardInstanceObserved {
-    observation_refusals: ready.observation_refusals,
-    root_present: ready.root_present,
-    ownership_marker_present: ready.ownership_marker_present,
-    bundle_present: ready.bundle_present,
-    origin_present: ready.origin_present,
-    source_present: ready.source_present,
-    source_revision_observed: ready.source_revision_observed,
-    source_revision_current: ready.source_revision_current,
-    source_revision_detail: ready.source_revision_detail,
-    attempts_present: false,
-    attempt_state_present: true,
-    provider_runtime_ready: ready.provider_runtime_ready,
-    provider_runtime_detail: ready.provider_runtime_detail,
-    provider_authenticated: true,
-    provider_auth_detail: ready.provider_auth_detail,
-    health_current: ready.health_current,
-    production_untouched: ready.production_untouched,
-    source_anchor_matches: ready.source_anchor_matches,
-  }
-  let missing_attempt_state = DashboardInstanceObserved {
-    observation_refusals: ready.observation_refusals,
-    root_present: ready.root_present,
-    ownership_marker_present: ready.ownership_marker_present,
-    bundle_present: ready.bundle_present,
-    origin_present: ready.origin_present,
-    source_present: ready.source_present,
-    source_revision_observed: ready.source_revision_observed,
-    source_revision_current: ready.source_revision_current,
-    source_revision_detail: ready.source_revision_detail,
-    attempts_present: true,
-    attempt_state_present: false,
-    provider_runtime_ready: ready.provider_runtime_ready,
-    provider_runtime_detail: ready.provider_runtime_detail,
-    provider_authenticated: true,
-    provider_auth_detail: ready.provider_auth_detail,
-    health_current: ready.health_current,
-    production_untouched: ready.production_untouched,
-    source_anchor_matches: ready.source_anchor_matches,
-  }
-  match dashboard_instance_reconcile(
-    instance: srv1_lab_dashboard_instance(),
-    observed: missing_attempts,
-  ) {
-    DashboardInstanceRefused { reason } =>
-      string_contains(s: reason as String, pattern: "DispatchWorktreeRoot")
-        && match dashboard_instance_reconcile(
-          instance: srv1_lab_dashboard_instance(),
-          observed: missing_attempt_state,
-        ) {
-          DashboardInstanceRefused { reason: r2 } =>
-            string_contains(s: r2 as String, pattern: "AttemptStateRoot")
-          _ => false
-        }
     _ => false
   }
 }
@@ -688,7 +618,7 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 13
+  count(plan) == 15
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -715,7 +645,6 @@ test fn dashboard_instance_model_keystone_holds() -> Bool {
     && dashboard_reconcile_refuses_destructive_source_replacement()
     && dashboard_reconcile_refreshes_owned_clean_stale_revision()
     && dashboard_reconcile_refuses_unreadable_source_revision()
-    && dashboard_reconcile_refuses_missing_live_deploy_dispatch_roots()
     && dashboard_bundle_is_required_for_convergence()
     && dashboard_source_capture_has_no_manual_await_step()
     && dashboard_reconcile_refuses_unmarked_existing_source()
@@ -755,10 +684,14 @@ test fn the_plan_creates_every_path_it_later_verifies() -> Bool {
     && plan_ensures_serve_binary(plan: lab_plan, instance: lab)
     && plan_ensures_provider_state_root(plan: srv2_plan, instance: srv2)
     && plan_ensures_serve_binary(plan: srv2_plan, instance: srv2)
-    && !any(lab_plan, op => match op {
+    && any(lab_plan, op => match op {
       DashboardEnsureDirectory { path } =>
         path == dashboard_instance_dispatch_worktree_root(instance: lab)
-          || path == dashboard_instance_dispatch_attempt_state_root(instance: lab)
+      _ => false
+    })
+    && any(lab_plan, op => match op {
+      DashboardEnsureDirectory { path } =>
+        path == dashboard_instance_dispatch_attempt_state_root(instance: lab)
       _ => false
     })
 }
@@ -816,9 +749,8 @@ test fn a_refused_observation_never_derives_a_plan() -> Bool {
     DashboardInstanceRefused { reason } =>
       string_contains(s: reason as String, pattern: "observation incomplete")
         && match dashboard_instance_reconcile(instance: lab, observed: genuinely_absent) {
-          DashboardInstanceRefused { reason } =>
-            string_contains(s: reason as String, pattern: "this apply does not create them")
-          DashboardInstanceApply { plan: _ } => false
+          DashboardInstanceApply { plan } => count(plan) > 0
+          DashboardInstanceRefused { reason: _ } => false
           DashboardInstanceConverged => false
         }
     DashboardInstanceApply { plan: _ } => false

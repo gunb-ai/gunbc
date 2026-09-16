@@ -1538,6 +1538,12 @@ type DashboardInstanceProvisionOp
     }
   | DashboardVerifyHealth { host: NonEmptyStr, port: Port }
 
+// live_deploy CreateRoot's DispatchWorktreeRoot and AttemptStateRoot only for
+// deployment_spec_srv1 (srv1_live). deployment_spec_for has no production caller. srv1_lab,
+// srv2_lab, srv2_deploy and macbook_local still consume these paths through dispatch/belt, and
+// this plan is the only creator those instances have. Naming live_deploy as owner without
+// keeping this creator is the serve-binary deadlock: a refusal (or a successful apply) that
+// nothing else can discharge, and on macbook_local the named owner has no realization at all.
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
@@ -1559,6 +1565,8 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   }
   let common = [
     DashboardEnsureDirectory { path: instance.instance_root },
+    DashboardEnsureDirectory { path: dashboard_instance_dispatch_worktree_root(instance: instance) },
+    DashboardEnsureDirectory { path: dashboard_instance_dispatch_attempt_state_root(instance: instance) },
     DashboardEnsureProviderStateRoot {
       path: dashboard_instance_provider_state_root(instance: instance),
     },
@@ -1849,23 +1857,14 @@ fn dashboard_instance_reconcile(
         observed.source_revision_detail,
       ], "") as NonEmptyStr,
     }
-  } else if !observed.attempts_present || !observed.attempt_state_present {
-    // DISPATCH WORKTREE AND ATTEMPT-STATE ARE LIVE_DEPLOY MEMBERS. This plan used to
-    // DashboardEnsureDirectory both, then observe them, then treat absence as Apply. C6 deleted
-    // those ops because gunbc.live_deploy already CreateRoot's DispatchWorktreeRoot and
-    // AttemptStateRoot. Returning Apply after that deletion is the serve-binary deadlock inverted:
-    // apply runs a plan that cannot create the missing roots, succeeds, and reconcile still says
-    // not-converged. Absence here is not a launcher gap; it is live_deploy work that has not
-    // happened, so the arm is Refuse with that owner named.
-    DashboardInstanceRefused {
-      reason: "dispatch worktree and attempt-state roots are live_deploy members (DispatchWorktreeRoot, AttemptStateRoot); this apply does not create them" as NonEmptyStr,
-    }
   } else if observed.health_current
       && observed.root_present
       && observed.ownership_marker_present
       && dashboard_source_seed_ready(instance: instance, observed: observed)
       && observed.origin_present
       && observed.source_present
+      && observed.attempts_present
+      && observed.attempt_state_present
       && observed.provider_runtime_ready
       && observed.provider_authenticated
       && observed.source_anchor_matches
