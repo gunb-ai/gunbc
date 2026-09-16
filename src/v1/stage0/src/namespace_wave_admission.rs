@@ -469,8 +469,15 @@ pub struct WaveAdmissionReport {
     /// satisfied at the candidate, so it will be consumed when the candidate lands; on a
     /// merge_group run that is the owner's refusal.
     pub used_without_follow_up: Vec<String>,
-    /// The subset of `consumed_admissions` whose owner authored NO deletion follow-up: the genuine
-    /// bypass of the owner's charge, and the only consumed rows a bystander's composition refuses.
+    /// The subset of `consumed_admissions` whose owner authored NO deletion follow-up.
+    ///
+    /// NO PRODUCTION READER SINCE gunbc#11481, FLAGGED RATHER THAN HIDDEN. This was the population
+    /// `ConsumedRowOwnerChargeBypassed` refused on; that arm is removed and declared as the drop
+    /// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. The field is still POPULATED and is
+    /// read only by tests, so it is a DESIGN 3c dangling field today -- kept because it is the exact
+    /// population that drop's restoration trigger has to re-cover, and deleting it would discard the
+    /// one derivation a restoration would need. Its honest disposition is decided when that drop is
+    /// retired: consumed by the restored charge, or removed with the drop row.
     pub consumed_without_follow_up: Vec<String>,
     /// The complement: consumed rows with an authored follow-up, carried as receipts.
     pub owned_consumed_receipts: Vec<ConsumedRowReceipt>,
@@ -1845,13 +1852,21 @@ fn parse_decl_ref_list(
 /// number had been typed -- its own message conceded it "checks that a number is authored, never
 /// that it names an open or deleting pull request" -- so its admitting side was free and a
 /// fabricated number passed. The second billed a change for a debt its own comment said was not
-/// its own. The deletion of a consumed row is still compelled by the landing arm above, which is
-/// where the debt becomes real.
+/// its own.
+///
+/// WHAT THIS COSTS, STATED PLAINLY AND DECLARED AS A DROP. An earlier revision of this note claimed
+/// the landing arm still compels a consumed row's deletion. On the REQUIRED path it does not.
+/// Lane ruling (fierce-lark-661, 2026-09-13): the merge queue moved the required verdict off the
+/// push to the default branch, and with it the only run where base == head -- so `roster_due`
+/// reduces to `roster_touched` alone there. With `ConsumedRowOwnerChargeBypassed` gone, a
+/// base-consumed row whose owner authored no follow-up refuses on NO required run until somebody
+/// happens to edit the roster directory. That arm's RED discriminated on the ABSENCE of any number,
+/// so unlike `OwnerFollowUpAbsent` -- whose admitting side was free and which was a decoration --
+/// removing it is a COVERAGE LOSS. It is declared as a 4b(3) rung drop,
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`, not passed off as a no-op.
 ///
 /// `used_without_follow_up` is still COUNTED in the message, so the debt stays visible as a
-/// receipt; it just no longer refuses.
-/// the merge queue moved the required verdict off the push to the default branch, and with it the
-/// only run where base == head. Lifecycle is derived from the candidate-set
+/// receipt; it just no longer refuses. Lifecycle is derived from the candidate-set
 /// proof, never predicted by an authored row. Policy authority:
 /// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
