@@ -3,12 +3,6 @@ module test.claim.spark.relaunch_vertical_witness_test
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count }
-import extdeps.docker.container_inspect {
-  ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
-  container_inspect_from_stdout, docker_capability_canonical,
-  VerbsShapeReading, VerbsShapePresent, VerbsShapeAbsent, VerbsShapeUnreported,
-  container_maps_device, container_adds_capability, container_unlocks_memlock,
-}
 import extdeps.nvidia.nccl {
   NcclTransportVerdict, NcclTransportRead, NcclTransportRefused, NcclTransportRefusal,
   NcclNoAnnouncement, NcclAnnouncementsDisagree, NcclUnknownNetworkName,
@@ -32,45 +26,40 @@ import extdeps.vllm.engine_args {
   VllmArgvFlagAbsent, VllmArgvFlagWithoutValue, VllmArgvFlagRepeated, VllmArgvValueRead,
 }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
-import gunbc.spark.serving_rank_observe {
-  observed_rank_identity, RankIdentityReading, RankIdentityRead, RankIdentityUnread,
-  ObservedRankSubject, observed_rank_subject,
-  RankTransportObservation, RankTransportObserved, RankTransportRefused, RankTransportVerdict,
-  rank_transport_from_log,
-}
-import gunbc.spark.serving_relaunch_transaction {
-  RelaunchDelta, DeltaOnlyIntended, DeltaRefused, relaunch_delta,
-  FieldComparison, FieldAgrees, FieldDiffersOnAxis, FieldDiffersOffAxis, FieldUnreadable,
-  SpecField, SpecName, SpecDevices, SpecCapAdd, SpecMemlock, SpecEnv, SpecCommand, SpecShmSize,
-  RelaunchAxis, TransportAxis, BatchingAxis, UtilizationAxis,
-  spec_field_wire, relaunch_axis_wire, transport_flipped, preserved_container_name,
-  delta_comparisons, delta_off_axis, delta_unreadable,
-}
-import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4, glm_native_concurrent_profile,
-  ArmIntent, ArmBoundedExperiment,
-}
-import gunbc.spark.serving_arm_launch {
-  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, plan_arm_launch_for,
-  arm_rail_gid_selection,
-}
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
-import extdeps.docker.cli { DockerCreateSpec }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
-// ── THE SUBJECT IS SIX FILES OF VERBATIM COMMAND OUTPUT, NOT TEXT AN AUTHOR WROTE ─────────────
+// ── THIS MODULE HOLDS THE ROWS WHOSE SUBJECT IS TEXT, AND ITS SIBLING HOLDS THE REST ──────────
 //
-// WHY THAT DISTINCTION IS THE WHOLE VALUE OF THIS MODULE. Every carrier these folds produce was, until
-// this change, inhabited only by supplied values -- and a parser tested against text its own author
-// wrote tests the author's belief about the format, not the format. These bytes came off the Group B
-// arm on 2026-09-16 by `docker inspect`, `docker logs` and `docker exec`, and the README beside them
-// records the exact command, host and incarnation each one came from.
+// THE SPLIT IS A COST FACT, MEASURED RATHER THAN GUESSED, and it is drawn at the one place the
+// measurement puts it. `required-floor-claim-cost` on run 35150370426 reports every row that decodes
+// one 18 KB `docker inspect` document at 523-554 ms CPU and every row that decodes four at
+// 2.1-2.2 s, while every row in THIS module -- which reads the same captures as TEXT -- lands at
+// 0-33 ms. The enrolment margin is 302 ms (`v2.workflow.floor_enrolment_margin`
+// floor_enrolment_margin_budget_ms, derived from the 500 ms per-subject line), so a single JSON
+// decode of a real captured document cannot fit under it and no restructuring of the assertions
+// changes that: the cost does not move when the assertions do, because the assertions were never
+// the expense.
 //
-// THEY ARE ALSO A DISCRIMINATING PAIR, which is what makes the rows below walls rather than
-// decorations. The same folds run over the socket incarnation and the RoCE incarnation must reach
-// OPPOSITE answers: `Devices=[] CapAdd=null Ulimits=[]` against a mapped device, a canonicalized
-// capability and an unlimited memlock; `Using network Socket` against `Using network IB`. A fold that
-// answered the same for both would pass a single-sided check and establish nothing.
+// SO THE EXPENSIVE ROWS DECLARE THE LONG HOME rather than being trimmed to fit, and they are in a
+// SEPARATE MODULE because the long-home declaration is per module: keeping them here would take
+// every cheap row in this file out of the required floor with them, which is the exact defect
+// `v2.workflow.required_floor` moved the grain from file to module name to end. Nothing is deleted
+// and no capture is trimmed -- trimming a verbatim capture to fit a budget would make it an authored
+// fixture, which is the one thing these files exist not to be.
+
+// ── THE SUBJECT IS NINE FILES OF VERBATIM COMMAND OUTPUT, NOT TEXT AN AUTHOR WROTE ────────────
+//
+// WHY THAT DISTINCTION IS THE WHOLE VALUE OF THESE TWO MODULES. Every carrier these folds produce
+// was, until this change, inhabited only by supplied values -- and a parser tested against text its
+// own author wrote tests the author's belief about the format, not the format. These bytes came off
+// the Group B arm on 2026-09-16 by `docker inspect`, `docker logs` and `docker exec`, and the README
+// beside them records the exact command, host and incarnation each one came from.
+//
+// THEY ARE ALSO A DISCRIMINATING PAIR, which is what makes the rows walls rather than decorations.
+// The same folds run over the socket incarnation and the RoCE incarnation must reach OPPOSITE
+// answers: `Devices=[] CapAdd=null Ulimits=[]` against a mapped device, a canonicalized capability
+// and an unlimited memlock; `Using network Socket` against `Using network IB`. A fold that answered
+// the same for both would pass a single-sided check and establish nothing.
 data capture_root: String = "artifacts/spark/glm-group-b-2026-09-16/"
 
 fn capture(name: String) -> String {
@@ -78,203 +67,9 @@ fn capture(name: String) -> String {
   if read.success { read.content } else { "" }
 }
 
-fn inspect_socket_rank0() -> String { capture(name: "inspect-socket-rank0.json") }
-fn inspect_socket_rank1() -> String { capture(name: "inspect-socket-rank1.json") }
-fn inspect_roce_rank0() -> String { capture(name: "inspect-roce-rank0.json") }
-fn inspect_roce_rank1() -> String { capture(name: "inspect-roce-rank1.json") }
 fn nccl_socket_rank0() -> String { capture(name: "nccl-socket-rank0.txt") }
 fn nccl_roce_rank0() -> String { capture(name: "nccl-roce-rank0.txt") }
 fn kv_roce_rank0() -> String { capture(name: "kv-roce-rank0.txt") }
-
-fn decoded(text: String) -> ContainerInspect? {
-  match container_inspect_from_stdout(stdout: text) {
-    ContainerInspectUnreadable { cause: _ } => none
-    ContainerInspectDecoded { container: c } => Present { value: c }
-  }
-}
-
-fn with_decoded(text: String, f: fn(ContainerInspect) -> Bool) -> Bool {
-  match decoded(text: text) {
-    Absent => false
-    Present { value: c } => f(c)
-  }
-}
-
-// ── INHABITANCE: THE DECODER RUNS ON WHAT THE DAEMON ACTUALLY ANSWERS ─────────────────────────
-//
-// THE PAIRING OBLIGATION OF DESIGN SECTION 3 IS DISCHARGED HERE AND NOT ASSUMED. Every row below that
-// supplies a captured string to a fold is a hypothesis about a boundary; this row is what makes it a
-// reading, because it asserts that the REAL producer's output inhabits the shape -- four separate
-// `docker inspect` documents, from two incarnations on two hosts, all four decoding.
-test fn w_every_captured_inspect_document_decodes() -> Bool {
-  all([inspect_socket_rank0(), inspect_socket_rank1(), inspect_roce_rank0(), inspect_roce_rank1()],
-    t => match decoded(text: t) { Absent => false, Present { value: _ } => true })
-}
-
-// ── THE DISCRIMINATING ROW OF THE WHOLE CHANGE ────────────────────────────────────────────────
-//
-// THIS IS THE DEFECT, MADE DETECTABLE. Before `devices` and `ulimits` existed on HostConfig, a
-// readback of the socket incarnation could see only `cap_add` -- and would have found it agreeing
-// with a plan that asked for nothing, because a container with no capabilities and a plan wanting
-// none agree perfectly. The two fields that carried the whole difference had nowhere to land.
-//
-// SAME FOLD, TWO REAL DOCUMENTS, OPPOSITE ANSWERS. That is what makes this a wall: its RED is not
-// authorable only in principle, it is sitting in the repository as `inspect-socket-rank0.json`.
-test fn w_the_socket_incarnation_reads_as_missing_the_verbs_shape() -> Bool {
-  with_decoded(text: inspect_socket_rank0(), f: c =>
-    verbs_absent(r: container_maps_device(inspect: c, host_path: "/dev/infiniband"))
-      && verbs_absent(r: container_adds_capability(inspect: c, capability: "IPC_LOCK"))
-      && verbs_absent(r: container_unlocks_memlock(inspect: c)))
-}
-
-test fn w_the_roce_incarnation_reads_as_carrying_the_verbs_shape() -> Bool {
-  all([inspect_roce_rank0(), inspect_roce_rank1()], t => with_decoded(text: t, f: c =>
-    verbs_present(r: container_maps_device(inspect: c, host_path: "/dev/infiniband"))
-      && verbs_present(r: container_adds_capability(inspect: c, capability: "IPC_LOCK"))
-      && verbs_present(r: container_unlocks_memlock(inspect: c))))
-}
-
-fn verbs_present(r: VerbsShapeReading) -> Bool {
-  match r {
-    VerbsShapePresent => true
-    VerbsShapeAbsent => false
-    VerbsShapeUnreported { cause: _ } => false
-  }
-}
-
-fn verbs_absent(r: VerbsShapeReading) -> Bool {
-  match r {
-    VerbsShapeAbsent => true
-    VerbsShapePresent => false
-    VerbsShapeUnreported { cause: _ } => false
-  }
-}
-
-// ── AND THE CAPABILITY ALONE WOULD HAVE AGREED, WHICH IS WHY IT IS ASSERTED SEPARATELY ────────
-//
-// The daemon reads `CAP_IPC_LOCK` back for a plan that spells `IPC_LOCK`. A literal comparison would
-// report a disagreement on every correctly-created container, so the canonicalization is what keeps
-// this row from being a false red -- and it is asserted against the captured spelling rather than
-// against itself.
-test fn w_the_daemon_reads_the_capability_back_with_its_cap_prefix() -> Bool {
-  docker_capability_canonical(name: "IPC_LOCK") == "CAP_IPC_LOCK"
-    && docker_capability_canonical(name: "CAP_IPC_LOCK") == "CAP_IPC_LOCK"
-    && with_decoded(text: inspect_roce_rank0(), f: c =>
-      match c.host_config {
-        Absent => false
-        Present { value: hc } =>
-          match hc.cap_add {
-            Absent => false
-            Present { value: cs } => count(filter(cs, x => x == "CAP_IPC_LOCK")) == 1
-          }
-      })
-}
-
-// A NULL CapAdd AND AN EMPTY Devices ARE DIFFERENT FACTS, and the socket capture carries one of each.
-// Collapsing them would erase the difference between a field the daemon did not set and a field it set
-// to nothing.
-test fn w_a_null_member_reads_absent_and_an_empty_array_reads_empty() -> Bool {
-  with_decoded(text: inspect_socket_rank0(), f: c =>
-    match c.host_config {
-      Absent => false
-      Present { value: hc } =>
-        match hc.cap_add {
-          Present { value: _ } => false
-          Absent =>
-            match hc.devices {
-              Absent => false
-              Present { value: ds } => count(ds) == 0
-            }
-        }
-    })
-}
-
-// ── THE RANK COMES OUT OF THE ARGV ────────────────────────────────────────────────────────────
-//
-// WHAT THESE TWO CAPTURES CAN AND CANNOT ESTABLISH, stated so the row is not read as more than it is:
-// .236 is rank 0 and .237 is rank 1, so this PAIR happens to agree with address order and cannot on
-// its own discriminate the argv reading from an address-order derivation. What it does establish is
-// that the rank is recovered from the document at all, and that the two incarnations of one host --
-// which differ in batching and utilization -- agree on it.
-test fn w_the_node_rank_is_read_from_the_containers_own_argv() -> Bool {
-  argv_rank_is(text: inspect_socket_rank0(), expected: 0)
-    && argv_rank_is(text: inspect_roce_rank0(), expected: 0)
-    && argv_rank_is(text: inspect_socket_rank1(), expected: 1)
-    && argv_rank_is(text: inspect_roce_rank1(), expected: 1)
-}
-
-fn argv_rank_is(text: String, expected: Nat) -> Bool {
-  with_decoded(text: text, f: c =>
-    match observed_rank_identity(c: c) {
-      RankIdentityUnread { cause: _ } => false
-      RankIdentityRead { incarnation: id, node_rank: r } => r == expected && (id as String) != ""
-    })
-}
-
-// THE TWO INCARNATIONS DIFFER IN EXACTLY THE TWO ARGUMENTS THE RELAUNCH CHANGED, read back through
-// the same grammar that renders them. 0.84 is 8400 basis points and 0.8567 is 8567 -- the padding
-// rule is what makes those two numbers rather than 84 and 8567.
-test fn w_the_two_incarnations_differ_in_batching_and_utilization_as_read_back() -> Bool {
-  argv_flag_is(text: inspect_socket_rank0(), flag: "--max-num-seqs", expected: "1")
-    && argv_flag_is(text: inspect_roce_rank0(), flag: "--max-num-seqs", expected: "16")
-    && argv_utilization_is(text: inspect_socket_rank0(), expected: 8400)
-    && argv_utilization_is(text: inspect_roce_rank0(), expected: 8567)
-}
-
-fn container_argv(c: ContainerInspect) -> List<String> {
-  match c.config {
-    Absent => []
-    Present { value: cfg } => match cfg.cmd { Absent => [], Present { value: words } => words }
-  }
-}
-
-fn argv_flag_is(text: String, flag: String, expected: String) -> Bool {
-  with_decoded(text: text, f: c =>
-    match vllm_argv_value(argv: container_argv(c: c), flag: flag) {
-      VllmArgvValue { value: v } => v == expected
-      VllmArgvFlagAbsent => false
-      VllmArgvFlagWithoutValue => false
-      VllmArgvFlagRepeated { values: _ } => false
-    })
-}
-
-fn argv_utilization_is(text: String, expected: Nat) -> Bool {
-  with_decoded(text: text, f: c =>
-    match vllm_argv_utilization_basis_points(argv: container_argv(c: c)) {
-      VllmArgvNatUnread { cause: _ } => false
-      VllmArgvNat { value: bp } => bp == expected
-    })
-}
-
-// A FRACTION THAT CANNOT BE HELD EXACTLY IN BASIS POINTS REFUSES RATHER THAN ROUNDING. This is the
-// authorable RED for the readback direction: without it a container created at 0.856789 would read
-// back as agreeing with a plan that asked for 0.8568.
-test fn w_an_inexact_utilization_fraction_refuses_rather_than_rounding() -> Bool {
-  match vllm_argv_utilization_basis_points(argv: ["--gpu-memory-utilization", "0.856789"]) {
-    VllmArgvNat { value: _ } => false
-    VllmArgvNatUnread { cause: _ } => true
-  }
-}
-
-// A FLAG GIVEN TWICE IS REFUSED WITH BOTH VALUES, never silently resolved to one of them.
-test fn w_a_repeated_flag_refuses_and_carries_both_values() -> Bool {
-  match vllm_argv_value(argv: ["--node-rank", "0", "--node-rank", "3"], flag: "--node-rank") {
-    VllmArgvFlagRepeated { values: vs } => count(vs) == 2
-    VllmArgvValue { value: _ } => false
-    VllmArgvFlagAbsent => false
-    VllmArgvFlagWithoutValue => false
-  }
-}
-
-// AND A FLAG AT THE END OF THE ARGV IS NOT AN ABSENT FLAG.
-test fn w_a_dangling_flag_is_distinguished_from_an_absent_one() -> Bool {
-  match vllm_argv_value(argv: ["--node-rank"], flag: "--node-rank") {
-    VllmArgvFlagWithoutValue => true
-    VllmArgvValue { value: _ } => false
-    VllmArgvFlagAbsent => false
-    VllmArgvFlagRepeated { values: _ } => false
-  }
-}
 
 // ── NCCL: THE VERDICT THAT HAD NO PRODUCER ────────────────────────────────────────────────────
 //
@@ -529,239 +324,36 @@ test fn w_a_pool_built_from_the_concurrency_reading_refuses() -> Bool {
   }
 }
 
-// ── THE DELTA SURFACE, EXECUTED OVER THE TWO CAPTURES ─────────────────────────────────────────
+// ── THE ARGV GRAMMAR'S OWN REFUSALS, WHOSE SUBJECT IS AN ARGUMENT LIST AND NOT A DOCUMENT ────
 //
-// THIS IS THE MODULE THAT DECIDES WHETHER A LIVE FOUR-RANK ARM GETS STOPPED, so it is the last place
-// a typecheck may stand in for a consumer. The discriminating input needs no host and is already in
-// this diff: the successor spec A0's planner renders for Group B rank zero, compared against the RoCE
-// incarnation it describes and against the socket incarnation it replaced.
-//
-// THE SPEC IS THE PLANNER'S, NOT THIS MODULE'S. Authoring a DockerCreateSpec here would test the
-// comparison against a fixture built to agree with it; taking `plan_arm_launch`'s own output means
-// these rows go red if the planner and the readback ever stop describing one deployment.
-// THE INTENT IS A BOUNDED EXPERIMENT AND THAT IS NOT A CONVENIENCE. `glm_native_concurrent_profile`
-// carries no execution receipt -- no engine running sixteen sequences at 8567 basis points has been
-// observed serving -- so gunbc.spark.serving_arm_launch intent_refusal admits it for a bounded
-// experiment and REFUSES it for normal serving. Asking for normal serving here would make every row
-// below green-by-refusal, which is how this fold first read `false` for all five.
-fn rank_zero_spec(f: fn(DockerCreateSpec) -> Bool) -> Bool {
-  match plan_arm_launch_for(
-    checkpoint: Glm53NativeFp8,
-    runtime: GunbcGlm53NopeDerivedGb10,
-    topology: FourSparkTp4,
-    group: FabricGroupB,
-    intent: ArmBoundedExperiment,
-    profile: glm_native_concurrent_profile,
-  ) {
-    ArmLaunchRefused { cause: _ } => false
-    ArmLaunchPlanned { lines: ls, master: _ } =>
-      match filter(ls, l => l.node.node_rank == 0) |> first {
-        Absent => false
-        Present { value: l } => f(l.container)
-      }
+// These three need no captured container at all -- they are claims about the readback grammar itself,
+// so they stay on the required floor while their document-decoding siblings declare the long home.
+// A FRACTION THAT CANNOT BE HELD EXACTLY IN BASIS POINTS REFUSES RATHER THAN ROUNDING. This is the
+// authorable RED for the readback direction: without it a container created at 0.856789 would read
+// back as agreeing with a plan that asked for 0.8568.
+test fn w_an_inexact_utilization_fraction_refuses_rather_than_rounding() -> Bool {
+  match vllm_argv_utilization_basis_points(argv: ["--gpu-memory-utilization", "0.856789"]) {
+    VllmArgvNat { value: _ } => false
+    VllmArgvNatUnread { cause: _ } => true
   }
 }
 
-fn delta_against(text: String, f: fn(RelaunchDelta) -> Bool) -> Bool {
-  with_decoded(text: text, f: c =>
-    rank_zero_spec(f: spec => f(relaunch_delta(spec: spec, observed: c, gid_selection: arm_rail_gid_selection))))
+// A FLAG GIVEN TWICE IS REFUSED WITH BOTH VALUES, never silently resolved to one of them.
+test fn w_a_repeated_flag_refuses_and_carries_both_values() -> Bool {
+  match vllm_argv_value(argv: ["--node-rank", "0", "--node-rank", "3"], flag: "--node-rank") {
+    VllmArgvFlagRepeated { values: vs } => count(vs) == 2
+    VllmArgvValue { value: _ } => false
+    VllmArgvFlagAbsent => false
+    VllmArgvFlagWithoutValue => false
+  }
 }
 
-// ── THE POSITIVE CONTROL: THE SUCCESSOR SPEC DESCRIBES THE INCARNATION THAT IS RUNNING ────────
-//
-// The RoCE capture IS what the relaunch produced, so the spec that would produce it must differ from
-// it nowhere a declared axis does not explain. A red here means the planner and the running arm have
-// drifted -- which is the whole question this comparison exists to ask, asked against real bytes.
-test fn w_the_successor_spec_differs_from_the_roce_incarnation_only_on_declared_axes() -> Bool {
-  delta_against(text: inspect_roce_rank0(), f: d =>
-    match d {
-      DeltaRefused { comparisons: _, unobservable: _ } => false
-      DeltaOnlyIntended { comparisons: cs, unobservable: us } => count(cs) > 0 && count(us) == 2
-    })
-}
-
-// ── THE DISCRIMINATING RED: THE SOCKET INCARNATION IS REFUSED ─────────────────────────────────
-//
-// Same fold, same spec, the other capture. It must refuse -- and the rows below assert WHY, because a
-// refusal for any reason would pass a bare `DeltaRefused` check while the axis attribution was wrong.
-test fn w_the_socket_incarnation_is_refused_against_the_successor_spec() -> Bool {
-  delta_against(text: inspect_socket_rank0(), f: d =>
-    match d {
-      DeltaOnlyIntended { comparisons: _, unobservable: _ } => false
-      DeltaRefused { comparisons: cs, unobservable: _ } =>
-        count(delta_off_axis(comparisons: cs)) > 0 && count(delta_unreadable(comparisons: cs)) == 0
-    })
-}
-
-// THE THREE INCIDENT FIELDS DIFFER, AND EACH IS ATTRIBUTED TO THE TRANSPORT AXIS. This is the
-// attribution being real rather than decorative: the socket container maps no device, adds no
-// capability and leaves memlock at its default, and all three are the ONE decision moving.
-test fn w_the_three_incident_fields_differ_on_the_transport_axis() -> Bool {
-  socket_comparisons(f: cs =>
-    field_differs_on_axis(cs: cs, field: SpecDevices, axis: TransportAxis)
-      && field_differs_on_axis(cs: cs, field: SpecCapAdd, axis: TransportAxis)
-      && field_differs_on_axis(cs: cs, field: SpecMemlock, axis: TransportAxis)
-      && field_differs_on_axis(cs: cs, field: SpecEnv, axis: TransportAxis))
-}
-
-// AND THE ENGINE ARGV MOVED ON TWO AXES AT ONCE, both of which the verdict names. A comparison
-// reporting only the first differing word's axis would say "batching" and stay silent about the
-// utilization change that is in the same list -- reporting less than it read.
-test fn w_the_engine_argv_names_both_axes_it_moved_on() -> Bool {
-  socket_comparisons(f: cs =>
-    field_differs_on_axis(cs: cs, field: SpecCommand, axis: BatchingAxis)
-      && field_differs_on_axis(cs: cs, field: SpecCommand, axis: UtilizationAxis))
-}
-
-// AND THE CONTAINER NAME DIFFERS OFF EVERY AXIS, which is what makes the socket capture a REFUSAL
-// rather than an admitted three-axis change: that capture was taken after the incumbent was renamed
-// aside, so it no longer holds the name the spec asks for, and no declared axis explains a name.
-test fn w_a_field_no_axis_explains_refuses_the_whole_delta() -> Bool {
-  socket_comparisons(f: cs => field_differs_off_axis(cs: cs, field: SpecName))
-}
-
-// THE SHM SIZE AGREES ON BOTH CAPTURES, and this row exists because it did NOT until this branch: the
-// spec carried the pair route's 10737418240 while every one of the eight captured containers carries
-// 67108864, and the readback had no field for it in either direction. It is asserted on the socket
-// side too, because a field that agrees only on the incarnation the spec was reconciled against is a
-// field that was fitted rather than read.
-test fn w_the_shm_size_agrees_with_every_captured_incarnation() -> Bool {
-  socket_comparisons(f: cs => field_agrees(cs: cs, field: SpecShmSize))
-    && roce_comparisons(f: cs => field_agrees(cs: cs, field: SpecShmSize))
-}
-
-// A REFUSED DELTA CARRIES EVERY FIELD IT ASKED, so the per-field rows below read the evidence off the
-// verdict rather than re-running the fold. That is the shape the refusal arm was changed to: a verdict
-// that carried only its offending rows made "what DID agree" unanswerable from a refusal.
-fn socket_comparisons(f: fn(List<FieldComparison>) -> Bool) -> Bool {
-  delta_against(text: inspect_socket_rank0(), f: d => f(delta_comparisons(d: d)))
-}
-
-fn roce_comparisons(f: fn(List<FieldComparison>) -> Bool) -> Bool {
-  delta_against(text: inspect_roce_rank0(), f: d => f(delta_comparisons(d: d)))
-}
-
-fn field_differs_on_axis(cs: List<FieldComparison>, field: SpecField, axis: RelaunchAxis) -> Bool {
-  count(filter(cs, c =>
-    match c {
-      FieldDiffersOnAxis { field: f, axes: axs, planned: _, observed: _ } =>
-        (spec_field_wire(f: f) as String) == (spec_field_wire(f: field) as String)
-          && count(filter(axs, a => (relaunch_axis_wire(a: a) as String) == (relaunch_axis_wire(a: axis) as String))) == 1
-      FieldAgrees { field: _ } => false
-      FieldDiffersOffAxis { field: _, planned: _, observed: _ } => false
-      FieldUnreadable { field: _, cause: _ } => false
-    })) == 1
-}
-
-fn field_differs_off_axis(cs: List<FieldComparison>, field: SpecField) -> Bool {
-  count(filter(cs, c =>
-    match c {
-      FieldDiffersOffAxis { field: f, planned: _, observed: _ } =>
-        (spec_field_wire(f: f) as String) == (spec_field_wire(f: field) as String)
-      FieldAgrees { field: _ } => false
-      FieldDiffersOnAxis { field: _, axes: _, planned: _, observed: _ } => false
-      FieldUnreadable { field: _, cause: _ } => false
-    })) == 1
-}
-
-fn field_agrees(cs: List<FieldComparison>, field: SpecField) -> Bool {
-  count(filter(cs, c =>
-    match c {
-      FieldAgrees { field: f } => (spec_field_wire(f: f) as String) == (spec_field_wire(f: field) as String)
-      FieldDiffersOnAxis { field: _, axes: _, planned: _, observed: _ } => false
-      FieldDiffersOffAxis { field: _, planned: _, observed: _ } => false
-      FieldUnreadable { field: _, cause: _ } => false
-    })) == 1
-}
-
-// ── THE FLIP, EXECUTED OVER BOTH CAPTURES ─────────────────────────────────────────────────────
-//
-// `transport_flipped` IS THE PREDICATE THAT DECIDES WHETHER A RELAUNCH COMMITS OR ROLLS BACK, and
-// both of its conjuncts are separately falsifiable from these bytes. The verdicts are built by the
-// same pure fold the live route uses, from a real inspect document and a real log.
-data witness_subject: ObservedRankSubject = observed_rank_subject(
-  host: operator_host_srv9,
-  container: "glm-native-tp4" as NonEmptyStr,
-)
-
-fn verdict_from(inspect_text: String, log_text: String, f: fn(RankTransportVerdict) -> Bool) -> Bool {
-  with_decoded(text: inspect_text, f: c =>
-    match rank_transport_from_log(subject: witness_subject, container: c, captured: log_text) {
-      RankTransportRefused { refusal: _ } => false
-      RankTransportObserved { verdict: v } => f(v)
-    })
-}
-
-fn both_verdicts(f: fn(RankTransportVerdict, RankTransportVerdict) -> Bool) -> Bool {
-  verdict_from(inspect_text: inspect_socket_rank0(), log_text: nccl_socket_rank0(), f: before =>
-    verdict_from(inspect_text: inspect_roce_rank0(), log_text: nccl_roce_rank0(), f: after => f(before, after)))
-}
-
-test fn w_the_two_captured_incarnations_are_a_transport_flip() -> Bool {
-  both_verdicts(f: (before, after) => transport_flipped(before: before, after: after))
-}
-
-// NEITHER CONJUNCT ALONE IS THE FLIP, and these two rows are what keep the predicate from being
-// satisfiable by a readback taken before the daemon replaced the object.
-test fn w_one_incarnation_read_twice_is_not_a_flip() -> Bool {
-  both_verdicts(f: (before, after) =>
-    !transport_flipped(before: before, after: before) && !transport_flipped(before: after, after: after))
-}
-
-// A DIFFERENT INCARNATION ANNOUNCING THE SAME TRANSPORT IS NOT A FLIP EITHER. Built by pairing the
-// RoCE container with the SOCKET log, which is a verdict carrying the new incarnation and the old
-// transport -- exactly the state a relaunch that changed nothing would produce.
-test fn w_a_new_incarnation_on_the_same_transport_is_not_a_flip() -> Bool {
-  verdict_from(inspect_text: inspect_socket_rank0(), log_text: nccl_socket_rank0(), f: before =>
-    verdict_from(inspect_text: inspect_roce_rank0(), log_text: nccl_socket_rank0(), f: sideways =>
-      !transport_flipped(before: before, after: sideways)))
-}
-
-// ── THE PRESERVED NAME CANNOT COLLIDE WITH ITS OWN PREDECESSOR ────────────────────────────────
-//
-// The two captures are two incarnations of one container name, so the names derived for them must
-// differ -- which is the property a transport-only name did NOT have, and which collided on this
-// transaction's first contact with the fleet it was written for.
-test fn w_two_incarnations_preserve_under_two_distinct_names() -> Bool {
-  both_verdicts(f: (before, after) =>
-    (preserved_container_name(name: "glm-native-tp4" as NonEmptyStr, incumbent: before.reading.transport, incarnation: before.incarnation) as String)
-      != (preserved_container_name(name: "glm-native-tp4" as NonEmptyStr, incumbent: after.reading.transport, incarnation: after.incarnation) as String))
-}
-
-test fn witness_holds() -> Bool {
-  w_every_captured_inspect_document_decodes()
-    && w_the_socket_incarnation_reads_as_missing_the_verbs_shape()
-    && w_the_roce_incarnation_reads_as_carrying_the_verbs_shape()
-    && w_the_daemon_reads_the_capability_back_with_its_cap_prefix()
-    && w_a_null_member_reads_absent_and_an_empty_array_reads_empty()
-    && w_the_node_rank_is_read_from_the_containers_own_argv()
-    && w_the_two_incarnations_differ_in_batching_and_utilization_as_read_back()
-    && w_an_inexact_utilization_fraction_refuses_rather_than_rounding()
-    && w_a_repeated_flag_refuses_and_carries_both_values()
-    && w_a_dangling_flag_is_distinguished_from_an_absent_one()
-    && w_the_socket_capture_reads_as_socket_despite_naming_net_ib()
-    && w_the_roce_capture_reads_as_ib_verbs()
-    && w_the_verdict_carries_the_raw_line_it_was_read_from()
-    && w_every_channel_line_is_read_and_agrees_with_the_announcement()
-    && w_two_announcements_from_one_emitter_are_kept_apart_by_ordinal()
-    && w_a_capture_with_no_announcement_refuses_rather_than_answering_socket()
-    && w_disagreeing_announcements_refuse_rather_than_picking_one()
-    && w_an_unmodelled_network_name_refuses()
-    && w_a_channel_wired_over_another_network_refuses()
-    && w_only_nccl_info_lines_are_read_as_nccl_lines()
-    && w_one_captured_line_yields_both_startup_line_classes()
-    && w_the_markers_are_matched_behind_the_engines_own_log_prefix()
-    && w_the_pool_and_concurrency_are_parsed_out_of_the_captured_line()
-    && w_the_parsed_readings_admit_a_pool_and_a_reported_capacity()
-    && w_a_pool_built_from_the_concurrency_reading_refuses()
-    && w_the_successor_spec_differs_from_the_roce_incarnation_only_on_declared_axes()
-    && w_the_socket_incarnation_is_refused_against_the_successor_spec()
-    && w_the_three_incident_fields_differ_on_the_transport_axis()
-    && w_a_field_no_axis_explains_refuses_the_whole_delta()
-    && w_the_engine_argv_names_both_axes_it_moved_on()
-    && w_the_shm_size_agrees_with_every_captured_incarnation()
-    && w_the_two_captured_incarnations_are_a_transport_flip()
-    && w_one_incarnation_read_twice_is_not_a_flip()
-    && w_a_new_incarnation_on_the_same_transport_is_not_a_flip()
-    && w_two_incarnations_preserve_under_two_distinct_names()
+// AND A FLAG AT THE END OF THE ARGV IS NOT AN ABSENT FLAG.
+test fn w_a_dangling_flag_is_distinguished_from_an_absent_one() -> Bool {
+  match vllm_argv_value(argv: ["--node-rank"], flag: "--node-rank") {
+    VllmArgvFlagWithoutValue => true
+    VllmArgvValue { value: _ } => false
+    VllmArgvFlagAbsent => false
+    VllmArgvFlagRepeated { values: _ } => false
+  }
 }
