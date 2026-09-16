@@ -1473,21 +1473,10 @@ pub(crate) fn compile_xl1_primary_root_tap(source_roots: &[String]) -> Xl1Primar
             }
         }
     };
-    let closure_modules: HashSet<String> = closure
-        .iter()
-        .filter_map(|s| extract_module_path(&s.content))
-        .collect();
-    let mut census_only: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .source_files
-        .iter()
-        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
-        .map(|(_, source)| source.clone())
-        .collect();
-    census_only.sort_by(|a, b| a.path.cmp(&b.path));
-    let options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
-        analyze_complexity: false,
-        census_only_sources: Rc::new(census_only.into()),
-    });
+    // The pool outside the closure enters the name census only -- the SAME derivation the
+    // compile transaction's PrimaryRoot arm and the required floor consume, never a copy
+    // (review 67039 on gunbc#11461).
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
     let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         v1_compiler_compile::compile_to_resolved_with_options(
             Rc::new(closure.clone().into()),

@@ -7871,33 +7871,16 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             }
         },
     };
-    let closure_modules: std::collections::HashSet<String> = closure
-        .iter()
-        .filter_map(|s| extract_module_path(&s.content))
-        .collect();
-
     // Everything indexed and outside the closure enters the NAME CENSUS only. This is
-    // what makes the transaction see a parse break anywhere under the source roots, and
-    // membership is keyed on MODULE PATH rather than file path because the closure loader
-    // and the index normalize paths differently -- a file-path compare would fail to
-    // exclude closure modules and double-load them into the census.
-    let mut census_only: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .source_files
-        .iter()
-        .filter(
-            |(module_path, _): &(&String, &Rc<v1_compiler_compile::SourceFile>)| {
-                !closure_modules.contains(*module_path)
-            },
-        )
-        .map(|(_, source)| source.clone())
-        .collect();
-    census_only.sort_by(|a, b| a.path.cmp(&b.path));
-    let census_modules = census_only.len();
+    // what makes the transaction see a parse break anywhere under the source roots. ONE
+    // derivation, shared with the required floor and the XL-1 tap:
+    // compile_clean_census_only_sources_for_compiled keys membership on MODULE PATH
+    // because the closure loader and the index normalize paths differently (review 67039
+    // on gunbc#11461: this arm and the tap each carried a copy, and the copies had already
+    // drifted from the helper in sort order).
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
+    let census_modules = options.census_only_sources.len();
 
-    let options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
-        analyze_complexity: false,
-        census_only_sources: Rc::new(census_only.into()),
-    });
     // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
     // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
     // path through this pair is the same computation it was before multi-target routing --
