@@ -41,8 +41,9 @@ import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
   RankMapReservedUninhabited, RowOrderReservedUninhabited, V41RankStoreIdentity,
 }
+import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity, v41_observed_source_identity_of }
 import gunbc.spark.v41_runtime_realized {
-  V41OciImageDigest, V41PatchesConsumedByImage,
+  V41OciImageDigest, V41PatchesConsumedByImage, V41PatchConsumptionEvidence,
   v41_oci_image_digest, v41_residency_limits,
   v41_realized_runtime, V41RuntimeRealized, V41RuntimeRealizationRefused, V41RuntimeRealizationUnestablished,
   v41_realized_candidate, v41_selectable, V41Selectable, V41NotSelectable, v41_specification_is_not_selectable,
@@ -73,6 +74,15 @@ data w_closed_population: SafetensorsPopulationStanding = safetensors_population
 
 fn w_sha(c: String) -> Sha256Digest {
   Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
+}
+
+fn w_consumed() -> V41PatchConsumptionEvidence {
+  V41PatchesConsumedByImage {
+    observed: v41_observed_source_identity_of(
+      revision_head: "d2d649e674c75425d2d6975c87eb89fd4d55fff8" as NonEmptyStr,
+      worktree_diff_sha256: w_sha(c: "a"),
+    ),
+  }
 }
 
 type WPatchSpec {
@@ -338,7 +348,7 @@ test fn realized_identity_requires_produced_image_digest_and_consumed_patches() 
   let spec = v41_candidate_standing(c: w_default(patches: w_two_patches()))
   match spec.standing {
     V41CandidateKeyed { runtime_artifact: rk, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } =>
-      match v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: AdoptedUnderExpectedTag, consumed: V41PatchesConsumedByImage { patch_digests: [w_sha(c: "p")] }) {
+      match v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: AdoptedUnderExpectedTag, consumed: w_consumed()) {
         V41RuntimeRealizationRefused { defects: d } => any(d, x => (x as String).contains("tag"))
         V41RuntimeRealized { specification_runtime_key: _, image: _, consumed_patches: _, realized_runtime_key: _ } => false
         V41RuntimeRealizationUnestablished { obligations: _ } => false
@@ -355,7 +365,7 @@ test fn only_the_realized_candidate_is_selectable() -> Bool {
       match w_identified() {
         Absent => false
         Present { value: enc } => match v41_selectable(realized: v41_realized_candidate(
-          runtime: v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: BuiltByThisRun, consumed: V41PatchesConsumedByImage { patch_digests: [w_sha(c: "p")] }),
+          runtime: v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: BuiltByThisRun, consumed: w_consumed()),
           row_store: enc,
           spec: spec,
         )) {
@@ -473,12 +483,13 @@ test fn an_empty_source_does_not_mint_identified_rank_stores() -> Bool {
     }
 }
 
-test fn the_live_storage_backed_patches_are_not_minted_from_transcribed_hex() -> Bool {
+test fn the_live_storage_backed_patches_are_digestfile_of_committed_bytes() -> Bool {
   match v41_storage_backed_patch_population() {
-    V41PatchesObserved { patches: _, partition: _ } => false
+    V41PatchesObserved { patches: ps, partition: _ } =>
+      length(ps) == 2
+        && all(ps, p => (p.path as String).contains("d2d649e6"))
     V41PatchesAbsentByObservation => false
-    V41PatchesUnestablished { obligation: o } =>
-      (o as String).contains("DigestFile") && (o as String).contains("upsert_decision")
+    V41PatchesUnestablished { obligation: _ } => false
   }
 }
 

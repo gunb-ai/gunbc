@@ -129,10 +129,19 @@ type Sha256FileDigest
 
 fn sha256sum_file_digest_via_shell(path: NonEmptyStr) -> Sha256FileDigest {
   let observed = sha256sum.Sha256.DigestFile(path: path)
-  if observed.success == false {
-    Sha256FileDigestUnavailable { path: path, reason: "sha256sum could not read the file" }
+  sha256sum_digest_from_line(path: path, success: observed.success, line: observed.line)
+}
+
+fn sha256sum_stdin_digest_via_shell(content: String) -> Sha256FileDigest {
+  let observed = sha256sum.Sha256.DigestStdin(content: content)
+  sha256sum_digest_from_line(path: "-" as NonEmptyStr, success: observed.success, line: observed.line)
+}
+
+fn sha256sum_digest_from_line(path: NonEmptyStr, success: Bool, line: String) -> Sha256FileDigest {
+  if success == false {
+    Sha256FileDigestUnavailable { path: path, reason: "sha256sum could not digest the input" }
   } else {
-    match get(xs: split(s: trim(s: observed.line), delimiter: " "), index: 0) {
+    match get(xs: split(s: trim(s: line), delimiter: " "), index: 0) {
       Absent =>
         Sha256FileDigestUnavailable { path: path, reason: "sha256sum printed no digest field" }
       Present { value: hex } =>

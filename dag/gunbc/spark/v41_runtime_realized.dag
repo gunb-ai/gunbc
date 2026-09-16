@@ -2,7 +2,7 @@ module gunbc.spark.v41_runtime_realized
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.content_hash { ContentHash, Sha256Digest, serialize_content_hash }
+import std.content_hash { ContentHash, serialize_content_hash }
 import std.artifact_store {
   ArtifactStore, ArtifactRow, StorePutAdmitted, StorePutDidNotFit,
   store_put, store_bytes_used, artifact_realization_digest,
@@ -11,9 +11,9 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization { Placement, LocalFilesystem, RemoteNetwork, LocalInProcess, LocalAccelerator }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_runtime_candidate {
-  V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_input,
 }
+import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity }
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
 import gunbc.spark.v41_engram_row_store {
@@ -48,7 +48,7 @@ fn v41_oci_image_digest(manifest: OciContentDigest, config: OciContentDigest) ->
 }
 
 type V41PatchConsumptionEvidence
-  = V41PatchesConsumedByImage { patch_digests: List<Sha256Digest> }
+  = V41PatchesConsumedByImage { observed: V41ObservedSourceIdentity }
   | V41PatchesAbsentFromImage { obligation: NonEmptyStr }
 
 type V41RealizedRuntime
@@ -73,16 +73,18 @@ fn v41_realized_runtime(
     }
     BuiltByThisRun => match consumed {
       V41PatchesAbsentFromImage { obligation: o } => V41RuntimeRealizationUnestablished { obligations: [o] }
-      V41PatchesConsumedByImage { patch_digests: ds } =>
+      V41PatchesConsumedByImage { observed: obs } =>
         V41RuntimeRealized {
           specification_runtime_key: spec_runtime,
           image: image,
           consumed_patches: consumed,
-          realized_runtime_key: artifact_realization_digest(inputs: concat([
+          realized_runtime_key: artifact_realization_digest(inputs: [
             v41_input(identity: "specification_runtime", value: serialize_content_hash(hash: spec_runtime) as String),
             v41_input(identity: "oci.manifest", value: render_oci_content_digest_wire(d: image.manifest)),
             v41_input(identity: "oci.config", value: render_oci_content_digest_wire(d: image.config)),
-          ], map(enumerate(ds), p => v41_input(identity: join(["consumed_patch.", to_string(p.first)], ""), value: p.second.hex as String)))),
+            v41_input(identity: "source_head", value: obs.revision_head as String),
+            v41_input(identity: "worktree_diff_sha256", value: obs.worktree_diff_sha256.hex as String),
+          ]),
         }
     }
   }
