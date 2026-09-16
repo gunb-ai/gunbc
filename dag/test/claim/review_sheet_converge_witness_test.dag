@@ -153,7 +153,13 @@ import gunbc.gcp_service_enablement {
   ServiceEnablementStateForeign,
 }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
-import gunbc.gcp_estate_observation { sheets_calling_home, SheetsCallingHomeUnresolved }
+import gunbc.gcp_estate_observation {
+  sheets_calling_home,
+  SheetsCallingHomeUnresolved,
+  SheetsCallingHomeSelected,
+  gunbai_sheets_project_id,
+  review_sheet_writer_sa_email,
+}
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId }
 
 fn w_schema() -> ReviewSheetSchema {
@@ -1459,75 +1465,47 @@ fn w_observed_disabled() -> ServiceEnablementObservation {
   ServiceObservedDisabled { project: w_fixture_project(), service_id: sheets_serviceusage_api_id }
 }
 
-test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bool {
+// The home is selected now, so the admission no longer stops at the estate. It stops one step
+// later and for a different reason: nobody has observed serviceusage on gunbai-sheets, because
+// the operator creates that project by hand. The proposition worth keeping across that move is
+// the one in the name -- the committed project and writer are not the secrets-project defaults --
+// so it is asserted against the SELECTED arm rather than deleted with the unresolved one.
+test fn committed_project_and_writer_are_selected_not_secrets_defaults() -> Bool {
   match fleet_review_sheet_operator_admission() {
-    ReviewSheetEstateUnresolved { subject: s, reason: r } =>
-      (s as String) == "sheets_calling_home"
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "unobserved")
+        && string_contains(s: r as String, pattern: "sheets.googleapis.com")
+        && string_contains(s: r as String, pattern: gunbai_sheets_project_id as String)
         && match sheets_calling_home() {
           SheetsCallingHomeUnresolved {
-            refused_api_surface_project: p,
-            refused_writer: w,
+            refused_api_surface_project: _,
+            refused_writer: _,
             candidate_writer_in_secrets: _,
             kitchen_sink_project: _,
             pool_host_without_sts: _,
             sts_host_without_sheets: _,
+          } => false
+          SheetsCallingHomeSelected {
+            project_id: pid,
+            writer: wr,
+            refused_api_surface_project: refused,
+            refused_writer: rw,
           } =>
-            string_contains(s: r as String, pattern: p as String)
-              && string_contains(s: r as String, pattern: w as String)
+            pid == gunbai_sheets_project_id
+              && wr == review_sheet_writer_sa_email
+              && pid != refused
+              && (wr as String) != (rw as String)
         }
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
-    ReviewSheetOperatorRefused { reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
-    && match buyer_review_spreadsheet {
-      SpreadsheetAwaitingCreation => true
-      SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
-    }
-    && match buyer_review_account_tenancy {
-      ReviewSheetWorkspaceDomain => true
-      ReviewSheetPlainGoogleAccount => false
-      AccountTenancyUnobserved => false
-    }
-    && match buyer_review_workspace_domain_sharing() {
-      DomainSharingAllowsServiceAccountShare =>
-        (buyer_review_workspace_sharing_reading.read_on as String) == "2026-09-11"
-          && string_contains(
-            s: buyer_review_workspace_sharing_reading.source as String,
-            pattern: "Drive and Docs > Sharing settings",
-          )
-          && string_contains(
-            s: buyer_review_workspace_sharing_reading.quoted_selection as String,
-            pattern: "shared outside of gunb.ai",
-          )
-      DomainSharingPolicyUnobserved => false
-      DomainSharingForbidsExternalPrincipals => false
-    }
-    && match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
-      NoDischargeSiteModeled => true
-      DischargedAt { evidence: _ } => false
-    }
-    && match review_sheet_live_access(
-      credential: SecretRef {
-        project: "custody-only",
-        secret: "unused" as NonEmptyStr,
-        version: "pending",
-        hash_state: HashPending,
-      },
-    ) {
-      ReviewSheetLiveNotAdmitted { admission: a } =>
-        match a {
-          ReviewSheetEstateUnresolved { subject: s, reason: _ } =>
-            (s as String) == "sheets_calling_home"
-          ReviewSheetAwaitingHuman { intervention: _ } => false
-          ReviewSheetOperatorRefused { reason: _ } => false
-          ReviewSheetNeedsApiEnable { plan: _ } => false
-          ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
-        }
-      ReviewSheetLiveOpen { access: _ } => false
-    }
 }
 
+// Still the point of this witness: the admission reads the estate's home and keeps no second
+// standing of its own. With the home selected, "follows the estate" means it carries the estate's
+// project into its refusal rather than answering about some project of its own.
 test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bool {
   match sheets_calling_home() {
     SheetsCallingHomeUnresolved {
@@ -1544,6 +1522,20 @@ test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bo
         ReviewSheetAwaitingHuman { intervention: _ } => false
         ReviewSheetNeedsApiEnable { plan: _ } => false
         ReviewSheetOperatorRefused { reason: _ } => false
+        ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+      }
+    SheetsCallingHomeSelected {
+      project_id: pid,
+      writer: _,
+      refused_api_surface_project: _,
+      refused_writer: _,
+    } =>
+      match fleet_review_sheet_operator_admission() {
+        ReviewSheetOperatorRefused { reason: r } =>
+          string_contains(s: r as String, pattern: pid as String)
+        ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+        ReviewSheetAwaitingHuman { intervention: _ } => false
+        ReviewSheetNeedsApiEnable { plan: _ } => false
         ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
       }
   }
@@ -1614,14 +1606,16 @@ test fn enablement_converge_never_disables() -> Bool {
   }
 }
 
-test fn fleet_admission_does_not_admit_while_calling_home_is_unresolved() -> Bool {
+// The wall this witness is: no path reaches Admitted before the project is real. Selecting a home
+// moved the blocking reason from the estate to the unobserved enablement; it must not have moved
+// the admission any closer to admitting.
+test fn fleet_admission_does_not_admit_while_enablement_is_unobserved() -> Bool {
   match fleet_review_sheet_operator_admission() {
-    ReviewSheetEstateUnresolved { subject: s, reason: r } =>
-      (s as String) == "sheets_calling_home"
-        && string_contains(s: r as String, pattern: "refused writer")
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "unobserved")
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
-    ReviewSheetOperatorRefused { reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
 }

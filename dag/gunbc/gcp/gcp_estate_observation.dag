@@ -888,6 +888,19 @@ data gunb_test_project_id: GcpProjectId = "gunb-test"
 
 data gunbai_auto_project_id: GcpProjectId = "gunbai-auto"
 
+// THE SHEETS CALLING HOME, MINTED (operator ruling 2026-09-16). sheets_calling_strategy has
+// always been CreatePurposeScopedProject; what was Absent was the id, because no existing
+// project was a clean adopt target -- sheets_evidence_lead still records that survey and still
+// answers NoCandidateIsClean, which is WHY this project exists rather than an adoption.
+// The id is declared here, beside the projects it was chosen against, so a reader comparing
+// homes reads one list. Creation is operator-manual (no agent admin credential); this row is the
+// DECISION, and enablement stays an observation: gunbai-sheets has no enabled-services row, so
+// project_enables_service answers false for it until one is observed, and the operator admission
+// therefore reports NeedsApiEnable rather than treating a selected home as a working one.
+data gunbai_sheets_project_id: GcpProjectId = "gunbai-sheets"
+
+data review_sheet_writer_sa_email: ServiceAccountEmail = "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com"
+
 data gunb_ci_project_id: GcpProjectId = "gunb-ci"
 
 type ObservedProjectIamMemberRoles {
@@ -1122,17 +1135,33 @@ type SheetsCallingStrategy
     }
 
 fn sheets_calling_strategy() -> SheetsCallingStrategy {
-  CreatePurposeScopedProject { project_id: Absent }
+  CreatePurposeScopedProject { project_id: Present { value: gunbai_sheets_project_id as String } }
 }
 
-fn sheets_home_is_create_purpose_scoped_unminted() -> Bool {
+// The predicate this replaces asserted the id was still Absent. That fact is spent, but the
+// protection underneath it is not: the home must be a purpose-scoped project that is none of the
+// sandboxes and not the secrets project. So the sandbox refusal is carried forward and the
+// mintedness is asserted positively, rather than deleting a wall along with the state it guarded.
+fn sheets_home_is_create_purpose_scoped_and_minted() -> Bool {
   match sheets_calling_strategy() {
     CreatePurposeScopedProject { project_id: id } =>
       match id {
-        Absent => none_of_the_three_sandboxes_has_sheets()
-        Present { value: _ } => false
+        Absent => false
+        Present { value: v } =>
+          v == (gunbai_sheets_project_id as String)
+            && none_of_the_three_sandboxes_has_sheets()
+            && gunbai_sheets_is_not_an_existing_estate_project()
       }
   }
+}
+
+// gunbai-sheets is new, so it may not collide with any project the census already observed --
+// otherwise "purpose-scoped" would be a name for an adoption the evidence lead refused.
+fn gunbai_sheets_is_not_an_existing_estate_project() -> Bool {
+  gunbai_sheets_project_id != fleet_secrets_gcp_project
+    && gunbai_sheets_project_id != gunbai_auto_project_id
+    && gunbai_sheets_project_id != gunb_ci_project_id
+    && gunbai_sheets_project_id != gunb_test_project_id
 }
 
 fn gcp_project_int_number_is_the_string_authority() -> Bool {
@@ -1308,6 +1337,12 @@ type SheetsCallingHome
       pool_host_without_sts: GcpProjectId
       sts_host_without_sheets: GcpProjectId
     }
+  | SheetsCallingHomeSelected {
+      project_id: GcpProjectId
+      writer: ServiceAccountEmail
+      refused_api_surface_project: GcpProjectId
+      refused_writer: ServiceAccountEmail
+    }
 
 type SheetsEvidenceLead
   = NoCandidateIsClean {
@@ -1347,7 +1382,7 @@ fn sheets_leading_candidate_is_not_selected() -> Bool {
         && broad
         && !selected
         && copied_malformed_condition_has_three_instances()
-        && sheets_home_is_create_purpose_scoped_unminted()
+        && sheets_home_is_create_purpose_scoped_and_minted()
   }
 }
 
@@ -1364,18 +1399,22 @@ fn gunb_test_is_deranked_scratch_not_a_sheets_candidate() -> Bool {
   }
 }
 
+// The refusal fields survive selection deliberately. gunbai-secrets is not merely "not chosen":
+// it is refused as an API surface because custody and API surface are separated in the target
+// state, and a later lane that reads only project_id would lose the reason and be free to move
+// Sheets back into the secrets project as a simplification.
 fn sheets_calling_home() -> SheetsCallingHome {
-  SheetsCallingHomeUnresolved {
+  SheetsCallingHomeSelected {
+    project_id: gunbai_sheets_project_id,
+    writer: review_sheet_writer_sa_email,
     refused_api_surface_project: fleet_secrets_gcp_project,
     refused_writer: fleet_automation_sa_email,
-    candidate_writer_in_secrets: fleet_cloud_convergence_sa_email,
-    kitchen_sink_project: gunb_test_project_id,
-    pool_host_without_sts: gunbai_auto_project_id,
-    sts_host_without_sheets: gunb_ci_project_id,
   }
 }
 
-fn sheets_calling_home_is_unresolved() -> Bool {
+// What the unresolved-predicate actually protected was "the home never silently becomes the
+// secrets project". Resolution does not retire that; it is the moment it could be violated.
+fn sheets_calling_home_is_selected_outside_the_refused_surface() -> Bool {
   match sheets_calling_home() {
     SheetsCallingHomeUnresolved {
       refused_api_surface_project: _,
@@ -1384,7 +1423,17 @@ fn sheets_calling_home_is_unresolved() -> Bool {
       kitchen_sink_project: _,
       pool_host_without_sts: _,
       sts_host_without_sheets: _,
-    } => true
+    } => false
+    SheetsCallingHomeSelected {
+      project_id: p,
+      writer: w,
+      refused_api_surface_project: refused,
+      refused_writer: _,
+    } =>
+      p != refused
+        && p == gunbai_sheets_project_id
+        && w == review_sheet_writer_sa_email
+        && gunbai_sheets_is_not_an_existing_estate_project()
   }
 }
 

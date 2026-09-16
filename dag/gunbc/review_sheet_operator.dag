@@ -10,7 +10,7 @@ import std.human_intervention {
   DischargedAt,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import gunbc.ensure { EnsurePolicy }
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly }
 import gunbc.gcp_service_enablement {
   ServiceEnablementDesire,
   ServiceDesiredEnabled,
@@ -24,7 +24,9 @@ import extdeps.google.workspace { google_workspace_product }
 import gunbc.gcp_estate_observation {
   sheets_calling_home,
   SheetsCallingHomeUnresolved,
+  SheetsCallingHomeSelected,
 }
+import gunbc.gcp_service_enablement { ServiceEnablementUnobserved }
 
 // Sheets API project and calling identity are the estate fact sheets_calling_home.
 // This module does not keep a second standing that can stay AwaitingIdentification after
@@ -120,6 +122,86 @@ data buyer_review_workspace_sharing_reading: BuyerReviewWorkspaceSharingReading 
   quoted_selection: "ON - Files owned by users or shared drives in gunb.ai can be shared outside of gunb.ai" as NonEmptyStr,
 }
 
+// RESIDENCY IS A SEPARATE FACT FROM THE SHEET'S IDENTITY, and it changes the SHAPE of the human
+// obligation rather than just its target. A sheet in an owner's My Drive is reached by sharing
+// that sheet with the writer, which recurs for every new sheet (spreadsheet_share_intervention
+// says so). A sheet inside a Shared Drive is reached by making the writer a member of the DRIVE,
+// once, after which every sheet the drive holds is already reachable -- so the per-sheet
+// recurrence is not merely retargeted, it is retired. That is why residency is modelled here and
+// not left as a note beside the spreadsheet id.
+//
+// WHAT THIS ARM DOES NOT ASSERT. The sharing annotation above reasons that an in-domain Shared
+// Drive is the route that SURVIVES a tightened external-sharing policy. That is an inference from
+// a 2026-09-11 console read, not a read of the Shared Drive case itself: a service account remains
+// a principal outside gunb.ai whether it is added to a file or to a drive, and whether drive
+// membership is governed by the same setting was never observed. Residency is therefore recorded
+// as chosen, and its interaction with a tightened policy stays an open read rather than a property
+// this module claims.
+type ReviewSheetResidency
+  = ResidencyUnobserved
+  | SheetInOwnerMyDrive
+  | SheetInSharedDrive { drive_id: NonEmptyStr, drive_name: NonEmptyStr }
+
+data review_sheet_residency: ReviewSheetResidency = ResidencyUnobserved
+
+// Membership in the drive, not a share of one file: FleetOnce, because the whole point of the
+// Shared Drive route is that it does not recur per sheet.
+fn shared_drive_member_intervention(
+  drive_id: NonEmptyStr,
+  drive_name: NonEmptyStr,
+  writer: ServiceAccountEmail,
+) -> HumanIntervention {
+  HumanIntervention {
+    identity: join(
+      ["review-sheet-shared-drive-member-", drive_id as String, "-", writer as String],
+      "",
+    ) as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: drive_name as String,
+    instruction: join(
+      [
+        "Add ",
+        writer as String,
+        " as a Content Manager of the shared drive ",
+        drive_name as String,
+        " (",
+        drive_id as String,
+        "). Content Manager, not Manager: the writer must add and edit files and must not administer membership. Every sheet this drive holds is then reachable without a per-sheet share, which is why this is once per drive and not once per sheet.",
+      ],
+      "",
+    ),
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// The drive has to exist before anyone can be added to it, and its id is a declared fact for the
+// same reason the spreadsheet id is: a caller string cannot be audited.
+fn shared_drive_create_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: "review-sheet-shared-drive-create" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "review sheet shared drive",
+    instruction: "Create the shared drive that will hold the review sheets, then replace review_sheet_residency with SheetInSharedDrive carrying its drive_id and name. The drive id is the part after /drive/folders/ in its URL and is a declared fact, not a caller string.",
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// One residency, one next step. An unobserved residency is not silently treated as My Drive:
+// that would pick the recurring per-sheet share on behalf of an operator who has not chosen.
+fn review_sheet_access_intervention(
+  residency: ReviewSheetResidency,
+  spreadsheet: BuyerReviewSpreadsheet,
+  writer: ServiceAccountEmail,
+) -> HumanIntervention {
+  match residency {
+    ResidencyUnobserved => shared_drive_create_intervention()
+    SheetInSharedDrive { drive_id: id, drive_name: n } =>
+      shared_drive_member_intervention(drive_id: id, drive_name: n, writer: writer)
+    SheetInOwnerMyDrive =>
+      share_intervention_for_spreadsheet(spreadsheet: spreadsheet, writer: writer)
+  }
+}
+
 fn buyer_review_workspace_domain_sharing() -> WorkspaceDomainSharingPolicy {
   buyer_review_workspace_sharing_reading.policy
 }
@@ -170,6 +252,22 @@ type ReviewSheetOperatorAdmission
 
 fn review_sheet_estate_unresolved_calling_home() -> ReviewSheetOperatorAdmission {
   match sheets_calling_home() {
+    SheetsCallingHomeSelected {
+      project_id: p,
+      writer: _,
+      refused_api_surface_project: _,
+      refused_writer: _,
+    } =>
+      ReviewSheetOperatorRefused {
+        reason: join(
+          [
+            "sheets_calling_home resolved to ",
+            p as String,
+            "; this arm answers only for the unresolved home",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
     SheetsCallingHomeUnresolved {
       refused_api_surface_project: surface,
       refused_writer: writer,
@@ -345,6 +443,47 @@ fn share_intervention_for_spreadsheet(
   }
 }
 
+// THE HOME IS SELECTED AND THE PROJECT IS NOT YET OBSERVED, AND THOSE ARE DIFFERENT FACTS.
+// Selecting gunbai-sheets settles WHERE Sheets is called from; it establishes nothing about
+// whether that project exists, has the API on, or has granted the writer anything. The
+// enablement therefore enters as ServiceEnablementUnobserved -- not Disabled, which would
+// claim a serviceusage read we have never performed against a project the operator creates by
+// hand. Under EnsureObserveOnly that unobserved read reports its obligation instead of minting
+// an enable plan from an absent observation, so the admission names the next human step and the
+// convergence stays refused until a real read lands.
 fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
-  review_sheet_estate_unresolved_calling_home()
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: _,
+      refused_writer: _,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
+    } => review_sheet_estate_unresolved_calling_home()
+    SheetsCallingHomeSelected {
+      project_id: p,
+      writer: w,
+      refused_api_surface_project: _,
+      refused_writer: _,
+    } =>
+      admit_review_sheet_operator(
+        project: p,
+        writer: w,
+        enablement: ServiceEnablementUnobserved {
+          project: p,
+          service_id: sheets_serviceusage_api_id,
+        },
+        enablement_policy: EnsureObserveOnly,
+        spreadsheet: buyer_review_spreadsheet,
+        serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: p, writer: w),
+        share: review_sheet_access_intervention(
+          residency: review_sheet_residency,
+          spreadsheet: buyer_review_spreadsheet,
+          writer: w,
+        ),
+        sharing_policy: buyer_review_workspace_domain_sharing(),
+        tenancy: buyer_review_account_tenancy,
+      )
+  }
 }
