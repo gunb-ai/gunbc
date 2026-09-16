@@ -1538,12 +1538,17 @@ type DashboardInstanceProvisionOp
     }
   | DashboardVerifyHealth { host: NonEmptyStr, port: Port }
 
-// live_deploy CreateRoot's DispatchWorktreeRoot and AttemptStateRoot only for
-// deployment_spec_srv1 (srv1_live). deployment_spec_for has no production caller. srv1_lab,
-// srv2_lab, srv2_deploy and macbook_local still consume these paths through dispatch/belt, and
-// this plan is the only creator those instances have. Naming live_deploy as owner without
-// keeping this creator is the serve-binary deadlock: a refusal (or a successful apply) that
-// nothing else can discharge, and on macbook_local the named owner has no realization at all.
+// live_deploy CreateRoot's DispatchWorktreeRoot and AttemptStateRoot, and systemd-launches the
+// dashboard process, only for deployment_spec_srv1 (srv1_live). deployment_spec_for has no
+// production caller. srv1_lab, srv2_lab, srv2_deploy and macbook_local still consume the dispatch
+// paths through dispatch/belt, and this plan is the only creator those instances have for those
+// directories. Naming live_deploy as owner without keeping that creator is the serve-binary
+// deadlock. Service launch is the other half of the same gap, and restoring tmux would re-fork
+// srv1_live (systemd plus a session). This plan therefore keeps the mkdirs and does not
+// DashboardVerifyHealth or converge on health_current: it does not start the process. Production
+// process start is live_deploy ServiceProcess. For every other instance, start is an operator act
+// until deployment_spec_for is a real caller — the same declared-outside-the-modeled-guarantee
+// arm C7 is given for provider-state mkdir, not a silent requirement this apply cannot discharge.
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
@@ -1611,12 +1616,9 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  concat(controller_source_ops, concat(common, concat(source_ops, concat(
+  concat(controller_source_ops, concat(common, concat(source_ops,
     dashboard_instance_provider_verification_ops(instance: instance),
-    [
-      DashboardVerifyHealth { host: instance.listen_host, port: instance.listen_port },
-    ],
-  ))))
+  )))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -1857,8 +1859,7 @@ fn dashboard_instance_reconcile(
         observed.source_revision_detail,
       ], "") as NonEmptyStr,
     }
-  } else if observed.health_current
-      && observed.root_present
+  } else if observed.root_present
       && observed.ownership_marker_present
       && dashboard_source_seed_ready(instance: instance, observed: observed)
       && observed.origin_present

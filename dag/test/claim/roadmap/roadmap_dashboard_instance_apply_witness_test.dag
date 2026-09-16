@@ -323,7 +323,7 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  count(rows) == 15
+  count(rows) == 14
     && any(rows, row => row.kind == "ensure-provider-state-root")
     && any(rows, row => row.kind == "ensure-serve-binary")
     && any(rows, row => row.kind == "hydrate-controller-history")
@@ -331,7 +331,7 @@ test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
     && any(rows, row => row.kind == "stage-git-bundle")
     && any(rows, row => row.kind == "verify-provider-runtime")
     && any(rows, row => row.kind == "verify-provider-auth")
-    && any(rows, row => row.kind == "verify-health")
+    && !any(rows, row => row.kind == "verify-health")
     && dashboard_instances_have_disjoint_owned_paths(
       a: lab,
       b: srv1_live_dashboard_instance(),

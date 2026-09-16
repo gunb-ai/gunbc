@@ -222,7 +222,7 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 15
+  count(plan) == 14
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -278,7 +278,7 @@ test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool 
   }
 }
 
-test fn dashboard_reconcile_plans_missing_health_without_claiming_convergence() -> Bool {
+test fn dashboard_reconcile_converges_without_health_this_apply_does_not_launch() -> Bool {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
@@ -289,7 +289,7 @@ test fn dashboard_reconcile_plans_missing_health_without_claiming_convergence() 
       health_current: false,
     ),
   ) {
-    DashboardInstanceApply { plan } => count(plan) > 0
+    DashboardInstanceConverged => true
     _ => false
   }
 }
@@ -618,7 +618,7 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 15
+  count(plan) == 14
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -640,7 +640,7 @@ test fn dashboard_instance_model_keystone_holds() -> Bool {
     && dashboard_tmux_server_is_namespaced_off_production()
     && dashboard_provision_plan_consumes_one_instance()
     && dashboard_reconcile_converges_only_after_independent_readback()
-    && dashboard_reconcile_plans_missing_health_without_claiming_convergence()
+    && dashboard_reconcile_converges_without_health_this_apply_does_not_launch()
     && dashboard_reconcile_refuses_production_overlap()
     && dashboard_reconcile_refuses_destructive_source_replacement()
     && dashboard_reconcile_refreshes_owned_clean_stale_revision()
