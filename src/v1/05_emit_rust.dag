@@ -8927,6 +8927,131 @@ fn v1_call_site_clone_forwarded_param_names(
 // keeps the boundary: a callee that earns its own equality bound only by forwarding two hops up is
 // not bounded here in one pass, and a specimen needing the same transitivity for equality is the
 // next-rung trigger rather than a silent gap.
+// A CALLER THAT INSTANTIATES A `'static`-EARNING CALLEE AT ITS OWN GENERICS INHERITS THE BOUND,
+// TRANSITIVELY.
+//
+// THE DEFECT THIS CLOSES, measured rather than reasoned about. `std.change` declares
+// `keyed_patch_monoid<K, V>` and `keyed_patch_fold<K, V>` with IDENTICAL type parameters, and the
+// emitter gave the first `K: Clone + 'static` and the second bare `K: Clone`. The asymmetry is not
+// arbitrary: the bound is derived from a function's OWN return type -- a record whose fields are
+// arrows moves its generics into an `Rc<dyn Fn>`, which defaults to `'static` -- and
+// `keyed_patch_fold` returns `KeyedPatch`, which has no arrow fields. But its BODY does
+// `let monoid = keyed_patch_monoid()`, instantiating the `'static`-earning callee at the caller's
+// own `K, V`, so rustc demands the bound at a function whose signature never mentions an arrow.
+//
+// WHY IT IS TRANSITIVE, AND THE EVIDENCE IS THIS DERIVATION'S OWN FIRST ATTEMPT. A one-hop version
+// shipped first and fixed two of the eight E0310s, because IT CREATED THE SECOND HOP: giving
+// `keyed_two_way_diff` the bound made `keyed_apply_two_way_diff` -- which calls it and returns a
+// plain `KeyedPatch` -- newly require one. A one-hop rule cannot converge here by construction,
+// since every hop it fixes manufactures the next, and `'static` on a generic is inherited by every
+// caller that instantiates at its own generics however far up the chain it sits. So the callee's
+// bound is its OWN union its OWN FORWARDED bound, recursively, which is the shape the Clone half
+// beside this one already took when its two-hop specimen arrived.
+//
+// THE CYCLE GUARD IS THE SAME ONE, NOT A SECOND MECHANISM: a `visited` list of callee names, with
+// the walk returning empty on re-entry. Ordinary recursion in the corpus would otherwise not
+// terminate, and this is a real shape here rather than a defensive one -- `std.change`'s own folds
+// are recursive.
+//
+// WHY IT FORWARDS ALL THE CALLER'S GENERICS RATHER THAN THE FLOWING ONES, which is the one place it
+// is coarser than its Clone and equality siblings. Those join (callee param, argument) pairs to
+// learn which of the wrapper's generics reach the bound. That join is unavailable here: the callee
+// in the originating specimen takes NO ARGUMENTS -- `keyed_patch_monoid()` is instantiated purely by
+// inference from its return type -- so there is no argument position to read the flow from. The
+// granularity is therefore the SAME ONE THE RULE ALREADY USES for its own case
+// (`static_param_names = if returns_fn_field_record { generic_param_names }`, all generics, not the
+// flowing subset). It over-approximates only toward `'static` on an owned type parameter, which
+// excludes no instantiation this corpus can express: every emitted carrier is owned (`Rc`, `Vec`,
+// enums) and no emitted signature is generic over a borrow. NEXT-RUNG TRIGGER: a specimen whose
+// `'static`-earning callee takes the generic as an argument, at which point the join the siblings
+// use becomes available and this derivation narrows to it.
+fn v1_call_forwarding_static_bound_param_names(
+  generic_param_names: List<String>,
+  body: Node,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  if (generic_param_names |> count) == 0 {
+    return []
+  }
+  let here = match body.expr_data {
+    ExprCall => v1_call_site_static_forwarded_param_names(
+      call: body,
+      generic_param_names: generic_param_names,
+      fn_decl_items: fn_decl_items,
+      emit_info: emit_info,
+      source_indices: source_indices,
+      visited: visited
+    )
+    _ => []
+  }
+  body.children |> fold(init: here, f: (acc, child) =>
+    v1_union_bound_param_names(
+      base: acc,
+      extra: v1_call_forwarding_static_bound_param_names(
+        generic_param_names: generic_param_names,
+        body: child,
+        fn_decl_items: fn_decl_items,
+        emit_info: emit_info,
+        source_indices: source_indices,
+        visited: visited
+      )
+    )
+  )
+}
+
+// One call site: does the callee carry a `'static` bound by ANY route -- earned from its own
+// arrow-field return, or inherited from what IT calls. A NON-GENERIC callee cannot forward one; it
+// has no type parameters for the caller's to stand in, and asking first is not an optimisation:
+// without it, every call to a monomorphic arrow-returning function would bind the caller's
+// unrelated generics.
+fn v1_call_site_static_forwarded_param_names(
+  call: Node,
+  generic_param_names: List<String>,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  let si = source_indices
+  let callee_name = expr_call_func_at(texpr: call, source_indices: si)
+  if visited |> any(v => v == callee_name) {
+    return []
+  }
+  match map_get(fn_decl_items, callee_name) {
+    Absent => []
+    Present { value: callee_item } =>
+      match callee_item.body {
+        Absent => []
+        Present { value: callee_body } =>
+          let callee_type_params = function_type_params(params: callee_item.params)
+          if (callee_type_params |> count) == 0 {
+            []
+          } else {
+            let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+            let callee_own_static = if type_has_fn_fields(
+              name: rust_fn_sig_leaf_name(source_indices: si, n: resolved_type(n: callee_item)),
+              emit_info: emit_info
+            ) { callee_generic_param_names } else { [] }
+            let callee_static = v1_union_bound_param_names(
+              base: callee_own_static,
+              extra: v1_call_forwarding_static_bound_param_names(
+                generic_param_names: callee_generic_param_names,
+                body: callee_body,
+                fn_decl_items: fn_decl_items,
+                emit_info: emit_info,
+                source_indices: si,
+                visited: concat(visited, [callee_name])
+              )
+            )
+            if (callee_static |> count) > 0 { generic_param_names } else { [] }
+          }
+      }
+  }
+}
+
 fn v1_call_forwarding_equality_bound_param_names(
   generic_param_names: List<String>,
   body: Node,
@@ -9139,7 +9264,19 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   )
   let returns_fn_field_record = type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: si, n: inferred), emit_info: emit_info)
   let returns_arrow_or_fn_field_record = (inferred.params |> count) > 0 || returns_fn_field_record
-  let static_param_names = if returns_fn_field_record { generic_param_names } else { [] }
+  let call_forwarded_static_param_names = v1_call_forwarding_static_bound_param_names(
+    generic_param_names: generic_param_names,
+    body: body,
+    fn_decl_items: emit_info.fn_decl_items,
+    emit_info: emit_info,
+    source_indices: si,
+    visited: []
+  )
+  let static_param_names = if returns_fn_field_record {
+    generic_param_names
+  } else {
+    call_forwarded_static_param_names
+  }
   let bounds_by_param = v1_fn_bounds_by_param(
     clone_param_names: clone_param_names,
     eq_param_names: eq_param_names,
@@ -9152,7 +9289,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
-  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: returns_arrow_or_fn_field_record)
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, fn_param_needs_static: returns_arrow_or_fn_field_record || (call_forwarded_static_param_names |> count) > 0)
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
@@ -9420,7 +9557,7 @@ fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared
 fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
-    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: false)
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: false)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -9428,7 +9565,7 @@ fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: 
 }
 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: false))
+  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: false))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()))
   )
@@ -9443,8 +9580,8 @@ fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices:
   concat(" -> Result<", render_rust_type(n: inferred, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), ", Box<dyn std::error::Error>>")
 }
 
-fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
-  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: enclosing_returns_arrow))
+fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
+  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: fn_param_needs_static))
   strs |> join(separator: ", ")
 }
 
@@ -9494,7 +9631,25 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
 // a medium-agnostic language — `'static` appears in no .dag source module — and would leave the
 // next arrow-into-Rc site to be rediscovered the same way (DESIGN §3 layer inversion, §5
 // construction over validation).
-fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
+// WHETHER AN `impl Fn` PARAMETER CARRIES `+ 'static`, AND WHY THE QUESTION HAS TWO CAUSES.
+//
+// The first is the one this parameter was born for: a function RETURNING an arrow, or a record whose
+// fields are arrows, moves its parameters into an `Rc<dyn Fn>` that defaults to `'static`.
+//
+// The second was missing and is measured. A function that neither returns an arrow nor builds one
+// can still FORWARD an `impl Fn` parameter into a callee that requires `'static` --
+// `keyed_three_way_fold` hands `value_eq` to `keyed_three_way_patch_monoid` and returns a plain
+// `KeyedThreeWayPatch` -- so rustc demands the bound at a signature that mentions no arrow. That is
+// the same transitive fact the TYPE-parameter half of this derivation already computes
+// (`v1_call_forwarding_static_bound_param_names`), arriving at the other of the two surfaces a
+// `'static` bound can land on, and the two were fixed one release apart because the type-param
+// surface is the one the first specimen exhibited.
+//
+// THE PARAMETER IS NAMED FOR THE QUESTION RATHER THAN FOR EITHER CAUSE. It was
+// `enclosing_returns_arrow`, which described cause one and was correct while cause one was the only
+// one; carrying that spelling with two causes behind it would make the name a nickname for a
+// property it only partly describes (DESIGN section 3).
+fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
   if n.params |> count > 0 {
     let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
     let param_str = param_types |> join(separator: ", ")
@@ -9502,18 +9657,18 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
       Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       _ => "()"
     }
-    let static_bound = if enclosing_returns_arrow { " + 'static" } else { "" }
+    let static_bound = if fn_param_needs_static { " + 'static" } else { "" }
     concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone", static_bound)
   } else {
     render_rust_fn_sig_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
 }
 
-fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
+fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
-    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: enclosing_returns_arrow)
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: fn_param_needs_static)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -11004,6 +11159,87 @@ fn call_target_is_runtime_primitive(target: CallTargetIdentity) -> Bool {
 // TARGET HAS NO ROW IN THIS TARGET'S RUNTIME REGISTRY. Absent means builtin resolution produced
 // the target and no declaration ever answered, so there is nothing to fall back to and the one
 // remaining arm is a refusal.
+// AN UNREALIZED HOST SEAM: a runtime target that no declaration ever backed.
+//
+// WHY IT IS A DECLARATION RATHER THAN A LOCAL. The emitter asks this question in call position to
+// decide whether the refusal it renders is the CALLEE or the WHOLE expression, and the reasoning
+// behind that choice is irreducible rationale about a construction -- exactly what DESIGN section 4c
+// admits at module-item grain and refuses inside a body. Written as a `let` with a comment above it,
+// the compiler refused the emitter's own source, which is the rule working.
+//
+// WHAT IT IS FOR. A primitive whose body is a bare self-call declares that its body lives in the
+// host. Emitting that shape verbatim produces a function that compiles, runs and returns to no
+// caller -- DESIGN section 5 silent wrongness, and strictly worse than a missing symbol because
+// nothing reports it. So the emitter renders a diverging `panic!` instead, and that refusal is
+// correct and stays.
+//
+// WHAT WAS WRONG IS WHERE IT LANDED. The refusal was built as the CALLEE and then handed the call's
+// arguments, rendering `panic!("...")(arg)` -- a `!` value applied to an argument list. rustc refuses
+// that with E0618 `expected function, found !`, and separately refuses each argument as an
+// `unreachable expression`, so ONE unrealized seam produced two errors per call site and every
+// diagnostic named the shape of the emission rather than the missing realization. Measured on the
+// v2-native CLI closure: two seams (`decl_facts`, `decl_facts_at`) at four call sites, eight of that
+// closure's nineteen errors, none of which mentioned a seam.
+//
+// `panic!` diverges, so it inhabits every type the call could have returned and needs no arguments
+// to do it. Dropping them is not a widening: the arguments are unreachable past the panic by
+// construction, and work no consumer can observe.
+//
+// IT COMPOSES THE ACCESSORS BESIDE IT rather than re-matching the target coproduct a third time
+// (DESIGN section 2): `call_target_runtime_primitive_name` answers Present only for a runtime
+// target, and `call_target_projected_declaration` answers Absent exactly when no declaration backed
+// it.
+//
+// A BODY-GRAIN CONSUMER OF THIS PREDICATE WAS BUILT, MEASURED AND WITHDRAWN, and the reason is a
+// fact about the emitter worth keeping. The call-site repair below leaves one residue: a seam whose
+// RESULT is consumed still renders `panic!("...").len()`, and `!` coerces in value position while
+// method resolution against it does not (E0599). The obvious completion is to refuse the whole
+// FUNCTION whenever its body reaches a seam, which type-checks cleanly because `!` coerces in return
+// position.
+//
+// IT CANNOT BE DECIDED FROM A BODY WALK. `rt_functions()` is not the set of realizable primitives:
+// many builtins -- collection folds, pipelines, the operators -- are rendered by dedicated arms in
+// this emitter and carry no bridge row, so a walk that asks only "runtime primitive, no bridge, no
+// projected declaration" calls them unrealized. The CALL SITE is safe precisely because it sits at
+// the RESIDUE position, after every other arm has declined; a walk has no way to know which arm will
+// take a call. Measured twice on the seed's own rebuild: the emitted compiler refused
+// `v1.compiler.tokenize source_code_point`, then `v1.compiler.infer typecheck_module`, and panicked
+// on its own first tokenize and first typecheck respectively -- both ordinary functions the emitter
+// realizes correctly.
+//
+// SO THE RESIDUE STANDS, DECLARED, AND IT IS FIVE ERRORS RATHER THAN THE ONE E0599 THAT NAMES IT.
+// Measured on the v2-native CLI closure: the seam's result feeds onward, so the same two modules also
+// produce two `unreachable call`, one `unreachable statement` and one E0282 -- every one an error
+// under the `-D warnings` the emitted-crate build runs with. Counting this residue as one error was
+// an estimate that survived into a commit message before it was measured; it is five.
+// TRIGGER: the emitter can answer "will any arm render this call" as one predicate -- the same
+// question the call site answers positionally today -- at which point a body walk can consume it and
+// the whole-function refusal becomes decidable.
+//
+// THE BRIDGE TEST IS PART OF THE PREDICATE, NOT A GUARD ITS CALLERS ADD, and that placement was
+// bought the hard way. A runtime primitive WITH a `v1_rt` row is realized -- the bridge IS its
+// realization -- so "runtime primitive with no projected declaration" is not the question; it
+// over-approximates to every bridged builtin in the corpus. The call-site consumer happened to be
+// guarded by its own `is_rt` check and so read correctly, while the body-grain consumer had no such
+// guard and inherited the over-approximation: the emitted seed refused
+// `v1.compiler.tokenize source_code_point` -- an ordinary bridged function -- and the rebuilt binary
+// panicked on its own first tokenize. A predicate that is only correct when every caller remembers
+// to pre-filter it is a wall with a hole per consumer, so the filter moved inside.
+fn call_target_is_unrealized_primitive(target: CallTargetIdentity) -> Bool {
+  match call_target_runtime_primitive_name(target: target) {
+    Absent => false
+    Present { value: primitive_name } =>
+      if rust_runtime_primitive_has_bridge(primitive_name: primitive_name) {
+        false
+      } else {
+        match call_target_projected_declaration(target: target) {
+          Present { value: _ } => false
+          Absent => true
+        }
+      }
+  }
+}
+
 fn call_target_projected_declaration(target: CallTargetIdentity) -> DeclaredCallableIdentity? {
   match target {
     RuntimePrimitiveCall { primitive_name: _, projected_from: projected_from } => projected_from
@@ -11714,6 +11950,9 @@ fn emit_typed_call(func: String, args: List<Node>, call_semantics: CallSemantics
   let callee_self_capture = if is_rt { false } else {
     filled_args |> any(a => expr_references_var(node: arg_value(n: a), var_name: func, source_indices: si))
   }
+  let unrealized_primitive_call = if is_rt { false } else {
+    call_target_is_unrealized_primitive(target: call_target)
+  }
   let func_ident = if is_rt { concat("v1_rt::", emit_ident(name: runtime_name, target: Rust)) }
     else { match call_target {
       SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
@@ -11732,10 +11971,14 @@ fn emit_typed_call(func: String, args: List<Node>, call_semantics: CallSemantics
         }
     } }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
-  let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
-    emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
+  let call_str = if unrealized_primitive_call {
+    func_ident
   } else {
-    concat(func_name, "(", args_str, ")")
+    if is_rt && func == "concat" && all_args |> count > 2 {
+      emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
+    } else {
+      concat(func_name, "(", args_str, ")")
+    }
   }
   match callee {
     Present { value: info } =>
@@ -14534,7 +14777,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, enclosing_returns_arrow: false))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, fn_param_needs_static: false))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -15623,7 +15866,7 @@ fn emit_resource_def(item: Node, shared_types: Set<String>, env: TypeEnv) -> Str
 
 fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, enclosing_returns_arrow: false))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, fn_param_needs_static: false))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -15873,7 +16116,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
 
 fn rust_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map(), env: projection.type_env, enclosing_returns_arrow: false)))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map(), env: projection.type_env, fn_param_needs_static: false)))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
