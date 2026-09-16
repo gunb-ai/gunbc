@@ -2,11 +2,7 @@ module gunbc.spark.collective_transport_plan
 
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
-import extdeps.nvidia.nccl {
-  NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
-  NcclRoceGidSelection, nccl_roce_gid_selection_env,
-  nccl_realized_transport_wire, nccl_network_name_socket, nccl_network_name_ib,
-}
+import extdeps.nvidia.nccl { NcclRoceGidSelection, nccl_roce_gid_selection_env }
 
 // ── ONE SEMANTIC CHOICE, NOT SEVEN INDEPENDENT CONTAINER FIELDS ───────────────────────────────
 //
@@ -49,16 +45,16 @@ import extdeps.nvidia.nccl {
 // from, joined to the plan the route intended. That belongs with the producer that can supply those
 // -- the serving throughput instrument reading NCCL's own `Using network` line off a running engine
 // -- and it does not exist yet. Until it does, this module projects a plan and does not judge one.
+//
+// A `collective_transport_plan_wire` string projection went with it, for the same reason one step
+// removed: its only caller was a witness asserting the two plans differ, which the projection rows
+// already establish at the grain that matters -- one arm maps a device, adds a capability, unlocks
+// memlock and sets four env names, and the other does none of it. A string that exists so a test
+// can compare two strings is not a consumer, and a reader reaching for a wire format here should
+// build it where something actually transmits one.
 type CollectiveTransportPlan
   = SocketOverInterface { interface: NonEmptyStr }
   | RoceOverInterface { interface: NonEmptyStr, rdma_device: NonEmptyStr, gid_selection: NcclRoceGidSelection }
-
-fn collective_transport_plan_wire(p: CollectiveTransportPlan) -> NonEmptyStr {
-  match p {
-    SocketOverInterface { interface: i } => join([nccl_network_name_socket as String, "@", i as String], "") as NonEmptyStr
-    RoceOverInterface { interface: i, rdma_device: _, gid_selection: _ } => join([nccl_network_name_ib as String, "@", i as String], "") as NonEmptyStr
-  }
-}
 
 // ── THE PROJECTIONS, DERIVED ──────────────────────────────────────────────────────────────────
 //

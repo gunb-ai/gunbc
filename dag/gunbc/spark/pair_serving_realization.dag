@@ -15,7 +15,7 @@ import gunbc.spark.model_snapshot_acquisition {
 }
 import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli {
-  DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping,
+  DockerCreateSpec, DockerEnvAssignment,
   NamespaceHost, RestartUnlessStopped,
   docker_create_command, docker_start_command, docker_exec_command, docker_remove_force_command,
   docker_image_pull_command, docker_build_command,
@@ -31,7 +31,7 @@ import gunbc.spark.collective_transport_plan {
   transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited, transport_plan_env,
 }
 import extdeps.nvidia.nccl {
-  NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2, nccl_roce_gid_selection_env,
+  NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2,
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Installable, SystemdServiceDirective,

@@ -5,7 +5,6 @@ import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
 import extdeps.nvidia.nccl { NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2 }
 import gunbc.spark.collective_transport_plan {
   CollectiveTransportPlan, SocketOverInterface, RoceOverInterface,
-  collective_transport_plan_wire,
   transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited,
   transport_plan_interface, transport_plan_env,
   nccl_socket_ifname_env, nccl_ib_hca_env, ucx_net_devices_env,
@@ -102,12 +101,6 @@ test fn w_the_ucx_name_carries_a_port_and_the_nccl_name_does_not() -> Bool {
     && all(ucx, e => e.value == join([fx_rdma_device as String, ":1"], ""))
 }
 
-// ── THE TWO PLANS ARE DISTINGUISHABLE AS VALUES ───────────────────────────────────────────────
-test fn w_the_two_plans_do_not_share_a_wire() -> Bool {
-  (collective_transport_plan_wire(p: fx_socket_plan) as String)
-    != (collective_transport_plan_wire(p: fx_roce_plan) as String)
-}
-
 test fn w_all_collective_transport_plan_claims_hold() -> Bool {
   w_a_socket_plan_projects_no_device_no_capability_no_lock()
     && w_a_roce_plan_projects_the_device_the_capability_and_the_lock()
@@ -115,5 +108,4 @@ test fn w_all_collective_transport_plan_claims_hold() -> Bool {
     && w_the_roce_arm_projects_more_env_than_the_socket_arm()
     && w_only_the_roce_arm_projects_the_endpoint_env()
     && w_the_ucx_name_carries_a_port_and_the_nccl_name_does_not()
-    && w_the_two_plans_do_not_share_a_wire()
 }
