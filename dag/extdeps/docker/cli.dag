@@ -296,6 +296,68 @@ fn docker_image_inspect_id_from_stdout(stdout: String) -> DockerImageInspectIdRe
   }
 }
 
+// THE CONTAINER'S TWO IDENTITY FIELDS, AND NOTHING ELSE OFF THE INSPECT OBJECT. `docker container
+// inspect` returns the whole object extdeps.docker.container_inspect ContainerInspect models,
+// including Config.Env, whose values can carry secrets. This reader takes exactly .Id -- the full
+// container id, the same string the daemon writes into the container's cgroup name
+// (extdeps.docker.cgroup) -- and .Image, the id of the image the container was created from
+// (`sha256:<hex>`, the image configuration digest, which is what
+// docker_image_inspect_id_from_stdout reads as an image's .Id). Everything else in the document is
+// left in the parsed value and never reaches the result, so a consumer holding this reading holds
+// no environment, no mounts and no arguments. A reader that needs more of the object is a separate
+// declaration with its own disclosure to state.
+type DockerContainerInspectIdentityRead
+  = DockerContainerInspectIdentity { id: NonEmptyStr, image: NonEmptyStr }
+  | DockerContainerInspectIdentityUnreadable { cause: String }
+
+fn docker_inspect_nonempty_string_member(obj: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: obj, key: key) {
+    JsonMemberAbsent => none
+    JsonMemberNotAnObject => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberFound { value: v } => {
+      let text = json_string_value_or_empty(v: v)
+      if text == "" { none } else { Present { value: text } }
+    }
+  }
+}
+
+fn docker_container_inspect_identity_from_stdout(stdout: String) -> DockerContainerInspectIdentityRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerContainerInspectIdentityUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerContainerInspectIdentityUnreadable { cause: "docker container inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match docker_inspect_nonempty_string_member(obj: obj, key: "Id") {
+            Absent => DockerContainerInspectIdentityUnreadable { cause: "docker container inspect JSON names no unique nonempty Id" }
+            Present { value: id } =>
+              match docker_inspect_nonempty_string_member(obj: obj, key: "Image") {
+                Absent => DockerContainerInspectIdentityUnreadable { cause: "docker container inspect JSON names no unique nonempty Image" }
+                Present { value: image } =>
+                  DockerContainerInspectIdentity { id: id as NonEmptyStr, image: image as NonEmptyStr }
+              }
+          }
+      }
+  }
+}
+
+// THE IMAGE ID CARRIES ITS ALGORITHM AS A PREFIX. Both .Image on a container and .Id on an image are
+// spelled `sha256:<64 hex>`; the hex after the colon is the digest a ContentHash carries. Refuses
+// any other algorithm prefix rather than treating the whole string as hex.
+data docker_sha256_image_id_prefix: String = "sha256:"
+
+fn docker_image_id_sha256_hex(image_id: NonEmptyStr) -> String? {
+  let text = image_id as String
+  let head = string_length(docker_sha256_image_id_prefix)
+  if string_length(text) > head && substring(s: text, start: 0, end: head) == docker_sha256_image_id_prefix {
+    Present { value: substring(s: text, start: head, end: string_length(text)) }
+  } else {
+    none
+  }
+}
+
 // THE SHORT MOUNT SPELLING, AND THE ONE REASON IT EXISTS BESIDE docker_mount_flag. `--mount` takes
 // its fields as a COMMA-separated list, and a comma is not in the portable-word allowlist
 // gunbc.typed_argv_exec enforces at the ssh seam, so a `--mount` argument cannot cross that seam at
