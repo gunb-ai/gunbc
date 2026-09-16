@@ -538,15 +538,6 @@ fn live_deploy_service_ready_once_for_bundle(
   }
 }
 
-fn live_deploy_service_ready_once(
-  release_revision: CommitSha,
-) -> ServiceReadiness {
-  live_deploy_service_ready_once_for_bundle(
-    bundle: materialize_live_roadmap_site_surface_bundle(),
-    release_revision: release_revision,
-  )
-}
-
 fn capture_unit_diagnosis(
   spec: DeploymentSpec,
   transport: HostEffectTransport,

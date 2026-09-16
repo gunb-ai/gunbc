@@ -7,7 +7,7 @@ module gunbc.readiness
 // does not choose a remedy. Refused is a usable negative, distinct from
 // Pending. An observer returns this after ONE attempt; retry cadence belongs
 // to the transaction caller.
-// CONSUMERS: gunbc.live_deploy.readiness live_deploy_service_ready_once,
+// CONSUMERS: gunbc.live_deploy.readiness live_deploy_service_ready_once_for_deploy,
 // gunbc.dashboard_provider_readiness observe_dashboard_provider_readiness.
 // Callers match the coproduct; this module does not re-project arms to Bool.
 

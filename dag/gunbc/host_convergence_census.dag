@@ -353,7 +353,7 @@ fn live_member_observe() -> DeclarationRef {
 }
 
 fn live_readiness() -> DeclarationRef {
-  cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once")
+  cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once_for_deploy")
 }
 
 fn deployment_spec_for() -> DeclarationRef {
