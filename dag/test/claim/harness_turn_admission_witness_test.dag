@@ -1,0 +1,255 @@
+module test.claim.harness_turn_admission_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.measure { token_count }
+import v2.std.optional { Present, Absent }
+import product.fabric.provider_route { ProviderRoute }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.work { TrustDomainRef, OfferedService, MaterializedProgram }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.provider_admission { ProviderUseAdmitted, ProviderUseDenied, refusal_reason }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict, FrontDoorAnswered, serving_availability_bracketing_read }
+import gunbc.serving.turn_demand { serving_turn_work }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch, LaunchObserved }
+import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
+import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
+import gunbc.spark.pair_serving_realization { spark_pair_model_path_in_container, spark_pair_desired_snapshot }
+import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
+import gunbc.spark.serving_offer {
+  SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused, ServingRouteObserved,
+  bind_spark_serving_offer, spark_serving_incarnation_unobserved_obligation,
+}
+import gunbc.harness.harness_wire { OpenAiChatCompletionsShape, AnthropicMessagesShape }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
+import gunbc.harness.harness_seat {
+  HarnessCandidates, HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
+  harness_turn_subject, harness_turn_request, harness_admit_bound_offer, harness_execution_requirements,
+  harness_bind_candidate, harness_serving_realization,
+}
+import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
+import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape }
+
+// ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND, AND A BOUND OFFER PASSES ADMISSION OR NOTHING ──
+//
+// The harness used to take a bound Spark offer straight to a refusal saying provider-use admission
+// had not run. It now builds the turn's subject once at harness_bind_seat and admits each bound offer
+// under that subject before the offer may enter the field. These witnesses pin the subject, the
+// factored admit step, AND the production route from harness_bind_candidate's bound arm into it
+// (a_bound_offer_reaches_admission_through_bind_candidate, over the route seam). The
+// admitted arm has no positive control yet, and that is stated rather than faked: first-party
+// admission refuses while the answering launch's usage-stats path is unread, on every fixture this
+// corpus can build. DECLARED FRONTIER (DESIGN 3c): the positive CandidateBound control lands when
+// spark_first_party_admission takes the narrow ServingUsageStatsObservation (gunbc#11441) and this
+// harness threads it through harness_admit_bound_offer -- a fixture Disabled observation on the
+// offered launch, a matching declared unit and an observed incarnation then reach the admitted arm.
+
+fn t_launch() -> VllmEndpointProcessLaunch {
+  vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
+}
+
+fn t_endpoint() -> ServingRouteEndpoint {
+  ServingRouteEndpoint { group: FabricGroupA, address: "10.0.0.1" as NonEmptyStr, port: 8000 }
+}
+
+fn t_ready() -> ServingFrontDoorAvailabilityVerdict {
+  serving_availability_bracketing_read(
+    endpoint: t_endpoint(),
+    before: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.harness-turn-admission" as ObservationReceiptRef },
+    front_door: FrontDoorAnswered,
+    after: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.harness-turn-admission" as ObservationReceiptRef },
+    now: "2026-09-14T00:00:00Z",
+  )
+}
+
+// FIXTURE ROUTE: an observed route, so the offer binds and the step under test is reached. No
+// production producer constructs ServingRouteObserved for a Spark group today.
+fn t_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.harness_turn_admission_witness", decl_name: "t_route"),
+    service: decl_ref(module_path: "gunbc.spark.serving_offer", decl_name: "spark_serving_quote"),
+    region: decl_ref(module_path: "gunbc.spark.fabric_switch_observed", decl_name: "FabricGroupA"),
+  }
+}
+
+fn t_bound() -> SparkOfferBinding<NonEmptyStr> {
+  bind_spark_serving_offer(
+    principal: "gunbc" as NonEmptyStr,
+    executor: "spark-a" as NonEmptyStr,
+    launch: t_launch(),
+    served_model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+    trust_domain: "gunbc.trust.spark" as TrustDomainRef,
+    isolation: IsolationProfile { guarantees: [] },
+    seats: 1,
+    availability: t_ready(),
+    route: ServingRouteObserved { route: t_route() },
+  )
+}
+
+fn t_declared_path() -> String {
+  match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
+    Present { value: p } => p
+    Absent => ""
+  }
+}
+
+fn t_realization() -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: ModelsRouteRead {
+      readback: vllm_models_route_readback(
+        served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+        configured_model_path: t_declared_path() as NonEmptyStr,
+        max_model_len: token_count(count: 1048576)),
+    },
+    endpoint: t_launch(),
+    incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+  }
+}
+
+fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
+  harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", prompt]),
+    attempt: attempt as NonEmptyStr,
+  )
+}
+
+fn t_empty() -> HarnessCandidates {
+  HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] }
+}
+
+// RED, THROUGH THE PRODUCTION ROUTE. harness_bind_candidate is the fold production calls; with a
+// fixture route that binds, its bound arm must take the offer INTO admission rather than refuse on
+// its own. The discriminator is the admission's refusal_reason in the note: the arm this replaced
+// refused with a sentence of its own and no producer had run, so restoring it turns this red.
+test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
+  let subject = t_subject(prompt: "p", attempt: "a-1")
+  let placed = harness_bind_candidate(
+    acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
+    readback: t_realization().readback, incarnation: t_realization().incarnation, route: ServingRouteObserved { route: t_route() }, subject: subject,
+    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
+  )
+  match t_bound() {
+    SparkOfferBindingRefused { group_wire: _, cause: _ } => false
+    SparkOfferBound { bound: projection } =>
+      match spark_first_party_admission(
+        realization: harness_serving_realization(group: FabricGroupA, launch: t_launch(), readback: t_realization().readback, incarnation: t_realization().incarnation),
+        scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
+        offer: projection.offer.id,
+      ) {
+        ProviderUseAdmitted { permit: _ } => false
+        ProviderUseDenied { decision: _, cause: why } =>
+          length(placed.candidates) == 0
+            && any(placed.notes, n => n.contains(refusal_reason(c: why)))
+      }
+  }
+}
+
+// RED, AND THE CAUSE IS THE ADMISSION'S OWN. A bound offer that first-party admission refuses never
+// becomes a candidate, and the note carries exactly the refusal the producer returns for the same
+// realization, scope and offer -- not a generic "not admitted" that a refusal for another reason
+// would also satisfy.
+test fn a_bound_offer_refused_by_admission_is_not_a_candidate_and_carries_the_cause() -> Bool {
+  let subject = t_subject(prompt: "p", attempt: "a-1")
+  match t_bound() {
+    SparkOfferBindingRefused { group_wire: _, cause: _ } => false
+    SparkOfferBound { bound: projection } => {
+      let placed = harness_admit_bound_offer(
+        acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(),
+        realization: t_realization(), projection: projection, subject: subject,
+        unit: DeepseekV4FlashOnVllm, seats: 1,
+      )
+      match spark_first_party_admission(
+        realization: t_realization(),
+        scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
+        offer: projection.offer.id,
+      ) {
+        ProviderUseAdmitted { permit: _ } => false
+        ProviderUseDenied { decision: _, cause: why } =>
+          length(placed.candidates) == 0
+            && !placed.retryable
+            && any(placed.notes, n => n.contains("provider-use admission refused this turn: ")
+              && n.contains(refusal_reason(c: why)))
+      }
+    }
+  }
+}
+
+// THE SUBJECT IS THE REQUEST'S. Its Work is serving_turn_work over the normalized request and the same
+// requirements select_supply ranks against, and its Demand is the caller's attempt.
+test fn the_turn_subject_is_the_offered_service_work_and_the_attempt_demand() -> Bool {
+  let request = harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"])
+  let subject = harness_turn_subject(request: request, attempt: "a-1" as NonEmptyStr)
+  let direct = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements())
+  (subject.work.id.key as String) == (direct.id.key as String)
+    && (subject.demand.key as String) == "a-1"
+    && (match subject.work.contract.execution {
+      OfferedService { interface: i } => (i as String) == "openai.chat-completions"
+      MaterializedProgram { program: _, source: _, runtime_closure: _ } => false
+    })
+}
+
+// RED: TWO ATTEMPTS OF ONE REQUEST ARE ONE WORK AND TWO DEMANDS; A DIFFERENT PROMPT IS DIFFERENT WORK.
+test fn attempts_share_work_and_prompts_do_not() -> Bool {
+  let a1 = t_subject(prompt: "p", attempt: "a-1")
+  let a2 = t_subject(prompt: "p", attempt: "a-2")
+  let other = t_subject(prompt: "q", attempt: "a-1")
+  (a1.work.id.key as String) == (a2.work.id.key as String)
+    && (a1.demand.key as String) != (a2.demand.key as String)
+    && (a1.work.id.key as String) != (other.work.id.key as String)
+}
+
+// RED: THE INPUT IDENTITY IS INJECTIVE IN THE LIST. A separator inside one input, an input split
+// in two, and an empty input each name a different turn; a delimited join would fold the first
+// two together.
+fn t_inputs_identity(inputs: List<String>) -> String {
+  harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: inputs).inputs as String
+}
+
+test fn the_inputs_identity_does_not_collapse_on_a_separator() -> Bool {
+  t_inputs_identity(inputs: ["a\u{1f}b"]) != t_inputs_identity(inputs: ["a", "b"])
+    && t_inputs_identity(inputs: ["ab"]) != t_inputs_identity(inputs: ["a", "b"])
+    && t_inputs_identity(inputs: ["a", ""]) != t_inputs_identity(inputs: ["a"])
+    && t_inputs_identity(inputs: ["a", "b"]) == t_inputs_identity(inputs: ["a", "b"])
+}
+
+// RED: THE NORMALIZED MODEL REQUEST IS THE WORK. A worker's rendered system prompt depends on the
+// gunbc program it names, so two turns on one brief with different programs are different Work; one
+// rendered request placed twice is one Work and two Demands; and the model requirement is request
+// identity, so an exact-unit turn on the same request is a third Work.
+fn t_worker_subject(gunbc_program: String, attempt: String) -> HarnessTurnSubject {
+  let prompt = harness_worker_system_prompt_at(worktree: "/w", repo_root: "/r", gunbc_program: gunbc_program)
+  harness_turn_subject(
+    request: harness_turn_request(shape: harness_default_wire_shape, requirement: AnyAdmittedModel, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: prompt, user_input: "brief")),
+    attempt: attempt as NonEmptyStr,
+  )
+}
+
+test fn the_rendered_request_is_the_work_and_the_attempt_is_the_demand() -> Bool {
+  let a = t_worker_subject(gunbc_program: "/bin/gunbc-a", attempt: "a-1")
+  let b = t_worker_subject(gunbc_program: "/bin/gunbc-b", attempt: "a-1")
+  let a2 = t_worker_subject(gunbc_program: "/bin/gunbc-a", attempt: "a-2")
+  let exact = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+  )
+  let any = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+  )
+  (a.work.id.key as String) != (b.work.id.key as String)
+    && (a.work.id.key as String) == (a2.work.id.key as String)
+    && (a.demand.key as String) != (a2.demand.key as String)
+    && (exact.work.id.key as String) != (any.work.id.key as String)
+    && (exact.work.requirements.capabilities as String) == (any.work.requirements.capabilities as String)
+}
+
+// RED: THE WIRE SHAPE IS THE INTERFACE, so one prompt spoken over two interfaces is two Works.
+test fn the_wire_shape_is_the_interface() -> Bool {
+  let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
+  let anthropic = harness_turn_subject(request: harness_turn_request(shape: AnthropicMessagesShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
+  (openai.work.id.key as String) != (anthropic.work.id.key as String)
+}

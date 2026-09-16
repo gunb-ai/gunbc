@@ -767,16 +767,13 @@ fn spark_first_party_use_scope<P>(
 // another data class -- reaches the same producer and is refused by it, instead of the refusal being
 // a state only a fixture could construct.
 //
-// DECLARED FRONTIER (DESIGN section 3c). The production consumer of this function is
-// gunbc.harness.harness_seat, which does not call it yet. Work identity is no longer the obstacle:
-// gunbc.serving.turn_demand serving_turn_work constructs an OfferedService Work from the request
-// alone. The obstacle is that harness_bind_seat receives no normalized turn request -- no interface,
-// inputs or output contract -- so it cannot construct that Work and its Demand once at the request
-// boundary, and constructing them per offer would put request identity beneath supplier
-// enumeration. TRIGGER: harness_bind_seat carries a normalized ServingTurnRequest, SUFFICIENT FOR
-// constructing one Work and one Demand before candidate enumeration and passing both, with this
-// admission, to product.fabric.selection bind_candidate. Until then this producer is executed by
-// test.claim.spark.spark_first_party_serving_witness_test, which exercises both arms.
+// CONSUMED. The production consumer is gunbc.harness.harness_seat harness_admit_bound_offer, which
+// calls this with spark_first_party_use_scope over the turn subject's Demand and Work id -- both
+// constructed once by harness_turn_subject before candidate enumeration -- and hands the result to
+// product.fabric.selection bind_candidate as its admission. Only CandidateBound becomes a harness
+// candidate; a refusal here surfaces as OfferNotAdmittedForUse carrying this producer's
+// refusal_reason unchanged.
+// test.claim.spark.spark_first_party_serving_witness_test exercises both arms directly.
 fn spark_first_party_admission<P>(
   realization: SparkServingRealization,
   scope: ProviderUseScope<P>,
