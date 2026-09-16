@@ -38,8 +38,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // unlike sha512sum there is no further_citations slot to carry the consumed citation structurally.
 // Declaring one is a modeling act on this module's own subject rather than part of removing the
 // fork, so it stays with this module's owner.
+data sha256sum_path_resolved_program: NonEmptyStr = "sha256sum"
+
 data sha256sum_cli_tool: CliTool = CliTool {
-  name: "sha256sum",
+  name: sha256sum_path_resolved_program as String,
   min_version: none,
   installable_via: [SourceCoreutils],
 }
@@ -129,7 +131,7 @@ type Sha256FileDigest
   | Sha256FileDigestUnavailable { path: NonEmptyStr, reason: String }
 
 fn sha256sum_file_command(path: String) -> ArgvCommand {
-  argv_command(program: "sha256sum" as NonEmptyStr, arguments: ["--", path])
+  argv_command(program: sha256sum_path_resolved_program, arguments: ["--", path])
 }
 
 fn sha256sum_file_digest_via_shell(path: NonEmptyStr) -> Sha256FileDigest {
