@@ -9,7 +9,9 @@ import std.materialization_provider {
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
+  provider_serve, ProbeFound, lookup_is_hit,
   request_key, request_kind, request_required_outputs, request_declared_inputs,
+  request_judgment_contract, evaluation_identity_canonical,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
   output_native_compiler_executable, output_native_compiler_build_diagnostics,
@@ -28,7 +30,9 @@ import std.materialization_object {
   store_commit_prepare, store_commit_settle, store_lookup_decide,
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
-  encode_store_object, percent_encode_payload, percent_decode_payload,
+  encode_store_object, decode_store_object, percent_encode_payload, percent_decode_payload,
+  StoreObjectDecoded, StoreObjectMalformed,
+  store_observed_digest, artifact_from_manifest, ManifestDecoded,
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemPermissionDenied,
@@ -218,12 +222,12 @@ test fn a_truncated_object_is_malformed_not_incomplete() -> Bool {
 // a universe artifact's object read where the verdict bundle's object belongs
 test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
   let foreign = prepared_object(req: universe_req(), payloads: universe_payloads())
-  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: foreign)) == "contract_kind_mismatch"
+  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: foreign)) == "evaluation_preimage_mismatch"
 }
 
 test fn an_object_for_another_request_of_the_same_kind_refuses_as_wrong_artifact() -> Bool {
   let other = prepared_object(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")), payloads: bundle_payloads())
-  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: other)) == "contract_wrong_artifact"
+  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: other)) == "evaluation_preimage_mismatch"
 }
 
 test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
@@ -234,7 +238,10 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
       request_key: request_key(req: bundle_req()),
       parts: [payload_part(payload: verdicts)]
     },
-    payloads: [verdicts]
+    payloads: [verdicts],
+    evaluation_preimage: evaluation_identity_canonical(
+      evaluation: request_judgment_contract(req: bundle_req()).identity_derivation.evaluation_identity
+    )
   )
   store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: incomplete)) == "contract_incomplete"
 }
@@ -291,9 +298,9 @@ test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
   let a = store_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectPresent { content: object })
   let b = store_lookup_decide(store: other_store, req: bundle_req(), read: StoreObjectPresent { content: object })
   match a {
-    StoreLookupHit { artifact: _, payloads: _, receipt: ra } =>
+    StoreLookupHit { artifact: _, payloads: _, receipt: ra, evaluation_identity: _ } =>
       match b {
-        StoreLookupHit { artifact: _, payloads: _, receipt: rb } =>
+        StoreLookupHit { artifact: _, payloads: _, receipt: rb, evaluation_identity: _ } =>
           ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
             && (ra.provider == rb.provider) == false && (ra.store_instance == rb.store_instance) == false
         StoreLookupMiss { key: _ } => false
@@ -465,9 +472,9 @@ test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
   let a = store_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectPresent { content: object })
   let b = store_lookup_decide(store: other_store, req: compiler_req(), read: StoreObjectPresent { content: object })
   match a {
-    StoreLookupHit { artifact: _, payloads: _, receipt: ra } =>
+    StoreLookupHit { artifact: _, payloads: _, receipt: ra, evaluation_identity: _ } =>
       match b {
-        StoreLookupHit { artifact: _, payloads: _, receipt: rb } =>
+        StoreLookupHit { artifact: _, payloads: _, receipt: rb, evaluation_identity: _ } =>
           ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
             && ra.request_key == request_key(req: compiler_req())
             && (ra.provider == rb.provider) == false
@@ -476,5 +483,43 @@ test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
       }
     StoreLookupMiss { key: _ } => false
     StoreLookupRefused { key: _, refusal: _ } => false
+  }
+}
+
+test fn store_hit_requires_evaluation_preimage() -> Bool {
+  let req = bundle_req()
+  let good = prepared_object(req: req, payloads: bundle_payloads())
+  let foreign = evaluation_identity_canonical(
+    evaluation: request_judgment_contract(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta"))).identity_derivation.evaluation_identity
+  )
+  let expected = evaluation_identity_canonical(
+    evaluation: request_judgment_contract(req: req).identity_derivation.evaluation_identity
+  )
+  let tampered = replace(good, percent_encode_payload(s: expected as String), percent_encode_payload(s: foreign as String))
+  store_lookup_is_hit(l: lookup_present(req: req, object: good))
+    && store_lookup_refusal_tag(l: lookup_present(req: req, object: tampered)) == "evaluation_preimage_mismatch"
+}
+
+test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
+  let req = bundle_req()
+  let good = prepared_object(req: req, payloads: bundle_payloads())
+  let foreign = evaluation_identity_canonical(
+    evaluation: request_judgment_contract(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta"))).identity_derivation.evaluation_identity
+  )
+  let expected = evaluation_identity_canonical(
+    evaluation: request_judgment_contract(req: req).identity_derivation.evaluation_identity
+  )
+  let tampered = replace(good, percent_encode_payload(s: expected as String), percent_encode_payload(s: foreign as String))
+  match decode_store_object(content: tampered) {
+    StoreObjectMalformed { cause: _ } => false
+    StoreObjectDecoded { manifest: m, payloads: ps, evaluation_preimage: p } =>
+      match artifact_from_manifest(m: m) {
+        ManifestDecoded { artifact: a } =>
+          lookup_is_hit(l: provider_serve(
+            req: req,
+            probe: ProbeFound { artifact: a, observed_digest: store_observed_digest(manifest: m, payloads: ps) }
+          )) && ((p as String) == (expected as String)) == false
+        _ => false
+      }
   }
 }

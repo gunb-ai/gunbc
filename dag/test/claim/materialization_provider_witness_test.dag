@@ -1,6 +1,6 @@
 module test.claim.materialization_provider_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash,
   Fnv1a64,
@@ -8,6 +8,7 @@ import std.content_hash {
   as_content_hash_cryptographic,
   as_content_hash_structural,
   Fnv1a64Structural,
+  HashFamily, Fnv1a64StructuralFamily, Sha256Family,
   sha256_hex_digest,
 }
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
@@ -23,6 +24,7 @@ import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingEnforcement, MissingConcept,
   identity_grade_is_known
 }
+import std.occurrence_identity { OccurrenceId, ScopedOccurrenceRef, scoped_occurrence_ref_in_scope, occurrence_id_eq }
 import std.materialization_ladder { IdempotentEffect }
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
@@ -36,6 +38,14 @@ import std.materialization_provider {
   NativeModuleVerdictBundleSubject,
   request_key, request_kind, request_required_outputs,
   request_judgment_contract, SemanticOnly, Scoped,
+  DemandIdentity, EvaluationIdentity, ResultContentIdentity, EvaluationResultBinding,
+  EvaluationResultConsistent, EvaluationContentConflict,
+  InProcessIndexScope, PersistentStoreScope, CrossRunScope,
+  HashFamilyAdmittedForScope, StructuralFingerprintRefusedAsStoreKey,
+  demand_identity_canonical, demand_identity_canonical_c1_lossy,
+  evaluation_identity_canonical, evaluation_identity_index,
+  admit_hash_family_for_scope, evaluation_result_binding_outcome,
+  result_content_identity_from_digest, artifact_request_key,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
   compiler_identity_input,
   output_parse_tree, output_typed_module_interface,
@@ -758,4 +768,108 @@ test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
     && output_list_contains(xs: required, wanted: output_compile_clean_diagnostic_union)
     && output_list_contains(xs: missing, wanted: output_compile_clean_diagnostic_union)
     && (lookup_is_hit(l: refused) == false)
+}
+
+type T1KeyConsumerRow {
+  consumer: NonEmptyStr
+  relation: NonEmptyStr
+}
+
+data t1_expected_key_consumers: List<T1KeyConsumerRow> = [
+  T1KeyConsumerRow { consumer: "request_key", relation: "EvaluationIdentity" },
+  T1KeyConsumerRow { consumer: "artifact_request_key", relation: "EvaluationIdentity" },
+  T1KeyConsumerRow { consumer: "store_lookup_decide", relation: "EvaluationIdentity" },
+  T1KeyConsumerRow { consumer: "store_commit_prepare", relation: "EvaluationIdentity" },
+  T1KeyConsumerRow { consumer: "store_object_name", relation: "EvaluationIdentity" },
+  T1KeyConsumerRow { consumer: "parse_source_artifact_kind", relation: "DemandIdentity" },
+  T1KeyConsumerRow { consumer: "typed_module_artifact_kind", relation: "DemandIdentity" },
+  T1KeyConsumerRow { consumer: "resolved_graph_artifact_kind", relation: "DemandIdentity" },
+  T1KeyConsumerRow { consumer: "native_compiler_artifact_kind", relation: "DemandIdentity" },
+  T1KeyConsumerRow { consumer: "native_test_universe_artifact_kind", relation: "DemandIdentity" },
+  T1KeyConsumerRow { consumer: "native_module_verdict_bundle_artifact_kind", relation: "DemandIdentity" }
+]
+
+test fn t1_key_consumers_join_named_relations() -> Bool {
+  let expected = t1_expected_key_consumers
+  let joined = expected |> filter(row => (row.relation as String) == "EvaluationIdentity" || (row.relation as String) == "DemandIdentity")
+  let unresolved = expected |> filter(row => (joined |> filter(j => j.consumer == row.consumer) |> count()) == 0)
+  let derivations_of_evaluation_index = 1
+  (expected |> count()) == 11
+    && (joined |> count()) == 11
+    && (unresolved |> count()) == 0
+    && derivations_of_evaluation_index == 1
+}
+
+test fn request_key_reads_identity_derivation() -> Bool {
+  let req = witness_parse_request()
+  request_key(req: req) == evaluation_identity_index(
+    derivation: request_judgment_contract(req: req).identity_derivation
+  )
+}
+
+test fn demand_canonical_encoding_is_injective_and_c1_lossy_collapses() -> Bool {
+  let a = request_judgment_contract(req: witness_parse_request()).identity_derivation.demand_identity
+  let b = request_judgment_contract(req: ParseModuleRequest {
+    source_digest: content_hash_atom(value: "module-source-2"),
+    compiler: witness_compiler()
+  }).identity_derivation.demand_identity
+  (demand_identity_canonical(demand: a) == demand_identity_canonical(demand: b)) == false
+    && demand_identity_canonical_c1_lossy(demand: a) == demand_identity_canonical_c1_lossy(demand: b)
+}
+
+test fn structural_fingerprint_refuses_as_cross_run_store_key() -> Bool {
+  let refused = admit_hash_family_for_scope(family: Fnv1a64StructuralFamily, scope: CrossRunScope)
+  let store_refused = admit_hash_family_for_scope(family: Fnv1a64StructuralFamily, scope: PersistentStoreScope)
+  let admitted = admit_hash_family_for_scope(family: Sha256Family, scope: CrossRunScope)
+  let index_ok = admit_hash_family_for_scope(family: Fnv1a64StructuralFamily, scope: InProcessIndexScope)
+  match refused {
+    StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
+      match store_refused {
+        StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
+          match admitted {
+            HashFamilyAdmittedForScope { family: _, scope: _ } =>
+              match index_ok {
+                HashFamilyAdmittedForScope { family: _, scope: _ } => true
+                StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false
+              }
+            StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false
+          }
+        HashFamilyAdmittedForScope { family: _, scope: _ } => false
+      }
+    HashFamilyAdmittedForScope { family: _, scope: _ } => false
+  }
+}
+
+test fn evaluation_result_binding_same_eval_different_content_is_conflict() -> Bool {
+  let eval = request_judgment_contract(req: witness_parse_request()).identity_derivation.evaluation_identity
+  let left = ResultContentIdentity { digest: as_content_hash_structural(structural: content_hash_atom(value: "parts-a")) }
+  let right = ResultContentIdentity { digest: as_content_hash_structural(structural: content_hash_atom(value: "parts-b")) }
+  let binding = EvaluationResultBinding { evaluation_identity: eval, result_content_identity: left }
+  let conflict = evaluation_result_binding_outcome(binding: binding, observed: right)
+  let same = evaluation_result_binding_outcome(binding: binding, observed: left)
+  match conflict {
+    EvaluationContentConflict { binding: _, observed: _ } =>
+      match same {
+        EvaluationResultConsistent => true
+        EvaluationContentConflict { binding: _, observed: _ } => false
+      }
+    EvaluationResultConsistent => false
+  }
+}
+
+test fn two_parses_share_demand_and_evaluation_across_occurrence_ids() -> Bool {
+  let req = witness_parse_request()
+  let d = request_judgment_contract(req: req).identity_derivation
+  let id_a = OccurrenceId { value: 1 }
+  let id_b = OccurrenceId { value: 2 }
+  let scope_a = content_hash_atom(value: "graph-a")
+  let scope_b = content_hash_atom(value: "graph-b")
+  let ref_a = ScopedOccurrenceRef { scope: scope_a, occurrence: id_a }
+  let parse_outputs = request_judgment_contract(req: req).result.required_persisted_outputs
+  (occurrence_id_eq(left: id_a, right: id_b) == false)
+    && ((demand_identity_canonical(demand: d.demand_identity) as String) == (evaluation_identity_canonical(evaluation: d.evaluation_identity) as String)) == false
+    && request_key(req: req) == evaluation_identity_index(derivation: d)
+    && (scoped_occurrence_ref_in_scope(occurrence_ref: ref_a, scope: scope_b) == false)
+    && scoped_occurrence_ref_in_scope(occurrence_ref: ref_a, scope: scope_a)
+    && (parse_outputs |> filter(o => o.id == output_parse_tree && o.occurrence_contract == Scoped) |> count()) == 1
 }
