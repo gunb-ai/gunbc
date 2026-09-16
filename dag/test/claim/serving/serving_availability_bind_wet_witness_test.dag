@@ -2,7 +2,6 @@ module test.claim.serving.serving_availability_bind_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
-import v2.std.optional { none, Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
@@ -28,11 +27,10 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_declared_unit_artifact_entry_name,
   spark_pair_declared_unit_artifact_unavailable_obligation,
 }
-import gunbc.harness.harness_seat {
-  HarnessCandidates, HarnessTurnSubject, harness_add_serving_candidate, harness_declared_unit_digest, AnyAdmittedModel,
-  harness_turn_subject, harness_turn_request,
-}
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
+import gunbc.harness.harness_seat {
+  HarnessCandidates, harness_add_serving_candidate, harness_declared_unit_roster, harness_turn_subject, harness_turn_request, AnyAdmittedModel,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -56,10 +54,6 @@ fn w_launch(field: String) -> VllmEndpointProcessLaunch {
 
 fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
   LaunchObserved { launch: w_launch(field: field), receipt: "w" as ObservationReceiptRef }
-}
-
-fn w_subject() -> HarnessTurnSubject {
-  harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr)
 }
 
 // An idle engine: nothing waiting, nothing running, the route admitting more. Supplied, because the
@@ -88,7 +82,7 @@ fn w_place() -> HarnessCandidates {
     endpoint: w_endpoint,
     class: BatchQualityTolerant,
     requirement: AnyAdmittedModel,
-    subject: w_subject(),
+    subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
     availability: harness_route_availability(endpoint: w_endpoint, before: w_seen(field: field), standing: w_serving_standing(), after: w_seen(field: field), now: w_now),
     launch: w_launch(field: field),
     engine: w_idle_engine(field: field),
@@ -99,7 +93,7 @@ fn w_place() -> HarnessCandidates {
     seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
     now: 1789400000,
     access: FleetSshContextRefused { cause: "wet witness supplies a refused fleet context so incarnation is unobserved" },
-    declared_unit: harness_declared_unit_digest(group: FabricGroupA),
+    declared_units: harness_declared_unit_roster(),
   )
 }
 

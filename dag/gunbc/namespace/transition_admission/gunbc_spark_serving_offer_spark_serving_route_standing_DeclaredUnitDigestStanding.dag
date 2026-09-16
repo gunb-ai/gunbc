@@ -6,8 +6,13 @@ import std.decl_ref { decl_ref }
 import gunbc.compiler_frontend_program_interlock { TargetChanged }
 import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
 
+// gunbc#11440 declared-unit-digest home: DeclaredUnitDigestStanding and its two arms relocate
+// verbatim from gunbc.spark.serving_offer to gunbc.spark.pair_serving_realization, the render
+// boundary that mints the SHA-256 of the rendered head-unit bytes. A spelling authored on both
+// sides whose candidate module changed; the declaration it denotes did not.
+// DISSOLVE-ON: gunbc#11440 merging.
 data gunbc_spark_serving_offer_spark_serving_route_standing_DeclaredUnitDigestStanding: TransitionAdmission = TransitionAdmission {
-  label: "gunbc#11418 DeclaredUnitDigestStanding moves to pair_serving_realization" as NonEmptyStr,
+  label: "gunbc#11440 DeclaredUnitDigestStanding moves to pair_serving_realization" as NonEmptyStr,
   subject: Binding {
     enclosing: decl_ref("gunbc.spark.serving_offer", "spark_serving_route_standing"),
     spelling: "DeclaredUnitDigestStanding" as NonEmptyStr,

@@ -23,10 +23,10 @@ import gunbc.serving.serving_availability {
   serving_availability_after_launch_read,
 }
 import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved, spark_serving_readiness_of, spark_serving_incarnation_unobserved_obligation }
-import gunbc.spark.pair_serving_realization { DeclaredUnitDigestStanding, DeclaredUnitDigested, spark_pair_head_unit_name }
-import std.content_hash { Sha256Hash, Sha256Digest, Sha256DigestHex }
 import gunbc.harness.harness_seat { HarnessCandidates, harness_bind_candidate, harness_serving_route, AnyAdmittedModel, harness_turn_subject, harness_turn_request }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
+import gunbc.spark.pair_serving_realization { DeclaredUnitDigestStanding, DeclaredUnitDigested, spark_pair_head_unit_name }
+import std.content_hash { Sha256Hash, Sha256Digest, Sha256DigestHex }
 
 data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
 
@@ -177,10 +177,11 @@ test fn an_unadmitted_model_is_still_available_and_unreadable_readings_are_unrea
     && w_is_unread(a: after_unread)
 }
 
-// A SUPPLIED DIGEST, at the interface harness_bind_candidate actually has: it takes a standing and
-// does not mint one. Where production's standing comes from, and that the wire carries it, is
-// test.claim.serving.serving_availability_bind_wet_witness's claim; this one is about what the
-// binder does with a ready reading and a digested unit.
+// THE PRODUCT PATH CONSUMES AVAILABILITY AND STOPS AT THE KNOWN FRONTIER. harness_bind_candidate takes the
+// availability reading; with a ready reading for the offered launch the offer binder is reached and
+// refuses at the existing endpoint-incarnation obligation, not at readiness. No seat is fabricated.
+// The declared unit is a SUPPLIED digest at this interface: where production's comes from, and that
+// the wire carries it, is serving_availability_bind_wet_witness's claim.
 fn w_declared_unit() -> DeclaredUnitDigestStanding {
   DeclaredUnitDigested {
     unit_name: spark_pair_head_unit_name,
@@ -188,20 +189,15 @@ fn w_declared_unit() -> DeclaredUnitDigestStanding {
   }
 }
 
-// THE PRODUCT PATH CONSUMES AVAILABILITY AND STOPS AT THE KNOWN FRONTIER. harness_bind_candidate takes the
-// availability reading; with a ready reading for the offered launch and a digested declared unit the
-// offer binder is reached and refuses at the existing endpoint-incarnation obligation, not at
-// readiness and not at the declared unit. No seat is fabricated.
 test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path() -> Bool {
   let launch = w_launch(field: "1789300000.12")
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
-  let incarnation = EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
-  let readback = ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 }
   let bound = harness_bind_candidate(
     acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] },
     group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
-    readback: readback, incarnation: incarnation,
-    route: harness_serving_route(group: FabricGroupA, launch: launch, readback: readback, incarnation: incarnation, declared_unit: w_declared_unit()),
+    readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
+    incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+    route: harness_serving_route(group: FabricGroupA, launch: launch, readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 }, incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }, declared_unit: w_declared_unit()),
     subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 4,
   )
