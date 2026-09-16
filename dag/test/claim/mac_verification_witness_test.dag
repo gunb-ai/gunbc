@@ -4,6 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.crypto.mac {
   MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, MacVerified,
   MacTagMismatch, mac_verify, mac_verification_ok,
+  MacSigning, MacSigned, MacKeyMaterialNotHex, mac_sign,
 }
 import std.types { NonEmptyStr, Secret }
 import std.logic { Bool }
@@ -159,5 +160,32 @@ test fn a_success_carries_the_message_that_was_verified() -> Bool {
     MacVerified { verified: v } =>
       v.message == rfc4231_case1_message && v.key_id == "rfc4231-case1"
     _ => false
+  }
+}
+
+// ── Issuance against the same published vectors ──────────────────────────────────────────────
+// mac_sign must PRODUCE the tags RFC 4231 publishes -- not merely a tag its own verifier accepts,
+// which a self-consistent pair of wrong implementations would also satisfy.
+fn signed_hex(v: MacSigning) -> NonEmptyStr? {
+  match v {
+    MacSigned { tag: t } => Present { value: t.hex }
+    MacKeyMaterialNotHex { key_id: _ } => none
+  }
+}
+
+test fn mac_sign_produces_the_published_rfc4231_case1_tag() -> Bool {
+  signed_hex(v: mac_sign(key: rfc4231_case1_key, message: rfc4231_case1_message)) == Present { value: rfc4231_case1_tag }
+}
+
+test fn mac_sign_produces_the_published_rfc4231_case2_tag() -> Bool {
+  signed_hex(v: mac_sign(key: rfc4231_case2_key, message: rfc4231_case2_message)) == Present { value: rfc4231_case2_tag }
+}
+
+// "Jefe" is case 2's key BEFORE hex encoding. Signing with it must refuse, not sign some other key.
+test fn mac_sign_refuses_key_material_that_is_not_hex() -> Bool {
+  let unencoded = MacKey { id: "rfc4231-case2-unencoded" as MacKeyId, suite: HmacSha256, material: "Jefe" as Secret }
+  match mac_sign(key: unencoded, message: rfc4231_case2_message) {
+    MacKeyMaterialNotHex { key_id: k } => k == unencoded.id
+    MacSigned { tag: _ } => false
   }
 }
