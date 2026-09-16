@@ -19,9 +19,22 @@ import gunbc.demo.semantic_system_readout {
   workflow_line,
 }
 import std.types { List, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// THIS ENTRY READS THE LIVE HOST TREE, and an earlier revision declared SubstrateInputsOnly while
+// doing it (review 66861). The claims below call `workflow_line()`, which reaches
+// `observe_directory_listings` -> Filesystem.List and `observe_generated_artifact_with` ->
+// Filesystem.Read of the committed .github/workflows path, and `readout_sections()` folds that same
+// read in -- so three claims here evaluate against filesystem state outside their resolved substrate
+// closure. The disposition is an ENTRY-grain fact for exactly that reason: it holds no matter how
+// far the read hides behind imports, and the producer module this one calls declares ReadsLiveTree
+// itself.
+//
+// THE DAMAGE OF THE WRONG VALUE IS SPECIFIC, not cosmetic: a row declaring SubstrateInputsOnly is
+// re-checked by nothing, and affected-set selection may skip it on a diff that changes the workflow
+// projection -- which is the one case the dogfooding line exists to catch. Declaring the weaker
+// disposition would have made the claim quietly skippable on precisely the change it guards.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // The readout's exit verdict is a function of its lines, discriminated in both directions over
 // supplied sections: the real witnesses it reads are exercised by the readout's own entry.
