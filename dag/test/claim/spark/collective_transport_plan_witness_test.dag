@@ -1,0 +1,119 @@
+module test.claim.spark.collective_transport_plan_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
+import extdeps.nvidia.nccl { NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2 }
+import gunbc.spark.collective_transport_plan {
+  CollectiveTransportPlan, SocketOverInterface, RoceOverInterface,
+  collective_transport_plan_wire,
+  transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited,
+  transport_plan_interface, transport_plan_env,
+  nccl_socket_ifname_env, nccl_ib_hca_env, ucx_net_devices_env,
+}
+
+// THE FIXTURES CARRY NO FLEET FACTS. The interface name below is authored here, so a row reds when
+// the PROJECTION changes and never because a host was recabled.
+data fx_iface: NonEmptyStr = "fixture-fabric0" as NonEmptyStr
+
+data fx_socket_plan: CollectiveTransportPlan = SocketOverInterface { interface: fx_iface }
+
+data fx_rdma_device: NonEmptyStr = "fixture-rdma0" as NonEmptyStr
+
+data fx_roce_plan: CollectiveTransportPlan = RoceOverInterface {
+  interface: fx_iface,
+  rdma_device: fx_rdma_device,
+  gid_selection: NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 },
+}
+
+
+
+fn env_has(env: List<DockerEnvAssignment>, name: NonEmptyStr) -> Bool {
+  length(filter(env, e => (e.name as String) == (name as String))) > 0
+}
+
+// ── THE SOCKET ARM ASKS FOR NOTHING, AND THAT IS ITS CONTENT ──────────────────────────────────
+//
+// This is the state Group B was found in -- Devices=[], CapAdd=null, Ulimits=[] -- and the point of
+// making it a spellable ARM is that an intentional socket deployment and an RDMA deployment that
+// lost three fields are then different values rather than the same absence.
+test fn w_a_socket_plan_projects_no_device_no_capability_no_lock() -> Bool {
+  length(transport_plan_devices(p: fx_socket_plan)) == 0
+    && length(transport_plan_cap_add(p: fx_socket_plan)) == 0
+    && !transport_plan_memlock_unlimited(p: fx_socket_plan)
+}
+
+// ── THE RoCE ARM PROJECTS ALL THREE TOGETHER ──────────────────────────────────────────────────
+//
+// They travel as one because a container that can open the verbs device but cannot lock pages fails
+// later and less legibly than one that cannot open it at all. Asserting all three in one row is
+// deliberate: the failure this type exists to prevent is exactly a partial set.
+test fn w_a_roce_plan_projects_the_device_the_capability_and_the_lock() -> Bool {
+  let devs = transport_plan_devices(p: fx_roce_plan)
+  length(devs) == 1
+    && length(filter(devs, d => (d.host_path as String) == "/dev/infiniband")) == 1
+    && length(filter(transport_plan_cap_add(p: fx_roce_plan), c => (c as String) == "IPC_LOCK")) == 1
+    && transport_plan_memlock_unlimited(p: fx_roce_plan)
+}
+
+// ── THE INTERFACE IS NOT THE TRANSPORT DECISION ───────────────────────────────────────────────
+//
+// Both arms carry it and both project it. Group B had NCCL_SOCKET_IFNAME set correctly to the fabric
+// leg and still ran every rank on sockets, which is the receipt for why this variable cannot be read
+// as evidence of the transport.
+test fn w_both_arms_project_the_interface_env() -> Bool {
+  env_has(env: transport_plan_env(p: fx_socket_plan), name: nccl_socket_ifname_env)
+    && env_has(env: transport_plan_env(p: fx_roce_plan), name: nccl_socket_ifname_env)
+    && (transport_plan_interface(p: fx_socket_plan) as String) == (fx_iface as String)
+    && (transport_plan_interface(p: fx_roce_plan) as String) == (fx_iface as String)
+}
+
+// AND THE RoCE ARM CARRIES MORE THAN THE SOCKET ARM, so the GID selection is not silently dropped.
+test fn w_the_roce_arm_projects_more_env_than_the_socket_arm() -> Bool {
+  length(transport_plan_env(p: fx_roce_plan)) > length(transport_plan_env(p: fx_socket_plan))
+}
+
+
+
+
+
+// ── THE ENDPOINT NAMES ARE ON THE RoCE ARM ALONE ──────────────────────────────────────────────
+//
+// NCCL_IB_HCA and UCX_NET_DEVICES name a verbs device. A socket plan has declined to map one, so a
+// socket env carrying an HCA name would be naming a device the same plan refused -- which is what
+// the pair route did before these two moved into the plan. The socket half of this row is the
+// discriminating one: it reds if the endpoint env is ever hoisted back out of the RoCE arm.
+test fn w_only_the_roce_arm_projects_the_endpoint_env() -> Bool {
+  let socket_env = transport_plan_env(p: fx_socket_plan)
+  let roce_env = transport_plan_env(p: fx_roce_plan)
+  !env_has(env: socket_env, name: nccl_ib_hca_env)
+    && !env_has(env: socket_env, name: ucx_net_devices_env)
+    && env_has(env: roce_env, name: nccl_ib_hca_env)
+    && env_has(env: roce_env, name: ucx_net_devices_env)
+}
+
+// UCX NAMES A PORT, NCCL NAMES A DEVICE. The two are derived from one observation and are NOT the
+// same string; this row is what stops a future edit from collapsing them into one value.
+test fn w_the_ucx_name_carries_a_port_and_the_nccl_name_does_not() -> Bool {
+  let roce_env = transport_plan_env(p: fx_roce_plan)
+  let hca = filter(roce_env, e => (e.name as String) == (nccl_ib_hca_env as String))
+  let ucx = filter(roce_env, e => (e.name as String) == (ucx_net_devices_env as String))
+  length(hca) == 1 && length(ucx) == 1
+    && all(hca, e => e.value == (fx_rdma_device as String))
+    && all(ucx, e => e.value == join([fx_rdma_device as String, ":1"], ""))
+}
+
+// ── THE TWO PLANS ARE DISTINGUISHABLE AS VALUES ───────────────────────────────────────────────
+test fn w_the_two_plans_do_not_share_a_wire() -> Bool {
+  (collective_transport_plan_wire(p: fx_socket_plan) as String)
+    != (collective_transport_plan_wire(p: fx_roce_plan) as String)
+}
+
+test fn w_all_collective_transport_plan_claims_hold() -> Bool {
+  w_a_socket_plan_projects_no_device_no_capability_no_lock()
+    && w_a_roce_plan_projects_the_device_the_capability_and_the_lock()
+    && w_both_arms_project_the_interface_env()
+    && w_the_roce_arm_projects_more_env_than_the_socket_arm()
+    && w_only_the_roce_arm_projects_the_endpoint_env()
+    && w_the_ucx_name_carries_a_port_and_the_nccl_name_does_not()
+    && w_the_two_plans_do_not_share_a_wire()
+}
