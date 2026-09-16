@@ -15,11 +15,12 @@ import gunbc.spark.serving_arm {
 
 // ── COMPATIBILITY IS A RELATION, AND ATTACHING IT TO A RUNTIME ROW WAS THE DEFECT ───────────────
 //
-// gunbc.spark.serving_arm carries NativeRuntimeStanding as a FIELD OF ServingRuntimeRow, which says that
-// loading-and-serving is a property an image has. It is not. The branch contains its own counterexample: the
+// gunbc.spark.serving_arm USED TO CARRY a native-runtime standing as a FIELD OF ServingRuntimeRow, which
+// said that loading-and-serving is a property an image has. It is not, and that field is deleted rather
+// than left standing beside this relation. The counterexample is in this corpus: the
 // gitcommit90 image cannot load the native FP8 checkpoint and serves the EXL3 checkpoint of the same model
-// perfectly. Storing NativeRuntimeRefused on that image's row asserts a fact about the image when the
-// measurement was about a PAIR -- and the row's own prose says so, which is how the mismatch survived review.
+// perfectly. Storing a refusal on that image's row asserted a fact about the image when the measurement
+// was about a PAIR -- and the row's own prose said so, which is how the mismatch survived review.
 //
 // SO THE SUBJECT IS THE TUPLE THAT ACTUALLY DECIDES. Compatibility on this fleet has turned on every one of
 // these, each discovered by a failure attributable to it and nothing else:

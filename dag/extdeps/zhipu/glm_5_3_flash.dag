@@ -171,7 +171,8 @@ data glm_5_3_flash_vllm_reasoning_parser: NonEmptyStr = "glm45" as NonEmptyStr
 // and that image self-reports 0.28.1rc1.dev580+g385dce36b, measured on this fleet 2026-09-10. A
 // consumer comparing versions would reject the exact image upstream prescribes. So the floor is
 // retained as UPSTREAM'S PUBLISHED FIGURE, cited and not consumed as a gate, and the gate is an
-// observation about a digest: gunbc.spark.serving_arm NativeRuntimeStanding.
+// observation about a digest, which gunbc.spark.serving_compatibility now decides as a relation over the
+// whole subject rather than as a property of the image.
 data glm_5_3_flash_vllm_published_min_version: NonEmptyStr = "0.29.0" as NonEmptyStr
 data glm_5_3_flash_vllm_integration_is_merged_upstream: Bool = true
 data glm_5_3_flash_vllm_prerelease_image_nvidia: NonEmptyStr = "vllm/vllm-openai:glm53-flash" as NonEmptyStr
