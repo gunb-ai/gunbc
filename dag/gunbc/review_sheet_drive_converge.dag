@@ -1,0 +1,270 @@
+module gunbc.review_sheet_drive_converge
+
+import std.types { NonEmptyStr, String, Int, List, Bool, Secret }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import extdeps.google.drive {
+  DrivePermission,
+  DrivePermissionList,
+  DriveFile,
+  DriveFileList,
+  DrivePermissionRole,
+  RoleFileOrganizer,
+  RoleOrganizer,
+  drive_permission_role_wire,
+  drive_permission_role_from_wire,
+  google_sheet_mime_type,
+}
+
+// THE CONVERGE FOR THE TWO STEPS THAT NEEDED A HUMAN, and the reason they needed one is not the
+// same reason, which is why they are two ensures and not one.
+//
+// MEMBERSHIP is bootstrap-shaped: the writer cannot grant itself access to a drive it is not yet
+// in, so this ensure is the one place in the chain that runs under a DIFFERENT credential -- one
+// that already manages the drive. It is FleetOnce per drive: once the member exists, every later
+// converge in this file runs as the writer itself.
+//
+// THE SPREADSHEET is recurrence-shaped: files.create mints a new file on every call, so the risk
+// is not authority but duplication, and the answer is an identity chosen before the call rather
+// than a credential.
+
+// The key is private to this application (Drive scopes appProperties per-app), so it may be
+// declared once and trusted: another application cannot read or collide with it. It is a DECLARED
+// fact rather than a caller string for the same reason the spreadsheet id is -- a caller that can
+// pass any key can silently start a second lineage of sheets.
+data review_sheet_app_property_key: NonEmptyStr = "gunbcReviewSheet"
+
+// WHY THE VALUE IS NOT THE SHEET'S NAME. A name is the one attribute a human will change without
+// telling anyone, and a rename must not make the next converge believe its sheet is gone and mint
+// a replacement beside it. This value never appears in the UI and nothing but this converge reads
+// it, so it is stable exactly because it is invisible.
+data ci_prospect_sheet_app_property_value: NonEmptyStr = "ci-prospect-sheet"
+
+fn review_sheet_search_query(app_value: NonEmptyStr) -> String {
+  join(
+    [
+      "appProperties has { key='",
+      review_sheet_app_property_key as String,
+      "' and value='",
+      app_value as String,
+      "' } and mimeType='",
+      google_sheet_mime_type as String,
+      "' and trashed=false",
+    ],
+    "",
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// MEMBERSHIP
+// ---------------------------------------------------------------------------------------------
+
+// A role that is present but WRONG is its own arm. Observing the writer as a reader is not
+// absence -- creating a second permission would not fix it -- and it is not convergence either.
+type DriveMembershipObservation
+  = MembershipObserved { role: DrivePermissionRole }
+  | MembershipAbsent
+  | MembershipUnreadable { reason: NonEmptyStr }
+
+type MembershipGrantPlan {
+  drive_id: NonEmptyStr
+  writer: ServiceAccountEmail
+  role: DrivePermissionRole
+}
+
+fn permission_names_writer(p: DrivePermission, writer: ServiceAccountEmail) -> Bool {
+  match p.emailAddress {
+    Absent => false
+    Present { value: e } => e == (writer as String)
+  }
+}
+
+// An unreadable ROLE is not an absent member. A permission row that names the writer but carries a
+// role string this model does not know is reported as unreadable, never folded to absent, because
+// absence would authorize a create against a principal that is already present.
+fn membership_from_permissions(
+  list: DrivePermissionList,
+  writer: ServiceAccountEmail,
+) -> DriveMembershipObservation {
+  match list.permissions {
+    Absent =>
+      MembershipUnreadable {
+        reason: "permissions field absent from the response; an unread list is not an empty one" as NonEmptyStr
+      }
+    Present { value: rows } =>
+      match filter(rows, p => permission_names_writer(p: p, writer: writer)) {
+        [] => MembershipAbsent
+        [first, ..._rest] =>
+          match drive_permission_role_from_wire(raw: first.role) {
+            Absent =>
+              MembershipUnreadable {
+                reason: join(["writer is present with an unmodeled role: ", first.role], "") as NonEmptyStr
+              }
+            Present { value: r } => MembershipObserved { role: r }
+          }
+      }
+  }
+}
+
+// Organizer SATISFIES the requirement and is not corrected downward. It is strictly more than
+// Content Manager, the writer already has it, and revoking authority this converge did not grant
+// is a different decision than the one this ensure was asked to make.
+fn membership_role_satisfies(observed: DrivePermissionRole) -> Bool {
+  match observed {
+    RoleOrganizer => true
+    RoleFileOrganizer => true
+    RoleWriter => false
+    RoleCommenter => false
+    RoleReader => false
+  }
+}
+
+fn ensure_drive_membership(
+  policy: EnsurePolicy,
+  observed: DriveMembershipObservation,
+  drive_id: NonEmptyStr,
+  writer: ServiceAccountEmail,
+) -> UpsertDecision<MembershipGrantPlan> {
+  match observed {
+    MembershipUnreadable { reason: r } => Refuse { reason: r }
+    MembershipObserved { role: role } =>
+      if membership_role_satisfies(observed: role) {
+        Noop
+      } else {
+        Refuse {
+          reason: join(
+            [
+              "writer is already a member of ",
+              drive_id as String,
+              " with role ",
+              drive_permission_role_wire(r: role),
+              ", which does not satisfy content-manager; a second permission would not replace the first, so the existing grant is an operator decision to change",
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      }
+    MembershipAbsent =>
+      match policy {
+        EnsureObserveOnly =>
+          Refuse {
+            reason: join(
+              ["writer is not a member of ", drive_id as String, " and policy is observe-only"],
+              "",
+            ) as NonEmptyStr,
+          }
+        EnsureMayApply =>
+          Apply {
+            plan: MembershipGrantPlan {
+              drive_id: drive_id,
+              writer: writer,
+              role: RoleFileOrganizer,
+            }
+          }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SPREADSHEET
+// ---------------------------------------------------------------------------------------------
+
+// SheetDuplicated is a REFUSAL and never a selection. Two files carrying one app-properties key
+// means an earlier create was retried after its answer was lost; choosing either one silently
+// abandons whatever was written to the other, and only an operator can say which is the real one.
+type ReviewSpreadsheetObservation
+  = SheetObservedOne { file_id: NonEmptyStr }
+  | SheetAbsent
+  | SheetDuplicated { file_ids: List<String> }
+  | SheetSearchIncomplete
+  | SheetSearchUnreadable { reason: NonEmptyStr }
+
+type SpreadsheetCreatePlan {
+  drive_id: NonEmptyStr
+  name: NonEmptyStr
+  app_property_key: NonEmptyStr
+  app_property_value: NonEmptyStr
+}
+
+// incompleteSearch true is its own arm, and this is the subtle one: Drive answering "I could not
+// search everything" alongside an empty list is NOT an observation of absence. Folding it to
+// absent is how a converge mints a duplicate of a file it simply failed to look for.
+fn spreadsheet_from_file_list(list: DriveFileList) -> ReviewSpreadsheetObservation {
+  match list.incompleteSearch {
+    Present { value: true } => SheetSearchIncomplete
+    Present { value: false } => spreadsheet_from_complete_list(list: list)
+    Absent => spreadsheet_from_complete_list(list: list)
+  }
+}
+
+fn spreadsheet_from_complete_list(list: DriveFileList) -> ReviewSpreadsheetObservation {
+  match list.files {
+    Absent =>
+      SheetSearchUnreadable {
+        reason: "files field absent from the response; an unread result is not an empty one" as NonEmptyStr
+      }
+    Present { value: files } =>
+      match files {
+        [] => SheetAbsent
+        [only] => SheetObservedOne { file_id: only.id as NonEmptyStr }
+        [_first, _second, ..._rest] => SheetDuplicated { file_ids: map(files, f => f.id) }
+      }
+  }
+}
+
+fn ensure_review_spreadsheet(
+  policy: EnsurePolicy,
+  observed: ReviewSpreadsheetObservation,
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  app_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetCreatePlan> {
+  match observed {
+    SheetObservedOne { file_id: _ } => Noop
+    SheetSearchUnreadable { reason: r } => Refuse { reason: r }
+    SheetSearchIncomplete =>
+      Refuse {
+        reason: join(
+          [
+            "Drive reported incompleteSearch for ",
+            drive_id as String,
+            "; an unfinished search that returned nothing is not an observation of absence and may not authorize a create",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    SheetDuplicated { file_ids: ids } =>
+      Refuse {
+        reason: join(
+          [
+            "two or more files carry the review-sheet key in ",
+            drive_id as String,
+            " (",
+            join(ids, ", "),
+            "); a prior create was retried after its answer was lost and only an operator can say which lineage is real",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    SheetAbsent =>
+      match policy {
+        EnsureObserveOnly =>
+          Refuse {
+            reason: join(
+              ["no review spreadsheet in ", drive_id as String, " and policy is observe-only"],
+              "",
+            ) as NonEmptyStr,
+          }
+        EnsureMayApply =>
+          Apply {
+            plan: SpreadsheetCreatePlan {
+              drive_id: drive_id,
+              name: sheet_name,
+              app_property_key: review_sheet_app_property_key,
+              app_property_value: app_value,
+            }
+          }
+      }
+  }
+}

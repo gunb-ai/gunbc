@@ -1,0 +1,362 @@
+module extdeps.google.drive
+
+import std.types { NonEmptyStr, String, Int, List, Secret, Bool }
+import extdeps.transports.rest { RestOutcome }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact, Subject, JsonPending }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3" }
+}
+
+data drive_drives_get_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/drives/get" }
+}
+
+data drive_permissions_list_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/permissions/list" }
+}
+
+data drive_permissions_create_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/permissions/create" }
+}
+
+data drive_files_list_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/files/list" }
+}
+
+data drive_files_create_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/files/create" }
+}
+
+data drive_search_terms_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/guides/search-files" }
+}
+
+data drive_roles_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/guides/ref-roles" }
+}
+
+data drive_oauth_scope_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/guides/api-specific-auth" }
+}
+
+data google_drive_api: NonEmptyStr = "Google Drive API"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.google.drive",
+      decl_name: "google_drive_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    drive_drives_get_citation,
+    drive_permissions_list_citation,
+    drive_permissions_create_citation,
+    drive_files_list_citation,
+    drive_files_create_citation,
+    drive_search_terms_citation,
+    drive_roles_citation,
+    drive_oauth_scope_citation
+  ]
+}
+
+data drive_api_version: NonEmptyStr = "v3"
+
+data drive_api_base: NonEmptyStr = "https://www.googleapis.com/drive/v3"
+
+data drive_serviceusage_api_id: NonEmptyStr = "drive.googleapis.com"
+
+// The full scope, not drive.file. A shared-drive MEMBERSHIP write is a permission on a resource
+// this application did not create, which drive.file cannot express: drive.file is scoped to files
+// the app itself created or the user opened with it. Naming the narrower scope here would be a
+// scope this module cannot actually operate under.
+data drive_full_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/drive"
+
+data drive_file_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/drive.file"
+
+data drive_queries_per_minute_per_user: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "google_drive" as NonEmptyStr,
+  scope: "queries_per_minute_per_user" as NonEmptyStr,
+  requests: 12000,
+  period: PerMinute
+}
+
+data drive_rate_limits: List<UpstreamRateLimit> = [drive_queries_per_minute_per_user]
+
+// SHARED-DRIVE ROLES ARE NOT THE FILE-SHARING ROLES, and the two spellings differ where it
+// matters most. The console calls the role we want "Content manager"; the API spells it
+// fileOrganizer. Organizer is the console's "Manager", which additionally administers MEMBERSHIP
+// -- so a writer granted Organizer could add principals to the drive, which is exactly the
+// authority a write-only automation must not hold. They are separated as variants rather than
+// carried as a string so that "Content manager" cannot be written where the wire needs
+// fileOrganizer, and so the escalation to Organizer has to be authored deliberately.
+type DrivePermissionRole
+  = RoleOrganizer
+  | RoleFileOrganizer
+  | RoleWriter
+  | RoleCommenter
+  | RoleReader
+
+fn drive_permission_role_wire(r: DrivePermissionRole) -> String {
+  match r {
+    RoleOrganizer => "organizer"
+    RoleFileOrganizer => "fileOrganizer"
+    RoleWriter => "writer"
+    RoleCommenter => "commenter"
+    RoleReader => "reader"
+  }
+}
+
+fn drive_permission_role_from_wire(raw: String) -> DrivePermissionRole? {
+  if raw == "organizer" { Present { value: RoleOrganizer } }
+  else if raw == "fileOrganizer" { Present { value: RoleFileOrganizer } }
+  else if raw == "writer" { Present { value: RoleWriter } }
+  else if raw == "commenter" { Present { value: RoleCommenter } }
+  else if raw == "reader" { Present { value: RoleReader } }
+  else { Absent }
+}
+
+// A service account is type "user" to Drive. It is NOT a distinct principal kind on the wire,
+// which is worth stating because the sharing DIALOG refuses a gserviceaccount.com address while
+// the API accepts it as an ordinary user -- an observed divergence between two surfaces of one
+// product, not a property of any drive.
+type DrivePrincipalType
+  = PrincipalUser
+  | PrincipalGroup
+  | PrincipalDomain
+  | PrincipalAnyone
+
+fn drive_principal_type_wire(t: DrivePrincipalType) -> String {
+  match t {
+    PrincipalUser => "user"
+    PrincipalGroup => "group"
+    PrincipalDomain => "domain"
+    PrincipalAnyone => "anyone"
+  }
+}
+
+type DriveError {
+  code: Int
+  message: String
+  status: String
+}
+
+type DriveResource {
+  id: String
+  name: String
+  kind: String
+}
+
+type DrivePermission {
+  id: String
+  emailAddress: String?
+  role: String
+  type: String
+}
+
+type DrivePermissionList {
+  permissions: List<DrivePermission>?
+  nextPageToken: String?
+}
+
+// appProperties is the idempotency carrier, and it is PRIVATE to the calling application, which is
+// why the key may be chosen once and trusted: another app writing the same key cannot collide with
+// ours because it cannot see or set ours. name is deliberately NOT the identity -- a human renaming
+// a sheet in a drive they own would otherwise cause the next converge to create a second one.
+type DriveFile {
+  id: String
+  name: String
+  mimeType: String
+  appProperties: String?
+}
+
+type DriveFileList {
+  files: List<DriveFile>?
+  incompleteSearch: Bool?
+  nextPageToken: String?
+}
+
+data structural_coverage_gap_drive_file_app_properties: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "DriveFile" },
+      JsonPending { field: "appProperties map<string,string>" }
+    ],
+    trigger: "a consumer needs to READ an appProperties value back rather than filter on it in the query"
+  }
+]
+
+data google_sheet_mime_type: NonEmptyStr = "application/vnd.google-apps.spreadsheet"
+
+service drive.Drives {
+  config {
+    endpoint: drive_api_base
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation GetDrive {
+    input { access_token: Secret, drive_id: String }
+    output { drive: DriveResource, outcome: RestOutcome }
+    readonly
+    transport rest { method: GET, path: "/drives/\{drive_id\}" }
+    response {
+      200 => DriveResource
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+}
+
+service drive.Permissions {
+  config {
+    endpoint: drive_api_base
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  // supportsAllDrives is required on EVERY shared-drive call. Without it the API answers about My
+  // Drive only and a shared-drive id reads as absent -- a 404 that means "you did not ask about
+  // shared drives", not "it is not there". It is a constant here rather than a caller parameter
+  // because a caller that could pass false could ask a question whose refusal it would misread.
+  operation ListPermissions {
+    input { access_token: Secret, file_id: String }
+    output { list: DrivePermissionList, outcome: RestOutcome }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/files/\{file_id\}/permissions",
+      query: {
+        supportsAllDrives: "true",
+        fields: "permissions(id,emailAddress,role,type),nextPageToken"
+      }
+    }
+    response {
+      200 => DrivePermissionList
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+
+  // sendNotificationEmail is false because the grantee is a service account: there is no inbox to
+  // notify, and Drive refuses the combination of a notification and a non-notifiable grantee.
+  operation CreatePermission {
+    input {
+      access_token: Secret
+      file_id: String
+      role: DrivePermissionRole
+      principal_type: DrivePrincipalType
+      email_address: String
+    }
+    output { permission_id: String from "id", outcome: RestOutcome }
+    transport rest {
+      method: POST,
+      path: "/files/\{file_id\}/permissions",
+      query: { supportsAllDrives: "true", sendNotificationEmail: "false" },
+      body: {
+        role: drive_permission_role_wire(r: role),
+        type: drive_principal_type_wire(t: principal_type),
+        emailAddress: email_address
+      }
+    }
+    response {
+      200 => DrivePermission
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+}
+
+service drive.Files {
+  config {
+    endpoint: drive_api_base
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  // corpora=drive with driveId is what makes the search read THAT drive rather than the caller's
+  // own corpus; includeItemsFromAllDrives must accompany supportsAllDrives or the result set is
+  // silently empty for a shared drive, which would read as "absent" and authorize a duplicate
+  // create. incompleteSearch is carried on the response for the same reason: a partial search that
+  // found nothing is not an observation of absence.
+  operation ListFiles {
+    input { access_token: Secret, drive_id: String, query: String }
+    output { list: DriveFileList, outcome: RestOutcome }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/files",
+      query: {
+        q: query,
+        driveId: drive_id,
+        corpora: "drive",
+        includeItemsFromAllDrives: "true",
+        supportsAllDrives: "true",
+        fields: "files(id,name,mimeType),incompleteSearch,nextPageToken"
+      }
+    }
+    response {
+      200 => DriveFileList
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+
+  // THIS OPERATION IS NOT IDEMPOTENT. Every successful call mints a new file with a new id, and a
+  // transport refusal leaves the caller unable to say whether one was minted. The recovery is the
+  // app_properties_key supplied HERE, before the call: it is written onto the file at creation, so
+  // a later ListFiles filtered on that key recovers the exact file a lost answer may have created.
+  // A key derived from the RESPONSE would be unrecoverable in precisely the case it is needed.
+  operation CreateFile {
+    input {
+      access_token: Secret
+      name: String
+      mime_type: String
+      parent_id: String
+      app_properties_key: String
+      app_properties_value: String
+    }
+    output { file_id: String from "id", outcome: RestOutcome }
+    transport rest {
+      method: POST,
+      path: "/files",
+      query: { supportsAllDrives: "true", fields: "id,name,mimeType" },
+      body: {
+        name: name,
+        mimeType: mime_type,
+        parents: [parent_id],
+        appProperties: { key: app_properties_key, value: app_properties_value }
+      }
+    }
+    response {
+      200 => DriveFile
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+}
