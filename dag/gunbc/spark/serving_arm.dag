@@ -547,15 +547,6 @@ fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
     >= gibibyte_count(c.weight_gib) * serving_arm_headroom_numerator
 }
 
-// THE INTENT PARAMETER IS GONE WITH THE STANDING THAT NEEDED IT. This verdict now answers only the two
-// questions a ROW can answer -- does the image register the architecture, does the checkpoint fit the pool --
-// and both give the same answer for an experiment and for a service. Whether a tuple may carry NORMAL
-// SERVING is a question about measured compatibility, and the launch planner decides it: an intent of
-// normal serving is refused for a subject the measured roster admits only as a bounded experiment.
-fn serving_arm_admits_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, intent: ArmIntent) -> ServingArmVerdict {
-  serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology)
-}
-
 // A CHECKPOINT LOADS WHEN THE RUNTIME REGISTERS ITS ARCHITECTURE, WHICH IS A MEMBERSHIP QUESTION.
 // The field this replaced was `registers_glm5_next: Bool`, and the shape of that name is the whole
 // defect: it answered ONE model's question, so every further model needed its own Bool, and a
@@ -680,8 +671,8 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
 // fields, and a compatibility refusal recorded against a profile that said nothing about prefix caching
 // must not silently cover a launch that asks for it.
 type ServingLaunchProfile sole_constructor {
-  max_model_len: Nat
-  max_num_batched_tokens: Nat
+  max_model_len: TokenCount
+  max_num_batched_tokens: TokenCount
   max_num_seqs: Nat
   decided_gpu_memory_basis_points: BasisPoint
   kv_cache_dtype_wire: NonEmptyStr
@@ -710,8 +701,8 @@ type ServingLaunchProfile sole_constructor {
 // that witnesses and future callers legitimately build, so the answer is one constructor here rather than a
 // record literal in every module. A caller still cannot omit a field or reorder the meaning of one.
 fn serving_launch_profile(
-  max_model_len: Nat,
-  max_num_batched_tokens: Nat,
+  max_model_len: TokenCount,
+  max_num_batched_tokens: TokenCount,
   max_num_seqs: Nat,
   decided_gpu_memory_basis_points: BasisPoint,
   kv_cache_dtype_wire: NonEmptyStr,
@@ -755,8 +746,8 @@ fn profile_with_memory_basis_points(p: ServingLaunchProfile, decided_gpu_memory_
 // cover the other -- which is precisely what a key omitting this field would let it do.
 fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
   join([
-    "len=", to_string(p.max_model_len),
-    " batch=", to_string(p.max_num_batched_tokens),
+    "len=", to_string(token_count_value(t: p.max_model_len)),
+    " batch=", to_string(token_count_value(t: p.max_num_batched_tokens)),
     " seqs=", to_string(p.max_num_seqs),
     " util_bp=", to_string(basis_point_count(bp: p.decided_gpu_memory_basis_points)),
     " kv=", p.kv_cache_dtype_wire as String,
@@ -771,8 +762,8 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
 }
 
 data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
-  max_model_len: 262144,
-  max_num_batched_tokens: 2048,
+  max_model_len: token_count(count: 262144),
+  max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
@@ -805,8 +796,8 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
 // gunbc.spark.serving_arm_launch intent_refusal will enforce: an unrun subject is admitted for a bounded
 // experiment and refused for normal serving.
 data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile {
-  max_model_len: 262144,
-  max_num_batched_tokens: 2048,
+  max_model_len: token_count(count: 262144),
+  max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8567),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
@@ -828,7 +819,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
 // THE MEMORY FRACTION IS THE ENGINE'S DEFAULT, BECAUSE THE LINE NAMES NONE. Recording a decided 0.82 here
 // would claim an argument the launch never sent.
 data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
-  max_model_len: 262144,
+  max_model_len: token_count(count: 262144),
   max_num_batched_tokens: 7168,
   max_num_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 9000),

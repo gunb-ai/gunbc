@@ -2,6 +2,7 @@ module test.claim.spark.serving_arm_launch_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { token_count_value }
 import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire }
 import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
@@ -90,7 +91,7 @@ test fn w_every_rank_keeps_the_transport_evidence_producer_on() -> Bool {
 test fn w_the_engine_argv_states_the_profiles_batching_bounds() -> Bool {
   planned_lines(f: ls => all(ls, l =>
     argv_pair_is(argv: l.engine_argv, flag: "--max-num-seqs", value: to_string(glm_native_initial_profile.max_num_seqs))
-      && argv_pair_is(argv: l.engine_argv, flag: "--max-num-batched-tokens", value: to_string(glm_native_initial_profile.max_num_batched_tokens))
+      && argv_pair_is(argv: l.engine_argv, flag: "--max-num-batched-tokens", value: to_string(token_count_value(t: glm_native_initial_profile.max_num_batched_tokens)))
       && argv_pair_is(argv: l.engine_argv, flag: "--tensor-parallel-size", value: "4")))
 }
 

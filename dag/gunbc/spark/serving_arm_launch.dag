@@ -32,7 +32,7 @@ import gunbc.spark.serving_arm {
   ServingRuntimeRow, serving_runtime_row, runtime_artifact_wire,
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
-  ArmIntent, ArmNormalServing, serving_arm_admits_for,
+  ArmIntent, ArmNormalServing, serving_arm_admits,
   ServingLaunchProfile, glm_native_initial_profile,
 }
 import gunbc.spark.serving_compatibility {
@@ -369,8 +369,8 @@ fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
     "--node-rank", to_string(node.node_rank),
     "--master-addr", render_ipv4_address(addr: master) as String,
     "--master-port", to_string(glm_native_master_port),
-    "--max-model-len", to_string(profile.max_model_len),
-    "--max-num-batched-tokens", to_string(profile.max_num_batched_tokens),
+    "--max-model-len", to_string(token_count_value(t: profile.max_model_len)),
+    "--max-num-batched-tokens", to_string(token_count_value(t: profile.max_num_batched_tokens)),
     "--max-num-seqs", to_string(profile.max_num_seqs),
     "--kv-cache-dtype", profile.kv_cache_dtype_wire as String,
     "--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: profile.decided_gpu_memory_basis_points),
@@ -438,7 +438,11 @@ fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topol
 
 // ── A TUPLE EXECUTION HAS ALREADY REFUSED MAY NOT BE PLANNED AGAIN ─────────────────────────────
 //
-// THIS IS THE WALL WHOSE ABSENCE COST NINE ATTEMPTS. `serving_arm_admits_for` asks whether a tuple is
+// THE INTENT WALL IS `intent_refusal` ABOVE, NOT THIS CHECK. A previous revision routed the intent
+// through `serving_arm_admits_for`, which took an ArmIntent and ignored it -- its body was
+// `serving_arm_admits` verbatim. An inert parameter that reads as a wall is worse than no wall,
+// because the next reader cites it as coverage; it is deleted and the call goes direct.
+// `serving_arm_admits` asks whether a tuple is
 // PLAUSIBLE -- does the image register the architecture, does the checkpoint fit the pool -- and nothing asked
 // whether this exact tuple had already been run and refused. So a subject stayed launchable after execution
 // had settled the question, and attempts 8 and 9 were the same subject.
@@ -516,7 +520,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
   match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent) {
     Present { value: c } => ArmLaunchRefused { cause: c }
     Absent =>
-  match serving_arm_admits_for(checkpoint: checkpoint, runtime: runtime, topology: topology, intent: intent) {
+  match serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology) {
     ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
     ServingArmAdmitted =>
       match serving_checkpoint_row(c: checkpoint) {
