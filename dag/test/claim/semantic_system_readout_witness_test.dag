@@ -20,7 +20,7 @@ import gunbc.demo.semantic_system_readout {
   workflow_line_for,
   workflow_line_text,
 }
-import gunbc.generated_artifact { GitattributesArtifact, GitignoreArtifact, WitnessFloorYamlArtifact, artifact_directory }
+import gunbc.generated_artifact { Fci1BoundedExecutionContextArtifact, GitignoreArtifact, WitnessFloorYamlArtifact, artifact_directory }
 import gunbc.generated_artifact_observation {
   observe_directory_listings,
   observe_generated_artifact_with,
@@ -98,11 +98,23 @@ test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
 // THE ROUTE IS EXERCISED ON THE CHEAPEST ARTIFACT THAT PROVES IT, which is the enrolment refusal's
 // own first remedy: reduce what the witness reaches for. The route this claim exists to establish is
 // listing -> committed read folded through filesystem_read_outcome -> adorned projection through the
-// same bytes boundary -> the readout's standing. Nothing about that route is specific to
-// witnesses.yml; what IS specific to witnesses.yml is the 82KB workflow projection, which is where
-// the 1357ms measured on gunbc#11457's floor run went. .gitattributes is a full registry member --
-// location, commit policy, generator -- at 5.6KB, so the same fold runs end to end for a fraction of
-// the projection.
+// same bytes boundary -> the readout's standing. Nothing about that route is specific to any one
+// artifact, so the subject is chosen to be a full registry member -- location, commit policy,
+// generator -- whose GENERATOR is cheapest to run.
+//
+// THE AXIS IS THE GENERATOR'S FOLD, NOT THE OUTPUT SIZE, and an earlier revision of this comment got
+// that wrong in a way worth recording rather than quietly deleting. It justified .gitattributes at
+// 5.6KB against witnesses.yml at 82KB, reasoning that a smaller projection costs less. But
+// observe_generated_artifact_with calls artifact_generate on the read path, and
+// gunbc.gitattributes_emit expected_gitattributes folds deterministic_generated_projection_paths ->
+// committed_generated_artifact_paths, i.e. EVERY artifact in the registry, to produce its 5.6KB. Its
+// cost tracks the registry's size, which grows, and not its own output. So the output-size reading
+// picked an artifact whose generator is one of the most expensive in the roster while claiming it was
+// the cheap one. gunbc.fci1_bounded_execution_context_emit carries ZERO registry references and
+// projects a handful of systemd properties off one slot declaration, so the identical fold runs end
+// to end against a generator that walks nothing. The directory listing falls out cheaper as well --
+// tools/ holds 5 entries against the repository root's 27 -- but that is incidental, and on its own
+// it would not have moved a number this size.
 //
 // WHAT THIS DOES NOT WEAKEN: the production line still observes witnesses.yml, unchanged. This claim
 // asserts the OBSERVER ROUTE executes and reaches a live verdict; the supplied-arm claims above
@@ -110,7 +122,7 @@ test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
 // line -- has no claim of its own. Deleting observe_generated_artifact_with from the readout fails this,
 // which is the pairing obligation reviews 66755 and 66759 asked for.
 test fn w_the_observer_route_executes_and_reaches_a_live_verdict() -> Bool {
-  let a = GitattributesArtifact
+  let a = Fci1BoundedExecutionContextArtifact
   let rows = observe_directory_listings(directories: [artifact_directory(a: a)])
   match workflow_line_for(observation: observe_generated_artifact_with(a: a, rows: rows)).standing {
     LiveVerdict { holds: h } => h
