@@ -508,11 +508,9 @@ fn v41_placed_key_precedes_source(p: V41PlacedRow, s: V41SourceRow) -> Bool {
 }
 
 fn v41_skip_placed_before_source(ps: List<V41PlacedRow>, s: V41SourceRow) -> List<V41PlacedRow> {
-  if length(ps) == 0 {
-    [] as List<V41PlacedRow>
-  } else {
-    let p = ps.first()
-    if v41_placed_key_precedes_source(p: p, s: s) {
+  match ps.first() {
+    Absent => [] as List<V41PlacedRow>
+    Present { value: p } => if v41_placed_key_precedes_source(p: p, s: s) {
       v41_skip_placed_before_source(ps: ps.skip(n: 1), s: s)
     } else {
       ps
@@ -522,14 +520,12 @@ fn v41_skip_placed_before_source(ps: List<V41PlacedRow>, s: V41SourceRow) -> Lis
 
 fn v41_lost_scan_step(acc: V41LostScan, s: V41SourceRow) -> V41LostScan {
   let rest = v41_skip_placed_before_source(ps: acc.rest, s: s)
-  if length(rest) == 0 {
-    V41LostScan {
+  match rest.first() {
+    Absent => V41LostScan {
       rest: rest,
       defects: concat([join(["source row ", s.tensor as String, "#", to_string(s.global_row), " has no exact placed image"], "") as NonEmptyStr], acc.defects),
     }
-  } else {
-    let q = rest.first()
-    if (q.tensor as String) == (s.tensor as String) && q.global_row == s.global_row && (q.payload as String) == (s.payload as String) {
+    Present { value: q } => if (q.tensor as String) == (s.tensor as String) && q.global_row == s.global_row && (q.payload as String) == (s.payload as String) {
       V41LostScan { rest: rest.skip(n: 1), defects: acc.defects }
     } else {
       V41LostScan {
