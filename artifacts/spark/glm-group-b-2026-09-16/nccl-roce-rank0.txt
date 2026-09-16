@@ -1,0 +1,24 @@
+spark-0c75:346:346 [0] NCCL INFO NET/Plugin: Could not find: libnccl-net.so
+spark-0c75:346:346 [0] NCCL INFO NET/IB: [1] rocep1s0f1:uverbs1:1/RoCE provider=Mlx5 speed=50000 context=0x215806e0 pciPath=/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.0 ar=0 oooRqSize=0
+spark-0c75:346:346 [0] NCCL INFO NET/IB : Made virtual device [0] name=rocep1s0f1 speed=50000 ndevs=1 rail=-1 plane=-1
+spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>
+spark-0c75:346:346 [0] NCCL INFO Using network IB
+spark-0c75:346:346 [0] NCCL INFO NET/GIN_IB_GDAKI : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'
+spark-0c75:346:346 [0] NCCL INFO NET/RMA_IB_PROXY : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'
+spark-0c75:346:346 [0] NCCL INFO NET/IB : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'
+spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 2[0] -> 0[0] [receive] via NET/IB/0
+spark-0c75:346:346 [0] NCCL INFO Channel 01/0 : 2[0] -> 0[0] [receive] via NET/IB/0
+spark-0c75:346:346 [0] NCCL INFO Channel 02/0 : 2[0] -> 0[0] [receive] via NET/IB/0
+spark-0c75:346:346 [0] NCCL INFO Channel 03/0 : 2[0] -> 0[0] [receive] via NET/IB/0
+spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 0[0] -> 2[0] [send] via NET/IB/0
+spark-0c75:346:346 [0] NCCL INFO Channel 01/0 : 0[0] -> 2[0] [send] via NET/IB/0
+spark-0c75:346:346 [0] NCCL INFO Channel 02/0 : 0[0] -> 2[0] [send] via NET/IB/0
+spark-0c75:346:346 [0] NCCL INFO Channel 03/0 : 0[0] -> 2[0] [send] via NET/IB/0
+spark-0c75:346:503 [0] NCCL INFO NET/IB: ncclIbResiliencyInit: Resiliency is disabled on the send communicator (comm=0xe7be60042000)
+spark-0c75:346:503 [0] NCCL INFO NET/IB: ncclIbResiliencyInit: Resiliency is disabled on the send communicator (comm=0xe7be60086000)
+spark-0c75:346:503 [0] NCCL INFO NET/IB: ncclIbResiliencyInit: Resiliency is disabled on the send communicator (comm=0xe7be600ca000)
+spark-0c75:346:503 [0] NCCL INFO NET/IB: ncclIbResiliencyInit: Resiliency is disabled on the send communicator (comm=0xe7be6010e000)
+spark-0c75:346:503 [0] NCCL INFO NET/IB: ncclIbResiliencyInit: Resiliency is disabled on the send communicator (comm=0xe7be60152000)
+spark-0c75:346:503 [0] NCCL INFO NET/IB: ncclIbResiliencyInit: Resiliency is disabled on the send communicator (comm=0xe7be60196000)
+spark-0c75:346:503 [0] NCCL INFO NET/IB: ncclIbResiliencyInit: Resiliency is disabled on the send communicator (comm=0xe7be601da000)
+spark-0c75:346:503 [0] NCCL INFO NET/IB: ncclIbResiliencyInit: Resiliency is disabled on the send communicator (comm=0xe7be6021e000)
