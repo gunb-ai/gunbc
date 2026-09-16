@@ -5,20 +5,21 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom }
 import std.materialization_provider {
-  DeclaredInput, ArtifactRequest,
+  DeclaredInput, ArtifactRequest, ArtifactManifest,
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  request_key, evaluation_store_address_admitted, stored_evaluation_preimage_for_request, request_judgment_contract,
+  request_key, request_kind, evaluation_store_address_admitted, stored_evaluation_preimage_for_request, request_judgment_contract,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
 }
 import std.materialization_store_grant { MaterializationStoreRoot, WitnessScratchRoot, DurableHostVolumeRoot }
 import std.materialization_object {
-  ArtifactPayload,
+  ArtifactPayload, payload_part,
   OpenedMaterializationStore,
   StoreLookup, StoreCommit, StoreCommitSettled, StoreCommitRefused,
   StoreCommitPrepared, StoreCommitNotPrepared,
-  store_commit_prepare, store_object_name, percent_encode_payload,
+  store_commit_prepare, store_object_name, percent_encode_payload, encode_store_object,
+  result_content_canonical,
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_commit_fold,
 }
@@ -185,20 +186,32 @@ test fn wrong_kind_refuses_by_real_execution() -> Bool {
 }
 
 // incomplete: the stored manifest omits a part the kind requires.
-// drop the diagnostics part line and its payload line
+// Plant the same incomplete object the dry control encodes — one required part, matching result_preimage —
+// rather than substring-filtering a complete object (that also deletes the result_preimage header).
 test fn incomplete_refuses_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let full = prepared_object(req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"))
-      let lines = split(s: full, delimiter: "\n")
-      let kept = lines |> filter(l => (string_contains(s: l, pattern: output_module_preparation_diagnostics as String)) == false)
-      let planted = Filesystem.WriteCreateNew(path: object_path(root_path: root_path, req: bundle_req(module: "a")), content: join(kept, "\n"))
-      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
-      planted.success && (kept |> count()) == (lines |> count()) - 2
-        && store_lookup_refusal_tag(l: read) == "contract_incomplete"
+      let req = bundle_req(module: "a")
+      let verdicts_only = ArtifactPayload { id: output_module_test_verdicts, content: "a.t1 pass" }
+      let incomplete = encode_store_object(
+        manifest: ArtifactManifest {
+          kind: request_kind(req: req),
+          request_key: request_key(req: req),
+          parts: [payload_part(payload: verdicts_only)]
+        },
+        payloads: [verdicts_only],
+        evaluation_preimage: stored_evaluation_preimage_for_request(req: req),
+        result_preimage: result_content_canonical(
+          parts: [payload_part(payload: verdicts_only)],
+          payloads: [verdicts_only]
+        )
+      )
+      let planted = Filesystem.WriteCreateNew(path: object_path(root_path: root_path, req: req), content: incomplete)
+      let read = local_store_lookup(root: root, store: store, req: req)
+      planted.success && store_lookup_refusal_tag(l: read) == "contract_incomplete"
     }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
