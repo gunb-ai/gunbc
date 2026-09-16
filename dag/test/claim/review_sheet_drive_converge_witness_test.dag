@@ -16,6 +16,7 @@ import extdeps.google.drive {
   RoleReader,
   drive_permission_role_wire,
   google_sheet_mime_type,
+  drive_token_env,
 }
 import gunbc.review_sheet_drive_converge {
   DriveMembershipObservation,
@@ -326,4 +327,14 @@ test fn search_query_keys_on_app_properties_and_excludes_trashed() -> Bool {
     && string_contains(s: q, pattern: "trashed=false")
     && string_contains(s: q, pattern: google_sheet_mime_type as String)
     && !string_contains(s: q, pattern: "name=")
+}
+
+
+// The service config must spell the environment variable as a literal because the config parse
+// extracts a literal rather than evaluating a reference. This claim is what keeps that forced
+// duplicate honest: if either spelling moves, the transport silently stops finding a token and
+// every Drive call refuses as AuthDeclaredButUnwired, which reads like a missing credential rather
+// than a renamed one.
+test fn drive_token_env_matches_the_configured_literal() -> Bool {
+  drive_token_env == "GUNBC_REVIEW_SHEET_TOKEN"
 }

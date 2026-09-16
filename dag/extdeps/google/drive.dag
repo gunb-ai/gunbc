@@ -85,6 +85,15 @@ data drive_serviceusage_api_id: NonEmptyStr = "drive.googleapis.com"
 // denied -- so auth_source reads the variable in-process at the transport, exactly as
 // github.Workflows does for GITHUB_TOKEN, and no operation below takes a token as an input a caller
 // could interpolate.
+// THE NAME IS SPELLED TWICE AND THAT IS FORCED, NOT AN OVERSIGHT. The service config's auth_source
+// is read by extract_string_value, which pulls a string LITERAL out of the node rather than
+// evaluating an expression, so a reference to this declaration resolves to nothing and the
+// transport reports AuthDeclaredButUnwired with the variable "absent". github.Workflows spells
+// GITHUB_TOKEN as a literal for the same reason. This row is the name consumers read, the literal
+// above is the name the transport reads, and
+// test.claim.review_sheet_drive_converge_witness drive_token_env_matches_the_configured_literal
+// is what stops the two drifting apart -- a duplication that cannot silently diverge, since the
+// alternative is a config the parser cannot see.
 data drive_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"
 
 data drive_full_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/drive"
@@ -224,7 +233,7 @@ service drive.Drives {
   config {
     endpoint: drive_api_base
     auth: Bearer
-    auth_source: EnvVar { name: drive_token_env }
+    auth_source: EnvVar { name: "GUNBC_REVIEW_SHEET_TOKEN" }
   }
 
   operation GetDrive {
@@ -254,7 +263,7 @@ service drive.Permissions {
   config {
     endpoint: drive_api_base
     auth: Bearer
-    auth_source: EnvVar { name: drive_token_env }
+    auth_source: EnvVar { name: "GUNBC_REVIEW_SHEET_TOKEN" }
   }
 
   operation ListPermissions {
@@ -324,7 +333,7 @@ service drive.Files {
   config {
     endpoint: drive_api_base
     auth: Bearer
-    auth_source: EnvVar { name: drive_token_env }
+    auth_source: EnvVar { name: "GUNBC_REVIEW_SHEET_TOKEN" }
   }
 
   operation ListFiles {
