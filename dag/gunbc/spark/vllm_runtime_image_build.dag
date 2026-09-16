@@ -888,6 +888,8 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
 // dispatch modes. The patched apply seam is a sibling door:
 // gunbc.spark.v41_source_patch_converge_wet v41_patched_source_acquire_wet, which supplies the
 // candidate's P into converge_vllm_source_with_patches and does not replace this vanilla acquire.
+// converge_vllm_runtime_image_with_patches is a declared frontier on that module: a patched sibling
+// of vllm_runtime_image_build_ci_wet, not a silent extra call from this vanilla acquire.
 //
 // vllm_runtime_image_build_ci_wet is DIFFERENT and is a declared frontier: it needs the administrator
 // credential, so its only honest invocation is a fleet-converge mode beside spark_runtime_image_probe.

@@ -444,6 +444,16 @@ fn converge_vllm_source_with_patches(
   }
 }
 
+// §3c DECLARED FRONTIER, not a silent extra path. This change's executing consumer is
+// v41_patched_source_acquire_wet → converge_vllm_source_with_patches. The keyed image from the
+// observed patched tree is the next desired component, and its consumer is a patched sibling of
+// vllm_runtime_image_build_ci_wet: that vanilla entry still calls converge_vllm_runtime_image
+// (clean checkout, recipe key) and must not grow P. TRIGGER: that sibling entry exists and is the
+// only production call of this fold (fleet-converge / administrator credential, same transport
+// dissolve-on as vllm_runtime_image_build_ci_wet). SUFFICIENT FOR: an image whose key includes
+// source_head and worktree_diff_sha256 is minted only through this fold, never by treating the
+// intended patch list as identity. This cut does not add that entry — a hours-long docker build
+// behind the source-acquire door would smuggle Cut-D cost into Cuts B+C.
 fn converge_vllm_runtime_image_with_patches(
   target: SshTarget,
   context: FleetSshExecutionContext,

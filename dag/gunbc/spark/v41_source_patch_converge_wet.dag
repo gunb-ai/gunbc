@@ -1,6 +1,6 @@
 module gunbc.spark.v41_source_patch_converge_wet
 
-import std.types { String, List, NonEmptyStr }
+import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import v2.std.optional { Present, Absent }
@@ -21,16 +21,15 @@ import gunbc.fleet_multi_principal_probe { probe_agent_credential_verification }
 import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host }
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
 import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint, spark_reach_path_wire }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.spark.v41_runtime_candidate {
   V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
-  v41_storage_backed_patch_population, v41_candidate_recipe, V41EnginePatch,
+  v41_storage_backed_patch_population, v41_candidate_recipe,
 }
 import gunbc.spark.vllm_runtime_image_build {
-  VllmImageBuild, vllm_build_host_purpose, vllm_source_dir, vllm_build_root,
+  vllm_build_host_purpose, vllm_source_dir, vllm_build_root,
 }
 import gunbc.spark.v41_source_patch_converge {
-  converge_vllm_source_with_patches, converge_vllm_runtime_image_with_patches,
+  converge_vllm_source_with_patches,
   v41_patched_source_receipt_line, v41_patched_source_converged,
 }
 
@@ -39,20 +38,13 @@ import gunbc.spark.v41_source_patch_converge {
 // into converge_vllm_source_with_patches — the fold does not choose P. Same invocation shape as
 // vllm_source_acquire_wet: gunbc run --entry this file --function v41_patched_source_acquire_wet
 // --arg host=<identity>. Do not hand-apply on srv1.
+//
+// converge_vllm_runtime_image_with_patches is NOT this door. Its consumer is a declared frontier
+// on that fold (patched sibling of vllm_runtime_image_build_ci_wet). Wiring it here would put a
+// hours-long docker build behind a source-acquire that exists to exercise git apply.
 
 data v41_patched_source_acquire_attempt_raw: String = "v41-patched-source-acquire"
 data v41_patched_source_acquire_receipt_path: String = "target/v41-patched-source-acquire-receipt.txt"
-
-fn v41_patched_runtime_image(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
-  ctx: SparkMaterializeContext,
-  patches: List<V41EnginePatch>,
-) -> VllmImageBuild
-  uses net: Network
-{
-  converge_vllm_runtime_image_with_patches(target: target, context: context, ctx: ctx, r: v41_candidate_recipe(), patches: patches)
-}
 
 fn v41_patched_source_acquire_wet(host: String) -> ProcessExit
   uses net: Network
