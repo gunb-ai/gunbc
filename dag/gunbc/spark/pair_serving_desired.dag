@@ -175,21 +175,33 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // here does not remove an entry -- it EMPTIES THE ROSTER, and the two things that follow are not
 // obvious from the edit.
 //
-// FIRST, EVERY FOLD OVER THIS ROW LOSES ITS SUBJECT. An `all(...)` over an empty list is true, so a
-// check of the form "every claimed serving group satisfies X" stops being evidence at the moment the
-// roster empties -- it passes, greenly, because nothing remains to fail it, and it does so exactly
-// when the fleet is least ordinary. The class is
-// gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain. Anyone emptying this row
-// owes an enumeration of the folds over it, over spark_claimed_serving_group_members, over
-// spark_pair_serving_desired and over spark_pair_realizations, and a statement for each of whether it
-// still carries information on an empty domain. A check that silently becomes vacuous is worse than a
-// check that was deleted, because it is still cited as coverage.
+// FIRST, SOME FOLDS OVER THIS ROW LOSE THEIR SUBJECT AND OTHERS REFUSE, AND WHICH IS WHICH IS THE
+// WHOLE OBLIGATION. An `all(...)` over an empty list is true, so a check of the form "every claimed
+// serving group satisfies X" stops being evidence the moment the roster empties -- it passes, greenly,
+// because nothing remains to fail it. But a consumer that refuses on an empty population is fine, and
+// saying "every fold" would be a warning an author can disprove with one counterexample and then
+// discount entirely. The class is
+// gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain, whose recognition rule is
+// the test to apply: A PREDICATE THAT IS TRUE ON THE EMPTY CASE IS NOT A CHECK UNTIL ITS DOMAIN IS
+// PROVEN NON-EMPTY -- ask of every universal what it returns when the collection is empty, and whether
+// the boundary can produce empty. Here the boundary is this edit.
+//
+// So anyone emptying this row owes a PARTITION, not a blanket claim: enumerate the folds over it, over
+// spark_claimed_serving_group_members, over spark_pair_serving_desired and over
+// spark_pair_realizations, and sort each into refuses-on-empty or passes-vacuously. The second set is
+// the one that must be repaired or shown to have a non-vacuous subject elsewhere. A check that silently
+// becomes vacuous is worse than a check that was deleted, because it is still cited as coverage.
 //
 // SECOND, THIS ROW IS ALSO A HOST-OWNERSHIP FACT, AND EMPTYING IT UNOWNS HOSTS. gunbc.spark.host_commitment
 // derives every MemberOfClaimedServingGroup cause from this row and uses those causes to decide which
 // serving subject owns each host. gunbc.spark.cell_role assigns SparkServingCell to srv5 and srv6 only,
-// so THIS CLAIM IS WHAT SPEAKS FOR srv7 AND srv8. Empty the row and srv5/srv6 keep a cell role owned by
-// no serving subject while srv7/srv8 become uncommitted -- admissible to any serving subject and
+// so THIS CLAIM IS WHAT SPEAKS FOR srv7 AND srv8. Empty the row and the two halves fail DIFFERENTLY,
+// which is worth knowing before you assume the milder half. srv5/srv6 keep a cell role, and
+// serving_subject_claims_host answers CommittedToCellRole with `false` for EVERY subject -- the module
+// says it in as many words, that "held by nobody" is a refusal for every subject rather than an absence
+// that reads as freedom. So those two are not freed, they are REFUSED, including to the very
+// PairServingUnitOn FabricGroupA subject that wanted them. srv7/srv8 meanwhile lose their only cause and
+// become uncommitted -- admissible to any serving subject and
 // eligible as admit_unplaced_host effect targets, which gunbc.spark.v41_runtime_image_probe consumes to
 // pull an image and start a container. A lane that empties this row to "release" Group A for its own
 // exclusive use removes its own exclusivity: a PairServingUnitOn FabricGroupA subject derives its host
