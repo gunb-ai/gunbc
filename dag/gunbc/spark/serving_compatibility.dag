@@ -119,6 +119,35 @@ fn refusing_standings_for(subject: ServingCompatibilitySubject) -> List<RuntimeC
   filter(measured_serving_compatibility, st => standing_refuses_subject(st: st, subject: subject))
 }
 
+// ── WHAT THE MEASURED ROSTER ADMITS FOR ONE SUBJECT, WHICH IS THE WALL ITSELF ─────────────────
+//
+// THE ASYMMETRY THIS CARRIES. An image that has been INSPECTED and one that has SERVED are not the
+// same standing, and only the second may carry normal serving. The roster's positive arm is an
+// execution receipt; static plausibility and plain unknown both mean "nobody has run this", and the
+// honest admission for that is a bounded experiment rather than production traffic.
+//
+// ABSENCE IS THE RESTRICTIVE ANSWER, NOT THE PERMISSIVE ONE. A subject with no row at all is unknown,
+// and unknown admits only a bounded experiment -- so a tuple nobody has measured cannot reach normal
+// serving by being absent from the roster. That direction is the whole point: the opposite reading
+// would make an unmeasured subject MORE launchable than a measured-but-unrun one.
+fn standings_for_subject(subject: ServingCompatibilitySubject) -> List<RuntimeCompatibilityStanding> {
+  filter(measured_serving_compatibility, st => compatibility_subject_eq(a: standing_subject(st: st), b: subject))
+}
+
+fn measured_admission_for(subject: ServingCompatibilitySubject) -> CompatibilityAdmission {
+  let refusing = refusing_standings_for(subject: subject)
+  match first(refusing) {
+    Present { value: st } => compatibility_admits(s: st)
+    Absent =>
+      if any(standings_for_subject(subject: subject), st => match st {
+        ExecutionCompatible { subject: _, receipt: _ } => true
+        StaticallyPlausible { subject: _, evidence: _ } => false
+        CompatibilityUnknown { subject: _ } => false
+        ExecutionIncompatible { subject: _, failure: _, receipt: _ } => false
+      }) { AdmitsNormalServing } else { AdmitsBoundedExperimentOnly }
+  }
+}
+
 fn measured_subject_refuses(subject: ServingCompatibilitySubject) -> Bool {
   count(refusing_standings_for(subject: subject)) > 0
 }

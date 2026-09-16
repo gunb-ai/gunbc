@@ -39,7 +39,7 @@ import gunbc.spark.serving_compatibility {
   RuntimeCompatibilityStanding, CompatibilityUnknown, StaticallyPlausible,
   ExecutionCompatible, ExecutionIncompatible,
   CompatibilityAdmission, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing,
-  compatibility_admits, measured_serving_compatibility,
+  compatibility_admits, measured_admission_for, measured_serving_compatibility,
   ServingCompatibilitySubject, compatibility_subject_text,
   measured_subject_refuses, measured_refusal_cause, spark_gb10_accelerator,
   serving_compatibility_subject,
@@ -519,11 +519,43 @@ fn launch_compatibility_subject(
     accelerator: fabric_group_accelerator(g: group), profile: profile)
 }
 
+// ── AN INSPECTED IMAGE AND A SERVED ONE ARE NOT THE SAME STANDING, AND THIS IS WHERE THAT BITES ──
+//
+// WHAT THIS RESTORES. An earlier shape carried the asymmetry on a per-image field, and when that field
+// was replaced by the compatibility relation the asymmetry was left with no executing consumer: the
+// admission vocabulary was imported by this module and called nowhere, so a subject nobody had ever
+// run could be planned for normal serving exactly as readily as one with an execution receipt. The
+// annotation describing the replacement is not the replacement (DESIGN section 4c: an annotation is
+// never evidence that a machine claim holds), so the wall is spelled here as a fold that runs.
+//
+// A BOUNDED EXPERIMENT IS STILL ADMITTED, which is what keeps this a wall rather than a ban: the way a
+// subject EARNS an execution receipt is by being run, so refusing every unmeasured tuple outright would
+// make the roster unable to grow. The intent is the caller's declaration of which of those two things
+// it is asking for, and the refusal names both sides.
+// IT ANSWERS WITH A CAUSE OR WITH NOTHING, rather than with a plan. A first spelling of this returned
+// an ArmLaunchPlan, which forced the admitting arms to invent a lines list and a master address they
+// had no business holding -- a fabricated value standing in for "no objection". Absent IS the
+// admission, and there is nothing to make up.
+fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEmptyStr? {
+  match admission {
+    AdmitsNothing { because: b } => Present { value: b }
+    AdmitsNormalServing => none
+    AdmitsBoundedExperimentOnly =>
+      match intent {
+        ArmBoundedExperiment => none
+        ArmNormalServing => Present { value: "this subject has no execution receipt, so the measured roster admits a bounded experiment and not normal serving; run it as a bounded experiment first, or record the receipt that makes it compatible" as NonEmptyStr }
+      }
+  }
+}
+
 fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> ArmLaunchPlan {
   let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
   if measured_subject_refuses(subject: subject) {
     ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
   } else {
+  match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent) {
+    Present { value: c } => ArmLaunchRefused { cause: c }
+    Absent =>
   match serving_arm_admits_for(checkpoint: checkpoint, runtime: runtime, topology: topology, intent: intent) {
     ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
     ServingArmAdmitted =>
@@ -542,6 +574,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
               }
           }
       }
+  }
   }
 }
 }

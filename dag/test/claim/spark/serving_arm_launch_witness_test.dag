@@ -9,12 +9,14 @@ import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOv
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.serving_arm {
+  ArmIntent, ArmNormalServing, ArmBoundedExperiment,
+  GunbcSparkrunVllmDs4Gb10,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
   glm_native_initial_profile, serving_checkpoint_row, serving_runtime_row,
 }
 import gunbc.spark.serving_arm_launch {
   ArmNode, ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
-  plan_arm_launch, arm_node, arm_container_spec,
+  plan_arm_launch, plan_arm_launch_for, arm_node, arm_container_spec,
 }
 
 // THE FIXTURE IS THE REAL GROUP B ARM, because the property under test is a property of THIS
@@ -141,6 +143,44 @@ test fn w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory() -> Bool 
   }
 }
 
+// ── AN UNRUN SUBJECT MAY NOT BE PLANNED FOR NORMAL SERVING ────────────────────────────────────
+//
+// THE WALL AND ITS CONTROL IN ONE PAIR. The Group B arm above plans because it carries an execution
+// receipt. This tuple carries none -- nobody has run the native checkpoint on the DeepSeek runtime at
+// four ranks -- so the measured roster admits a bounded experiment and not production traffic. Asking
+// for normal serving must refuse, and asking for a bounded experiment must not.
+//
+// THIS IS WHAT MAKES THE ROW ABOVE INFORMATIVE. If the planner ignored the admission, both arms below
+// would plan and this row would go red -- which is the only reason the Group B row's success says
+// anything about the wall rather than about the renderer.
+fn plan_unrun_subject(intent: ArmIntent) -> ArmLaunchPlan {
+  plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcSparkrunVllmDs4Gb10,
+    topology: FourSparkTp4,
+    group: FabricGroupB,
+    intent: intent,
+    profile: glm_native_initial_profile,
+    utilization_basis_points: glm_native_initial_profile.decided_gpu_memory_basis_points,
+  )
+}
+
+fn plan_refusal_cause(p: ArmLaunchPlan) -> String {
+  match p {
+    ArmLaunchRefused { cause: c } => c as String
+    ArmLaunchPlanned { lines: _, master: _ } => ""
+  }
+}
+
+test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer() -> Bool {
+  (match plan_unrun_subject(intent: ArmNormalServing) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  })
+    && plan_refusal_cause(p: plan_unrun_subject(intent: ArmNormalServing))
+       != plan_refusal_cause(p: plan_unrun_subject(intent: ArmBoundedExperiment))
+}
+
 test fn w_all_serving_arm_launch_claims_hold() -> Bool {
   w_the_group_b_arm_plans_exactly_four_ranks()
     && w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory()
@@ -148,4 +188,5 @@ test fn w_all_serving_arm_launch_claims_hold() -> Bool {
     && w_every_rank_keeps_the_transport_evidence_producer_on()
     && w_the_engine_argv_states_the_profiles_batching_bounds()
     && w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory()
+    && w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer()
 }

@@ -293,9 +293,15 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // dropped -- the same receipts now sit at the grain that can name their subject.
 //
 // AND THE INTENT SPLIT MOVED WITH THEM. StaticIntegrationObserved existed so that an inspected-but-unrun
-// image could carry a bounded experiment and not normal serving; that asymmetry is now
-// select_serving_deployment over CompatibilityUnknown/StaticallyPlausible/ExecutionCompatible, which is
-// where a SELECTION belongs rather than inside a per-row admission check.
+// image could carry a bounded experiment and not normal serving. That asymmetry now lives in the
+// LAUNCH PLANNER, which reads the measured roster's admission for the exact subject and refuses an
+// intent of normal serving when the roster admits only an experiment -- gunbc.spark.serving_arm_launch
+// intent_refusal, over gunbc.spark.serving_compatibility measured_admission_for.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED A DIFFERENT HOME and was wrong in the way DESIGN 4c
+// warns about: it said the asymmetry was carried by a selection fold, while the admission vocabulary
+// sat imported-and-uncalled and no selection module read these standings at all. The wall was deleted
+// and its stated replacement did not exist, so the prose was the only thing still asserting it.
 // WHAT AN ARM IS BEING ASKED FOR, because the same tuple is admissible for one and not the other. An
 // experiment may run on a statically-inspected image precisely so that the feasibility receipt can
 // exist; ordinary serving may not, because a bounded trial and a service carry different consequences
@@ -542,7 +548,8 @@ fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
 // THE INTENT PARAMETER IS GONE WITH THE STANDING THAT NEEDED IT. This verdict now answers only the two
 // questions a ROW can answer -- does the image register the architecture, does the checkpoint fit the pool --
 // and both give the same answer for an experiment and for a service. Whether a tuple may carry NORMAL
-// SERVING is a question about measured compatibility and is decided by select_serving_deployment.
+// SERVING is a question about measured compatibility, and the launch planner decides it: an intent of
+// normal serving is refused for a subject the measured roster admits only as a bounded experiment.
 fn serving_arm_admits_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, intent: ArmIntent) -> ServingArmVerdict {
   serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology)
 }
