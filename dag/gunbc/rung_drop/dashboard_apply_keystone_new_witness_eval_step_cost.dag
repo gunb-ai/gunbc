@@ -1,0 +1,38 @@
+module gunbc.rung_drop.dashboard_apply_keystone_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { dashboard_apply_keystone_eval_step_cost_drop_rows }
+
+// DECLARED 4b(3) DROP for one pre-existing apply-witness keystone forced onto the new-witness
+// eval-step budget when CONVERGENCE-ONE C6 changed its module. Same mechanism as
+// `roadmap_live_projection_new_witness_eval_step_cost` (gunbc#11404): members still execute,
+// eval_steps stay recorded, a semantic red and the wall still block; only the eval-step refusal
+// is lowered. It is a new drop with its own reason, not a row added to that drop's live-roadmap
+// population (v2.workflow.floor_eval_step_cost_drop: a newly expensive witness is a new drop).
+//
+// WHY THIS IS NOT COST-DEBT AND NOT GRANDFATHERING. The identity exists on main, is absent from
+// floor_grandfathered_roster (whose contract forbids additions), and is absent from floor_cost_debt.
+// Changing the module makes it a changed witness judged as new work. The budget is not raised.
+data dashboard_apply_keystone_new_witness_eval_step_cost_population: List<String> = dashboard_apply_keystone_eval_step_cost_drop_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop; measured by "), m.measured_by))
+
+data dashboard_apply_keystone_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "dashboard_apply_keystone_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the apply-witness keystone: it still executes, eval_steps stay observed and recorded, a semantic red still blocks; only the cost-gate rung is lowered",
+
+  declared: "2026-09-16",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+          replacement: "C7 dissolves gunbc.roadmap_dashboard_instance_apply and test.claim.roadmap_dashboard_instance_apply_witness, so this identity is no longer a required-floor claim",
+    },
+    population: dashboard_apply_keystone_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: CONVERGENCE-ONE C7 deletes gunbc.roadmap_dashboard_instance_apply and the apply-witness module that carries dashboard_instance_apply_model_keystone_holds, so the qualified identity is gone from the required floor. WHAT C7 MUST BE SUFFICIENT FOR: this identity is not a required-floor claim. Measuring it under the NewWitnessTier budget without deleting the subject does not retire the row; renaming the test while the apply module remains does not retire it either",
+  }
+}

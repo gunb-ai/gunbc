@@ -7,14 +7,15 @@ import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import std.types { NonEmptyStr }
 
-// THE POLICY HALF OF THE DECLARED 4b(3) DROP `gunbc.rung_drop`
-// `roadmap_live_projection_new_witness_eval_step_cost`. The drop's loss is a WORKFLOW fact -- which
+// THE POLICY HALF OF THE DECLARED 4b(3) DROPS `gunbc.rung_drop`
+// `roadmap_live_projection_new_witness_eval_step_cost` AND
+// `dashboard_apply_keystone_new_witness_eval_step_cost`. The drop's loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
-// `v2.workflow.required_floor` decides with it. The rung-drop row DERIVES its population from this
-// list; the seed runner MIRRORS the membership test by reading `floor_eval_step_cost_drop_members`
-// through the policy frame. One list, three readers, no second copy (DESIGN section 3: interface,
-// realization and policy are three facts).
+// `v2.workflow.required_floor` decides with it. Each rung-drop row DERIVES its population from its
+// own list; `floor_eval_step_cost_drop_rows` is their concat, which the seed runner MIRRORS by
+// reading `floor_eval_step_cost_drop_members`. Two drops, one membership test, no third copy
+// (DESIGN section 3: interface, realization and policy are three facts).
 //
 // IT IS NOT A THIRD TIER AND IT IS NOT COST-DEBT. Members are planned, executed and measured on
 // every run, their eval_steps are recorded, and a semantic red or a wall-clock crossing still
@@ -22,7 +23,7 @@ import std.types { NonEmptyStr }
 // `EvalStepsOverBudgetUnderDeclaredDrop` instead of refusing. The budget itself is not raised.
 //
 // MEMBERSHIP IS BY WHOLE QUALIFIED IDENTITY, NEVER BY PREFIX OR MODULE. A module-grain exemption
-// would silently cover every witness later added beside these four, which is the widening the
+// would silently cover every witness later added beside these members, which is the widening the
 // drop's bounded population exists to forbid.
 //
 // THE ROW CARRIES NO TRANSCRIBED COUNT, AND THAT IS THE POINT. An earlier revision held an
@@ -34,16 +35,17 @@ import std.types { NonEmptyStr }
 // the producing run and artifact. Whether a member still overruns is read from a LIVE floor's
 // `required_floor_claim_cost.tsv`, out of band, with `tools.floor_cost_distribution_instrument`.
 //
-// IT MAY ONLY SHRINK. A row leaves when its identity measures inside the new-witness budget on the
-// acceptance path and the prepared-input capability the drop's trigger names has landed; a row is
-// never added to cover a newly expensive witness -- that would be a new declared drop with its own
-// reason, not growth of this one.
+// IT MAY ONLY SHRINK PER DROP. A row leaves when its identity measures inside the new-witness budget
+// on the acceptance path and that drop's restoration trigger has landed; a row is never added to
+// an existing drop to cover a newly expensive witness -- that is a new declared drop with its own
+// reason, which is how `dashboard_apply_keystone_eval_step_cost_drop_rows` sits beside the
+// live-roadmap four rather than inside them.
 type EvalStepCostDropMeasurement {
   identity: NonEmptyStr
   measured_by: NonEmptyStr
 }
 
-data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
+data live_roadmap_projection_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges" as NonEmptyStr,
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
@@ -61,6 +63,18 @@ data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
 ]
+
+data dashboard_apply_keystone_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.roadmap_dashboard_instance_apply_witness.dashboard_instance_apply_model_keystone_holds" as NonEmptyStr,
+    measured_by: "required floor run 35122675204, artifact required-floor-claim-cost; pre-existing identity not in floor_grandfathered_roster or floor_cost_debt; first measured under the new-witness tier because CONVERGENCE-ONE C6 changed the module (gunbc#11471)" as NonEmptyStr,
+  },
+]
+
+data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = concat(
+  live_roadmap_projection_eval_step_cost_drop_rows,
+  dashboard_apply_keystone_eval_step_cost_drop_rows,
+)
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or
 // duplicated decode of this list rather than applying it, so a failed read can never widen into an
