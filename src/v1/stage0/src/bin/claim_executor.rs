@@ -271,6 +271,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
     let mut v2_native_route_mode = false;
+    let mut self_host_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -355,6 +356,14 @@ fn run() -> Result<ExitCode, ExitCode> {
             // receipt minted here and one minted by the deleted lane cannot be two facts.
             "--v2-native-route" => {
                 v2_native_route_mode = true;
+            }
+            // THE V1 -> V2 SELF-HOST STEP. Deliberately its own flag and NOT a --required-ci phase:
+            // a phase is a standing claim on a paid runner for every push and every pull request,
+            // and that enrolment is the operator's to make once the wall time has been watched on
+            // real heads. The capability is here either way; what a workflow invokes is a separate
+            // decision from what the binary can do.
+            "--self-host" => {
+                self_host_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -812,9 +821,16 @@ fn run() -> Result<ExitCode, ExitCode> {
                             vocabulary.len()
                         ));
                     }
-                    match v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
-                        index,
-                    ) {
+                    let event_name = std::env::var("GITHUB_EVENT_NAME").ok();
+                    let adjudicated = v1_compiler::cli_run::namespace_wave_admission::adjudication_event_from_name(
+                        event_name.as_deref(),
+                    )
+                    .and_then(|event| {
+                        v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
+                            index, event,
+                        )
+                    });
+                    match adjudicated {
                         Ok(outcome) => {
                             if let Some(failure) = report_wave_admission_outcome(&outcome) {
                                 phase_failures.push(failure);
@@ -1103,10 +1119,17 @@ fn run() -> Result<ExitCode, ExitCode> {
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
             let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+            // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW, the same way the
+            // wave-admission phase reads it: the match-bearing consumers of a coproduct whose
+            // arm set changed are derived from that index and its base-side reconstruction,
+            // never from a second corpus walk. `None` here means the parse refused (the line
+            // is already stopped) and the floor refuses the planning row rather than planning
+            // blind.
             match v1_compiler::cli_run::run_required_floor(
                 &source_roots,
                 &commit,
                 v1_compiler::cli_run::ShardStyle::single_shard(),
+                head_index.as_ref(),
             ) {
                 Ok(outcome) => {
                     report_required_floor_outcome(&outcome);
@@ -1275,6 +1298,21 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
         }
+    }
+
+    if self_host_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        return match v1_compiler::cli_run::run_self_host(&roots) {
+            Ok(()) => Ok(ExitCode::SUCCESS),
+            Err(e) => {
+                eprintln!("self-host: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
     }
 
     if v2_native_route_mode {
@@ -1520,10 +1558,13 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if required_floor_mode {
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+        // The standalone floor entry runs no parse phase, so no declaration index exists to
+        // lend; on a CI commit the floor refuses its planning row rather than planning blind.
         return match v1_compiler::cli_run::run_required_floor(
             &source_roots,
             &commit,
             v1_compiler::cli_run::ShardStyle::single_shard(),
+            None,
         ) {
             Ok(outcome) => {
                 report_required_floor_outcome(&outcome);
@@ -1904,6 +1945,7 @@ fn report_wave_admission_outcome(
             head,
             report,
             roster_touched: _,
+            event: _,
         } => {
             let p = &report.population;
             eprintln!(
@@ -1930,6 +1972,22 @@ fn report_wave_admission_outcome(
             }
             for consumed in &report.consumed_admissions {
                 eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
+            }
+            for owed in &report.used_without_follow_up {
+                eprintln!("required-ci: namespace-wave-admission FOLLOW-UP ABSENT {owed}");
+            }
+            for receipt in &report.owned_consumed_receipts {
+                eprintln!(
+                    "required-ci: namespace-wave-admission CONSUMED ROW RECEIPT row={:?} \
+                     owner=gunbc#{} follow_up=gunbc#{} -- follow-up number declared; its \
+                     existence, state, and deletion scope are not established by this run, and \
+                     whether this run refuses is wave_admission_refusal's verdict, not this \
+                     receipt's; no executing route in this repository reads the follow-up's forge \
+                     state",
+                    receipt.label,
+                    receipt.owner_pull_request,
+                    receipt.deletion_follow_up_pull_request
+                );
             }
             // THE VERDICT IS THE WALL'S, NOT THE PRINTER'S. This function owns the receipts
             // because it owns a stderr; `wave_admission_refusal` owns whether the run refuses,

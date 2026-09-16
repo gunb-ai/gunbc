@@ -1,0 +1,9 @@
+module examples.blackjack.round
+
+// FILE MARKER FOR THE ONBOARDING PROJECT. The round state machine -- Shoe, RoundState,
+// RoundOutcome, RoundRefusal, RoundStep, deal, apply_player_action, play_dealer_turn, settle
+// -- is specified in docs/plans/blackjack-onboarding.md section 4.3 (authority
+// gunbc.plans.blackjack_onboarding). The variants are spelled PlayerHits / PlayerStands
+// rather than Hit / Stand because the corpus shares one name census and Hit is already a
+// variant of std.cache_interface; that section explains the naming rule.
+type PlayerAction = PlayerHits | PlayerStands

@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { hardware_thread_count }
-import product.fabric.work {
+import product.fabric.work { MaterializedProgram,
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
   ExecutionRequirements, Shape, HardRequirements,
   capacity_class_eq, capacity_class_wire, work_identity_material, WorkContract, WorkStep,
@@ -40,11 +40,9 @@ fn cc_slot() -> RunnerSlotIdentity {
 
 fn cc_contract() -> WorkContract {
   WorkContract {
-    program: "gunbc.program.floor",
+    execution: MaterializedProgram { program: "gunbc.program.floor", source: "gunbc.source.manifest-1", runtime_closure: "gunbc.runtime.closure-1" },
     steps: [],
-    source: "gunbc.source.manifest-1",
     inputs: "gunbc.artifact.manifest-1",
-    runtime_closure: "gunbc.runtime.closure-1",
     effect_contract: "gunbc.effect.contract-1",
     output_contract: "gunbc.output.contract-1",
     output_obligations: declared_artifact_obligations(ids: ["gunbc.output.artifact-1"]),

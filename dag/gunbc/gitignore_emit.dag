@@ -6,6 +6,10 @@ import std.workspace_artifact {
   footprint_display, ignore_reason_label
 }
 import gunbc.repo_workspace { repo_workspace_footprints }
+import gunbc.workspace_repository_materialisation {
+  WorkspaceMaterialisation, workspace_materialisations, untracked_materialisations,
+  materialisation_ignore_reason
+}
 import gunbc.generated_artifact {
   GeneratedArtifact, generated_artifact_registry, artifact_is_committed, artifact_path
 }
@@ -49,11 +53,22 @@ fn footprint_doc(f: WorkspaceFootprint) -> Doc {
   doc_concat(parts: append([header], items: map(f.artifacts, a => artifact_doc(a: a))))
 }
 
+// THE HEADER NAMES EVERY ARM AND ITS HOME, and it is regenerated with the file rather than
+// maintained beside it. A projection's header is a claim about which authorities produced the
+// bytes under it; when an arm is added and the header is not, the file keeps attributing itself to
+// a model it no longer has, and a reader who trusts it is told that every pattern carries a typed
+// std.workspace_artifact IgnoreReason when one whole arm derives its reason from a repository's
+// visibility instead. That is prose reading as coverage for a model that is no longer true -- the
+// same defect this repository has had to repair in the admission roster's own comments -- so the
+// arms are listed here and each new arm owes this function a line.
 fn gitignore_header_doc() -> Doc {
   doc_concat(parts: [
-    gitignore_comment_line(text: "gunbc .gitignore — generated from gunbc.repo_workspace via gunbc.gitignore_emit — do not hand-edit."),
+    gitignore_comment_line(text: "gunbc .gitignore — generated via gunbc.gitignore_emit from gunbc.repo_workspace, gunbc.workspace_repository_materialisation and gunbc.generated_artifact — do not hand-edit."),
     gitignore_comment_line(text: ""),
-    gitignore_comment_line(text: "Every pattern is declared by its producer (an extdeps product's workspace footprint, or a repo tool's own declaration) with its meaning and a typed ignore reason; the trailing section is derived from gunbc.generated_artifact commit policy."),
+    gitignore_comment_line(text: "THREE ARMS, each with its own producer and its own reason for being untracked."),
+    gitignore_comment_line(text: "1. Workspace footprints, from gunbc.repo_workspace: an extdeps product's own declaration or a repo tool's, each artifact carrying its meaning and a typed std.workspace_artifact IgnoreReason."),
+    gitignore_comment_line(text: "2. Material from a repository that is not world-readable, from gunbc.workspace_repository_materialisation joined with each source repository's visibility in gunbc.repository: the pattern is the row's root-anchored prefix and the reason text is DERIVED from that visibility, never authored per row."),
+    gitignore_comment_line(text: "3. Generated artifacts, derived from gunbc.generated_artifact commit policy."),
     doc_blank()
   ])
 }
@@ -71,6 +86,8 @@ fn expected_gitignore() -> String {
     gitignore_header_doc(),
     footprints_doc(footprints: repo_workspace_footprints()),
     doc_blank(),
+    non_world_readable_section_doc(),
+    doc_blank(),
     generated_artifacts_section_doc()
   ])
   render(doc: body, proto: gitignore_protocol)
@@ -86,7 +103,8 @@ fn footprint_patterns(f: WorkspaceFootprint) -> List<String> {
 
 fn ignore_patterns() -> List<String> {
   let tool_patterns = fold(repo_workspace_footprints(), init: [], f: fn(acc, f) { concat(acc, footprint_patterns(f: f)) })
-  concat(tool_patterns, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
+  let with_private = concat(tool_patterns, map(non_world_readable_materialisations(), m => materialisation_ignore_pattern(m: m)))
+  concat(with_private, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
 }
 
 fn generated_artifact_ignore_pattern(a: GeneratedArtifact) -> String {
@@ -95,6 +113,51 @@ fn generated_artifact_ignore_pattern(a: GeneratedArtifact) -> String {
 
 fn non_committed_artifacts() -> List<GeneratedArtifact> {
   filter(generated_artifact_registry, a => !artifact_is_committed(a: a))
+}
+
+// THE NON-WORLD-READABLE ARM. It is a THIRD derived arm beside the tool footprints and the
+// generated-artifact rows, and it authors nothing: the patterns are the prefixes of
+// gunbc.workspace_repository_materialisation, the membership test is the source repository's
+// visibility, and the comment text is derived from that same visibility. A new overlay spelling is
+// a compose row over there, and its ignore row appears here by construction.
+fn non_world_readable_materialisations() -> List<WorkspaceMaterialisation> {
+  untracked_materialisations(all: workspace_materialisations())
+}
+
+// THE EMITTED PATTERN IS ANCHORED AND CARRIES NO TRAILING SLASH, and both halves are facts about
+// what the row MEANS rather than spelling preferences. Git's pattern rules decide two independent
+// questions here (git-scm.com/docs/gitignore, pattern format), and each was got wrong once.
+//
+// THE LEADING SLASH -- WHAT DEPTH. A materialisation row declares a prefix AT THE WORKSPACE ROOT,
+// the compose step lands the repository there and nowhere else, while a pattern with no leading
+// slash matches at ANY DEPTH. The unanchored form therefore said something the model does not: it
+// also ignored fixtures/private_overlay/example.dag, which no materialisation claims and which may
+// be perfectly public.
+//
+// THE ABSENT TRAILING SLASH -- WHAT KIND OF THING. A pattern ending in `/` matches DIRECTORIES
+// ONLY, so `/private_repo/` sails straight past a SYMLINK named private_repo -- measured, it
+// stages as mode 120000. A symlink is one of the three observed staging behaviours, so a
+// directory-only pattern leaves a real one uncovered. Without the trailing slash the pattern
+// matches a file, a directory and a symlink at that path -- all three measured, with the nested
+// path still spared -- which is the coverage the row intends.
+//
+// The row hands over a bare path prefix and this function owns the punctuation, so neither
+// question is answerable from the model's side. The generated-artifact arm below anchors by the
+// same concat.
+fn materialisation_ignore_pattern(m: WorkspaceMaterialisation) -> String {
+  concat("/", m.prefix)
+}
+
+fn materialisation_doc(m: WorkspaceMaterialisation) -> Doc {
+  doc_concat(parts: [
+    gitignore_comment_line(text: materialisation_ignore_reason(m: m)),
+    doc_line_of(text: materialisation_ignore_pattern(m: m))
+  ])
+}
+
+fn non_world_readable_section_doc() -> Doc {
+  let header = gitignore_section_header(title: "Material from a repository that is not world-readable (derived from gunbc.workspace_repository_materialisation and each source repository's visibility)")
+  doc_concat(parts: append([header], items: map(non_world_readable_materialisations(), m => materialisation_doc(m: m))))
 }
 
 fn generated_artifacts_section_doc() -> Doc {
@@ -116,6 +179,15 @@ fn path_basename(path: String) -> String {
   fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
 }
 
+// A LEADING SLASH ON A DIRECTORY PATTERN BINDS IT TO THE ROOT. Without this arm the dir branch
+// below strips the slash and answers the unanchored question for every anchored pattern, so the
+// predicate would report a nested fixtures/private_overlay/... path as ignored while the emitted
+// .gitignore -- read by git, which honours the anchor -- does not ignore it. Two answers to one
+// question, and the wrong one is the one a witness would read.
+fn anchored_dir_matches(dir: String, path: String) -> Bool {
+  path == dir || starts_with(path, prefix: concat(dir, "/"))
+}
+
 fn dir_pattern_matches(dir: String, path: String) -> Bool {
   let anchored = concat(dir, "/")
   path == dir
@@ -130,7 +202,11 @@ fn strip_slashes(p: String) -> String {
 
 fn pattern_matches(pattern: String, path: String) -> Bool {
   if ends_with(s: pattern, suffix: "/") {
-    dir_pattern_matches(dir: strip_slashes(p: pattern), path: path)
+    if starts_with(pattern, prefix: "/") {
+      anchored_dir_matches(dir: strip_slashes(p: pattern), path: path)
+    } else {
+      dir_pattern_matches(dir: strip_slashes(p: pattern), path: path)
+    }
   } else if starts_with(pattern, prefix: "*.") {
     ends_with(s: path, suffix: without_prefix(s: pattern, prefix: "*"))
   } else if starts_with(pattern, prefix: "/") {

@@ -363,6 +363,24 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             println!("FAIL {}", function);
             *any_failed = true;
         }
+        // THE EXECUTOR SURFACE THE DISSOLVE-ON NAMED. This line is where a gate-class claim's
+        // typed refusal reason reaches the operator: `tools.emit_host_gate` once shelled its
+        // per-smoke verdict line out to printf because this path could only print bare FAIL
+        // (the 2026-07-13 srv3 forensics receipt). The reason is the single carrier now — the
+        // narration op is deleted, and this arm prints what the claim itself returned.
+        ClaimOutcome::ExitFailure { code, reason } => {
+            match reason {
+                Some(r) => println!(
+                    "FAIL {} (returned ProcessExit::ExitFailure, code {}: {})",
+                    function, code, r
+                ),
+                None => println!(
+                    "FAIL {} (returned ProcessExit::ExitFailure, code {}, no reason given)",
+                    function, code
+                ),
+            }
+            *any_failed = true;
+        }
         ClaimOutcome::NotBool { got } => {
             println!(
                 "FAIL {} (returned `{}`, not Bool; --claim-run entries must return Bool)",

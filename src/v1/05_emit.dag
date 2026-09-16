@@ -274,7 +274,8 @@ fn empty_emit_scope() -> InferScope {
     service_registry: empty_map(),
     item_registry: empty_map(),
     lambda_param_provenance: empty_map(),
-    caller_decl_name: ""
+    caller_decl_name: "",
+    in_flight_lambda_param_names: []
   }
 }
 
@@ -289,7 +290,8 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     service_registry: empty_map(),
     item_registry: typed_module.item_registry,
     lambda_param_provenance: empty_map(),
-    caller_decl_name: ""
+    caller_decl_name: "",
+    in_flight_lambda_param_names: []
   }
 }
 
@@ -1752,6 +1754,28 @@ fn is_self_recursive(id: DeclaredCallableIdentity, body: Node, registry: Map<Str
     Present { value: info } => info.is_self_recursive
     Absent => expr_has_self_call(texpr: body, fn_name: id.decl_name, source_indices: source_indices)
   }
+}
+
+fn tco_loop_slot_name(param_name: String) -> String {
+  concat("__tco_loop_", param_name)
+}
+
+fn tco_loop_iteration_lets(params: List<Node>, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
+  params |> map(p =>
+    let n = param_node_name_at(n: p, source_indices: source_indices)
+    let authored = emit_ident(name: n, target: Rust)
+    let slot = emit_ident(name: tco_loop_slot_name(param_name: n), target: Rust)
+    concat(
+      make_indent(level: depth),
+      "#[allow(unused_mut)]\n",
+      make_indent(level: depth),
+      "let mut ",
+      authored,
+      " = ",
+      slot,
+      ";\n"
+    )
+  ) |> join(separator: "")
 }
 
 fn tco_reassign_core(
@@ -3772,24 +3796,14 @@ fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<Stri
         wrap_result: result => result))
 }
 
-fn is_tco_identity_passthrough(arg_val: Node, param_name: String, si: Map<String, NewlineIndex>) -> Bool {
-  match arg_val.expr_data {
-    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: arg_val, source_indices: si) == param_name
-    _ => false
-  }
-}
-
 fn emit_typed_tco_reassign_shared(args: List<Node>, params: List<Node>,
     target: RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
   let arg_values = args |> map(a => arg_value(n: a))
   let pairs = params |> enumerate
-    |> filter(pair =>
-      let pname = param_node_name_at(n: pair.second, source_indices: source_indices)
-      let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
-      !is_tco_identity_passthrough(arg_val: av, param_name: pname, si: source_indices))
-  let filtered_arg_values = pairs
-    |> map(pair => match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second })
-  let ordered_args = filtered_arg_values |> map(av => recurse(av))
+  let ordered_args = pairs |> map(pair =>
+    let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
+    recurse(av)
+  )
   let param_names = pairs |> map(pair => emit_ident(name: param_node_name_at(n: pair.second, source_indices: source_indices), target: target))
   shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: target))
 }

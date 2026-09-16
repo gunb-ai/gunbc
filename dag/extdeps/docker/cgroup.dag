@@ -1,0 +1,123 @@
+module extdeps.docker.cgroup
+
+import std.types { NonEmptyStr, Bool, Int, List }
+import std.string_type { String }
+import std.content_hash { content_hash_validate_lower_hex_syntax, content_hash_validate_lower_hex_length }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/daemon/alternative-runtimes/"
+  }
+}
+
+data docker_cgroup_driver_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/containers/runmetrics/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.docker.cgroup",
+      decl_name: "DockerCgroupMembership",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: docker_cgroup_driver_authority,
+  further_citations: [extdeps_external_authority_anchor]
+}
+
+// WHERE A CONTAINER'S PROCESSES LIVE IN THE HOST CGROUP TREE, which is the one fact about a running
+// container that the kernel exposes to an unprivileged reader. The daemon places every process of
+// a container in a cgroup NAMED BY THE CONTAINER'S FULL ID, and the name's shape depends on the
+// daemon's cgroup driver (dockerd `--exec-opt native.cgroupdriver`): under the systemd driver the
+// container is a transient scope `docker-<id>.scope` beneath the daemon's slice (system.slice by
+// default), and under the cgroupfs driver it is a child `<id>` of a `docker` cgroup. Docker's
+// runtime-metrics page documents both spellings as the place to look up a container's statistics.
+//
+// WHY THIS IS AN OBSERVATION AND NOT AN INFERENCE. The id in the path is written by the daemon that
+// created the container, from the same id `docker container inspect` reports as .Id. A process's
+// /proc/<pid>/cgroup line therefore states, in the daemon's own vocabulary, which container the
+// process belongs to -- without touching the docker socket, which on a default installation only
+// root and the docker group may open. That is what lets a fleet principal with no docker access
+// bind a process it found by start time to the container it runs in.
+//
+// WHAT IT DOES NOT ESTABLISH: anything about the image, the configuration or the environment of
+// that container. Those are the inspect object's, and reading it stays privileged.
+type DockerCgroupMembership
+  = DockerContainerScope { container_id: NonEmptyStr }
+  | NotADockerContainerCgroup { relative_path: NonEmptyStr }
+
+data docker_systemd_scope_prefix: NonEmptyStr = "docker-" as NonEmptyStr
+data docker_systemd_scope_suffix: NonEmptyStr = ".scope" as NonEmptyStr
+data docker_cgroupfs_parent: NonEmptyStr = "docker" as NonEmptyStr
+
+// A container id as the daemon spells it in the cgroup tree: the full 64-hex-digit id, never the
+// 12-character abbreviation the CLI prints.
+data docker_container_id_hex_digits: Int = 64
+
+fn docker_container_id_syntax_ok(text: String) -> Bool {
+  content_hash_validate_lower_hex_syntax(text: text)
+    && content_hash_validate_lower_hex_length(text: text, expected_hex_digits: docker_container_id_hex_digits)
+}
+
+fn docker_cgroup_last_segment(relative_path: NonEmptyStr) -> String {
+  fold(split(s: relative_path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}
+
+fn docker_cgroup_parent_segment(relative_path: NonEmptyStr) -> String {
+  let segments = filter(split(s: relative_path as String, delimiter: "/"), seg => seg != "")
+  if count(segments) < 2 {
+    ""
+  } else {
+    fold(segments, init: ParentScan { previous: "", current: "" }, f: (acc, seg) => ParentScan { previous: acc.current, current: seg }).previous
+  }
+}
+
+type ParentScan {
+  previous: String
+  current: String
+}
+
+fn docker_strip_scope_affixes(segment: String) -> String? {
+  let prefix = docker_systemd_scope_prefix as String
+  let suffix = docker_systemd_scope_suffix as String
+  let n = string_length(segment)
+  let head = string_length(prefix)
+  let tail = string_length(suffix)
+  if n > head + tail
+      && substring(s: segment, start: 0, end: head) == prefix
+      && substring(s: segment, start: n - tail, end: n) == suffix {
+    Present { value: substring(s: segment, start: head, end: n - tail) }
+  } else {
+    none
+  }
+}
+
+// Either spelling yields the id; anything else is a cgroup that is not a docker container's. The id
+// is admitted only at the daemon's full length, so a path that merely contains the word docker --
+// the daemon's own service cgroup, `docker.service`, is the obvious one -- never reads as a container.
+fn docker_cgroup_membership(relative_path: NonEmptyStr) -> DockerCgroupMembership {
+  let last = docker_cgroup_last_segment(relative_path: relative_path)
+  match docker_strip_scope_affixes(segment: last) {
+    Present { value: id } =>
+      if docker_container_id_syntax_ok(text: id) {
+        DockerContainerScope { container_id: id as NonEmptyStr }
+      } else {
+        NotADockerContainerCgroup { relative_path: relative_path }
+      }
+    Absent =>
+      if docker_cgroup_parent_segment(relative_path: relative_path) == (docker_cgroupfs_parent as String)
+          && docker_container_id_syntax_ok(text: last) {
+        DockerContainerScope { container_id: last as NonEmptyStr }
+      } else {
+        NotADockerContainerCgroup { relative_path: relative_path }
+      }
+  }
+}

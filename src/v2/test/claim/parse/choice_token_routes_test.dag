@@ -1,0 +1,122 @@
+module v2.test.parse.choice_token_routes
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PREPARED ROUTE TABLE MUST ANSWER EXACTLY WHAT THE INLINE DISPATCH ANSWERED. The rule is restated
+// here as the oracle, in the order parse_choice_on_present_token used to evaluate it, rather than
+// called through choice_token_route_for_class -- a witness that asked the table's own builder would
+// agree with itself. Checked over the rule's whole case space (below), for a class in neither FIRST
+// set too, which must route to backtracking by absence.
+type InlineChoiceRoute
+  = InlineLeft
+  | InlineRight
+  | InlineBacktrack
+
+// Membership through a map built once per choice, so the oracle shares no list scan with the builder.
+fn class_set(xs: List<Symbol>) -> Map<Symbol, Bool> {
+  fold_list(xs: xs, empty: empty_map(), cons: fn(acc, c) { map_insert(m: acc, key: c, value: true) })
+}
+
+fn in_class_set(set: Map<Symbol, Bool>, token_class: Symbol) -> Bool {
+  match map_lookup(m: set, key: token_class) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn inline_choice_route(
+  left_set: Map<Symbol, Bool>,
+  right_set: Map<Symbol, Bool>,
+  left_nullable: Bool,
+  token_class: Symbol
+) -> InlineChoiceRoute {
+  if in_class_set(set: left_set, token_class: token_class) && !in_class_set(set: right_set, token_class: token_class) {
+    InlineLeft
+  } else {
+    if in_class_set(set: right_set, token_class: token_class) && !in_class_set(set: left_set, token_class: token_class) {
+      InlineRight
+    } else {
+      if left_nullable && in_class_set(set: right_set, token_class: token_class) {
+        InlineRight
+      } else {
+        InlineBacktrack
+      }
+    }
+  }
+}
+
+fn table_choice_route(routes: Map<Symbol, ChoiceTokenRoute>, token_class: Symbol) -> InlineChoiceRoute {
+  match map_lookup(m: routes, key: token_class) {
+    Present { value: ChoiceRouteLeft } => InlineLeft
+    Present { value: ChoiceRouteRight } => InlineRight
+    Absent => InlineBacktrack
+  }
+}
+
+type ChoiceRouteCensus {
+  choices: Int
+  classes_checked: Int
+  disagreements: Int
+}
+
+fn choice_route_census_add(census: ChoiceRouteCensus, left_first: GrammarExprFirstFold, right_first: GrammarExprFirstFold, universe: List<Symbol>) -> ChoiceRouteCensus {
+  let routes = choice_token_routes(left_first: left_first, right_first: right_first)
+  let left_set = class_set(xs: left_first.terminals)
+  let right_set = class_set(xs: right_first.terminals)
+  fold_list(
+    xs: universe,
+    empty: ChoiceRouteCensus { choices: census.choices + 1, classes_checked: census.classes_checked, disagreements: census.disagreements },
+    cons: fn(acc, token_class) {
+      ChoiceRouteCensus {
+        choices: acc.choices,
+        classes_checked: acc.classes_checked + 1,
+        disagreements: if inline_choice_route(left_set: left_set, right_set: right_set, left_nullable: left_first.nullable, token_class: token_class)
+          == table_choice_route(routes: routes, token_class: token_class) {
+          acc.disagreements
+        } else {
+          acc.disagreements + 1
+        }
+      }
+    }
+  )
+}
+
+fn first_fold(terminals: List<Symbol>, nullable: Bool) -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: terminals, nullable: nullable }
+}
+
+// THE RULE'S CASE SPACE, EXHAUSTIVELY, rather than one grammar's population of it. The table builder
+// is generic over any pair of FIRST folds, and the rule branches only on membership of the class in
+// each side and on the left side's nullability. Over the universe {a, b, c, d} the left side holds
+// {a, b} and the right side {b, c}, so a is left-only, b is in both, c is right-only and d is in
+// neither; every nullable pairing is taken. That reaches every branch of the rule, including the
+// both-sides class under a nullable left, which is the one branch an ordinary grammar rarely shows.
+fn choice_route_case_space_census() -> ChoiceRouteCensus {
+  let universe = [^ctr_a, ^ctr_b, ^ctr_c, ^ctr_d]
+  let left_terms = [^ctr_a, ^ctr_b]
+  let right_terms = [^ctr_b, ^ctr_c]
+  let c0 = ChoiceRouteCensus { choices: 0, classes_checked: 0, disagreements: 0 }
+  let c1 = choice_route_census_add(census: c0, left_first: first_fold(terminals: left_terms, nullable: false), right_first: first_fold(terminals: right_terms, nullable: false), universe: universe)
+  let c2 = choice_route_census_add(census: c1, left_first: first_fold(terminals: left_terms, nullable: true), right_first: first_fold(terminals: right_terms, nullable: false), universe: universe)
+  let c3 = choice_route_census_add(census: c2, left_first: first_fold(terminals: left_terms, nullable: false), right_first: first_fold(terminals: right_terms, nullable: true), universe: universe)
+  choice_route_census_add(census: c3, left_first: first_fold(terminals: left_terms, nullable: true), right_first: first_fold(terminals: right_terms, nullable: true), universe: universe)
+}
+
+fn choice_route_census_choices(census: ChoiceRouteCensus) -> Int {
+  census.choices
+}
+
+fn choice_route_census_classes_checked(census: ChoiceRouteCensus) -> Int {
+  census.classes_checked
+}
+
+fn choice_route_census_disagreements(census: ChoiceRouteCensus) -> Int {
+  census.disagreements
+}
+
+test fn prepared_choice_routes_agree_with_the_inline_dispatch_rule() -> Bool {
+  let census = choice_route_case_space_census()
+  (choice_route_census_choices(census: census) == 4)
+    && (choice_route_census_classes_checked(census: census) == 16)
+    && (choice_route_census_disagreements(census: census) == 0)
+}

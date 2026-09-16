@@ -213,7 +213,7 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
 /// got `main_wet` SIGKILLed at rc=137 with no diagnostic. A declared constant may bound a
 /// refusal, never stand in for a reading. Remaining uses: fixtures about the fleet's own slots.
 /// Authority: `gunbc.host_budget_source` the `host_budget_declared_slot_is_not_a_reading_note` annotation.
-pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16106127360;
+pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 26843545600;
 
 /// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
 /// — SCAFFOLD (§7 seed-retained HAND-RUST; doomed/success witness receipts in that module):
@@ -660,6 +660,19 @@ pub enum RootDemandMeasurementReceipt {
 }
 
 pub const SIGKILL_SIGNAL: i32 = 9;
+
+/// THE PARENT'S EXIT CODE IS THE RECEIPT'S STANDING, NOT THE FACT THAT A RECEIPT WAS WRITTEN.
+/// A child killed at the limit or by any other signal, or one that completed with a nonzero
+/// status, measured no peak; a caller reading `$?` must see that as a deficit (DESIGN section 5:
+/// a wrong answer is a loud error). Only a completed, zero-status child answers 0 (review 66337).
+pub fn root_demand_measurement_exit_code(receipt: &RootDemandMeasurementReceipt) -> i32 {
+    match receipt {
+        RootDemandMeasurementReceipt::Completed { exit_status: 0, .. } => 0,
+        RootDemandMeasurementReceipt::Completed { .. }
+        | RootDemandMeasurementReceipt::Exceeded { .. }
+        | RootDemandMeasurementReceipt::Terminated { .. } => 1,
+    }
+}
 
 /// Map the parent's observation to the receipt. A SIGKILL under an enforceable limit is the kill
 /// at the limit; any other signal measured nothing.
@@ -1244,6 +1257,30 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
 /// diagnostics that render the source as text. A consumer deciding anything about the
 /// SOURCE must use the resolution, never this label (§3: the label is a rendering, not a
 /// second representation of the discriminant).
+/// INHERITED DEFECT, DECLARED HERE RATHER THAN LEFT FOR THE NEXT READER TO TRIP OVER
+/// (found by review 2026-09-12; NOT introduced by the slot-sizing change that surfaced it).
+///
+/// THE MISMATCH: `gunbc.whole_corpus_compile_admission`'s `.dag` surface explicitly REFUSES a
+/// `HostBudgetDeclaredUnverified` resolution -- an unverified request is not an observation of any
+/// host, so it may not license a whole-corpus compile. This function reduces the typed resolution
+/// to `(Option<u64>, String)`, and `HostBudgetResolution::bytes()` returns the REQUESTED number for
+/// the unverified arm. The Rust admission decision then checks the number and never asks whether it
+/// was verified, so a sufficiently large unverified request can admit through the composition that
+/// the model refuses.
+///
+/// WHAT IS AND IS NOT CLAIMED. The mechanism is read from source. It is NOT established that this
+/// has occurred on any host, and it is NOT the desired-row substitution it superficially resembles:
+/// the runtime path does not pass `DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES`, and the budget resolver
+/// limits an environment request by the observed bound where one is readable. Conflating the two
+/// would attach this defect to the wrong change and leave it unowned when that change lands.
+///
+/// NEXT-RUNG TRIGGER: carry the typed `HostBudgetResolution` into the real admission decision so the
+/// unverified arm is refused where the model refuses it. Reconstructing verification by parsing the
+/// rendered `label()` string is explicitly NOT the repair -- that would make a second authority for
+/// a fact the type already holds, which is how this seam lost the distinction in the first place.
+///
+/// RUNG: *mitigatable*. The `.dag` authority states the correct rule and the Rust path does not
+/// enforce it; nothing detects the divergence today.
 pub fn read_host_budget_bytes() -> (Option<u64>, String) {
     let resolution = read_host_budget_resolution();
     (resolution.bytes(), resolution.label())
@@ -1972,11 +2009,76 @@ mod tests {
         assert!(msg.contains("WholeCorpusCompileBudgetBelowMeasuredDemand"));
         assert!(msg.contains("cgroup memory.high (/sys/fs/cgroup/runner.slice)"));
         assert!(msg.contains("--entry"));
-        let ci_slot = admit(Some(DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES), &public_root());
+        // THE OLD EFFECTIVE SLOT STILL REFUSES, AND THIS IS THE CONTROL THAT MUST SURVIVE THE
+        // 2026-09-12 SIZING CHANGE. 16106127360 is what every runner slot in the fleet actually
+        // carries today; it sits below the measured demand and is refused, which is the property
+        // this test was written for and the one a desired-row edit must not quietly retire.
+        let old_effective_slot = admit(Some(16_106_127_360), &public_root());
         assert!(matches!(
-            ci_slot,
+            old_effective_slot,
             WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
         ));
+        assert!(whole_corpus_compile_refusal_diagnostic(&old_effective_slot).is_some());
+
+        // THE DECLARED ROW NOW ADMITS, AND THAT IS A STATEMENT ABOUT A DESIRED CONFIGURATION
+        // RATHER THAN ABOUT ANY HOST. `DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES` mirrors
+        // `gunbc.runner_slot_allocation`'s desired row, which moved to 25 GiB; 25 GiB clears the
+        // 16 GiB measured demand, so the admission flips from refusal to admission BY POLICY.
+        //
+        // THE THRESHOLD IS NOT TOUCHED. Lowering it to keep the old assertion green would be
+        // choosing a rule to preserve an answer, which is the reverse of an oracle.
+        //
+        // WHAT THIS DOES NOT ESTABLISH: that any host can honour it. No fleet member carries this
+        // limit -- the control above is the live figure -- so a run admitted on this basis would
+        // still meet the old effective ceiling.
+        let declared_slot = admit(Some(DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES), &public_root());
+        assert!(whole_corpus_compile_refusal_diagnostic(&declared_slot).is_none());
+    }
+
+    /// The discriminating red for review 66337: a killed or failing child must not read as
+    /// success to anyone consulting the parent's exit status.
+    #[test]
+    fn measure_root_demand_parent_exits_nonzero_unless_the_child_completed_cleanly() {
+        let run = || RootDemandMeasurementRun {
+            root: public_root(),
+            limit_bytes: 1,
+            limit_source: "test".to_string(),
+            measured_on_host: "test".to_string(),
+            instrument_run: "test".to_string(),
+            census: parse_root_demand_measurement_census(""),
+        };
+        assert_eq!(
+            root_demand_measurement_exit_code(&root_demand_measurement_receipt(
+                run(),
+                RootDemandMeasurementWait::Exited(0),
+                1
+            )),
+            0
+        );
+        assert_eq!(
+            root_demand_measurement_exit_code(&root_demand_measurement_receipt(
+                run(),
+                RootDemandMeasurementWait::Exited(1),
+                1
+            )),
+            1
+        );
+        assert_eq!(
+            root_demand_measurement_exit_code(&root_demand_measurement_receipt(
+                run(),
+                RootDemandMeasurementWait::Signaled(SIGKILL_SIGNAL),
+                1
+            )),
+            1
+        );
+        assert_eq!(
+            root_demand_measurement_exit_code(&root_demand_measurement_receipt(
+                run(),
+                RootDemandMeasurementWait::Signaled(15),
+                1
+            )),
+            1
+        );
     }
 
     /// Positive control and its one-byte-below red, at the public root's own row.

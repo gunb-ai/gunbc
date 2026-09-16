@@ -7,9 +7,10 @@ import extdeps.ci_runner.types {
 }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.github.hosted_runners {
-  GithubHostedRunnerCatalogRow, RepoVisibility, PublicRepo, PrivateRepo,
+  GithubHostedRunnerCatalogRow,
   github_hosted_ubuntu_catalog,
 }
+import extdeps.github.repository { PublicRepository }
 import extdeps.languages.yaml.gha_workflow { runner_label_string }
 import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.ci_runner.blacksmith { blacksmith_runner_catalog, blacksmith_label_catalog }
@@ -106,7 +107,7 @@ fn surveyed_label_catalogs() -> List<RunnerLabelCatalog> {
 // gets an unresolved reading with a cause, which is the correct answer to a label whose meaning
 // is not fixed.
 fn github_hosted_public_rows() -> List<GithubHostedRunnerCatalogRow> {
-  filter(github_hosted_ubuntu_catalog(), r => r.visibility == PublicRepo)
+  filter(github_hosted_ubuntu_catalog(), r => r.visibility == PublicRepository)
 }
 
 fn github_hosted_label_row(row: GithubHostedRunnerCatalogRow) -> RunnerLabelRow {

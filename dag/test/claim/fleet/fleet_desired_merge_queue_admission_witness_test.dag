@@ -25,6 +25,10 @@ import gunbc.fleet_desired_admission {
 }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.rest { RestOk, RestResponseObserved, RestBodyRead }
+import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
+import test.claim.rest_exchange_replay_test { replay_frame, fixture_for }
+import test.fixture.rest_exchange_replay_probe
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -302,18 +306,19 @@ test fn a_push_payload_without_after_refuses_naming_the_member() -> Bool {
 }
 
 // THE EMITTED TRIGGER AND ROUTING. The push route exists in the workflow only if the emission says
-// so; both triggers are present during the transition, each decide step runs its own entry, and only
-// the push step carries the forge token.
-test fn the_emitted_fleet_desired_workflow_routes_push_and_workflow_run_to_their_own_entries() -> Bool {
+// so, and it is now the ONLY route: the workflow_run trigger and its decide step were deleted with
+// the push-on-main required run (gunbc.witness_floor_workflow witness_floor_triggers), which is the
+// event that route keyed on. The two NOT-contains are the discriminating RED for that deletion --
+// restoring either the trigger or the entry reds this row -- and `actions: read` stays because the
+// push route reads the forge for the revision's merge_group runs.
+test fn the_emitted_fleet_desired_workflow_routes_push_to_its_entry_and_carries_no_floor_event_route() -> Bool {
   match expected_fleet_desired_yml() {
     FleetDesiredGenerated { content: y } =>
-      contains(y, "workflow_run:")
-        && contains(y, "push:")
-        && contains(y, "if: github.event_name == 'push'")
+      contains(y, "push:")
         && contains(y, "--function admit_fleet_desired_from_push_wet")
-        && contains(y, "if: github.event_name == 'workflow_run'")
-        && contains(y, "--function admit_fleet_desired_from_floor_event_wet")
         && contains(y, "actions: read")
+        && !contains(y, "workflow_run")
+        && !contains(y, "admit_fleet_desired_from_floor_event_wet")
     FleetDesiredGenerationRefused { reason: _ } => false
   }
 }
@@ -338,5 +343,43 @@ test fn the_absent_unconcluded_and_unscoped_refusals_claim_only_what_they_establ
         && !contains(unscoped, "says nothing about")
     }
     none => false
+  }
+}
+
+// THE DECODED CONTROL. Every row above hands the fold a CONSTRUCTED WorkflowRun, and every one of
+// them stayed green while the wet route refused every real landing: the interpreter decoded
+// GitHub's run list type-blind, so `status` arrived as the string "completed", matched no arm of
+// WorkflowRunStatus, and the success read as RequiredCiMergeGroupRunUnconcluded (fleet-desired run
+// 34859333101 on a8d4fdeb). The rows were discriminating on the fold and not on the path that
+// mattered. This body is GitHub's merge_group run list for a8d4fdeb (run 34853888826, trimmed to the
+// declared fields, values verbatim), served through the REST replay seam so the same decode the
+// wet entry runs produces the records the fold judges.
+data live_a8d4_merge_group_runs_body: String = "{\"total_count\":1,\"workflow_runs\":[{\"id\":34853888826,\"name\":\"witnesses\",\"path\":\".github/workflows/witnesses.yml\",\"head_sha\":\"a8d4fdeb1c2c971fcf9b17614d80e75c63f07d50\",\"head_branch\":\"gh-readonly-queue/main/pr-11256-74627165a69024b49b4069f25ac285c9abdade5d\",\"event\":\"merge_group\",\"status\":\"completed\",\"conclusion\":\"success\",\"workflow_id\":335117115,\"run_number\":19305,\"run_attempt\":1,\"actor\":{\"login\":\"briansrls\",\"id\":11205878,\"type\":\"User\"},\"triggering_actor\":{\"login\":\"briansrls\",\"id\":11205878,\"type\":\"User\"},\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/34853888826\",\"created_at\":\"2026-09-14T14:10:32Z\",\"updated_at\":\"2026-09-14T15:00:21Z\",\"pull_requests\":[]}]}"
+
+data live_a8d4_revision: String = "a8d4fdeb1c2c971fcf9b17614d80e75c63f07d50"
+
+test fn the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "WorkflowRunsPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_a8d4_merge_group_runs_body } }
+    )]),
+    subject: fn(_scope) { test.RestReplay.WorkflowRunsPage() }
+  )
+  match result {
+    WitnessReturned { value } =>
+      match value.observed {
+        RestOk =>
+          match git_object_id_from_untagged_hex(hex: live_a8d4_revision) {
+            Present { value: r } =>
+              match accept_required_ci_merge_group_runs(revision: r, runs: value.runs, observed_epoch: epoch_match()) {
+                RequiredCiAdmitted { succeeded: _ } => true
+                RequiredCiRefused { cause: _ } => false
+              }
+            none => false
+          }
+        _ => false
+      }
+    WitnessRefused { diagnostic: _ } => false
   }
 }

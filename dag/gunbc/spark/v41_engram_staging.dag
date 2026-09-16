@@ -1,0 +1,132 @@
+module gunbc.spark.v41_engram_staging
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.content_hash { ContentHash, serialize_content_hash }
+import std.artifact_store { artifact_realization_digest }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.v41_runtime_candidate { v41_input }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
+}
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
+import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
+import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
+
+// ── CUT C: ARTIFACT STAGING, NOT SERVICE MUTATION ──────────────────────────────────────────────
+//
+// This module may create verified content-addressed files in a bounded staging area. It may not
+// start or stop processes, consume GPU memory, alter units, withdraw an incumbent, or claim seats.
+// Fabric/storage selection decides which provider holds the bytes; this
+// request names exact image X and exact rank-local stores R0..R3 and does not pick the copy source.
+//
+// THE INCUMBENT ON GROUP A IS AN OBSERVATION, NOT THIS MODULE'S ASSUMPTION. Session proud-deer-538
+// (2026-09-15) read a Ray/gunbc-spark-pair cluster holding most of each rank's unified pool with no
+// listener on :8000. Operator later cleared disk use and said the group is unused: stage AROUND that
+// occupant. Cut D tears it down inside an authorized transaction. This cut does not.
+//
+// WHY ENGRAM GOES TO DISK AT ALL is proud-deer-538's reading of the published repo manifest
+// (v41_engram_disk_justification_standing): resident Engram would leave 2.2 GiB on a 121 GiB pool,
+// which is why the published NoFeasibleRealization is correct; storage-backed Engram leaves 49.5.
+//
+// Prefer route D when admitted: durable origin -> fill each rank's local NVMe. Route B may become
+// equivalent once the local artifact exists. A missing local store still refuses at token time
+// (gunbc.spark.v41_runtime_realized v41_token_time); staging never records an NFS token-time path.
+type V41StagedRankStore sole_constructor {
+  rank: Nat
+  identity: ContentHash
+  readback: ContentHash
+}
+
+fn v41_staged_rank_store(rank: Nat, identity: ContentHash, readback: ContentHash) -> V41StagedRankStore {
+  V41StagedRankStore { rank: rank, identity: identity, readback: readback }
+}
+
+fn v41_staged_matching(encoding: V41RowStoreEncoding) -> List<V41StagedRankStore> {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      map(rs, r => v41_staged_rank_store(rank: r.rank, identity: r.digest, readback: r.digest))
+    V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41StagedRankStore>
+    V41RowStoreEncodingRefused { defects: _ } => [] as List<V41StagedRankStore>
+  }
+}
+
+fn v41_staged_with_readback(encoding: V41RowStoreEncoding, readback: ContentHash) -> List<V41StagedRankStore> {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      map(rs, r => v41_staged_rank_store(rank: r.rank, identity: r.digest, readback: readback))
+    V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41StagedRankStore>
+    V41RowStoreEncodingRefused { defects: _ } => [] as List<V41StagedRankStore>
+  }
+}
+
+type V41StagingRequest sole_constructor {
+  image: V41OciImageDigest
+  ranks: List<ContentHash>
+}
+
+fn v41_staging_request(image: V41OciImageDigest, encoding: V41RowStoreEncoding) -> V41StagingRequest? {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      Present { value: V41StagingRequest { image: image, ranks: map(rs.sort_by(r => r.rank), r => r.digest) } }
+    V41RowStoreEncodingUnestablished { obligation: _ } => none
+    V41RowStoreEncodingRefused { defects: _ } => none
+  }
+}
+
+type V41StagingReceipt
+  = V41StagingVerified {
+      request_key: ContentHash
+      image_readback: OciContentDigest
+      ranks: List<V41StagedRankStore>
+    }
+  | V41StagingUnestablished { obligation: NonEmptyStr }
+  | V41StagingRefused { defects: List<NonEmptyStr> }
+
+fn v41_stage(
+  request: V41StagingRequest,
+  image_readback: OciContentDigest,
+  rank_readbacks: List<V41StagedRankStore>,
+  provenance: VllmImageProvenance,
+) -> V41StagingReceipt {
+  match provenance {
+    AdoptedUnderExpectedTag => V41StagingRefused {
+      defects: ["staging a tag-only image is refused; the receipt must carry the produced digest" as NonEmptyStr],
+    }
+    BuiltByThisRun => {
+      let image_ok = render_oci_content_digest_wire(d: image_readback) == render_oci_content_digest_wire(d: request.image.manifest)
+      let count_ok = length(rank_readbacks) == length(request.ranks)
+      let each_ok = all(enumerate(request.ranks), p => any(rank_readbacks, s =>
+        s.rank == p.first && (serialize_content_hash(hash: s.identity) as String) == (serialize_content_hash(hash: p.second) as String)
+          && (serialize_content_hash(hash: s.readback) as String) == (serialize_content_hash(hash: s.identity) as String)))
+      if !image_ok {
+        V41StagingRefused { defects: ["image readback does not match the requested manifest digest" as NonEmptyStr] }
+      } else if !count_ok || !each_ok {
+        V41StagingRefused { defects: ["rank-local readback does not match the requested row-store identities" as NonEmptyStr] }
+      } else {
+        V41StagingVerified {
+          request_key: artifact_realization_digest(inputs: concat(
+            [
+              v41_input(identity: "image.manifest", value: render_oci_content_digest_wire(d: request.image.manifest)),
+              v41_input(identity: "image.config", value: render_oci_content_digest_wire(d: request.image.config)),
+            ],
+            map(enumerate(request.ranks), p => v41_input(identity: join(["rank.", to_string(p.first)], ""), value: serialize_content_hash(hash: p.second) as String)))),
+          image_readback: image_readback,
+          ranks: rank_readbacks,
+        }
+      }
+    }
+  }
+}
+
+// THE LIVE GROUP-A FILL IS AN OBLIGATION UNTIL THE ORIGIN BYTES ARE TRANSFORMED. This cut models the
+// request and the receipt shape. Minting a verified receipt without a readback would be
+// specification-without-execution.
+data v41_engram_disk_justification_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "session proud-deer-538 (2026-09-15) reading of the published repo manifest, not taken by this lane: total checkpoint 475.3 GiB across 48 shards; Engram shards 47 and 48 189.1 GiB storage-backed; everything else 286.1 GiB resident; TP4 resident 71.5 GiB/rank against the 121 GiB pool leaves 49.5 GiB headroom. If Engram stayed resident it would be 118.8 GiB/rank against 121, fitting by 2.2 GiB with nothing left for KV, context, activations, or the runtime — the published NoFeasibleRealization is correct rather than conservative, and disk converts 2.2 GiB of headroom into 49.5" as NonEmptyStr,
+}
+
+data v41_group_a_staging_standing: V41StagingReceipt = V41StagingUnestablished {
+  obligation: "Door 3 is cleared for disk. Occupant cited from proud-deer-538: gunbc-spark-pair stays up on spark-a3ee, spark-3bd5, spark-c2b1, spark-ac79; this cut stages around it and does not tear it down. Staging dirs exist at /home/briansrls/v41-engram-staging. Fill is Unestablished until published-shard rank stores have a modeled identity and a readback; a verified receipt is not minted from empty directories. Disk justification: v41_engram_disk_justification_standing. Patch apply is the next PR in this lane, not this one." as NonEmptyStr,
+}

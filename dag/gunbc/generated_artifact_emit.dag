@@ -4,7 +4,7 @@ module gunbc.generated_artifact_emit
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -37,14 +37,16 @@ import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGeneratio
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
+import gunbc.contributor_onboarding_path { expected_contributor_onboarding_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.runner_host_grants { runner_host_sudoers_content }
-import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.runner_host_grants {
+  runner_host_refused_sudoers_content, runner_host_sudoers_content }
+import gunbc.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.plan { expected_plan_md }
 import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
 import gunbc.stage0_crate_layout_emit {
@@ -103,6 +105,7 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     DesignArtifact => artifact_generated(content: expected_design_md())
     DesignFailureModesArtifact => artifact_generated(content: expected_design_failure_modes_md())
     DesignRungDropsArtifact => artifact_generated(content: expected_design_rung_drops_md())
+    ContributorOnboardingArtifact => artifact_generated(content: expected_contributor_onboarding_md())
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
     GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
     GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(
@@ -148,6 +151,21 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
             "no runner host deploy row for enrolled host ",
             unmodeled as String
           )
+        }
+      RunnerHostDeployRefused { host: refused, cause: why } =>
+        match runner_host_spec_for(host: refused) {
+          RunnerHostSpecFound { spec: spec } =>
+            artifact_generated(
+              content: runner_host_refused_sudoers_content(
+                spec: spec,
+                cause: why,
+                artifact_path: artifact_path(a: a),
+              )
+            )
+          RunnerHostSpecAbsent { host: h } =>
+            ArtifactGenerationRefused {
+              reason: concat("runner host refused with no spec: ", h as String),
+            }
         }
     }
     PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
@@ -199,6 +217,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     DesignArtifact => true
     DesignFailureModesArtifact => true
     DesignRungDropsArtifact => true
+    ContributorOnboardingArtifact => true
     GithooksPrePushArtifact => true
     GithooksPreCommitArtifact => true
     GeneratedArtifactMergeDriverArtifact => true

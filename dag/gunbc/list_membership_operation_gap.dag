@@ -76,13 +76,15 @@ type MembershipArgumentShape
 // from a string. The corrected method resolves each first argument to its binding and reads the
 // declared element type, which is what the rows below record.
 //
-// THE TOTALS ARE DERIVABLE AND ARE DELIBERATELY NOT STORED. Ten occurrences is the sum of the
-// `occurrences` fields; five producers is the row count. An earlier revision carried both as
+// THE TOTALS ARE DERIVABLE AND ARE DELIBERATELY NOT STORED. The occurrence total is the sum of the
+// `occurrences` fields; the producer count is the row count. An earlier revision carried both as
 // scalar `data` rows so a later census could "check itself against either grain" — that
 // justification was wrong. A total transcribed from the same rows it summarises is not an
 // independent oracle; checking one against the other is `measure() == measure()`, the change
 // detector DESIGN section 5 rules out, and it adds a second authority that drifts silently the
-// first time a row is edited without it. If a consumer needs a count, it folds the rows.
+// first time a row is edited without it. If a consumer needs a count, it folds the rows. (This
+// paragraph once transcribed both totals itself, and they went stale when gunbc#9483 deleted a row --
+// the same failure, in prose.)
 //
 // Rows are keyed on the declaration that PRODUCES the collection, because that is the grain at
 // which the missing operation is supplied: one declaration serves every occurrence over its
@@ -119,7 +121,7 @@ data list_membership_gap_sites: List<ListMembershipGapSite> = [
   },
 ]
 
-// TWO OF THESE FIVE MODULE PATHS WERE FALSE WHEN THIS CARRIER MERGED, and the enrollment below
+// TWO OF THE MODULE PATHS THIS CARRIER MERGED WITH WERE FALSE, and the enrollment below
 // caught them on its first execution. Both named the FILE
 // (`test.claim.attribution_span_witness_test`) where the module declares itself without the `_test`
 // suffix (`test.claim.attribution_span_witness`). A grep for the declaration name passed, because

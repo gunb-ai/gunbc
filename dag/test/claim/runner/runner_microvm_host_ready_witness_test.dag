@@ -2,7 +2,7 @@ module test.claim.runner_microvm_host_ready_witness
 
 import gunbc.executor_privileged_operation { EnsureSupplementaryGroupMembership, executor_privileged_operation_argv, executor_privileged_operation_sudoers_line }
 import gunbc.runner_host_grants { runner_host_privileged_operations }
-import gunbc.runner_host_deploy { srv2_runner_host_deploy }
+import gunbc.runner_host_deploy { fleet_runner_host_deploys }
 import std.types { String, Bool, List }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.virtualization.firecracker {
@@ -97,13 +97,18 @@ test fn the_kvm_grant_appends_one_group_to_the_executor_and_nothing_else() -> Bo
     && (executor_privileged_operation_sudoers_line(grantee: "gunbc-ci" as NonEmptyStr, op: op) as String) == "gunbc-ci ALL=(root) NOPASSWD: /usr/sbin/usermod -aG kvm gunbc-ci"
 }
 
+// THE NAME SAYS EVERY DEPLOY AND NOW THE CHECK DOES TOO. It sampled srv2 -- one row, chosen because
+// it existed -- and asserted a property its name claims of all of them. srv2 no longer HAS a deploy
+// row: its width refuses, so no operational row is constructed for it. Repointing the sample at
+// another host would preserve the same gap; folding over the admitted population makes the assertion
+// match its name and removes the dependence on which host happens to be listed.
 test fn every_runner_host_deploy_grants_the_executor_kvm_membership() -> Bool {
-  let job = srv2_runner_host_deploy.job_user
-  length(filter(runner_host_privileged_operations(deploy: srv2_runner_host_deploy), op =>
-    match op {
-      EnsureSupplementaryGroupMembership { login: l, group: g } => (l as String) == (job as String) && (g as String) == "kvm"
-      _ => false
-    })) == 1
+  all(fleet_runner_host_deploys, d =>
+    length(filter(runner_host_privileged_operations(deploy: d), op =>
+      match op {
+        EnsureSupplementaryGroupMembership { login: l, group: g } => (l as String) == (d.job_user as String) && (g as String) == "kvm"
+        _ => false
+      })) == 1)
 }
 
 // READINESS MUST NOT MOVE WITH THE INSTRUMENTS. A host that can boot a guest but carries no way to

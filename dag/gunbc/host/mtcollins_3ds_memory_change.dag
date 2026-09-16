@@ -18,6 +18,7 @@ import gunbc.memory_observation {
   MemoryEvaluationEvidence, read_verified_memory_capture,
 }
 import gunbc.mtcollins_memory_change {
+  mtcollins_dram_cycle_start,
   mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_hynix_part,
   mtcollins_training_mixture_finding, mtcollins_memory_evidence_from_capture,
   mtcollins_training_capture_path, mtcollins_training_capture_sha256, mtcollins_replay_proposal,
@@ -52,20 +53,28 @@ fn mtcollins_3ds_configuration(roles: List<MtCollinsChannelPopulationRole>) -> M
 
 // Coverage is two complete captured boot cycles, not continuous attachment or
 // a duration inferred from the script wrapper. No SEL clock correlation is used.
+fn mtcollins_3ds_printed_parts() -> List<MemoryPrintedPartBinding> {
+  [
+      MemoryPrintedPartBinding { part: mtcollins_samsung_observed_part, printed: "M393A8G40D40-CRB", required_descriptors: ["3DS 64GB 2133 ECC 8R x4"] },
+      MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK", required_descriptors: [] },
+    ]
+}
+
+fn mtcollins_3ds_printed_positions(configuration: MemoryConfiguration) -> List<MemoryPrintedPositionBinding> {
+  map(configuration.population, dimm => MemoryPrintedPositionBinding {
+      position: dimm.position, printed: concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":") as NonEmptyStr,
+    })
+}
+
 fn mtcollins_3ds_collector(configuration: MemoryConfiguration, payload: String) -> MemoryCollectorReceipt {
   MemoryCollectorReceipt {
     source: mtcollins_3ds_capture_source,
-    printed_parts: [
-      MemoryPrintedPartBinding { part: mtcollins_samsung_observed_part, printed: "M393A8G40D40-CRB", required_descriptors: ["3DS 64GB 2133 ECC 8R x4"] },
-      MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK", required_descriptors: [] },
-    ],
-    printed_positions: map(configuration.population, dimm => MemoryPrintedPositionBinding {
-      position: dimm.position, printed: concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":") as NonEmptyStr,
-    }),
+    printed_parts: mtcollins_3ds_printed_parts(),
+    printed_positions: mtcollins_3ds_printed_positions(configuration: configuration),
     expected_payload_token: "DRAM populated DIMMs:", session: "mtcollins1 SOL 2026-09-12T18:31:43Z",
     expected_stimulus: "two complete captured firmware-210525 boot cycles",
     observed_stimulus: Present { value: "two complete captured firmware-210525 boot cycles" },
-    coverage: MemoryCaptureCycles { required_cycles: 2, start_token: "NOTICE:  DRAM FW version 210525", completion_token: "ERROR:   Non-identical DIMM mixture NOT supported!" },
+    coverage: MemoryCaptureCycles { required_cycles: 2, start_token: mtcollins_dram_cycle_start, completion_token: "ERROR:   Non-identical DIMM mixture NOT supported!" },
     process_exit: ExitSuccess, payload: payload, capture_digest: mtcollins_3ds_capture_sha256, previous_capture_digest: none,
   }
 }

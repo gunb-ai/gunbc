@@ -21,7 +21,7 @@ import v2.std.optional {
 }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
-import v2.std.text { String }
+import v2.std.text { String, string_eq }
 
 type ModuleDeclarationFact {
   module: String
@@ -195,10 +195,6 @@ fn reference_derived_resolution_facts_flagged_pending_reference_producer(
       )
     )
   )
-}
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
 }
 
 data no_paths: FreeMonoid<String> = Empty

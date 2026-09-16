@@ -976,21 +976,82 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// The memory capture digest control was executed hermetically after its wet
-// pass: DigestStdin refused with NoMockResponse before a verdict. Its real
-// terminal is required by local_repo_wet_schedule on the same prepared subject.
+// MegaRAC committed-artifact sha256sum: first host effect is shell.Mktemp.Dir (checksum
+// file), which declares no mock_response. Triple with local_repo_wet_schedule and the
+// LocalRepoWetLane exclusion on megarac_spx_ui_surface_artifact_integrity_witness_test.dag.
+// The catalog-contents Read of the same checkout path is hermetic input, not a route gap.
+// Memory capture verification consumes DigestStdin over the bytes read once.
 fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
-  Cons {
-    head: FloorRouteGapExpectation {
-      identity: "test.claim.memory_capture_real_execution_witness.w_capture_digest_binds_consumed_content",
-      operation: "DigestStdin", ground: NoMockResponse {}
-    },
+  Cons { head: FloorRouteGapExpectation { identity: "test.claim.memory_capture_real_execution_witness.w_capture_digest_binds_consumed_content", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_early_exit_refuses_absence_on_real_bytes", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_four_real_captures_retain_statement_inventory_and_missing_receipts", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_truncated_configuration_cannot_support_absence", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_real_host_userspace_positive_and_truncated_negative", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness.committed_spx_ui_surface_hashes_to_the_catalog_identity", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness.committed_sol_host_payload_hashes_to_the_positive_control_identity", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+
+  }
+  }
+}
+
+// The If / Let / Call real-execution witnesses (gunbc-private#60 trigger) reach shell.Exec.Run
+// exactly as chunk_04's three do, and join at the same operation and ground; their real terminal,
+// and chunk_04's three since gunbc#11357, is the floor's local-repo wet lane
+// (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule; exclusion row
+// gunbc.ci.ci_layer_roots excl_local_repo_wet_bash_materialized_reason).
+fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_let_binds_a_variable_a_later_operation_executes_through", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_RED_let_value_with_metacharacters_stays_one_word_and_cannot_run", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_call_runs_the_callee_with_each_arg_round_tripped_exactly", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_RED_call_callee_with_metacharacters_is_a_name_and_cannot_run", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_if_selects_the_observed_branch", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_RED_if_operand_with_metacharacters_compares_as_one_word", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_if_branch_fail_fast_stops_the_branch_and_the_plan", operation: "Run", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+// The four test.claim.durable_cas_file_store_wet_witness identities: CAS publication read-back,
+// sequential loser naming the winner, generation-two advance, and a non-contention store refusal.
+// First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment: this
+// expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the
+// gunbc.ci_layer_roots witness_exclusion_frontier LocalRepoWetLane row for
+// durable_cas_file_store_wet_witness_test.dag. Floor run 34797864081 measured the unenrolled
+// DirWithTemplate / NoMockResponse gap on each identity.
+fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.commit_then_independent_read_back_agrees_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.an_advance_after_commit_lands_generation_two_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
   }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Empty {} } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Empty {} } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

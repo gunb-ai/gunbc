@@ -1,0 +1,527 @@
+module test.claim.spark.v41_runtime_candidate_witness
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, NamedField, decl_field_ref }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash }
+import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
+import extdeps.vllm.source_build { vllm_d2d649e6_revision, vllm_deepseek_v4_1_sm12_revision, vllm_recipe_targeting }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel, flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels, FlashInferPublishedRelease, FlashInferProjectStable }
+import gunbc.spark.serving_deployment_selection { topology_shape }
+import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity, engram_route_c_identity }
+import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
+import gunbc.spark.v41_runtime_candidate {
+  V41EnginePatch, v41_engine_patch, V41PatchPopulation, V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
+  V41EngramPartitionAuthority, PartitionFixedByPatch, PartitionByLaunchConfiguration,
+  V41RuntimeArtifactInputs, V41ModelSourceInputs, V41EngramRealizationInputs, V41CandidateInputs,
+  V41ManifestObserved, V41ManifestUnestablished,
+  V41EngramResidencyPartition, V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
+  V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
+  v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
+  v41_engram_population_of, v41_is_embedding_table,
+  V41PatchApplicationStanding, V41VanillaSourceAtRevision, V41PatchApplicationUnestablished, V41PatchApplicationRefused,
+  v41_patch_application_standing, v41_storage_patch_application_standing,
+}
+import extdeps.safetensors.format {
+  SafetensorsPopulationStanding, safetensors_population_standing,
+  MembershipClosedAgainstFullIndex,
+}
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram,
+  deepseek_v4_1_flash_engram_index_members, deepseek_v4_1_flash_engram_shard_files,
+  deepseek_v4_1_flash_engram_population_reading, deepseek_v4_1_flash_engram_population,
+  deepseek_v4_1_flash_index_tensor_count,
+}
+
+// THE SAME TWELVE ROWS, READ AS IF THE INDEX HAD BEEN ENUMERATED. Every key-identity law below needs a
+// candidate that actually keys, and the live population cannot produce one: it closes against the rows
+// that were read, which this module now treats as an unestablished axis. Supplying a closed standing is
+// the honest way to write "if the index were enumerated" -- it changes only the closure, and it is a
+// fixture rather than a claim about the checkpoint.
+data w_closed_population: SafetensorsPopulationStanding = safetensors_population_standing(
+  members: deepseek_v4_1_flash_engram_index_members,
+  shards: deepseek_v4_1_flash_engram_shard_files,
+  closure: MembershipClosedAgainstFullIndex {
+    index_population_count: deepseek_v4_1_flash_index_tensor_count,
+    how: "fixture: this closure is asserted by the test, not read from the revision's index" as NonEmptyStr,
+  },
+  reading: deepseek_v4_1_flash_engram_population_reading,
+)
+
+fn w_sha(c: String) -> Sha256Digest {
+  Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
+}
+
+fn w_patch_against(path: String, c: String, applies_to: VllmSourceRevision) -> List<V41EnginePatch> {
+  match v41_engine_patch(path: path as NonEmptyStr, applies_to: applies_to, sha256_hex: w_sha(c: c).hex as String, purpose: "fixture" as NonEmptyStr) {
+    Present { value: p } => [p]
+    Absent => [] as List<V41EnginePatch>
+  }
+}
+
+fn w_patch(path: String, c: String) -> List<V41EnginePatch> {
+  w_patch_against(path: path, c: c, applies_to: vllm_d2d649e6_revision)
+}
+
+type WPatchSpec {
+  path: String
+  c: String
+}
+
+fn w_observed(pairs: List<WPatchSpec>, partition: V41EngramPartitionAuthority) -> V41PatchPopulation {
+  V41PatchesObserved { patches: flat_map(pairs, x => w_patch(path: x.path, c: x.c)), partition: partition }
+}
+
+// A CONTROLLED FIXTURE WITH EVERY AXIS ESTABLISHED, so the key laws below are asserted over a keyed
+// candidate. The live candidate is deliberately unestablished and is asserted separately.
+fn w_inputs_with_wheels(patches: V41PatchPopulation, partition: V41EngramResidencyPartition, route: DeclarationRef, tp: Nat, device: GpuComputeCapability, max_jobs: Nat, wheels: List<FlashInferWheel>) -> V41CandidateInputs {
+  V41CandidateInputs {
+    runtime: V41RuntimeArtifactInputs {
+      recipe: vllm_recipe_targeting(base: v41_candidate_recipe(), torch_cuda_arch_list: v41_candidate_recipe().torch_cuda_arch_list, install_kv_connectors: v41_candidate_recipe().install_kv_connectors, max_jobs: max_jobs, nvcc_threads: 2),
+      kernel_acquisition: flashinfer_0_6_18_post1,
+      kernel_wheels: wheels,
+      patches: patches,
+    },
+    model_source: V41ModelSourceInputs {
+      checkpoint_revision: "dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr,
+      weights: V41ManifestObserved { digest: w_sha(c: "a") },
+      tokenizer: V41ManifestObserved { digest: w_sha(c: "b") },
+    },
+    engram: V41EngramRealizationInputs { partition: partition, population: w_closed_population, row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") }, route: route },
+    topology: topology_shape(tensor_parallel_degree: tp, replica_count: 1),
+    device: device,
+  }
+}
+
+fn w_inputs(patches: V41PatchPopulation, partition: V41EngramResidencyPartition, route: DeclarationRef, tp: Nat, device: GpuComputeCapability, max_jobs: Nat) -> V41CandidateInputs {
+  w_inputs_with_wheels(patches: patches, partition: partition, route: route, tp: tp, device: device, max_jobs: max_jobs, wheels: flashinfer_0_6_18_post1_wheels)
+}
+
+fn w_wheels_named(names: List<String>) -> List<FlashInferWheel> {
+  flat_map(names, n => filter(flashinfer_0_6_18_post1_wheels, w => (w.package as String) == n))
+}
+
+fn w_two_patches() -> V41PatchPopulation {
+  w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "1" }, WPatchSpec { path: "engram_prefetch.patch", c: "2" }], partition: PartitionByLaunchConfiguration)
+}
+
+fn w_default(patches: V41PatchPopulation) -> V41CandidateInputs {
+  w_inputs(patches: patches, partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6)
+}
+
+fn w_key(s: V41CandidateVerdict, which: String) -> String {
+  match s.standing {
+    V41CandidateKeyed { runtime_artifact: r, model_source: m, engram_realization: e, execution_profile: x, candidate: c, authorization_obligation: _ } =>
+      if which == "runtime" { serialize_content_hash(hash: r) as String }
+      else if which == "engram" { serialize_content_hash(hash: e) as String }
+      else if which == "execution" { serialize_content_hash(hash: x) as String }
+      else { serialize_content_hash(hash: c) as String }
+    V41CandidateUnestablished { obligations: _ } => "unestablished"
+    V41CandidateRefused { defects: _ } => "refused"
+  }
+}
+
+fn w_refused_with(s: V41CandidateVerdict, fragment: String) -> Bool {
+  match s.standing {
+    V41CandidateRefused { defects: d } => any(d, x => (x as String).contains(fragment))
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
+    V41CandidateUnestablished { obligations: _ } => false
+  }
+}
+
+// THE LIVE CANDIDATE HAS NO KEY, AND SAYS WHAT IS MISSING. Patch bytes are not in this change;
+// DigestFile + upsert_decision apply is the next PR. Weight/tokenizer manifests and row-store
+// content digest are also open.
+test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bool {
+  match v41_candidate().standing {
+    V41CandidateUnestablished { obligations: o } =>
+      any(o, x => (x as String).contains("DigestFile") && (x as String).contains("upsert_decision"))
+        && any(o, x => (x as String).contains("weight manifest"))
+        && any(o, x => (x as String).contains("tokenizer"))
+        && any(o, x => (x as String).contains("published-shard row-store"))
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
+    V41CandidateRefused { defects: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: the same inputs with every axis established key, and the keyed candidate still
+// carries the authorization obligation -- identity is not permission.
+test fn an_established_fixture_is_keyed_and_still_owes_authorization() -> Bool {
+  match v41_candidate_standing(c: w_default(patches: w_two_patches())).standing {
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: a } =>
+      (a as String).contains("authorized_v4_1_runtime_holds")
+    V41CandidateUnestablished { obligations: _ } => false
+    V41CandidateRefused { defects: _ } => false
+  }
+}
+
+// ONE PATCH'S BYTES CHANGE THE RUNTIME AND THE CANDIDATE, and leave the Engram realization alone -- a
+// patch under launch-configured partitioning is not a fact about where the rows live.
+test fn changing_one_patch_digest_changes_the_runtime_and_candidate_but_not_the_recipe_key() -> Bool {
+  let a = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let b = v41_candidate_standing(c: w_default(patches: w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "9" }, WPatchSpec { path: "engram_prefetch.patch", c: "2" }], partition: PartitionByLaunchConfiguration)))
+  w_key(s: a, which: "runtime") != w_key(s: b, which: "runtime")
+    && w_key(s: a, which: "candidate") != w_key(s: b, which: "candidate")
+    && w_key(s: a, which: "engram") == w_key(s: b, which: "engram")
+}
+
+// APPLICATION ORDER IS SEMANTIC; AN OBSERVED EMPTY POPULATION IS AN IDENTITY OF ITS OWN.
+test fn patch_order_matters_and_absent_by_observation_differs_from_patched() -> Bool {
+  let ab = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let ba = v41_candidate_standing(c: w_default(patches: w_observed(pairs: [WPatchSpec { path: "engram_prefetch.patch", c: "2" }, WPatchSpec { path: "engram_storage.patch", c: "1" }], partition: PartitionByLaunchConfiguration)))
+  let unpatched = v41_candidate_standing(c: w_default(patches: V41PatchesAbsentByObservation))
+  w_key(s: ab, which: "runtime") != w_key(s: ba, which: "runtime")
+    && w_key(s: unpatched, which: "runtime") != "unestablished"
+    && w_key(s: unpatched, which: "runtime") != w_key(s: ab, which: "runtime")
+}
+
+// BUILD PARALLELISM IS NOT IDENTITY, by the same law the image build key already holds.
+test fn build_parallelism_does_not_change_the_runtime_key() -> Bool {
+  let six = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let sixteen = v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 16))
+  w_key(s: six, which: "runtime") == w_key(s: sixteen, which: "runtime")
+}
+
+// ROUTE B VERSUS D IS AN ENGRAM REALIZATION FACT, NOT A RUNTIME FACT; ROUTE C IS REFUSED.
+test fn the_route_moves_the_engram_and_candidate_keys_but_not_the_runtime_key() -> Bool {
+  let b = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let d = v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_d_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6))
+  let c = v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_c_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6))
+  w_key(s: b, which: "runtime") == w_key(s: d, which: "runtime")
+    && w_key(s: b, which: "engram") != w_key(s: d, which: "engram")
+    && w_key(s: b, which: "candidate") != w_key(s: d, which: "candidate")
+    && w_refused_with(s: c, fragment: "engram_route_c_nfs_token_time")
+}
+
+// THE PARTITION AUTHORITY IS IN THE RUNTIME KEY, AND THE PARTITION ITSELF NO LONGER VARIES. A patch that
+// hard-codes the storage/resident split puts that split in the runtime's bytes, so the authority is keyed;
+// a runtime that takes it as launch configuration does not. Both arms still key differently because the
+// authority is an input to the key.
+//
+// WHAT THIS TEST USED TO ASSERT AND CANNOT ANY MORE, STATED RATHER THAN QUIETLY DROPPED: it varied the
+// partition under each authority and asserted the fixed arm's key moved while the configured arm's did
+// not. Its alternative partition kept layers.14.engram.embed.scale resident -- which is now refused,
+// because the role wall admits exactly one split of this population: every declared embedding tensor
+// storage-backed, every operator resident. So there is no second admissible partition to vary, and the
+// half of this claim that varied one was asserting a difference over a state the model now refuses to
+// construct. The consequence is real and worth knowing: for THIS checkpoint the partition is determined,
+// and PartitionFixedByPatch buys no key separation beyond the authority tag until a population arrives
+// where more than one split is admissible.
+test fn the_partition_authority_is_in_the_runtime_key() -> Bool {
+  let fixed = w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "1" }], partition: PartitionFixedByPatch)
+  let configured = w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "1" }], partition: PartitionByLaunchConfiguration)
+  let fixed_a = v41_candidate_standing(c: w_default(patches: fixed))
+  let conf_a = v41_candidate_standing(c: w_default(patches: configured))
+  w_key(s: fixed_a, which: "runtime") != w_key(s: conf_a, which: "runtime")
+    && w_key(s: fixed_a, which: "runtime") != "refused"
+    && w_key(s: conf_a, which: "runtime") != "refused"
+}
+
+// EXACTLY ONE SPLIT OF THIS POPULATION IS ADMISSIBLE, which is the fact the claim above now rests on, so
+// it is asserted rather than assumed: moving any single tensor across the line refuses.
+test fn the_role_wall_leaves_exactly_one_admissible_partition() -> Bool {
+  let moved_embed = V41EngramResidencyPartition {
+    storage_backed: map(filter(v41_candidate_partition.storage_backed, n => (n as String) != "layers.14.engram.embed.scale"), n => n),
+    resident: concat(v41_candidate_partition.resident, ["layers.14.engram.embed.scale" as NonEmptyStr]),
+  }
+  (match v41_admit_partition(p: v41_candidate_partition, standing: w_closed_population) {
+    V41PartitionAdmitted { partition: _ } => true
+    V41PartitionRefused { defects: _ } => false
+  })
+    && (match v41_admit_partition(p: moved_embed, standing: w_closed_population) {
+      V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.14.engram.embed.scale"))
+      V41PartitionAdmitted { partition: _ } => false
+    })
+}
+
+// THE LIVE PARTITION IS TOTAL AND DISJOINT OVER THE CITED POPULATION, AND ITS STORAGE-BACKED BYTES ARE
+// DERIVED FROM THE CITED SPANS: 101377628352 + 101380404048. A foreign or a missing tensor refuses.
+test fn the_partition_is_admitted_with_derived_bytes_and_a_malformed_one_refuses() -> Bool {
+  (match v41_admit_partition(p: v41_candidate_partition, standing: w_closed_population) {
+      V41PartitionAdmitted { partition: _ } => true
+      V41PartitionRefused { defects: _ } => false
+    })
+    && (match v41_admit_partition(p: V41EngramResidencyPartition { storage_backed: concat(v41_candidate_partition.storage_backed, ["layers.2.engram.embed.weight" as NonEmptyStr]), resident: v41_candidate_partition.resident }, standing: w_closed_population) {
+      V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.2.engram.embed.weight"))
+      V41PartitionAdmitted { partition: _ } => false
+    })
+    && (match v41_admit_partition(p: V41EngramResidencyPartition { storage_backed: v41_candidate_partition.storage_backed, resident: ["layers.1.engram.q_weight" as NonEmptyStr] }, standing: w_closed_population) {
+      V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.14.engram.wkv.scale"))
+      V41PartitionAdmitted { partition: _ } => false
+    })
+}
+
+// THE LIVE CHECKPOINT CANNOT KEY ITS ENGRAM AXIS, AND THAT IS THE POINT. The population closes against
+// the twelve rows that were read rather than against the revision's index, so a thirteenth Engram tensor
+// would be neither reconciled nor refused and a partition can be total over the twelve while missing it.
+// The fixture standing differs from the live one in the closure ALONE -- same members, same shards, same
+// reading -- so this pair discriminates the membership residual and nothing else.
+test fn an_unreconciled_membership_leaves_the_engram_axis_unestablished() -> Bool {
+  let live = v41_candidate_standing(c: V41CandidateInputs {
+    runtime: w_default(patches: w_two_patches()).runtime,
+    model_source: w_default(patches: w_two_patches()).model_source,
+    engram: V41EngramRealizationInputs {
+      partition: v41_candidate_partition,
+      population: deepseek_v4_1_flash_engram_population,
+      row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") },
+      route: engram_route_b_identity,
+    },
+    topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
+    device: gb10_observed_compute_capability,
+  })
+  match live.standing {
+    V41CandidateUnestablished { obligations: o } => any(o, x => (x as String).contains("membership is reconciled against 12 index rows that were read"))
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
+    V41CandidateRefused { defects: _ } => false
+  }
+}
+
+// A TOTAL, DISJOINT PARTITION CAN STILL BE THE WRONG WAY ROUND, AND THE CHEAP TEST FOR IT IS NOT ENOUGH.
+// An earlier wall compared the two sides' byte totals. This is the partition that defeats it: layer 1's
+// embed pair AND every q/k/wkv operator on storage, layer 14's embed pair resident. Every shape check
+// passes, storage leads by 312268144 bytes, and a complete ~101 GB table is being kept in memory while
+// every small operator has moved to disk. It is the inversion the candidate exists to exclude, and the
+// byte-majority form admitted it.
+test fn a_partition_that_keeps_one_embedding_table_resident_refuses() -> Bool {
+  let population = v41_engram_population_of(standing: w_closed_population)
+  let layer_14_embed = map(filter(population, e => v41_is_embedding_table(e: e, tables: deepseek_v4_1_flash_engram) && (e.name as String).contains("layers.14.")), e => e.name)
+  let rest = map(filter(population, e => !any(layer_14_embed, n => (n as String) == (e.name as String))), e => e.name)
+  let sneaky = V41EngramResidencyPartition { storage_backed: rest, resident: layer_14_embed }
+  length(layer_14_embed) == 2
+    && length(rest) == 10
+    && match v41_admit_partition(p: sneaky, standing: w_closed_population) {
+      V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.14.engram.embed.weight") && (x as String).contains("keeps it resident"))
+      V41PartitionAdmitted { partition: _ } => false
+    }
+}
+
+// THE OTHER DIRECTION, so the wall is about roles rather than about the embedding side alone: a small
+// operator moved to storage is refused too.
+test fn a_partition_that_reads_a_small_operator_from_storage_refuses() -> Bool {
+  let moved = V41EngramResidencyPartition {
+    storage_backed: concat(v41_candidate_partition.storage_backed, ["layers.1.engram.q_weight" as NonEmptyStr]),
+    resident: map(filter(v41_candidate_partition.resident, n => (n as String) != "layers.1.engram.q_weight"), n => n),
+  }
+  match v41_admit_partition(p: moved, standing: w_closed_population) {
+    V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.1.engram.q_weight") && (x as String).contains("reads it from storage"))
+    V41PartitionAdmitted { partition: _ } => false
+  }
+}
+
+// THE ROLE JOIN IS THE PUBLISHER'S OWN DECLARED EXTENTS, so this asserts the join rather than a name rule:
+// exactly the four embed tensors carry an unpadded_embeddings count as their first dimension.
+test fn exactly_the_embedding_tensors_carry_a_declared_unpadded_extent() -> Bool {
+  let population = v41_engram_population_of(standing: w_closed_population)
+  let tables = filter(population, e => v41_is_embedding_table(e: e, tables: deepseek_v4_1_flash_engram))
+  length(population) == 12
+    && length(tables) == 4
+    && all(tables, e => (e.name as String).contains(".engram.embed."))
+}
+
+// THE SHAPE AND THE KERNEL PIN REFUSE. TP8, a 12.0 device, and a kernel acquisition naming a version the
+// recipe does not install are each refused, not keyed.
+test fn a_wrong_topology_device_or_kernel_version_refuses() -> Bool {
+  let wrong_kernel = V41CandidateInputs {
+    runtime: V41RuntimeArtifactInputs {
+      recipe: v41_candidate_recipe(),
+      kernel_acquisition: FlashInferPublishedRelease { version: "0.7.0" as NonEmptyStr, channel: FlashInferProjectStable, index: "fixture" as NonEmptyStr },
+      kernel_wheels: flashinfer_0_6_18_post1_wheels,
+      patches: w_two_patches(),
+    },
+    model_source: w_default(patches: w_two_patches()).model_source,
+    engram: w_default(patches: w_two_patches()).engram,
+    topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
+    device: gb10_observed_compute_capability,
+  }
+  w_refused_with(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 8, device: gb10_observed_compute_capability, max_jobs: 6)), fragment: "tp8")
+    && w_refused_with(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: GpuComputeCapability { vendor: nvidia, major: 12, minor: 0 }, max_jobs: 6)), fragment: "12.0")
+    && w_refused_with(s: v41_candidate_standing(c: wrong_kernel), fragment: "0.7.0")
+}
+
+// THE PATCH BUILDER REFUSES A DIGEST THAT IS NOT sha256, and every fixture above was admitted by it: the
+// two-patch population really carries two patches, so the key laws are not asserted over an empty list.
+test fn a_patch_needs_a_sha256_digest_and_the_fixtures_are_admitted() -> Bool {
+  (match v41_engine_patch(path: "p" as NonEmptyStr, applies_to: vllm_d2d649e6_revision, sha256_hex: "not-a-digest", purpose: "fixture" as NonEmptyStr) {
+    Present { value: _ } => false
+    Absent => true
+  })
+    && (match w_two_patches() {
+      V41PatchesObserved { patches: ps, partition: _ } => length(ps) == 2
+      V41PatchesAbsentByObservation => false
+      V41PatchesUnestablished { obligation: _ } => false
+    })
+}
+
+// THE KERNEL CLOSURE IS AN EXACT PACKAGE POPULATION. A runtime carrying only flashinfer-python, or two
+// variants of one package, is not the closure upstream's Dockerfile installs, so it refuses instead of
+// keying. The complete population keys, which is what stops a mint that refuses everything.
+test fn the_kernel_population_must_be_exactly_the_three_required_packages() -> Bool {
+  let full = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let only_python = v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: w_wheels_named(names: ["flashinfer-python"])))
+  let doubled = v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: concat(flashinfer_0_6_18_post1_wheels, w_wheels_named(names: ["flashinfer-cubin"]))))
+  w_key(s: full, which: "runtime") != "unestablished" && w_key(s: full, which: "runtime") != "refused"
+    && w_refused_with(s: only_python, fragment: "carries no flashinfer-cubin wheel")
+    && w_refused_with(s: doubled, fragment: "more than one flashinfer-cubin wheel")
+}
+
+// A PATCH AUTHORED AGAINST ANOTHER vLLM REVISION REFUSES. Recording applies_to in the key is not the same
+// as enforcing it: the population must be applicable to the recipe's own source.
+test fn a_patch_for_a_different_revision_refuses() -> Bool {
+  let foreign = V41PatchesObserved { patches: concat(w_patch(path: "engram_storage.patch", c: "1"), w_patch_against(path: "engram_prefetch.patch", c: "2", applies_to: vllm_deepseek_v4_1_sm12_revision)), partition: PartitionByLaunchConfiguration }
+  w_refused_with(s: v41_candidate_standing(c: w_default(patches: foreign)), fragment: "07b75534")
+}
+
+// SET-LIKE POPULATIONS ARE CANONICAL. The wheels and the two sides of the partition are sets: writing
+// them in another order is the same candidate. Only the patch sequence is order-bearing, which the
+// patch-order witness above asserts in the other direction.
+test fn reordering_wheels_or_partition_members_does_not_change_the_key() -> Bool {
+  let a = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let reversed_wheels = v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: w_wheels_named(names: ["flashinfer-jit-cache", "flashinfer-cubin", "flashinfer-python"])))
+  let reordered_partition = v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: V41EngramResidencyPartition {
+    storage_backed: ["layers.14.engram.embed.scale" as NonEmptyStr, "layers.1.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.weight" as NonEmptyStr, "layers.1.engram.embed.scale" as NonEmptyStr],
+    resident: v41_candidate_partition.resident,
+  }, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6))
+  w_key(s: a, which: "runtime") == w_key(s: reversed_wheels, which: "runtime")
+    && w_key(s: a, which: "candidate") == w_key(s: reversed_wheels, which: "candidate")
+    && w_key(s: a, which: "engram") == w_key(s: reordered_partition, which: "engram")
+}
+
+// A ROUTE REFERENCE IS MODULE, DECLARATION AND FIELD. A reference naming route B's declaration in another
+// module, or one field of it, is not route B; comparing only the declaration name admitted both.
+test fn a_route_reference_that_differs_in_module_or_field_is_not_the_admitted_route() -> Bool {
+  let foreign_module = DeclarationRef { module_path: "scratch.impostor" as NonEmptyStr, decl_name: engram_route_b_identity.decl_name, field: engram_route_b_identity.field }
+  let field_of_b = decl_field_ref(module_path: engram_route_b_identity.module_path as String, decl_name: engram_route_b_identity.decl_name as String, field_name: "origin")
+  w_refused_with(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: foreign_module, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6)), fragment: "engram_route_b_host_nvme")
+    && w_refused_with(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: field_of_b, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6)), fragment: "engram_route_b_host_nvme")
+}
+
+// A WHEEL FROM A NEIGHBOURING RELEASE CARRIES THE RIGHT PACKAGE NAME AND THE WRONG BYTES. The row is minted
+// by the FlashInfer authority itself, against a 0.7.0 acquisition, so it is a well-formed wheel -- just not
+// one this runtime's acquisition installs. Package-bag equality alone admits it; re-admission refuses it.
+fn w_foreign_release_wheel() -> List<FlashInferWheel> {
+  match admit_flashinfer_wheel(
+    acquisition: FlashInferPublishedRelease { version: "0.7.0" as NonEmptyStr, channel: FlashInferProjectStable, index: "fixture" as NonEmptyStr },
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.0-py3-none-any.whl" as NonEmptyStr,
+    sha256_hex: w_sha(c: "d").hex as String,
+  ) {
+    FlashInferWheelAdmitted { wheel: w } => [w]
+    FlashInferWheelRefused { refusal: _ } => [] as List<FlashInferWheel>
+  }
+}
+
+// THE SAME RELEASE, THE WRONG BUILD. flashinfer_jit_cache is published at one version across several CUDA
+// local labels and platforms, so a cu129 x86_64 row carries this runtime's exact release version and the
+// right package name. It is minted here by the FlashInfer authority against THIS runtime's own acquisition,
+// which is the whole point: it re-admits cleanly, the package bag is exact, and neither the population check
+// nor re-admission can see anything wrong with it. Only the build-target assertion refuses it, and without
+// that assertion this fixture keys a runtime whose image installs kernels a GB10 cannot load.
+fn w_jit_cache_wheel(filename: String) -> List<FlashInferWheel> {
+  match admit_flashinfer_wheel(
+    acquisition: flashinfer_0_6_18_post1,
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: filename as NonEmptyStr,
+    sha256_hex: w_sha(c: "e").hex as String,
+  ) {
+    FlashInferWheelAdmitted { wheel: w } => [w]
+    FlashInferWheelRefused { refusal: _ } => [] as List<FlashInferWheel>
+  }
+}
+
+fn w_with_jit_cache(filename: String) -> V41CandidateVerdict {
+  v41_candidate_standing(c: w_inputs_with_wheels(
+    patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity,
+    tp: 4, device: gb10_observed_compute_capability, max_jobs: 6,
+    wheels: concat(w_wheels_named(names: ["flashinfer-python", "flashinfer-cubin"]), w_jit_cache_wheel(filename: filename)),
+  ))
+}
+
+// EACH ROW RE-ADMITS FIRST, WHICH IS WHAT THE THREE LENGTH CHECKS BELOW ESTABLISH. A fixture the
+// admission authority had rejected would be an empty wheel list, the population check would refuse it for
+// carrying no jit-cache wheel, and this test would pass without ever reaching the assertion it exists to
+// discriminate.
+test fn a_jit_cache_wheel_for_another_cuda_label_or_platform_refuses() -> Bool {
+  let wrong_platform = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_x86_64.whl")
+  let wrong_label = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.6.18.post1+cu129-cp39-abi3-manylinux_2_28_aarch64.whl")
+  let wrong_abi = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp312-cp312-manylinux_2_28_aarch64.whl")
+  length(wrong_platform) == 1
+    && length(wrong_label) == 1
+    && length(wrong_abi) == 1
+    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_x86_64.whl"), fragment: "carries platform tag manylinux_2_28_x86_64")
+    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu129-cp39-abi3-manylinux_2_28_aarch64.whl"), fragment: "carries version 0.6.18.post1+cu129")
+    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp312-cp312-manylinux_2_28_aarch64.whl"), fragment: "carries python tag cp312")
+}
+
+// THE POSITIVE CONTROL FOR THE ASSERTION ABOVE. The published row is the exact target, so the same fixture
+// with the real wheel keys rather than refusing -- which is what makes the three refusals above evidence
+// about the build target rather than about this fixture being unkeyable.
+test fn the_published_jit_cache_wheel_is_this_runtimes_build_target() -> Bool {
+  w_key(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl"), which: "candidate")
+    != "refused"
+    && w_key(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl"), which: "candidate")
+    != "unestablished"
+}
+
+test fn a_wheel_from_a_neighbouring_release_refuses_even_with_the_right_package_names() -> Bool {
+  let foreign = w_foreign_release_wheel()
+  let swapped = concat(foreign, w_wheels_named(names: ["flashinfer-cubin", "flashinfer-jit-cache"]))
+  length(foreign) == 1
+    && length(swapped) == 3
+    && w_refused_with(s: v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: swapped)), fragment: "does not re-admit")
+}
+
+// THE SAME TWO NUMBERS FROM ANOTHER VENDOR IS ANOTHER MACHINE. A GpuComputeCapability is a vendor and two
+// numbers, and an AMD part reporting 12.1 satisfied a gate written for a GB10 and then received GB10's
+// execution-profile identity, because both the gate and the key read only the numbers. This fixture is the
+// GB10's capability with the vendor replaced and nothing else, so it discriminates the vendor alone.
+test fn a_capability_from_another_vendor_with_the_same_numbers_refuses() -> Bool {
+  let impostor = GpuComputeCapability {
+    vendor: amd,
+    major: gb10_observed_compute_capability.major,
+    minor: gb10_observed_compute_capability.minor,
+  }
+  impostor.major == gb10_observed_compute_capability.major
+    && impostor.minor == gb10_observed_compute_capability.minor
+    && w_refused_with(
+      s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: impostor, max_jobs: 6)),
+      fragment: "is not the GB10")
+}
+
+// ONE UNPATCHED RUNTIME, ONE IDENTITY. An observed population with no patches in it carries the same
+// observed bytes as V41PatchesAbsentByObservation -- none -- and used to mint a different key, so the same
+// runtime had two identities depending on which arm the author reached for. The second half is the
+// unsatisfiable claim: no patch can fix a partition in bytes that do not exist.
+test fn an_empty_observed_patch_population_refuses_in_both_partition_authorities() -> Bool {
+  let empty_config = w_default(patches: V41PatchesObserved { patches: [] as List<V41EnginePatch>, partition: PartitionByLaunchConfiguration })
+  let empty_fixed = w_default(patches: V41PatchesObserved { patches: [] as List<V41EnginePatch>, partition: PartitionFixedByPatch })
+  w_refused_with(s: v41_candidate_standing(c: empty_config), fragment: "is not the same claim as V41PatchesAbsentByObservation")
+    && w_refused_with(s: v41_candidate_standing(c: empty_fixed), fragment: "no bytes for it to be fixed in")
+    && (w_key(s: v41_candidate_standing(c: w_default(patches: V41PatchesAbsentByObservation)), which: "runtime") != "refused")
+}
+
+test fn observed_patches_do_not_mint_a_patched_source_tree() -> Bool {
+  (match v41_patch_application_standing(source: vllm_d2d649e6_revision, patches: V41PatchesAbsentByObservation) {
+    V41VanillaSourceAtRevision { revision: r } => (r.full_revision as String) == (vllm_d2d649e6_revision.full_revision as String)
+    V41PatchApplicationUnestablished { obligation: _ } => false
+    V41PatchApplicationRefused { defects: _ } => false
+  })
+    && (match v41_patch_application_standing(source: vllm_d2d649e6_revision, patches: w_two_patches()) {
+      V41PatchApplicationUnestablished { obligation: o } => (o as String).contains("no apply step")
+      V41VanillaSourceAtRevision { revision: _ } => false
+      V41PatchApplicationRefused { defects: _ } => false
+    })
+    && (match v41_patch_application_standing(source: vllm_d2d649e6_revision, patches: V41PatchesObserved { patches: concat(w_patch(path: "engram_storage.patch", c: "1"), w_patch_against(path: "engram_prefetch.patch", c: "2", applies_to: vllm_deepseek_v4_1_sm12_revision)), partition: PartitionByLaunchConfiguration }) {
+      V41PatchApplicationRefused { defects: d } => any(d, x => (x as String).contains("07b75534"))
+      V41VanillaSourceAtRevision { revision: _ } => false
+      V41PatchApplicationUnestablished { obligation: _ } => false
+    })
+    && (match v41_storage_patch_application_standing() {
+      V41PatchApplicationUnestablished { obligation: o } => (o as String).contains("DigestFile")
+      V41VanillaSourceAtRevision { revision: _ } => false
+      V41PatchApplicationRefused { defects: _ } => false
+    })
+}

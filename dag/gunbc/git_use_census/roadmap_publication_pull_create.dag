@@ -1,0 +1,22 @@
+module gunbc.git_use_census.roadmap_publication_pull_create
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.git_use_authority { GitUseRow, ParsedDagGitDependency, ClassifiedGitUse, GitProposalReviewPublication, DeclaredLegacyGitUse }
+
+data roadmap_publication_pull_create: GitUseRow = GitUseRow {
+  consumer: decl_ref(module_path: "gunbc.roadmap.roadmap_publish_actuate", decl_name: "publish_attempt"),
+
+  surface: ParsedDagGitDependency { imported_module: "extdeps.github.pulls" as NonEmptyStr },
+
+  classification: ClassifiedGitUse {
+    role: GitProposalReviewPublication,
+    authorization: DeclaredLegacyGitUse {
+      retirement_capability: "This github.Pulls.Create call site is consumed by the deterministic native-candidate projector's idempotent one-PR publication route, with independent read-back tying the PR to that exact projection and candidate. A PR number never supplies native identity." as NonEmptyStr
+    }
+  },
+
+  bridge_disposition: "github.Pulls.Create currently creates the authoritative proposal offer. Generate one review facade from the immutable native proposal; independently observe and read back its merged projection, then import the native baseline. Legacy main movement is imported with explicit Git provenance and makes old-baseline proposals stale for mechanical re-evaluation." as NonEmptyStr,
+
+  cutover_disposition: "Create or update the optional generated GitHub review facade idempotently from the native proposal mapping. GitHub availability, PR state and PR number cannot decide native identity or reverse native landing; failed projection remains repair pending." as NonEmptyStr,
+}

@@ -8,7 +8,7 @@ import std.scoped_authorization { AttemptIdentity }
 import product.fabric.identity { WorkKey }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
-import product.fabric.work {
+import product.fabric.work { MaterializedProgram,
   WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
   OutputObligation, OutputArtifactObligation,
@@ -17,7 +17,7 @@ import product.fabric.work {
   OutputObligationsResolution,
   Work, work_for,
 }
-import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
+import std.durable_compare_and_set { CasStoreRefused, CasSlotObservationRefused, CasUnreadableReadRefused }
 import gunbc.fabric_m0_completion {
   ObligationSubject,
   ComputationSucceeded,
@@ -161,7 +161,7 @@ fn our_slot() -> NonEmptyStr {
 }
 
 fn store_refused() -> CommitTransportOutcome {
-  StoreAnswered { slot: our_slot(), outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } }
+  StoreAnswered { slot: our_slot(), outcome: CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } } }
 }
 
 fn the_object() -> OutputObligation {
@@ -183,11 +183,9 @@ fn fixture_requirements() -> ExecutionRequirements {
 
 fn the_contract() -> WorkContract {
   WorkContract {
-    program: "gunbc.fabric-m0.program:1",
+    execution: MaterializedProgram { program: "gunbc.fabric-m0.program:1", source: "source:1", runtime_closure: "runtime:1" },
     steps: [WorkStep { step_id: "fabric-m0", resumability: ReceiptSatisfiable }],
-    source: "source:1",
     inputs: "inputs:1",
-    runtime_closure: "runtime:1",
     effect_contract: "effects:1",
     output_contract: "outputs:1",
     output_obligations: DeclaredOutputObligations { required: [the_object()] },
