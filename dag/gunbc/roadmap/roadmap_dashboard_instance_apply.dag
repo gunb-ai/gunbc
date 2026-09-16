@@ -128,7 +128,7 @@ import gunbc.roadmap_dashboard_instance {
 // It is marked rather than substituted because the substitution is not mechanical: the sites split
 // across TWO hosts (dashboard_local_exec runs on the controller, dashboard_target_exec on the
 // instance) and only the target host has an environment to resolve against, while the
-// controller-side residue (cp, scp, mv, test, sleep, nc, sudo, chown) names provisioning tools that
+// controller-side residue (cp, scp, mv, test, nc, sudo, chown) names provisioning tools that
 // are deliberately NOT dispatch capabilities — adding them to ExecutionCapability would put
 // provisioning tools on the roster dispatch admission requires. Picking the right carrier is a
 // model decision (which layer owns a host program token: the tool's extdeps model, the
