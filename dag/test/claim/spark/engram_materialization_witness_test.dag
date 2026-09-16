@@ -1815,19 +1815,17 @@ test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -
   }
 }
 
-// A SCOPED MEMBERSHIP CANNOT CONCLUDE A TRANSFORM IS FAITHFUL, AND THAT IS THE ONE ARM IT TOUCHES. The
-// live Engram subject closes its membership against the twelve rows that were READ, not against the
-// revision's 96085-name index, so a thirteenth Engram tensor would be absent from the reading, absent from
-// any transform built over it, and -- before this gate -- pronounced faithful anyway. The first conjunct is
-// that refusal.
+// A SCOPED MEMBERSHIP CANNOT CONCLUDE THE ARTIFACT IS FAITHFUL, BY EITHER ROUTE. The live Engram subject
+// closes its membership against the twelve rows that were READ, not against the revision's 96085-name
+// index. The published shard set is built from those same twelve rows, so its completeness is exactly as
+// open as the membership's: a thirteenth Engram tensor in an unread shard would leave an artifact holding
+// the exact published bytes of shards 47 and 48 matching the declared identity perfectly while not
+// containing the component. So neither arm may conclude.
 //
-// THE SECOND AND THIRD CONJUNCTS ARE WHAT KEEP IT FROM BEING A BLANKET REFUSAL, which is the whole design
-// of the gate. IdenticalToPublishedEncoding still concludes over the same scoped subject, because its
-// claim is that the artifact's identity IS the published SHARD-SET identity -- a statement about two files
-// whose set is fully known, which a residual about tensor membership does not reach. And a relation that
-// is genuinely defective still reports Unfaithful rather than being masked as evidence-missing: the
-// residual removes the ability to conclude faithfulness, never the ability to detect its absence.
-test fn a_scoped_membership_blocks_only_the_faithful_transform_arm() -> Bool {
+// THE THIRD CONJUNCT IS WHAT KEEPS THIS FROM BEING A BLANKET REFUSAL: a genuinely defective relation still
+// reports Unfaithful rather than being masked as evidence-missing. The residual removes the ability to
+// conclude faithfulness, never the ability to detect its absence.
+test fn a_scoped_membership_blocks_a_faithful_verdict_by_either_route() -> Bool {
   (match component_realization_standing(r: realize_component(
     standing: engram_component_standing,
     artifact: repacked_artifact(),
@@ -1842,9 +1840,9 @@ test fn a_scoped_membership_blocks_only_the_faithful_transform_arm() -> Bool {
       standing: engram_component_standing,
       artifact: artifact_with_identity(i: engram_published_identity),
       evidence: IdenticalToPublishedEncoding)) {
-      RealizationSettledFaithful => true
+      RealizationStandingOpen => true
+      RealizationSettledFaithful => false
       RealizationSettledUnfaithful => false
-      RealizationStandingOpen => false
     })
     && (match component_realization_standing(r: realize_component(
       standing: engram_component_standing,
@@ -1859,6 +1857,30 @@ test fn a_scoped_membership_blocks_only_the_faithful_transform_arm() -> Bool {
       })) {
       RealizationSettledUnfaithful => true
       RealizationSettledFaithful => false
+      RealizationStandingOpen => false
+    })
+}
+
+// THE POSITIVE CONTROL FOR THE GATE, over the same two routes. Close the membership and nothing else, and
+// both arms settle faithful again -- which is what makes the three refusals above evidence about the
+// residual rather than about fixtures that cannot conclude at all.
+test fn closing_the_membership_lets_both_routes_conclude_faithful() -> Bool {
+  (match component_realization_standing(r: realize_component(
+    standing: closed_membership_standing(),
+    artifact: artifact_with_identity(i: engram_published_identity),
+    evidence: IdenticalToPublishedEncoding)) {
+    RealizationSettledFaithful => true
+    RealizationSettledUnfaithful => false
+    RealizationStandingOpen => false
+  })
+    && (match component_realization_standing(r: realize_component(
+      standing: closed_membership_standing(),
+      artifact: repacked_artifact(),
+      evidence: StructurePreservingTransform {
+        relation: relation_with_target(t: repacked_artifact().identity),
+      })) {
+      RealizationSettledFaithful => true
+      RealizationSettledUnfaithful => false
       RealizationStandingOpen => false
     })
 }
@@ -1965,8 +1987,9 @@ test fn a_relation_must_name_the_exact_bytes_it_mapped_from_and_produced() -> Bo
 // is the one outcome that destroys what they exist to test: a claim that cannot distinguish a matching
 // relation from a foreign one has stopped being a control.
 //
-// SO THEY GET A SUBJECT WHOSE MEMBERSHIP IS CLOSED, differing from the live one in the CLOSURE ALONE --
-// same members, same shards, same reading. The residual gate is then vacuous for them by construction, and
+// SO THEY GET A SUBJECT WHOSE MEMBERSHIP IS CLOSED, differing from the live one in the closure for every
+// input the comparison reads -- same members, same shards, same reading. Its label and upstream_revision are
+// synthetic too, which no arm of realize_component consults. The residual gate is then vacuous for them by construction, and
 // a_scoped_membership_blocks_only_the_faithful_transform_arm remains the single claim that exercises it.
 fn closed_membership_population() -> SafetensorsPopulationStanding {
   safetensors_population_standing(
