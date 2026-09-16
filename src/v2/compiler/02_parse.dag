@@ -2871,9 +2871,9 @@ fn parse_choice_ordered_backtrack(
       ) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
-        ParseExprRejected { diagnostics: _, table: table1 } =>
+        ParseExprRejected { diagnostics: diags, table: table1 } =>
           match list_tail(xs: alternatives) {
-            TailAbsent => ParseExprRejected { diagnostics: [], table: table1 }
+            TailAbsent => ParseExprRejected { diagnostics: diags, table: table1 }
             TailFound { tail: rest_alts } =>
               parse_choice_ordered_backtrack(
                 alternatives: rest_alts,
