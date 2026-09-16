@@ -1,0 +1,125 @@
+module extdeps.ampere.oem_sel
+
+import std.types { Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE PUBLISHED OPENBMC EMITTER LAYOUT IS SENSOR 0xEB (235), TYPE NIBBLE 4 (BOOT_SYNDROME_DATA).
+// It does not cover sensor 0xDE (222) records. Manufacturer ID 3A CD 00 / IANA PEN 52538 is
+// Ampere's; that identity does not license reading a 0xDE payload through this layout. MegaRAC
+// answering 'unknown' is a fact about THAT CONTROLLER (extdeps.bmc.megarac).
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/enterprise-numbers",
+  }
+}
+
+data ampere_altra_soc_bmc_interface_spec_v1_43: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/customer-connect/products/altra-family-software",
+  }
+}
+
+data ampere_openbmc_dimm_train_fail_log: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/openbmc/blob/master/meta-ampere/recipes-ampere/host/ac01-boot-progress/dimm_train_fail_log.sh",
+  }
+}
+
+data ampere_misc_altra_host_error_monitor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ampere-openbmc/ampere-misc",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.oem_sel",
+      decl_name: "ampere_oem_sel_producer_layout",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ampere_altra_soc_bmc_interface_spec_v1_43,
+    ampere_openbmc_dimm_train_fail_log,
+    ampere_misc_altra_host_error_monitor,
+  ]
+}
+
+data ampere_iana_private_enterprise_number: Int = 52538
+
+data ampere_openbmc_boot_syndrome_sensor_number: Int = 235
+
+data ampere_openbmc_boot_syndrome_type_nibble: Int = 4
+
+fn ampere_pen_le_octet(pen: Int, place: Int) -> Int {
+  (pen / place) % 256
+}
+
+type AmpereOemSelProducerLayout {
+  iana_pen: Int
+  manufacturer_id_byte0: Int
+  manufacturer_id_byte1: Int
+  manufacturer_id_byte2: Int
+  sensor_number: Int
+  type_nibble: Int
+  interface_spec: ExternalAuthority
+  openbmc_emitters: List<ExternalAuthority>
+}
+
+data ampere_oem_sel_producer_layout: AmpereOemSelProducerLayout = AmpereOemSelProducerLayout {
+  iana_pen: ampere_iana_private_enterprise_number,
+  manufacturer_id_byte0: ampere_pen_le_octet(pen: ampere_iana_private_enterprise_number, place: 1),
+  manufacturer_id_byte1: ampere_pen_le_octet(pen: ampere_iana_private_enterprise_number, place: 256),
+  manufacturer_id_byte2: ampere_pen_le_octet(pen: ampere_iana_private_enterprise_number, place: 65536),
+  sensor_number: ampere_openbmc_boot_syndrome_sensor_number,
+  type_nibble: ampere_openbmc_boot_syndrome_type_nibble,
+  interface_spec: ampere_altra_soc_bmc_interface_spec_v1_43,
+  openbmc_emitters: [
+    ampere_openbmc_dimm_train_fail_log,
+    ampere_misc_altra_host_error_monitor,
+  ],
+}
+
+// Deferred consumer: the raw-record SEL layout-applicability ingestion change in
+// gunbc.machine_intake_pre_os_replay. Its trigger is a reader that obtains the
+// sensor number and manufacturer octets from the same independently read raw
+// record, calls ampere_oem_sel_record_match, and retains the resulting layout
+// applicability beside that record in replay. The current rendered SEL reader
+// does not expose those fields; the capabilities module's existence does not
+// discharge this frontier. The witness exercises the matcher only.
+// Layout applicability is not payload decoding: this matcher cannot establish
+// OemDecodeAvailable or assign a meaning to the opaque 0xDE payloads. Such a
+// decode still requires its own manufacturer-cited authority and consumer.
+type AmpereOemSelRecordMatch
+  = AmpereBootSyndromeOemSel
+  | AmpereOemSelSensorOutsideLayout { sensor: Int }
+  | AmpereOemSelManufacturerIdNotThisPen
+
+fn ampere_oem_sel_record_match(
+  layout: AmpereOemSelProducerLayout,
+  sensor: Int,
+  manufacturer_id_byte0: Int,
+  manufacturer_id_byte1: Int,
+  manufacturer_id_byte2: Int,
+) -> AmpereOemSelRecordMatch {
+  if manufacturer_id_byte0 == layout.manufacturer_id_byte0
+    && manufacturer_id_byte1 == layout.manufacturer_id_byte1
+    && manufacturer_id_byte2 == layout.manufacturer_id_byte2 {
+    if sensor == layout.sensor_number {
+      AmpereBootSyndromeOemSel
+    } else {
+      AmpereOemSelSensorOutsideLayout { sensor: sensor }
+    }
+  } else {
+    AmpereOemSelManufacturerIdNotThisPen
+  }
+}

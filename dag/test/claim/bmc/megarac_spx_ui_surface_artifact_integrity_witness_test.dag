@@ -1,0 +1,65 @@
+module test.claim.megarac_spx_ui_surface_artifact_integrity_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { Sha256Matches, sha256sum_verify_via_shell }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation {
+  megarac_spx_ui_surface_path,
+  megarac_spx_ui_surface_sha256,
+}
+import extdeps.bmc.megarac {
+  MegaRacServedUiSurface,
+  ServedUiFactFirmwareUncatalogued,
+  ServedUiFactKnown,
+  ServedUiSurfaceAbsent,
+  ServedUiSurfacePresent,
+  megarac_firmware_0_32,
+  megarac_served_ui_surface_catalog_token,
+  megarac_served_ui_surface_standing,
+  megarac_served_ui_surfaces,
+}
+import gunbc.mtcollins_memory_change {
+  mtcollins_training_capture_path,
+  mtcollins_training_capture_sha256,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE COMMITTED ARTIFACT IS THE ORACLE. megarac_spx_ui_surface_sha256 names the catalog
+// identity; this witness hashes the file on disk. Editing the file without updating the
+// digest reds; updating the digest without the bytes reds. That is not measure() == measure().
+test fn committed_spx_ui_surface_hashes_to_the_catalog_identity() -> Bool {
+  sha256sum_verify_via_shell(
+    path: megarac_spx_ui_surface_path,
+    expected_digest: megarac_spx_ui_surface_sha256,
+  ) == Sha256Matches
+}
+
+// PATH PRESENCE IS ONE FACT, ASKED OF THE HASHED FILE THROUGH THE MODEL'S OWN STANDING. For every
+// surface the decoder names, the catalog bytes must contain that surface's token exactly when
+// megarac_served_ui_surface_standing says Present at 0.32 -- so the authored map and the file are
+// joined by execution, and neither can drift from the other unnoticed (review 66694).
+// RED: add a redfish line, drop api/fru or aep_dimm_info, add settings/bios, or flip one arm of
+// megarac_served_ui_surface_presence_at_0_32 without the bytes.
+fn surface_standing_agrees_with_catalog(content: String, surface: MegaRacServedUiSurface) -> Bool {
+  let in_catalog = string_contains(s: content, pattern: megarac_served_ui_surface_catalog_token(surface: surface) as String)
+  match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: surface) {
+    ServedUiFactKnown { firmware: _, presence: ServedUiSurfacePresent } => in_catalog
+    ServedUiFactKnown { firmware: _, presence: ServedUiSurfaceAbsent } => !in_catalog
+    ServedUiFactFirmwareUncatalogued { firmware: _ } => false
+  }
+}
+
+test fn committed_spx_ui_surface_agrees_with_every_served_ui_surface_standing() -> Bool {
+  let read = Filesystem.Read(path: megarac_spx_ui_surface_path as String)
+  read.success
+    && all(megarac_served_ui_surfaces, surface => surface_standing_agrees_with_catalog(content: read.content, surface: surface))
+}
+
+test fn committed_sol_host_payload_hashes_to_the_positive_control_identity() -> Bool {
+  sha256sum_verify_via_shell(
+    path: mtcollins_training_capture_path,
+    expected_digest: mtcollins_training_capture_sha256,
+  ) == Sha256Matches
+}
