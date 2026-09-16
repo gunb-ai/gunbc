@@ -249,8 +249,15 @@ greenly, because there is nothing left to fail it. That is the opposite of what 
 should do when its subject disappears, and it would arrive exactly when the fleet is least
 ordinary.
 
-This is a **standing obligation on whoever executes the withdrawal**, not a resolved question,
-and it is written here as an obligation because I have not discharged it:
+**The obligation now lives on the roster, not only here.** A plan document nothing references
+is a parallel ledger, and §6 says the mark on the carrier is the authority. The annotation above
+`spark_pair_serving_groups` in `gunbc.spark.pair_serving_desired` now carries this — the single
+membership, the vacuity consequence, the host-ownership consequence, and the fact that
+suspension has no modeled operation — beside the row that decides, which is where an author
+about to empty it actually reads. That file already carried the previous Group B withdrawal's
+reasoning in the same place; this follows the convention rather than inventing one.
+
+What remains undischarged, stated as an obligation because I have not discharged it:
 
 > Before Group A is withdrawn from `spark_pair_serving_groups`, enumerate every fold over that
 > roster — and over `spark_claimed_serving_group_members`, `spark_pair_serving_desired` and
