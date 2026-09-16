@@ -6447,6 +6447,11 @@ pub fn run_required_floor(
     // A FAILED OR AMBIGUOUS READ REFUSES, NEVER ADMITS. An empty decode, a duplicate or a non-string
     // is what a renamed producer or a truncated read looks like; applying it would turn a decode
     // fault into an exemption (DESIGN §5: a failure arm must refuse, never widen).
+    // WHAT RETIRES THIS MIRROR: `v2.workflow.required_floor` `claim_ceiling_tier_host_mirror_dissolve_on`,
+    // which covers BOTH host mirrors of a floor policy roster -- this decode and the grandfathered one.
+    // The capability is the roster fold being SERVED once across claim frames rather than re-derived per
+    // claim; on that climb this branch is deleted and the runner calls `claim_eval_step_standing_for_identity`
+    // through the frame it already holds, rather than keeping the HashSet beside the call.
     let eval_step_cost_drop: HashSet<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
