@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_spark_spark_serving_offer_route_witness_test_t_declared_DeclaredUnitDigested
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data test_claim_spark_spark_serving_offer_route_witness_test_t_declared_DeclaredUnitDigested: TransitionAdmission = TransitionAdmission {
+  label: "gunbc#11418 DeclaredUnitDigestStanding moves to pair_serving_realization" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.spark.spark_serving_offer_route_witness_test", "t_declared"),
+    spelling: "DeclaredUnitDigested" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.spark.pair_serving_realization", "DeclaredUnitDigested")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11440 as UInt32,
+}
