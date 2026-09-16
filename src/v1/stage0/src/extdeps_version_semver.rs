@@ -84,10 +84,14 @@ pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier
 }
 
 pub fn semver_compare_identifiers(
-    mut a: Rc<Vec<Rc<SemVerIdentifier>>>,
-    mut b: Rc<Vec<Rc<SemVerIdentifier>>>,
+    mut __tco_loop_a: Rc<Vec<Rc<SemVerIdentifier>>>,
+    mut __tco_loop_b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
     loop {
+        #[allow(unused_mut)]
+        let mut a = __tco_loop_a;
+        #[allow(unused_mut)]
+        let mut b = __tco_loop_b;
         if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
             break Ordering::Equal;
         } else {
@@ -101,8 +105,8 @@ pub fn semver_compare_identifiers(
     Ordering::Equal => { {
                         let __tco_0 = Rc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let __tco_1 = Rc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-a = __tco_0;
-b = __tco_1;
+__tco_loop_a = __tco_0;
+__tco_loop_b = __tco_1;
 continue;
 } },
     other => { break other.clone(); },
