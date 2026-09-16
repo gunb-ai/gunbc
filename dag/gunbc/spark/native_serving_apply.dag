@@ -49,10 +49,13 @@ import gunbc.spark.native_serving_realization {
 // home is a consolidation this change deliberately does not also do. The pair's apply script is
 // NOT reused: it writes the runtime Dockerfile and rescues the JIT cache, both pair-specific.
 //
-// THE RESTART IS CONDITIONAL, as the pair's is: the unit is bounced only when its rendered text
-// changed or it is not active, so re-applying a converged roster leaves the engine alone. The bare
-// cutover container is handled two ways: the unit's own ExecStartPre removes it at start, and the
-// script first clears any restart policy so a stopped bare container cannot race the unit back up.
+// THE RESTART IS UNCONDITIONAL ON THIS ARM. The pair's apply is conditional because bouncing a
+// converged DeepSeek engine pays a model load for no rendezvous reason. The native arm is four
+// ranks joining one TCPStore: a unit that is already active with a container from an earlier
+// join is not ready to receive a new head -- measured 2026-09-16, workers stayed on the first
+// apply while the head crash-looped, and the store timed out 1/4. Every apply therefore starts
+// a new rendezvous epoch. Re-applying a bit-identical roster still restarts; that is the cost
+// of the epoch, not a defect in the conditional the pair still uses.
 
 data spark_native_apply_receipt_path: String = "target/spark-native-apply-receipt.txt"
 
@@ -69,7 +72,7 @@ fn spark_native_host_apply_script(unit_name: NonEmptyStr, unit_text: String) -> 
     "systemctl daemon-reload\n",
     "if docker container inspect ", ctr, " >/dev/null 2>&1; then docker update --restart=no ", ctr, " >/dev/null 2>&1 || true; fi\n",
     "systemctl enable ", unit_name as String, " >/dev/null 2>&1\n",
-    "if [ \"$changed\" = 1 ] || ! systemctl is-active --quiet ", unit_name as String, "; then systemctl restart ", unit_name as String, "; echo restarted; else echo unchanged; fi\n",
+    "systemctl restart ", unit_name as String, "; echo restarted\n",
     "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if docker container inspect ", ctr, " >/dev/null 2>&1; then echo container-present; break; fi; sleep 2; done\n",
     "docker container inspect ", ctr, " >/dev/null 2>&1\n",
     "systemctl is-active ", unit_name as String, "\n",
