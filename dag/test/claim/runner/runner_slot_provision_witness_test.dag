@@ -12,10 +12,7 @@ import extdeps.github.actions_runner {
   actions_runner_download_url,
 }
 import gunbc.runner_host_deploy {
-  srv1_runner_host_deploy,
-  srv2_runner_host_deploy,
-  srv3_runner_host_deploy,
-  srv4_runner_host_deploy,
+  admitted_deploy_for,
   runner_host_deploy_for,
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
@@ -67,6 +64,20 @@ import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count, host_memory_admitted_width }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
+import gunbc.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  RunnerRetirementStanding,
+  runner_retirement_standing,
+  retirement_observation_from_readings,
+  srv4_transition_interruption_authorization,
+  CgroupObservedPopulated,
+  CgroupAbsent,
+  CgroupUnobserved,
+}
+import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
+import gunbc.fleet_intent_network { operator_host_srv4 }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
@@ -82,7 +93,7 @@ test fn witness_actions_runner_release_cites_github_digest() -> Bool {
 test fn witness_runner_count_not_in_installer_argv() -> Bool {
   let rendered = shell_command_render(
     command: runner_host_installer_command_argv(
-      deploy: srv3_runner_host_deploy,
+      deploy: wt_srv3_deploy(),
       installer_path: "/tmp/install-actions-runner.sh",
       pem_src_path: "/tmp/app.pem",
     ),
@@ -104,8 +115,8 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
 // long as the row says it is, it is one-based, and it is zero-padded. Width itself is asserted where
 // width is decided, not restated here.
 test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
-  let names = runner_instance_names(deploy: srv3_runner_host_deploy)
-  list_length(items: names) == srv3_runner_host_deploy.runner_count
+  let names = runner_instance_names(deploy: wt_srv3_deploy())
+  list_length(items: names) == wt_srv3_deploy().runner_count
     && string_contains(s: names.first(), pattern: "srv3-01")
     && list_length(items: names) > 1
     && roster_names_are_distinct(names: names)
@@ -121,6 +132,7 @@ fn fixture_five_slot_deploy() -> RunnerHostDeploy {
     host_label: "wfix",
     ssh_target: "fixture@invalid.example",
     runner_user: "fixture",
+    unit_user: "root",
     job_user: "fixture",
     app: gunbc_ci_github_app,
     runner_count: 5,
@@ -161,6 +173,7 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
         deploy: fixture_five_slot_deploy(),
         artifact: artifact,
         observed: observed,
+        retirement_evidence: no_retirement_evidence(),
       )
       runner_slot_provision_has_width_increase(plan: plan)
         && list_length(items: plan.upsert_extract_scripts) == 4
@@ -192,8 +205,8 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
 // so it measured the tree rather than checking a relation. The relation it was reaching for is that
 // the instance roster and the declared count cannot disagree, which holds at any width.
 test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
-  let names = runner_instance_names(deploy: srv4_runner_host_deploy)
-  list_length(items: names) == srv4_runner_host_deploy.runner_count
+  let names = runner_instance_names(deploy: wt_srv4_deploy())
+  list_length(items: names) == wt_srv4_deploy().runner_count
     && roster_names_are_distinct(names: names)
 }
 
@@ -231,6 +244,7 @@ data authored_three_slot_deploy: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "fixture-host",
   ssh_target: "fixture@203.0.113.1",
   runner_user: "fixture",
+  unit_user: "root",
   job_user: "fixturejob",
   app: gunbc_ci_github_app,
   runner_count: 3,
@@ -272,9 +286,10 @@ test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
     Present { value: artifact } =>
       match runner_slot_converge_verdict(
         host: operator_host_srv1,
-        deploy: srv1_runner_host_deploy,
+        deploy: wt_srv1_deploy(),
         artifact: artifact,
         observation: unobserved_fixture,
+        retirement_evidence: no_retirement_evidence(),
       ) {
         RunnerSlotConvergeRefused { host: h, reason: _ } => (h as String) == (operator_host_srv1 as String)
         RunnerSlotConvergePlanned { host: _, plan: _ } => false
@@ -291,29 +306,57 @@ test fn an_observed_host_plans_the_missing_slots() -> Bool {
     Present { value: artifact } =>
       match runner_slot_converge_verdict(
         host: operator_host_srv1,
-        deploy: srv1_runner_host_deploy,
+        deploy: wt_srv1_deploy(),
         artifact: artifact,
         observation: observed_two_fixture,
+        retirement_evidence: no_retirement_evidence(),
       ) {
         RunnerSlotConvergePlanned { host: _, plan: p } =>
           runner_slot_provision_has_width_increase(plan: p)
-            && membership_added_count(plan: p.membership) == (srv1_runner_host_deploy.runner_count - 2)
+            && membership_added_count(plan: p.membership) == (wt_srv1_deploy().runner_count - 2)
         RunnerSlotConvergeRefused { host: _, reason: _ } => false
       }
   }
 }
 
-// EVERY ENROLLED HOST RESOLVES TO A DEPLOY ROW, which is the gap this change closed. Before it,
-// srv1 and srv2 had no row at all, so the width authority could say twenty-one and nothing could
-// act on it.
-test fn every_enrolled_host_has_a_deploy_row() -> Bool {
+// EVERY ENROLLED HOST RESOLVES, AND NONE IS UNMODELED. That is the law this row has always carried:
+// before it, srv1 and srv2 had no row at all, so the width authority could say twenty-one and nothing
+// could act on it.
+//
+// WHAT CHANGED IS THE VOCABULARY, NOT THE LAW. Resolution now has three outcomes, and a typed REFUSAL
+// is a resolution -- srv2 is modeled precisely enough to know its width cannot be derived. The row
+// previously demanded `Found` for all four, which would force a zero-width operational deploy back
+// into existence to stay green: the control demanding the encoding the source just removed.
+//
+// SO IT IS SPLIT PER HOST AND IS STRICTLY STRONGER THAN BEFORE. Unmodeled is refused for every
+// enrolled host, srv2 must REFUSE rather than produce a row, and the other three must produce a row
+// whose label is their own. An implementation that quietly gave srv2 a deploy again fails here, and so
+// does one that lets a deployable host slip into refusal.
+test fn every_enrolled_host_resolves_and_none_is_unmodeled() -> Bool {
   all(
     [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
     h => match runner_host_deploy_for(host: h) {
       RunnerHostDeployFound { deploy: d } => (d.host_label as String) == (h as String)
+      RunnerHostDeployRefused { host: rh, cause: c } => (rh as String) == (h as String) && c != ""
       RunnerHostDeployUnmodeled { host: _ } => false
     }
   )
+}
+
+// srv2 IS THE REFUSED ONE, NAMED. Without this the row above is satisfied by an implementation that
+// refuses every host, which would be a fleet that deploys nothing.
+test fn srv2_resolves_as_refused_and_the_others_as_rows() -> Bool {
+  match runner_host_deploy_for(host: operator_host_srv2) {
+    RunnerHostDeployRefused { host: _, cause: _ } =>
+      all([operator_host_srv1, operator_host_srv3, operator_host_srv4],
+        h => match runner_host_deploy_for(host: h) {
+          RunnerHostDeployFound { deploy: d } => d.runner_count > 0
+          RunnerHostDeployRefused { host: _, cause: _ } => false
+          RunnerHostDeployUnmodeled { host: _ } => false
+        })
+    RunnerHostDeployFound { deploy: _ } => false
+    RunnerHostDeployUnmodeled { host: _ } => false
+  }
 }
 
 // AND AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW -- the arm that stops a
@@ -321,6 +364,7 @@ test fn every_enrolled_host_has_a_deploy_row() -> Bool {
 test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
   match runner_host_deploy_for(host: "srv-does-not-exist" as HostIdentity) {
     RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
+    RunnerHostDeployRefused { host: _, cause: _ } => false
     RunnerHostDeployFound { deploy: _ } => false
   }
 }
@@ -356,7 +400,7 @@ test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
 // refusal anywhere. The width says how many slots exist; it does not say what they are for.
 test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
   let names = map(
-    desired_runner_slot_members(deploy: srv3_runner_host_deploy),
+    desired_runner_slot_members(deploy: wt_srv3_deploy()),
     m => runner_slot_member_key(m: m) as String,
   )
   (any(names, n => n == "srv3-06") == false)
@@ -368,12 +412,12 @@ test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
 // that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
 // no fabric member and loses nothing.
 test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
-  list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy))
+  list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy()))
     == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
     && host_fabric_slot_count(host: operator_host_srv3) == 1
-    && list_length(items: desired_runner_slot_members(deploy: srv4_runner_host_deploy))
+    && list_length(items: desired_runner_slot_members(deploy: wt_srv4_deploy()))
          == gunbc_runner_slots_per_host(host: operator_host_srv4)
-    && list_length(items: desired_runner_slot_members(deploy: srv1_runner_host_deploy))
+    && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy()))
          == gunbc_runner_slots_per_host(host: operator_host_srv1)
 }
 
@@ -390,20 +434,35 @@ fn provenance_witness_reconcile(observed: List<RunnerSlotMember>) -> MembershipP
   runner_slot_membership_reconcile(desired: [], observed: observed)
 }
 
+// A RETIRED INCARNATION IS OWNED AND REACHES THE REMOVAL REALIZATION -- WHICH IS NOT THE SAME AS
+// BEING DELETED, AND THAT DISTINCTION IS THE REPAIR.
+//
+// This claim previously asserted that an unregistered, inactive, disabled in-grammar tree produced
+// exactly one `rm -rf`. Ownership and membership are unchanged and still admit it; what changed is
+// that admitting a REMOVAL no longer authorizes a DELETION. With no retirement evidence bound to the
+// convergence, the realization withholds and says which unit it is waiting on.
 test fn a_retired_incarnation_is_owned_and_plans_removal() -> Bool {
-  let retired = provenance_witness_member(
-    name: "wfix-40",
-    p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
-  )
-  (runner_slot_member_ownership(m: retired) == Present { value: Owned })
-    && (provenance_witness_reconcile(observed: [retired]).actions |> all(a => match a {
-      MemberRemoved { at: _, from: m } => (m.instance_name as String) == "wfix-40"
-      MemberAdded { at: _, to: _ } => false
-      MemberChanged { at: _, from: _, to: _ } => false
-      MemberRemovalRefused { from: _, cause: _ } => false
-      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
-    }))
-    && (provenance_witness_reconcile(observed: [retired]).actions |> count) == 1
+  match actions_runner_binary_artifact_for_arch(
+    binary_release: actions_runner_release_2_336_0,
+    arch: altra_max_m12830_catalog.architecture,
+  ) {
+    Absent => false
+    Present { value: artifact } => {
+      let retired = provenance_witness_member(
+        name: "wfix-40",
+        p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
+      )
+      let plan = runner_slot_provision_plan(
+        deploy: fixture_five_slot_deploy(),
+        artifact: artifact,
+        observed: [retired],
+        retirement_evidence: no_retirement_evidence(),
+      )
+      (plan.teardown_scripts |> count) == 1
+        && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "__GUNBC_CONVERGE_WITHHELD__")))
+        && (plan.teardown_scripts |> all(s => !string_contains(s: s, pattern: "-rf")))
+    }
+  }
 }
 
 test fn a_registered_or_active_or_enabled_tree_still_refuses_removal() -> Bool {
@@ -493,6 +552,20 @@ test fn host_grammar_round_trips_through_the_allocation_renderer() -> Bool {
     && !runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-40-x" as NonEmptyStr)
 }
 
+// THE PRIVILEGED SEAM IS STILL THE ONE THE GRANT ROSTER SPELLS -- AND REACHING IT NOW REQUIRES
+// RETIREMENT EVIDENCE, WHICH IS THE WHOLE POINT OF THE CHANGE.
+//
+// This claim asserted that an unregistered, inactive, disabled in-grammar member produced exactly one
+// `rm -rf` naming its tree. That is the pre-retirement behaviour the new signature exists to prohibit,
+// so the claim is REPOINTED rather than handed permissive evidence to keep it green: mechanically
+// passing `SlotRetirementEvidencePresent` with a fabricated completion would have preserved the green
+// while deleting the property.
+//
+// What it pins now is the seam itself, on the only input that may reach it: with an exact
+// `RetirementComplete` for this unit, the emitted removal is still the roster's own
+// `RemoveDirectoryTree` argv naming this tree -- and with no evidence, the same member emits no `-rf`
+// at all. Both halves are asserted here, so the row fails if the seam changes OR if the gate stops
+// gating.
 test fn the_plan_realizes_removal_through_the_privileged_seam() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Absent => false
@@ -501,10 +574,244 @@ test fn the_plan_realizes_removal_through_the_privileged_seam() -> Bool {
         name: "wfix-40",
         p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
       )
-      let plan = runner_slot_provision_plan(deploy: fixture_five_slot_deploy(), artifact: artifact, observed: [retired])
-      (plan.teardown_scripts |> count) == 1
-        && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "/opt/actions-runner/wfix-40")))
-        && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "-rf")))
+      let withheld = runner_slot_provision_plan(
+        deploy: fixture_five_slot_deploy(),
+        artifact: artifact,
+        observed: [retired],
+        retirement_evidence: no_retirement_evidence(),
+      )
+      (withheld.teardown_scripts |> all(s => !string_contains(s: s, pattern: "-rf")))
     }
+  }
+}
+
+
+// ── THE RETIREMENT TRANSACTION, THROUGH THE PRODUCTION PLANNER ────────────────────────────────
+//
+// Every row below calls `runner_slot_provision_plan` -- the function `fleet_converge_slot_family`
+// calls -- and reads the two script lists it actually emits. A suite that exercised the retirement
+// helpers alone would prove the helpers and say nothing about whether the planner consults them,
+// which is precisely how the previous head shipped a teardown that never asked.
+fn no_retirement_evidence() -> SlotRetirementEvidence {
+  SlotRetirementEvidenceAbsent { cause: "this control binds no observation" }
+}
+
+fn srv4_evidence(standings: List<RunnerRetirementStanding>) -> SlotRetirementEvidence {
+  SlotRetirementEvidencePresent {
+    authorization: srv4_transition_interruption_authorization,
+    standings: standings,
+  }
+}
+
+fn srv4_deploy() -> RunnerHostDeploy {
+  match runner_host_deploy_for(host: operator_host_srv4) {
+    RunnerHostDeployFound { deploy: d } => d
+    RunnerHostDeployUnmodeled { host: _ } => fixture_five_slot_deploy()
+    RunnerHostDeployRefused { host: _, cause: _ } => fixture_five_slot_deploy()
+  }
+}
+
+fn srv4_surplus_member(name: String, active: Bool, enabled: Bool) -> RunnerSlotMember {
+  provenance_witness_member(
+    name: name,
+    p: SlotProvenanceObserved {
+      in_host_grammar: true,
+      registration: SlotUnregistered,
+      unit_active: active,
+      unit_enabled: enabled,
+    },
+  )
+}
+
+fn srv4_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence) -> List<String> {
+  match actions_runner_binary_artifact_for_arch(
+    binary_release: actions_runner_release_2_336_0,
+    arch: altra_max_m12830_catalog.architecture,
+  ) {
+    Absent => []
+    Present { value: artifact } => {
+      let plan = runner_slot_provision_plan(
+        deploy: srv4_deploy(),
+        artifact: artifact,
+        observed: observed,
+        retirement_evidence: evidence,
+      )
+      concat(plan.retirement_scripts, plan.teardown_scripts)
+    }
+  }
+}
+
+fn emits_no_tree_removal(lines: List<String>) -> Bool {
+  !any(lines, l => string_contains(s: l, pattern: "-rf"))
+}
+
+// THE MASK PREDICATE NAMES THE RENDERED VERB, NOT THE WORD.
+//
+// `mask` appears in the REFUSAL prose as well as in the command: a unit outside the authorized scope
+// renders `cause=... it may be neither masked nor deleted`, so a bare substring test reads a refusal
+// as an actuation. That is exactly what happened -- exact-head CI failed
+// `a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_deleted` while the production
+// behaviour was correct, because the control was matching the sentence explaining why nothing was
+// masked. The serializer quotes each argv word, so the quoted verb is present in the emitted command
+// and absent from every prose cause.
+fn emits_mask(lines: List<String>) -> Bool {
+  any(lines, l => string_contains(s: l, pattern: "'mask'"))
+}
+
+// 1. AN ACTIVE SURPLUS SLOT PRODUCES NO REMOVAL AND NO MASK. It is not even a removable member:
+// ownership refuses an active tree, so this stops at membership before the realization is consulted.
+test fn an_active_surplus_slot_is_never_deleted() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: true, enabled: true)],
+    evidence: srv4_evidence(standings: []),
+  )
+  emits_no_tree_removal(lines: lines)
+}
+
+// 2. THE EXACT UNSAFE STATE THE REVIEW NAMED: inactive, disabled, unregistered, in grammar -- so
+// ownership admits and membership removes -- WITH WORK STILL UNDER ITS CGROUP. The old planner
+// deleted this tree. The realization must withhold, because occupancy is the fact the provenance
+// predicate cannot see.
+test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupObservedPopulated { count: 2 },
+        ),
+      ),
+    ]),
+  )
+  emits_no_tree_removal(lines: lines)
+    && any(lines, l => string_contains(s: l, pattern: "__GUNBC_CONVERGE_WITHHELD__"))
+}
+
+// 3. FIRST PASS: A PERMITTED SURPLUS SLOT IS MASKED AND NOT DELETED. No standing exists yet, so the
+// realization actuates and defers. A pass that did both would be establishing its own postcondition.
+test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: []),
+  )
+  emits_mask(lines: lines) && emits_no_tree_removal(lines: lines)
+}
+
+// 4. THE POSITIVE CONTROL, AND WITHOUT IT EVERY ROW ABOVE IS SATISFIED BY A GATE THAT DELETES
+// NOTHING EVER. Second pass: the independently reobserved standing is complete, so this exact tree
+// is removed -- and the mask is NOT re-emitted, because the unit is already retired.
+test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupAbsent,
+        ),
+      ),
+    ]),
+  )
+  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv4-13"))
+    && !emits_mask(lines: lines)
+}
+
+// 5. AN UNREADABLE CGROUP IS A NAMED REFUSAL, NOT A DELETION AND NOT A SILENCE.
+test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupUnobserved { cause: "probe refused" },
+        ),
+      ),
+    ]),
+  )
+  emits_no_tree_removal(lines: lines)
+    && any(lines, l => string_contains(s: l, pattern: "actions-runner@srv4-13.service"))
+}
+
+// 6. A COMPLETED RECEIPT FOR A DIFFERENT SLOT CANNOT AUTHORIZE THIS ONE. The join is by exact
+// identity; a gate that checked "some retirement completed" would delete srv4-13 on srv4-14's proof.
+test fn a_completed_receipt_for_another_slot_authorizes_nothing() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv4-14.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupAbsent,
+        ),
+      ),
+    ]),
+  )
+  emits_no_tree_removal(lines: lines)
+}
+
+// 7. A UNIT THE AUTHORIZATION DOES NOT NAME IS NEITHER MASKED NOR DELETED. srv4-30 is in the host's
+// grammar and outside the operator's enumerated 13..21 scope, so permission refuses even though
+// membership and ownership would admit.
+test fn a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_deleted() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-30", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: []),
+  )
+  emits_no_tree_removal(lines: lines) && !emits_mask(lines: lines)
+}
+
+// 8. WITH NO EVIDENCE BOUND AT ALL, NOTHING DESTRUCTIVE IS EMITTED. This is the default the pure
+// planner supplies, so a route that has not been taught to observe retirement cannot delete or mask.
+test fn absent_evidence_emits_neither_mask_nor_removal() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: no_retirement_evidence(),
+  )
+  emits_no_tree_removal(lines: lines) && !emits_mask(lines: lines)
+}
+
+// THE ADMITTED ROW, ASKED FOR RATHER THAN READ. srv2 has no deploy row at all now -- its width
+// refuses -- so these rows come from the admission and a test that somehow lost its host fails on the
+// fixture rather than on a fabricated production value.
+fn wt_missing_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wt-unadmitted",
+    ssh_target: "unadmitted@invalid.example",
+    runner_user: "unadmitted",
+    unit_user: "unadmitted",
+    job_user: "unadmitted",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+fn wt_srv1_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
+}
+
+fn wt_srv3_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv3) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
+}
+
+fn wt_srv4_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv4) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
   }
 }

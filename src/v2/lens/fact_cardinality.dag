@@ -1,4 +1,5 @@
 module v2.lens.fact_cardinality
+import v2.std.text { string_eq }
 
 
 type FactCardinalityTree
@@ -14,10 +15,6 @@ type FactCardinalityDeclFact {
 data fact_cardinality_cross_tree_coexistence_baseline: Int = 43
 
 data no_coexistence_keys: FreeMonoid<String> = Empty
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
 fn add_unseen_key(acc: FreeMonoid<String>, key: String) -> FreeMonoid<String> {
   if contains(xs: acc, item: key, eq: string_eq) {

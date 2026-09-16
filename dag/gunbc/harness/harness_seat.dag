@@ -29,8 +29,8 @@ import gunbc.fabric_event_log {
 }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted, HarnessBackendUnreachable,
-  HarnessBackendUnreadable, harness_observe_replica, harness_observe_engine, harness_standing_detail,
-  harness_route_availability, HarnessEngineReading,
+  HarnessBackendUnreadable, harness_observe_replica, harness_standing_detail,
+  harness_route_availability, HarnessEngineReading, harness_observe_engine_at,
 }
 import gunbc.harness.harness_wire { HarnessWireShape, harness_backend_url_for_endpoint }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
@@ -67,6 +67,10 @@ import gunbc.serving.turn_admission {
   spark_serving_trust_domain, serving_delay_valuation,
 }
 import gunbc.serving.turn_demand { serving_turn_requirements }
+import gunbc.serving.engine_progress {
+  EngineProgressGate, WithholdRouteNotProgressing, ProgressDoesNotWithhold,
+  engine_progress_read, engine_progress_gate, serving_engine_step_bound,
+}
 import gunbc.serving.serving_availability {
   ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
   FrontDoorDidNotAnswerSuccessfullyWithinBound, EndpointProcessReplaced,
@@ -324,11 +328,11 @@ fn harness_seat_standing(route: ServingRoute, layout: EventLogLayout, now: Epoch
 
 // ── WHAT THIS BOUNDARY IS, AND WHAT IT IS NOT ────────────────────────────────────────────────
 //
-// IT IS AN ADMISSION BROKER OVER FABRIC OFFERS, AND IT DOES NOT BIND SERVING INTO FABRIC Work.
-// gunbc.serving.turn_demand can construct exact inference Work and its Demand, and this path does
-// not call it, because it cannot: no observation in this repository establishes the exact model,
-// tokenizer and runtime closure a launch loaded, so every Work it could build here would be the
-// typed refusal that module returns.
+// IT IS AN ADMISSION BROKER OVER FABRIC OFFERS, AND IT DOES NOT YET BIND SERVING INTO FABRIC Work.
+// gunbc.serving.turn_demand constructs a turn's Work as an OfferedService from the request alone, so
+// the identity no longer waits on any observation of the selected engine. This path still does not
+// call it, because it receives no normalized turn request: the prompt reaches harness_run_turn after
+// placement, and nothing here carries the interface, inputs or output contract a Work is made of.
 //
 // AN EARLIER SHAPE OF THIS FILE CARRIED THAT REFUSAL ON THE GRANTED SEAT, which reads as enforcement
 // and is not: the refusal travelled beside a successful placement and prevented nothing
@@ -337,10 +341,9 @@ fn harness_seat_standing(route: ServingRoute, layout: EventLogLayout, now: Epoch
 // (whether this group may take a fresh cold-risk turn now) and claims nothing about work identity.
 //
 // THE FRONTIER, NAMED SO IT IS NOT MISTAKEN FOR AN OMISSION. gunbc.serving.turn_demand's consumer is
-// this function, and it lands when a launch receipt reads the served model, tokenizer and runtime
-// closure off the running engine. At that point placement takes the Demand's own key rather than the
-// caller's actor string, and a request whose source closure is unestablished refuses BEFORE
-// acquisition rather than after it.
+// this function, and it lands when harness_bind_seat takes a normalized ServingTurnRequest: one Work
+// and one Demand are then constructed before candidates are enumerated, and placement takes the
+// Demand's own key rather than the caller's actor string.
 // ── WHAT THE TURN REQUIRES OF A MODEL, WHICH IS NOW A QUESTION RATHER THAN A CONSTANT ────────
 //
 // THE DEMAND USED TO NAME ONE MODEL AND THAT WAS THE WHOLE PROBLEM. The capability a serving offer
@@ -479,14 +482,11 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // when evidence identifies the deployment that answered as the offered launch.
 //
 // A CandidateOffer is sole_constructor through product.fabric.selection bind_candidate, which takes
-// a DEMAND IDENTITY and a WORK IDENTITY and compares the permit against both. A WorkKey comes from
-// exactly one place -- product.fabric.work derive_work_key, through work_for -- which needs a
-// WorkContract, which needs a SourceManifestRef; and gunbc.serving.turn_demand refuses to produce
-// one until its weights, tokenizer and runtime components are each observed. Nothing observes the
-// first two (serving_turn_weights_obligation, serving_turn_tokenizer_obligation), and the runtime is
-// read only through an incarnation observation this path does not have. Minting a key beside derive_work_key would
-// fabricate the identity the fabric's deduplication and receipts are keyed on, so this arm reports
-// what is missing and seats nobody rather than inventing it.
+// a DEMAND IDENTITY and a WORK IDENTITY and compares the permit against both. The Work is
+// constructible -- gunbc.serving.turn_demand serving_turn_work builds an OfferedService from the
+// request alone, and no realization fact of the offer participates -- but it must be constructed once
+// at the request boundary and carried down, never minted here per candidate, and this path receives
+// no normalized request to construct it from.
 //
 // THE CAPABILITY IS THE REQUIREMENT'S, NOT THE OBSERVED MODEL'S, and the two are reconciled before
 // this is reached rather than here: the observed unit has already been checked against the
@@ -502,10 +502,9 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // of this arm, so the wording carries it: admission cannot yet be evaluated, and the producer exists
 // and has not run (operator-routed review of #11083).
 //
-// Restoration trigger: observers of the loaded weight and tokenizer bytes and of the answering
-// incarnation, SUFFICIENT FOR gunbc.serving.turn_demand serving_turn_work to return TurnWorkBound
-// for a harness turn -- at which point the demand and work identities exist, the admission producer
-// is called with them, and bind_candidate has everything it compares.
+// Restoration trigger: harness_bind_seat carries a normalized ServingTurnRequest, SUFFICIENT FOR one
+// Work and one Demand constructed before candidate enumeration -- at which point the admission
+// producer is called with them, and bind_candidate has everything it compares.
 //
 // THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
 // through exactly what production passes. The incarnation standing is an ARGUMENT: production takes
@@ -569,7 +568,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
         acc: acc,
         note: seat_bind_detail(
           group: group,
-          text: "The serving offer bound. Provider-use admission cannot yet be evaluated for this turn because its exact Work identity is unestablished: nothing observes the weight or tokenizer bytes a launch loaded, so gunbc.serving.turn_demand cannot bind a source manifest, and product.fabric.selection bind_candidate has no work to compare a permit against. gunbc.spark.first_party_serving spark_first_party_admission EXISTS and has NOT RUN for this turn",
+          text: "The serving offer bound. Provider-use admission cannot yet be evaluated for this turn because placement receives no normalized turn request: gunbc.serving.turn_demand serving_turn_work can construct the turn's Work from one, but harness_bind_seat is given no interface, inputs or output contract, so no Work or Demand exists for product.fabric.selection bind_candidate to compare a permit against. gunbc.spark.first_party_serving spark_first_party_admission EXISTS and has NOT RUN for this turn",
         ),
         retryable: false,
       )
@@ -598,10 +597,19 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
     ServingRouteResolved { endpoint: endpoint, ceiling: route_ceiling } => {
       let group = endpoint.group
-      let before = harness_observe_engine(endpoint: endpoint).launch
+      let first = harness_observe_engine_at(endpoint: endpoint, at: now)
       let standing = harness_observe_replica(endpoint: endpoint)
-      let engine = harness_observe_engine(endpoint: endpoint)
-      let availability = harness_route_availability(endpoint: endpoint, before: before, standing: standing, after: engine.launch, now: to_string(now))
+      let engine = harness_observe_engine_at(endpoint: endpoint, at: now)
+      let availability = harness_route_availability(endpoint: endpoint, before: first.launch, standing: standing, after: engine.launch, now: to_string(now))
+      let progress = engine_progress_read(
+        endpoint: endpoint,
+        before_launch: first.launch,
+        after_launch: engine.launch,
+        before: first.progress,
+        after: engine.progress,
+        bound: serving_engine_step_bound,
+        now: to_string(now),
+      )
       match availability.reading {
         ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } =>
           harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: serving_availability_text(a: availability.reading)), retryable: false)
@@ -610,6 +618,36 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
         ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: _, observed: _ }, receipt: _ } =>
           harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: serving_availability_text(a: availability.reading)), retryable: true)
         ServingAvailable { endpoint: _, launch: launch, observed_at: _, receipt: _ } =>
+          match engine_progress_gate(verdict: progress) {
+            WithholdRouteNotProgressing { note: why } =>
+              harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why), retryable: true)
+            ProgressDoesNotWithhold =>
+              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now)
+          }
+      }
+    }
+  }
+}
+
+// AN UNREAD PROGRESS READING IS NOT A WALL. Whether the engine is advancing is a different question from
+// whether the route answered, and the three non-stall arms -- advanced, idle, and unread -- all continue
+// to the model screen. Only an established stall withholds the route, and it is retryable because a
+// wedged engine may clear and the next placement round re-observes.
+fn harness_candidate_from_standing(
+  acc: HarnessCandidates,
+  group: FabricGroup,
+  endpoint: ServingRouteEndpoint,
+  route: ServingRoute,
+  class: ServingCoTenancyClass,
+  requirement: ServingModelRequirement,
+  standing: HarnessBackendStanding,
+  availability: ServingFrontDoorAvailabilityVerdict,
+  launch: VllmEndpointProcessLaunch,
+  engine: HarnessEngineReading,
+  route_ceiling: ServingRouteTurnCeiling,
+  layout: EventLogLayout,
+  now: EpochSecs,
+) -> HarnessCandidates {
           match standing {
             HarnessBackendServing { model: observed_model, unit: observed_unit, readback: observed_readback } =>
               if !harness_requirement_admits(requirement: requirement, observed: observed_unit) {
@@ -634,9 +672,6 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
             HarnessBackendUnreadable { cause: _ } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: harness_standing_detail(standing: standing)), retryable: false)
           }
-      }
-    }
-  }
 }
 
 fn harness_add_serving_candidate(
@@ -797,7 +832,7 @@ type HarnessAcquisition
 // (review 62155). A refused release is therefore a refusal of the whole placement, and the seat it
 // could not give back is named in the reason.
 fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
-  match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine(endpoint: candidate.endpoint).launch, now: to_string(now)).reading {
+  match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine_at(endpoint: candidate.endpoint, at: now).launch, now: to_string(now)).reading {
     EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: o } => {
       let released = release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join([o as String, " (seat ", harness_seat_release_wire(r: released), ")"], "")) }

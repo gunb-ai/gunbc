@@ -1255,6 +1255,13 @@ data effect_demand_seam_roster: List<SeamStanding> = [
     evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   },
   SeamStanding {
+    declaration: "type_declarer_qualified_names",
+    seam_module: "v2.std.decl_index",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "type_declarer_qualified_names") },
+    emitted_rust_identity: "v2_std_decl_index.rs::type_declarer_qualified_names",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^projection_row_authored_emission_not_re_measured }
+  },
+  SeamStanding {
     declaration: "decl_facts",
     seam_module: "v2.std.decl_index",
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "decl_facts") },
@@ -1274,13 +1281,6 @@ data effect_demand_seam_roster: List<SeamStanding> = [
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "data_decl_type_facts") },
     emitted_rust_identity: "v2_std_decl_index.rs::data_decl_type_facts",
     evidence: SeamRefusalObservedInClosure { closure_entry: "v2.compiler.compile" }
-  },
-  SeamStanding {
-    declaration: "resolve_type_node",
-    seam_module: "v2.std.node_reflection",
-    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "resolve_type_node") },
-    emitted_rust_identity: "v2_std_node_reflection.rs::resolve_type_node",
-    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   },
   SeamStanding {
     declaration: "coproduct_nullary_inhabitants",

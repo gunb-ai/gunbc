@@ -1,0 +1,477 @@
+module gunbc.container.registry_image_config
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.measure { Second, second }
+import extdeps.container.oci.digest {
+  OciOtherDigest,
+  OciSha256Digest,
+  OciSha512Digest,
+  parse_oci_content_digest_wire,
+  render_oci_content_digest_wire,
+}
+import extdeps.container.oci.image_config { ContainerImageConfig }
+import extdeps.container.oci.types { oci_media_type_config_v1_wire, oci_media_type_manifest_v1_wire }
+import extdeps.docker.distribution_manifest {
+  docker_container_image_v1_media_type,
+  docker_distribution_manifest_v2_media_type,
+}
+import extdeps.docker.hub {
+  docker_hub_anonymous_pull_token_url,
+  docker_hub_blob_url,
+  docker_hub_manifest_url,
+}
+import extdeps.http.client
+import extdeps.http.client { http_client_max_time_flag }
+import extdeps.languages.json.emit { JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberFound,
+  JsonMemberNotAnObject,
+  json_document_gap_text,
+  json_object_unique_member,
+  json_string_value_or_empty,
+  parse_json_document,
+}
+import extdeps.tools.sha256sum
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import std.resources { Network }
+
+type RegistryBytesSha256
+  = RegistryBytesSha256 { hex: NonEmptyStr }
+  | RegistryBytesSha256Unreadable { subject: NonEmptyStr, cause: String }
+
+type RegistryBytesDigestCheck
+  = RegistryBytesDigestMatched { hex: NonEmptyStr }
+  | RegistryBytesDigestMismatched { subject: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
+
+type RegistryHttpBody
+  = RegistryHttpBody { body: String }
+  | RegistryHttpFetchRefused { url: NonEmptyStr, cause: String }
+
+type RegistryBearerToken
+  = RegistryBearerToken { token: NonEmptyStr }
+  | RegistryBearerTokenUnreadable { cause: String }
+
+type ManifestConfigDigestRead
+  = ManifestConfigDigest { digest_wire: NonEmptyStr }
+  | ManifestConfigDigestUnreadable { cause: String }
+
+type ContainerImageConfigEnvRead
+  = ContainerImageConfigEnv { env: List<String> }
+  | ContainerImageConfigEnvUnreadable { cause: String }
+
+fn registry_manifest_accept_header() -> NonEmptyStr {
+  join([
+    "Accept: ",
+    oci_media_type_manifest_v1_wire,
+    ", ",
+    docker_distribution_manifest_v2_media_type as String,
+  ], "") as NonEmptyStr
+}
+
+fn registry_config_blob_accept_header() -> NonEmptyStr {
+  join([
+    "Accept: ",
+    oci_media_type_config_v1_wire,
+    ", ",
+    docker_container_image_v1_media_type as String,
+  ], "") as NonEmptyStr
+}
+
+fn registry_authorization_header_line(token: NonEmptyStr) -> String {
+  join(["Authorization: Bearer ", token as String, "\n"], "")
+}
+
+fn sha256_hex_of_content(content: String, subject: NonEmptyStr) -> RegistryBytesSha256 {
+  let observed = sha256sum.Sha256.DigestStdin(content: content)
+  if observed.success == false {
+    RegistryBytesSha256Unreadable { subject: subject, cause: "sha256sum could not digest the bytes" }
+  } else {
+    match get(xs: split(s: trim(s: observed.line), delimiter: " "), index: 0) {
+      Absent =>
+        RegistryBytesSha256Unreadable { subject: subject, cause: "sha256sum printed no digest field" }
+      Present { value: hex } =>
+        if hex.length() == 0 {
+          RegistryBytesSha256Unreadable { subject: subject, cause: "sha256sum printed an empty digest field" }
+        } else {
+          RegistryBytesSha256 { hex: hex as NonEmptyStr }
+        }
+    }
+  }
+}
+
+fn check_sha256_hex(subject: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr) -> RegistryBytesDigestCheck {
+  if expected == observed {
+    RegistryBytesDigestMatched { hex: observed }
+  } else {
+    RegistryBytesDigestMismatched { subject: subject, expected: expected, observed: observed }
+  }
+}
+
+fn json_string_list(v: JsonValue) -> List<String>? {
+  match v {
+    JsonArray { elements: es } => json_string_list_from(es: es, index: 0, acc: [])
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn json_string_list_from(es: List<JsonValue>, index: Int, acc: List<String>) -> List<String>? {
+  if index >= count(es) {
+    Present { value: acc }
+  } else {
+    match es |> get(index) {
+      Absent => none
+      Present { value: el } =>
+        match el {
+          JsonString { value: s } =>
+            json_string_list_from(es: es, index: index + 1, acc: append(acc, items: [s]))
+          JsonNull => none
+          JsonBool { value: _ } => none
+          JsonNumber { lexeme: _ } => none
+          JsonArray { elements: _ } => none
+          JsonObject { members: _ } => none
+        }
+    }
+  }
+}
+
+fn unique_string_member(v: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } => {
+      let s = json_string_value_or_empty(v: found)
+      if s == "" {
+        none
+      } else {
+        Present { value: s }
+      }
+    }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+type UniqueJsonObjectMember
+  = UniqueJsonObjectMember { value: JsonValue }
+  | UniqueJsonObjectMemberAbsent
+  | UniqueJsonObjectMemberDuplicated { count: Int }
+  | UniqueJsonObjectMemberHostNotAnObject
+  | UniqueJsonObjectMemberValueNotAnObject
+
+fn unique_object_member(v: JsonValue, key: String) -> UniqueJsonObjectMember {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonObject { members: _ } => UniqueJsonObjectMember { value: found }
+        JsonNull => UniqueJsonObjectMemberValueNotAnObject
+        JsonBool { value: _ } => UniqueJsonObjectMemberValueNotAnObject
+        JsonNumber { lexeme: _ } => UniqueJsonObjectMemberValueNotAnObject
+        JsonString { value: _ } => UniqueJsonObjectMemberValueNotAnObject
+        JsonArray { elements: _ } => UniqueJsonObjectMemberValueNotAnObject
+      }
+    JsonMemberAbsent => UniqueJsonObjectMemberAbsent
+    JsonMemberDuplicated { count: n } => UniqueJsonObjectMemberDuplicated { count: n }
+    JsonMemberNotAnObject => UniqueJsonObjectMemberHostNotAnObject
+  }
+}
+
+fn manifest_config_digest_wire(manifest_json: String) -> ManifestConfigDigestRead {
+  match parse_json_document(s: manifest_json) {
+    JsonDocumentUnreadable { gap: g } =>
+      ManifestConfigDigestUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match unique_object_member(v: v, key: "config") {
+        UniqueJsonObjectMemberAbsent =>
+          ManifestConfigDigestUnreadable { cause: "manifest JSON names no config object" }
+        UniqueJsonObjectMemberHostNotAnObject =>
+          ManifestConfigDigestUnreadable { cause: "manifest JSON is not an object" }
+        UniqueJsonObjectMemberDuplicated { count: n } =>
+          ManifestConfigDigestUnreadable {
+            cause: join(["manifest JSON names config ", to_string(n), " times"], ""),
+          }
+        UniqueJsonObjectMemberValueNotAnObject =>
+          ManifestConfigDigestUnreadable { cause: "manifest config is not an object" }
+        UniqueJsonObjectMember { value: cfg } =>
+          match unique_string_member(v: cfg, key: "digest") {
+            Absent => ManifestConfigDigestUnreadable { cause: "manifest config names no digest string" }
+            Present { value: raw } =>
+              match parse_oci_content_digest_wire(raw: raw) {
+                Absent =>
+                  ManifestConfigDigestUnreadable { cause: "manifest config digest is not an OCI content digest" }
+                Present { value: d } =>
+                  ManifestConfigDigest { digest_wire: render_oci_content_digest_wire(d: d) as NonEmptyStr }
+              }
+          }
+      }
+  }
+}
+
+fn container_image_config_env_from_json(config_json: String) -> ContainerImageConfigEnvRead {
+  match parse_json_document(s: config_json) {
+    JsonDocumentUnreadable { gap: g } =>
+      ContainerImageConfigEnvUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match unique_object_member(v: v, key: "config") {
+        UniqueJsonObjectMemberAbsent => ContainerImageConfigEnv { env: [] }
+        UniqueJsonObjectMemberHostNotAnObject =>
+          ContainerImageConfigEnvUnreadable { cause: "image config JSON is not an object" }
+        UniqueJsonObjectMemberDuplicated { count: n } =>
+          ContainerImageConfigEnvUnreadable {
+            cause: join(["image config JSON names config ", to_string(n), " times"], ""),
+          }
+        UniqueJsonObjectMemberValueNotAnObject =>
+          ContainerImageConfigEnvUnreadable { cause: "image config config member is not an object" }
+        UniqueJsonObjectMember { value: cfg } =>
+          match json_object_unique_member(v: cfg, key: "Env") {
+            JsonMemberAbsent => ContainerImageConfigEnv { env: [] }
+            JsonMemberNotAnObject =>
+              ContainerImageConfigEnvUnreadable { cause: "image config is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              ContainerImageConfigEnvUnreadable {
+                cause: join(["image config names Env ", to_string(n), " times"], ""),
+              }
+            JsonMemberFound { value: envv } =>
+              match json_string_list(v: envv) {
+                Absent =>
+                  ContainerImageConfigEnvUnreadable { cause: "image config Env is not a list of strings" }
+                Present { value: env } => ContainerImageConfigEnv { env: env }
+              }
+          }
+      }
+  }
+}
+
+fn container_image_config_from_env(env: List<String>) -> ContainerImageConfig {
+  ContainerImageConfig {
+    User: none,
+    Env: Present { value: env },
+    Entrypoint: none,
+    Cmd: none,
+    WorkingDir: none,
+    ExposedPorts: none,
+  }
+}
+
+fn registry_http_get_bounded(url: NonEmptyStr) -> RegistryHttpBody {
+  let got = http.Client.GetBounded(url: url)
+  if got.success {
+    RegistryHttpBody { body: got.body }
+  } else {
+    RegistryHttpFetchRefused { url: url, cause: "bounded GET failed" }
+  }
+}
+
+data registry_image_config_fetch_deadline: Second = second(count: 60)
+
+fn registry_http_get_with_bearer(
+  url: NonEmptyStr,
+  accept: NonEmptyStr,
+  header_file: NonEmptyStr,
+  max_time: Second,
+) -> RegistryHttpBody {
+  let got = http.Client.GetFollowRedirectsBoundedWithHeaderFile(
+    url: url,
+    max_seconds: http_client_max_time_flag(max_time: max_time),
+    accept: accept,
+    header_file: header_file,
+  )
+  if got.success {
+    RegistryHttpBody { body: got.body }
+  } else {
+    RegistryHttpFetchRefused { url: url, cause: "bounded GET with header file failed" }
+  }
+}
+
+fn docker_hub_bearer_token(repository: NonEmptyStr) -> RegistryBearerToken {
+  match registry_http_get_bounded(url: docker_hub_anonymous_pull_token_url(repository: repository)) {
+    RegistryHttpFetchRefused { url: u, cause: c } =>
+      RegistryBearerTokenUnreadable { cause: join(["token fetch failed for ", u as String, ": ", c], "") }
+    RegistryHttpBody { body: body } =>
+      match parse_json_document(s: body) {
+        JsonDocumentUnreadable { gap: g } =>
+          RegistryBearerTokenUnreadable { cause: json_document_gap_text(gap: g) }
+        JsonDocumentParsed { value: v } =>
+          match unique_string_member(v: v, key: "token") {
+            Absent =>
+              match unique_string_member(v: v, key: "access_token") {
+                Absent => RegistryBearerTokenUnreadable { cause: "token document names no token" }
+                Present { value: t } => RegistryBearerToken { token: t as NonEmptyStr }
+              }
+            Present { value: t } => RegistryBearerToken { token: t as NonEmptyStr }
+          }
+      }
+  }
+}
+
+fn digest_hex_from_sha256_wire(digest_wire: NonEmptyStr) -> NonEmptyStr? {
+  match parse_oci_content_digest_wire(raw: digest_wire as String) {
+    Absent => none
+    Present { value: d } =>
+      match d {
+        OciSha256Digest(digest) => Present { value: digest.hex as NonEmptyStr }
+        OciSha512Digest(_) => none
+        OciOtherDigest(_) => none
+      }
+  }
+}
+
+type PinnedRegistryImageConfigRead
+  = PinnedRegistryImageConfig {
+      pin: NonEmptyStr
+      config: ContainerImageConfig
+    }
+  | PinnedRegistryImageConfigRefused { cause: String }
+
+fn read_docker_hub_image_config_at_digest(
+  repository: NonEmptyStr,
+  digest_sha256_hex: NonEmptyStr,
+  pin: NonEmptyStr,
+) -> PinnedRegistryImageConfigRead
+  uses net: Network
+{
+  let digest_wire = join(["sha256:", digest_sha256_hex as String], "") as NonEmptyStr
+  match docker_hub_bearer_token(repository: repository) {
+    RegistryBearerTokenUnreadable { cause: c } => PinnedRegistryImageConfigRefused { cause: c }
+    RegistryBearerToken { token: token } => {
+      let dir = shell.Mktemp.Dir()
+      if dir.success == false {
+        PinnedRegistryImageConfigRefused { cause: "mktemp -d failed for the bearer header file" }
+      } else {
+        let header_path = concat(dir.path as String, "/authorization") as NonEmptyStr
+        let wrote = Filesystem.WriteOwnerOnly(
+          path: header_path as String,
+          content: registry_authorization_header_line(token: token),
+        )
+        if wrote.success == false {
+          let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+          PinnedRegistryImageConfigRefused { cause: "could not write the bearer header file" }
+        } else {
+          let manifest_url = docker_hub_manifest_url(repository: repository, digest_wire: digest_wire)
+          match registry_http_get_with_bearer(
+            url: manifest_url,
+            accept: registry_manifest_accept_header(),
+            header_file: header_path,
+            max_time: registry_image_config_fetch_deadline,
+          ) {
+            RegistryHttpFetchRefused { url: u, cause: c } => {
+              let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+              PinnedRegistryImageConfigRefused {
+                cause: join(["manifest fetch failed for ", u as String, ": ", c], ""),
+              }
+            }
+            RegistryHttpBody { body: manifest_body } =>
+              match sha256_hex_of_content(content: manifest_body, subject: "manifest" as NonEmptyStr) {
+                RegistryBytesSha256Unreadable { subject: s, cause: c } => {
+                  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                  PinnedRegistryImageConfigRefused { cause: join([s as String, ": ", c], "") }
+                }
+                RegistryBytesSha256 { hex: manifest_hex } =>
+                  match check_sha256_hex(
+                    subject: "manifest" as NonEmptyStr,
+                    expected: digest_sha256_hex,
+                    observed: manifest_hex,
+                  ) {
+                    RegistryBytesDigestMismatched { subject: s, expected: e, observed: o } => {
+                      let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                      PinnedRegistryImageConfigRefused {
+                        cause: join([
+                          s as String,
+                          " digest mismatch: expected ",
+                          e as String,
+                          " observed ",
+                          o as String,
+                        ], ""),
+                      }
+                    }
+                    RegistryBytesDigestMatched { hex: _ } =>
+                      match manifest_config_digest_wire(manifest_json: manifest_body) {
+                        ManifestConfigDigestUnreadable { cause: c } => {
+                          let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                          PinnedRegistryImageConfigRefused { cause: c }
+                        }
+                        ManifestConfigDigest { digest_wire: config_digest } =>
+                          match digest_hex_from_sha256_wire(digest_wire: config_digest) {
+                            Absent => {
+                              let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                              PinnedRegistryImageConfigRefused {
+                                cause: "manifest config digest is not sha256",
+                              }
+                            }
+                            Present { value: config_hex } =>
+                              match registry_http_get_with_bearer(
+                                url: docker_hub_blob_url(repository: repository, digest_wire: config_digest),
+                                accept: registry_config_blob_accept_header(),
+                                header_file: header_path,
+                                max_time: registry_image_config_fetch_deadline,
+                              ) {
+                                RegistryHttpFetchRefused { url: u, cause: c } => {
+                                  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                                  PinnedRegistryImageConfigRefused {
+                                    cause: join(["config blob fetch failed for ", u as String, ": ", c], ""),
+                                  }
+                                }
+                                RegistryHttpBody { body: config_body } =>
+                                  match sha256_hex_of_content(
+                                    content: config_body,
+                                    subject: "config" as NonEmptyStr,
+                                  ) {
+                                    RegistryBytesSha256Unreadable { subject: s, cause: c } => {
+                                      let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                                      PinnedRegistryImageConfigRefused {
+                                        cause: join([s as String, ": ", c], ""),
+                                      }
+                                    }
+                                    RegistryBytesSha256 { hex: config_observed } =>
+                                      match check_sha256_hex(
+                                        subject: "config" as NonEmptyStr,
+                                        expected: config_hex,
+                                        observed: config_observed,
+                                      ) {
+                                        RegistryBytesDigestMismatched { subject: s, expected: e, observed: o } => {
+                                          let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                                          PinnedRegistryImageConfigRefused {
+                                            cause: join([
+                                              s as String,
+                                              " digest mismatch: expected ",
+                                              e as String,
+                                              " observed ",
+                                              o as String,
+                                            ], ""),
+                                          }
+                                        }
+                                        RegistryBytesDigestMatched { hex: _ } =>
+                                          match container_image_config_env_from_json(config_json: config_body) {
+                                            ContainerImageConfigEnvUnreadable { cause: c } => {
+                                              let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                                              PinnedRegistryImageConfigRefused { cause: c }
+                                            }
+                                            ContainerImageConfigEnv { env: env } => {
+                                              let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                                              PinnedRegistryImageConfig {
+                                                pin: pin,
+                                                config: container_image_config_from_env(env: env),
+                                              }
+                                            }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      }
+    }
+  }
+}

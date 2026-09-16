@@ -124,8 +124,23 @@ fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, bin
   }
 }
 
+// Consumer: build_movable_set must see whole-value Read evidence from every branch.
+// Fan-out still selects the path for semantic consumer counts; reads on another path must not
+// disappear merely because that path has fewer projections. Shared-prefix reads are retained
+// once, so repeated joins do not manufacture extra uses. Projected remains distinct from Read.
+// Read is non-tail residue: retaining it conservatively clones until the ownership fold carries
+// per-path last-use evidence. No emitter ordering or move rule is introduced here.
 fn max_usage_by_fan_out(a: BindingUsage, b: BindingUsage) -> BindingUsage {
-  if binding_fan_out(usage: b) > binding_fan_out(usage: a) { b } else { a }
+  let b_is_larger = binding_fan_out(usage: b) > binding_fan_out(usage: a)
+  let selected = if b_is_larger { b } else { a }
+  let other = if b_is_larger { a } else { b }
+  let missing_reads = other.consumers |> filter(edge =>
+    match edge.kind {
+      Read => selected.consumers |> any(existing => existing.kind == Read && existing.span_start == edge.span_start && existing.site == edge.site) == false
+      _ => false
+    }
+  )
+  BindingUsage { name: selected.name, binding_kind: selected.binding_kind, consumers: concat(selected.consumers, missing_reads) }
 }
 
 fn map_usage_merge_at(base: Map<String, BindingUsage>, key: String, new_val: BindingUsage) -> Map<String, BindingUsage> {

@@ -14,7 +14,7 @@ import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted, HarnessBackendUnreachable, HarnessBackendUnreadable,
-  harness_route_availability, harness_observe_replica, harness_observe_engine, harness_front_door_probe_bound,
+  harness_route_availability, harness_observe_replica, harness_observe_engine_at, harness_front_door_probe_bound,
 }
 import gunbc.serving.serving_availability {
   ServingAvailability, ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
@@ -202,7 +202,7 @@ test fn both_harness_probes_refuse_a_front_door_that_never_answers() -> Bool {
     HarnessBackendModelNotAdmitted { advertised: _ } => false
     HarnessBackendUnreadable { cause: _ } => false
   })
-    && (match harness_observe_engine(endpoint: w_unroutable_endpoint).launch {
+    && (match harness_observe_engine_at(endpoint: w_unroutable_endpoint, at: 1789400000).launch {
       LaunchUnobserved { group: _, obligation: _ } => true
       LaunchObserved { launch: _, receipt: _ } => false
     })

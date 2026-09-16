@@ -15,10 +15,19 @@ test fn witness_has_editor_and_os_patterns() -> Bool {
     && string_contains(s: eg, pattern: "node_modules/")
 }
 
+// THE HEADER MUST NAME EVERY ARM THE FILE ACTUALLY HAS. A header naming fewer producers than the
+// projection carries is prose that reads as coverage, and it goes stale silently -- nothing else
+// in the file disagrees with it. Asserting each home by name means adding an arm without
+// announcing it turns this witness red.
 test fn witness_has_header() -> Bool {
   let eg = expected_gitignore()
-  string_contains(s: eg, pattern: "generated from gunbc.repo_workspace via gunbc.gitignore_emit")
+  string_contains(s: eg, pattern: "generated via gunbc.gitignore_emit")
     && string_contains(s: eg, pattern: "do not hand-edit")
+    && string_contains(s: eg, pattern: "gunbc.repo_workspace")
+    && string_contains(s: eg, pattern: "gunbc.workspace_repository_materialisation")
+    && string_contains(s: eg, pattern: "gunbc.repository")
+    && string_contains(s: eg, pattern: "gunbc.generated_artifact")
+    && string_contains(s: eg, pattern: "THREE ARMS")
 }
 
 test fn witness_clean_does_not_drift() -> Bool {
@@ -31,3 +40,74 @@ test fn witness_gitignore_gate_drift_receipt() -> Bool {
     && gitignore_drifted(committed: concat(eg, "\n# drift-receipt-perturb"))
 }
 
+// THE DERIVED NON-WORLD-READABLE ARM, witnessed in BOTH directions, because a filter that always
+// passes and a filter that never fires emit the same green. The private rows must appear, a
+// materialisation of a PUBLIC repository must produce no row at all, and a path that merely
+// contains the word private must stay trackable.
+test fn witness_private_material_rows_are_derived() -> Bool {
+  let eg = expected_gitignore()
+  string_contains(s: eg, pattern: "\n/private_repo\n")
+    && string_contains(s: eg, pattern: "\n/private_overlay\n")
+    && string_contains(s: eg, pattern: "\n/base_overlay\n")
+    && string_contains(s: eg, pattern: "\n/wb62_overlay\n")
+    && string_contains(s: eg, pattern: "\n/privdag\n")
+    && string_contains(s: eg, pattern: "gunb-ai/gunbc-private is private — never tracked by this repository")
+}
+
+data public_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMaterialisation {
+  source: gunbc_repository,
+  prefix: "public_overlay_probe",
+  method: FileCopy,
+  meaning: "a materialisation of the PUBLIC repository, which must derive no ignore row",
+}
+
+data private_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMaterialisation {
+  source: gunbc_private_repository,
+  prefix: "private_overlay_probe",
+  method: FileCopy,
+  meaning: "a materialisation of the PRIVATE repository, which must derive one ignore row",
+}
+
+// The discriminating positive: same function, same shape of row, opposite verdicts, decided only
+// by the source repository's visibility. Were the visibility ignored, both would survive.
+//
+// A FOURTH CONJUNCT WAS REMOVED RATHER THAN REPAIRED, and the reason is worth keeping. It asserted
+// that expected_gitignore() does not contain "public_overlay_probe/" -- a DECORATION twice over.
+// First, this change made the emitter produce bare prefixes, so a leak would read
+// /public_overlay_probe and the search for the slash-bearing spelling could never fail. Repairing
+// only that -- the obvious fix -- would have left the second and deeper reason standing: the probe
+// rows below are TEST-LOCAL data and are never members of workspace_materialisations(), which is
+// the roster expected_gitignore() folds, so NO spelling of the probe can appear in the projection
+// under any behaviour of the code. A clause that cannot go red carries no information and is worse
+// than absent, because it will be counted as coverage (DESIGN section 4b). The discriminating work
+// is done by the three conjuncts that remain, over a list this witness controls.
+test fn witness_public_source_derives_no_ignore_row() -> Bool {
+  let both = [public_sourced_materialisation, private_sourced_materialisation]
+  let kept = untracked_materialisations(all: both)
+  count(kept) == 1
+    && !materialisation_must_not_be_tracked(m: public_sourced_materialisation)
+    && materialisation_must_not_be_tracked(m: private_sourced_materialisation)
+}
+
+// THE ANCHOR IS THE SUBJECT OF ITS OWN WITNESS, because an unanchored pattern passes every
+// root-level check above while quietly ignoring material no row declares. A materialisation row
+// names a prefix AT THE WORKSPACE ROOT, so a same-named directory NESTED somewhere else is outside
+// the declared scope and must stay trackable — it may be ordinary public material, a fixture most
+// obviously. The pair is the discriminator: same spelling, two depths, opposite verdicts.
+test fn witness_materialisation_patterns_are_root_anchored() -> Bool {
+  path_is_ignored(path: "private_overlay/dag/strategy/plan.dag")
+    && path_is_ignored(path: "private_repo")
+    && path_is_ignored(path: "privdag")
+    && !path_is_ignored(path: "fixtures/private_overlay/example.dag")
+    && !path_is_ignored(path: "dag/test/fixture/privdag/sample.dag")
+    && !path_is_ignored(path: "vendor/private_repo/readme.md")
+}
+
+test fn witness_private_material_paths_are_ignored() -> Bool {
+  path_is_ignored(path: "private_overlay/dag/strategy/plan.dag")
+    && path_is_ignored(path: "private_repo/dag/finance/model.dag")
+    && path_is_ignored(path: "base_overlay/dag/x.dag")
+    && path_is_ignored(path: "wb62_overlay/dag/x.dag")
+    && path_is_ignored(path: "privdag/gunbc/x.dag")
+    && !path_is_ignored(path: "dag/gunbc/private_direction_note.dag")
+}

@@ -1,0 +1,269 @@
+module v2.test.manual.scoped_type_reflection_conformance
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.algebra { any, for_all, length }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Symbol }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.node_reflection {
+  coproduct_arm_keys_at,
+  coproduct_arm_keys,
+  resolve_type_node_at,
+  resolve_type_node
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE POOL ROOTS THIS CLAIM READS. Named, not discovered: the claim is about what the live
+// declaration index says under a stated population, and a population the claim does not state
+// is one a reader cannot re-derive (DESIGN section 6 -- name the instrument).
+data scoped_reflection_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn outcome_is_rejected<T>(o: Outcome<T>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn outcome_is_accepted<T>(o: Outcome<T>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED. `Representation` is declared as a closed coproduct in two modules of
+// this very pool -- `v2.lens.intent_linearity` and `v2.std.integer` -- with DISJOINT arm sets.
+// The bare host seam THAT THIS CHANGE DELETES answered it by first match over the interpreter's
+// loaded modules, so before this change the bare arm-key read returned one of two different answers
+// with no diagnostic and no way for a caller to know which. The claim is not that two declarations exist -- that is a
+// fact about the corpus and would be a change detector. The claim is that the GUARDED route
+// REFUSES rather than answering, which is a fact about this module's behaviour and goes red the
+// moment the guard is removed or widened to a first match.
+test fn ambiguous_type_spelling_refuses_rather_than_first_matching() -> Bool {
+  outcome_is_rejected(
+    o: coproduct_arm_keys(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^Representation
+    )
+  )
+}
+
+test fn ambiguous_type_spelling_refuses_at_the_node_route_too() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^Representation
+    )
+  )
+}
+
+// THE POSITIVE CONTROL, and it is the one that keeps the wall from being satisfied by refusing
+// everything. `Connective` is declared once in this pool, so the guard must let it through and
+// the arm keys must still come back. A guard that refused here would pass the two claims above
+// while destroying the surface, which is why this claim is enrolled beside them and not after.
+//
+// IT ASSERTS THE ANSWER AND NOT MERELY THE ARM, because review 65601 showed why that distinction
+// is load-bearing here. An accepted Outcome says the guard let the call through; it says nothing
+// about WHICH declaration produced the Node, and the whole defect this module exists to close is a
+// seam that answers from the wrong declaration. So the control names the arm keys `Connective`
+// actually declares. A route that resolved some other same-named type, or handed back a node of
+// the wrong shape, would still be Accepted and would fail here.
+fn outcome_arm_keys_are(o: Outcome<List<Symbol>>, expected: List<Symbol>) -> Bool {
+  match o {
+    Accepted { value: keys, diagnostics: _ } =>
+      length(xs: keys) == length(xs: expected)
+        && for_all(
+          xs: expected,
+          predicate: fn(k) { any(xs: keys, predicate: fn(got) { got == k }) }
+        )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn unique_type_spelling_still_resolves() -> Bool {
+  outcome_arm_keys_are(
+    o: coproduct_arm_keys(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^Connective
+    ),
+    expected: [^Atom, ^Conj, ^Disj, ^Arrow, ^Cardinality, ^Instantiation]
+  )
+}
+
+// AN ABSENT SPELLING REFUSES ON ITS OWN ARM rather than falling through to the seam, which is
+// what makes the zero case a refusal and not a divergent host call.
+test fn absent_type_spelling_refuses() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^NoSuchTypeIsDeclaredAnywhereInThisPool
+    )
+  )
+}
+
+// THE CITATION ROUTE, AND THE CLAIM THAT SAYS WHAT IT IS FOR. Naming the module resolves the cited
+// declaration whether or not the bare spelling is forked -- that is the whole point of citing one.
+test fn cited_unique_type_resolves_through_its_module() -> Bool {
+  outcome_is_accepted(
+    o: resolve_type_node_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.node",
+        decl_name: "Connective",
+        field: WholeDeclaration
+      }
+    )
+  )
+}
+
+// THE DISCRIMINATING PAIR, AND IT IS ONE SPELLING READ TWO WAYS. `Representation` is a closed
+// coproduct in BOTH v2.lens.intent_linearity and v2.std.integer, with DISJOINT arm sets. The bare
+// route must refuse it -- no bare spelling can say which was meant -- and the cited route must
+// resolve it to exactly the arms of the module named, not to the other module's. Asserting the ARM
+// KEYS rather than mere acceptance is what makes this a test of the answer: a citation route that
+// resolved through load order would still be Accepted here and would return the wrong arm set.
+//
+// This claim previously asserted the opposite -- that the cited route REFUSES -- which enrolled an
+// over-refusal as required behaviour (review 65649). It was true of an earlier revision whose accept
+// path still delegated to the bare host seam, and it outlived that premise by one commit.
+test fn cited_forked_spelling_resolves_to_the_module_named() -> Bool {
+  outcome_arm_keys_are(
+    o: coproduct_arm_keys_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.integer",
+        decl_name: "Representation",
+        field: WholeDeclaration
+      }
+    ),
+    expected: [^TwosComplement, ^OnesComplement, ^SignMagnitude]
+  )
+}
+
+test fn cited_forked_spelling_resolves_to_the_other_module_named() -> Bool {
+  outcome_arm_keys_are(
+    o: coproduct_arm_keys_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.lens.intent_linearity",
+        decl_name: "Representation",
+        field: WholeDeclaration
+      }
+    ),
+    expected: [^TermChain, ^TypeForest, ^ImportGraph, ^DeclForest]
+  )
+}
+
+// THE SECOND SPECIMEN, AND THE ONE THAT SHOWS THE TWO FAILURE SHAPES ARE ONE DEFECT. UriScheme is
+// declared in two modules of this pool -- a closed coproduct in extdeps.uri and a RECORD in
+// v2.std.network. Before this change the unguarded seam ANSWERED it rather than refusing, picking
+// one of the two and saying nothing; the pair in the claims above is the case where the same seam
+// raised an untyped host error instead. Both are the same missing scope, and only the guarded route
+// tells them apart from a caller's position.
+//
+// The contrast is stated in the past tense deliberately. It used to be carried by an enrolled claim,
+// v2.test.manual.coproduct_reflection_conformance
+// witness_uri_scheme_reflected_arm_keys_are_non_empty, which asserted a non-empty arm list for a
+// BARE UriScheme -- and this change rewrites that claim to cite extdeps.uri, because the bare
+// spelling it rested on is exactly what is being removed. Citing it here as present evidence would
+// name a claim whose subject this same PR changed.
+test fn forked_spelling_refuses_when_guarded() -> Bool {
+  outcome_is_rejected(
+    o: coproduct_arm_keys(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^UriScheme
+    )
+  )
+}
+
+// THE REVIEWER'S SPECIMEN, ENROLLED RATHER THAN ARGUED. review 65546 found that the guard
+// established uniqueness of the SPELLING without establishing that the sole declaration is a
+// closed coproduct: decl_facts kind TypeItem covers records too, so a spelling declared exactly
+// once as a record passed the uniqueness arm and reached the bare host seam, which answers with an
+// untyped host error rather than a typed located refusal. DeclFact is such a spelling -- one
+// declaration, a record, in v2.std.decl_index. Before the shape arm this claim diverged; it now
+// refuses on its own arm, which is the contract this module's annotation already asserted.
+test fn unique_but_non_coproduct_spelling_refuses_rather_than_diverging() -> Bool {
+  outcome_is_rejected(
+    o: coproduct_arm_keys(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^DeclFact
+    )
+  )
+}
+
+// THE SAME SPECIMEN ON THE CITATION ROUTE, which review 65571 found uncovered. The shape arm was
+// added to the spelling route and the citation route kept its own accept, so a cited RECORD still
+// reached the bare seam and answered with an untyped host error. Both routes now accept only
+// through v2.std.node_reflection accept_sole_declaration, and this claim is what would go red if
+// either grew a second accept again -- which is the divergence that produced the finding, not just
+// the missing check.
+test fn cited_unique_but_non_coproduct_spelling_refuses_rather_than_diverging() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.decl_index",
+        decl_name: "DeclFact",
+        field: WholeDeclaration
+      }
+    )
+  )
+}
+
+// THE AMBIGUITY RED AT THE QUALIFIED GRAIN, which review 65678 found the claim family missing.
+// Removing the bare-uniqueness conjunct from the citation route was right; leaving ZERO as its only
+// refusal was not, because every non-zero multiplicity then reached an accept path that takes the
+// HEAD of the keyed read -- first match without a diagnostic, one grain down from the bare spelling
+// this module exists to fix.
+//
+// IT IS AUTHORABLE FROM THE REAL CORPUS, which is the part worth recording, because the obvious
+// reading is that one module cannot declare one name twice and therefore the state is
+// unconstructible. The collision is not within a module, it is BETWEEN two modules that share a
+// LOGICAL qualified name: logical_qualified_name_from_module strips a leading `v2.`, so
+// v2.std.integer and std.integer both answer to `std.integer`, and each declares Int. Eighteen such
+// names exist across twelve colliding module pairs, so this is a live state and not a fixture.
+test fn cited_ambiguous_qualified_name_refuses_rather_than_taking_the_head() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.integer",
+        decl_name: "Int",
+        field: WholeDeclaration
+      }
+    )
+  )
+}
+
+// THE SPECIMEN A PRODUCTION CLAIM NOW DEPENDS ON, which is what makes this pair a regression control
+// rather than a second copy of the Representation pair above. Bool is declared as a closed coproduct
+// in BOTH v2.std.logic and std.types, and the cross-representation equality witness reads its arms
+// to prove its own non-vacuity. Before the cutover that read consumed whichever declaration load
+// order reached first; the guarded bare route refuses it, and the witness now cites v2.std.logic.
+// These two claims are what say that citation is the right one and that the bare form is genuinely
+// ambiguous -- if either flips, the production witness is resting on a spelling again.
+test fn cited_bool_resolves_to_the_logic_module_arms() -> Bool {
+  outcome_arm_keys_are(
+    o: coproduct_arm_keys_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.logic",
+        decl_name: "Bool",
+        field: WholeDeclaration
+      }
+    ),
+    expected: [^True, ^False]
+  )
+}
+
+test fn bare_bool_spelling_refuses_as_ambiguous() -> Bool {
+  outcome_is_rejected(
+    o: coproduct_arm_keys(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^Bool
+    )
+  )
+}
