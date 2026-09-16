@@ -1109,10 +1109,10 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
                     graph.diagnostics.clone(),
                 );
                 if !blocking.is_empty() {
+                    let detail = blocking.iter().cloned().collect::<Vec<_>>().join("; ");
                     return ResolvedCallEdgeCensus::Refused {
                         cause: format!(
-                            "candidate resolved call edges: {entry}: blocking acquisition/import/resolution/type diagnostics: {}",
-                            blocking.join("; ")
+                            "candidate resolved call edges: {entry}: blocking acquisition/import/resolution/type diagnostics: {detail}"
                         ),
                     };
                 }
