@@ -6,6 +6,7 @@ import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, C
 import std.decl_ref { DeclarationRef }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { trim }
+import extdeps.numeric.base16 { base16_digit_rows }
 import extdeps.bmc.ipmi_sel {
   OemSelPayload,
   SystemBootInitiatedOffset,
@@ -110,14 +111,19 @@ type FirmwareConsoleReport
   | TrainingRefusedByFirmware { statement: NonEmptyStr, locus: FirmwareStatedLocus }
 
 // THE TRAINING-REFUSAL STATEMENTS THIS GRAMMAR RECOGNISES, one row per capture that showed one.
-// A statement is matched by containment after the `ERROR:` prefix and whitespace, so the
+// The second row is independently grounded by the three DDR-init-failure captures
+// under artifacts/bmc/ dated 2026-09-12; it does not generalize the mixture class.
+// A statement is matched exactly after the `ERROR:` prefix and whitespace, so the
 // firmware's own indentation does not decide it.
 data firmware_training_refusal_statements: List<NonEmptyStr> = [
   "Non-identical DIMM mixture NOT supported!",
+  "DDR initialization failure. STOP!",
 ]
 
 fn is_training_refusal_statement(line: String) -> Bool {
-  any(firmware_training_refusal_statements, st => line |> contains(st as String))
+  let clean = trim(line)
+  if !starts_with(s: clean, prefix: firmware_error_line_prefix as String) { false }
+  else { any(firmware_training_refusal_statements, st => trim(substring(s: clean, start: (firmware_error_line_prefix as String).length(), end: clean.length())) == st as String) }
 }
 
 data firmware_err_code_line_prefix: NonEmptyStr = "ERR:"
@@ -161,7 +167,19 @@ fn is_firmware_error_line(line: String) -> Bool {
 }
 
 fn line_carries_marker(line: String, marker: NonEmptyStr) -> Bool {
-  line |> contains(marker as String)
+  let clean = trim(line)
+  if !is_firmware_error_line(line: clean) { false } else {
+    let body = trim(substring(s: clean, start: (firmware_error_line_prefix as String).length(), end: clean.length()))
+    let fields = split(s: body, delimiter: "]:")
+    starts_with(s: body, prefix: marker as String) && count(fields) == 2
+      && match fields.skip(n: 1).first() {
+        Absent => false
+        Present { value: suffix } => {
+          let code = trim(suffix)
+          code.length() == 8 && all(chars(s: code), cp => any(base16_digit_rows, digit => code_point(digit.lower) == cp || code_point(digit.upper) == cp))
+        }
+      }
+  }
 }
 
 // `first_error_line` is EVERY `ERROR:` line's witness, locus lines included, so an error the
@@ -211,14 +229,20 @@ fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReport
   }
 }
 
-// THE FIRST RECOGNISED REFUSAL WINS, with the first socket and controller the firmware named; any
-// other `ERROR:` line -- locus lines included -- outranks bare `ERR:` codes and the first is
-// carried verbatim as an unrecognised error; a capture
-// with neither reports no terminal, however many `ERR:` code lines it carries -- those are
-// undecoded hex and are treated exactly as the OEM payload is.
+// An unknown statement outranks a recognised one; do not silently hide a new
+// failure mode beside a known refusal. Otherwise the first recognised refusal
+// carries the first locus. Locus-only errors stay unrecognised, bare ERR codes
+// stay undecoded, and only a capture with neither reports no terminal.
 fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
   let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none, first_error_line: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
   let err_lines = list_length(items: filter(xs: lines, f: l => is_firmware_err_code_line(line: l)))
+  let unknown = filter(xs: lines, f: line => is_firmware_error_line(line: line)
+    && !line_carries_marker(line: line, marker: firmware_socket_marker)
+    && !line_carries_marker(line: line, marker: firmware_memory_controller_marker)
+    && !is_training_refusal_statement(line: line)).first()
+  match unknown {
+    Present { value: line } => FirmwareErrorStatementUnrecognized { statement: trim(line) as NonEmptyStr }
+    Absent =>
   match done.statement {
     Present { value: st } => TrainingRefusedByFirmware { statement: st, locus: FirmwareStatedLocus { socket: done.socket, memory_controller: done.memory_controller } }
     Absent =>
@@ -226,6 +250,7 @@ fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
         Present { value: u } => FirmwareErrorStatementUnrecognized { statement: u }
         Absent => if err_lines > 0 { UndecodedErrorCodesOnly { err_lines: err_lines } } else { NoTerminalStated }
       }
+  }
   }
 }
 
