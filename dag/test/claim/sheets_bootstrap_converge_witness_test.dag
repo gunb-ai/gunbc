@@ -1,0 +1,123 @@
+module test.claim.sheets_bootstrap_converge_witness
+
+import std.types { NonEmptyStr, String, Bool, Int }
+import extdeps.cloud.gcp.gcp { GcpProjectId }
+import gunbc.gcp_service_enablement {
+  ServiceEnablementObservation,
+  ServiceObservedEnabled,
+  ServiceObservedDisabled,
+  ServiceEnablementUnobserved,
+  ServiceEnablementStateForeign,
+}
+import gunbc.sheets_bootstrap_converge {
+  ProjectConvergeObservation,
+  ProjectObservedActive,
+  ProjectObservedOtherState,
+  ProjectAbsent,
+  ProjectUnreadable,
+  project_observation_from_state,
+  project_refusal_is_absence,
+  enablement_from_state,
+}
+
+// These claims are over the PURE folds that turn a response into an observation. The performing
+// half is not executed here and is not claimed: the converge's inhabitance receipt is a live run,
+// and asserting the folds is what makes that run's outcome interpretable when it happens.
+
+fn w_project() -> GcpProjectId {
+  "gunbai-sheets" as GcpProjectId
+}
+
+fn w_service() -> NonEmptyStr {
+  "sheets.googleapis.com" as NonEmptyStr
+}
+
+test fn active_state_is_the_only_usable_project() -> Bool {
+  match project_observation_from_state(project_id: w_project(), state: "ACTIVE") {
+    ProjectObservedActive { project_id: p } => (p as String) == "gunbai-sheets"
+    ProjectObservedOtherState { project_id: _, state: _ } => false
+    ProjectAbsent => false
+    ProjectUnreadable { reason: _ } => false
+  }
+}
+
+// DELETE_REQUESTED is the state this arm exists for. The id is taken, so a create would refuse,
+// and a converge that treated the project as absent would report a naming collision whose real
+// cause is a pending deletion.
+test fn delete_requested_is_neither_usable_nor_absent() -> Bool {
+  match project_observation_from_state(project_id: w_project(), state: "DELETE_REQUESTED") {
+    ProjectObservedOtherState { project_id: _, state: s } => s == "DELETE_REQUESTED"
+    ProjectObservedActive { project_id: _ } => false
+    ProjectAbsent => false
+    ProjectUnreadable { reason: _ } => false
+  }
+}
+
+test fn a_404_is_an_observation_of_absence() -> Bool {
+  match project_refusal_is_absence(status: 404, body: "{}") {
+    ProjectAbsent => true
+    ProjectUnreadable { reason: _ } => false
+    ProjectObservedActive { project_id: _ } => false
+    ProjectObservedOtherState { project_id: _, state: _ } => false
+  }
+}
+
+// THE DISCRIMINATING ONE. A 403 means the project may exist and be invisible to this caller.
+// Folding it to absence would authorize a create whose only possible outcome is a 409, which
+// reports a permission problem as a name collision and sends the reader to the wrong fix.
+test fn a_403_is_not_absence() -> Bool {
+  match project_refusal_is_absence(status: 403, body: "caller lacks resourcemanager.projects.get") {
+    ProjectUnreadable { reason: r } => string_contains(s: r as String, pattern: "403")
+    ProjectAbsent => false
+    ProjectObservedActive { project_id: _ } => false
+    ProjectObservedOtherState { project_id: _, state: _ } => false
+  }
+}
+
+test fn a_500_is_not_absence_either() -> Bool {
+  match project_refusal_is_absence(status: 500, body: "backend error") {
+    ProjectUnreadable { reason: _ } => true
+    ProjectAbsent => false
+    ProjectObservedActive { project_id: _ } => false
+    ProjectObservedOtherState { project_id: _, state: _ } => false
+  }
+}
+
+test fn enabled_state_reads_as_enabled() -> Bool {
+  match enablement_from_state(project_id: w_project(), service_id: w_service(), state: "ENABLED") {
+    ServiceObservedEnabled { project: _, service_id: s } => (s as String) == "sheets.googleapis.com"
+    ServiceObservedDisabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
+  }
+}
+
+test fn disabled_state_reads_as_disabled() -> Bool {
+  match enablement_from_state(project_id: w_project(), service_id: w_service(), state: "DISABLED") {
+    ServiceObservedDisabled { project: _, service_id: _ } => true
+    ServiceObservedEnabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
+  }
+}
+
+// A state this model has never seen is FOREIGN, not Disabled. Disabled would authorize an enable
+// against a service whose actual state we failed to read -- STATE_UNSPECIFIED is exactly such a
+// value, and it is in the cited enum.
+test fn an_unmodeled_state_is_foreign_not_disabled() -> Bool {
+  match enablement_from_state(project_id: w_project(), service_id: w_service(), state: "STATE_UNSPECIFIED") {
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: r } => r == "STATE_UNSPECIFIED"
+    ServiceObservedDisabled { project: _, service_id: _ } => false
+    ServiceObservedEnabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+  }
+}
+
+test fn an_empty_state_string_is_foreign_not_disabled() -> Bool {
+  match enablement_from_state(project_id: w_project(), service_id: w_service(), state: "") {
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => true
+    ServiceObservedDisabled { project: _, service_id: _ } => false
+    ServiceObservedEnabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+  }
+}
