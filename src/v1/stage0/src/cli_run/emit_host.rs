@@ -758,27 +758,50 @@ pub fn compile_dag_resolved_call_edges(
 }
 
 static IMPORTER_RESOLVED_CALL_EDGE_CACHE: OnceLock<
-    Mutex<HashMap<(Vec<String>, Vec<String>, bool), crate::cli_run::ResolvedCallEdgeCensus>>,
+    Mutex<
+        HashMap<
+            (Vec<String>, Vec<String>, Vec<String>, Vec<String>, bool),
+            crate::cli_run::ResolvedCallEdgeCensus,
+        >,
+    >,
 > = OnceLock::new();
 
 pub fn compile_dag_importer_resolved_call_edges(
     import_modules: &[String],
     exclude_substrings: &[String],
+    pool_roots: &[String],
+    target_leaves: &[String],
 ) -> crate::cli_run::ResolvedCallEdgeCensus {
-    compile_dag_candidate_resolved_call_edges(import_modules, exclude_substrings, false)
+    compile_dag_candidate_resolved_call_edges(
+        import_modules,
+        exclude_substrings,
+        pool_roots,
+        target_leaves,
+        false,
+    )
 }
 
 pub fn compile_dag_callsite_resolved_call_edges(
     import_modules: &[String],
     exclude_substrings: &[String],
+    pool_roots: &[String],
+    target_leaves: &[String],
 ) -> crate::cli_run::ResolvedCallEdgeCensus {
-    compile_dag_candidate_resolved_call_edges(import_modules, exclude_substrings, true)
+    compile_dag_candidate_resolved_call_edges(
+        import_modules,
+        exclude_substrings,
+        pool_roots,
+        target_leaves,
+        true,
+    )
 }
 
 fn compile_dag_candidate_resolved_call_edges(
     import_modules: &[String],
     exclude_substrings: &[String],
-    include_qualified_spellings: bool,
+    pool_roots: &[String],
+    target_leaves: &[String],
+    include_reference_forms: bool,
 ) -> crate::cli_run::ResolvedCallEdgeCensus {
     use crate::cli_run::ResolvedCallEdgeCensus;
     if import_modules.iter().any(|m| m.trim().is_empty()) {
@@ -790,7 +813,17 @@ fn compile_dag_candidate_resolved_call_edges(
     cache_modules.sort();
     let mut cache_excludes = exclude_substrings.to_vec();
     cache_excludes.sort();
-    let cache_key = (cache_modules, cache_excludes, include_qualified_spellings);
+    let mut cache_roots = pool_roots.to_vec();
+    cache_roots.sort();
+    let mut cache_leaves = target_leaves.to_vec();
+    cache_leaves.sort();
+    let cache_key = (
+        cache_modules,
+        cache_excludes,
+        cache_roots,
+        cache_leaves,
+        include_reference_forms,
+    );
     {
         let cache = IMPORTER_RESOLVED_CALL_EDGE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
         if let Ok(guard) = cache.lock() {
@@ -802,7 +835,9 @@ fn compile_dag_candidate_resolved_call_edges(
     let computed = compile_dag_candidate_resolved_call_edges_uncached(
         import_modules,
         exclude_substrings,
-        include_qualified_spellings,
+        pool_roots,
+        target_leaves,
+        include_reference_forms,
     );
     if let Ok(mut guard) = IMPORTER_RESOLVED_CALL_EDGE_CACHE
         .get_or_init(|| Mutex::new(HashMap::new()))
@@ -813,75 +848,271 @@ fn compile_dag_candidate_resolved_call_edges(
     computed
 }
 
-fn qualified_spelling_candidate_paths(
-    homes: &HashSet<String>,
-    exclude_substrings: &[String],
-) -> HashSet<String> {
-    let roots = default_source_roots();
-    let abs_roots = pool_roots_abs(&roots);
-    let needles: Vec<String> = homes.iter().map(|home| format!("{home}.")).collect();
-    let mut out = HashSet::new();
-    for root in &abs_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            if is_excluded_import_path(&rel, exclude_substrings) {
+fn collect_dag_files_complete(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| {
+        format!(
+            "candidate resolved call edges: cannot inspect directory {}: {e}",
+            dir.display()
+        )
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            format!(
+                "candidate resolved call edges: cannot read directory entry under {}: {e}",
+                dir.display()
+            )
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            let Ok(content) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            if needles.iter().any(|needle| content.contains(needle)) {
-                out.insert(rel);
-            }
+            collect_dag_files_complete(&path, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            out.push(path);
         }
     }
-    out
+    Ok(())
+}
+
+fn significant_token_shapes(
+    tokens: &[Rc<crate::v1_std_core::Token>],
+) -> Vec<Rc<crate::v1_std_core::Token>> {
+    tokens
+        .iter()
+        .filter(|token| {
+            !matches!(
+                token.shape,
+                crate::v1_std_core::TokenShape::ShNewline | crate::v1_std_core::TokenShape::ShEof
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+fn token_keyword(token: &crate::v1_std_core::Token, keyword: &str) -> bool {
+    token.shape == crate::v1_std_core::TokenShape::ShKeyword && token.text == keyword
+}
+
+fn token_ident(token: &crate::v1_std_core::Token) -> Option<&str> {
+    match token.shape {
+        crate::v1_std_core::TokenShape::ShIdent => Some(token.text.as_str()),
+        _ => None,
+    }
+}
+
+fn dotted_path_from(
+    tokens: &[Rc<crate::v1_std_core::Token>],
+    start: usize,
+) -> Option<(String, usize)> {
+    let first = token_ident(tokens.get(start)?)?;
+    let mut path = first.to_string();
+    let mut i = start + 1;
+    while i + 1 < tokens.len()
+        && tokens[i].shape == crate::v1_std_core::TokenShape::ShDot
+        && token_ident(&tokens[i + 1]).is_some()
+    {
+        path.push('.');
+        path.push_str(token_ident(&tokens[i + 1]).unwrap());
+        i += 2;
+    }
+    Some((path, i))
+}
+
+struct ReferenceFormFile {
+    rel: String,
+    module_path: String,
+    imports: Vec<String>,
+    idents: HashSet<String>,
+    aliases: Vec<(String, String)>,
+    declared_names: HashSet<String>,
+}
+
+fn parse_reference_form_file(rel: &str, content: &str) -> Result<ReferenceFormFile, String> {
+    let Some(module_path) = extract_module_path(content) else {
+        return Err(format!(
+            "candidate resolved call edges: {rel}: no module declaration"
+        ));
+    };
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        content.to_string(),
+        rel.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    if tokens
+        .iter()
+        .any(|token| token.shape == crate::v1_std_core::TokenShape::ShUnknown)
+    {
+        return Err(format!(
+            "candidate resolved call edges: {rel}: tokenizer produced an unknown token"
+        ));
+    }
+    let tokens = significant_token_shapes(&tokens.iter().cloned().collect::<Vec<_>>());
+    let mut imports = Vec::new();
+    let mut idents = HashSet::new();
+    let mut aliases = Vec::new();
+    let mut declared_names = HashSet::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        if let Some(ident) = token_ident(&tokens[i]) {
+            idents.insert(ident.to_string());
+        }
+        if token_keyword(&tokens[i], "import") {
+            if let Some((path, next)) = dotted_path_from(&tokens, i + 1) {
+                imports.push(path);
+                i = next;
+                continue;
+            }
+        }
+        if token_keyword(&tokens[i], "alias") {
+            if let Some(name) = tokens.get(i + 1).and_then(|t| token_ident(t)) {
+                if tokens.get(i + 2).map(|t| t.shape) == Some(crate::v1_std_core::TokenShape::ShEq)
+                {
+                    if let Some((target, next)) = dotted_path_from(&tokens, i + 3) {
+                        aliases.push((name.to_string(), target));
+                        i = next;
+                        continue;
+                    }
+                }
+            }
+        }
+        if token_keyword(&tokens[i], "fn")
+            || token_keyword(&tokens[i], "data")
+            || token_keyword(&tokens[i], "type")
+        {
+            if let Some(name) = tokens.get(i + 1).and_then(|t| token_ident(t)) {
+                declared_names.insert(name.to_string());
+            }
+        }
+        i += 1;
+    }
+    Ok(ReferenceFormFile {
+        rel: rel.to_string(),
+        module_path,
+        imports,
+        idents,
+        aliases,
+        declared_names,
+    })
+}
+
+fn load_reference_form_pool(
+    pool_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<Vec<ReferenceFormFile>, String> {
+    let scan_roots = if pool_roots.is_empty() {
+        default_source_roots()
+    } else {
+        pool_roots.to_vec()
+    };
+    let abs_roots = pool_roots_abs(&scan_roots);
+    let mut files = Vec::new();
+    for (authored, abs) in scan_roots.iter().zip(abs_roots.iter()) {
+        let root_path = Path::new(abs);
+        if !root_path.is_dir() {
+            return Err(format!(
+                "candidate resolved call edges: declared root '{authored}' is not an inspectable directory"
+            ));
+        }
+        collect_dag_files_complete(root_path, &mut files)?;
+    }
+    files.sort();
+    let mut loaded = Vec::new();
+    for file in files {
+        let rel = rel_path_for_layer_import(&file);
+        if is_excluded_import_path(&rel, exclude_substrings) {
+            continue;
+        }
+        let content = std::fs::read_to_string(&file).map_err(|e| {
+            format!(
+                "candidate resolved call edges: cannot read {}: {e}",
+                file.display()
+            )
+        })?;
+        loaded.push(parse_reference_form_file(&rel, &content)?);
+    }
+    Ok(loaded)
+}
+
+fn alias_targets_home(target: &str, homes: &HashSet<String>) -> bool {
+    homes
+        .iter()
+        .any(|home| target == home || target.starts_with(&format!("{home}.")))
+}
+
+fn reverse_alias_names(files: &[ReferenceFormFile], homes: &HashSet<String>) -> HashSet<String> {
+    let mut aliases: HashSet<String> = HashSet::new();
+    loop {
+        let before = aliases.len();
+        for file in files {
+            for (name, target) in &file.aliases {
+                if alias_targets_home(target, homes) || aliases.contains(target) {
+                    aliases.insert(name.clone());
+                }
+            }
+        }
+        if aliases.len() == before {
+            break;
+        }
+    }
+    aliases
 }
 
 fn compile_dag_candidate_resolved_call_edges_uncached(
     import_modules: &[String],
     exclude_substrings: &[String],
-    include_qualified_spellings: bool,
+    pool_roots: &[String],
+    target_leaves: &[String],
+    include_reference_forms: bool,
 ) -> crate::cli_run::ResolvedCallEdgeCensus {
     use crate::cli_run::ResolvedCallEdgeCensus;
-    let roots = default_source_roots();
     let homes: HashSet<String> = import_modules.iter().cloned().collect();
+    let files = match load_reference_form_pool(pool_roots, exclude_substrings) {
+        Ok(files) => files,
+        Err(cause) => return ResolvedCallEdgeCensus::Refused { cause },
+    };
+    let requested_leaves: HashSet<String> = target_leaves
+        .iter()
+        .cloned()
+        .filter(|leaf| !leaf.is_empty())
+        .collect();
+    let home_leaves: HashSet<String> = if requested_leaves.is_empty() {
+        files
+            .iter()
+            .filter(|file| homes.contains(&file.module_path))
+            .flat_map(|file| file.declared_names.iter().cloned())
+            .collect()
+    } else {
+        requested_leaves
+    };
+    let alias_names = reverse_alias_names(&files, &homes);
     let mut entries: HashSet<String> = HashSet::new();
-    for fact in import_resolution_facts(&roots, &roots, exclude_substrings) {
-        if homes.contains(&fact.import_module) {
-            entries.insert(fact.path);
+    for file in &files {
+        let import_hit = file.imports.iter().any(|import| homes.contains(import));
+        let home_hit = homes.contains(&file.module_path);
+        let reference_hit = include_reference_forms
+            && (file.idents.intersection(&home_leaves).next().is_some()
+                || file.idents.intersection(&alias_names).next().is_some()
+                || file.aliases.iter().any(|(name, target)| {
+                    alias_names.contains(name) || alias_targets_home(target, &homes)
+                }));
+        if import_hit || home_hit || reference_hit {
+            entries.insert(file.rel.clone());
         }
-    }
-    for decl in module_declaration_facts(&roots) {
-        if homes.contains(&decl.module) {
-            entries.insert(decl.path);
-        }
-    }
-    if include_qualified_spellings {
-        entries.extend(qualified_spelling_candidate_paths(
-            &homes,
-            exclude_substrings,
-        ));
     }
     if entries.is_empty() {
         return ResolvedCallEdgeCensus::Refused {
-            cause: "candidate resolved call edges: no production importer, home, or qualified spelling path"
+            cause: "candidate resolved call edges: no importer, home, or reference-form path"
                 .to_string(),
         };
     }
+    let resolve_roots = default_source_roots();
     let mut entries: Vec<String> = entries.into_iter().collect();
     entries.sort();
     let mut edges = Vec::new();
     let mut seen: HashSet<(String, String, String, String)> = HashSet::new();
     for entry in entries {
-        match resolve_entry_graph_shared(&roots, &entry) {
+        match resolve_entry_graph_shared(&resolve_roots, &entry) {
             Ok((graph, _)) => {
                 for edge in resolved_call_edges_from_graph(&graph) {
                     let key = (

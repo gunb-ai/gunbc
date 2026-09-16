@@ -17,8 +17,9 @@ import gunbc.evaluation_store_address_census {
   ResolvedCallEdgeCensusRefused,
   ResolvedCallEdgeCensusObserved,
   evaluation_store_address_production_census,
-  evaluation_store_address_import_only_census,
   evaluation_store_address_mutation_census,
+  evaluation_store_address_fixture_import_only_census,
+  evaluation_store_address_fixture_callsite_census,
   bound_callers_of_edges,
   evaluation_store_address_ref_in_module
 }
@@ -124,27 +125,41 @@ test fn evaluation_store_address_resolver_distinguishes_alias_same_leaf_and_qual
   }
 }
 
-fn evaluation_store_address_qualified_probe_in(edges: List<ResolvedCallEdge>) -> Bool {
-  evaluation_store_address_ref_in_module(
-    module_path: "gunbc.evaluation_store_address_qualified_probe",
-    name: "evaluation_store_address_qualified_probe_call",
-    xs: bound_callers_of_edges(
-      edges: edges,
-      callee_module: "std.materialization_provider",
-      callee_decl: "evaluation_store_address"
-    )
+fn evaluation_store_address_fixture_home_callers(edges: List<ResolvedCallEdge>) -> List<DeclarationRef> {
+  bound_callers_of_edges(
+    edges: edges,
+    callee_module: "test.fixture.evaluation_store_address_alias.home",
+    callee_decl: "evaluation_store_address"
   )
 }
 
-test fn evaluation_store_address_import_graph_misses_qualified_no_import_call() -> Bool {
-  match evaluation_store_address_import_only_census() {
+fn evaluation_store_address_fixture_reference_forms_missed_by_import(edges: List<ResolvedCallEdge>) -> Bool {
+  let callers = evaluation_store_address_fixture_home_callers(edges: edges)
+  evaluation_store_address_ref_in_module(
+    module_path: "test.fixture.evaluation_store_address_alias.qualified",
+    name: "qualified_call",
+    xs: callers
+  ) == false
+}
+
+fn evaluation_store_address_fixture_reference_forms_observed(edges: List<ResolvedCallEdge>) -> Bool {
+  let callers = evaluation_store_address_fixture_home_callers(edges: edges)
+  evaluation_store_address_ref_in_module(
+    module_path: "test.fixture.evaluation_store_address_alias.qualified",
+    name: "qualified_call",
+    xs: callers
+  )
+}
+
+test fn evaluation_store_address_import_graph_misses_fixture_reference_forms() -> Bool {
+  match evaluation_store_address_fixture_import_only_census() {
     ResolvedCallEdgeCensusRefused { cause: _ } => false
     ResolvedCallEdgeCensusObserved { edges } =>
-      (evaluation_store_address_qualified_probe_in(edges: edges) == false)
+      evaluation_store_address_fixture_reference_forms_missed_by_import(edges: edges)
   }
-    && match evaluation_store_address_production_census() {
+    && match evaluation_store_address_fixture_callsite_census() {
       ResolvedCallEdgeCensusRefused { cause: _ } => false
       ResolvedCallEdgeCensusObserved { edges } =>
-        evaluation_store_address_qualified_probe_in(edges: edges)
+        evaluation_store_address_fixture_reference_forms_observed(edges: edges)
     }
 }
