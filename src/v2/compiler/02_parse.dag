@@ -1638,6 +1638,11 @@ type TokenCompileAcc {
   residue: List<GrammarChoiceAmbiguityRow>
 }
 
+// list_head HeadFound { value: alt } on List<PreparedExprFold> / List<TokenPrefixRow> types alt as T,
+// so a field read is unwritable. fold_list over GrammarProduction instantiates (p.name in
+// compute_grammar_first_analysis_given). These projectors instantiate the record at a typed
+// parameter; they are not a second meaning of the fields. Class:
+// gunbc.recurring_failure_mode.list_head_bound_record_element_stays_t.
 fn prepared_expr_fold_tree(alt: PreparedExprFold) -> PreparedGrammarExpr { alt.tree }
 fn prepared_expr_fold_first(alt: PreparedExprFold) -> GrammarExprFirstFold { alt.first }
 fn prepared_expr_fold_residue(alt: PreparedExprFold) -> List<GrammarChoiceAmbiguityRow> { alt.residue }
