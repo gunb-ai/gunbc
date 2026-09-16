@@ -7,7 +7,12 @@ import std.content_hash { ContentHash, serialize_content_hash, parse_content_has
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.tools.sha256sum
 import gunbc.output_policy { OutcomeIsData }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactPathRead, FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read, filesystem_listing_names_entry,
+}
 import std.measure { token_count_value, millisecond_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
@@ -357,6 +362,15 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
 // is construction, not a second encoding of the renderer inputs: the store keeps those bytes, lookup
 // re-renders the unsigned unit (a pure fold) and requires byte equality. A knob added to the
 // renderer changes the text, so a stored artifact is current only while it still is that text.
+//
+// DIVERGENCE, STATED: this named slot is not `extdeps.realization.materialization_store_local`.
+// That realization is WriteOnce / MissThenCreate / ContentAddressLookup under a grant-admitted
+// root and an identity marker (`put-if-absent`; a second writer of the same object name is
+// Occupied). Apply must REPLACE the current head-unit receipt for a fabric group on every
+// publish, which is a named replaceable slot, not a content-addressed write-once object. Opening
+// that store also refuses an uninitialized root as unavailable (so a missing volume is not an
+// empty store of misses). This receipt lives under the checkout `target/` tree the wet lane
+// already writes; it does not initialize a materialization-store marker. Review 66796.
 type RenderedUnitArtifact {
   unit_name: NonEmptyStr
   text: String
@@ -552,10 +566,18 @@ data spark_pair_no_realization_names_group_obligation: NonEmptyStr = "no pair re
 
 data spark_pair_declared_unit_artifact_unavailable_obligation: NonEmptyStr = "no materialized declared-unit artifact matches the current head-unit text; placement does not DigestStdin" as NonEmptyStr
 
-data spark_pair_declared_unit_artifact_store_prefix: String = "target/spark-pair-declared-head-"
+data spark_pair_declared_unit_artifact_store_unlistable_obligation: NonEmptyStr = "the declared-unit artifact directory could not be listed, so absence is not established" as NonEmptyStr
+
+data spark_pair_declared_unit_artifact_store_unreadable_obligation: NonEmptyStr = "the declared-unit artifact is present in the listing and could not be read" as NonEmptyStr
+
+data spark_pair_declared_unit_artifact_dir: String = "target"
+
+fn spark_pair_declared_unit_artifact_entry_name(group: FabricGroup) -> String {
+  join(["spark-pair-declared-head-", fabric_group_wire(g: group) as String], "")
+}
 
 fn spark_pair_declared_unit_artifact_path(group: FabricGroup) -> String {
-  join([spark_pair_declared_unit_artifact_store_prefix, fabric_group_wire(g: group) as String], "")
+  join([spark_pair_declared_unit_artifact_dir, "/", spark_pair_declared_unit_artifact_entry_name(group: group)], "")
 }
 
 fn spark_pair_head_unit_text_of(render: SparkPairUnitRender) -> String? {
@@ -586,6 +608,12 @@ type SparkPairDeclaredHeadArtifactRecord {
   digest: ContentHash
   text: String
 }
+
+// One Write publishes name, the apply-time DigestStdin receipt, and the unit bytes. Lookup
+// treats the body as current only when it equals a fresh unsigned render. It does not re-hash:
+// DigestStdin at placement is the path this change closes. A truncated record fails parse.
+// Re-deriving the digest from the stored text at lookup would be a second DigestStdin on the
+// token turn (review 66796 finding 3).
 
 fn spark_pair_declared_head_artifact_record_text(record: SparkPairDeclaredHeadArtifactRecord) -> String {
   join([
@@ -666,11 +694,26 @@ fn spark_pair_standing_from_artifact_body(expected_text: String, body: String) -
 }
 
 fn spark_pair_lookup_declared_head_digest_at(group: FabricGroup, expected_text: String) -> DeclaredUnitDigestStanding {
-  let rd = Filesystem.Read(path: spark_pair_declared_unit_artifact_path(group: group))
-  if !rd.success {
+  let dir = spark_pair_declared_unit_artifact_dir
+  let name = spark_pair_declared_unit_artifact_entry_name(group: group)
+  let path = spark_pair_declared_unit_artifact_path(group: group)
+  let listing = Filesystem.List(path: dir)
+  if !listing.success {
+    DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_store_unlistable_obligation }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: name) {
     DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
   } else {
-    spark_pair_standing_from_artifact_body(expected_text: expected_text, body: rd.content)
+    let rd = Filesystem.Read(path: path)
+    match filesystem_exact_read(path: path, content: rd.content, success: rd.success, error: rd.error, error_kind: rd.error_kind) {
+      FilesystemExactPathRead { path: _, content: body } =>
+        spark_pair_standing_from_artifact_body(expected_text: expected_text, body: body)
+      FilesystemExactPathAbsent { path: _ } =>
+        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+      FilesystemExactPathUnreadable { path: _, kind: _, error: _ } =>
+        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_store_unreadable_obligation }
+      FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } =>
+        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_store_unreadable_obligation }
+    }
   }
 }
 
