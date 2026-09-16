@@ -2,7 +2,11 @@ module extdeps.zhipu.glm_5_3_flash
 
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value,
+  ByteSize, byte_size, byte_size_count,
+  Gibibyte, gibibyte, Mebibyte, mebibyte, Second, second,
+  gibibyte_scale_factor_bytes,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.optional { Present, Absent }
@@ -180,7 +184,7 @@ data glm_5_3_flash_vllm_integration_commit: NonEmptyStr = "385dce36bcee42309924a
 // distributed rendezvous defaults to 601 seconds; a four-rank group whose members are still
 // materialising exceeds that and dies with "Timed out waiting for clients", which is a different
 // failure from anything about the model and reports nothing about it.
-data glm_5_3_flash_vllm_engine_ready_timeout_seconds: Nat = 3600
+data glm_5_3_flash_vllm_engine_ready_timeout: Second = second(count: 3600)
 
 // FLASHINFER CARRIES TWO FIGURES AND THE HIGHER ONE IS THE OPERATIONAL REQUIREMENT. The recipe's
 // prerequisites say 0.6.17 or newer for NoPE sparse MLA; its own troubleshooting section says 0.6.18 or
@@ -207,7 +211,7 @@ data glm_5_3_flash_disaggregated_kv_cache_layout: NonEmptyStr = "HND" as NonEmpt
 // different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
 // measurement of it -- which is why the figure is carried here as an upstream observation and the
 // decision to apply it is a deployment's own.
-data glm_5_3_flash_gb10_sparse_indexer_max_logits_mb: Nat = 64
+data glm_5_3_flash_gb10_sparse_indexer_max_logits: Mebibyte = mebibyte(count: 64)
 data glm_5_3_flash_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr
 
 // THE REFERENCE TOPOLOGY, which is the shape upstream measured rather than one this repository chose:
@@ -301,8 +305,8 @@ fn glm_5_3_flash_output_budget_for_input(window: TokenCount, input_tokens: Token
 type GlmCheckpointManifest sole_constructor {
   revision: NonEmptyStr
   safetensors_shard_count: Nat
-  safetensors_bytes: Nat
-  repository_total_bytes: Nat
+  safetensors_bytes: ByteSize
+  repository_total_bytes: ByteSize
   read_by: NonEmptyStr
 }
 
@@ -366,8 +370,8 @@ fn glm_5_3_flash_refused_by_fp8_ds_mla_writer(g: GlmAttentionGeometry) -> Bool {
 data glm_5_3_flash_native_manifest: GlmCheckpointManifest = GlmCheckpointManifest {
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   safetensors_shard_count: 62,
-  safetensors_bytes: 328337455672,
-  repository_total_bytes: 328366173469,
+  safetensors_bytes: byte_size(count: 328337455672),
+  repository_total_bytes: byte_size(count: 328366173469),
   read_by: "the Hub model API for zai-org/GLM-5.3-Flash at that exact revision with blobs enabled, summed over the safetensors siblings, read 2026-09-08. The response's own sha matched the revision and its lastModified was 2026-09-07T12:13:47Z" as NonEmptyStr,
 }
 
@@ -385,8 +389,9 @@ data glm_5_3_flash_native_manifest: GlmCheckpointManifest = GlmCheckpointManifes
 // A CONSUMER THAT NEEDS EXACTNESS READS THE BYTES. This helper exists for screening and for prose,
 // and both are served by the conservative direction; feasibility arithmetic that must be exact takes
 // `safetensors_bytes` and does not round at all.
-fn glm_manifest_gibibytes(m: GlmCheckpointManifest) -> Nat {
-  (m.safetensors_bytes + 1073741823) / 1073741824
+fn glm_manifest_gibibytes(m: GlmCheckpointManifest) -> Gibibyte {
+  let scale = gibibyte_scale_factor_bytes()
+  gibibyte(count: (byte_size_count(b: m.safetensors_bytes) + (scale - 1)) / scale)
 }
 
 // THE WEIGHTS CANNOT SIT ON ONE GB10 AND THAT NEEDS NO POLICY TO PROVE. Half of 328,337,455,672 is
@@ -395,5 +400,5 @@ fn glm_manifest_gibibytes(m: GlmCheckpointManifest) -> Nat {
 // consulted. Stating the bound at full utilisation keeps the impossibility independent of a policy
 // number that an operator may change.
 fn glm_manifest_per_rank_bytes_at_full_utilisation(m: GlmCheckpointManifest, ranks: Nat) -> Nat? {
-  if ranks == 0 { none } else { Present { value: (m.safetensors_bytes + (ranks - 1)) / ranks } }
+  if ranks == 0 { none } else { Present { value: byte_size(count: (byte_size_count(b: m.safetensors_bytes) + (ranks - 1)) / ranks) } }
 }

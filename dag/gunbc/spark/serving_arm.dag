@@ -2,7 +2,7 @@ module gunbc.spark.serving_arm
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_published_min_version, glm_5_3_flash_vllm_prerelease_image_nvidia }
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804 }
@@ -197,7 +197,7 @@ type ServingCheckpointRow {
   revision: NonEmptyStr
   placement: SnapshotPlacement
   architecture: NonEmptyStr
-  weight_gib: Nat
+  weight_gib: Gibibyte
   quantization: CheckpointQuantization
   provenance: NonEmptyStr
 }
@@ -208,7 +208,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
   placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
   architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
-  weight_gib: 80,
+  weight_gib: gibibyte(count: 80),
   quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
@@ -536,7 +536,7 @@ data serving_arm_headroom_denominator: Nat = 4
 
 fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
   serving_topology_aggregate_pool_gib(t: t) * serving_arm_headroom_denominator
-    >= c.weight_gib * serving_arm_headroom_numerator
+    >= gibibyte_count(c.weight_gib) * serving_arm_headroom_numerator
 }
 
 // THE INTENT PARAMETER IS GONE WITH THE STANDING THAT NEEDED IT. This verdict now answers only the two
@@ -626,7 +626,7 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
             }
           } else if !serving_arm_fits(c: crow, t: topology) {
             ServingArmRefused { cause: join([
-              "the checkpoint does not fit the topology: ", to_string(crow.weight_gib),
+              "the checkpoint does not fit the topology: ", to_string(gibibyte_count(crow.weight_gib)),
               " GiB of weights against ", to_string(serving_topology_aggregate_pool_gib(t: topology)),
               " GiB aggregate unified pool across ", to_string(serving_topology_rank_count(t: topology)),
               " rank(s), before KV and activations",
