@@ -37,28 +37,21 @@ fn unique_declaration_refs(xs: List<DeclarationRef>) -> List<DeclarationRef> {
   )
 }
 
-fn census_edges(census: ResolvedCallEdgeCensus) -> List<ResolvedCallEdge> {
-  match census {
-    ResolvedCallEdgeCensusRefused { cause: _ } => []
-    ResolvedCallEdgeCensusObserved { edges } => edges
-  }
-}
-
-fn evaluation_store_address_mutation_edges() -> List<ResolvedCallEdge> {
-  census_edges(census: workspace_resolved_call_edges(
+fn evaluation_store_address_mutation_census() -> ResolvedCallEdgeCensus {
+  workspace_resolved_call_edges(
     entry: "dag/test/fixture/evaluation_store_address_alias/mutation_entry.dag" as NonEmptyStr
-  ))
+  )
 }
 
-fn evaluation_store_address_production_edges() -> List<ResolvedCallEdge> {
-  census_edges(census: compile_dag_importer_resolved_call_edges(
+fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
+  compile_dag_importer_resolved_call_edges(
     [
       "std.materialization_provider",
       "std.materialization_object",
       "extdeps.realization.materialization_store_local"
     ],
     ["/test/"]
-  ))
+  )
 }
 
 fn bound_callers_of_edges(
@@ -80,46 +73,6 @@ fn bound_callers_of_edges(
         acc
       }
   ))
-}
-
-fn evaluation_store_address_observed_direct_callers() -> List<DeclarationRef> {
-  bound_callers_of_edges(
-    edges: evaluation_store_address_production_edges(),
-    callee_module: "std.materialization_provider",
-    callee_decl: "evaluation_store_address"
-  )
-}
-
-fn evaluation_store_address_observed_persist_callers() -> List<DeclarationRef> {
-  bound_callers_of_edges(
-    edges: evaluation_store_address_production_edges(),
-    callee_module: "std.materialization_provider",
-    callee_decl: "persist_evaluation_store_address"
-  )
-}
-
-fn evaluation_store_address_observed_admitted_callers() -> List<DeclarationRef> {
-  bound_callers_of_edges(
-    edges: evaluation_store_address_production_edges(),
-    callee_module: "std.materialization_provider",
-    callee_decl: "evaluation_store_address_digest"
-  )
-}
-
-fn evaluation_store_address_alias_mutation_callers() -> List<DeclarationRef> {
-  bound_callers_of_edges(
-    edges: evaluation_store_address_mutation_edges(),
-    callee_module: "test.fixture.evaluation_store_address_alias.home",
-    callee_decl: "evaluation_store_address"
-  )
-}
-
-fn evaluation_store_address_same_leaf_decoy_callers() -> List<DeclarationRef> {
-  bound_callers_of_edges(
-    edges: evaluation_store_address_mutation_edges(),
-    callee_module: "test.fixture.evaluation_store_address_alias.decoy",
-    callee_decl: "evaluation_store_address"
-  )
 }
 
 fn evaluation_store_address_ref_in_module(module_path: String, name: String, xs: List<DeclarationRef>) -> Bool {

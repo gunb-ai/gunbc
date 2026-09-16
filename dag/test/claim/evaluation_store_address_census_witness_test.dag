@@ -13,12 +13,13 @@ import gunbc.materialization_provider_targets {
   evaluation_store_address_unresolved
 }
 import gunbc.evaluation_store_address_census {
-  evaluation_store_address_alias_mutation_callers,
-  evaluation_store_address_same_leaf_decoy_callers,
-  evaluation_store_address_ref_in_module,
-  evaluation_store_address_observed_direct_callers,
-  evaluation_store_address_observed_persist_callers,
-  evaluation_store_address_observed_admitted_callers
+  ResolvedCallEdge,
+  ResolvedCallEdgeCensusRefused,
+  ResolvedCallEdgeCensusObserved,
+  evaluation_store_address_production_census,
+  evaluation_store_address_mutation_census,
+  bound_callers_of_edges,
+  evaluation_store_address_ref_in_module
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -33,10 +34,22 @@ test fn evaluation_store_address_expected_rosters_are_well_formed() -> Bool {
     && ((evaluation_store_address_producer.decl_name as String) == "evaluation_store_address")
 }
 
-test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
-  let direct_obs = evaluation_store_address_observed_direct_callers()
-  let persist_obs = evaluation_store_address_observed_persist_callers()
-  let admitted_obs = evaluation_store_address_observed_admitted_callers()
+fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool {
+  let direct_obs = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "std.materialization_provider",
+    callee_decl: "evaluation_store_address"
+  )
+  let persist_obs = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "std.materialization_provider",
+    callee_decl: "persist_evaluation_store_address"
+  )
+  let admitted_obs = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "std.materialization_provider",
+    callee_decl: "evaluation_store_address_digest"
+  )
   ((evaluation_store_address_missing_expected(
     expected: evaluation_store_address_production_consumers,
     observed: direct_obs
@@ -66,9 +79,24 @@ test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> 
     && ((evaluation_store_address_duplicate_consumers(xs: admitted_obs) |> count()) == 0)
 }
 
-test fn evaluation_store_address_resolver_distinguishes_alias_same_leaf_and_qualified() -> Bool {
-  let home_callers = evaluation_store_address_alias_mutation_callers()
-  let decoy_callers = evaluation_store_address_same_leaf_decoy_callers()
+test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
+  match evaluation_store_address_production_census() {
+    ResolvedCallEdgeCensusRefused { cause: _ } => false
+    ResolvedCallEdgeCensusObserved { edges } => evaluation_store_address_join_observed(edges: edges)
+  }
+}
+
+fn evaluation_store_address_alias_observed(edges: List<ResolvedCallEdge>) -> Bool {
+  let home_callers = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "test.fixture.evaluation_store_address_alias.home",
+    callee_decl: "evaluation_store_address"
+  )
+  let decoy_callers = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "test.fixture.evaluation_store_address_alias.decoy",
+    callee_decl: "evaluation_store_address"
+  )
   evaluation_store_address_ref_in_module(
     module_path: "test.fixture.evaluation_store_address_alias.aliased",
     name: "aliased_call",
@@ -89,4 +117,11 @@ test fn evaluation_store_address_resolver_distinguishes_alias_same_leaf_and_qual
       name: "same_leaf_imported_call",
       xs: home_callers
     ) == false)
+}
+
+test fn evaluation_store_address_resolver_distinguishes_alias_same_leaf_and_qualified() -> Bool {
+  match evaluation_store_address_mutation_census() {
+    ResolvedCallEdgeCensusRefused { cause: _ } => false
+    ResolvedCallEdgeCensusObserved { edges } => evaluation_store_address_alias_observed(edges: edges)
+  }
 }
