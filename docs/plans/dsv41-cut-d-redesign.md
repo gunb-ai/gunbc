@@ -34,6 +34,43 @@ therefore makes these nodes look idle while they are 89% full.
 The operator's statement that Group A "is not being used by anyone" is correct about
 **traffic** and not about **occupancy**.
 
+### These readings do not contradict the fold's input, and the document must say so
+
+`gunbc.spark.pair_serving_observed` `group_rank_free_memory_observed` — the reading the fit
+fold consumes — is qualified **"with the engine idle"**. The table above is a reading of an
+**occupied** rank. They are answers to different questions and neither supersedes the other:
+
+| question | condition | who answers it |
+|---|---|---|
+| would V4.1 at TP4 fit if these hosts were cleared? | engine **idle** | `group_rank_free_memory_observed`, consumed by `candidate_component_budget` |
+| are these hosts clear right now? | **as found** | the table above, and D0 |
+
+So the occupancy reading is not evidence that the fold's input is stale, and the fit verdict
+stands on its own reading. **Presenting both without reconciling them would have been the
+defect** — a reader comparing 116.9 GiB free against 107–109 GiB used would conclude one of
+them is wrong, when what actually differs is whether anything was running at the time.
+
+### Why these readings are prose here, stated as a divergence rather than left silent
+
+§6 says name the instrument, never transcribe its output — and `pair_serving_observed` is the
+modeled home, carrying `PairServingObservationProvenance` with `observed_on` / `observed_by` /
+`sources`, and free memory as a `std.measure` interval with an `instrument` and a
+`precision_caveat` rather than a hand-typed figure. A `FabricGroupA` occupancy row there is the
+conforming move, and these figures are not in it.
+
+**This is a §3b divergence and the reason is that D0 is the step that produces that row.** The
+cut below exists precisely to take the claim, reconcile the occupancy against the declared
+realization, and emit an entry-state receipt. Hand-authoring the row now would author by hand
+the artifact the cut produces by execution — and it would do so from a one-off SSH procedure
+rather than through the instrument the model would name, which is the weaker evidence of the
+two.
+
+So these figures are carried here as **what motivated the redesign**, not as the corpus's
+record of Group A's occupancy. The corpus's record is `EntryStateReceipt`, D0 produces it, and
+if this program stalls before D0 runs then the corpus correctly continues to have no modeled
+observation of Group A being occupied — which is honest, because nothing executing has made
+one.
+
 ## What follows, stated as consequences rather than edits
 
 ### 1. There is no drain, and calling a reclaim a drain would claim a property we do not have
