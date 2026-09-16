@@ -209,6 +209,64 @@ fn validation_nullable_ambiguity_validate_rejects() -> Bool {
   }
 }
 
+data validation_three_alt_inner_nullable_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Choice {
+        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: Choice {
+          left: Optional { element: Terminal { token_class: ^validation_tok_class_b, stamp: StampClass } },
+          right: Optional { element: Terminal { token_class: ^validation_tok_class_b, stamp: StampClass } }
+        }
+      },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_three_alt_tail_overlap_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Choice {
+        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: Choice {
+          left: Terminal { token_class: ^validation_tok_class_b, stamp: StampClass },
+          right: Terminal { token_class: ^validation_tok_class_b, stamp: StampClass }
+        }
+      },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+test fn validation_three_alt_inner_nullable_pair_rejects() -> Bool {
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
+  match grammar_validate_for_parse(root: validation_three_alt_inner_nullable_root, at: at) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn validation_three_alt_tail_overlap_accepts_with_residue() -> Bool {
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
+  match grammar_validate_for_parse(root: validation_three_alt_tail_overlap_root, at: at) {
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        Some { diagnostics: residue } => residue.head.reason == ^parse_grammar_choice_overlap_residue
+        None => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn validation_disjoint_choice_residue_is_none() -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
   match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
