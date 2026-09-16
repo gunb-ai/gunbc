@@ -693,6 +693,63 @@ fn token_is_trivia(token: &crate::v1_std_core::Token) -> bool {
     )
 }
 
+fn dag_ident_continue(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_'
+}
+
+/// Byte prefilter matching `first_call_form_leaf`: a target leaf at an identifier
+/// boundary, then whitespace, then `(`. Avoids tokenizing files that only mention the
+/// leaf in a non-call position.
+fn content_has_call_form_leaf(content: &str, leaves: &HashSet<String>) -> bool {
+    let bytes = content.as_bytes();
+    for leaf in leaves {
+        let needle = leaf.as_bytes();
+        if needle.is_empty() {
+            continue;
+        }
+        let mut i = 0;
+        while i + needle.len() <= bytes.len() {
+            if &bytes[i..i + needle.len()] != needle {
+                i += 1;
+                continue;
+            }
+            let before_ok = i == 0 || !dag_ident_continue(bytes[i - 1]);
+            let after = i + needle.len();
+            let after_ok = after == bytes.len() || !dag_ident_continue(bytes[after]);
+            if before_ok && after_ok {
+                let mut j = after;
+                while j < bytes.len() && matches!(bytes[j], b' ' | b'\t' | b'\n' | b'\r') {
+                    j += 1;
+                }
+                if j < bytes.len() && bytes[j] == b'(' {
+                    return true;
+                }
+            }
+            i += 1;
+        }
+    }
+    false
+}
+
+/// Production horizon roots are witness-layer names (`dag`, `src/v2`): callers may import
+/// across the admitted universe, so resolve uses `default_source_roots()`. A fixture pool
+/// is not a layer root; resolving it through the live-tree universe rebuilds a corpus
+/// index for a closed handful of files.
+fn resolve_roots_for_call_edge_pool(pool_roots: &[String]) -> Vec<String> {
+    if pool_roots.is_empty() {
+        return default_source_roots();
+    }
+    let layers = crate::cli_run::witness_layer_roots();
+    let horizon = pool_roots
+        .iter()
+        .all(|root| layers.iter().any(|layer| layer == root));
+    if horizon {
+        default_source_roots()
+    } else {
+        pool_roots_abs(pool_roots)
+    }
+}
+
 fn first_call_form_leaf(
     content: &str,
     rel: &str,
@@ -807,6 +864,9 @@ pub fn compile_dag_call_form_leaf_guard(
                 };
             }
         };
+        if !content_has_call_form_leaf(&content, &leaves) {
+            continue;
+        }
         match first_call_form_leaf(&content, &rel, &leaves) {
             Ok(Some(target_leaf)) => {
                 return EvaluationStoreAddressProductionCoverage::CandidateOutsideExactResolution {
@@ -1012,6 +1072,11 @@ fn load_reference_form_pool(
         collect_dag_files_complete(root_path, &mut files)?;
     }
     files.sort();
+    let call_form_leaves: HashSet<String> = if require_leaf_bytes {
+        leaf_needles.iter().cloned().collect()
+    } else {
+        HashSet::new()
+    };
     let mut loaded = Vec::new();
     for file in files {
         let rel = rel_path_for_layer_import(&file);
@@ -1025,8 +1090,8 @@ fn load_reference_form_pool(
             )
         })?;
         if require_leaf_bytes
-            && !leaf_needles.is_empty()
-            && !leaf_needles.iter().any(|leaf| content.contains(leaf))
+            && !call_form_leaves.is_empty()
+            && !content_has_call_form_leaf(&content, &call_form_leaves)
         {
             continue;
         }
@@ -1092,12 +1157,13 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
                 .to_string(),
         };
     }
-    // Caller horizon (`pool_roots`) selects candidate files only. Resolution runs against
-    // the admitted live-tree universe (`witness_layer_roots` → dag ∪ src/v2); each selected
-    // entry's import closure is derived from that index, never from the horizon. Using the
-    // horizon as resolve_roots under-resolved std.materialization_provider (it imports
-    // v2.compiler.self_host.generation). Empty pool_roots still scans the same universe.
-    let dependency_universe = default_source_roots();
+    // Caller horizon (`pool_roots`) selects candidate files only. When that horizon is a
+    // witness-layer root, resolution runs against the admitted live-tree universe
+    // (`witness_layer_roots` → dag ∪ src/v2); each selected entry's import closure is
+    // derived from that index. Using the horizon `dag` as resolve_roots under-resolved
+    // std.materialization_provider (it imports v2.compiler.self_host.generation). A
+    // fixture pool is not a layer root and resolves against itself.
+    let dependency_universe = resolve_roots_for_call_edge_pool(pool_roots);
     let mut entries: Vec<String> = entries.into_iter().collect();
     entries.sort();
     let mut edges = Vec::new();
