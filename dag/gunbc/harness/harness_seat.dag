@@ -573,8 +573,9 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
 // through exactly what production passes. The incarnation standing is an ARGUMENT: production takes
 // it from gunbc.spark.serving_incarnation_observe at candidate time (harness_incarnation_standing
-// below). The declared head-unit digest is read from the materialized artifact apply published,
-// never by rendering on a token turn. Group B uses the canary arm's unrendered-unit obligation.
+// below). The declared head-unit digest is the apply-time DigestStdin receipt. Lookup re-renders
+// the unsigned unit as a pure fold and requires byte equality with the stored body; placement
+// never DigestStdin. Group B uses the canary arm's unrendered-unit obligation.
 fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding) -> SparkServingRealization {
   SparkServingRealization {
     hosts: fabric_group_hosts(g: group),
@@ -784,7 +785,9 @@ fn harness_candidate_from_standing(
 // EVERY OBSERVATION THIS FOLD CONSUMES ARRIVES AS A SUPPLIED VALUE -- the engine reading, the
 // availability verdict, the launch, and the seat pool standing -- and the one thing it reaches
 // for itself is the declared-unit standing for this group, READ from the durable artifact apply
-// published (or from the canary arm's own unrendered-unit obligation). Placement never renders.
+// published (or from the canary arm's own unrendered-unit obligation). Lookup re-renders the
+// unsigned unit (a pure fold) and requires byte equality with the stored body; placement never
+// DigestStdin.
 // That is what makes the artifact -> lookup -> bind wire claimable at this one interface:
 // test.claim.serving.serving_availability_bind_wet_witness publishes then places, and places
 // against an absent store file. The observations themselves are taken one call up, in harness_add_candidate, which
