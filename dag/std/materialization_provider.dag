@@ -555,30 +555,26 @@ fn evaluation_identity_fnv_bucket(evaluation: EvaluationIdentity) -> ContentHash
   )
 }
 
-fn typecheck_evaluation_index(demand: DemandIdentity) -> ContentHash {
-  let imports = demand.declared_inputs |> filter(i => (i.ref as String) == "direct_import_interface") |> map(i => i.digest)
-  match get(xs: demand.declared_inputs, index: (demand.declared_inputs |> count()) - 1) {
-    Absent => evaluation_identity_fnv_bucket(evaluation: EvaluationIdentity { demand: demand })
-    Present { value: compiler } =>
-      as_content_hash_structural(
-        structural: typed_module_key(
-          interface_key: module_key(source_hash: demand.subject, direct_import_interface_hashes: imports),
-          compiler_identity: compiler.digest
-        )
-      )
-  }
-}
-
 fn request_evaluation_identity(req: ArtifactRequest) -> EvaluationIdentity {
   EvaluationIdentity { demand: request_judgment_contract(req: req).demand_identity }
 }
 
-fn evaluation_bucket(identity: EvaluationIdentity) -> ContentHash {
-  if identity.demand.kind == typed_module_artifact_kind {
-    typecheck_evaluation_index(demand: identity.demand)
-  } else {
-    evaluation_identity_fnv_bucket(evaluation: identity)
-  }
+fn request_evaluation_bucket(req: ArtifactRequest) -> ContentHash {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req)),
+    typecheck_module: (sd, ii, c) =>
+      as_content_hash_structural(
+        structural: typed_module_key(
+          interface_key: module_key(source_hash: sd, direct_import_interface_hashes: ii),
+          compiler_identity: c.digest
+        )
+      ),
+    resolve_closure: (cd, c) => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req)),
+    native_compiler: g => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req)),
+    universe: (tt, rb) => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req)),
+    module_verdict_bundle: s => evaluation_identity_fnv_bucket(evaluation: request_evaluation_identity(req: req))
+  )
 }
 
 fn persist_evaluation_store_address(identity: EvaluationIdentity, digest: ContentHash) -> EvaluationStoreAddressAdmission {
@@ -610,7 +606,7 @@ fn persist_evaluation_store_address(identity: EvaluationIdentity, digest: Conten
 
 fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
   let identity = request_evaluation_identity(req: req)
-  persist_evaluation_store_address(identity: identity, digest: evaluation_bucket(identity: identity))
+  persist_evaluation_store_address(identity: identity, digest: request_evaluation_bucket(req: req))
 }
 
 fn evaluation_store_address_digest(address: EvaluationStoreAddress) -> ContentHash {
@@ -934,7 +930,7 @@ fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
 // is witnessed by execution rather than asserted.
 
 fn request_key(req: ArtifactRequest) -> ContentHash {
-  evaluation_bucket(identity: request_evaluation_identity(req: req))
+  request_evaluation_bucket(req: req)
 }
 
 // Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape
