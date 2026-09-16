@@ -452,7 +452,7 @@ type ReasoningResponseProjection
 data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: Gitcommit90Sm121Exl3,
   artifact: runtime_artifact_identity(
-    pin: PinnedByDigest { reference: "ghcr.io/gitcommit90/glm-5.3-one-spark@sha256:ba6db0547b24162854948fb16cda68dd4408360e03aeba480edb8d3d876eaeef" as NonEmptyStr },
+    pin: PinnedByDigest { reference: gitcommit90_glm_53_one_spark_pinned_reference() },
     source_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
     patch_set: [],
     provenance: "a community image taken as published; the revision is what it self-reports as its vLLM build, not a comparison of its bytes against that tree" as NonEmptyStr,

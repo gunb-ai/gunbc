@@ -5,6 +5,7 @@ import std.nat { Nat }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, Glm53NativeFp8, Glm53Exl3_205, DeepseekV4FlashIq3sSplit,
   ServingRuntime, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3, VllmOpenaiGlm53Flash,
+  GunbcGlm53NopeDerivedGb10,
   ServingTopology, SingleSparkTp1, FourSparkTp4,
   ServingLaunchProfile, glm_native_initial_profile, glm_exl3_canary_profile,
   serving_launch_profile_key, ServingRuntimeRow, serving_runtime_row,
