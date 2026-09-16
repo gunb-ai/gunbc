@@ -186,3 +186,19 @@ data glm_5_3_flash_recipe_declares_gpu_memory_utilization: Bool = false
 // under another is the failure that bricked a ledger partition on 2026-09-06. A measurement about a
 // serving unit belongs to that unit's observed row with its instrument named, never to the model.
 data glm_5_3_flash_carries_no_serving_measurements: Bool = true
+
+// THE ENGINE READY TIMEOUT IS UPSTREAM'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it
+// is carried because its absence is independently fatal on a cold multi-node start. torch's
+// distributed rendezvous defaults to 601 seconds; a four-rank group whose members are still
+// materialising exceeds that and dies with "Timed out waiting for clients", which is a different
+// failure from anything about the model and reports nothing about it.
+data glm_5_3_flash_vllm_engine_ready_timeout_seconds: Nat = 3600
+
+// A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
+// vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
+// sparse-indexer logits allocation, with two independent mitigations offered. That report used a
+// different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
+// measurement of it -- which is why the figure is carried here as an upstream observation and the
+// decision to apply it is a deployment's own.
+data glm_5_3_flash_gb10_sparse_indexer_max_logits_mb: Nat = 64
+data glm_5_3_flash_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr

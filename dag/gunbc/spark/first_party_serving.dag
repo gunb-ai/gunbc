@@ -21,9 +21,6 @@ import gunbc.spark.fabric_switch_observed { fabric_lane_observations }
 import gunbc.spark.vllm_observed {
   VllmModelsRouteReadbackStanding, ModelsRouteRead, VllmModelsRouteReadback,
 }
-import gunbc.spark.pair_serving_realization {
-  spark_pair_model_path_in_container, spark_pair_desired_snapshot,
-}
 import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
   UsageStatsLaunchUnread, VllmUsageStatsContentClass,
@@ -488,6 +485,7 @@ type SparkServingRealization {
   readback: VllmModelsRouteReadbackStanding
   endpoint: VllmEndpointProcessLaunch
   incarnation: EndpointIncarnationStanding
+  declared_model_path: String?
 }
 
 
@@ -507,11 +505,12 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // something answered, not what it is.
 //
 // WHAT IS LAUNCH-BOUND IS WHAT THE PROCESS ITSELF REPORTED. gunbc.spark.vllm_observed's models-route
-// readback carries the configured_model_path the running engine answered with, and
-// gunbc.spark.pair_serving_realization derives the path the pair-serving launch is declared to
-// serve from its pinned snapshot. Those two agreeing is evidence ABOUT THE PROCESS rather than about
-// our intent for it: a different engine serving a different checkpoint answers with a different
-// path, and a readback this repository could not decode answers with none at all.
+// readback carries the configured_model_path the running engine answered with, and the realization
+// carries the path the GROUP'S launch is declared to serve, derived from its pinned snapshot by the
+// group's own serving authority (gunbc.spark.serving_group_launch: the pair-serving realization for
+// group A, the native arm's for group B). Those two agreeing is evidence ABOUT THE PROCESS rather
+// than about our intent for it: a different engine serving a different checkpoint answers with a
+// different path, and a readback this repository could not decode answers with none at all.
 //
 // WHAT THIS JOIN ANSWERS AND WHAT IT DOES NOT, stated as two separate questions because an earlier
 // spelling of this note ran them together and its own author then read it as a caveat about weights.
@@ -521,7 +520,7 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // -- a second engine started with the same model path reports the same string. Nothing observable
 // here separates them, so the residual is real rather than pending: no widening of this comparison
 // closes it. The ARM NAME now carries that limit rather than this sentence -- it is
-// RealizationMatchesPairServingConfiguration, which is what it establishes. The consequence is
+// RealizationMatchesDeclaredConfiguration, which is what it establishes. The consequence is
 // carried where it matters, at spark_serving_usage_stats_declared_environment_obligation: because
 // this arm does not establish which launch answered, no declared fact about that launch -- its
 // container environment above all -- may be attributed to the process on the strength of it.
@@ -543,7 +542,7 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // validation standing where construction was available, and a case mismatch in exactly that pattern
 // cost a floor run on this branch.
 type SparkRealizationIdentity
-  = RealizationMatchesPairServingConfiguration { configured_model_path: NonEmptyStr }
+  = RealizationMatchesDeclaredConfiguration { configured_model_path: NonEmptyStr }
   | RealizationReportedPathDiffers { reported: NonEmptyStr, declared: NonEmptyStr }
   | RealizationDeclaredPathUnpinned
   | RealizationReadbackUnresolved
@@ -551,10 +550,10 @@ type SparkRealizationIdentity
 fn spark_realization_identity(realization: SparkServingRealization) -> SparkRealizationIdentity {
   match realization.readback {
     ModelsRouteRead { readback: r } =>
-      match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
+      match realization.declared_model_path {
         Present { value: declared } =>
           if (r.configured_model_path as String) == declared {
-            RealizationMatchesPairServingConfiguration { configured_model_path: r.configured_model_path }
+            RealizationMatchesDeclaredConfiguration { configured_model_path: r.configured_model_path }
           } else {
             RealizationReportedPathDiffers {
               reported: r.configured_model_path,
@@ -627,7 +626,7 @@ fn spark_serving_usage_stats_unread_cause(realization: SparkServingRealization) 
     RealizationDeclaredPathUnpinned => TelemetryDeclaredPathUnpinned
     RealizationReportedPathDiffers { reported: rep, declared: dec } =>
       TelemetryReportedPathDiffers { reported: rep, declared: dec }
-    RealizationMatchesPairServingConfiguration { configured_model_path: matched } =>
+    RealizationMatchesDeclaredConfiguration { configured_model_path: matched } =>
       if count(realization.hosts) == 0 {
         TelemetryNoHostMembership
       } else if count(spark_realization_hosts_without_lanes(realization: realization)) > 0 {

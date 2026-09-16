@@ -3,7 +3,7 @@ module gunbc.harness.harness_seat
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
   ServingRouteTurnCeiling, serving_enrolled_routes, serving_route_turn_ceiling_count,
@@ -55,7 +55,11 @@ import gunbc.spark.serving_offer {
 }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
 import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, endpoint_incarnation_standing }
-import gunbc.spark.pair_serving_desired { spark_pair_group_head_host, spark_pair_serving_unit }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head, spark_pair_serving_unit }
+import gunbc.spark.serving_group_launch { serving_group_launch }
+import gunbc.spark.native_serving_realization {
+  GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused, glm_native_head_unit_render,
+}
 import gunbc.spark.pair_serving_realization {
   spark_pair_realization, SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
@@ -586,48 +590,77 @@ fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLa
     readback: readback,
     endpoint: launch,
     incarnation: incarnation,
+    declared_model_path: serving_group_launch(group: group).declared_model_path,
   }
 }
 
-// THE DECLARED UNIT DIGEST IS NOW COMPUTED, NOT ABSENT. The render is pure from the desired unit
-// (gunbc.spark.pair_serving_realization spark_pair_realization over spark_pair_serving_unit), so the
-// same bytes the apply path wrote are re-rendered here and digested with the same tool the host side
-// is read with (sha256sum, via crypto.Sha256Sum), giving DeclaredUnitDigested a value in the family
-// VllmServingLaunch.unit_digest is read in. The scratch path carries the group because both groups'
-// head units share one unit_name while their rendered bytes differ, and a worker and an auditor bind
-// concurrently; the path is content-addressed within a group since the render is deterministic. Any
-// leg that cannot produce the digest degrades to DeclaredUnitDigestUnavailable carrying the located
-// cause, never a guess.
+// THE DECLARED UNIT DIGEST IS NOW COMPUTED, NOT ABSENT. The render is pure from the group's own
+// desired declaration (the pair-serving realization for group A, the native arm's for group B --
+// harness_declared_head_unit_render below), so the same bytes the apply path wrote are re-rendered
+// here and digested with the same tool the host side is read with (sha256sum, via
+// crypto.Sha256Sum), giving DeclaredUnitDigested a value in the family VllmServingLaunch.unit_digest
+// is read in. The scratch path carries the group because the two groups' renders differ and a
+// worker and an auditor bind concurrently; the path is content-addressed within a group since the
+// render is deterministic. Any leg that cannot produce the digest degrades to
+// DeclaredUnitDigestUnavailable carrying the located cause, never a guess.
+type DeclaredHeadUnitRender
+  = DeclaredHeadUnitRendered { unit_name: NonEmptyStr, text: String }
+  | DeclaredHeadUnitRenderRefused { cause: NonEmptyStr }
+
+// THE DECLARED UNIT IS THE GROUP'S OWN. Group A's head unit is the pair-serving realization's
+// (DeepSeek, Ray, the sparkrun image); group B's is the native four-rank arm's
+// (gunbc.spark.native_serving_realization glm_native_head_unit_render). Both render pure text from
+// their own desired declarations, so the digest below is computed over the same bytes the apply
+// path wrote, whichever arm the group is served by.
+fn harness_declared_head_unit_render(group: FabricGroup) -> DeclaredHeadUnitRender {
+  match group {
+    FabricGroupA =>
+      match spark_pair_realization(unit: spark_pair_serving_unit(group: group)) {
+        SparkPairRealizationRefused { group: _, cause: c } =>
+          DeclaredHeadUnitRenderRefused { cause: join(["the declared head unit could not be realized for digesting: ", c as String], "") as NonEmptyStr }
+        SparkPairRealized { group: _, head: h, workers: _ } =>
+          match h.unit {
+            SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
+              DeclaredHeadUnitRenderRefused { cause: join(["the declared head unit could not be rendered for digesting: ", c as String], "") as NonEmptyStr }
+            SparkPairUnitRendered { unit_name: name, text: text } =>
+              DeclaredHeadUnitRendered { unit_name: name, text: text }
+          }
+      }
+    FabricGroupB =>
+      match glm_native_head_unit_render() {
+        GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
+          DeclaredHeadUnitRenderRefused { cause: join(["the declared head unit could not be rendered for digesting: ", c as String], "") as NonEmptyStr }
+        GlmNativeUnitRendered { unit_name: name, text: text } =>
+          DeclaredHeadUnitRendered { unit_name: name, text: text }
+      }
+  }
+}
+
 fn harness_declared_head_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
-  match spark_pair_realization(unit: spark_pair_serving_unit(group: group)) {
-    SparkPairRealizationRefused { group: _, cause: c } =>
-      DeclaredUnitDigestUnavailable { obligation: join(["the declared head unit could not be realized for digesting: ", c as String], "") as NonEmptyStr }
-    SparkPairRealized { group: _, head: h, workers: _ } =>
-      match h.unit {
-        SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
-          DeclaredUnitDigestUnavailable { obligation: join(["the declared head unit could not be rendered for digesting: ", c as String], "") as NonEmptyStr }
-        SparkPairUnitRendered { unit_name: name, text: text } => {
-          let path = join(["/tmp/gunbc-declared-unit-", fabric_group_wire(g: group) as String, "-", name as String], "")
-          let w = Filesystem.Write(path: path, content: text)
-          if w.success == false {
-            DeclaredUnitDigestUnavailable { obligation: join(["the declared head unit scratch write failed: ", w.error], "") as NonEmptyStr }
-          } else {
-            let r = crypto.Sha256Sum.File(path: path)
-            if r.success == false {
-              DeclaredUnitDigestUnavailable { obligation: join(["sha256sum over the declared head unit failed: ", r.stderr], "") as NonEmptyStr }
-            } else {
-              match sha256sum_line_digest(line: r.line) {
-                Absent => DeclaredUnitDigestUnavailable { obligation: "sha256sum over the declared head unit printed no 64-hex digest line" as NonEmptyStr }
-                Present { value: d } =>
-                  match sha256_digest_content_hash(digest: d) {
-                    Absent => DeclaredUnitDigestUnavailable { obligation: "the declared head unit digest is not a sha256 content hash" as NonEmptyStr }
-                    Present { value: ch } => DeclaredUnitDigested { unit_name: name, digest: ch }
-                  }
+  match harness_declared_head_unit_render(group: group) {
+    DeclaredHeadUnitRenderRefused { cause: c } =>
+      DeclaredUnitDigestUnavailable { obligation: c }
+    DeclaredHeadUnitRendered { unit_name: name, text: text } => {
+      let path = join(["/tmp/gunbc-declared-unit-", fabric_group_wire(g: group) as String, "-", name as String], "")
+      let w = Filesystem.Write(path: path, content: text)
+      if w.success == false {
+        DeclaredUnitDigestUnavailable { obligation: join(["the declared head unit scratch write failed: ", w.error], "") as NonEmptyStr }
+      } else {
+        let r = crypto.Sha256Sum.File(path: path)
+        if r.success == false {
+          DeclaredUnitDigestUnavailable { obligation: join(["sha256sum over the declared head unit failed: ", r.stderr], "") as NonEmptyStr }
+        } else {
+          match sha256sum_line_digest(line: r.line) {
+            Absent => DeclaredUnitDigestUnavailable { obligation: "sha256sum over the declared head unit printed no 64-hex digest line" as NonEmptyStr }
+            Present { value: d } =>
+              match sha256_digest_content_hash(digest: d) {
+                Absent => DeclaredUnitDigestUnavailable { obligation: "the declared head unit digest is not a sha256 content hash" as NonEmptyStr }
+                Present { value: ch } => DeclaredUnitDigested { unit_name: name, digest: ch }
               }
-            }
           }
         }
       }
+    }
   }
 }
 
@@ -648,12 +681,7 @@ fn harness_incarnation_standing(access: FleetSshContextPreparation, group: Fabri
     FleetSshContextRefused { cause: c } =>
       EndpointIncarnationUnobserved { obligation: join([spark_serving_incarnation_unobserved_obligation as String, " -- this bind holds no fleet ssh context: ", c], "") as NonEmptyStr }
     FleetSshContextReady { context: context, receipt: _ } =>
-      match spark_pair_group_head_host(group: group) {
-        Absent =>
-          EndpointIncarnationUnobserved { obligation: join(["gunbc.spark.pair_serving_desired names no ready head host for ", fabric_group_wire(g: group) as String, ", so there is no host to observe the incarnation on"], "") as NonEmptyStr }
-        Present { value: head } =>
-          endpoint_incarnation_standing(reading: observe_endpoint_incarnation(context: context, group: group, head: head, endpoint: launch))
-      }
+      endpoint_incarnation_standing(reading: observe_endpoint_incarnation(context: context, group: group, head: spark_pair_serving_head(group: group), endpoint: launch))
   }
 }
 

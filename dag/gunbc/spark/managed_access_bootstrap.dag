@@ -17,6 +17,7 @@ import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_comma
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.spark.native_serving_realization { glm_native_container_name }
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -383,6 +384,7 @@ data spark_managed_grant_population: List<SparkManagedGrant> = [
   EnableLingerForOwnAccount { subject: spark_managed_executor_login as NonEmptyStr },
   RebootThisHost,
   InspectServingContainer { container: spark_pair_container_name },
+  InspectServingContainer { container: glm_native_container_name },
 ]
 
 fn derive_spark_bootstrap_plan(
