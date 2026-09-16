@@ -67,7 +67,6 @@ import gunbc.spark.native_serving_realization {
 // 1/4 timeout, one epoch later (measured 2026-09-16, head restart at 22:32 with the ranks still
 // on the 22:19 start). The wait is therefore for the rank's own log line naming the store it is
 // about to join, which is the earliest point the head's start cannot strand it.
-
 data spark_native_apply_receipt_path: String = "target/spark-native-apply-receipt.txt"
 
 data spark_native_apply_attempt_raw: String = "spark-native-apply"
@@ -100,7 +99,7 @@ fn spark_native_host_plan(host: HostIdentity, render: GlmNativeUnitRender) -> Sp
         unit_name: name,
         script: spark_native_host_apply_script(
           unit_name: name,
-          log_path: if name as String == glm_native_head_unit_name as String { glm_native_head_log_path } else { glm_native_rank_log_path },
+          log_path: if (name as String) == (glm_native_head_unit_name as String) { glm_native_head_log_path } else { glm_native_rank_log_path },
           unit_text: text,
         ),
       } }
