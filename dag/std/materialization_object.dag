@@ -37,7 +37,7 @@ import std.materialization_provider {
   length_prefixed_encode, result_content_identity,
   provider_serve_persisted,
   observed_evaluation_preimage_from_object, ObservedEvaluationPreimage,
-  CryptographicAddressAdmitted, PreimageVerifiedBucketAdmitted, FamilyRefused,
+  Admitted, FamilyRefused,
   HashFamily, KeyingScope,
   evaluation_result_binding_outcome,
   artifact_manifest, artifact_from_manifest, artifact_content_digest, artifact_kind, artifact_carried_outputs,
@@ -583,9 +583,7 @@ fn store_lookup_decide(
         key: request_key(req: req),
         refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc }
       }
-    CryptographicAddressAdmitted { address: addr } =>
-      store_lookup_from_address(store: store, req: req, address: addr, read: read)
-    PreimageVerifiedBucketAdmitted { address: addr } =>
+    Admitted { address: addr } =>
       store_lookup_from_address(store: store, req: req, address: addr, read: read)
   }
 }
@@ -707,9 +705,7 @@ fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>) -
           refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc }
         }
       }
-    CryptographicAddressAdmitted { address: addr } =>
-      store_commit_prepare_admitted(req: req, payloads: payloads, address: addr)
-    PreimageVerifiedBucketAdmitted { address: addr } =>
+    Admitted { address: addr } =>
       store_commit_prepare_admitted(req: req, payloads: payloads, address: addr)
   }
 }

@@ -369,8 +369,7 @@ type EvaluationStoreAddress sole_constructor {
 }
 
 type EvaluationStoreAddressAdmission
-  = CryptographicAddressAdmitted { address: EvaluationStoreAddress }
-  | PreimageVerifiedBucketAdmitted { address: EvaluationStoreAddress }
+  = Admitted { address: EvaluationStoreAddress }
   | FamilyRefused { family: HashFamily, scope: KeyingScope }
 
 type LengthPrefixedField {
@@ -604,7 +603,7 @@ fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStore
   let family = content_hash_family(hash: bucket.digest)
   match admit_hash_family_for_scope(family: family, scope: PersistentStoreScope) {
     HashFamilyAdmittedForScope { family: admitted, scope: _ } =>
-      CryptographicAddressAdmitted {
+      Admitted {
         address: EvaluationStoreAddress {
           identity: bucket.identity,
           digest: bucket.digest,
@@ -613,7 +612,7 @@ fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStore
         }
       }
     StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
-      PreimageVerifiedBucketAdmitted {
+      Admitted {
         address: EvaluationStoreAddress {
           identity: bucket.identity,
           digest: bucket.digest,
@@ -631,10 +630,7 @@ fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmis
 }
 
 fn evaluation_store_address_digest(address: EvaluationStoreAddress) -> ContentHash {
-  match address.standing {
-    CryptographicAddressStanding { family: _ } => address.digest
-    PreimageVerifiedBucketStanding { disposition: FnvBucketPreimageVerified { restoration_trigger: _ } } => address.digest
-  }
+  address.digest
 }
 
 fn evaluation_store_address_preimage(address: EvaluationStoreAddress) -> NonEmptyStr {
@@ -643,8 +639,7 @@ fn evaluation_store_address_preimage(address: EvaluationStoreAddress) -> NonEmpt
 
 fn evaluation_store_admitted_address(admission: EvaluationStoreAddressAdmission) -> EvaluationStoreAddress? {
   match admission {
-    CryptographicAddressAdmitted { address: a } => Present { value: a }
-    PreimageVerifiedBucketAdmitted { address: a } => Present { value: a }
+    Admitted { address: a } => Present { value: a }
     FamilyRefused { family: _, scope: _ } => none
   }
 }
@@ -1589,9 +1584,7 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
       match persist_evaluation_store_address(bucket: bucket) {
         FamilyRefused { family: f, scope: sc } =>
           ProviderRefusedStoreFamily { key: key, family: f, scope: sc }
-        CryptographicAddressAdmitted { address: addr } =>
-          provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, expected_preimage: addr.canonical_preimage)
-        PreimageVerifiedBucketAdmitted { address: addr } =>
+        Admitted { address: addr } =>
           provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, expected_preimage: addr.canonical_preimage)
       }
   }

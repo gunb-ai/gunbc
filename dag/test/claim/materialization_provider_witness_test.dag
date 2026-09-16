@@ -47,7 +47,7 @@ import std.materialization_provider {
   EvaluationResultUnverifiable,
   InProcessIndexScope, PersistentStoreScope, CrossRunScope,
   HashFamilyAdmittedForScope, StructuralFingerprintRefusedAsStoreKey, FamilyNotAdmittedForRelation,
-  CryptographicAddressAdmitted, PreimageVerifiedBucketAdmitted, FamilyRefused,
+  Admitted, FamilyRefused, CryptographicAddressStanding, PreimageVerifiedBucketStanding,
   demand_identity_canonical, demand_identity_decode,
   evaluation_store_address, evaluation_store_address_digest, evaluation_store_address_preimage,
   request_evaluation_identity, result_content_identity, evaluation_identity_canonical,
@@ -835,13 +835,19 @@ test fn parse_and_typecheck_store_addresses_are_preimage_verified_fnv_buckets() 
   let parse_req = witness_parse_request()
   let typed_req = witness_typecheck_request()
   match evaluation_store_address(req: parse_req) {
-    PreimageVerifiedBucketAdmitted { address: _ } =>
+    Admitted { address: parse_addr } =>
       match evaluation_store_address(req: typed_req) {
-        PreimageVerifiedBucketAdmitted { address: _ } => true
-        CryptographicAddressAdmitted { address: _ } => false
+        Admitted { address: typed_addr } =>
+          match parse_addr.standing {
+            PreimageVerifiedBucketStanding { disposition: _ } =>
+              match typed_addr.standing {
+                PreimageVerifiedBucketStanding { disposition: _ } => true
+                CryptographicAddressStanding { family: _ } => false
+              }
+            CryptographicAddressStanding { family: _ } => false
+          }
         FamilyRefused { family: _, scope: _ } => false
       }
-    CryptographicAddressAdmitted { address: _ } => false
     FamilyRefused { family: _, scope: _ } => false
   }
 }
@@ -849,11 +855,14 @@ test fn parse_and_typecheck_store_addresses_are_preimage_verified_fnv_buckets() 
 test fn admitted_store_address_carries_the_request_bucket_digest_and_preimage() -> Bool {
   let req = witness_parse_request()
   match evaluation_store_address(req: req) {
-    PreimageVerifiedBucketAdmitted { address: a } =>
+    Admitted { address: a } =>
       (request_key(req: req) == evaluation_store_address_digest(address: a))
         && ((evaluation_store_address_preimage(address: a) as String)
           == (evaluation_identity_canonical(evaluation: request_evaluation_identity(req: req)) as String))
-    CryptographicAddressAdmitted { address: _ } => false
+        && match a.standing {
+          PreimageVerifiedBucketStanding { disposition: _ } => true
+          CryptographicAddressStanding { family: _ } => false
+        }
     FamilyRefused { family: _, scope: _ } => false
   }
 }
