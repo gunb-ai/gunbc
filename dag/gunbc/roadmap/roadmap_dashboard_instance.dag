@@ -1849,14 +1849,23 @@ fn dashboard_instance_reconcile(
         observed.source_revision_detail,
       ], "") as NonEmptyStr,
     }
+  } else if !observed.attempts_present || !observed.attempt_state_present {
+    // DISPATCH WORKTREE AND ATTEMPT-STATE ARE LIVE_DEPLOY MEMBERS. This plan used to
+    // DashboardEnsureDirectory both, then observe them, then treat absence as Apply. C6 deleted
+    // those ops because gunbc.live_deploy already CreateRoot's DispatchWorktreeRoot and
+    // AttemptStateRoot. Returning Apply after that deletion is the serve-binary deadlock inverted:
+    // apply runs a plan that cannot create the missing roots, succeeds, and reconcile still says
+    // not-converged. Absence here is not a launcher gap; it is live_deploy work that has not
+    // happened, so the arm is Refuse with that owner named.
+    DashboardInstanceRefused {
+      reason: "dispatch worktree and attempt-state roots are live_deploy members (DispatchWorktreeRoot, AttemptStateRoot); this apply does not create them" as NonEmptyStr,
+    }
   } else if observed.health_current
       && observed.root_present
       && observed.ownership_marker_present
       && dashboard_source_seed_ready(instance: instance, observed: observed)
       && observed.origin_present
       && observed.source_present
-      && observed.attempts_present
-      && observed.attempt_state_present
       && observed.provider_runtime_ready
       && observed.provider_authenticated
       && observed.source_anchor_matches

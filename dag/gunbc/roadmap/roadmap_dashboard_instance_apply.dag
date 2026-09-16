@@ -2079,20 +2079,21 @@ fn dashboard_instance_apply(
   }
 }
 
-// THE ROOTS AN INSTANCE OWNS, PROVISIONED FROM THE INSTANCE'S OWN DECLARED PLAN.
+// THE LAUNCHER-OWNED DIRECTORIES STILL ON THE PROVISION PLAN, FILTERED FROM THAT PLAN.
 //
 // This exists because the launch gates are ordered and the transition gate sits second: it reads
 // transition-inhibition.json under the instance root, and a root that does not exist makes the
 // ABSENCE of that file unestablished rather than established -- so it refuses, correctly, and no
-// later gate is ever reached. Provisioning the roots is therefore a prerequisite of evaluating any
-// launch at all, not a step of deployment.
+// later gate is ever reached. Provisioning the instance root (and the provider-state root the
+// login writes into) is therefore a prerequisite of evaluating any launch at all, not a step of
+// live_deploy.
 //
-// It is a FILTER over dashboard_instance_provision_plan, never a second list. The directory steps
-// are selected from the plan the instance already declares and executed through
-// dashboard_apply_provision_op -- the same executor the full apply runs -- so there is no second
-// spelling of which roots an instance owns, and adding a root to the plan adds it here with no edit.
-// A hand-authored mkdir would have been the out-of-band actuation DESIGN 6 names, and it would have
-// drifted from the plan the moment a root was added.
+// It is a FILTER over dashboard_instance_provision_plan, never a second list. After C6 the
+// plan's DashboardEnsureDirectory rows are instance_root and (for bundle seeds) inbox — not
+// dispatch worktree or attempt-state. Those two are gunbc.live_deploy CreateRoot members
+// (DispatchWorktreeRoot, AttemptStateRoot). dashboard_instance_reconcile refuses when they are
+// absent rather than asking this filter to mint them. Adding a launcher-owned directory to the
+// plan still adds it here with no edit.
 //
 // WHAT IT DELIBERATELY DOES NOT DO. The full apply still ensures a serve binary and stages source.
 // Service launch is gunbc.live_deploy's systemd members, which have no macOS realization --
@@ -2100,7 +2101,8 @@ fn dashboard_instance_apply(
 // the whole apply on a development machine would refuse at that step having already done work.
 // Naming the directory phase separately is what lets the honest part run without pretending the
 // rest exists. Modelling a launchd service realization is its own lane; until it lands, a local
-// instance is started by the operator rather than supervised.
+// instance is started by the operator rather than supervised. Dispatch worktree and attempt-state
+// are the same shape: this CLI exiting 0 does not mean those members exist.
 fn dashboard_instance_ensure_dispatch_roots(
   instance: HostDashboardInstance,
 ) -> DashboardApplyFold {
@@ -2138,8 +2140,10 @@ fn dashboard_instance_ensure_roots_fold_for_id(instance_id: String) -> Dashboard
 // verdict to a process exit code and refuses any return type that does not carry one -- it will not
 // print a value and exit 0 for a run whose outcome it cannot read. So the fold, which is the
 // answer, is wrapped here into the exit the host can act on: a refused step exits non-zero carrying
-// the step and its detail, and a completed plan exits zero. The receipts stay in the printed value
-// either way, because "which roots already existed" is as much of an answer as "it worked".
+// the step and its detail, and a completed plan exits zero. ExitSuccess means the launcher-owned
+// directories on the filtered plan ran; it does not mean DispatchWorktreeRoot or AttemptStateRoot
+// exist. The receipts stay in the printed value either way, because "which launcher roots already
+// existed" is as much of an answer as "it worked".
 //
 // Selection is by declared instance_id against the roster, not a new named fold per instance:
 // macbook_local_ensure_roots_cli and srv2_deploy_ensure_roots_cli are named entries that pass
