@@ -71,6 +71,7 @@ import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.identity { FabricIdentity, DemandKey }
 import product.fabric.provider_admission { refusal_reason }
 import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
+import gunbc.spark.serving_usage_stats_observe { ServingUsageStatsObservation, spark_usage_stats_inspect_unread }
 import gunbc.serving.engine_progress {
   EngineProgressGate, WithholdRouteNotProgressing, ProgressDoesNotWithhold,
   engine_progress_read, engine_progress_gate, serving_engine_step_bound,
@@ -631,6 +632,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
       harness_admit_bound_offer(
         acc: acc, group: group, endpoint: endpoint, launch: launch,
         realization: harness_serving_realization(group: group, launch: launch, readback: readback, incarnation: incarnation),
+        usage_stats: spark_usage_stats_inspect_unread(),
         projection: projection, subject: subject, unit: unit, seats: seats,
       )
   }
@@ -639,13 +641,19 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
 // THE ADMISSION STEP OF A BOUND OFFER, separated so the realization it is judged on is an argument:
 // production passes harness_serving_realization, and a witness can drive the same step with fixture
 // evidence and observe exactly which admission arm the turn reached.
-fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, realization: SparkServingRealization, projection: SparkOfferProjection<NonEmptyStr>, subject: HarnessTurnSubject, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
+// THE USAGE-STATS OBSERVATION IS A SUPPLIED VALUE, like the realization: production has no
+// producer for it yet and passes spark_usage_stats_inspect_unread (DECLARED FRONTIER, DESIGN 3c:
+// gunbc#11362's one authorized inspect feeds gunbc.spark.serving_usage_stats_observe in the same
+// operation that mints the incarnation observation, SUFFICIENT FOR a launch whose env disables the
+// reporter to reach ProviderPathAbsent here). Until then admission refuses on the unread path.
+fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, realization: SparkServingRealization, usage_stats: ServingUsageStatsObservation, projection: SparkOfferProjection<NonEmptyStr>, subject: HarnessTurnSubject, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
   let offer = projection.offer
   match bind_candidate(
     offer: offer,
     dispatch: serving_dispatch_inputs(offer: offer.id, commitment: PayAsYouGo, receipt: harness_metrics_probe_receipt),
     admission: spark_first_party_admission(
       realization: realization,
+      usage_stats: usage_stats,
       scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
       offer: offer.id,
     ),

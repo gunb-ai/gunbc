@@ -72,10 +72,15 @@ fn docker_assignments_as_vllm(assignments: List<DockerEnvAssignment>) -> List<Vl
 
 // container_id is the container the inspect ADDRESSED, the launch's own. An inspect whose decoded Id
 // disagrees is still an observation of that address, and its standing is Unread.
+// THE MARKER IS NOT A PARAMETER. Nothing this module's grant observes reads the do-not-track marker
+// file, so the only honest standing for it here is Unread -- and a caller-supplied
+// DoNotTrackMarkerPresent would have been an unobserved disable that greens provider-use admission
+// (review 66882). A launch is Disabled here only by an env term the inspect actually returned;
+// the marker arm becomes observable when a producer reads the file, and it enters here as a second
+// observed projection, never as an argument.
 fn spark_serving_usage_stats_observe(
   launch: VllmServingLaunch,
   inspect_stdout: String,
-  marker: VllmDoNotTrackMarkerStanding,
   receipt: ObservationReceiptRef,
 ) -> ServingUsageStatsObservation {
   let standing = match docker_container_inspect_named_env_from_stdout(
@@ -90,7 +95,7 @@ fn spark_serving_usage_stats_observe(
       } else {
         vllm_usage_stats_standing_from_effective_config(
           assignments: docker_assignments_as_vllm(assignments: asg),
-          marker: marker,
+          marker: spark_usage_stats_marker_unread(),
         )
       }
   }

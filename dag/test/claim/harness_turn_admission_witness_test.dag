@@ -19,6 +19,7 @@ import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
 import gunbc.spark.pair_serving_realization { spark_pair_model_path_in_container, spark_pair_desired_snapshot }
 import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
+import gunbc.spark.serving_usage_stats_observe { spark_usage_stats_inspect_unread }
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused, ServingRouteObserved,
   bind_spark_serving_offer, spark_serving_incarnation_unobserved_obligation,
@@ -42,10 +43,12 @@ import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_
 // (a_bound_offer_reaches_admission_through_bind_candidate, over the route seam). The
 // admitted arm has no positive control yet, and that is stated rather than faked: first-party
 // admission refuses while the answering launch's usage-stats path is unread, on every fixture this
-// corpus can build. DECLARED FRONTIER (DESIGN 3c): the positive CandidateBound control lands when
-// spark_first_party_admission takes the narrow ServingUsageStatsObservation (gunbc#11441) and this
-// harness threads it through harness_admit_bound_offer -- a fixture Disabled observation on the
-// offered launch, a matching declared unit and an observed incarnation then reach the admitted arm.
+// corpus can build. The harness threads the narrow ServingUsageStatsObservation through
+// harness_admit_bound_offer and passes spark_usage_stats_inspect_unread until a producer exists.
+// DECLARED FRONTIER (DESIGN 3c): the positive CandidateBound control lands with that producer
+// (gunbc#11362's inspect feeding gunbc.spark.serving_usage_stats_observe) -- a Disabled observation
+// on the offered launch, a matching declared unit and an observed incarnation then reach the
+// admitted arm.
 
 fn t_launch() -> VllmEndpointProcessLaunch {
   vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
@@ -137,6 +140,7 @@ test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
     SparkOfferBound { bound: projection } =>
       match spark_first_party_admission(
         realization: harness_serving_realization(group: FabricGroupA, launch: t_launch(), readback: t_realization().readback, incarnation: t_realization().incarnation),
+        usage_stats: spark_usage_stats_inspect_unread(),
         scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
         offer: projection.offer.id,
       ) {
@@ -159,11 +163,12 @@ test fn a_bound_offer_refused_by_admission_is_not_a_candidate_and_carries_the_ca
     SparkOfferBound { bound: projection } => {
       let placed = harness_admit_bound_offer(
         acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(),
-        realization: t_realization(), projection: projection, subject: subject,
+        realization: t_realization(), usage_stats: spark_usage_stats_inspect_unread(), projection: projection, subject: subject,
         unit: DeepseekV4FlashOnVllm, seats: 1,
       )
       match spark_first_party_admission(
         realization: t_realization(),
+        usage_stats: spark_usage_stats_inspect_unread(),
         scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
         offer: projection.offer.id,
       ) {
