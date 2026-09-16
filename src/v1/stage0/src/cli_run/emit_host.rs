@@ -1459,30 +1459,17 @@ pub(crate) fn compile_xl1_primary_root_tap(source_roots: &[String]) -> Xl1Primar
             }
         }
     };
-    let root_prefix = workspace_relative_entry_path(&root);
-    let mut seen: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
-        std::collections::HashMap::new();
-    let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
-    for (module_path, source) in index.source_files.iter() {
-        let rel = workspace_relative_entry_path(&source.path);
-        if rel == root_prefix || rel.starts_with(&format!("{root_prefix}/")) {
-            seen.insert(module_path.clone(), source.clone());
-            entry_sources.push(source.clone());
-        }
-    }
-    if entry_sources.is_empty() {
-        return Xl1PrimaryRootTap::Refused {
-            cause: format!("no indexed module has a source file under the primary root '{root}'"),
-        };
-    }
-    entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
-    let import_closure =
-        resolve_transitively_bfs_legacy(entry_sources, &index.source_files, seen.into());
-    let closure = match extend_sources_to_both_closure_fixpoint(import_closure, &index) {
+    // ONE DERIVATION OF THE PRIMARY-ROOT SUBJECT, shared with the compile transaction's
+    // `CompileSubject::PrimaryRoot` arm (`cli_run.rs` `primary_root_subject_closure`). This
+    // tap used to carry its own copy and the copy had drifted in the fail-open direction: it
+    // had no module-less-`.dag` visibility step, so a `.dag` under the root that lost its
+    // `module` header would have left the closure silently and the census would have
+    // under-counted while reporting rows (review 66847 on gunbc#11461).
+    let closure = match primary_root_subject_closure(&index, &root) {
         Ok(c) => c,
-        Err(e) => {
+        Err(PrimaryRootSubjectRefusal { phase, cause }) => {
             return Xl1PrimaryRootTap::Refused {
-                cause: format!("xl1 primary-root tap: closure-load: {e}"),
+                cause: format!("xl1 primary-root tap: {phase}: {cause}"),
             }
         }
     };
