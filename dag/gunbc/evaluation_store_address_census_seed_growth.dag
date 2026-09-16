@@ -1,0 +1,52 @@
+module gunbc.evaluation_store_address_census_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that realizes the store-address call-edge census
+// and the src/v2 zero-candidate guard. Authored because gunbc.seed_growth_admission
+// seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line,
+// and this change adds host builtins that tokenize and resolve live trees. Requested by
+// review 67025 on gunbc#11458.
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The v2 self-host program needs an
+// executing join of evaluation_store_address callers to a closed expected roster, plus a
+// fail-closed token-scan over admitted src/v2 so a future host caller cannot hide outside the
+// dag exact arm. Observation of ResolvedCallee edges and of call-form tokens is observation of
+// the seed's compile and tokenize pipeline. There is no substrate representation of
+// resolve_entry_graph_shared, interpreter_blocking_diagnostic_messages, or dag_parse_environment
+// tokenize, so a .dag-only re-derivation would be a SECOND detector beside the compiler -- the
+// fork DESIGN section 3 refuses. The instruments therefore call those seed functions.
+//
+// WHY THREE BUILTINS AND NOT ONE. compile_dag_importer_resolved_call_edges and
+// compile_dag_callsite_resolved_call_edges are one host with two selection predicates (import
+// graph vs call-form leaf) over the same ResolvedCallEdgeCensus. compile_dag_call_form_leaf_guard
+// is a different product: it tokenizes every admitted .dag under a pool and never resolves, which
+// is the cheap src/v2 arm of the production partition. Collapsing it into the resolver would
+// re-index src/v2 as a full graph, which is the cost the partition exists to avoid.
+//
+// WHAT IS NOT NETTED. ExistingSeedItemModified covers resolve_entry_graph_shared and the
+// candidate-scan helpers that already existed as private functions when this census bound them.
+// Generated dispatch rows in v1_interpreter_dispatch_generated.rs are projections of
+// gunbc.v1.v1_interpreter_primitive_surface and are exempt by generation authority.
+//
+// HAND-ITEM DELTA is derived by gunbc.rust_item_host_observation and is not restated as a
+// transcribed count. Two sibling census builtins
+// (compile_dag_reference_occurrence_binding_census, observe_declared_import_closure_symbol_binding)
+// also lack rows; they are accumulated debt, not this change's licence, and are not enrolled here.
+data evaluation_store_address_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_importer_resolved_call_edges", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_callsite_resolved_call_edges", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_call_form_leaf_guard", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "first_call_form_leaf", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "token_is_trivia", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "EvaluationStoreAddressProductionCoverage", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "evaluation_store_address_production_coverage_value", field: WholeDeclaration }
+  ],
+  reason: "The store-address census asks the compiler what ResolvedCallee edges exist and asks the tokenizer which src/v2 files contain a call-form of three named leaves. Both questions are about seed pipeline products. compile_dag_callsite_resolved_call_edges selects callers from a horizon and resolves each selected entry's derived import closure over witness_layer_roots, refusing blocking diagnostics before projecting edges. compile_dag_importer_resolved_call_edges is the import-only twin used to prove the qualified-call gap. compile_dag_call_form_leaf_guard tokenizes the zero-candidate pool fail-closed. first_call_form_leaf and token_is_trivia are the guard's leaf-then-lparen recognizer. EvaluationStoreAddressProductionCoverage is the typed coverage carrier; evaluation_store_address_production_coverage_value projects it into interpreter values.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when option A lands: the floor exposes its accepted live-tree resolution/index product (or an equivalent exact query interface) and the census derives resolver-produced call edges over the complete production roots without building another corpus index per witness. Then the dag/src/v2 partition is deleted, one exact join remains, and a host builtin standing beside a modeled query is the duplicated authority this receipt refuses.",
+  current_boundary: "Reachable only as .dag free-calls. The production exact arm scans dag, resolves through the admitted witness-layer universe, and refuses under-resolved graphs. The src/v2 arm tokenizes and never resolves. Neither writes the corpus, neither substitutes a Bool for a coverage carrier, and neither is an escape hatch around a modeled query that does not yet exist."
+}
