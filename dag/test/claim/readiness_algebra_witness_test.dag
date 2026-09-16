@@ -119,6 +119,11 @@ test fn witness_red_control_missing_executable_is_refused() -> Bool {
     executable_refusal: "no placement",
     state_root: "/tmp/state" as FilePath,
     state_root_obs: Absent,
+    runtime: Absent,
+    auth: Absent,
+    login_command: "",
+  ) {
+    Refused { cause: ProviderExecutableUnplaced { reason } } => reason == "no placement"
     Ready { evidence: _ } => false
     Pending { cause: _ } => false
     Refused { cause: ProviderObservationUnusable { stage: _, reason: _ } } => false
