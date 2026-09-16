@@ -1,0 +1,329 @@
+module test.claim.review_sheet_drive_converge_witness
+
+import std.types { NonEmptyStr, String, List, Bool }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import extdeps.google.drive {
+  DrivePermission,
+  DrivePermissionList,
+  DriveFile,
+  DriveFileList,
+  DrivePermissionRole,
+  RoleOrganizer,
+  RoleFileOrganizer,
+  RoleWriter,
+  RoleReader,
+  drive_permission_role_wire,
+  google_sheet_mime_type,
+}
+import gunbc.review_sheet_drive_converge {
+  DriveMembershipObservation,
+  MembershipObserved,
+  MembershipAbsent,
+  MembershipUnreadable,
+  MembershipGrantPlan,
+  membership_from_permissions,
+  ensure_drive_membership,
+  ReviewSpreadsheetObservation,
+  SheetObservedOne,
+  SheetAbsent,
+  SheetDuplicated,
+  SheetSearchIncomplete,
+  SheetSearchUnreadable,
+  spreadsheet_from_file_list,
+  ensure_review_spreadsheet,
+  review_sheet_search_query,
+  review_sheet_app_property_key,
+}
+
+// EVERY CLAIM HERE SUPPLIES ITS INPUTS AT ONE BOUNDARY -- a Drive response shape -- rather than
+// reaching a live Drive to obtain one. That is the point: these are claims about what the FOLD
+// decides for a given response, and executing the transport to get one would pay for a network
+// round trip per assertion while testing something else. The pairing obligation is discharged by
+// the operations' own declared response arms in extdeps.google.drive, and the inhabitance claim
+// that Drive really emits these shapes is the live converge run, which is a separate receipt and
+// is not claimed here.
+
+fn w_writer() -> ServiceAccountEmail {
+  "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail
+}
+
+fn w_drive() -> NonEmptyStr {
+  "0ANpu9VSqUzO-Uk9PVA" as NonEmptyStr
+}
+
+fn w_permission(email: String, role: DrivePermissionRole) -> DrivePermission {
+  DrivePermission {
+    id: "perm-fixture",
+    emailAddress: Present { value: email },
+    role: drive_permission_role_wire(r: role),
+    type: "user"
+  }
+}
+
+fn w_file(id: String) -> DriveFile {
+  DriveFile {
+    id: id,
+    name: "CI prospect sheet",
+    mimeType: google_sheet_mime_type as String,
+    appProperties: none
+  }
+}
+
+// AN UNREAD FIELD IS NOT AN EMPTY ONE, and this is the discriminating case: if the absent
+// permissions field folded to MembershipAbsent, a converge would create a permission for a writer
+// that may already be a member, against a response it never actually read.
+test fn absent_permissions_field_is_unreadable_not_absent() -> Bool {
+  match membership_from_permissions(
+    list: DrivePermissionList { permissions: none, nextPageToken: none },
+    writer: w_writer(),
+  ) {
+    MembershipUnreadable { reason: r } => string_contains(s: r as String, pattern: "not an empty one")
+    MembershipAbsent => false
+    MembershipObserved { role: _ } => false
+  }
+}
+
+// An empty list IS an absence -- the field was read and carried no rows. Paired with the claim
+// above so the two are held apart rather than one standing for both.
+test fn empty_permission_list_is_absence() -> Bool {
+  match membership_from_permissions(
+    list: DrivePermissionList { permissions: Present { value: [] }, nextPageToken: none },
+    writer: w_writer(),
+  ) {
+    MembershipAbsent => true
+    MembershipUnreadable { reason: _ } => false
+    MembershipObserved { role: _ } => false
+  }
+}
+
+// A role this model cannot read is not an absent member either. The writer IS there; creating a
+// second permission would not change its role, so absence would authorize a pointless write and
+// hide a principal we failed to understand.
+test fn writer_present_with_unmodeled_role_is_unreadable() -> Bool {
+  match membership_from_permissions(
+    list: DrivePermissionList {
+      permissions: Present {
+        value: [
+          DrivePermission {
+            id: "perm-fixture",
+            emailAddress: Present { value: w_writer() as String },
+            role: "fileEditorSomethingNew",
+            type: "user"
+          }
+        ]
+      },
+      nextPageToken: none
+    },
+    writer: w_writer(),
+  ) {
+    MembershipUnreadable { reason: r } => string_contains(s: r as String, pattern: "unmodeled role")
+    MembershipAbsent => false
+    MembershipObserved { role: _ } => false
+  }
+}
+
+test fn a_different_principal_does_not_count_as_the_writer() -> Bool {
+  match membership_from_permissions(
+    list: DrivePermissionList {
+      permissions: Present {
+        value: [w_permission(email: "someone-else@gunb.ai", role: RoleOrganizer)]
+      },
+      nextPageToken: none
+    },
+    writer: w_writer(),
+  ) {
+    MembershipAbsent => true
+    MembershipUnreadable { reason: _ } => false
+    MembershipObserved { role: _ } => false
+  }
+}
+
+// ORGANIZER IS NOT CORRECTED DOWNWARD. It is strictly more than content-manager, the writer
+// already holds it, and revoking authority this converge never granted is a different decision.
+test fn organizer_satisfies_and_is_not_downgraded() -> Bool {
+  match ensure_drive_membership(
+    policy: EnsureMayApply,
+    observed: MembershipObserved { role: RoleOrganizer },
+    drive_id: w_drive(),
+    writer: w_writer(),
+  ) {
+    Noop => true
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn file_organizer_is_the_converged_role() -> Bool {
+  match ensure_drive_membership(
+    policy: EnsureMayApply,
+    observed: MembershipObserved { role: RoleFileOrganizer },
+    drive_id: w_drive(),
+    writer: w_writer(),
+  ) {
+    Noop => true
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// A WRONG ROLE REFUSES RATHER THAN APPLYING, because a second permissions.create does not replace
+// the first: Drive would answer about the same principal and the writer would stay a reader.
+test fn insufficient_role_refuses_because_a_second_grant_would_not_replace_it() -> Bool {
+  match ensure_drive_membership(
+    policy: EnsureMayApply,
+    observed: MembershipObserved { role: RoleReader },
+    drive_id: w_drive(),
+    writer: w_writer(),
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "would not replace")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn absent_membership_under_may_apply_grants_file_organizer() -> Bool {
+  match ensure_drive_membership(
+    policy: EnsureMayApply,
+    observed: MembershipAbsent,
+    drive_id: w_drive(),
+    writer: w_writer(),
+  ) {
+    Apply { plan: p } =>
+      (p.drive_id as String) == (w_drive() as String)
+        && drive_permission_role_wire(r: p.role) == "fileOrganizer"
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn absent_membership_under_observe_only_refuses() -> Bool {
+  match ensure_drive_membership(
+    policy: EnsureObserveOnly,
+    observed: MembershipAbsent,
+    drive_id: w_drive(),
+    writer: w_writer(),
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "observe-only")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE LOAD-BEARING ONE. incompleteSearch beside an empty file list is Drive saying it could not
+// look everywhere -- not that the sheet is absent. Folding it to absent is how a converge mints a
+// second spreadsheet beside one it simply failed to find, and the duplicate is unrecoverable
+// because both then carry the same app-properties key.
+test fn incomplete_search_refuses_rather_than_creating() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [] },
+        incompleteSearch: Present { value: true },
+        nextPageToken: none
+      }
+    ),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    app_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "not an observation of absence")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// The same empty list with a COMPLETE search is a real absence and does authorize a create. This
+// is the positive control for the claim above: without it, a fold that refused everything would
+// pass that test while making the converge unable to ever create anything.
+test fn complete_search_with_no_files_creates() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    app_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Apply { plan: p } =>
+      (p.app_property_key as String) == (review_sheet_app_property_key as String)
+        && (p.drive_id as String) == (w_drive() as String)
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn exactly_one_match_adopts_without_writing() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "sheet-one")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    app_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Noop => true
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// DUPLICATES REFUSE AND NEVER SELECT. Two files under one key means an earlier create was retried
+// after its answer was lost; picking either silently abandons whatever was written to the other,
+// and only an operator can say which lineage is real.
+test fn duplicate_matches_refuse_and_name_both() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "sheet-one"), w_file(id: "sheet-two")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    app_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "sheet-one")
+        && string_contains(s: r as String, pattern: "sheet-two")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn absent_files_field_is_unreadable_not_absent() -> Bool {
+  match spreadsheet_from_file_list(
+    list: DriveFileList { files: none, incompleteSearch: Present { value: false }, nextPageToken: none }
+  ) {
+    SheetSearchUnreadable { reason: r } => string_contains(s: r as String, pattern: "not an empty one")
+    SheetAbsent => false
+    SheetObservedOne { file_id: _ } => false
+    SheetDuplicated { file_ids: _ } => false
+    SheetSearchIncomplete => false
+  }
+}
+
+// The query names the app-properties key and the spreadsheet mime type, and excludes trashed
+// files -- a trashed sheet is not a sheet to adopt, and adopting one would write into a file the
+// operator has already thrown away.
+test fn search_query_keys_on_app_properties_and_excludes_trashed() -> Bool {
+  let q = review_sheet_search_query(app_value: "ci-prospect-sheet" as NonEmptyStr)
+  string_contains(s: q, pattern: review_sheet_app_property_key as String)
+    && string_contains(s: q, pattern: "trashed=false")
+    && string_contains(s: q, pattern: google_sheet_mime_type as String)
+    && !string_contains(s: q, pattern: "name=")
+}
