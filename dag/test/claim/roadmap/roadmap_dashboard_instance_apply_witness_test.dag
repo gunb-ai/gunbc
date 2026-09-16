@@ -1,6 +1,6 @@
 module test.claim.roadmap_dashboard_instance_apply_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath, GitRef }
+import std.types { Bool, String, NonEmptyStr, FilePath, GitRef, CommitSha }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_is_shallow_repository_argv,
@@ -12,6 +12,7 @@ import extdeps.git {
   shape_git_clone_branch_argv,
 }
 import extdeps.tmux {
+  classify_tmux_has_session,
   shape_tmux_has_session_argv_for,
   shape_tmux_new_session_argv_for,
 }
@@ -77,6 +78,12 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_required_target_executables,
   dashboard_health_poll_seconds,
   dashboard_health_poll_attempts,
+  dashboard_service_session_ensure_decision,
+  dashboard_ensure_service_new_session_argv,
+  DashboardServiceSessionEnsureDecision,
+  EnsureCreateServiceSession,
+  EnsureReplaceServiceSession,
+  EnsureRefuseServiceSession,
 }
 import gunbc.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }
@@ -211,7 +218,7 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
       working_dir: lab.repo_root as String,
       inner_argv: concat(
         [lab.serve_binary as String],
-        dashboard_instance_serve_argv(instance: lab),
+        dashboard_instance_serve_argv(instance: lab, release_revision: "0123abcd"),
       ),
     ) == [
       "-L",
@@ -236,6 +243,8 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
       "0.0.0.0",
       "--port",
       "18081",
+      "--release-revision",
+      "0123abcd",
     ]
 }
 
@@ -714,6 +723,80 @@ test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
       instance: srv1_live_dashboard_instance(),
       peer: witness_peered(),
     )
+}
+
+fn witness_ensure_decision(exit_ok: Bool, stderr: String) -> DashboardServiceSessionEnsureDecision {
+  dashboard_service_session_ensure_decision(
+    observation: classify_tmux_has_session(exit_ok: exit_ok, stderr: stderr),
+  )
+}
+
+test fn dashboard_named_session_absent_creates() -> Bool {
+  match witness_ensure_decision(
+    exit_ok: false,
+    stderr: "can't find session: gunbc-dashboard-srv1-lab-codex-feedback-v0",
+  ) {
+    EnsureCreateServiceSession => true
+    EnsureReplaceServiceSession => false
+    EnsureRefuseServiceSession { cause: _ } => false
+  }
+}
+
+test fn dashboard_no_tmux_server_creates() -> Bool {
+  match witness_ensure_decision(
+    exit_ok: false,
+    stderr: "no server running on /tmp/tmux-1000/srv1-lab-codex-feedback-v0",
+  ) {
+    EnsureCreateServiceSession => true
+    EnsureReplaceServiceSession => false
+    EnsureRefuseServiceSession { cause: _ } => false
+  }
+}
+
+test fn dashboard_session_present_replaces_not_duplicate() -> Bool {
+  match witness_ensure_decision(exit_ok: true, stderr: "") {
+    EnsureReplaceServiceSession => true
+    EnsureCreateServiceSession => false
+    EnsureRefuseServiceSession { cause: _ } => false
+  }
+}
+
+test fn dashboard_permission_denied_refuses_no_create() -> Bool {
+  match witness_ensure_decision(
+    exit_ok: false,
+    stderr: "error connecting to /tmp/tmux-1000/default (Permission denied)",
+  ) {
+    EnsureRefuseServiceSession { cause } =>
+      string_contains(s: cause, pattern: "Permission denied")
+    EnsureCreateServiceSession => false
+    EnsureReplaceServiceSession => false
+  }
+}
+
+test fn dashboard_transport_refused_refuses_no_create() -> Bool {
+  match witness_ensure_decision(
+    exit_ok: false,
+    stderr: "ssh: connect to host srv1 port 22: Connection refused",
+  ) {
+    EnsureRefuseServiceSession { cause } =>
+      string_contains(s: cause, pattern: "Connection refused")
+    EnsureCreateServiceSession => false
+    EnsureReplaceServiceSession => false
+  }
+}
+
+test fn dashboard_ensure_release_revision_is_admitted_not_head() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let admitted = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+  let head_would_return = "fedcba9876543210fedcba9876543210fedcba98"
+  let argv = dashboard_ensure_service_new_session_argv(
+    instance: lab,
+    admitted_release_revision: admitted,
+  )
+  any(argv, t => t == (admitted as String))
+    && !any(argv, t => t == head_would_return)
+    && !any(argv, t => t == "rev-parse")
+    && !any(argv, t => t == "HEAD")
 }
 
 test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
