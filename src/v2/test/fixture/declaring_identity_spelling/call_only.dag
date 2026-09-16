@@ -1,0 +1,7 @@
+module v2.test.fixture.declaring_identity_spelling.call_only
+
+type LocalParam {}
+
+fn helper() -> Int { 0 }
+
+fn go(x: LocalParam) -> Int { helper() }
