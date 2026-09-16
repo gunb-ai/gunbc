@@ -26,6 +26,10 @@ data evaluation_store_address_home_modules: List<String> = [
 
 data evaluation_store_address_production_exclude: List<String> = ["/test/"]
 
+data evaluation_store_address_production_roots: List<String> = [
+  "dag"
+]
+
 data evaluation_store_address_fixture_home_modules: List<String> = [
   "test.fixture.evaluation_store_address_alias.home"
 ]
@@ -54,7 +58,7 @@ fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
   compile_dag_callsite_resolved_call_edges(
     evaluation_store_address_home_modules,
     evaluation_store_address_production_exclude,
-    [],
+    evaluation_store_address_production_roots,
     evaluation_store_address_production_leaves
   )
 }

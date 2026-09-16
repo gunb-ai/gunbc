@@ -947,7 +947,16 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
                 .to_string(),
         };
     }
-    let resolve_roots = default_source_roots();
+    // Resolve against the same declared pool the scan used. Empty pool_roots means the
+    // witness-layer default (dag + src/v2); a declared pool is the universe those edges
+    // inhabit. Indexing src/v2 to answer a dag-only census is the cost that interrupted
+    // `evaluation_store_address_census_joins_exact_head_declaration_graph` at the
+    // DiscoverySelection wall (run 35136231290).
+    let resolve_roots = if pool_roots.is_empty() {
+        default_source_roots()
+    } else {
+        pool_roots_abs(pool_roots)
+    };
     let mut entries: Vec<String> = entries.into_iter().collect();
     entries.sort();
     let mut edges = Vec::new();
