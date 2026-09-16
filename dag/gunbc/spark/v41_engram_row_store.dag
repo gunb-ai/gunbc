@@ -156,6 +156,27 @@ fn v41_selected_storage_entries(population: List<SafetensorsEntry>, partition: V
   filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)))
 }
 
+fn v41_missing_storage_backed_defects(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<NonEmptyStr> {
+  map(
+    filter(partition.storage_backed, n => !any(population, e => (e.name as String) == (n as String))),
+    n => join(["storage-backed tensor ", n as String, " is not in the supplied population; a missing member is not an empty store"], "") as NonEmptyStr)
+}
+
+fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> V41RowStoreEncoding {
+  let selected = v41_selected_storage_entries(population: population, partition: partition)
+  let defects = concat(
+    v41_missing_storage_backed_defects(population: population, partition: partition),
+    flat_map(selected, e => v41_tensor_slice_defects(e: e)),
+  )
+  if length(defects) != 0 {
+    V41RowStoreEncodingRefused { defects: defects }
+  } else {
+    V41RowStoreEncodingUnestablished {
+      obligation: "row-store spec admitted from the supplied population; rank-store content digest is not produced" as NonEmptyStr,
+    }
+  }
+}
+
 type V41RowStoreEncodingSpec sole_constructor {
   component: DeclarationRef
   partition: V41EngramResidencyPartition
@@ -166,18 +187,6 @@ type V41RowStoreEncodingSpec sole_constructor {
   endianness: Endianness
   row_order: V41RowStoreOrder
   rank_map: V41RowStorePartition
-}
-
-fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> V41RowStoreEncoding {
-  let selected = v41_selected_storage_entries(population: population, partition: partition)
-  let defects = flat_map(selected, e => v41_tensor_slice_defects(e: e))
-  if length(defects) != 0 {
-    V41RowStoreEncodingRefused { defects: defects }
-  } else {
-    V41RowStoreEncodingUnestablished {
-      obligation: "row-store spec admitted from the supplied population; rank-store content digest is not produced" as NonEmptyStr,
-    }
-  }
 }
 
 fn v41_tensor_slice(name: NonEmptyStr, global_rows: Nat, layer: Nat) -> V41TensorSlice {

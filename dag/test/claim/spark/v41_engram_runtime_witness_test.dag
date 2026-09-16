@@ -514,6 +514,23 @@ test fn a_storage_backed_scale_tensor_is_selected_and_a_malformed_one_refuses() 
   }
 }
 
+test fn a_storage_backed_name_missing_from_the_population_is_refused() -> Bool {
+  match v41_row_store_spec(population: [] as List<SafetensorsEntry>, partition: w_backed(name: "layers.1.engram.embed.weight")) {
+    V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("layers.1.engram.embed.weight") && (x as String).contains("not in the supplied population"))
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: _ } => false
+    V41RowStoreEncodingUnestablished { obligation: _ } => false
+  }
+    && match v41_row_store_spec(population: [w_entry(name: "layers.1.engram.embed.weight", shape: [8])], partition: v41_candidate_partition) {
+      V41RowStoreEncodingRefused { defects: d } =>
+        any(d, x => (x as String).contains("layers.1.engram.embed.scale"))
+          && any(d, x => (x as String).contains("layers.14.engram.embed.weight"))
+          && any(d, x => (x as String).contains("layers.14.engram.embed.scale"))
+          && !any(d, x => (x as String).contains("layers.1.engram.embed.weight") && (x as String).contains("not in the supplied population"))
+      V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: _ } => false
+      V41RowStoreEncodingUnestablished { obligation: _ } => false
+    }
+}
+
 test fn a_reserved_rank_map_or_row_order_refuses_rather_than_minting_identity() -> Bool {
   let spec = w_tiny_spec()
   match v41_identify_row_store(spec: v41_encoding_spec_override_rank_map(spec: spec, rank_map: RankMapReservedUninhabited), rank_stores: [] as List<V41RankStoreIdentity>) {
