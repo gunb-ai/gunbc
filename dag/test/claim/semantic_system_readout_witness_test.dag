@@ -65,13 +65,12 @@ test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
 // silently becomes a drift FAIL rather than a REFUSED, so the second assertion below goes red;
 // remove the observer call entirely and the line cannot be constructed at all.
 //
-// WHAT IT DOES NOT COVER, stated rather than implied: `readout_sections()` and `render_demo` remain
-// unexercised by any claim, because evaluating them runs every producer the readout reads -- the
-// python-to-typescript compile, the three complexity-gate snippets, the four board emissions -- at
-// about five minutes, and this module is NewWitnessTier, the tighter per-claim ceiling. That is a
-// declared frontier with a named trigger: it enters a claim when the readout's producers are shared
-// at preparation (v2.workflow.floor_pure_producer_share) or the claim is admitted as declared cost
-// debt, and until then `render_demo` is the executing consumer and is run by hand.
+// WHAT REMAINS UNCOVERED IS THE DELIVERY HALF AND ONLY THAT (review 66788). `readout_sections()` is
+// exercised below by `w_the_real_readout_sections_execute_and_every_line_holds`, so the join of live
+// producers to one report is claimed. What no claim runs is `render_demo` itself -- the filesystem
+// write and the exit code it derives -- because that is a host effect rather than a fact about the
+// readout, and a claim that wrote a file to assert an exit code would be testing the transport. Its
+// executing consumer is the entry point, run by hand.
 test fn w_the_live_dogfooding_line_executes_the_real_observer() -> Bool {
   match workflow_line().standing {
     LiveVerdict { holds: h } => h

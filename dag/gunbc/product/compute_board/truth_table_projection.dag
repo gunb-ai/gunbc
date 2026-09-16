@@ -216,18 +216,27 @@ type RowRender
   = RowRendered { text: String }
   | RowRefused { cause: TruthTableRefusal }
 
+// THE INPUT CELLS COME FROM THE ROW ITSELF, WHICH IS WHY THERE IS NO MISS TO HANDLE (review 66788).
+// An earlier revision folded over the declared inputs and looked each one up in the row, so the
+// lookup had an Absent arm -- and that arm returned the accumulator unchanged, which silently
+// dropped a column and produced a row with fewer cells than its header. That is the widen-instead-of
+// -refuse arm this module's own header forbids for outputs, wearing an input's clothes: a row that
+// does not line up with its header is a false document, and a reader cannot see which column went
+// missing. It was unreachable only because `input_rows` builds every row from the same list, which
+// is an argument about today's caller rather than about this function.
+//
+// Folding the ROW is the construction that removes the arm instead of typing it: every assignment
+// carries its value, so there is nothing to look up and nothing to miss, and `input_rows` already
+// appends in declaration order so the cells stay under their headers. DESIGN section 5 prefers this
+// to a refusal -- make the invalid state unwritable rather than checking for it.
 fn row_render(
   intent: DigitalControlIntent,
-  inputs: List<DigitalSignal>,
   outputs: List<DigitalSignal>,
   assignments: List<SignalAssignment>
 ) -> RowRender {
   let depth = list_length(items: intent.equations) + 1
-  let input_text = fold(inputs, init: "|", f: fn(acc, s) {
-    match assignment_for(assignments: assignments, name: s.name) {
-      Absent => acc
-      Present { value: v } => concat(acc, concat(concat(" ", bit(v: v)), " |"))
-    }
+  let input_text = fold(assignments, init: "|", f: fn(acc, a) {
+    concat(acc, concat(concat(" ", bit(v: a.value)), " |"))
   })
   fold(outputs, init: RowRendered { text: input_text }, f: fn(acc, s) {
     match acc {
@@ -247,7 +256,6 @@ type TableRender
 
 fn render_truth_table_rows(
   intent: DigitalControlIntent,
-  inputs: List<DigitalSignal>,
   outputs: List<DigitalSignal>,
   rows: List<List<SignalAssignment>>,
   init: String
@@ -256,7 +264,7 @@ fn render_truth_table_rows(
     match acc {
       TableRefused { cause: c } => TableRefused { cause: c }
       TableRendered { text: t } =>
-        match row_render(intent: intent, inputs: inputs, outputs: outputs, assignments: assignments) {
+        match row_render(intent: intent, outputs: outputs, assignments: assignments) {
           RowRefused { cause: c } => TableRefused { cause: c }
           RowRendered { text: row } => TableRendered { text: concat(t, concat(row, "\n")) }
         }
@@ -288,7 +296,6 @@ fn project_intent_to_truth_table(
         )
         match render_truth_table_rows(
           intent: intent,
-          inputs: inputs,
           outputs: outputs,
           rows: input_rows(inputs: inputs),
           init: head
