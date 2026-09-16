@@ -139,6 +139,28 @@ hosts sit while V4.1 is on them**, and the plan must answer it explicitly:
 That is a real decision with its own consequences — it means Group A is deliberately not
 pair-serving while this runs — and it belongs in the authorization, not in a footnote.
 
+**AND IT IS NOT A NOVEL DECISION: the corpus has already made it once, for this exact hazard.**
+`gunbc.serving.serving_enrollment` records that one list used to answer two questions that move
+for different reasons — *whose hosts this repository claims and converges*, and *which endpoints
+a turn may be offered* — and that they stopped coinciding on 2026-09-08. The reason given is the
+hazard this section is about: Group B's head is a host another authority also names, so leaving
+B in the convergence roster left **two authorities claiming one machine, and the first
+pair-serving convergence to run would have acted on a host it believed idle.** The operator
+authorised removing the claim, and the module was split so the two questions could move apart.
+
+That split is what makes the withdrawal safe rather than disruptive, and it is observable in the
+current rosters:
+
+```
+serving_enrolled_groups   = [FabricGroupA, FabricGroupB]   ← who may be ASKED
+spark_pair_serving_groups = [FabricGroupA]                 ← whose hosts we CLAIM and converge
+```
+
+**Group B is already enrolled-but-not-claimed — precisely the state this cut needs for Group A.**
+So the withdrawal removes Group A from the convergence claim without touching enrollment: the
+route stays askable, the hosts stop being converged, and no new mechanism is required. It is the
+established remedy applied a second time, with a modeled separation built to support it.
+
 **THREE SUBJECTS, THREE NAMES.** An earlier draft used one word — "baseline" — for the state
 D0 records and the state D1 returns to. Those are mutually exclusive, and the ambiguity sat in
 the one sentence that tells a rollout worker where to leave the hosts.
