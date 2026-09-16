@@ -119,8 +119,27 @@ The corpus declares exactly what was observed:
 - `gunbc.spark.pair_serving_desired` `spark_pair_serving_groups` still contains
   **`FabricGroupA`**, and `spark_pair_realization` maps that desired set into realizations.
 
-So the ranks are not carrying residue. They are carrying **the declared pair-serving
-realization, converged onto the hosts this cut wants to take.**
+So the ranks are not carrying residue. They are carrying an instance with **declared lineage** —
+image tag, container name, desired roster, realization and apply path all join.
+
+**But "converged" is stronger than the evidence, and an earlier draft claimed it.** This
+document's own observation table says no vLLM process, no serving unit running, no answer on
+the enrolled endpoint — while the declared realization includes a head unit that starts Ray and
+then vLLM, worker units under supervision, a head engine with `Restart=always`, and an apply
+that treats an inactive unit as grounds for restart and finally requires `systemctl is-active`.
+An instance matching that declaration would be answering. What the evidence supports is:
+
+```
+declared producer and authority        ESTABLISHED
+full realization presently converged   NOT ESTABLISHED
+observed instance                      apparently DRIFTED
+```
+
+So on the facts written here, the expected D0 answer is **`DeclaredOccupantDrifted`**, not
+`DeclaredOccupantObserved`, unless D0 reads the rendered units, container specs, rank membership
+and serving state and proves otherwise. That does not weaken this section's conclusion — the old
+authority can still recreate its desired realization, which is the whole hazard — it only stops
+container lineage being used as proof that the realization currently converges.
 
 **The consequence is a design break, not a wording fix.** If Group A remains in the desired set,
 an existing apply path can recreate exactly what D1 would call residue. "Return to a released
@@ -162,30 +181,60 @@ route stays askable, the hosts stop being converged, and no new mechanism is req
 established remedy applied a second time, with a modeled separation built to support it.
 
 **Does the withdrawal also remove the host admissibility or launch authority D1 and D2 need?**
-It has to be asked, because a fix that revoked the authority to be on the hosts at all would
-defeat itself. Traced: `serving_deployment_selection` gets its candidate domain from
-`gunbc.spark.host_commitment` `spark_serving_admissible_hosts`, which derives from
-`spark_host_standings` — and one of that fold's six inputs IS
-`spark_claimed_serving_group_members()`, built by mapping `spark_pair_serving_groups` over
-`fabric_group_hosts`. So the withdrawal does reach admissibility.
+**Yes — and an earlier version of this section answered that wrongly.** It traced admissibility
+to `gunbc.spark.host_commitment` `spark_serving_admissible_hosts`, found that removing a claim
+*loosens* commitment, and concluded the withdrawal "revokes a competing claim, which is the
+objective." That conclusion is false, because it asked who is let in and never asked who is let
+out.
 
-It reaches it in the **loosening** direction, and the module states the principle itself: *"A
-commitment is not a capability. Nothing here says a host cannot serve or cannot build. It says
-some other authority has already placed work on it or reserved it, so a lane that places NEW
-work"* must account for that. Removing Group A from the claimed set removes a reason those
-hosts are **committed**, which makes them more available to a lane placing new work, not less.
-It revokes a competing claim, which is the entire objective.
+`host_commitment` derives every `MemberOfClaimedServingGroup` cause directly from
+`spark_pair_serving_groups`, and uses those causes to decide **which serving subject owns each
+host**. The cell-role roster assigns `SparkServingCell` to **srv5 and srv6 only** — the Group A
+claim is what speaks for srv7 and srv8. So a literal withdrawal produces:
 
-D1's own right to be there does not come from that roster in any case: it launches under the
-exact, time-bounded experimental authorization above. The roster governs **convergence**, not
-experiments.
+| hosts | after withdrawal |
+|---|---|
+| srv5, srv6 | cell role remains, Group A ownership cause gone → serving role held by **no serving subject** |
+| srv7, srv8 | no cell-role row, no ownership cause → **uncommitted**, admissible to any serving subject, and eligible as "unplaced" effect hosts |
 
-**One honest edge.** The same module records that with Group B reserved, `SparkHostUncommitted`
-has no production inhabitant today — "nothing is free" is currently a *shown* fact rather than
-an assumed one. Withdrawing Group A's claim changes that fold's inputs and could inhabit that
-arm for the first time. That is not a hazard, but it is a state transition production has never
-taken, and a cut that triggers it should expect the arm to be reached rather than be surprised
-by it.
+And V4.1's own candidate field derives its host population through `spark_serving_admissible_hosts`
+for the **Group A pair-unit subject** — `PairServingUnitOn { FabricGroupA }`, deliberately
+unchanged across the V4→V4.1 transition. **So the TP4 subject this program exists to run loses
+two of its four hosts**, while srv7 and srv8 become available to unrelated lanes: the vLLM
+source-build and runtime-image-probe roots both authorize effects through `admit_unplaced_host`,
+and the latter pulls an image and starts a container.
+
+The remedy would have destroyed the authority relation it exists to protect, and the plan's
+prose-level "exclusive claim" would have disagreed with the production authority that build and
+probe lanes actually consult. Loosening is not neutral when your own exclusivity is what is
+being loosened.
+
+**WITHDRAW AND SUSPEND ARE NOT INTERCHANGEABLE, and this document may not use them as though
+they were.** Suspension is the right operation here. **No such modeled operation exists yet** —
+that is the gap this cut must close before it can run, and it is a modeling obligation rather
+than a sequencing detail. It needs a typed authority state whose projections differ per
+consumer:
+
+```
+PairServingGroupAuthority
+  = PairServingActive { group }
+  | SuspendedForAuthorizedSuccessor { group, authorization, successor_subject, lease, cleanup }
+  | ReleasedToFleet { group, release_receipt }
+```
+
+with each consumer told explicitly what it sees:
+
+| consumer | Active | Suspended |
+|---|---|---|
+| pair realization / apply | acts | **does not act** |
+| host commitment | all four hosts owned | all four hosts **still owned**, by the named successor |
+| build / probe host admission | placed | **still placed**, never unclaimed |
+| serving enrollment | unchanged | unchanged |
+| capacity standing | ordinary result | a **typed suspended** result, never an empty population |
+
+**One positive result from the trace:** serving enrollment is genuinely independent of pair
+desired state. Group A stays enrolled as a route and the harness still probes it before
+offering work, so suspending the old realization does not delete the front door.
 
 ### The withdrawal EMPTIES the roster, and that is not a local toggle
 
@@ -227,8 +276,28 @@ the one sentence that tells a rollout worker where to leave the hosts.
 A spec and its readback are two facts, and collapsing them is how "we returned to baseline"
 becomes an assertion instead of a reading.
 
-**What may remain.** The released state releases *processes, claims, seats and live memory* —
-not bytes at rest. The exact runtime image and the content-addressed row stores may stay on
+**RESERVED OR FREE — the spec must choose, and an earlier draft claimed the guarantees of
+both.** It defined the released state as having *no host claim* while also suspending the old
+authority only "for the experiment's duration". That leaves three readings, and two of them are
+broken: if suspension ends when D1 ends, the old realization can be reapplied immediately and
+the released terminal is invalidated; if suspension persists with no reservation, srv7 and srv8
+become effect targets and srv5 and srv6 are held by nobody. Only the third is coherent:
+
+```
+QuiescentReservedBaseline          ← the target when D2 is expected to follow
+    no rank processes, no engine, no offer, no seat, no live device allocation
+    immutable verified artifacts may remain
+    the exact four-host reservation REMAINS
+```
+
+That holds no runtime live across the authorization boundary — only the right to use the four
+hosts, so an unrelated build or probe cannot occupy them before D2. If the intent is instead to
+give the hosts back to the fleet, that is a **different** terminal and must be named as one:
+`FleetReleasedBaseline`, where D2 must reacquire the hosts and may not assume the same four
+remain available.
+
+**What may remain.** The released state releases *processes, seats and live memory* — not bytes
+at rest, and under `QuiescentReservedBaseline` not the reservation either. The exact runtime image and the content-addressed row stores may stay on
 local storage. Rematerialising hundreds of gigabytes to satisfy a definition would be redundant
 work, and immutable content-addressed artifacts carry no live runtime across the authorization
 boundary. The spec says so explicitly rather than leaving a later reader to decide whether a
@@ -281,7 +350,22 @@ carries a request is its own precondition, and it is stated as one below.
 
 ### D0 — take the claim, reconcile the occupancy, then record the ENTRY state
 
-**D0 takes the exclusive claim FIRST, or brackets its readings with one.** "No incumbent was
+**D0 performs an ATOMIC AUTHORITY TRANSFER, not an acquire-then-withdraw sequence.** An earlier
+draft said D0 takes the exclusive claim first *and* that the hosts must never be owned by two
+authorities. **Those cannot both hold without a transfer operation**, and writing both was a
+contradiction rather than a plan:
+
+```
+acquire experiment claim, then withdraw old   → OVERLAP: two authorities own the hosts
+withdraw old, then acquire experiment claim   → GAP: build/probe lanes may take them
+atomic transfer                               → one active owner throughout
+```
+
+The gap arm is not theoretical: srv7 and srv8 become `admit_unplaced_host` targets the moment
+their ownership cause disappears. So the transfer is the operation, and it is part of the
+suspension gap named in §2 — there is no modeled transfer today.
+
+**D0 still brackets its readings with the claim it holds.** "No incumbent was
 observed" is a dated observation, not a property of Group A — the two SSH readings above are
 14 hours apart and say nothing about the interval between the last one and the stop. Without a
 claim held across that interval, something can become live between observing and reclaiming,
@@ -342,9 +426,24 @@ claim the four ranks
 ```
 
 D1 **always** ends at the released state — not at the entry state, which it deliberately does
-not restore. It does not promote. That is what makes its idempotence receipt
-meaningful — there is one desired end state, and a rerun that mutates nothing is checkable
-against it.
+not restore. It does not promote.
+
+**AND THE IDEMPOTENCE CLAIM AN EARLIER DRAFT MADE HERE WAS FALSE.** It said a rerun of D1
+mutates nothing. A rerun of D1 cannot mutate nothing: it reclaims hosts, launches V4.1,
+initialises it, routes a request and tears it down. **The experiment is REPEATABLE; the cleanup
+converger is IDEMPOTENT**, and those are different properties that one sentence was conflating.
+What is actually checkable:
+
+```
+run the D1 experiment
+→ converge the baseline (QuiescentReservedBaseline or FleetReleasedBaseline)
+→ read the baseline receipt
+→ run THAT CONVERGER again
+→ require no mutation
+```
+
+The no-mutation property belongs to the converger and is asserted against it. Attaching it to
+the experiment made the receipt unfalsifiable, because no honest rerun could have satisfied it.
 
 Weight loading is not success. Acceptance begins after runtime initialisation and one valid
 semantic completion. An HTTP 200 discharges nothing.
@@ -400,7 +499,17 @@ A new authorization over the already-proven realization. Promotion **refuses** u
 - D1 completed and its `ReleasedBaselineReceipt` was read back;
 - D1a established that the enrolled route reaches a process, and D1 produced the end-to-end join while the candidate was live;
 - **P1 Cut 3 (or an exact seat-lifecycle equivalent) AND a demonstrated cleanup path to `ReleasedBaselineSpec`** — two facts, not one;
-- a second convergence run mutates no unit, image, row store or route.
+- **and the no-mutation rerun is a TERMINAL, not a precondition.** An earlier draft listed
+  "a second convergence run mutates nothing" among the conditions promotion refuses without —
+  but a no-mutation *promotion* rerun cannot precede the first promotion. The order is:
+
+```
+D2 preconditions satisfied
+→ apply the production promotion
+→ one exact normal routed request succeeds
+→ apply the production desired state AGAIN
+→ require no mutation
+```
 
 Capacity calibration is a follow-up. Record steady resident bytes, cache retention, local read
 bytes, lookup hit/miss population, prefill and decode rates, TTFT and ITL — and do not turn any
