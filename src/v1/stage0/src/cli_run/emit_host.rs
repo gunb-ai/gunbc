@@ -908,6 +908,8 @@ fn parse_reference_form_file(rel: &str, content: &str) -> Result<ReferenceFormFi
 fn load_reference_form_pool(
     pool_roots: &[String],
     exclude_substrings: &[String],
+    leaf_needles: &[String],
+    require_leaf_bytes: bool,
 ) -> Result<Vec<ReferenceFormFile>, String> {
     let scan_roots = if pool_roots.is_empty() {
         default_source_roots()
@@ -938,6 +940,12 @@ fn load_reference_form_pool(
                 file.display()
             )
         })?;
+        if require_leaf_bytes
+            && !leaf_needles.is_empty()
+            && !leaf_needles.iter().any(|leaf| content.contains(leaf))
+        {
+            continue;
+        }
         loaded.push(parse_reference_form_file(&rel, &content)?);
     }
     Ok(loaded)
@@ -952,15 +960,20 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
 ) -> crate::cli_run::ResolvedCallEdgeCensus {
     use crate::cli_run::ResolvedCallEdgeCensus;
     let homes: HashSet<String> = import_modules.iter().cloned().collect();
-    let files = match load_reference_form_pool(pool_roots, exclude_substrings) {
-        Ok(files) => files,
-        Err(cause) => return ResolvedCallEdgeCensus::Refused { cause },
-    };
     let requested_leaves: HashSet<String> = target_leaves
         .iter()
         .filter(|leaf| !leaf.is_empty())
         .cloned()
         .collect();
+    let files = match load_reference_form_pool(
+        pool_roots,
+        exclude_substrings,
+        target_leaves,
+        include_reference_forms && !requested_leaves.is_empty(),
+    ) {
+        Ok(files) => files,
+        Err(cause) => return ResolvedCallEdgeCensus::Refused { cause },
+    };
     let home_leaves: HashSet<String> = if requested_leaves.is_empty() {
         files
             .iter()
@@ -981,7 +994,7 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
                 .next()
                 .is_some();
         let selected = if include_reference_forms {
-            home_hit || call_hit
+            call_hit
         } else {
             import_hit || home_hit
         };
