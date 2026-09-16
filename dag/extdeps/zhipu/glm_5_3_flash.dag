@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Present, Absent }
 
 // THE GLM-5.3-FLASH FAMILY, as its own extdeps authority for the reason extdeps.deepseek.deepseek_v4
 // is one: an independently versioned upstream model, governed by Z.ai, is not a property of whatever
@@ -138,6 +139,82 @@ data glm_5_3_flash_vllm_tool_call_parser: NonEmptyStr = "glm47" as NonEmptyStr
 // what a completion looks like therefore asks the SERVING UNIT
 // (gunbc.harness.harness_reasoning_wire harness_unit_server_parses_reasoning), never this row.
 data glm_5_3_flash_vllm_reasoning_parser: NonEmptyStr = "glm45" as NonEmptyStr
+
+// ── WHAT THE RECIPE REQUIRES OF THE RUNTIME ITSELF ────────────────────────────────────────────
+//
+// THE ROWS ABOVE SAY WHICH FLAGS TO PASS; THESE SAY WHAT MUST BE TRUE OF THE ENGINE BEFORE ANY FLAG
+// MATTERS, and the distinction is not academic. On 2026-09-10 this fleet launched the native FP8
+// checkpoint on an image that registers Glm5NextForConditionalGeneration and supports fp8_per_block,
+// and it failed at weight load with KeyError 'layers.0.self_attn.k_proj.weight' -- because
+// architecture registration and quantisation support are NECESSARY and NOT SUFFICIENT. The third
+// requirement is that the engine's weight loader knows this checkpoint's tensor layout, and upstream
+// states it as a version floor rather than leaving it to be discovered by a failed launch.
+//
+// THE SAME RECIPE THAT PRESCRIBES THE FLAGS ABOVE CARRIES THESE, and they were not read. The half of
+// the page this module already cites was modelled; the half that would have refused that launch was
+// not, so the citation was real and the coverage was partial -- which reads exactly like completeness
+// until the missing field is the one that decides.
+//
+// THE REQUIREMENT IS THAT A NAMED IMAGE CARRIES THE INTEGRATION, NOT THAT A RELEASE NUMBER SORTS
+// ABOVE A FLOOR, and this model is the case that proves the difference. An earlier revision of these
+// rows said support "is not in mainline" and carried `nightly_required = true` as a standing fact.
+// Both were temporal claims dressed as durable ones: vllm-project/vllm#53906 IS MERGED, so a sentence
+// about a pending PR ages into a falsehood, and a timeless nightly flag will keep asserting a
+// pre-release is needed long after it is not.
+//
+// AND THE FLOOR ITSELF WOULD REFUSE THE PRESCRIBED ARTIFACT. The recipe states min_vllm_version
+// 0.29.0 while directing NVIDIA deployments to vllm/vllm-openai:glm53-flash for this checkpoint --
+// and that image self-reports 0.28.1rc1.dev580+g385dce36b, measured on this fleet 2026-09-10. A
+// consumer comparing versions would reject the exact image upstream prescribes. So the floor is
+// retained as UPSTREAM'S PUBLISHED FIGURE, cited and not consumed as a gate, and the gate is an
+// observation about a digest: gunbc.spark.serving_arm NativeRuntimeStanding.
+data glm_5_3_flash_vllm_published_min_version: NonEmptyStr = "0.29.0" as NonEmptyStr
+data glm_5_3_flash_vllm_integration_is_merged_upstream: Bool = true
+data glm_5_3_flash_vllm_prerelease_image_nvidia: NonEmptyStr = "vllm/vllm-openai:glm53-flash" as NonEmptyStr
+data glm_5_3_flash_vllm_prerelease_image_amd: NonEmptyStr = "vllm/vllm-openai-rocm:glm53-flash" as NonEmptyStr
+data glm_5_3_flash_vllm_integration_pull_request: NonEmptyStr = "https://github.com/vllm-project/vllm/pull/53906" as NonEmptyStr
+data glm_5_3_flash_vllm_integration_commit: NonEmptyStr = "385dce36bcee42309924a5ece951a96db3dce7f2" as NonEmptyStr
+
+// THE ENGINE READY TIMEOUT IS UPSTREAM'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it
+// is carried because its absence is independently fatal on a cold multi-node start. torch's
+// distributed rendezvous defaults to 601 seconds; a four-rank group whose members are still
+// materialising exceeds that and dies with "Timed out waiting for clients", which is a different
+// failure from anything about the model and reports nothing about it.
+data glm_5_3_flash_vllm_engine_ready_timeout_seconds: Nat = 3600
+
+// FLASHINFER CARRIES TWO FIGURES AND THE HIGHER ONE IS THE OPERATIONAL REQUIREMENT. The recipe's
+// prerequisites say 0.6.17 or newer for NoPE sparse MLA; its own troubleshooting section says 0.6.18 or
+// newer for sparse-MLA INITIALISATION. A deployment that satisfies only the prerequisite can therefore
+// still fail at start-up on the exact path this model uses, so the preflight figure is 0.6.18 and the
+// prerequisite is kept beside it rather than replaced -- the two are different claims by the same
+// source and collapsing them would lose which one a given engine actually clears.
+data glm_5_3_flash_flashinfer_prerequisite_version: NonEmptyStr = "0.6.17" as NonEmptyStr
+data glm_5_3_flash_flashinfer_operational_min_version: NonEmptyStr = "0.6.18" as NonEmptyStr
+
+// THESE TWO BELONG TO ONE SPECIFIC REFERENCE TOPOLOGY AND NOT TO NATIVE SERVING GENERALLY, which an
+// earlier revision of these rows got wrong by naming them "the environment the reference launches
+// carry". They appear in the recipe's PREFILL/DECODE DISAGGREGATION example, where the two pools must
+// agree on cache layout, and they are absent from its basic unified TP4 command. Carrying them as
+// general prescriptions would have put two layout overrides into a unified launch on the strength of an
+// example about a different architecture -- a generalisation from one instance, which is the same error
+// shape as reading a flag as an architecture claim further up this file.
+data glm_5_3_flash_disaggregated_ssm_conv_state_layout: NonEmptyStr = "DS" as NonEmptyStr
+data glm_5_3_flash_disaggregated_kv_cache_layout: NonEmptyStr = "HND" as NonEmptyStr
+
+// A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
+// vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
+// sparse-indexer logits allocation, with two independent mitigations offered. That report used a
+// different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
+// measurement of it -- which is why the figure is carried here as an upstream observation and the
+// decision to apply it is a deployment's own.
+data glm_5_3_flash_gb10_sparse_indexer_max_logits_mb: Nat = 64
+data glm_5_3_flash_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr
+
+// THE REFERENCE TOPOLOGY, which is the shape upstream measured rather than one this repository chose:
+// tensor parallelism of four with MTP speculation on a single GB200 tray. `multi_node_tp` is listed
+// among the compatible strategies, so spreading those four ranks across hosts is a supported shape
+// rather than an improvisation.
+data glm_5_3_flash_vllm_reference_tensor_parallel_size: Nat = 4
 // THE ATTENTION ARCHITECTURE, CORRECTED AND DECOMPOSED. This stood as
 // `glm_5_3_flash_attention_is_multi_head_latent: Bool = false`, which was false in both senses: the
 // value was wrong, and a Bool could not have carried the truth even set the other way.
@@ -186,3 +263,137 @@ data glm_5_3_flash_recipe_declares_gpu_memory_utilization: Bool = false
 // under another is the failure that bricked a ledger partition on 2026-09-06. A measurement about a
 // serving unit belongs to that unit's observed row with its instrument named, never to the model.
 data glm_5_3_flash_carries_no_serving_measurements: Bool = true
+
+fn glm_5_3_flash_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
+  let w = token_count_value(t: window)
+  let i = token_count_value(t: input_tokens)
+  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+}
+
+// ── THE CHECKPOINT MANIFEST AT AN EXACT REVISION, WHICH IS UPSTREAM'S OWN STATEMENT ───────────
+//
+// THE SAME SIZE WAS SPELLED IN THREE PLACES BEFORE THIS ROW EXISTED: the serving selector carried
+// 328,337,455,672 bytes in an artifact footprint, the acquisition module carried the identical
+// literal as a disk requirement, and the serving-arm authority carried 306 as GiB. They agreed after
+// rounding, which is the most dangerous state for a fork -- nothing was wrong, so nothing would have
+// caught the first divergence. That is the section 3 violation, and it is mine: I added the second
+// and third spellings while repairing other findings.
+//
+// THE MANIFEST BELONGS HERE RATHER THAN IN gunbc BECAUSE IT IS NOT AN OBSERVATION OF THIS FLEET. The
+// byte sizes at a content-addressed revision are what the publishing Hub says about its own files,
+// re-readable by anyone from the cited authority. What a Spark's disk holds after a download IS a
+// fleet observation and stays in the gunbc layer, which is exactly the distinction the selector's
+// FootprintObservedOnFleet and FootprintDeclaredByUpstreamAtRevision arms draw.
+//
+// THE REVISION IS PART OF THE FACT, not a note beside it. A manifest without its revision is a claim
+// about a branch, and this repository is moving: the same API response that gave these sizes reported
+// lastModified 2026-09-07T12:13:47Z, so `main` for this repo demonstrably shifts under a reader.
+// THE ACQUISITION FOOTPRINT AND THE WEIGHT FOOTPRINT ARE DIFFERENT QUESTIONS ABOUT ONE MANIFEST, and
+// a consumer that confuses them sizes a disk against the wrong number. `safetensors_bytes` is what
+// the RANKS must hold -- the shards a tensor-parallel replica divides among itself. What a DOWNLOAD
+// must hold is the repository snapshot: config, tokenizer, generation config and the rest travel with
+// the shards, and the Hub cache fetches the snapshot rather than a hand-picked subset.
+//
+// The gap is 28,717,797 bytes for this artifact, which changes no eligibility decision on a
+// multi-terabyte disk. It is separated anyway, because the carrier's job is to say which quantity a
+// consumer is asking for, and a 28 MB coincidence today is not a reason to conflate two questions
+// that will diverge on the next artifact.
+type GlmCheckpointManifest sole_constructor {
+  revision: NonEmptyStr
+  safetensors_shard_count: Nat
+  safetensors_bytes: Nat
+  repository_total_bytes: Nat
+  read_by: NonEmptyStr
+}
+
+// ── THE ATTENTION GEOMETRY, WHICH IS WHAT ACTUALLY REFUSED ────────────────────────────────────
+//
+// NINE CUTOVER ATTEMPTS ENDED ON TWO INTEGERS THIS MODULE DID NOT CARRY. The engine loaded 300+ GiB across
+// four ranks, compiled kernels, initialised the indexer and began CUDA graph capture before refusing with
+// `pe_dim must be 64 for fp8_ds_mla` -- a comparison between this checkpoint's qk_rope_head_dim and a
+// kernel constant, both of which are knowable before anything is transferred. A preflight that could read
+// these fields would have refused in milliseconds and named the reason.
+//
+// mla_use_nope IS THE FACT, AND IT IS WHY THE DEEPSEEK-SHAPED KERNEL PATH DOES NOT FIT. This architecture
+// applies no rotary section to the query/key at all, so the rope dimension is genuinely zero rather than
+// merely small; the fp8_ds_mla writer assumes DeepSeek's fixed 64-wide section inside a 656-byte cache row.
+// That is a SHAPE disagreement, not a tuning one, which is why no --kv-cache-dtype value reaches past it.
+//
+// index_kpool AND index_topk ARE THE SECOND HALF, and they are here because the repair needs both. The
+// sparse indexer's physical top-k population is widened by the kpool factor, and a patch that fixed only the
+// cache writer would leave the page table sized for the unwidened figure -- which is precisely why the
+// upstream candidate carries two commits rather than one.
+//
+// READ AT THE PINNED REVISION, NOT FROM TODAY'S MAIN. These are config.json fields of a mutable branch; a
+// figure copied from whatever main says on the day it is read describes an artifact this fleet may never
+// fetch. The revision below is the same one glm_5_3_flash_native_manifest was summed at.
+type GlmAttentionGeometry sole_constructor {
+  revision: NonEmptyStr
+  mla_use_nope: Bool
+  qk_rope_head_dim: Nat
+  qk_nope_head_dim: Nat
+  kv_lora_rank: Nat
+  v_head_dim: Nat
+  index_kpool: Nat
+  index_topk: Nat
+  read_by: NonEmptyStr
+}
+
+data glm_5_3_flash_attention_geometry: GlmAttentionGeometry = GlmAttentionGeometry {
+  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  mla_use_nope: true,
+  qk_rope_head_dim: 0,
+  qk_nope_head_dim: 256,
+  kv_lora_rank: 512,
+  v_head_dim: 256,
+  index_kpool: 4,
+  index_topk: 2048,
+  read_by: "config.json of zai-org/GLM-5.3-Flash at this exact revision. NOT read from the repository's main branch: these are fields of a mutable ref, and a value copied from whatever main carried on the day it was read would describe an artifact this fleet may never fetch" as NonEmptyStr,
+}
+
+// THE KERNEL CONSTANT THAT REFUSED, CARRIED AS THE FOREIGN FACT IT IS. It belongs beside the geometry
+// because the refusal is a COMPARISON of the two, and a comparison whose right-hand side lives only in a
+// prose sentence cannot be evaluated by anything.
+data vllm_fp8_ds_mla_required_rope_dim: Nat = 64
+
+// SO THE REFUSAL IS DECIDABLE FROM MODELLED FACTS, BEFORE A BYTE MOVES. This is the whole return on carrying
+// the geometry: the question that cost nine attempts and roughly 524 seconds of weight loading each is now
+// two integers and an inequality.
+fn glm_5_3_flash_refused_by_fp8_ds_mla_writer(g: GlmAttentionGeometry) -> Bool {
+  g.qk_rope_head_dim != vllm_fp8_ds_mla_required_rope_dim
+}
+
+data glm_5_3_flash_native_manifest: GlmCheckpointManifest = GlmCheckpointManifest {
+  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  safetensors_shard_count: 62,
+  safetensors_bytes: 328337455672,
+  repository_total_bytes: 328366173469,
+  read_by: "the Hub model API for zai-org/GLM-5.3-Flash at that exact revision with blobs enabled, summed over the safetensors siblings, read 2026-09-08. The response's own sha matched the revision and its lastModified was 2026-09-07T12:13:47Z" as NonEmptyStr,
+}
+
+// GiB IS DERIVED FOR PROSE AND IS NOT A SECOND AUTHORITY. The serving-arm row that carried 306 was a
+// rounded restatement of these bytes; a consumer wanting a human-sized number computes it here rather
+// than authoring one, so the rounding can never drift from the figure it rounds.
+//
+// AND IT ROUNDS UP, WHICH IS THE ONLY SAFE DIRECTION FOR A CONSUMER THAT SCREENS ON IT. The first
+// version of this helper used integer division, yielding 305 for a 305.79 GiB artifact -- and
+// gunbc.spark.serving_arm feeds exactly this value into a positive fit check. Rounding DOWN
+// understates the weights, which makes that check more permissive: it is the wrong direction for a
+// bound whose entire purpose is to refuse. A ceiling can only refuse a candidate that a byte-exact
+// test would have admitted, never admit one it would have refused.
+//
+// A CONSUMER THAT NEEDS EXACTNESS READS THE BYTES. This helper exists for screening and for prose,
+// and both are served by the conservative direction; feasibility arithmetic that must be exact takes
+// `safetensors_bytes` and does not round at all.
+fn glm_manifest_gibibytes(m: GlmCheckpointManifest) -> Nat {
+  (m.safetensors_bytes + 1073741823) / 1073741824
+}
+
+// THE WEIGHTS CANNOT SIT ON ONE GB10 AND THAT NEEDS NO POLICY TO PROVE. Half of 328,337,455,672 is
+// 164,168,727,836, which exceeds a GB10's ENTIRE 130,663,231,488-byte unified pool -- so one and two
+// ranks are impossible at a hundred percent utilisation, before any memory-fraction decision is
+// consulted. Stating the bound at full utilisation keeps the impossibility independent of a policy
+// number that an operator may change.
+fn glm_manifest_per_rank_bytes_at_full_utilisation(m: GlmCheckpointManifest, ranks: Nat) -> Nat? {
+  if ranks == 0 { none } else { Present { value: (m.safetensors_bytes + (ranks - 1)) / ranks } }
+}
