@@ -1,0 +1,94 @@
+module gunbc.auth.approval_keyring_converge
+
+import std.types { Bool, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref, approval_mac_key_path }
+import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+
+data approval_keyring_config_dir: NonEmptyStr = "/etc/gunbc-roadmap"
+
+data approval_submission_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-submission-mac-key"
+
+data approval_submission_mac_key_path_env: NonEmptyStr = "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE"
+
+data approval_ntfy_publisher_token_path: NonEmptyStr = "/etc/gunbc-ntfy/publisher-token"
+
+data approval_mac_key_payload_sha256_prefix: NonEmptyStr = "113a3274bd95"
+
+data approval_submission_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "approval-submission-mac-key"),
+  version: "1",
+)
+
+data approval_keyring_file_mode: NonEmptyStr = "0640"
+
+data approval_keyring_file_owner: NonEmptyStr = "root"
+
+data approval_keyring_file_group: NonEmptyStr = "briansrls"
+
+fn approval_capability_mac_access_url() -> String {
+  secret_ref_access_url(ref: approval_mac_key_secret_ref)
+}
+
+fn approval_submission_mac_access_url() -> String {
+  secret_ref_access_url(ref: approval_submission_mac_key_secret_ref)
+}
+
+type KeyringSha256Compare
+  = Sha256PrefixMatches { prefix: NonEmptyStr }
+  | Sha256PrefixMismatch { expected: NonEmptyStr, observed: NonEmptyStr }
+  | Sha256Unavailable { detail: NonEmptyStr }
+
+fn sha256_prefix_compare(observed_hex: String, expected_prefix: NonEmptyStr) -> KeyringSha256Compare {
+  let n = expected_prefix.length()
+  if observed_hex.length() < n {
+    Sha256Unavailable { detail: "observed digest shorter than the modeled prefix" }
+  } else {
+    let prefix = substring(s: observed_hex, start: 0, end: n)
+    let expected = expected_prefix as String
+    if prefix == expected {
+      Sha256PrefixMatches { prefix: expected_prefix }
+    } else {
+      Sha256PrefixMismatch {
+        expected: expected_prefix,
+        observed: prefix as NonEmptyStr,
+      }
+    }
+  }
+}
+
+fn keyring_host_must_be_srv1(host: String) -> Bool {
+  host == "srv1"
+}
+
+fn approval_keyring_converge_refuses_off_srv1(host: String) -> ProcessExit {
+  if keyring_host_must_be_srv1(host: host) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("approval keyring converge refuses host '", concat(host, "': the files live on the machine that serves /approve, which is srv1")))
+  }
+}
+
+fn approval_keyring_converge_wet() -> ProcessExit {
+  let host = match shell.Env.Get(name: "FLEET_CONVERGE_EXPECTED_HOST" as NonEmptyStr).value {
+    Absent => ""
+    Present { value: v } => v
+  }
+  match approval_keyring_converge_refuses_off_srv1(host: host) {
+    ExitSuccess => {
+      let cap = Filesystem.Read(path: approval_mac_key_path as String)
+      let sub = Filesystem.Read(path: approval_submission_mac_key_path as String)
+      if !cap.success {
+        exit_failure(reason: concat("approval keyring: capability MAC key unreadable at ", concat(approval_mac_key_path as String, concat(": ", cap.error))))
+      } else if !sub.success {
+        exit_failure(reason: concat("approval keyring: submission MAC key unreadable at ", concat(approval_submission_mac_key_path as String, concat(": ", sub.error))))
+      } else {
+        ExitSuccess
+      }
+    }
+    other => other
+  }
+}

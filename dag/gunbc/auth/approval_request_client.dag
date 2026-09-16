@@ -1,0 +1,147 @@
+module gunbc.auth.approval_request_client
+
+import std.types { NonEmptyStr, String, Timestamp, Secret }
+import std.scoped_authorization { AuthorizationRequest }
+import extdeps.crypto.mac {
+  MacKey, MacSigned, MacKeyMaterialNotHex, mac_sign, HmacSha256, MacKeyId,
+}
+import extdeps.languages.json.emit { JsonString, json_string, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, stored_request_json, request_revision_of, approval_mac_key_id,
+}
+import gunbc.fleet_posix_accounts { fleet_operator_email }
+
+data approval_request_submit_path: NonEmptyStr = "/approvals"
+
+data approval_submission_mac_key_id: MacKeyId = "approval-submission-mac-key/1" as MacKeyId
+
+data approval_loopback_origin: NonEmptyStr = "http://127.0.0.1:8080"
+
+fn approval_submit_url() -> NonEmptyStr {
+  concat(approval_loopback_origin as String, approval_request_submit_path as String) as NonEmptyStr
+}
+
+fn approval_status_url(escalation_id: NonEmptyStr) -> NonEmptyStr {
+  concat(concat(approval_loopback_origin as String, "/approvals/"), escalation_id as String) as NonEmptyStr
+}
+
+fn stored_request_from_authorization<Subject>(
+  request: AuthorizationRequest<Subject>,
+  issued_at: Timestamp,
+  expires_at: Timestamp,
+) -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: request.escalation_id,
+    request_revision: request_revision_of(request: request),
+    attempt: request.attempt,
+    requester: fleet_operator_email,
+    purpose: request.purpose,
+    destructive: request.destructive,
+    issued_at: issued_at,
+    expires_at: expires_at,
+    key_id: approval_mac_key_id,
+  }
+}
+
+type SubmissionMac
+  = SubmissionMacReady { tag_hex: NonEmptyStr }
+  | SubmissionMacKeyNotHex { key_id: MacKeyId }
+
+fn sign_stored_request(key_material: String, request: StoredApprovalRequest) -> SubmissionMac {
+  let key = MacKey {
+    id: approval_submission_mac_key_id,
+    suite: HmacSha256,
+    material: key_material as Secret,
+  }
+  match mac_sign(key: key, message: stored_request_json(r: request) as NonEmptyStr) {
+    MacKeyMaterialNotHex { key_id: k } => SubmissionMacKeyNotHex { key_id: k }
+    MacSigned { tag: t } => SubmissionMacReady { tag_hex: t.hex }
+  }
+}
+
+fn approval_submit_body_json(tag_hex: NonEmptyStr, request: StoredApprovalRequest) -> String {
+  join([
+    "{\"tag\":",
+    serialize_json(v: json_string(s: tag_hex as String)),
+    ",\"request\":",
+    stored_request_json(r: request),
+    "}",
+  ], "")
+}
+
+type FiledApprovalStatus
+  = StatusNotFiled
+  | StatusPending
+  | StatusApproved { decided_by: NonEmptyStr, decided_at: Timestamp }
+  | StatusDenied { decided_by: NonEmptyStr, decided_at: Timestamp }
+  | StatusUnreadable { detail: NonEmptyStr }
+
+type ApprovalPollStanding
+  = PollStillPending
+  | PollApproved
+  | PollDenied
+  | PollExpired
+  | PollNotFiled
+  | PollUnreadable { detail: NonEmptyStr }
+
+fn approval_poll_standing(
+  status: FiledApprovalStatus,
+  observed_at: Timestamp,
+  expires_at: Timestamp,
+) -> ApprovalPollStanding {
+  if observed_at > expires_at {
+    match status {
+      StatusApproved { decided_by: _, decided_at: _ } => PollApproved
+      StatusDenied { decided_by: _, decided_at: _ } => PollDenied
+      _ => PollExpired
+    }
+  } else {
+    match status {
+      StatusNotFiled => PollNotFiled
+      StatusPending => PollStillPending
+      StatusApproved { decided_by: _, decided_at: _ } => PollApproved
+      StatusDenied { decided_by: _, decided_at: _ } => PollDenied
+      StatusUnreadable { detail: d } => PollUnreadable { detail: d }
+    }
+  }
+}
+
+fn status_from_state_word(word: String, decided_by: NonEmptyStr, decided_at: Timestamp) -> FiledApprovalStatus {
+  if word == "not-filed" {
+    StatusNotFiled
+  } else if word == "pending" {
+    StatusPending
+  } else if word == "approved" {
+    StatusApproved { decided_by: decided_by, decided_at: decided_at }
+  } else if word == "denied" {
+    StatusDenied { decided_by: decided_by, decided_at: decided_at }
+  } else {
+    StatusUnreadable { detail: concat("unknown status state: ", word) as NonEmptyStr }
+  }
+}
+
+fn parse_filed_approval_status(body: String) -> FiledApprovalStatus {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } => StatusUnreadable { detail: json_document_gap_text(gap: g) as NonEmptyStr }
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: "state") {
+        JsonMemberDuplicated { count: _ } => StatusUnreadable { detail: "status JSON has a duplicated state member" }
+        JsonMemberNotAnObject => StatusUnreadable { detail: "status JSON is not an object" }
+        JsonMemberAbsent => StatusUnreadable { detail: "status JSON has no state member" }
+        JsonMemberFound { value: st } =>
+          match st {
+            JsonString { value: word } =>
+              status_from_state_word(
+                word: word,
+                decided_by: "unspecified" as NonEmptyStr,
+                decided_at: "" as Timestamp,
+              )
+            _ => StatusUnreadable { detail: "status JSON state is not a string" }
+          }
+      }
+  }
+}

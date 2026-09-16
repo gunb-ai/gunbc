@@ -1,0 +1,48 @@
+module test.claim.machine_intake.mtcollins1_boot_authorization_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+import std.scoped_authorization { AttemptIdentity }
+import gunbc.machine_intake_mtcollins1_boot_authorization {
+  mtcollins1_boot_authorization_request, mtcollins1_boot_subject, mtcollins1_boot_required_scopes,
+  mtcollins1_boot_controller_may_be_written, mtcollins1_boot_gate_from_poll,
+  BootGatePending,
+}
+import gunbc.auth.approval_request_client { PollStillPending, PollExpired, PollDenied, PollNotFiled }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn request_is_destructive_and_names_the_diskless_image() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+  )
+  r.destructive
+    && r.subject.image_name == mtcollins1_diskless_image_name
+    && r.scopes.length() == mtcollins1_boot_required_scopes.length()
+    && r.escalation_id as String == "esc-mtc1-1"
+}
+
+test fn pending_denied_expired_and_unfiled_do_not_write_the_controller() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+  )
+  let at = "2026-09-16T20:30:00Z"
+  !mtcollins1_boot_controller_may_be_written(gate: mtcollins1_boot_gate_from_poll(poll: PollStillPending, request: r, observed_at: at))
+    && !mtcollins1_boot_controller_may_be_written(gate: mtcollins1_boot_gate_from_poll(poll: PollDenied, request: r, observed_at: at))
+    && !mtcollins1_boot_controller_may_be_written(gate: mtcollins1_boot_gate_from_poll(poll: PollExpired, request: r, observed_at: at))
+    && !mtcollins1_boot_controller_may_be_written(gate: mtcollins1_boot_gate_from_poll(poll: PollNotFiled, request: r, observed_at: at))
+}
+
+test fn poll_pending_is_the_pending_gate() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+  )
+  match mtcollins1_boot_gate_from_poll(poll: PollStillPending, request: r, observed_at: "2026-09-16T20:30:00Z") {
+    BootGatePending { escalation_id: e } => e as String == "esc-mtc1-1"
+    _ => false
+  }
+}

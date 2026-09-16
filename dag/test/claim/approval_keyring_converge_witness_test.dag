@@ -1,0 +1,40 @@
+module test.claim.approval_keyring_converge_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+import gunbc.auth.approval_keyring_converge {
+  sha256_prefix_compare, Sha256PrefixMatches, Sha256PrefixMismatch, Sha256Unavailable,
+  approval_mac_key_payload_sha256_prefix, keyring_host_must_be_srv1,
+  approval_keyring_converge_refuses_off_srv1,
+}
+import std.process { ExitSuccess }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn matching_prefix_is_converged() -> Bool {
+  match sha256_prefix_compare(observed_hex: "113a3274bd95aabb", expected_prefix: approval_mac_key_payload_sha256_prefix) {
+    Sha256PrefixMatches { prefix: p } => p == approval_mac_key_payload_sha256_prefix
+    _ => false
+  }
+}
+
+test fn mismatched_prefix_refuses() -> Bool {
+  match sha256_prefix_compare(observed_hex: "000000000000aabb", expected_prefix: approval_mac_key_payload_sha256_prefix) {
+    Sha256PrefixMismatch { expected: e, observed: o } =>
+      e == approval_mac_key_payload_sha256_prefix && o as String == "000000000000"
+    _ => false
+  }
+}
+
+test fn short_digest_is_unavailable_not_a_match() -> Bool {
+  match sha256_prefix_compare(observed_hex: "11", expected_prefix: approval_mac_key_payload_sha256_prefix) {
+    Sha256Unavailable { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn keyring_converge_is_srv1_only() -> Bool {
+  keyring_host_must_be_srv1(host: "srv1")
+    && !keyring_host_must_be_srv1(host: "srv2")
+    && match approval_keyring_converge_refuses_off_srv1(host: "srv1") { ExitSuccess => true  _ => false }
+}

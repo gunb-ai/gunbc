@@ -907,7 +907,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     },
     serve_binary: srv1_gunbc_serve_binary,
     serve_function: "roadmap_serve_handle" as NonEmptyStr,
-    listen_host: "0.0.0.0" as NonEmptyStr,
+    listen_host: "127.0.0.1" as NonEmptyStr,
     listen_port: 8080,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,

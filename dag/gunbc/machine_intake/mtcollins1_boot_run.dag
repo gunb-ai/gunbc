@@ -1,0 +1,211 @@
+module gunbc.machine_intake_mtcollins1_boot_run
+
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
+import std.algebra { trim }
+import std.measure { Second, second }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+import gunbc.machine_intake_mtcollins1_boot_authorization {
+  MtCollins1BootGate,
+  MtCollins1BootSubject,
+  mtcollins1_boot_authorization_request,
+  mtcollins1_boot_gate_from_poll,
+  mtcollins1_boot_controller_may_be_written,
+  BootGateAdmitted, BootGatePending, BootGateDenied, BootGateExpired, BootGateNotFiled,
+  BootGateIntentMismatch, BootGateStoreUnreadable, BootGateAuthorizeRefused,
+}
+import gunbc.auth.approval_request_client {
+  stored_request_from_authorization, sign_stored_request, approval_submit_body_json,
+  approval_submit_url, approval_status_url, parse_filed_approval_status,
+  approval_poll_standing, SubmissionMacReady, SubmissionMacKeyNotHex,
+  StatusPending, PollStillPending,
+}
+import gunbc.auth.approval_keyring_converge { approval_submission_mac_key_path_env }
+import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff }
+import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import extdeps.github.actions_environment { github_run_id_variable_name }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.http.client
+import extdeps.shell
+
+data mtcollins1_bmc_gunbc_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "bmc-mtcollins1-gunbc"),
+  version: "2",
+)
+
+data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
+
+data mtcollins1_boot_artifact_glob: String = "artifacts/mtcollins1-boot-*"
+
+data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.txt"
+
+data mtcollins1_boot_poll_cadence: Second = second(count: 15)
+
+data mtcollins1_boot_poll_tick_budget: Int = 90
+
+fn mtcollins1_boot_refusal(gate: MtCollins1BootGate) -> ProcessExit {
+  match gate {
+    BootGateAdmitted { authorization: _ } => ExitSuccess
+    BootGatePending { escalation_id: e } =>
+      exit_failure(reason: concat("mtcollins1 boot: still pending operator decision for ", e as String))
+    BootGateDenied { reason: r } =>
+      exit_failure(reason: concat("mtcollins1 boot: operator denied; controller untouched: ", r as String))
+    BootGateExpired =>
+      exit_failure(reason: "mtcollins1 boot: approval window expired; controller untouched")
+    BootGateNotFiled { escalation_id: e } =>
+      exit_failure(reason: concat("mtcollins1 boot: no request filed for ", e as String))
+    BootGateIntentMismatch { requested_revision: a, decided_revision: b } =>
+      exit_failure(reason: concat("mtcollins1 boot: stored decision is for another intent (", concat(a as String, concat(" vs ", b as String)), ")"))
+    BootGateStoreUnreadable { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 boot: approval store unreadable: ", d as String))
+    BootGateAuthorizeRefused { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 boot: grant present but authorize refused: ", d as String))
+  }
+}
+
+fn mtcollins1_boot_sol_is_held(path: String) -> Bool {
+  if path == "" {
+    false
+  } else {
+    let read = Filesystem.Read(path: path)
+    read.success && read.content.length() > 0
+  }
+}
+
+fn mtcollins1_boot_after_gate(
+  gate: MtCollins1BootGate,
+  password_raw: String,
+  password_file: String,
+  attempt: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  if !mtcollins1_boot_controller_may_be_written(gate: gate) {
+    return mtcollins1_boot_refusal(gate: gate)
+  }
+  match mtcollins1_attach_diskless_image(password_raw: password_raw, attempt: attempt) {
+    ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
+    other => other
+  }
+}
+
+fn mtcollins1_boot_poll_ticks(
+  remaining: Int,
+  request: AuthorizationRequest<MtCollins1BootSubject>,
+  expires_at: Timestamp,
+) -> MtCollins1BootGate
+  uses net: std.resources.Network
+{
+  let observed = clock_now_probed_at_or_unknown() as Timestamp
+  if remaining <= 0 {
+    return BootGateExpired
+  }
+  let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: request.escalation_id))
+  let status = if got.success {
+    parse_filed_approval_status(body: got.body)
+  } else {
+    StatusPending
+  }
+  let standing = approval_poll_standing(status: status, observed_at: observed, expires_at: expires_at)
+  match standing {
+    PollStillPending => {
+      let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+      mtcollins1_boot_poll_ticks(remaining: remaining - 1, request: request, expires_at: expires_at)
+    }
+    _ => mtcollins1_boot_gate_from_poll(poll: standing, request: request, observed_at: observed)
+  }
+}
+
+fn env_path(name: NonEmptyStr) -> String {
+  match shell.Env.Get(name: name).value {
+    Absent => ""
+    Present { value: v } => trim(s: v)
+  }
+}
+
+fn mtcollins1_boot_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
+  let cred = env_path(name: host_reset_bmc_credential_path_env)
+  if cred == "" {
+    return exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched")))
+  }
+  let sub_path = env_path(name: approval_submission_mac_key_path_env)
+  if sub_path == "" {
+    return exit_failure(reason: concat("mtcollins1 boot: ", concat(approval_submission_mac_key_path_env as String, " is unset; controller untouched")))
+  }
+  let sol_path = env_path(name: mtcollins1_boot_sol_capture_path_env)
+  if !mtcollins1_boot_sol_is_held(path: sol_path) {
+    return exit_failure(reason: "mtcollins1 boot: SOL capture is not held; collector must be attached before any controller write")
+  }
+  let run_id = match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if run_id == "" {
+    return exit_failure(reason: "mtcollins1 boot: GITHUB_RUN_ID is unset; refusing rather than reusing a standing escalation id")
+  }
+  let escalation = concat("mtcollins1-boot-", run_id) as NonEmptyStr
+  let request = mtcollins1_boot_authorization_request(
+    escalation_id: escalation,
+    attempt: concat("mtcollins1-boot-", run_id) as AttemptIdentity,
+  )
+  let issued = clock_now_probed_at_or_unknown() as Timestamp
+  let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: issued)
+  let key_read = Filesystem.Read(path: sub_path)
+  if !key_read.success {
+    return exit_failure(reason: concat("mtcollins1 boot: submission MAC key unreadable: ", key_read.error))
+  }
+  match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
+    SubmissionMacKeyNotHex { key_id: k } =>
+      exit_failure(reason: concat("mtcollins1 boot: submission MAC key is not hex: ", k as String))
+    SubmissionMacReady { tag_hex: tag } => {
+      let tmp = env_path(name: "RUNNER_TEMP" as NonEmptyStr)
+      if tmp == "" {
+        return exit_failure(reason: "mtcollins1 boot: RUNNER_TEMP is unset; cannot write the submit body")
+      }
+      let body_path = concat(tmp, "/mtcollins1-approval-submit.json")
+      let body = approval_submit_body_json(tag_hex: tag, request: stored)
+      let written = Filesystem.WriteOwnerOnly(path: body_path, content: body)
+      if !written.success {
+        return exit_failure(reason: concat("mtcollins1 boot: could not write submit body: ", written.error))
+      }
+      let posted = http.Client.PostJsonFromFile(
+        url: approval_submit_url(),
+        request_body_file: body_path as NonEmptyStr,
+        max_seconds: "30" as NonEmptyStr,
+      )
+      let _wiped = Filesystem.Delete(path: body_path)
+      if !posted.success {
+        return exit_failure(reason: concat("mtcollins1 boot: POST /approvals failed; controller untouched; body was: ", posted.body))
+      }
+      let gate = mtcollins1_boot_poll_ticks(
+        remaining: mtcollins1_boot_poll_tick_budget,
+        request: request,
+        expires_at: issued,
+      )
+      let pw_read = Filesystem.Read(path: cred)
+      if !pw_read.success {
+        return exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error))
+      }
+      let actuated = mtcollins1_boot_after_gate(
+        gate: gate,
+        password_raw: pw_read.content,
+        password_file: cred,
+        attempt: run_id,
+      )
+      let exit_word = match actuated { ExitSuccess => "ok"  _ => "refused" }
+      let receipt_body = concat("escalation_id=", concat(escalation as String, concat("\nexit=", exit_word)))
+      let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)
+      if !kept.success {
+        return exit_failure(reason: concat("mtcollins1 boot: could not write receipt: ", kept.error))
+      }
+      actuated
+    }
+  }
+}
