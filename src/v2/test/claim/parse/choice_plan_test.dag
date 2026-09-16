@@ -23,12 +23,14 @@ import v2.compiler.parse {
   ParseExprAccepted,
   ParseExprRejected,
   compile_choice_alts,
+  grammar_validate_for_parse,
   parse_expr,
   parse_prov_initial,
   parse_table_empty,
   prepare_grammar_expr
 }
 import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected, invariant_port_locus }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, content_hash }
 
@@ -44,6 +46,41 @@ type ChoiceParseObservation
 
 fn pcp_token(token_class: Symbol) -> Token {
   Token { class: token_class, lexeme: "", file: ^pcp_file, start: 0, end: 1 }
+}
+
+fn pcp_choice_root(expr: GrammarExpr) -> GrammarRoot {
+  GrammarRoot {
+    start: ^pcp_start,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^pcp_start,
+        expression: expr,
+        emitted: grammar_atom(identity: ^pcp_start)
+      },
+      tail: std.algebra.Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn pcp_validate_accepts(expr: GrammarExpr) -> Bool {
+  match grammar_validate_for_parse(
+    root: pcp_choice_root(expr: expr),
+    at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^pcp_grammar_contract)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pcp_validate_rejects(expr: GrammarExpr) -> Bool {
+  match grammar_validate_for_parse(
+    root: pcp_choice_root(expr: expr),
+    at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^pcp_grammar_contract)
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
 }
 
 fn pcp_root() -> GrammarRoot {
@@ -136,17 +173,24 @@ test fn prepared_choice_discriminates_disjoint_first_tokens() -> Bool {
   (pcp_observe(expr: expr, tokens: tokens_a) == pcp_observe(expr: expr, tokens: tokens_b)) == false
 }
 
-// Flattened [aa, b?, b?]: two nullable alts. Token a is only in aa's FIRST; C3
-// still backtracked because the outer choice was both-nullable. aa rejects one
-// a; a nullable sibling must accept empty (review 66500).
-test fn prepared_choice_two_nullable_alts_accept_first_after_aa_rejects() -> Bool {
+// One nullable sibling: aa | b? on [a]. Ordered try-left-then-right tries aa, rejects, then b?
+// matches empty. The count>=2 heuristic used to drop b? from the `a` bucket and reject.
+test fn prepared_choice_one_nullable_alt_agrees_after_aa_rejects() -> Bool {
+  let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
+  let expr = Choice { left: aa, right: opt(element: term(token_class: ^pcp_b)) }
+  let tokens_a = [pcp_token(token_class: ^pcp_a)]
+  pcp_validate_accepts(expr: expr)
+    && (pcp_observe(expr: expr, tokens: tokens_a) == oracle_parse_choice(left: aa, right: opt(element: term(token_class: ^pcp_b)), tokens: tokens_a))
+}
+
+// Two nullable siblings never reach the prepared runtime: validate refuses both_nullable residue.
+test fn prepared_choice_two_nullable_alts_validate_refuses() -> Bool {
   let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
   let both_nullable = Choice {
     left: aa,
     right: Choice { left: opt(element: term(token_class: ^pcp_b)), right: opt(element: term(token_class: ^pcp_b)) }
   }
-  let tokens_a = [pcp_token(token_class: ^pcp_a)]
-  pcp_observe(expr: both_nullable, tokens: tokens_a) == oracle_parse_choice(left: aa, right: opt(element: term(token_class: ^pcp_b)), tokens: tokens_a)
+  pcp_validate_rejects(expr: both_nullable)
 }
 
 test fn prepared_choice_shared_prefix_agrees_with_ordered_oracle() -> Bool {

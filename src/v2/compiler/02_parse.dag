@@ -1750,22 +1750,10 @@ fn choice_alts_terminal_universe(alts: List<PreparedExprFold>) -> List<Symbol> {
   choice_alts_union_first(alts: alts).terminals
 }
 
-// Flattened n-way: if two or more alternatives are nullable, each token bucket must still carry those nullable
-// alternatives in authored order (they match empty after a FIRST-alt rejects).
-// One nullable alternative stays FIRST-only, matching C3's unambiguous refusal.
+// Flattened n-way: a token bucket is every alternative that can start on that token, in authored
+// order, plus every nullable alternative (they match empty after a FIRST-alt rejects). Ordered
+// Choice is try-left-then-right; a nullable sibling is not dropped because the nullable count is 1.
 fn choice_alts_for_present_token(alts: List<PreparedExprFold>, token_class: Symbol) -> List<PreparedExprFold> {
-  choice_alts_for_present_token_from(
-    alts: alts,
-    token_class: token_class,
-    include_nullables: length(xs: choice_alts_nullable(alts: alts)) >= 2
-  )
-}
-
-fn choice_alts_for_present_token_from(
-  alts: List<PreparedExprFold>,
-  token_class: Symbol,
-  include_nullables: Bool
-) -> List<PreparedExprFold> {
   match list_head(xs: alts) {
     HeadAbsent => std.algebra.Empty
     HeadFound { value: alt } =>
@@ -1774,20 +1762,11 @@ fn choice_alts_for_present_token_from(
         if symbol_list_contains(xs: first.terminals, item: token_class) {
           true
         } else {
-          if include_nullables {
-            first.nullable
-          } else {
-            false
-          }
+          first.nullable
         }
       let more = match list_tail(xs: alts) {
         TailAbsent => std.algebra.Empty
-        TailFound { tail: rest } =>
-          choice_alts_for_present_token_from(
-            alts: rest,
-            token_class: token_class,
-            include_nullables: include_nullables
-          )
+        TailFound { tail: rest } => choice_alts_for_present_token(alts: rest, token_class: token_class)
       }
       list_append(
         left: if keep {
