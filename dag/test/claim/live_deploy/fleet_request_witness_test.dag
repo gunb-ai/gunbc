@@ -16,20 +16,16 @@ import gunbc.live_deploy.member_identity {
   ProcessRunningRelease,
   MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt,
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
-  MemberDecision, Create,
   release_member_roster, plan_mutation_count,
   ReleaseTarget,
   converged_member_eq,
 }
 import gunbc.live_deploy.fleet_request {
   admit_live_deploy_member_basis,
-  admit_live_deploy_supplied_decisions,
   LiveDeployBasisAdmitted,
   LiveDeployBasisRefused,
   LiveDeployIncompletePopulation,
   LiveDeployUnreadableMember,
-  LiveDeployWrongMember,
-  LiveDeployDecisionCountMismatch,
   LiveDeployForeignReplacement,
   LiveDeployEffectsRefused,
   live_deploy_admission_refusal_text,
@@ -139,43 +135,6 @@ test fn unreadable_members_refuse_because_the_observation_was_unusable() -> Bool
         why == "sha256sum refused"
           && string_contains(s: live_deploy_admission_refusal_text(cause: c), pattern: "sha256sum refused")
           && !string_contains(s: live_deploy_admission_refusal_text(cause: c), pattern: "IncompletePopulation")
-      _ => false
-    }
-  }
-}
-
-test fn a_decision_about_the_wrong_member_refuses() -> Bool {
-  let wrong = map(release_member_roster(), m =>
-    Create { member: TreePublication, to: desired_tree() })
-  match admit_live_deploy_supplied_decisions(
-    candidate: candidate(),
-    target: target(),
-    observed: matching_obs(),
-    desired: m => desired_for(m: m),
-    decisions: wrong,
-  ) {
-    LiveDeployBasisAdmitted { basis: _ } => false
-    LiveDeployBasisRefused { cause: c } => match c {
-      LiveDeployWrongMember { expected: Executable, found: TreePublication } => true
-      _ => false
-    }
-  }
-}
-
-test fn a_short_decision_list_refuses_without_fabricating_a_roster_member() -> Bool {
-  match admit_live_deploy_supplied_decisions(
-    candidate: candidate(),
-    target: target(),
-    observed: matching_obs(),
-    desired: m => desired_for(m: m),
-    decisions: [Create { member: Executable, to: desired_bin() }],
-  ) {
-    LiveDeployBasisAdmitted { basis: _ } => false
-    LiveDeployBasisRefused { cause: c } => match c {
-      LiveDeployDecisionCountMismatch { expected: e, found: f } =>
-        e == count(release_member_roster()) && f == 1
-          && !string_contains(s: live_deploy_admission_refusal_text(cause: c), pattern: "WrongMember")
-      LiveDeployWrongMember { expected: _, found: _ } => false
       _ => false
     }
   }

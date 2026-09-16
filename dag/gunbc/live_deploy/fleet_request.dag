@@ -84,8 +84,6 @@ type LiveDeployMemberBasis sole_constructor {
 type LiveDeployAdmissionRefusal
   = LiveDeployIncompletePopulation { missing: List<String> }
   | LiveDeployUnreadableMember { member: ConvergedMember, cause: String }
-  | LiveDeployWrongMember { expected: ConvergedMember, found: ConvergedMember }
-  | LiveDeployDecisionCountMismatch { expected: Int, found: Int }
   | LiveDeployForeignReplacement { member: ConvergedMember }
   | LiveDeployEffectsRefused { refusals: List<MemberDecision> }
 
@@ -113,7 +111,7 @@ fn roster_missing_from_observed(
   fold(roster, init: [], f: (acc, m) =>
     match observed_of_member(observed: observed, member: m) {
       Present { value: _ } => acc
-      Absent => concat(acc, [converged_member_label(m: m)])
+      Absent => concat([converged_member_label(m: m)], acc)
     })
 }
 
@@ -224,72 +222,6 @@ fn first_unreadable(observed: List<ObservedMember>) -> LiveDeployAdmissionRefusa
     })
 }
 
-fn first_wrong_decision(roster: List<ConvergedMember>, decisions: List<MemberDecision>) -> LiveDeployAdmissionRefusal? {
-  let zipped = zip_roster_decisions(roster: roster, decisions: decisions)
-  if zipped.truncated || (count(decisions) != count(roster)) {
-    Present {
-      value: LiveDeployDecisionCountMismatch { expected: count(roster), found: count(decisions) },
-    }
-  } else {
-    fold(
-      zipped.out,
-      init: none,
-      f: (acc, pair) =>
-        match acc {
-          Present { value: v } => Present { value: v }
-          Absent =>
-            if converged_member_eq(a: pair.expected, b: pair.found) {
-              none
-            } else {
-              Present {
-                value: LiveDeployWrongMember { expected: pair.expected, found: pair.found },
-              }
-            }
-        },
-    )
-  }
-}
-
-type RosterDecisionPair {
-  expected: ConvergedMember
-  found: ConvergedMember
-}
-
-fn zip_roster_decisions(
-  roster: List<ConvergedMember>,
-  decisions: List<MemberDecision>,
-) -> ZipAcc {
-  fold(roster, init: ZipAcc { at: 0, out: [], truncated: false }, f: (acc, m) =>
-    match decision_at(decisions: decisions, index: acc.at) {
-      Present { value: d } => ZipAcc {
-        at: acc.at + 1,
-        out: concat(acc.out, [RosterDecisionPair { expected: m, found: decision_member(d: d) }]),
-        truncated: acc.truncated,
-      }
-      Absent => ZipAcc { at: acc.at + 1, out: acc.out, truncated: true }
-    })
-}
-
-type ZipAcc {
-  at: Int
-  out: List<RosterDecisionPair>
-  truncated: Bool
-}
-
-fn decision_at(decisions: List<MemberDecision>, index: Int) -> MemberDecision? {
-  fold(decisions, init: AtAcc { at: 0, found: none }, f: (acc, d) =>
-    if acc.at == index {
-      AtAcc { at: acc.at + 1, found: Present { value: d } }
-    } else {
-      AtAcc { at: acc.at + 1, found: acc.found }
-    }).found
-}
-
-type AtAcc {
-  at: Int
-  found: MemberDecision?
-}
-
 fn first_foreign(
   target: ReleaseTarget,
   roster: List<ConvergedMember>,
@@ -305,25 +237,6 @@ fn first_foreign(
           none
         }
     })
-}
-
-fn admit_live_deploy_supplied_decisions(
-  candidate: CandidateRelease,
-  target: ReleaseTarget,
-  observed: List<ObservedMember>,
-  desired: fn(ConvergedMember) -> MemberIdentity,
-  decisions: List<MemberDecision>,
-) -> LiveDeployMemberBasisAdmission {
-  let roster = release_member_roster()
-  match first_wrong_decision(roster: roster, decisions: decisions) {
-    Present { value: w } => LiveDeployBasisRefused { cause: w }
-    Absent => admit_live_deploy_member_basis(
-      candidate: candidate,
-      target: target,
-      observed: observed,
-      desired: desired,
-    )
-  }
 }
 
 fn admit_live_deploy_member_basis(
@@ -398,15 +311,6 @@ fn live_deploy_admission_refusal_text(cause: LiveDeployAdmissionRefusal) -> Stri
       join(["LiveDeployIncompletePopulation missing=", join(m, ",")], "")
     LiveDeployUnreadableMember { member: m, cause: c } =>
       join(["LiveDeployUnreadableMember ", converged_member_label(m: m), " — ", c], "")
-    LiveDeployWrongMember { expected: e, found: f } =>
-      join([
-        "LiveDeployWrongMember expected=",
-        converged_member_label(m: e),
-        " found=",
-        converged_member_label(m: f),
-      ], "")
-    LiveDeployDecisionCountMismatch { expected: e, found: f } =>
-      join(["LiveDeployDecisionCountMismatch expected=", e as String, " found=", f as String], "")
     LiveDeployForeignReplacement { member: m } =>
       join(["LiveDeployForeignReplacement ", converged_member_label(m: m)], "")
     LiveDeployEffectsRefused { refusals: _ } =>
