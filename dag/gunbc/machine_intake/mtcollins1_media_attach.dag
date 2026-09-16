@@ -43,6 +43,10 @@ fn mtcollins1_media_cookie_jar(attempt: NonEmptyStr) -> NonEmptyStr {
   join(["/tmp/gunbc-mtcollins1-megarac-jar-", attempt as String], "") as NonEmptyStr
 }
 
+// THE USERNAME IS THE MANAGED ACCOUNT ON BmcSecured (gunbc, user id 3), not the published
+// factory literal "admin". Password remains a caller argument. Absent refuses before any request.
+data mtcollins1_media_username: NonEmptyStr? = mtcollins1_secured_account()
+
 // EACH OUTCOME RENDERS ITS OWN REASON because they have different remedies, and the remedies are
 // what an operator acts on — which is why one of these messages previously had to be retracted
 // rather than reworded. It advised re-asserting mount_cd to fix an "empty" listing. The listing was
@@ -108,7 +112,7 @@ fn mtcollins1_render_release(standing: SessionRelease) -> String {
 fn mtcollins1_attach_absent_image_control(password_raw: String, attempt: String) -> ProcessExit
   uses net: std.resources.Network
 {
-  match mtcollins1_secured_account() {
+  match mtcollins1_media_username {
     Absent =>
       exit_failure(reason: "mtcollins1 media attach control: BMC is not BmcSecured; refusing before any request")
     Present { value: username } =>
@@ -132,7 +136,7 @@ fn mtcollins1_attach_absent_image_control(password_raw: String, attempt: String)
 fn mtcollins1_attach_diskless_image(password_raw: String, attempt: String) -> ProcessExit
   uses net: std.resources.Network
 {
-  match mtcollins1_secured_account() {
+  match mtcollins1_media_username {
     Absent =>
       exit_failure(reason: "mtcollins1 media attach: BMC is not BmcSecured; refusing before any request")
     Present { value: username } =>

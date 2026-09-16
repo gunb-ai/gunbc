@@ -14,11 +14,11 @@ import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_capability_row,
 }
 import gunbc.machine_intake_mtcollins1_actuate {
+  mtcollins1_bmc_username,
   mtcollins1_cdrom_device,
   mtcollins1_cdrom_readback_rendering,
   mtcollins1_power_action,
 }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 
@@ -46,9 +46,8 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 //
 // THE VALUES ARE IMPORTED, NEVER RE-SPELLED. gunbc.machine_intake_mtcollins1_actuate already carries
 // the device word, the exact text ipmitool renders for it, and the cycle verb the unit's SEL
-// confirmed. The username is the BmcSecured managed account from
-// gunbc.machine_intake_mtcollins1_bmc_secure_observation mtcollins1_secured_account — a host that
-// is not BmcSecured is not a reset candidate.
+// confirmed. The username is mtcollins1_bmc_username — the BmcSecured managed account, not a
+// factory literal. A host that is not BmcSecured is not a reset candidate.
 type ResetSubjectCandidate {
   host: HostIdentity
   observation: BmcAccessObservation
@@ -69,7 +68,7 @@ type ResetSubjectCandidate {
 // BmcAccessObservation in the repository and no host, srv3 included, has ever authored one. A second
 // host joins this list the day it authors an observation, and nobody edits a roster to let it.
 fn reset_subject_candidates() -> List<ResetSubjectCandidate> {
-  match mtcollins1_secured_account() {
+  match mtcollins1_bmc_username {
     Absent => []
     Present { value: username } =>
       [

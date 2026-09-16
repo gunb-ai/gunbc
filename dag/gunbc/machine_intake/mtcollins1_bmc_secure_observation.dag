@@ -262,9 +262,10 @@ fn mtcollins1_secured_account() -> NonEmptyStr? {
   }
 }
 
-// WET FETCH OF THE MANAGED SECRET IS THE NEXT CONSUMER. Media-attach and power/reset wrappers
-// authenticate only through mtcollins1_secured_account (the BmcSecured arm). They still take the
-// password as a caller-supplied path/string; wiring fetch_secret_ref_credential over
+// WET FETCH OF THE MANAGED SECRET IS THE NEXT CONSUMER. Named username rows
+// mtcollins1_bmc_username / mtcollins1_media_username are mtcollins1_secured_account (BmcSecured
+// arm). Boot CLI names stay mtcollins1_netboot_handoff / mtcollins1_cdrom_handoff; they still take
+// password as a caller-supplied path. Wiring fetch_secret_ref_credential over
 // mtcollins1_managed_credential.secret is a separate change (needs token + Network, the srv3
 // resolve shape). Trigger: those wrappers refuse unless the password is materialized from that
 // SecretRef. NOT satisfied by username gunbc, by this BmcSecureStanding, or by a caller still

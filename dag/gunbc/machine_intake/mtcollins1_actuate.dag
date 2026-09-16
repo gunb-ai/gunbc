@@ -52,10 +52,11 @@ data mtcollins1_boot_readback_rendering: NonEmptyStr = "Force PXE"
 // hold evidence for.
 data mtcollins1_power_action: NonEmptyStr = "cycle"
 
-// THE MANAGED ACCOUNT IS READ OFF BmcSecured, not off the ManagedCredentialReference alone.
-// Factory admin/admin was retired (#11234). A rotation observation that does not mint BmcSecured
-// must refuse before any controller write. Password bytes still arrive as a caller path until
-// the secret-fetch frontier on gunbc.machine_intake_mtcollins1_bmc_secure_observation dissolves.
+// THE USERNAME IS THE MANAGED ACCOUNT ON BmcSecured, never the published factory literal
+// "admin" and never a second spelling of "gunbc". Password remains a caller file-path argument
+// on mtcollins1_netboot_handoff / mtcollins1_cdrom_handoff (CLI names unchanged). Absent means
+// derive_bmc_secure did not mint BmcSecured; the wrappers refuse before any controller write.
+data mtcollins1_bmc_username: NonEmptyStr? = mtcollins1_secured_account()
 
 // THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment. The first draft
 // read it from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with
@@ -128,7 +129,7 @@ fn mtcollins1_drive_handoff(
 ) -> ProcessExit
   uses net: std.resources.Network
 {
-  match mtcollins1_secured_account() {
+  match mtcollins1_bmc_username {
     Absent =>
       exit_failure(reason: concat(label as String, ": BMC is not BmcSecured; refusing before any controller write"))
     Present { value: username } =>
