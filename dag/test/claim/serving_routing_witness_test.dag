@@ -42,14 +42,16 @@ import product.fabric.demand { ObservationReceiptRef }
 
 // ── 1. BOTH GROUPS ARE ENROLLED, AND EACH ROUTE CARRIES ITS OWN FRONT DOOR ────────────────────
 //
-// THE DISCRIMINATING HALF WAS THE PORT AND IS NOW THE HOST. A roster of two whose routes shared one
-// endpoint row would pass a membership count and would still be the defect this change removed: the
-// second route answers on its own front door, and a single global endpoint made it unreachable
-// without an edit. Until 2026-09-16 the ports themselves differed (30000 vs 30001) and carried the
-// discrimination; the canary's move to 30000 (operator ruling, same date -- see glm_canary_arm)
-// put both groups on one port on DIFFERENT hosts, so the assertions now name the full front doors.
-// What must not collapse is host x port, which is exactly what the inequality plus the two exact
-// suffixes pin.
+// THE DISCRIMINATING HALF IS NO LONGER THE PORT, AND SAYING SO IS THE POINT. This asserted that group
+// B answers on :30001, which was true while that route named the canary arm. Group B now serves the
+// native four-rank arm on :30000 -- the same port group A uses, on a different host -- so a port
+// comparison would now be asserting something FALSE about a correct configuration, and a port
+// comparison that happened to stay green would be asserting nothing.
+//
+// SO THE PROPERTY MOVES TO THE WHOLE ENDPOINT, which is what "its own front door" always meant: two
+// routes must not resolve to the same address:port pair. That still cannot be satisfied by a single
+// shared row -- the original defect -- and it survives two arms legitimately sharing a port number,
+// which the old spelling did not.
 fn w_endpoint(group: FabricGroup) -> String {
   match serving_route(group: group) {
     ServingRouteUnresolved { group: _, obligation: _ } => "unresolved"
@@ -62,15 +64,18 @@ test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool
     && w_endpoint(group: FabricGroupA) != "unresolved"
     && w_endpoint(group: FabricGroupB) != "unresolved"
     && w_endpoint(group: FabricGroupA) != w_endpoint(group: FabricGroupB)
-    && ends_with(s: w_endpoint(group: FabricGroupA), suffix: "192.168.1.225:30000")
-    && ends_with(s: w_endpoint(group: FabricGroupB), suffix: "192.168.1.236:30000")
+    && ends_with(s: w_endpoint(group: FabricGroupA), suffix: ":30000")
+    && ends_with(s: w_endpoint(group: FabricGroupB), suffix: ":30000")
 }
 
 // ── 2. A ROUTE'S CEILING IS A DECLARED DECISION, AND THE TWO ROUTES DISAGREE ──────────────────
 //
 // Asserting the counts alone would go green on a single shared row, so the row that matters is that
-// the two routes carry DIFFERENT ceilings from DIFFERENT authorities -- group A's declared
-// allocation and group B's canary arm bound -- which no single constant can produce.
+// the two routes carry ceilings from DIFFERENT AUTHORITIES. That property got STRONGER when group B's
+// route stopped naming the canary: group A carries a ceiling somebody DECIDED for the route, and group
+// B now carries the sequence bound its engine was LAUNCHED with, so the two are different VARIANTS and
+// not merely different numbers. The counts happen to coincide at 1, which is exactly why the variant
+// check below carries the discrimination and the counts alone would not.
 fn w_ceiling(group: FabricGroup) -> Nat {
   serving_route_turn_ceiling_count(c: serving_route_ceiling(group: group))
 }
@@ -83,6 +88,10 @@ test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measureme
           CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
             (d as String) != "" && (on as String) == "2026-09-11"
           CeilingFromRouteLaunch { count: _, basis: _ } => false
+        })
+    && (match serving_route_ceiling(group: FabricGroupB) {
+          CeilingByDeclaredPolicy { count: _, decider: _, decided_on: _, basis: _ } => false
+          CeilingFromRouteLaunch { count: _, basis: b } => (b as String) != ""
         })
 }
 

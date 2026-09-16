@@ -1,9 +1,10 @@
 module gunbc.spark.serving_arm
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit }
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_version,
@@ -364,4 +365,98 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
           }
       }
   }
+}
+
+// ── THE LAUNCH PROFILE IS A VALUE, NOT A SCATTER OF ROWS IN THE RENDERER ───────────────────────
+//
+// EXTRACTED FROM #10874 (2026-09-16, operator directive: "take what you need"), whose disposition
+// census keeps that branch unmerged while its value is lifted in stages. This is the stage the
+// serving ROUTE needs: the native four-rank arm is what group B actually serves, and the route,
+// the ceiling and the admitted-alias set all read this profile. The launcher's own renderer
+// (gunbc.spark.serving_arm_launch) and the compatibility receipts remain with #10874's extraction
+// lanes; until they land, consumers read the profile's fields directly rather than through
+// glm_native_serve_port / glm_native_served_model_alias, which are that module's derivations.
+//
+// THE PROFILE IS ONE VALUE THAT TRAVELS. A selection carries it and a renderer reads argv out of
+// it -- which makes "same subject" and "same argv" the same question instead of two that have to
+// be kept in agreement by hand. It carries the wire values and not the policy that chose them.
+type ServingLaunchProfile sole_constructor {
+  max_model_len: Nat
+  max_num_batched_tokens: Nat
+  max_num_seqs: Nat
+  decided_gpu_memory_basis_points: Nat
+  kv_cache_dtype_wire: NonEmptyStr
+  speculation_enabled: Bool
+  serve_port: Port
+  served_alias: NonEmptyStr
+  prefix_caching: VllmPrefixCachingRequest
+}
+
+// THE SEAL STAYS AND A NAMED MINT IS ADDED. Sealing stops a caller from spelling a profile with
+// fields it invented -- but the profile is an ordinary value that witnesses and future callers
+// legitimately build, so the answer is one constructor here rather than a record literal in every
+// module. A caller still cannot omit a field or reorder the meaning of one.
+fn serving_launch_profile(
+  max_model_len: Nat,
+  max_num_batched_tokens: Nat,
+  max_num_seqs: Nat,
+  decided_gpu_memory_basis_points: Nat,
+  kv_cache_dtype_wire: NonEmptyStr,
+  speculation_enabled: Bool,
+  serve_port: Port,
+  served_alias: NonEmptyStr,
+  prefix_caching: VllmPrefixCachingRequest,
+) -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    max_model_len: max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
+    max_num_seqs: max_num_seqs,
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype_wire: kv_cache_dtype_wire,
+    speculation_enabled: speculation_enabled,
+    serve_port: serve_port,
+    served_alias: served_alias,
+    prefix_caching: prefix_caching,
+  }
+}
+
+// THE PROFILE'S IDENTITY IS DERIVED FROM ITS FIELDS, NEVER AUTHORED BESIDE THEM. A hand-written
+// identity label is a second authority for what the record already says, and the two drift: the
+// EXL3 row said "tp4 ... 32seq" while the running engine was tp1 with one sequence. A fold over
+// every field that reaches the wire cannot be edited into making two different launches compare
+// equal, because there is no label.
+fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
+  join([
+    "len=", to_string(p.max_model_len),
+    " batch=", to_string(p.max_num_batched_tokens),
+    " seqs=", to_string(p.max_num_seqs),
+    " util_bp=", to_string(p.decided_gpu_memory_basis_points),
+    " kv=", p.kv_cache_dtype_wire as String,
+    " spec=", if p.speculation_enabled { "on" } else { "off" },
+    " port=", to_string(p.serve_port),
+    " alias=", p.served_alias as String,
+    " prefix=", match p.prefix_caching {
+      PrefixCachingOmitted => "omitted"
+      PrefixCachingExplicit { enabled: e } => if e { "on" } else { "off" },
+    },
+  ], "")
+}
+
+// THE FROZEN INITIAL NORMAL PROFILE FOR THE NATIVE ARM, every value an operator decision rather
+// than a derivation. This is the arm group B is actually serving: measured from srv9 on
+// 2026-09-13, port 30000 answers 200 and 30001 is refused outright, and the engine advertises
+// the model's own id rather than the retired canary's alias. Its prefix caching is ENABLED and
+// asked for rather than assumed: measured by constructing the model configuration inside the
+// derived image on srv9 2026-09-13 -- no engine, no weights -- where zai-org/GLM-5.3-Flash
+// reports runner_type=generate, is_hybrid=True and is_prefix_caching_supported=True.
+data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
+  max_model_len: 262144,
+  max_num_batched_tokens: 2048,
+  max_num_seqs: 1,
+  decided_gpu_memory_basis_points: 8400,
+  kv_cache_dtype_wire: "auto" as NonEmptyStr,
+  speculation_enabled: false,
+  serve_port: 30000,
+  served_alias: "glm-5.3-flash" as NonEmptyStr,
+  prefix_caching: PrefixCachingExplicit { enabled: true },
 }

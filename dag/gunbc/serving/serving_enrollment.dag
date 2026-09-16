@@ -9,6 +9,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGro
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.glm_canary_converge { glm_canary_arm, SeqBound, ExperimentalOperatorBound, MeasuredFromLaunchLine }
+import gunbc.spark.serving_arm { glm_native_initial_profile }
 
 // ── WHO WE MAY ASK IS NOT WHOSE HOSTS WE CLAIM ────────────────────────────────────────────────
 //
@@ -130,7 +131,26 @@ data serving_pair_route_turn_ceiling: ServingRouteTurnCeiling = CeilingByDeclare
 fn serving_route_ceiling(group: FabricGroup) -> ServingRouteTurnCeiling {
   match group {
     FabricGroupA => serving_pair_route_turn_ceiling
-    FabricGroupB => serving_canary_route_ceiling(bound: glm_canary_arm.max_num_seqs)
+    FabricGroupB => serving_native_route_ceiling()
+  }
+}
+
+// THE CEILING FOLLOWS THE ARM, FOR THE SAME REASON THE ENDPOINT DOES. Group B's turn ceiling was read
+// from the canary's declared sequence bound while group B is serving the native four-rank arm -- so the
+// number governing how many turns may be offered belonged to a deployment that is not running. That is
+// the endpoint defect one field over, and repairing only the address would have left the route half
+// describing one arm and half another.
+//
+// IT IS CeilingFromRouteLaunch AND NOT A DECLARED POLICY, because this count is not a policy anyone
+// decided for the route: it is the value the engine was actually started with. The native profile
+// carries it as a bare count with no basis of its own -- unlike the canary's SeqBound, which carries
+// one -- so the basis stated here is the only honest one available: it names where the number comes
+// from rather than inventing a warrant for it, and a profile that grows a real basis field is the
+// trigger to read that instead.
+fn serving_native_route_ceiling() -> ServingRouteTurnCeiling {
+  CeilingFromRouteLaunch {
+    count: glm_native_initial_profile.max_num_seqs,
+    basis: "the sequence bound the native four-rank arm was launched with, carried on gunbc.spark.serving_arm glm_native_initial_profile; it is the engine's admitted concurrency and not a ceiling decided for this route" as NonEmptyStr,
   }
 }
 
@@ -145,11 +165,19 @@ fn serving_canary_route_ceiling(bound: SeqBound) -> ServingRouteTurnCeiling {
   }
 }
 
+// ── THE ROUTE NAMES THE ARM THAT IS ACTUALLY SERVING ───────────────────────────────────────────
+//
+// GROUP B'S ROUTE POINTED AT THE CANARY AND THE CANARY IS NOT THERE. It named a single-Spark TP1 EXL3
+// experiment on port 30001 while group B's four GPUs are held by the native four-rank TP4 arm on 30000 --
+// measured 2026-09-13 from srv9: 30000 answers 200 and 30001 is refused outright. So the one row that
+// decides where a turn may be offered named a dead endpoint, and it named it by reaching into ANOTHER
+// arm's declaration for a host that arm and this one happen to share.
+//
+// BOTH GROUPS NOW TAKE THE HEAD FROM THE SAME GROUP-KEYED AUTHORITY, which already answered srv9 for
+// group B before this change. The canary row keeps its own host for its own purposes; a route is not the
+// place to learn which arm a host belongs to.
 fn serving_route_head(group: FabricGroup) -> HostIdentity {
-  match group {
-    FabricGroupA => spark_pair_serving_head(group: FabricGroupA)
-    FabricGroupB => glm_canary_arm.host
-  }
+  spark_pair_serving_head(group: group)
 }
 
 // BOTH ROUTES HAND BACK A Port AND NEITHER CROSSES A WIDTH BOUNDARY TO DO IT. A first spelling of
@@ -159,10 +187,13 @@ fn serving_route_head(group: FabricGroup) -> HostIdentity {
 // this seam. gunbc.spark.glm_canary_converge now declares that field as the Port it always was, which
 // is the type std.types carries for exactly this fact; its literal 30001 satisfies the range by
 // construction and its two existing consumers only render it.
+// AND THE PORT COMES FROM THE ARM THAT HOLDS IT. Group B's port is the native arm's
+// serve_port, read from glm_native_initial_profile directly while gunbc.spark.serving_arm_launch
+// (whose glm_native_serve_port is this same derivation) remains with #10874's extraction lanes.
 fn serving_route_port(group: FabricGroup) -> Port {
   match group {
     FabricGroupA => spark_pair_serve_port
-    FabricGroupB => glm_canary_arm.port
+    FabricGroupB => glm_native_initial_profile.serve_port
   }
 }
 
