@@ -468,13 +468,10 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
 data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcSparkrunVllmDs4Gb10,
   artifact: runtime_artifact_identity(
-    pin: PinnedElsewhere {
-      reference: "aidendle94/sparkrun-vllm-ds4-gb10" as NonEmptyStr,
-      pin_authority: "extdeps.docker.images.sparkrun_vllm_ds4_gb10" as NonEmptyStr,
-    },
+    pin: PinnedByDigest { reference: sparkrun_vllm_ds4_gb10_pinned_reference() },
     source_revision: "1967a5627bc3" as NonEmptyStr,
     patch_set: [],
-    provenance: "this row previously carried the sentence \"digest pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10\" INSIDE the reference string, which read as a pin and was prose about one. The pin lives in that module; this row names it rather than restating it" as NonEmptyStr,
+    provenance: "the digest is READ FROM its authority rather than restated: extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference builds repository@sha256:digest from the rows that module owns. Two earlier shapes were both wrong in opposite directions -- one carried the SENTENCE \"digest pinned in extdeps.docker.images...\" inside the reference string, which read as a pin and was prose about one; the correction for it answered PinnedElsewhere and dropped the digest out of the VALUE, which left runtime_artifact_wire handing docker a bare repository name that resolves to :latest. Naming an authority and calling it are different acts, and only the second puts the bytes in the launch" as NonEmptyStr,
   ),
   hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
   vllm_version: sparkrun_vllm_ds4_gb10_vllm_version,
