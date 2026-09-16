@@ -1641,7 +1641,6 @@ type PreparedGrammarExpr
   | PreparedChoice { plan: PreparedChoicePlan, first: GrammarExprFirstFold }
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
-  | PreparedLookahead { pattern: PreparedGrammarExpr }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
