@@ -149,18 +149,6 @@ fn evaluation_store_address_ref_in(wanted: DeclarationRef, xs: List<DeclarationR
   xs |> fold(init: false, f: (acc, r) => acc || declaration_ref_eq(a: wanted, b: r))
 }
 
-fn evaluation_store_address_joined(expected: List<DeclarationRef>, observed: List<DeclarationRef>) -> List<DeclarationRef> {
-  expected |> fold(
-    init: [],
-    f: (acc, r) =>
-      if evaluation_store_address_ref_in(wanted: r, xs: observed) {
-        concat(acc, [r])
-      } else {
-        acc
-      }
-  )
-}
-
 fn evaluation_store_address_unresolved(expected: List<DeclarationRef>, observed: List<DeclarationRef>) -> List<DeclarationRef> {
   observed |> fold(
     init: [],

@@ -28,8 +28,6 @@ type ReferenceOccurrenceBindingRow {
   category: OccurrenceCategory
   file_reference_ordinal: Int
   span_start: Int
-  consumer_declaration: String
-  provider_declaration: String
   disposition: ReferenceOccurrenceBindingDisposition
 }
 

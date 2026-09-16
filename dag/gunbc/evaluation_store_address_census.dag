@@ -50,15 +50,6 @@ fn evaluation_store_address_mutation_census() -> ResolvedCallEdgeCensus {
   evaluation_store_address_fixture_callsite_census()
 }
 
-fn evaluation_store_address_import_only_census() -> ResolvedCallEdgeCensus {
-  compile_dag_importer_resolved_call_edges(
-    evaluation_store_address_home_modules,
-    evaluation_store_address_production_exclude,
-    [],
-    evaluation_store_address_production_leaves
-  )
-}
-
 fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
   compile_dag_callsite_resolved_call_edges(
     evaluation_store_address_home_modules,

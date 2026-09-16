@@ -13789,14 +13789,6 @@ fn reference_occurrence_binding_census_value(
                                         ctx.sym("span_start"),
                                         Value::Int(row.denominator.span_start),
                                     ),
-                                    (
-                                        ctx.sym("consumer_declaration"),
-                                        str_value(row.consumer_declaration),
-                                    ),
-                                    (
-                                        ctx.sym("provider_declaration"),
-                                        str_value(row.provider_declaration),
-                                    ),
                                     (ctx.sym("disposition"), disposition_value(row.disposition)),
                                 ])),
                             })

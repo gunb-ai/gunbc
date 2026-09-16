@@ -633,30 +633,6 @@ fn project_resolved_rust_fn_signatures(
     rows
 }
 
-fn enclosing_declaration_name(
-    reference_containment: Rc<crate::std_occurrence_identity::OccurrenceContainmentPath>,
-    declarations: &[Rc<crate::std_occurrence_identity::DeclarationOccurrence>],
-    names: &std::collections::HashMap<i64, String>,
-) -> String {
-    let mut best: Option<(usize, String)> = None;
-    for declaration in declarations {
-        if crate::std_occurrence_identity::occurrence_containment_path_is_prefix_of(
-            declaration.containment.clone(),
-            reference_containment.clone(),
-        ) {
-            let depth = declaration.containment.ancestors.len();
-            let name = names
-                .get(&declaration.occurrence.value)
-                .cloned()
-                .unwrap_or_default();
-            if best.as_ref().map(|(d, _)| depth >= *d).unwrap_or(true) {
-                best = Some((depth, name));
-            }
-        }
-    }
-    best.map(|(_, name)| name).unwrap_or_default()
-}
-
 fn resolved_call_edges_from_graph(
     graph: &v1_compiler_compile::ResolvedGraph,
 ) -> Vec<crate::cli_run::ResolvedCallEdgeRow> {
@@ -679,13 +655,6 @@ fn resolved_call_edges_from_graph(
     }
     edges
 }
-
-type ResolvedCallEdgeCacheKey = (Vec<String>, Vec<String>, Vec<String>, Vec<String>, bool);
-type ResolvedCallEdgeCacheMap =
-    HashMap<ResolvedCallEdgeCacheKey, crate::cli_run::ResolvedCallEdgeCensus>;
-
-static IMPORTER_RESOLVED_CALL_EDGE_CACHE: OnceLock<Mutex<ResolvedCallEdgeCacheMap>> =
-    OnceLock::new();
 
 pub fn compile_dag_importer_resolved_call_edges(
     import_modules: &[String],
@@ -730,43 +699,13 @@ fn compile_dag_candidate_resolved_call_edges(
             cause: "candidate resolved call edges: every home module must be nonempty".to_string(),
         };
     }
-    let mut cache_modules = import_modules.to_vec();
-    cache_modules.sort();
-    let mut cache_excludes = exclude_substrings.to_vec();
-    cache_excludes.sort();
-    let mut cache_roots = pool_roots.to_vec();
-    cache_roots.sort();
-    let mut cache_leaves = target_leaves.to_vec();
-    cache_leaves.sort();
-    let cache_key = (
-        cache_modules,
-        cache_excludes,
-        cache_roots,
-        cache_leaves,
-        include_reference_forms,
-    );
-    {
-        let cache = IMPORTER_RESOLVED_CALL_EDGE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-        if let Ok(guard) = cache.lock() {
-            if let Some(hit) = guard.get(&cache_key) {
-                return hit.clone();
-            }
-        }
-    }
-    let computed = compile_dag_candidate_resolved_call_edges_uncached(
+    compile_dag_candidate_resolved_call_edges_uncached(
         import_modules,
         exclude_substrings,
         pool_roots,
         target_leaves,
         include_reference_forms,
-    );
-    if let Ok(mut guard) = IMPORTER_RESOLVED_CALL_EDGE_CACHE
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-    {
-        guard.insert(cache_key, computed.clone());
-    }
-    computed
+    )
 }
 
 fn collect_dag_files_complete(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -1178,7 +1117,6 @@ pub(crate) fn observed_occurrence_transport_and_bindings(
             consumer_by_occurrence.insert(reference.occurrence.value, module_path.clone());
         }
     }
-    let declaration_rows = declarations.clone();
     let transport = Rc::new(identity::OccurrenceTransport {
         index: Rc::new(identity::OccurrenceIndex {
             entries: Rc::new(entries.into()),
@@ -1323,21 +1261,6 @@ pub(crate) fn observed_occurrence_transport_and_bindings(
         };
         observations.push(ReferenceOccurrenceBindingRow {
             denominator: base,
-            consumer_declaration: enclosing_declaration_name(
-                reference.containment.clone(),
-                &declaration_rows,
-                &names,
-            ),
-            provider_declaration: match &disposition {
-                ReferenceOccurrenceBindingDisposition::Bound {
-                    declaration_occurrence,
-                    ..
-                } => names
-                    .get(declaration_occurrence)
-                    .cloned()
-                    .unwrap_or_default(),
-                _ => String::new(),
-            },
             disposition,
         });
     }

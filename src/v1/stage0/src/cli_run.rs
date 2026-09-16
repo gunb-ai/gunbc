@@ -3221,8 +3221,6 @@ pub struct ReferenceOccurrenceDenominatorRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceOccurrenceBindingRow {
     pub denominator: ReferenceOccurrenceDenominatorRow,
-    pub consumer_declaration: String,
-    pub provider_declaration: String,
     pub disposition: ReferenceOccurrenceBindingDisposition,
 }
 
