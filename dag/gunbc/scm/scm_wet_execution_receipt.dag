@@ -21,12 +21,21 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // /usr/local/ctrl-build-shims/cargo, a shim that dispatches REMOTE, and an unforced run would build
 // an amd64 binary, fail to execute it, and look like a new data point.
 //
-// THE EXECUTABLE DIGEST IS RECORDED AT BOTH ENDS BECAUSE THE CHANNEL THAT INVALIDATES IT IS REAL.
+// THE LAUNCHER DIGEST IS OBSERVED AT BOTH ENDS, AND THE PAIR CLAIMS EXACTLY TWO OBSERVATIONS.
 // CARGO_TARGET_DIR is shared across every worktree on a session host, so a sibling session's build
 // replaces the binary in place. A first run of this instrument was rendered unattestable exactly
 // that way: the executable it invoked had been overwritten ninety minutes later, and nothing about
-// the run looked wrong. Equal digests at both ends establish that these bytes ran and that nothing
-// swapped them mid-execution; recording one end would not.
+// the run looked wrong.
+//
+// WHAT THE PAIR DOES NOT ESTABLISH, stated because an earlier revision of this module claimed it and
+// was wrong in the same way as the fold it replaced. Equal endpoints say the path held these bytes at
+// the START and at the END. They do NOT say the path was never replaced between: a build landing and
+// being rebuilt back -- A then B then A across sixty-one minutes -- reads as equal endpoints while
+// child processes in the middle may have spent B. Absence of mid-run replacement is not recoverable
+// from two samples, so no arm here names it. The continuity that IS established for the CHILD binary
+// lives in the instrument: tools.scm_acceptance retains an attempt-owned copy and re-observes its
+// digest through scm_acceptance_binary_standing before scenarios are spent, which is the authority
+// for that question and must not be shadowed by a weaker one here. Found by external review.
 //
 // WHAT IS DELIBERATELY ABSENT. No child-process count, no per-step durations, no rendered verdict
 // string. The instrument re-derives all of it, and a transcribed count is stale the moment the step
@@ -69,8 +78,9 @@ type ScmWetExecutionProvenance {
   resolved_cargo: NonEmptyStr
   cargo_version: NonEmptyStr
   rustc_version: NonEmptyStr
-  executable_digest_before: NonEmptyStr
-  executable_digest_after: NonEmptyStr
+  canonical_command: NonEmptyStr
+  launcher_digest_before: NonEmptyStr
+  launcher_digest_after: NonEmptyStr
   worktree_before: WorktreeState
   worktree_after: WorktreeState
   started_at: Timestamp
@@ -123,8 +133,9 @@ fn scm_acceptance_wet_execution_receipt() -> ScmWetExecutionReceipt {
       resolved_cargo: "/opt/cargo/bin/cargo" as NonEmptyStr,
       cargo_version: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
       rustc_version: "rustc 1.93.0 (254b59607 2026-01-19)" as NonEmptyStr,
-      executable_digest_before: "105d1dcaec427faa3c22daae001bf4385d2eaf1168c3c5a5a60a874158e8cc67" as NonEmptyStr,
-      executable_digest_after: "105d1dcaec427faa3c22daae001bf4385d2eaf1168c3c5a5a60a874158e8cc67" as NonEmptyStr,
+      canonical_command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/scm_acceptance.dag --function scm_acceptance" as NonEmptyStr,
+      launcher_digest_before: "105d1dcaec427faa3c22daae001bf4385d2eaf1168c3c5a5a60a874158e8cc67" as NonEmptyStr,
+      launcher_digest_after: "105d1dcaec427faa3c22daae001bf4385d2eaf1168c3c5a5a60a874158e8cc67" as NonEmptyStr,
       worktree_before: WorktreeClean,
       worktree_after: WorktreeClean,
       started_at: "2026-09-15T23:25:14Z" as Timestamp,
@@ -139,28 +150,5 @@ fn scm_acceptance_wet_execution_receipt() -> ScmWetExecutionReceipt {
       observed_tip: "e6688ddb8e50c3e80579a62f434d6c23e020df6f",
       relation: SubjectPrecedesMainTip,
     },
-  }
-}
-
-// A DERIVATION THE FACTS ACTUALLY SUPPORT, stated beside one that did not. The predecessor's deleted
-// fold asked two commits for DIRECTION, which they cannot give. Two digests asked for EQUALITY give
-// exactly that, and equality is the whole question here: either the bytes that finished the run are
-// the bytes that started it, or some other producer replaced them and the receipt describes an
-// execution nobody can identify. So this fold is total over the pair and claims nothing beyond it --
-// it does not say WHICH build replaced the executable, because the receipt does not know.
-type ExecutableIdentityStanding
-  = ExecutableStableAcrossRun
-  | ExecutableReplacedDuringRun { before: NonEmptyStr, after: NonEmptyStr }
-
-fn executable_identity_standing(
-  provenance: ScmWetExecutionProvenance,
-) -> ExecutableIdentityStanding {
-  if provenance.executable_digest_before == provenance.executable_digest_after {
-    ExecutableStableAcrossRun
-  } else {
-    ExecutableReplacedDuringRun {
-      before: provenance.executable_digest_before,
-      after: provenance.executable_digest_after,
-    }
   }
 }

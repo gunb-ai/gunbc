@@ -5,15 +5,9 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import gunbc.roadmap_authority { declared_roadmap_nodes }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 import gunbc.scm.scm_wet_execution_receipt {
-  ScmWetExecutionProvenance,
-  ExecutableIdentityStanding,
-  ExecutableStableAcrossRun,
-  ExecutableReplacedDuringRun,
   ScmWetExecutionAccepted,
   ScmWetExecutionRefused,
-  WorktreeClean,
   scm_acceptance_wet_execution_receipt,
-  executable_identity_standing,
 }
 import tools.scm_acceptance { scm_acceptance }
 
@@ -49,50 +43,23 @@ test fn wet_receipt_cites_the_executed_instrument_symbol() -> Bool {
     && cited.decl_name == "scm_acceptance"
 }
 
-// EQUAL DIGESTS AT BOTH ENDS ARE THE ANTI-ALIASING CLAIM, and the planted pair is its RED. The
-// shared CARGO_TARGET_DIR on a session host lets a sibling build replace the executable in place,
-// which already invalidated one run of this instrument after the fact. A receipt whose digests
-// differ describes an execution nobody can identify, and the standing says so rather than the
-// consumer having to compare two strings and remember why.
-test fn this_wet_execution_held_one_executable_across_the_run() -> Bool {
+// THE LAUNCHER DIGEST PAIR HAS NO NAMED STANDING, AND THAT ABSENCE IS THE CLAIM. An earlier
+// revision of this file asserted ExecutableStableAcrossRun over equal endpoints, with a planted
+// A/B pair as its red. Both were green and the derivation was unsound: equal endpoints cannot
+// exclude an A-then-B-then-A replacement across a sixty-one minute run, so the arm named absence
+// of mid-run replacement from two samples that cannot establish it -- the same defect as the
+// TransitionEvidenceStanding fold this change deletes, committed in the act of deleting it. Found
+// by external review. The digests stay on the provenance as two observations; a consumer that
+// wants endpoint equality compares them and gets exactly that.
+//
+// THE CANONICAL COMMAND IS ASSERTED INSTEAD, because the invocation identity is what the roadmap
+// row required alongside the toolchain fields, and a receipt that names the semantic entry through
+// executed_evidence still does not say how it was launched.
+test fn the_recorded_invocation_names_the_executed_entry_and_function() -> Bool {
   let receipt = scm_acceptance_wet_execution_receipt()
-  match executable_identity_standing(provenance: receipt.provenance) {
-    ExecutableStableAcrossRun => true
-    ExecutableReplacedDuringRun { before: _, after: _ } => false
-  }
-}
-
-fn planted_provenance(before: NonEmptyStr, after: NonEmptyStr) -> ScmWetExecutionProvenance {
-  let actual = scm_acceptance_wet_execution_receipt()
-  return ScmWetExecutionProvenance {
-    host: actual.provenance.host,
-    kernel: actual.provenance.kernel,
-    architecture: actual.provenance.architecture,
-    resolved_cargo: actual.provenance.resolved_cargo,
-    cargo_version: actual.provenance.cargo_version,
-    rustc_version: actual.provenance.rustc_version,
-    executable_digest_before: before,
-    executable_digest_after: after,
-    worktree_before: WorktreeClean,
-    worktree_after: WorktreeClean,
-    started_at: actual.provenance.started_at,
-    ended_at: actual.provenance.ended_at,
-    outcome: ScmWetExecutionAccepted,
-  }
-}
-
-test fn an_executable_replaced_mid_run_is_named_rather_than_admitted() -> Bool {
-  match executable_identity_standing(
-    provenance: planted_provenance(
-      before: "aaaa000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
-      after: "bbbb000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
-    ),
-  ) {
-    ExecutableReplacedDuringRun { before: b, after: a } =>
-      b == "aaaa000000000000000000000000000000000000000000000000000000000000"
-        && a == "bbbb000000000000000000000000000000000000000000000000000000000000"
-    ExecutableStableAcrossRun => false
-  }
+  let command = receipt.provenance.canonical_command as String
+  return contains(haystack: command, needle: "dag/gunbc/instruments/scm_acceptance.dag")
+    && contains(haystack: command, needle: "--function scm_acceptance")
 }
 
 // THE RECEIPT RECORDS AN ACCEPTED RUN, and the arm carries no exit code because success has nothing
