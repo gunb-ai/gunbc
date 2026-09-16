@@ -152,16 +152,6 @@ fn v41_tensor_slice_defects(e: SafetensorsEntry) -> List<NonEmptyStr> {
     })
 }
 
-fn v41_try_tensor_slice(e: SafetensorsEntry) -> V41TensorSlice? {
-  match get(xs: e.shape, index: 0) {
-    Absent => none
-    Present { value: rows } => match v41_layer_index_from_tensor_name(name: e.name) {
-      Absent => none
-      Present { value: layer } => Present { value: V41TensorSlice { name: e.name, global_rows: rows, layer: layer } }
-    }
-  }
-}
-
 fn v41_selected_storage_entries(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<SafetensorsEntry> {
   filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)))
 }
@@ -501,21 +491,58 @@ fn v41_rank_offset_scan_defects(placed: List<V41PlacedRow>) -> List<NonEmptyStr>
   })
 }
 
-fn v41_lost_image_defects(source: List<V41SourceRow>, placed: List<V41PlacedRow>) -> List<NonEmptyStr> {
-  if length(source) != length(placed) {
-    [] as List<NonEmptyStr>
+type V41LostScan sole_constructor {
+  rest: List<V41PlacedRow>
+  defects: List<NonEmptyStr>
+}
+
+fn v41_placed_key_precedes_source(p: V41PlacedRow, s: V41SourceRow) -> Bool {
+  p.global_row < s.global_row || (p.global_row == s.global_row && (p.tensor as String) < (s.tensor as String))
+}
+
+fn v41_skip_placed_before_source(ps: List<V41PlacedRow>, s: V41SourceRow) -> List<V41PlacedRow> {
+  if length(ps) == 0 {
+    [] as List<V41PlacedRow>
   } else {
-    let ss = v41_ordered_source_rows(rows: source)
-    let ps = placed.sort_by(p => p.tensor as String).sort_by(p => p.global_row)
-    flat_map(enumerate(ss), p => match get(xs: ps, index: p.first) {
-      Absent => [join(["source row ", p.second.tensor as String, "#", to_string(p.second.global_row), " has no exact placed image"], "") as NonEmptyStr]
-      Present { value: q } => if (q.tensor as String) == (p.second.tensor as String) && q.global_row == p.second.global_row && (q.payload as String) == (p.second.payload as String) {
-        [] as List<NonEmptyStr>
-      } else {
-        [join(["source row ", p.second.tensor as String, "#", to_string(p.second.global_row), " has no exact placed image"], "") as NonEmptyStr]
-      }
-    })
+    let p = ps.first()
+    if v41_placed_key_precedes_source(p: p, s: s) {
+      v41_skip_placed_before_source(ps: ps.skip(n: 1), s: s)
+    } else {
+      ps
+    }
   }
+}
+
+fn v41_lost_scan_step(acc: V41LostScan, s: V41SourceRow) -> V41LostScan {
+  let rest = v41_skip_placed_before_source(ps: acc.rest, s: s)
+  if length(rest) == 0 {
+    V41LostScan {
+      rest: rest,
+      defects: concat([join(["source row ", s.tensor as String, "#", to_string(s.global_row), " has no exact placed image"], "") as NonEmptyStr], acc.defects),
+    }
+  } else {
+    let q = rest.first()
+    if (q.tensor as String) == (s.tensor as String) && q.global_row == s.global_row && (q.payload as String) == (s.payload as String) {
+      V41LostScan { rest: rest.skip(n: 1), defects: acc.defects }
+    } else {
+      V41LostScan {
+        rest: rest,
+        defects: concat([join(["source row ", s.tensor as String, "#", to_string(s.global_row), " has no exact placed image"], "") as NonEmptyStr], acc.defects),
+      }
+    }
+  }
+}
+
+fn v41_lost_image_defects(source: List<V41SourceRow>, placed: List<V41PlacedRow>) -> List<NonEmptyStr> {
+  let done = fold(
+    v41_ordered_source_rows(rows: source),
+    init: V41LostScan {
+      rest: placed.sort_by(p => p.tensor as String).sort_by(p => p.global_row),
+      defects: [] as List<NonEmptyStr>,
+    },
+    f: (acc, s) => v41_lost_scan_step(acc: acc, s: s),
+  )
+  reverse(done.defects)
 }
 
 fn v41_correspondence_defects(source: List<V41SourceRow>, placed: List<V41PlacedRow>, spec: V41RowStoreEncodingSpec) -> List<NonEmptyStr> {
