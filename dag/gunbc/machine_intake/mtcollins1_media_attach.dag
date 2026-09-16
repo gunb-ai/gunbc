@@ -3,6 +3,7 @@ module gunbc.machine_intake_mtcollins1_media_attach
 import std.types { NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_managed_credential }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
 import gunbc.machine_intake_megarac_media_attach {
   MegaRacAttachOutcome,
@@ -42,7 +43,7 @@ fn mtcollins1_media_cookie_jar(attempt: NonEmptyStr) -> NonEmptyStr {
   join(["/tmp/gunbc-mtcollins1-megarac-jar-", attempt as String], "") as NonEmptyStr
 }
 
-data mtcollins1_media_username: NonEmptyStr = "admin"
+data mtcollins1_media_username: NonEmptyStr = mtcollins1_managed_credential.account
 
 // EACH OUTCOME RENDERS ITS OWN REASON because they have different remedies, and the remedies are
 // what an operator acts on — which is why one of these messages previously had to be retracted

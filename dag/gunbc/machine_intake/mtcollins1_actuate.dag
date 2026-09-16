@@ -13,6 +13,7 @@ import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_access_observation,
   mtcollins1_capability_row,
 }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_managed_credential }
 import gunbc.machine_intake_oob_boot_handoff {
   BootHandoffCompleted,
   BootHandoffNotAdmitted,
@@ -51,11 +52,11 @@ data mtcollins1_boot_readback_rendering: NonEmptyStr = "Force PXE"
 // hold evidence for.
 data mtcollins1_power_action: NonEmptyStr = "cycle"
 
-// THE ADMINISTRATOR ACCOUNT AS MEASURED, not as assumed: `ipmitool user list 1` reports user ID 2
-// named "admin" with ADMINISTRATOR privilege as the ONLY enabled account on the channel. This is
-// the account the converge rotation phase will re-key, which is why it is a named row rather than
-// a literal buried in a call.
-data mtcollins1_bmc_username: NonEmptyStr = "admin"
+// THE MANAGED ACCOUNT, from the unit-1 BmcSecureStanding. Factory admin/admin was retired
+// (#11234); media-attach, power and reset authenticate as gunbc bound to SecretRef
+// bmc-mtcollins1-gunbc. Password bytes still arrive as a caller path until the secret-fetch
+// frontier on gunbc.machine_intake_mtcollins1_bmc_secure_observation dissolves.
+data mtcollins1_bmc_username: NonEmptyStr = mtcollins1_managed_credential.account
 
 // THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment. The first draft
 // read it from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with
