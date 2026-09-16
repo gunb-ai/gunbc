@@ -15,6 +15,7 @@ import gunbc.live_deploy.readiness {
   ServiceProbeUnanswered,
   ServiceReadinessIdentityPending,
   ServiceReadinessPollBound,
+  ProcessRevisionMismatch,
   HealthzBodyRead,
   HealthzProbeRefused,
 }
@@ -197,7 +198,7 @@ test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
   ) {
     Pending { cause: ServiceProbeUnanswered { detail } } =>
       string_contains(s: detail, pattern: "timed out")
-    Pending { cause: ServiceReadinessIdentityPending { reason: _ } } => false
+    Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false
   }
@@ -211,10 +212,10 @@ test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Boo
     expected_revision: deploy_witness_other_release_revision,
     expected_surface_identity: bundle.bundle_identity,
   ) {
-    Pending { cause: ServiceReadinessIdentityPending { reason } } =>
-      string_contains(s: reason, pattern: "ProcessRevisionMismatch")
-        && string_contains(s: reason, pattern: deploy_witness_release_revision as String)
-        && !string_contains(s: reason, pattern: "HealthzBodyUnparseable")
+    Pending { cause: ServiceReadinessIdentityPending { cause: ProcessRevisionMismatch { expected: e, observed: o } } } =>
+      e == (deploy_witness_other_release_revision as String)
+        && o == (deploy_witness_release_revision as String)
+    Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
     Pending { cause: ServiceProbeUnanswered { detail: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false

@@ -77,15 +77,15 @@ fn dashboard_provider_device_login_command(
 }
 
 // CONSUMER: observe_dashboard_provider_readiness always calls this once
-// with the gathered executable, path, runtime, and auth observations.
-// Witnesses that supply those observations are paired with that production
-// route: deleting this fold makes observe fail to compile.
+// with gathered observations. Unrun probes are Absent, never a Present
+// absence verdict. Witnesses that supply classify inputs are paired with
+// witness_red_control_observe_unplaced_executable_runs_the_producer.
 
 fn classify_dashboard_provider_readiness(
   executable: FilePath?,
   executable_refusal: String,
   state_root: FilePath,
-  state_root_obs: DashboardPathObservation,
+  state_root_obs: DashboardPathObservation?,
   runtime: DashboardExecResult?,
   auth: DashboardExecResult?,
   login_command: String,
@@ -97,6 +97,15 @@ fn classify_dashboard_provider_readiness(
       }
     Present { value: codex_program } =>
       match state_root_obs {
+        Absent =>
+          Refused {
+            cause: ProviderObservationUnusable {
+              stage: "provider-state-root" as NonEmptyStr,
+              reason: "state-root probe was not taken",
+            },
+          }
+        Present { value: path_obs } =>
+          match path_obs {
         PathObservationRefused { reason } =>
           Refused {
             cause: ProviderObservationUnusable {
@@ -171,6 +180,7 @@ fn classify_dashboard_provider_readiness(
                 }
               }
           }
+          }
       }
   }
 }
@@ -186,7 +196,7 @@ fn observe_dashboard_provider_readiness(
         executable: Absent,
         executable_refusal: dashboard_instance_provider_executable_refusal_detail(instance: instance),
         state_root: state_root,
-        state_root_obs: PathObservedAbsent,
+        state_root_obs: Absent,
         runtime: Absent,
         auth: Absent,
         login_command: "",
@@ -207,7 +217,7 @@ fn observe_dashboard_provider_readiness(
             executable: Present { value: codex_program },
             executable_refusal: "",
             state_root: state_root,
-            state_root_obs: state_root_obs,
+            state_root_obs: Present { value: state_root_obs },
             runtime: Absent,
             auth: Absent,
             login_command: login_command,
@@ -217,7 +227,7 @@ fn observe_dashboard_provider_readiness(
             executable: Present { value: codex_program },
             executable_refusal: "",
             state_root: state_root,
-            state_root_obs: state_root_obs,
+            state_root_obs: Present { value: state_root_obs },
             runtime: Absent,
             auth: Absent,
             login_command: login_command,
@@ -236,7 +246,7 @@ fn observe_dashboard_provider_readiness(
               executable: Present { value: codex_program },
               executable_refusal: "",
               state_root: state_root,
-              state_root_obs: state_root_obs,
+              state_root_obs: Present { value: state_root_obs },
               runtime: Present { value: runtime_obs },
               auth: Absent,
               login_command: login_command,
@@ -246,7 +256,7 @@ fn observe_dashboard_provider_readiness(
               executable: Present { value: codex_program },
               executable_refusal: "",
               state_root: state_root,
-              state_root_obs: state_root_obs,
+              state_root_obs: Present { value: state_root_obs },
               runtime: Present { value: runtime_obs },
               auth: Present {
                 value: dashboard_target_probe(

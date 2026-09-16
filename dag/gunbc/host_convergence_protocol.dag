@@ -53,15 +53,14 @@ import gunbc.host_convergence_census {
 // C0 left ensure_decide and observe_executable as inline cites; those two
 // have no named census accessor, so the bind holds one decl_ref each.
 // NEXT-RUNG (control 1): a compile instrument that imports inspect_goal.
-// Control 8 is structurally impossible on the production observers: they
-// return gunbc.readiness Readiness, which has no inhabitant in
-// Reconciliation or ReconciledEffect and no conversion between them.
-// DISSOLVED with the climb (§4b(4)): holding the wall only by spelling the
-// observer as a Reconciliation whose type arguments were a readiness
-// effect and evidence, and expressing provider readiness in the launcher
-// as a five-arm status coproduct beside apply. Discriminating REDs remain
-// enrolled (test.claim.readiness_algebra_witness pending-vs-refused classify
-// controls; test.claim.live_deploy.apply
+// Control 8: production observers return gunbc.readiness Readiness, which
+// has no inhabitant in Reconciliation or ReconciledEffect. Conversion still
+// exists at live_deploy_apply_readiness_gate_with_readiness, so the class is
+// mechanically preventable there (the gate admits Ready only), not
+// structurally impossible. Discriminating REDs remain enrolled
+// (test.claim.readiness_algebra_witness pending-vs-refused classify
+// controls and witness_red_control_observe_unplaced_executable_runs_the_producer;
+// test.claim.live_deploy.apply
 // witness_red_control_pending_readiness_cannot_converge). Isolated compile_fixture still cannot import live
 // types; that residual is control 1's compile instrument, not this class.
 

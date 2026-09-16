@@ -83,9 +83,18 @@ type ServiceReadyEvidence {
   body: String
 }
 
+type HealthzRefusalCause
+  = HealthzProbeFailed { detail: String }
+  | HealthzBodyUnparseable { body: String }
+  | ProcessIdentityAbsent { body: String }
+  | ProcessIdentityMalformed { detail: String, body: String }
+  | ProcessRevisionMismatch { expected: String, observed: String }
+  | ProcessSurfaceMismatch { expected: String, observed: String }
+  | ServedSurfaceStale { observed: String, expected: String }
+
 type ServiceReadinessPending
   = ServiceProbeUnanswered { detail: String }
-  | ServiceReadinessIdentityPending { reason: String }
+  | ServiceReadinessIdentityPending { cause: HealthzRefusalCause }
 
 type ServiceReadinessRefusal
   = ServiceReadinessAccessDenied { reason: String }
@@ -98,7 +107,8 @@ fn service_readiness_reason(r: ServiceReadiness) -> String {
   match r {
     Ready { evidence: e } => e.body
     Pending { cause: ServiceProbeUnanswered { detail } } => detail
-    Pending { cause: ServiceReadinessIdentityPending { reason } } => reason
+    Pending { cause: ServiceReadinessIdentityPending { cause } } =>
+      healthz_refusal_reason(cause: cause)
     Refused { cause: ServiceReadinessAccessDenied { reason } } => reason
     Refused { cause: ServiceReadinessPollBound { refusal } } =>
       service_not_ready_reason(refusal: refusal)
@@ -115,15 +125,15 @@ fn observe_service_readiness_from_healthz(
     HealthzProbeRefused { probe_error: detail } =>
       Pending { cause: ServiceProbeUnanswered { detail: detail } }
     HealthzBodyRead { body: observed_body } =>
-      match ground_service_ready_from_healthz_body(
+      match healthz_body_verdict(
         body: observed_body,
         bundle: bundle,
         expected_revision: expected_revision,
         expected_surface_identity: expected_surface_identity,
       ) {
-        Grounds { evidence: e } => Ready { evidence: e }
-        DoesNotGround { reason: why } =>
-          Pending { cause: ServiceReadinessIdentityPending { reason: why } }
+        HealthzBodyGrounds { evidence: e } => Ready { evidence: e }
+        HealthzBodyDoesNotGround { cause } =>
+          Pending { cause: ServiceReadinessIdentityPending { cause: cause } }
       }
   }
 }
@@ -260,21 +270,14 @@ fn healthz_body_groundable(body: String) -> Bool {
 // process. ProcessRevisionMismatch means identity was read cleanly and disagrees.
 // ProcessSurfaceMismatch means the reported surface digest is not the one the candidate expected.
 // ServedSurfaceStale means the projected artifact map differs. Four different remedies, four
-// arms.\n\nTHE OBSERVATION CARRIER STAYS GROUPED, DELIBERATELY. gunbc.running_release_identity
+// arms. ServiceReadinessIdentityPending carries HealthzRefusalCause, not a rendered sentence.
+//
+// THE OBSERVATION CARRIER STAYS GROUPED, DELIBERATELY. gunbc.running_release_identity
 // keeps RunningReleaseIdentified | RunningReleaseUnidentified{cause} because a real consumer
 // branches on identified-versus-not WITHOUT enumerating causes — this fold's own match. A grouping
 // that some consumer reads is a level; a grouping nobody reads is a nickname. These two carriers
 // are two layers of one model, not two names for one thing, and collapsing either into the other
 // would lose a distinction something depends on.
-
-type HealthzRefusalCause
-  = HealthzProbeFailed { detail: String }
-  | HealthzBodyUnparseable { body: String }
-  | ProcessIdentityAbsent { body: String }
-  | ProcessIdentityMalformed { detail: String, body: String }
-  | ProcessRevisionMismatch { expected: String, observed: String }
-  | ProcessSurfaceMismatch { expected: String, observed: String }
-  | ServedSurfaceStale { observed: String, expected: String }
 
 fn running_release_unidentified_detail(cause: RunningReleaseUnidentifiedCause) -> String {
   match cause {
@@ -381,48 +384,68 @@ fn ground_service_ready_from_healthz_with_bundle(
 // first clause of a chain. This function only ever sees a body, because only HealthzBodyRead can
 // reach it -- which is the climb: the probe stage cannot be forgotten, mis-ordered, or reached
 // past, because a refusal has no body to hand it.
+type HealthzBodyVerdict
+  = HealthzBodyGrounds { evidence: ServiceReadyEvidence }
+  | HealthzBodyDoesNotGround { cause: HealthzRefusalCause }
+
+fn healthz_body_verdict(
+  body: String,
+  bundle: RoadmapSiteSurfaceBundle,
+  expected_revision: CommitSha,
+  expected_surface_identity: Fnv1a64Structural,
+) -> HealthzBodyVerdict {
+  if !healthz_body_groundable(body: body) {
+    HealthzBodyDoesNotGround { cause: HealthzBodyUnparseable { body: body } }
+  } else {
+    match observe_running_release_identity(healthz_body: body) {
+      RunningReleaseUnidentified { cause: why } =>
+        HealthzBodyDoesNotGround {
+          cause: healthz_release_identity_refusal(body: body, cause: why),
+        }
+      RunningReleaseIdentified { observation: obs } =>
+        if (obs.revision as String) != (expected_revision as String) {
+          HealthzBodyDoesNotGround {
+            cause: ProcessRevisionMismatch {
+              expected: expected_revision as String,
+              observed: obs.revision as String,
+            },
+          }
+        } else if (obs.surface_bundle_identity.digest as String) != (expected_surface_identity.digest as String) {
+          HealthzBodyDoesNotGround {
+            cause: ProcessSurfaceMismatch {
+              expected: expected_surface_identity.digest as String,
+              observed: obs.surface_bundle_identity.digest as String,
+            },
+          }
+        } else if !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: body) {
+          HealthzBodyDoesNotGround {
+            cause: ServedSurfaceStale {
+              observed: body,
+              expected: bundle.healthz_body,
+            },
+          }
+        } else {
+          HealthzBodyGrounds { evidence: ServiceReadyEvidence { body: body } }
+        }
+    }
+  }
+}
+
 fn ground_service_ready_from_healthz_body(
   body: String,
   bundle: RoadmapSiteSurfaceBundle,
   expected_revision: CommitSha,
   expected_surface_identity: Fnv1a64Structural,
 ) -> Grounding<ServiceReadyEvidence> {
-  if !healthz_body_groundable(body: body) {
-    DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: body }) }
-  } else {
-    match observe_running_release_identity(healthz_body: body) {
-      RunningReleaseUnidentified { cause: why } =>
-        DoesNotGround {
-          reason: healthz_refusal_reason(
-            cause: healthz_release_identity_refusal(body: body, cause: why)
-          )
-        }
-      RunningReleaseIdentified { observation: obs } =>
-        if (obs.revision as String) != (expected_revision as String) {
-          DoesNotGround {
-            reason: healthz_refusal_reason(cause: ProcessRevisionMismatch {
-              expected: expected_revision as String,
-              observed: obs.revision as String,
-            })
-          }
-        } else if (obs.surface_bundle_identity.digest as String) != (expected_surface_identity.digest as String) {
-          DoesNotGround {
-            reason: healthz_refusal_reason(cause: ProcessSurfaceMismatch {
-              expected: expected_surface_identity.digest as String,
-              observed: obs.surface_bundle_identity.digest as String,
-            })
-          }
-        } else if !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: body) {
-          DoesNotGround {
-            reason: healthz_refusal_reason(cause: ServedSurfaceStale {
-              observed: body,
-              expected: bundle.healthz_body,
-            })
-          }
-        } else {
-          Grounds { evidence: ServiceReadyEvidence { body: body } }
-        }
-    }
+  match healthz_body_verdict(
+    body: body,
+    bundle: bundle,
+    expected_revision: expected_revision,
+    expected_surface_identity: expected_surface_identity,
+  ) {
+    HealthzBodyGrounds { evidence: e } => Grounds { evidence: e }
+    HealthzBodyDoesNotGround { cause } =>
+      DoesNotGround { reason: healthz_refusal_reason(cause: cause) }
   }
 }
 
@@ -527,7 +550,7 @@ fn live_deploy_service_ready_once_for_bundle(
 ) -> ServiceReadiness {
   match show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision) {
     ReadAbsent { reason: why } =>
-      Pending { cause: ServiceReadinessIdentityPending { reason: why } }
+      Pending { cause: ServiceReadinessIdentityPending { cause: HealthzProbeFailed { detail: why } } }
     ReadObserved { value: observed } =>
       observe_service_readiness_from_healthz(
         read: observed,
