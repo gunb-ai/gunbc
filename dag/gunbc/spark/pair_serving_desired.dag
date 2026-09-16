@@ -208,6 +208,15 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // a note here cannot protect a consumer in another module. Anything this partition finds VacuouslySatisfied
 // gets a bound in ITS OWN module, the way the instrument above now has one.
 //
+// AND EMPTYING THIS ROW IS NOT SILENT TODAY, which is worth knowing before you assume you are the only
+// guard. Two enrolled witnesses go RED rather than vacuous:
+// test.claim.spark.spark_pair_serving_desired_witness asserts length(spark_pair_serving_groups) == 1, so
+// emptying it fails that claim directly, and
+// test.claim.spark.serving_deployment_selection_witness reaches the roster through `any`, which is FALSE on
+// an empty list rather than true. So a lane that empties this row meets a red floor, not silence -- the
+// hazard above is what happens if someone answers that red by relaxing the claims instead of by asking
+// why the roster is empty.
+//
 // So anyone emptying this row owes a PARTITION over every DIRECT AND TRANSITIVE consumer, not merely
 // folds, sorting each empty result into Refused, IntentionallyEmpty, VacuouslySatisfied, or
 // ReclassifiedOntoAnotherSubject. Only VacuouslySatisfied is the failure mode above, and only it must be
