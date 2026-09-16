@@ -2372,19 +2372,6 @@ fn the_owners_merge_group_run_admits_a_used_row_whose_follow_up_is_authored() {
     );
 }
 
-/// The charge is the queue's, not the pull request's: the same missing follow-up does not refuse
-/// the owner's pull_request run, where the follow-up cannot reasonably exist yet.
-#[test]
-fn a_used_row_without_a_follow_up_does_not_refuse_the_pull_request_run() {
-    assert_eq!(
-        wave_admission_refusal(&owner_composition(
-            "owner_pr_no_follow_up",
-            DeletionFollowUp::NotAuthored
-        )),
-        None
-    );
-}
-
 /// THE WINDOW, EXECUTED (lane ruling X; review 65313). A row consumed at the base whose owner
 /// authored a deletion follow-up, seen by an UNRELATED merge_group composition that does not touch
 /// the roster. Under the previous arms this exact fixture REFUSED as ConsumedRowOwnerChargeBypassed:

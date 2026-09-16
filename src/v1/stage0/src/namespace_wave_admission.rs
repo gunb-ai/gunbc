@@ -391,29 +391,39 @@ pub struct ConsumedRowReceipt {
 /// (`base == head`) or on a roster-source edit, so the deletion is still compelled -- just at the
 /// point the row is actually spent rather than in advance of it.
 ///
-/// WHY THE ADVANCE CHARGE WAS NOT WORTH ITS COST. Its admitting side was free: the wall established
-/// that a NUMBER was authored and nothing more. Whether that number named an open pull request that
-/// deletes these rows was checked by no executing route in this repository -- not by this binary,
-/// which reads no forge, and not by any other consumer (review 65476, verified). A fabricated
-/// number passed it and was caught by nothing. A check whose RED is authorable but whose GREEN is
-/// free buys the APPEARANCE of a wall (DESIGN section 4b), and the second arm made a bystander pay
-/// for it. Reference verification remains out of band or absent, which is now stated rather than
-/// implied by a wall that could not perform it.
+/// WHY THE ADVANCE CHARGE WAS NOT WORTH ITS COST -- WHICH IS NOT THE SAME AS SAYING IT COST NOTHING
+/// TO REMOVE. What it established was that a NUMBER was authored and nothing more: whether that
+/// number named an open pull request deleting these rows is checked by no executing route in this
+/// repository -- not by this binary, which reads no forge, and not by any other consumer
+/// (review 65476, verified) -- so a fabricated number passed it. That is what made the charge a poor
+/// trade, and the second arm additionally made a BYSTANDER pay it. But a weak GREEN is not a
+/// decoration: DESIGN section 4b reserves that word for a check whose RED cannot be authored at all,
+/// and both arms had authorable REDs that fired (review 67014). So both removals are declared
+/// section 4b(3) rung drops -- `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced` -- each naming the capability that
+/// restores it. Reference verification remains out of band or absent, which is now stated rather
+/// than implied by a wall that could not perform it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeletionFollowUp {
     NotAuthored,
     PullRequest(u32),
 }
 
-/// THE CI EVENT WHOSE SUBJECT THIS RUN ADJUDICATES. The consumption obligation differs by subject,
-/// so the verdict needs the event as an input rather than inferring it from the shape of the diff:
-/// a `merge_group` composition is the tree about to BECOME the default branch, so it is where the
-/// owner's follow-up is charged. A base-consumed row seen there does NOT by itself mean that charge
-/// was bypassed -- review 65313 disproved that inference -- since it may equally be an owned row
-/// inside its declared deletion window, which is why `adjudicate` partitions on the authored
-/// follow-up rather than refusing on consumption alone. `Local` is a run with no CI event at all (an author's machine); it takes the
-/// pull_request policy. An event name this enum does not model is refused by
-/// `adjudication_event_from_name` rather than defaulted to either.
+/// THE CI EVENT THIS RUN WAS TRIGGERED BY. IT NO LONGER SELECTS A POLICY, AND THE DOC SAYING IT DID
+/// OUTLIVED THE THING IT DESCRIBED (review 67027).
+///
+/// Until 2026-09-16 the consumption obligation genuinely differed by event: two `merge_group` arms
+/// charged a deletion follow-up that no other run charged. Those arms were removed on an operator
+/// ruling (gunbc#11481) and nothing downstream branches on the event now -- every run refuses on the
+/// same set: stale rows, unadjudicated deltas, and a consumed row when `base == head` or the roster
+/// source is touched.
+///
+/// WHAT THE ENUM STILL DOES, STATED AS WHAT IT IS. `adjudication_event_from_name` refuses a
+/// `GITHUB_EVENT_NAME` this enum does not model rather than adjudicating under assumptions nobody
+/// stated. With no event-selected policy left, that refusal is a tripwire on the workflow's TRIGGER
+/// SET and not a policy selector: add a trigger this module never considered and the required run
+/// stops loudly (DESIGN section 5) instead of quietly producing a verdict for a run nobody sized.
+/// `Local` is a run with no CI event at all -- an author's machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdjudicationEvent {
     PullRequest,
@@ -431,9 +441,9 @@ pub fn adjudication_event_from_name(name: Option<&str>) -> Result<AdjudicationEv
         Some("push") => Ok(AdjudicationEvent::Push),
         Some("workflow_dispatch") => Ok(AdjudicationEvent::WorkflowDispatch),
         Some(other) => Err(format!(
-            "GITHUB_EVENT_NAME `{other}` is not an event the wave-admission consumption policy \
-             models, so which obligation this run owes is unknown; refusing rather than applying \
-             the pull_request policy to it"
+            "GITHUB_EVENT_NAME `{other}` is not an event wave admission models, so this run was \
+             never sized against the trigger that produced it; refusing rather than adjudicating \
+             under assumptions nobody stated"
         )),
     }
 }
@@ -2429,9 +2439,9 @@ pub(crate) fn reconstruct_base_index(
 /// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
 /// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
 /// base and head speak different grammars. Nothing about the adjudication differs between the two
-/// callers: the seam selects the subject, never the rules. The CI event travels with the subject
-/// for the same reason: the consumption obligation differs by event (`AdjudicationEvent`), so the
-/// caller states which run this is rather than the seam inferring it.
+/// callers: the seam selects the subject, never the rules. The CI event no longer travels with the
+/// subject at all -- it stopped selecting an obligation when the follow-up arms were removed
+/// (gunbc#11481), and this sentence said otherwise until review 67027.
 pub fn run_wave_admission_between(
     workspace: &std::path::Path,
     base: &str,
