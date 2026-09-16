@@ -1,7 +1,6 @@
 module v2.compiler.reference_site_collector
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.algebra { fold_list, is_empty, length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.integer { Int }
@@ -37,13 +36,38 @@ import v2.extdeps.languages.dag {
 // one witness, which makes a well-shaped module dangling in DESIGN section 3c's exact sense: a
 // declaration whose consumers are described rather than executed. This module is that producer.
 //
-// ONE COLLECTOR, TWO STAGES. NAMESPACE-XL's XL-0 denominator and XL-4's reference-derived graph
-// ask the same question of the tree -- where is every mention, and at what containment position --
-// and differ only in what they fold the answers into. Two collectors would be the section 3 fork
-// with the widest possible blast radius, because a mention this one misses is silently absent from
-// both a denominator and a dependency edge. So the site enumeration is here, once, and both stages
-// consume it.
+// ONE COLLECTOR, TWO STAGES -- AND THAT CLAIM WAS FALSE AS FIRST WRITTEN, SO IT IS RESTATED HERE
+// RATHER THAN QUIETLY DROPPED.
 //
+// This header said "the site enumeration is here, once, and both stages consume it". It is not
+// once. v2.lens.reference_deps reference_sites_collect_node ALREADY enumerates reference sites,
+// from the PARSED tree, via ^dag_surface_qualified_name productions -- and its own dissolution note
+// describes the successor in terms that name this module's territory: "dissolves when
+// symbol_index_fill projects reference edges from the filled containment tree and non-import
+// qualified-name sites require the parsed census path". I did not find it before writing this
+// module, which is the section 6 move -- DFS the concept DAG before inventing vocabulary -- skipped
+// at the one point it mattered most.
+//
+// THE OVERLAP IS REAL BUT NARROWER THAN I FIRST WROTE, AND I CHECKED THE SECOND TIME. I claimed
+// the lens recognises "exactly the class this collector misses -- a qualified cross-module
+// reference in a body". THAT IS FALSE. The lens keys on ^dag_surface_qualified_name and the import
+// productions and NOTHING ELSE -- it carries no dot or field-access handling at all. A qualified
+// reference in a BODY parses as a field access, not a qualified-name production, so the lens misses
+// it too. What the lens does see is a qualified name in a TYPE position, where the production
+// survives.
+//
+// SO NEITHER INSTRUMENT SEES A QUALIFIED BODY REFERENCE, and the overlap between them is the
+// type-position qualified name rather than the whole qualified class. That is also why
+// warm-ibex-518's deleted parse walk was genuinely a duplicate: it keyed on the same production.
+//
+// THE CONSOLIDATION IS RULED AND IT IS NOT "CONSUME THE LENS". The authority for reference sites is
+// the collector over the tree THE RESOLVER CONSUMES -- a site must be something resolution
+// resolves, and the lens reads the parse tree. The lens is itself a declared SCAFFOLD whose own
+// dissolution names a symbol_index_fill-derived projection, so consuming its recogniser would be
+// building on a scaffold. Its disposition is repointed at this module instead, and the overlap is
+// recorded as a DECLARED FRONTIER rather than as consolidated: two enumerators stand today, on two
+// trees, and this one becomes the single authority when it covers qualified sites -- which waits on
+// the dotted-reference capability, still under verification and NOT escalated to another lane.
 // WHAT COUNTS AS A MENTION, AND WHY A DECLARATION IS NOT ONE. In the v2 containment tree a
 // declaration's NAME is an EDGE LABEL (v2.compiler.symbol_index_fill binds at
 // Named { name } edges and indexes edge.target as the declaration), so a declared name never
@@ -83,27 +107,29 @@ import v2.extdeps.languages.dag {
 // not. The two rules agree wherever a binding and a mention coincide and differ only where the
 // index deliberately stops walking, which is the difference between the two questions rather than
 // a divergence between two answers to one question.
-// THE O(1) GUARD THAT KEEPS THIS WALK LINEAR.
+// THE O(1) REJECT THAT KEEPS THIS WALK LINEAR IS INSIDE qualified_name_from_node ITSELF.
 //
-// qualified_name_from_node FOLDS THE ENTIRE SUBTREE before it can answer, and this walk then
-// descends into that same subtree -- so calling it on every Conj made the traversal quadratic in
-// the depth of nested conjunctions: each level re-folded everything beneath it, and everything
-// beneath it was then walked again. DESIGN section 6 rules a proven cost-shape defect is ALWAYS
-// fixed regardless of the realised n, because "n is small here" is not a time-stable fact.
+// qualified_name_from_node FOLDS AN ENTIRE SUBTREE before it can answer, and this walk then
+// descends into that same subtree -- so asking it at every Conj made the traversal quadratic in
+// nesting depth. DESIGN section 6 rules a proven cost-shape defect is always fixed regardless of
+// the realised n, so a cheap precondition is required; the question was WHERE IT LIVES.
 //
-// The O(1) shape gate is the fold's own first step (qualified_name_from_node refuses a root that
-// is neither the empty name nor a two-child head/tail Conj before folding any child, with the
-// same acceptance set qn_fold_init / qn_fold_step always had), so this walk carries no
-// spine-label knowledge of its own: it dispatches on the connective only
-// and keys on the fold's Outcome. A Conj the fold rejects is walked as an ordinary tree; a Conj it
-// accepts is emitted as ONE site and never descended into, so no subtree is ever both folded and
-// walked, and a later admission of a new spine shape lands in one place.
-
+// IT WAS WRITTEN HERE FIRST AND THAT WAS A SECOND RECOGNISER FOR ONE CONCEPT. Two places deciding
+// what a qualified-name spine looks like is section 3's nickname at the meaning layer, and the
+// failure is silent and lands on exactly this PR's subject: widen the accepted spine in
+// qualified_name and a prefilter sitting over here answers `false`, so this walk falls through to
+// the children and emits every segment of `a.b.C` as its own BARE SAME-MODULE mention -- which is
+// the cross-module class XL-0's denominator is made of, quietly turned into local noise.
+//
+// It was written here first, then moved beside that fold as a pair of Bool predicates, and is now
+// the fold's OWN FIRST STEP -- because a Bool sitting beside the Outcome was still a second surface
+// deciding the same thing, and section 2's test is net CONCEPTS rather than net files. This module
+// matches the Outcome and gets the linear behaviour for free.
 fn reference_sites_in_edge(
-  acc: FreeMonoid<ReferenceSite>,
+  acc: ReferenceSiteCollection,
   position: QualifiedName,
   edge: Edge
-) -> FreeMonoid<ReferenceSite> {
+) -> ReferenceSiteCollection {
   match edge.label {
     Named { name: sym } =>
       if dag_surface_module_header_metadata_edge(name: sym) {
@@ -116,18 +142,36 @@ fn reference_sites_in_edge(
         )
       }
     Positional =>
-      reference_sites_in_node(acc: acc, position: position, node: edge.target)
+      reference_sites_in_node(
+        acc: acc,
+        position: position,
+        node: edge.target
+      )
   }
 }
 
 fn reference_sites_in_children(
-  acc: FreeMonoid<ReferenceSite>,
+  acc: ReferenceSiteCollection,
   position: QualifiedName,
   node: Node
-) -> FreeMonoid<ReferenceSite> {
+) -> ReferenceSiteCollection {
   fold(node.children, init: acc, f: fn(inner, edge) {
-    reference_sites_in_edge(acc: inner, position: position, edge: edge)
+    reference_sites_in_edge(
+      acc: inner,
+      position: position,
+      edge: edge
+    )
   })
+}
+
+fn collection_snoc_site(
+  acc: ReferenceSiteCollection,
+  site: ReferenceSite
+) -> ReferenceSiteCollection {
+  ReferenceSiteCollection {
+    sites: list_snoc_item(xs: acc.sites, item: site),
+    unreadable_roots: acc.unreadable_roots
+  }
 }
 
 // THE ACCUMULATOR IS THREADED, NEVER APPENDED. A walk that built a list per node and concatenated
@@ -143,60 +187,48 @@ fn reference_sites_in_children(
 // before any lookup, so admitting it here would manufacture an unbound mention the resolver never
 // asks about.
 fn reference_sites_in_node(
-  acc: FreeMonoid<ReferenceSite>,
+  acc: ReferenceSiteCollection,
   position: QualifiedName,
   node: Node
-) -> FreeMonoid<ReferenceSite> {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      match qualified_name_from_node(root: node) {
-        Accepted { value: qn, diagnostics: _ } =>
-          if is_empty(xs: qn) {
-            reference_sites_in_children(acc: acc, position: position, node: node)
-          } else {
-            list_snoc_item(
-              xs: acc,
-              item: ReferenceSite { position: position, spelling: qn }
-            )
-          }
-        Rejected { diagnostics: _ } =>
-          reference_sites_in_children(acc: acc, position: position, node: node)
-      }
-    TypeNode { connective: Atom { identity: sym } } =>
-      if dag_node_is_int_literal_atom(node: node) {
-        acc
+) -> ReferenceSiteCollection {
+  match qualified_name_from_node(root: node) {
+    Accepted { value: qn, diagnostics: _ } =>
+      if is_empty(xs: qn) {
+        reference_sites_in_children(
+          acc: acc,
+          position: position,
+            node: node
+        )
       } else {
-        list_snoc_item(
-          xs: acc,
-          item: ReferenceSite {
-            position: position,
-            spelling: Cons { head: sym, tail: Empty }
-          }
+        collection_snoc_site(
+          acc: acc,
+            site: ReferenceSite { position: position, spelling: qn }
         )
       }
-    _ => reference_sites_in_children(acc: acc, position: position, node: node)
+    Rejected { diagnostics: _ } =>
+      match node.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          if dag_node_is_int_literal_atom(node: node) {
+            acc
+          } else {
+            collection_snoc_site(
+              acc: acc,
+                    site: ReferenceSite {
+                position: position,
+                spelling: Cons { head: sym, tail: Empty }
+              }
+            )
+          }
+        _ =>
+          reference_sites_in_children(
+            acc: acc,
+            position: position,
+                node: node
+          )
+      }
   }
 }
 
-// A module whose header does not yield a qualified name has no position to sit its mentions at, so
-// it contributes none. That is a refusal to answer rather than a widened answer: the same module
-// is absent from the roster v2.compiler.resolution_provenance resolves owners against, so a site
-// collected at a guessed position could only have produced a mis-attributed owner.
-// AN UNREADABLE ROOT IS COUNTED, NOT DROPPED.
-//
-// This arm used to be `Rejected => acc`: a root whose module header does not resolve contributed
-// nothing and SAID nothing, so a caller could not tell an unreadable module from one that genuinely
-// contains no mentions. That is a silent, uncounted degradation, which DESIGN section 5 names a
-// hard reject rather than a weak arm -- "a failure arm must refuse, never widen", every degradation
-// a typed, located, countable diagnostic. It is carried here as all three: TYPED (its own
-// constructor, not a missing row), LOCATED (the locus of the root that could not be read), and
-// COUNTABLE (a list a consumer folds, so "n roots were unreadable" is answerable rather than
-// inferred from a short denominator).
-//
-// THE CONSEQUENCE FOR THE DENOMINATOR IS THE WHOLE POINT: XL-0 is a DENOMINATOR, so a root silently
-// missing from it does not make the number slightly small, it makes the number a different
-// question. A consumer that wants a total must join the sites with this list and refuse if it is
-// non-empty; one that wants a partial may proceed knowing exactly what it lost.
 type UnreadableModuleRoot {
   locus: Locus
 }
@@ -204,6 +236,29 @@ type UnreadableModuleRoot {
 // The collector's answer is the pair, never the sites alone, so a caller cannot take the population
 // without also taking what was lost producing it. That is the shape section 5 asks for: the refusal
 // travels WITH the result rather than beside it where it can be ignored.
+// THERE IS NO IMPORT ARM, AND THE REASON IS A MEASUREMENT THAT REVERSED THE ORIGINAL DESIGN.
+//
+// This module carried one: import mentions were classified into a second `import_sites` list,
+// threaded through the walk on an `inside_import` flag. It was built to fix a real defect -- a
+// spelling match could not tell an import mention from a use, and this collector's own witness
+// once read GREEN ON AN IMPORT LINE. THE FIX WAS AIMED AT A CONDITION THAT DOES NOT EXIST ON THIS
+// ROUTE. Import statements are consumed before the normalized tree this collector walks, so the
+// production identities the classifier keyed on never appear, the arm could not be inhabited by
+// any input, and nothing read it. Measured: an import-only spelling in the fixture reaches neither
+// list (v2.test.claim.namespace_xl0.call_argument_mention_survival).
+//
+// AN UNINHABITABLE ARM IS A DECORATION, WHICH IS THE RULE THIS PR APPLIES ONE FILE OVER AND FAILED
+// TO APPLY HERE. dag/std/repair_input_origin declines to mint a KernelMinted arm on exactly this
+// ground -- an arm with no producer is permanently uninhabited, and DESIGN section 4b calls that a
+// decoration rather than a weak wall, worse than absent because it gets cited as coverage. Section
+// 3c is the same verdict from the consumption side: a declaration whose consumer cannot be named
+// is dangling, and it is red however well modeled it is. The earlier defence -- that a consumer
+// walking a PARSE tree would want the classification -- named no consumer and no trigger, which is
+// precisely what section 3c refuses to accept as a frontier.
+//
+// IF A PARSE-TREE CONSUMER EVER LANDS IT REBUILDS THIS, and that is the cheaper direction: the
+// classifier was four production identities and a threaded Bool, while an uninhabitable arm is
+// carried, reviewed and cited for as long as it stands.
 type ReferenceSiteCollection {
   sites: FreeMonoid<ReferenceSite>
   unreadable_roots: FreeMonoid<UnreadableModuleRoot>
@@ -253,17 +308,14 @@ fn module_reference_sites(
 ) -> ReferenceSiteCollection {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      ReferenceSiteCollection {
-        sites: reference_sites_in_node(
-          acc: acc.sites,
-          position: module_qn,
-          node: module_spine_unwrapped(
+      reference_sites_in_node(
+        acc: acc,
+        position: module_qn,
+        node: module_spine_unwrapped(
           root: root,
           segments_remaining: length(xs: module_qn)
         )
-        ),
-        unreadable_roots: acc.unreadable_roots
-      }
+      )
     Rejected { diagnostics: _ } =>
       ReferenceSiteCollection {
         sites: acc.sites,
@@ -278,17 +330,6 @@ fn module_reference_sites(
 fn collect_module_reference_sites(root: Node) -> ReferenceSiteCollection {
   module_reference_sites(acc: empty_reference_site_collection(), root: root)
 }
-
-// DECLARED FRONTIER (§3c): gunbc#11201 (NAMESPACE XL-0, sharp-owl) is the first executing
-// consumer of collect_reference_sites and reference_site_collection_is_total
-// (v2.compiler.repair_input_origin_roster, v2.test.claim.namespace_xl0.call_argument_mention_survival,
-// v2.test.claim.namespace_xl0.repair_input_origin_denominator). gunbc#11210 (NAMESPACE XL-3) is the
-// next: v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest. Until those land,
-// XL-4 executes collect_module_reference_sites via v2.lens.module_graph.
-
-data collect_reference_sites_xl0_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "gunbc#11201 lands collect_reference_sites (v2.compiler.repair_input_origin_roster) and reference_site_collection_is_total (v2.test.claim.namespace_xl0.call_argument_mention_survival, v2.test.claim.namespace_xl0.repair_input_origin_denominator). gunbc#11210 then consumes collect_reference_sites from v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest. Until then XL-4 executes collect_module_reference_sites via module_graph.")
-
-data reference_site_collection_is_total_xl0_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "gunbc#11201 lands the executing consumer of reference_site_collection_is_total (v2.test.claim.namespace_xl0.call_argument_mention_survival fixture_collection_is_total, v2.test.claim.namespace_xl0.repair_input_origin_denominator). Until then this predicate is the declared frontier for the collection's totality half.")
 
 fn collect_reference_sites(roots: FreeMonoid<Node>) -> ReferenceSiteCollection {
   fold_list(

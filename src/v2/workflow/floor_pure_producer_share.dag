@@ -442,6 +442,25 @@ import v2.std.collection { List }
 // by both files. THE SEAM IS THE INGEST: those claims name the collector and the edge fold, so sharing
 // collection would hand each claim a precomputed answer. Parse trees and located roots travel on the
 // same nullary value so parse-tree probes do not re-tokenize.
+// THE LAST ROW IS THE NAMESPACE-XL-0 PRODUCTION-ROUTE FIXTURE, AND IT EARNS ITS PLACE THE WAY THIS
+// HEADER ASKS: BY A FLOOR COST RECEIPT, NOT A TRANSCRIBED NUMBER. Every claim in
+// v2.test.claim.namespace_xl0.call_argument_mention_survival drives the REAL parse-and-normalize
+// ingest of two inline fixture modules, and with the producer absent the floor's own
+// `required_floor_claim_cost.tsv` records that module's rows as budget_interrupted /
+// right_censored against the per-claim CPU deadline -- INTERRUPTED BEFORE VERDICT, which is neither
+// pass nor fail, so the lane blocks on a missing answer rather than a wrong one. That is the
+// recurrence this tier deletes, and the disposition is worse than a slow pass: an uninterpretable
+// row cannot be read as coverage at all. Re-derive with `claim_batch --entry` on that file plus the
+// run's [floor-shared-fill] ledger, which must show this fill landing at preparation with
+// disposition=Stored and the former interrupted claims serving hits.
+//
+// WARM, and the value is portable to the bottom: Outcome<FreeMonoid<NormalizedTree>> is Nodes,
+// symbols, strings and loci -- no Closure and no evaluator-node reference at any depth. It is
+// nullary and its sources are INLINE in the witness, so preparation forces it without dispatching a
+// host read. THE SEAM IS THE INGEST RATHER THAN THE REFERENCE-SITE COLLECTION, for exactly the
+// reason the parse rows above keep normalize out: the claims in that file are ABOUT the collector,
+// so sharing the collection would hand each one a precomputed answer to the question it asks. The
+// walk stays per claim; only the stage no claim names is shared.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "test.claim.live_deploy.emit.witness_apply_script",
   "test.claim.live_deploy.emit.witness_retract_script",
@@ -472,7 +491,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
-  "v2.test.claim.reference_derived_graph_fixture.xl4_fixture_trees"
+  "v2.test.claim.reference_derived_graph_fixture.xl4_fixture_trees",
+  "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
