@@ -85,10 +85,10 @@ type ServiceReadyEvidence {
 
 type ServiceReadinessPending
   = ServiceProbeUnanswered { detail: String }
+  | ServiceReadinessIdentityPending { reason: String }
 
 type ServiceReadinessRefusal
   = ServiceReadinessAccessDenied { reason: String }
-  | ServiceReadinessIdentityRefused { reason: String }
   | ServiceReadinessPollBound { refusal: ServiceNotReady }
 
 type ServiceReadiness
@@ -98,8 +98,8 @@ fn service_readiness_reason(r: ServiceReadiness) -> String {
   match r {
     Ready { evidence: e } => e.body
     Pending { cause: ServiceProbeUnanswered { detail } } => detail
+    Pending { cause: ServiceReadinessIdentityPending { reason } } => reason
     Refused { cause: ServiceReadinessAccessDenied { reason } } => reason
-    Refused { cause: ServiceReadinessIdentityRefused { reason } } => reason
     Refused { cause: ServiceReadinessPollBound { refusal } } =>
       service_not_ready_reason(refusal: refusal)
   }
@@ -123,7 +123,7 @@ fn observe_service_readiness_from_healthz(
       ) {
         Grounds { evidence: e } => Ready { evidence: e }
         DoesNotGround { reason: why } =>
-          Refused { cause: ServiceReadinessIdentityRefused { reason: why } }
+          Pending { cause: ServiceReadinessIdentityPending { reason: why } }
       }
   }
 }
@@ -527,7 +527,7 @@ fn live_deploy_service_ready_once_for_bundle(
 ) -> ServiceReadiness {
   match show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision) {
     ReadAbsent { reason: why } =>
-      Refused { cause: ServiceReadinessIdentityRefused { reason: why } }
+      Pending { cause: ServiceReadinessIdentityPending { reason: why } }
     ReadObserved { value: observed } =>
       observe_service_readiness_from_healthz(
         read: observed,

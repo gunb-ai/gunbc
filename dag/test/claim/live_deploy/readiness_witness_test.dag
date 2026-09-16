@@ -10,6 +10,7 @@ import gunbc.live_deploy.readiness {
   service_readiness_reason,
   observe_service_readiness_from_healthz,
   ServiceProbeUnanswered,
+  ServiceReadinessIdentityPending,
   ServiceReadinessPollBound,
   HealthzBodyRead,
   HealthzProbeRefused,
@@ -179,6 +180,22 @@ test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
   ) {
     Pending { cause: ServiceProbeUnanswered { detail } } =>
       string_contains(s: detail, pattern: "timed out")
+    Pending { cause: ServiceReadinessIdentityPending { reason: _ } } => false
+    Ready { evidence: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Bool {
+  match observe_service_readiness_from_healthz(
+    read: HealthzBodyRead { body: "" },
+    bundle: unused_surface_bundle(),
+    expected_revision: deploy_witness_release_revision,
+    expected_surface_identity: witness_expected_surface_identity(),
+  ) {
+    Pending { cause: ServiceReadinessIdentityPending { reason } } =>
+      reason != ""
+    Pending { cause: ServiceProbeUnanswered { detail: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false
   }
