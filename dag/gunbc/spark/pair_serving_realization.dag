@@ -279,7 +279,15 @@ fn spark_pair_container_env_covers_every_baked_name(env: List<DockerEnvAssignmen
   all(concat(sparkrun_vllm_ds4_gb10_baked_interface_env_names, sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names), n => any(env, e => (e.name as String) == (n as String)))
 }
 
-fn spark_pair_container_spec_for(plan: CollectiveTransportPlan, env: List<DockerEnvAssignment>) -> DockerCreateSpec {
+// THE SPEC TAKES THE LANE AND NOTHING ELSE, which is what makes a mismatched pairing unspellable
+// rather than merely discouraged. An earlier revision kept a two-argument
+// `spark_pair_container_spec_for(plan, env)` beside this wrapper and annotated the wrapper as making
+// the bad state impossible -- while the two-argument form sat next to it accepting any plan with any
+// env. The annotation described the wrapper and the corpus kept the hole; the form is deleted rather
+// than documented, so the plan and the env now come from ONE lane by construction.
+fn spark_pair_container_spec(lane: FabricLaneObserved) -> DockerCreateSpec {
+  let plan = spark_pair_transport_plan(lane: lane)
+
   DockerCreateSpec {
     name: spark_pair_container_name,
     image: gunbc_spark_pair_runtime_image_tag,
@@ -295,20 +303,11 @@ fn spark_pair_container_spec_for(plan: CollectiveTransportPlan, env: List<Docker
       BindMount { host_path: spark_pair_weights_host_dir, container_path: spark_pair_weights_container_dir, readonly: true },
       BindMount { host_path: spark_pair_jit_cache_host_dir, container_path: sparkrun_vllm_ds4_gb10_jit_cache_root as FilePath, readonly: false },
     ],
-    env: env,
+    env: spark_pair_container_env(lane: lane),
     command: ["sleep", "infinity"],
   }
 }
 
-// THE SPEC TAKES THE LANE, NOT A PRE-BUILT ENV, and that is a construction rather than a caution.
-// Every caller already built the env from a lane and then handed it here; with the env passed in,
-// pairing one lane's env with another lane's transport was writable and only a comment stood against
-// it. Taking the lane and deriving both makes that state unspellable.
-fn spark_pair_container_spec(lane: FabricLaneObserved) -> DockerCreateSpec {
-  spark_pair_container_spec_for(
-    plan: spark_pair_transport_plan(lane: lane),
-    env: spark_pair_container_env(lane: lane))
-}
 
 // A systemd Exec line is argv joined by spaces; a word carrying whitespace or a quote would need
 // systemd's own quoting, which this render does not model, so such a word is a refusal.

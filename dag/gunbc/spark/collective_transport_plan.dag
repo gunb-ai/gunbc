@@ -103,6 +103,23 @@ fn transport_plan_env(p: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
 
 // ── A PLAN IS A REQUEST; THE VERDICT IS THE REALIZATION ───────────────────────────────────────
 //
+// §3c CLASSIFICATION, STATED RATHER THAN LEFT TO A READER: everything below this line is a DECLARED
+// FRONTIER, not a consumed declaration. The projection half above is consumed by
+// gunbc.spark.pair_serving_realization spark_pair_container_spec at execution; this half has NO
+// consumer in the tree today, because nothing in the corpus produces an NcclRealizedTransport from a
+// real log -- every value of that type is a fixture.
+//
+// NAMED CONSUMER AND TRIGGER, which is what makes a frontier admissible rather than dangling. The
+// consumer is the serving throughput instrument of the Group B remediation: it reads NCCL's own
+// `Using network` verdict off the running engine, which is the first real producer of
+// NcclRealizedTransport, and joins it to the plan the route intended. THE TRIGGER IS THAT PRODUCER
+// LANDING -- not this module being reviewed, and not a relaunch happening. Until it exists this fold
+// is exercised only by its witness, and a witness is not a consumer.
+//
+// IF THAT PRODUCER DOES NOT LAND, THIS HALF SHOULD BE DELETED RATHER THAN KEPT. An unread comparison
+// catches nothing, however well it models the thing it would catch; the Group B defect stood for two
+// and a half days with no row disagreeing, and a fold nobody calls is another way of having no row.
+//
 // These are different facts and the whole Group B defect lives in the gap between them. The launch
 // REQUESTED the fabric interface and got sockets; nothing compared the two, so a deployment intending
 // RDMA ran for days on TCP with no row disagreeing. extdeps.vllm.engine_args states the same law for

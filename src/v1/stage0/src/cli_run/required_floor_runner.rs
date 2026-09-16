@@ -5360,8 +5360,26 @@ pub fn run_required_floor(
     // exclusion frontier, so nothing pulled them in. A lane that cannot reach its own members
     // cannot support the route claim `std.witness_admission` makes for its cadence, so the
     // schedule joins the seed list rather than the executor learning to run outside the subject.
-    let (required_gate_prefixes, local_repo_wet_schedule_rows) = {
-        let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
+    // THE PURE-PRODUCER-SHARE ROSTER IS READ IN THIS SAME CLOSURE, NOT A THIRD ONE.
+    //
+    // `install_pure_producer_share` resolves every rostered producer BY NAME over the prepared
+    // subject and refuses when one does not resolve; the roster MODULE is a seed but the modules it
+    // NAMES were not, so they arrived only when the changed set happened to carry them. gunbc#11204
+    // added rows naming `test.claim.live_deploy.emit` and the next PR that actually EXECUTED the
+    // witnesses lane refused -- every PR in between had its phase ROUTED, which greens identically
+    // to running it.
+    //
+    // A FIRST FIX PREPARED ITS OWN CLOSURE TO READ THE ROSTER AND THAT IS REFUSED BY CONSTRUCTION:
+    // "a floor process prepares at most 2 subjects (policy closure, gate closure) and this one
+    // prepared another; a subject per claim is the corpus walk per row this index exists to avoid."
+    // The reference index is keyed by subject, so a third preparation invalidates it for everything
+    // downstream. The roster module therefore joins the POLICY SEED and is read from the closure
+    // that already exists.
+    let (required_gate_prefixes, local_repo_wet_schedule_rows, pure_producer_share_module_seeds) = {
+        let policy_seed = [
+            REQUIRED_FLOOR_POLICY_MODULE.to_string(),
+            PURE_PRODUCER_SHARE_MODULE.to_string(),
+        ];
         let (policy_prepared, _) = prepare_repository_closure(
             source_roots,
             &floor_prepared_subject_exclusions(),
@@ -5379,33 +5397,16 @@ pub fn run_required_floor(
             "v2.workflow.required_floor.required_gate_prefixes",
         )?;
         let schedule = local_repo_wet_schedule(&policy_frame)?;
-        (prefixes, schedule)
-    };
-    // THE PURE-PRODUCER-SHARE ROSTER'S PRODUCERS ARE SEEDS FOR THE SAME REASON THE SCHEDULE IS.
-    //
-    // `install_pure_producer_share` resolves every rostered producer BY NAME in a frame over the
-    // prepared subject, and refuses `PureProducerShareProducerModuleOutsideSubject` when one does
-    // not resolve. The roster MODULE is already a seed (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`);
-    // the modules it NAMES were not, so they reached the subject only when they happened to be in
-    // the changed set. Under the old whole-tree subject they resolved by pool-membership
-    // coincidence -- the same failure this function's own comment records for `gunbc.output_policy`.
-    //
-    // MEASURED, 2026-09-15: gunbc#11204 added rows naming `test.claim.live_deploy.emit`, and the
-    // next PR that actually EXECUTED the witnesses lane refused. Nothing caught it in between
-    // because a lane whose phase is ROUTED greens identically to one that ran, so every PR that
-    // touched no witness routed past the defect.
-    //
-    // DERIVED FROM THE ROSTER, NEVER A SECOND HAND-MAINTAINED LIST. A parallel roster of "modules
-    // to seed" would be the §3 fork one layer up: adding a producer row would then require
-    // remembering to add a seed row, and forgetting is exactly the state this refusal reports.
-    let pure_producer_share_module_seeds: Vec<String> = {
-        let roster_seed = [PURE_PRODUCER_SHARE_MODULE.to_string()];
-        let (roster_prepared, _) = prepare_repository_closure(
-            source_roots,
-            &floor_prepared_subject_exclusions(),
-            Some((&gate_entry_index, &[], &roster_seed)),
-        )?;
-        let roster_frame = floor_authority_frame(&roster_prepared, PURE_PRODUCER_SHARE_MODULE)?;
+        // DERIVED FROM THE ROSTER, NEVER A SECOND HAND-MAINTAINED LIST. A parallel "modules to
+        // seed" roster would be the §3 fork one layer up: adding a producer row would then require
+        // remembering to add a seed row, and forgetting is exactly the state the refusal reports.
+        let roster_scope = claim_scope_for(&policy_prepared, PURE_PRODUCER_SHARE_MODULE)?;
+        let roster_frame = evaluation_frame(
+            &roster_scope,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        );
         let warm = floor_decode_module_prefix_roster(
             &roster_frame,
             &format!("{PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_warm"),
@@ -5418,14 +5419,14 @@ pub fn run_required_floor(
             &roster_frame,
             &format!("{PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_carried_input_warm_rows"),
         )?;
+        // A rostered spelling is `module.declaration`; the seed is its MODULE. Splitting on the last
+        // dot is the same rule `install_pure_producer_share` uses to build its resolution frames, so
+        // the two cannot disagree about what module a row names.
         let mut seeds: Vec<String> = warm
             .iter()
             .chain(claim_forced.iter())
             .cloned()
             .chain(carried.iter().map(|r| r.producer.clone()))
-            // A rostered spelling is `module.declaration`; the seed is its MODULE. Splitting on the
-            // last dot is the same rule `install_pure_producer_share` uses to build its resolution
-            // frames, so the two cannot disagree about what module a row names.
             .map(|qualified| match qualified.rsplit_once('.') {
                 Some((module, _)) => module.to_string(),
                 None => qualified,
@@ -5433,7 +5434,7 @@ pub fn run_required_floor(
             .collect();
         seeds.sort();
         seeds.dedup();
-        seeds
+        (prefixes, schedule, seeds)
     };
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
