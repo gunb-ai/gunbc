@@ -1,0 +1,13 @@
+module gunbc.machine_intake_megarac_served_ui_catalog_observation
+
+import std.types { NonEmptyStr }
+
+// RECEIPT OF A REPOSITORY CAPTURE, not an AMI-published catalog identity. The 255 api/ paths
+// were extracted from source.min.js served at https://192.168.1.228/source.min.js on
+// 2026-09-12 and committed under artifacts/. DESIGN §3: observations produced by this repository
+// live in the observing layer. Firmware-keyed facts about what that surface contains stay in
+// extdeps.bmc.megarac; this module owns only the capture's path and digest.
+
+data megarac_spx_ui_surface_path: NonEmptyStr = "artifacts/bmc/mtcollins1-megarac-api-surface.txt" as NonEmptyStr
+
+data megarac_spx_ui_surface_sha256: NonEmptyStr = "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd" as NonEmptyStr

@@ -3,6 +3,7 @@ module test.claim.tmux_session_list_outcome_witness
 import std.types { Bool, String }
 import extdeps.tmux {
   classify_tmux_session_list,
+  classify_tmux_has_session,
   parse_tmux_ls_output,
   parse_tmux_attempt_panes_output,
   TmuxSessionsListed,
@@ -13,6 +14,9 @@ import extdeps.tmux {
   TmuxLsParseRefused,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
+  TmuxHasSessionPresent,
+  TmuxHasSessionAbsent,
+  TmuxHasSessionUnknowable,
 }
 
 test fn witness_no_server_running_classifies_empty() -> Bool {
@@ -177,5 +181,59 @@ test fn witness_attempt_panes_malformed_row_refuses() -> Bool {
       line_number == 1
         && string_contains(s: raw, pattern: "bogus")
         && string_contains(s: reason, pattern: "dead/status")
+  }
+}
+
+test fn witness_has_session_present() -> Bool {
+  match classify_tmux_has_session(exit_ok: true, stderr: "") {
+    TmuxHasSessionPresent => true
+    TmuxHasSessionAbsent => false
+    TmuxHasSessionUnknowable { stderr: _ } => false
+  }
+}
+
+test fn witness_has_session_named_absent() -> Bool {
+  match classify_tmux_has_session(
+    exit_ok: false,
+    stderr: "can't find session: gunbc-dashboard-srv1-lab-codex-feedback-v0",
+  ) {
+    TmuxHasSessionAbsent => true
+    TmuxHasSessionPresent => false
+    TmuxHasSessionUnknowable { stderr: _ } => false
+  }
+}
+
+test fn witness_has_session_no_server_is_absent() -> Bool {
+  match classify_tmux_has_session(
+    exit_ok: false,
+    stderr: "no server running on /tmp/tmux-1000/srv1-lab-codex-feedback-v0",
+  ) {
+    TmuxHasSessionAbsent => true
+    TmuxHasSessionPresent => false
+    TmuxHasSessionUnknowable { stderr: _ } => false
+  }
+}
+
+test fn witness_has_session_permission_denied_is_unknowable() -> Bool {
+  match classify_tmux_has_session(
+    exit_ok: false,
+    stderr: "error connecting to /tmp/tmux-1000/default (Permission denied)",
+  ) {
+    TmuxHasSessionUnknowable { stderr } =>
+      string_contains(s: stderr, pattern: "Permission denied")
+    TmuxHasSessionPresent => false
+    TmuxHasSessionAbsent => false
+  }
+}
+
+test fn witness_has_session_connection_refused_is_unknowable() -> Bool {
+  match classify_tmux_has_session(
+    exit_ok: false,
+    stderr: "error connecting to /tmp/tmux-1000/srv1-lab (Connection refused)",
+  ) {
+    TmuxHasSessionUnknowable { stderr } =>
+      string_contains(s: stderr, pattern: "Connection refused")
+    TmuxHasSessionPresent => false
+    TmuxHasSessionAbsent => false
   }
 }
