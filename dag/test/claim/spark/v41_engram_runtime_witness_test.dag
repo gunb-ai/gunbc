@@ -39,6 +39,7 @@ import gunbc.spark.v41_engram_row_store {
   v41_transform_fixture, v41_published_transform_standing, v41_identify_row_store,
   v41_tampered_payload_is_unfaithful, v41_dropped_source_row_is_unfaithful, v41_sample_agrees, v41_rank_digest_of,
   v41_encoding_spec_of, v41_encoding_spec_key_of, v41_encoding_digest_of, v41_rank_stores_of, v41_fixture_encoding,
+  v41_place_row, v41_row_store_magic_size,
   V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
   RankMapReservedUninhabited, RowOrderReservedUninhabited, V41RankStoreIdentity,
 }
@@ -589,5 +590,13 @@ test fn overlay_magic_cites_the_row_store_authority() -> Bool {
   let local = Filesystem.Read(path: v41_engram_file_backed_overlay_path as String)
   local.success
     && (local.content as String).contains("v41_row_store_magic")
-    && (local.content as String).contains("ENGR1")
+    && (local.content as String).contains("expected.magic")
+    && !(local.content as String).contains("MAGIC = b")
+}
+
+test fn placed_offsets_start_after_row_store_magic() -> Bool {
+  match v41_place_row(row: w_row(i: 0), spec: w_tiny_spec(), prior_on_rank: 0) {
+    Absent => false
+    Present { value: p } => byte_size_count(b: p.offset) == byte_size_count(b: v41_row_store_magic_size())
+  }
 }

@@ -25,8 +25,9 @@ import gunbc.fabric.engram_materialization { engram_component_identity }
 // not a parallel prose checklist. rank_map is what dest_rank/local_row match; row_order is what
 // rank_payload concatenates (offsets on a rank follow global_row, not the caller's list order); dtypes go through SafetensorsDtype + safetensors_dtype_token; endianness
 // is Endianness + endianness_token. Alignment is not a key field: nothing pads, and packed 264-byte
-// records would disagree with a 64-byte alignment sentence. Open() checks v41_row_store_magic on
-// the file prefix, so that token is in the encoding key. The digest is THIS encoding's; it does
+// records would disagree with a 64-byte alignment sentence. The encoder emits v41_row_store_magic
+// as the file prefix, placement offsets start after that prefix, and the rank digest hashes the
+// prefixed payload — the same file open() reads. The digest is THIS encoding's; it does
 // not inherit a safetensors shard digest.
 //
 // A hash-only Python streamer of the published shards is an INDEPENDENT implementation of
@@ -363,6 +364,10 @@ fn v41_local_row(global_row: Nat, spec: V41RowStoreEncodingSpec) -> Nat? {
   }
 }
 
+fn v41_row_store_magic_size() -> ByteSize {
+  byte_size(count: (v41_row_store_magic as String).length())
+}
+
 fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank: Nat) -> V41PlacedRow? {
   match v41_dest_rank(global_row: row.global_row, spec: spec) {
     Absent => none
@@ -374,7 +379,7 @@ fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank
           global_row: row.global_row,
           rank: rank,
           local_row: local,
-          offset: byte_size(count: prior_on_rank * byte_size_count(b: v41_row_bytes(g: spec.geometry))),
+          offset: byte_size(count: byte_size_count(b: v41_row_store_magic_size()) + prior_on_rank * byte_size_count(b: v41_row_bytes(g: spec.geometry))),
           payload: row.payload,
         }
       }
@@ -453,9 +458,13 @@ fn v41_place_all(rows: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> Lis
 
 fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat, order: V41RowStoreOrder) -> String? {
   match order {
-    GlobalAscendingInterleavedByRank => Present {
-      value: join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
-    }
+    GlobalAscendingInterleavedByRank =>
+      let body = join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
+      if body == "" {
+        Present { value: "" }
+      } else {
+        Present { value: join([v41_row_store_magic as String, body], "") }
+      }
     RowOrderReservedUninhabited => none
   }
 }

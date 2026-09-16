@@ -1,6 +1,9 @@
+diff --git a/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
+new file mode 100644
+index 0000000..c573ccf
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,115 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -17,12 +20,12 @@
 +# with CUDA. Token-time gathers copy requested rows into the existing bounded
 +# pinned staging buffer. A missing local path refuses; there is no NFS arm.
 +#
-+# MAGIC is the realization of gunbc.spark.v41_engram_row_store v41_row_store_magic.
-+# Do not mint a second revision or endianness constant here: those live on the
-+# encoding spec. Open verifies whole-file SHA against rank_digest_hex and MAGIC.
-+# encoding_digest / rank / format_revision are not on this type until a modeled
-+# header carries them — claiming them on ExpectedRowStoreIdentity without a
-+# check was a lying identity surface.
++# Prefix and offsets are gunbc.spark.v41_engram_row_store: v41_rank_payload emits
++# v41_row_store_magic then rows; v41_place_row offsets start after that prefix;
++# v41_rank_digest hashes that prefixed payload. Open checks expected.magic
++# (supplied from that symbol, not minted here) and whole-file digest against
++# rank_digest_hex. encoding_digest / rank / format_revision are not on this
++# type until a modeled header carries them.
 +
 +from __future__ import annotations
 +
@@ -33,10 +36,6 @@
 +from typing import Tuple
 +
 +import torch
-+
-+
-+# gunbc.spark.v41_engram_row_store v41_row_store_magic
-+MAGIC = b"ENGR1\n"
 +
 +
 +class EngramRowStoreIdentityMismatch(RuntimeError):
@@ -54,6 +53,7 @@
 +@dataclass(frozen=True)
 +class ExpectedRowStoreIdentity:
 +    rank_digest_hex: str
++    magic: bytes
 +
 +
 +def _sha256_file(path: str) -> str:
@@ -83,7 +83,7 @@
 +        self.expected = expected
 +        self._fd = os.open(self.path, os.O_RDONLY)
 +        self._mmap = mmap.mmap(self._fd, 0, access=mmap.ACCESS_READ)
-+        if self._mmap[: len(MAGIC)] != MAGIC:
++        if self._mmap[: len(expected.magic)] != expected.magic:
 +            raise EngramRowStoreIdentityMismatch("row-store MAGIC mismatch")
 +        self._header_ok = True
 +
