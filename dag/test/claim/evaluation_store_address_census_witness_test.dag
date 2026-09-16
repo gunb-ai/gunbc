@@ -24,6 +24,7 @@ import gunbc.evaluation_store_address_census {
   evaluation_store_address_production_coverage,
   evaluation_store_address_production_coverage_qualified,
   evaluation_store_address_zero_candidate_plant_coverage,
+  evaluation_store_address_zero_candidate_plant_absent_coverage,
   evaluation_store_address_mutation_census,
   evaluation_store_address_fixture_import_only_census,
   evaluation_store_address_fixture_callsite_census,
@@ -108,6 +109,19 @@ test fn evaluation_store_address_zero_candidate_guard_reports_planted_call() -> 
         && (path == "dag/test/fixture/evaluation_store_address_zero_candidate_plant/digest_call.dag")
     ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots: _ } => false
     ProductionCoverageRefused { root: _, path: _, cause: _ } => false
+  }
+}
+
+test fn evaluation_store_address_zero_candidate_guard_qualifies_without_planted_invocation() -> Bool {
+  match evaluation_store_address_zero_candidate_plant_absent_coverage() {
+    ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots } =>
+      (zero_candidate_roots |> count()) == 1
+        && (zero_candidate_roots |> fold(
+          init: false,
+          f: (acc, r) => acc || r == "dag/test/fixture/evaluation_store_address_zero_candidate_plant_absent"
+        ))
+    ProductionCoverageRefused { root: _, path: _, cause: _ } => false
+    CandidateOutsideExactResolution { root: _, path: _, target_leaf: _ } => false
   }
 }
 
