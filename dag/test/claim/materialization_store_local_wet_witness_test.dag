@@ -8,7 +8,7 @@ import std.materialization_provider {
   DeclaredInput, ArtifactRequest,
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  request_key,
+  request_key, request_judgment_contract, evaluation_identity_canonical,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
 }
@@ -18,7 +18,7 @@ import std.materialization_object {
   OpenedMaterializationStore,
   StoreLookup, StoreCommit, StoreCommitSettled, StoreCommitRefused,
   StoreCommitPrepared, StoreCommitNotPrepared,
-  store_commit_prepare, store_object_name,
+  store_commit_prepare, store_object_name, percent_encode_payload,
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_commit_fold,
 }
@@ -93,6 +93,14 @@ fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> Str
   }
 }
 
+fn evaluation_preimage_wire(req: ArtifactRequest) -> String {
+  percent_encode_payload(
+    s: evaluation_identity_canonical(
+      evaluation: request_judgment_contract(req: req).identity_derivation.evaluation_identity
+    ) as String
+  )
+}
+
 fn object_path(root_path: String, req: ArtifactRequest) -> String {
   store_path(root_path: root_path, name: store_object_name(key: request_key(req: req)))
 }
@@ -155,16 +163,22 @@ test fn corruption_is_an_integrity_refusal_by_real_execution() -> Bool {
   verdict && removed.success
 }
 
-// wrong kind: a universe artifact's object planted at the verdict bundle's name.
+// wrong kind under a matching evaluation preimage: a universe-shaped object whose stored
+// preimage is the bundle lookup's, planted at the bundle name. A raw universe object at that
+// name is evaluation_preimage_mismatch (dry: a_foreign_object_refuses_as_evaluation_preimage_mismatch).
 test fn wrong_kind_refuses_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
+  let lookup = bundle_req(module: "a")
+  let universe = prepared_object(req: universe_req(), payloads: universe_payloads())
+  let forged = replace(universe, evaluation_preimage_wire(req: universe_req()), evaluation_preimage_wire(req: lookup))
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let planted = Filesystem.WriteCreateNew(path: object_path(root_path: root_path, req: bundle_req(module: "a")), content: prepared_object(req: universe_req(), payloads: universe_payloads()))
-      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
-      planted.success && store_lookup_refusal_tag(l: read) == "contract_kind_mismatch"
+      let planted = Filesystem.WriteCreateNew(path: object_path(root_path: root_path, req: lookup), content: forged)
+      let read = local_store_lookup(root: root, store: store, req: lookup)
+      planted.success && (forged == universe) == false
+        && store_lookup_refusal_tag(l: read) == "contract_kind_mismatch"
     }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)

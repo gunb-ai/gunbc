@@ -1,7 +1,7 @@
 module test.claim.materialization_store_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value }
+import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value, serialize_content_hash }
 import std.cache_identity { CacheInterfaceId }
 import std.measure { byte_size }
 import std.materialization_provider {
@@ -219,15 +219,40 @@ test fn a_truncated_object_is_malformed_not_incomplete() -> Bool {
   store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: torn)) == "malformed"
 }
 
-// a universe artifact's object read where the verdict bundle's object belongs
-test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
+test fn a_foreign_object_refuses_as_evaluation_preimage_mismatch() -> Bool {
   let foreign = prepared_object(req: universe_req(), payloads: universe_payloads())
   store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: foreign)) == "evaluation_preimage_mismatch"
 }
 
+// Kind and request-key walls still discriminate after a matching preimage: the stored
+// evaluation_preimage is the lookup's, while kind or recorded request_key is forged.
+test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
+  let lookup = bundle_req()
+  let universe = prepared_object(req: universe_req(), payloads: universe_payloads())
+  let expected = percent_encode_payload(
+    s: evaluation_identity_canonical(
+      evaluation: request_judgment_contract(req: lookup).identity_derivation.evaluation_identity
+    ) as String
+  )
+  let stored = percent_encode_payload(
+    s: evaluation_identity_canonical(
+      evaluation: request_judgment_contract(req: universe_req()).identity_derivation.evaluation_identity
+    ) as String
+  )
+  let forged = replace(universe, stored, expected)
+  store_lookup_refusal_tag(l: lookup_present(req: lookup, object: forged)) == "contract_kind_mismatch"
+}
+
 test fn an_object_for_another_request_of_the_same_kind_refuses_as_wrong_artifact() -> Bool {
-  let other = prepared_object(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")), payloads: bundle_payloads())
-  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: other)) == "evaluation_preimage_mismatch"
+  let lookup = bundle_req()
+  let good = prepared_object(req: lookup, payloads: bundle_payloads())
+  let foreign_key = serialize_content_hash(
+    hash: request_key(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
+  ) as String
+  let ours = serialize_content_hash(hash: request_key(req: lookup)) as String
+  let forged = replace(good, ours, foreign_key)
+  (forged == good) == false
+    && store_lookup_refusal_tag(l: lookup_present(req: lookup, object: forged)) == "contract_wrong_artifact"
 }
 
 test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
