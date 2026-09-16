@@ -1,9 +1,9 @@
 module extdeps.docker.container_inspect
 
 import std.string_type { String }
-import std.types { Timestamp, Int, FilePath }
+import std.types { Timestamp, Int, FilePath, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count }
 import extdeps.docker.endpoint { docker_default_endpoint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -11,6 +11,12 @@ import extdeps.docker.container_inspect_contracts { container_state_wire_contrac
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref, decl_field_ref }
+import std.algebra { trim }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberNotAnObject, JsonMemberDuplicated,
+}
 
 type ContainerState
   = Running
@@ -72,6 +78,86 @@ type HostConfig {
   volumes: List<String>?
   volumes_from: List<String>?
   device_requests: List<String>?
+  devices: List<DockerInspectDevice>?
+  ulimits: List<DockerInspectUlimit>?
+  shm_size: ByteSize?
+  binds: List<String>?
+  restart_policy: DockerInspectRestartPolicy?
+}
+
+// SHM_SIZE, BINDS AND RESTARTPOLICY JOIN THE TWO INCIDENT FIELDS FOR ONE REASON, and it is the same
+// reason: extdeps.docker.cli DockerCreateSpec states each of them, and a field a create spec states
+// and a readback cannot see is a field on which a convergence reports agreement it has not
+// established. Measured on the 2026-09-16 capture, the running arm carries `ShmSize: 67108864` while
+// the spec gunbc.spark.serving_arm_launch renders asks for 10737418240 -- a real, live disagreement
+// that was invisible to this type in every direction until now.
+//
+// `Binds` AND NOT `Mounts`, for the bind mounts a spec renders: the daemon reports the same mount
+// twice, once as the `src:dst:mode` string the create call was given and once as a structured Mounts
+// entry with its propagation resolved. The first is what `--mount type=bind,...` is comparable
+// against without a second rendering convention, so it is the one this type carries.
+type DockerInspectRestartPolicy {
+  name: String
+  maximum_retry_count: Nat?
+}
+
+// ── THE TWO FIELDS WHOSE ABSENCE WAS THE INCIDENT ─────────────────────────────────────────────
+//
+// WHAT WAS MISSING HERE, AND WHAT THAT COST. HostConfig carried `cap_add` and nothing else of the
+// three fields that decide whether a container can speak verbs. On 2026-09-15 the Group B GLM arm
+// was found created with `Devices=[]`, `CapAdd=null` and `Ulimits=[]` -- and a convergence built on
+// THIS type as it stood would have inspected those containers, found `cap_add` agreeing with a plan
+// that asked for nothing, and reported agreement while `Devices=[]` stayed invisible, because there
+// was no field for the reading to land in. A readback that cannot see a field cannot disagree about
+// it, which is the silent-wrongness of DESIGN section 5 one layer below where anyone was looking.
+//
+// THEY ARE STRUCTURED AND NOT `List<String>?`, unlike the anemic leaves the frontier row below
+// already rosters. The wire shape is an object per entry, so flattening it to a string would mint a
+// second spelling of a device mapping -- `/dev/infiniband:/dev/infiniband:rwm` -- beside
+// extdeps.docker.cli DockerDeviceMapping, which is the fork this readback exists to be comparable
+// to. Measured on the 2026-09-16 capture: Devices entries carry PathOnHost, PathInContainer and
+// CgroupPermissions; Ulimits entries carry Name, Soft and Hard.
+type DockerInspectDevice {
+  path_on_host: FilePath
+  path_in_container: FilePath
+  cgroup_permissions: NonEmptyStr
+}
+
+// SOFT AND HARD ARE `Int` AND NOT `Nat`, because -1 is the value that MATTERS: `--ulimit
+// memlock=-1:-1` reads back as `{"Name":"memlock","Soft":-1,"Hard":-1}`, and a Nat-backed field
+// could not round-trip the one reading this fleet needs. This is the same wire convention the
+// memory_swap frontier row above is still open on, decided the other way here because the field is
+// new and nothing depends on its being non-negative.
+type DockerInspectUlimit {
+  name: NonEmptyStr
+  soft: Int
+  hard: Int
+}
+
+// ── THE DAEMON RENAMES A CAPABILITY ON THE WAY BACK, AND A COMPARISON THAT DOES NOT KNOW REFUSES
+//   A HEALTHY CONTAINER ──────────────────────────────────────────────────────────────────────────
+//
+// MEASURED, NOT ASSUMED. The 2026-09-16 RoCE capture reads back `"CapAdd": ["CAP_IPC_LOCK"]` for an
+// arm whose plan spells the capability `IPC_LOCK` (extdeps.docker.cli renders `--cap-add IPC_LOCK`,
+// and gunbc.spark.collective_transport_plan transport_plan_cap_add is where the name is authored).
+// So the string handed to `docker create` and the string read back from `docker inspect` are NOT the
+// same string, and a convergence comparing them literally would report a disagreement on every
+// correctly-created container -- a false red, which trains readers to ignore the check that exists
+// to catch the true one.
+//
+// THIS FUNCTION IS NOT A WIDENING. It maps two spellings of ONE capability onto one value; it does
+// not admit a capability the container does not carry, and a capability that is genuinely absent is
+// still absent after it runs. Whether the prefix is added by the daemon or was passed that way at
+// create time is NOT established here -- what is established is that the capture shows the prefixed
+// form coming back, so a reader must canonicalize before comparing.
+data docker_capability_prefix: String = "CAP_"
+
+fn docker_capability_canonical(name: String) -> String {
+  if starts_with(s: name, prefix: docker_capability_prefix) {
+    name
+  } else {
+    join([docker_capability_prefix, name], "")
+  }
 }
 
 data memory_swap_unlimited_convention_frontier_rows: List<FrontierRow> = [
@@ -235,3 +321,959 @@ fn container_state_wire_label(state: ContainerState) -> String {
 data structural_coverage_gap_container_state_codec_hand_rolled: List<String> = [
   "closure:consolidate_variant_string_mapping|parse_container_state and container_state_wire_label hand-roll the SnakeCase mapping already declared in container_state_wire_contract. Dissolve when the codec-from-contract bridge derives decode and encode from CoproductWireContract rows directly."
 ]
+
+// ── THE DECODER: THIS TYPE'S FIRST PRODUCER ────────────────────────────────────────────────────
+//
+// WHAT THIS CLOSES. Every carrier above was, until this fold, fed only by a supplied value: nothing
+// in the repository read a `docker inspect` document into a `ContainerInspect`. A model with no
+// producer cannot be contradicted by a machine, so the fields it does and does not carry had never
+// been tested against a real document -- which is exactly how `devices` and `ulimits` came to be
+// missing from a type whose stated purpose is to be comparable to a create spec field by field.
+//
+// IT REFUSES RATHER THAN NARROWING. A member that is present with the WRONG SHAPE is a typed
+// refusal, never a silent `Absent`: reading "the daemon answered something I did not understand" as
+// "the daemon did not set this" is the absorbing arm of DESIGN section 5, and it would make exactly
+// the incident field read as legitimately unset.
+//
+// JSON `null` IS ABSENT AND AN EMPTY ARRAY IS NOT, and the difference is load-bearing on the very
+// capture this was written against: the socket incarnation reads `"CapAdd": null` and `"Devices":
+// []`. Those are different facts -- the daemon naming no value, and the daemon naming an empty list
+// -- and collapsing them would erase the distinction between a field that was never set and a field
+// that was set to nothing.
+//
+// WHAT IT DELIBERATELY DOES NOT DO: it does not interpret. `Config.Env` comes back as the daemon's
+// `KEY=VALUE` strings, `HostConfig.CapAdd` as the daemon's spelling, `Created` as the daemon's
+// timestamp text. Every reading above that layer -- which rank this is, whether the capability
+// agrees with a plan -- is a consumer's question asked of this value, not a decision taken inside
+// the decode.
+type ContainerInspectRead
+  = ContainerInspectDecoded { container: ContainerInspect }
+  | ContainerInspectUnreadable { cause: String }
+
+// One element and exactly one. `docker inspect <name>` answers a JSON ARRAY, and a reader that took
+// the first element of an n-element array would silently answer about one of several containers when
+// a name pattern matched more than one.
+fn docker_inspect_sole_element(v: JsonValue) -> ContainerInspectRead? {
+  match v {
+    JsonArray { elements: es } =>
+      if count(es) == 1 {
+        none
+      } else {
+        Present { value: ContainerInspectUnreadable {
+          cause: join(["docker container inspect JSON is an array of ", to_string(count(es)), " elements, not one"], ""),
+        } }
+      }
+    JsonNull => Present { value: ContainerInspectUnreadable { cause: "docker container inspect JSON is null, not a one-element array" } }
+    JsonBool { value: _ } => Present { value: ContainerInspectUnreadable { cause: "docker container inspect JSON is a bool, not a one-element array" } }
+    JsonNumber { lexeme: _ } => Present { value: ContainerInspectUnreadable { cause: "docker container inspect JSON is a number, not a one-element array" } }
+    JsonString { value: _ } => Present { value: ContainerInspectUnreadable { cause: "docker container inspect JSON is a string, not a one-element array" } }
+    JsonObject { members: _ } => Present { value: ContainerInspectUnreadable { cause: "docker container inspect JSON is an object, not a one-element array" } }
+  }
+}
+
+fn docker_inspect_only_element(v: JsonValue) -> JsonValue? {
+  match v {
+    JsonArray { elements: es } => es.first()
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+// ── THE FIELD READERS, EACH THREE-VALUED ──────────────────────────────────────────────────────
+//
+// A member is MISSING, PRESENT AND WELL SHAPED, or PRESENT AND WRONG. Two-valued readers collapse
+// the third into the first, and that collapse is precisely how a readback reports agreement about a
+// field it failed to understand.
+type JsonFieldRead<T>
+  = FieldAbsent
+  | FieldRead { value: T }
+  | FieldMalformed { cause: String }
+
+fn json_field(obj: JsonValue, key: String) -> JsonFieldRead<JsonValue> {
+  match json_object_unique_member(v: obj, key: key) {
+    JsonMemberAbsent => FieldAbsent
+    JsonMemberNotAnObject => FieldMalformed { cause: join(["the enclosing value carrying ", key, " is not an object"], "") }
+    JsonMemberDuplicated { count: n } => FieldMalformed { cause: join([key, " is named ", to_string(n), " times in one object"], "") }
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldRead { value: v }
+        JsonNumber { lexeme: _ } => FieldRead { value: v }
+        JsonString { value: _ } => FieldRead { value: v }
+        JsonArray { elements: _ } => FieldRead { value: v }
+        JsonObject { members: _ } => FieldRead { value: v }
+      }
+  }
+}
+
+fn json_field_string(obj: JsonValue, key: String) -> JsonFieldRead<String> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonString { value: s } => FieldRead { value: s }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where a string was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where a string was expected"], "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a string was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a string was expected"], "") }
+      }
+  }
+}
+
+fn json_field_bool(obj: JsonValue, key: String) -> JsonFieldRead<Bool> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonBool { value: b } => FieldRead { value: b }
+        JsonNull => FieldAbsent
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where a bool was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where a bool was expected"], "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a bool was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a bool was expected"], "") }
+      }
+  }
+}
+
+fn json_field_int(obj: JsonValue, key: String) -> JsonFieldRead<Int> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonNumber { lexeme: lx } =>
+          match parse_int(s: lx) {
+            Present { value: n } => FieldRead { value: n }
+            Absent => FieldMalformed { cause: join([key, " carries the number lexeme ", lx, ", which is not an integer"], "") }
+          }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where a number was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where a number was expected"], "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a number was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a number was expected"], "") }
+      }
+  }
+}
+
+// A NEGATIVE READING IS A REFUSAL, NOT A CLAMP. `Nat` cannot hold -1, and the wire does use -1 for
+// several fields (the memory_swap frontier row above rosters one). Clamping to zero would answer a
+// different question in the same units, which is the failure extdeps.vllm.log_lines was written
+// against: arithmetic over real fields producing a convincing wrong number.
+fn json_field_nat(obj: JsonValue, key: String) -> JsonFieldRead<Nat> {
+  match json_field_int(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: n } =>
+      if n < 0 {
+        FieldMalformed { cause: join([key, " is ", to_string(n), ", which no unsigned carrier can hold; it is refused rather than clamped"], "") }
+      } else {
+        FieldRead { value: n as Nat }
+      }
+  }
+}
+
+fn json_field_byte_size(obj: JsonValue, key: String) -> JsonFieldRead<ByteSize> {
+  match json_field_nat(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: n } => FieldRead { value: byte_size(count: n) }
+  }
+}
+
+fn json_field_microsecond(obj: JsonValue, key: String) -> JsonFieldRead<Microsecond> {
+  match json_field_nat(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: n } => FieldRead { value: microsecond(count: n) }
+  }
+}
+
+type JsonStringListAcc {
+  values: List<String>
+  cause: String?
+}
+
+fn json_string_list_step(acc: JsonStringListAcc, key: String, v: JsonValue) -> JsonStringListAcc {
+  match acc.cause {
+    Present { value: _ } => acc
+    Absent =>
+      match v {
+        JsonString { value: s } => JsonStringListAcc { values: concat(acc.values, [s]), cause: none }
+        JsonNull => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a null where every element must be a string"], "") } }
+        JsonBool { value: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a bool where every element must be a string"], "") } }
+        JsonNumber { lexeme: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a number where every element must be a string"], "") } }
+        JsonArray { elements: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds an array where every element must be a string"], "") } }
+        JsonObject { members: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds an object where every element must be a string"], "") } }
+      }
+  }
+}
+
+fn json_field_string_list(obj: JsonValue, key: String) -> JsonFieldRead<List<String>> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } => {
+          let acc = fold(es, init: JsonStringListAcc { values: [], cause: none }, f: (a, e) => json_string_list_step(acc: a, key: key, v: e))
+          match acc.cause {
+            Present { value: c } => FieldMalformed { cause: c }
+            Absent => FieldRead { value: acc.values }
+          }
+        }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where an array was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where an array was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where an array was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where an array was expected"], "") }
+      }
+  }
+}
+
+// STRUCTURED ENTRIES ARE PROJECTED TO THEIR WIRE TEXT ONLY WHERE THE FIELD IS ALREADY A
+// `List<String>?` on this type -- `DeviceRequests`, `BlkioWeightDevice`, `PortBindings`. That is the
+// anemic-leaf frontier row above being INHABITED rather than widened: the decoder does not invent a
+// structure the type cannot hold, and it does not drop the field either.
+fn json_field_opaque_entry_list(obj: JsonValue, key: String) -> JsonFieldRead<List<String>> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } => FieldRead { value: map(es, e => json_opaque_entry_text(v: e)) }
+        JsonObject { members: ms } => FieldRead { value: map(ms, m => m.key) }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where an array or object was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where an array or object was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where an array or object was expected"], "") }
+      }
+  }
+}
+
+// THE ENTRY'S OWN MEMBER NAMES, NOT ITS VALUES. A structured entry the type can only hold as a
+// string is recorded by the KEYS it carried, because a value rendering would read as data the field
+// does not actually carry. The frontier row above is what retires this.
+fn json_opaque_entry_text(v: JsonValue) -> String {
+  match v {
+    JsonObject { members: ms } => join(map(ms, m => m.key), ",")
+    JsonString { value: s } => s
+    JsonNull => ""
+    JsonBool { value: b } => to_string(b)
+    JsonNumber { lexeme: lx } => lx
+    JsonArray { elements: es } => join(map(es, e => json_opaque_entry_text(v: e)), ",")
+  }
+}
+
+// ── COLLECTING THE REFUSALS RATHER THAN STOPPING AT THE FIRST ─────────────────────────────────
+//
+// A document that disagrees with this model in four places should say so in four places. Cascading
+// matches would report the first and hide the rest, which turns one decode into four round trips
+// against a live daemon -- and against a CAPTURE, which cannot be re-run at all, it would hide
+// findings permanently.
+fn json_field_value(r: JsonFieldRead<T>) -> T? {
+  match r {
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+    FieldRead { value: v } => Present { value: v }
+  }
+}
+
+fn json_field_cause(r: JsonFieldRead<T>) -> String? {
+  match r {
+    FieldAbsent => none
+    FieldMalformed { cause: c } => Present { value: c }
+    FieldRead { value: _ } => none
+  }
+}
+
+fn present_strings(xs: List<String?>) -> List<String> {
+  fold(xs, init: [], f: (acc, x) => match x {
+    Absent => acc
+    Present { value: s } => concat(acc, [s])
+  })
+}
+
+// ── THE STRUCTURED ENTRY DECODERS ─────────────────────────────────────────────────────────────
+//
+// EVERY MEMBER IS REQUIRED, because a device mapping missing its host path is not a partial reading
+// of a device mapping -- it is a document this model does not understand, and admitting it with a
+// hole is how a convergence comes to compare against a value nobody supplied.
+type DockerInspectDeviceRead
+  = DeviceEntryRead { device: DockerInspectDevice }
+  | DeviceEntryMalformed { cause: String }
+
+fn docker_inspect_device_entry(v: JsonValue) -> DockerInspectDeviceRead {
+  let host = json_field_string(obj: v, key: "PathOnHost")
+  let inside = json_field_string(obj: v, key: "PathInContainer")
+  let perms = json_field_string(obj: v, key: "CgroupPermissions")
+  match json_field_value(r: host) {
+    Absent => DeviceEntryMalformed { cause: "a HostConfig.Devices entry names no PathOnHost" }
+    Present { value: h } =>
+      match json_field_value(r: inside) {
+        Absent => DeviceEntryMalformed { cause: join(["the HostConfig.Devices entry for ", h, " names no PathInContainer"], "") }
+        Present { value: c } =>
+          match json_field_value(r: perms) {
+            Absent => DeviceEntryMalformed { cause: join(["the HostConfig.Devices entry for ", h, " names no CgroupPermissions"], "") }
+            Present { value: p } =>
+              if p == "" {
+                DeviceEntryMalformed { cause: join(["the HostConfig.Devices entry for ", h, " carries empty CgroupPermissions"], "") }
+              } else {
+                DeviceEntryRead { device: DockerInspectDevice {
+                  path_on_host: h as FilePath,
+                  path_in_container: c as FilePath,
+                  cgroup_permissions: p as NonEmptyStr,
+                } }
+              }
+          }
+      }
+  }
+}
+
+type DockerInspectUlimitRead
+  = UlimitEntryRead { ulimit: DockerInspectUlimit }
+  | UlimitEntryMalformed { cause: String }
+
+fn docker_inspect_ulimit_entry(v: JsonValue) -> DockerInspectUlimitRead {
+  match json_field_value(r: json_field_string(obj: v, key: "Name")) {
+    Absent => UlimitEntryMalformed { cause: "a HostConfig.Ulimits entry names no Name" }
+    Present { value: n } =>
+      if n == "" {
+        UlimitEntryMalformed { cause: "a HostConfig.Ulimits entry carries an empty Name" }
+      } else {
+        match json_field_value(r: json_field_int(obj: v, key: "Soft")) {
+          Absent => UlimitEntryMalformed { cause: join(["the HostConfig.Ulimits entry ", n, " names no integer Soft"], "") }
+          Present { value: soft } =>
+            match json_field_value(r: json_field_int(obj: v, key: "Hard")) {
+              Absent => UlimitEntryMalformed { cause: join(["the HostConfig.Ulimits entry ", n, " names no integer Hard"], "") }
+              Present { value: hard } =>
+                UlimitEntryRead { ulimit: DockerInspectUlimit { name: n as NonEmptyStr, soft: soft, hard: hard } }
+            }
+        }
+      }
+  }
+}
+
+type DeviceListAcc {
+  devices: List<DockerInspectDevice>
+  cause: String?
+}
+
+fn device_list_step(acc: DeviceListAcc, v: JsonValue) -> DeviceListAcc {
+  match acc.cause {
+    Present { value: _ } => acc
+    Absent =>
+      match docker_inspect_device_entry(v: v) {
+        DeviceEntryMalformed { cause: c } => DeviceListAcc { devices: acc.devices, cause: Present { value: c } }
+        DeviceEntryRead { device: d } => DeviceListAcc { devices: concat(acc.devices, [d]), cause: none }
+      }
+  }
+}
+
+fn json_field_device_list(obj: JsonValue, key: String) -> JsonFieldRead<List<DockerInspectDevice>> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } => {
+          let acc = fold(es, init: DeviceListAcc { devices: [], cause: none }, f: (a, e) => device_list_step(acc: a, v: e))
+          match acc.cause {
+            Present { value: c } => FieldMalformed { cause: c }
+            Absent => FieldRead { value: acc.devices }
+          }
+        }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where an array of device mappings was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where an array of device mappings was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where an array of device mappings was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where an array of device mappings was expected"], "") }
+      }
+  }
+}
+
+type UlimitListAcc {
+  ulimits: List<DockerInspectUlimit>
+  cause: String?
+}
+
+fn ulimit_list_step(acc: UlimitListAcc, v: JsonValue) -> UlimitListAcc {
+  match acc.cause {
+    Present { value: _ } => acc
+    Absent =>
+      match docker_inspect_ulimit_entry(v: v) {
+        UlimitEntryMalformed { cause: c } => UlimitListAcc { ulimits: acc.ulimits, cause: Present { value: c } }
+        UlimitEntryRead { ulimit: u } => UlimitListAcc { ulimits: concat(acc.ulimits, [u]), cause: none }
+      }
+  }
+}
+
+fn json_field_ulimit_list(obj: JsonValue, key: String) -> JsonFieldRead<List<DockerInspectUlimit>> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } => {
+          let acc = fold(es, init: UlimitListAcc { ulimits: [], cause: none }, f: (a, e) => ulimit_list_step(acc: a, v: e))
+          match acc.cause {
+            Present { value: c } => FieldMalformed { cause: c }
+            Absent => FieldRead { value: acc.ulimits }
+          }
+        }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where an array of ulimits was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where an array of ulimits was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where an array of ulimits was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where an array of ulimits was expected"], "") }
+      }
+  }
+}
+
+fn json_field_restart_policy(obj: JsonValue, key: String) -> JsonFieldRead<DockerInspectRestartPolicy> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } => {
+      let name = json_field_string(obj: v, key: "Name")
+      let retries = json_field_nat(obj: v, key: "MaximumRetryCount")
+      match json_field_cause(r: name) {
+        Present { value: c } => FieldMalformed { cause: c }
+        Absent =>
+          match json_field_cause(r: retries) {
+            Present { value: c } => FieldMalformed { cause: c }
+            Absent =>
+              match json_field_value(r: name) {
+                Absent => FieldMalformed { cause: join([key, " names no Name"], "") }
+                Present { value: n } => FieldRead { value: DockerInspectRestartPolicy {
+                  name: n,
+                  maximum_retry_count: json_field_value(r: retries),
+                } }
+              }
+          }
+      }
+    }
+  }
+}
+
+// ── HOSTCONFIG ────────────────────────────────────────────────────────────────────────────────
+
+type HostConfigRead
+  = HostConfigDecoded { host_config: HostConfig }
+  | HostConfigMalformed { causes: List<String> }
+
+fn docker_inspect_host_config(v: JsonValue) -> HostConfigRead {
+  let cpu_shares = json_field_nat(obj: v, key: "CpuShares")
+  let memory = json_field_byte_size(obj: v, key: "Memory")
+  let memory_reservation = json_field_byte_size(obj: v, key: "MemoryReservation")
+  let memory_swap = json_field_byte_size(obj: v, key: "MemorySwap")
+  let cpu_period = json_field_microsecond(obj: v, key: "CpuPeriod")
+  let cpu_quota = json_field_microsecond(obj: v, key: "CpuQuota")
+  let cpuset_cpus = json_field_string(obj: v, key: "CpusetCpus")
+  let cpuset_mems = json_field_string(obj: v, key: "CpusetMems")
+  let blkio_weight = json_field_nat(obj: v, key: "BlkioWeight")
+  let blkio_weight_device = json_field_opaque_entry_list(obj: v, key: "BlkioWeightDevice")
+  let network_mode = json_field_string(obj: v, key: "NetworkMode")
+  let pid_mode = json_field_string(obj: v, key: "PidMode")
+  let ipc_mode = json_field_string(obj: v, key: "IpcMode")
+  let uts_mode = json_field_string(obj: v, key: "UTSMode")
+  let cap_add = json_field_string_list(obj: v, key: "CapAdd")
+  let cap_drop = json_field_string_list(obj: v, key: "CapDrop")
+  let exposed_ports = json_field_opaque_entry_list(obj: v, key: "ExposedPorts")
+  let port_bindings = json_field_opaque_entry_list(obj: v, key: "PortBindings")
+  let volumes = json_field_opaque_entry_list(obj: v, key: "Volumes")
+  let volumes_from = json_field_string_list(obj: v, key: "VolumesFrom")
+  let device_requests = json_field_opaque_entry_list(obj: v, key: "DeviceRequests")
+  let devices = json_field_device_list(obj: v, key: "Devices")
+  let ulimits = json_field_ulimit_list(obj: v, key: "Ulimits")
+  let shm_size = json_field_byte_size(obj: v, key: "ShmSize")
+  let binds = json_field_string_list(obj: v, key: "Binds")
+  let restart_policy = json_field_restart_policy(obj: v, key: "RestartPolicy")
+  let causes = present_strings(xs: [
+    json_field_cause(r: cpu_shares), json_field_cause(r: memory), json_field_cause(r: memory_reservation),
+    json_field_cause(r: memory_swap), json_field_cause(r: cpu_period), json_field_cause(r: cpu_quota),
+    json_field_cause(r: cpuset_cpus), json_field_cause(r: cpuset_mems), json_field_cause(r: blkio_weight),
+    json_field_cause(r: blkio_weight_device), json_field_cause(r: network_mode), json_field_cause(r: pid_mode),
+    json_field_cause(r: ipc_mode), json_field_cause(r: uts_mode), json_field_cause(r: cap_add),
+    json_field_cause(r: cap_drop), json_field_cause(r: exposed_ports), json_field_cause(r: port_bindings),
+    json_field_cause(r: volumes), json_field_cause(r: volumes_from), json_field_cause(r: device_requests),
+    json_field_cause(r: devices), json_field_cause(r: ulimits),
+    json_field_cause(r: shm_size), json_field_cause(r: binds), json_field_cause(r: restart_policy),
+  ])
+  if count(causes) > 0 {
+    HostConfigMalformed { causes: map(causes, c => join(["HostConfig.", c], "")) }
+  } else {
+    HostConfigDecoded { host_config: HostConfig {
+      cpu_shares: json_field_value(r: cpu_shares),
+      memory: json_field_value(r: memory),
+      memory_reservation: json_field_value(r: memory_reservation),
+      memory_swap: json_field_value(r: memory_swap),
+      cpu_period: json_field_value(r: cpu_period),
+      cpu_quota: json_field_value(r: cpu_quota),
+      cpuset_cpus: json_field_value(r: cpuset_cpus),
+      cpuset_mems: json_field_value(r: cpuset_mems),
+      blkio_weight: json_field_value(r: blkio_weight),
+      blkio_weight_device: json_field_value(r: blkio_weight_device),
+      network_mode: json_field_value(r: network_mode),
+      pid_mode: json_field_value(r: pid_mode),
+      ipc_mode: json_field_value(r: ipc_mode),
+      uts_mode: json_field_value(r: uts_mode),
+      cap_add: json_field_value(r: cap_add),
+      cap_drop: json_field_value(r: cap_drop),
+      exposed_ports: json_field_value(r: exposed_ports),
+      port_bindings: json_field_value(r: port_bindings),
+      volumes: json_field_value(r: volumes),
+      volumes_from: json_field_value(r: volumes_from),
+      device_requests: json_field_value(r: device_requests),
+      devices: json_field_value(r: devices),
+      ulimits: json_field_value(r: ulimits),
+      shm_size: json_field_value(r: shm_size),
+      binds: json_field_value(r: binds),
+      restart_policy: json_field_value(r: restart_policy),
+    } }
+  }
+}
+
+// ── CONFIG AND NETWORKSETTINGS ────────────────────────────────────────────────────────────────
+
+type ContainerConfigRead
+  = ContainerConfigDecoded { config: ContainerConfig }
+  | ContainerConfigMalformed { causes: List<String> }
+
+fn docker_inspect_container_config(v: JsonValue) -> ContainerConfigRead {
+  let hostname = json_field_string(obj: v, key: "Hostname")
+  let domainname = json_field_string(obj: v, key: "Domainname")
+  let user = json_field_string(obj: v, key: "User")
+  let attach_stdin = json_field_bool(obj: v, key: "AttachStdin")
+  let attach_stdout = json_field_bool(obj: v, key: "AttachStdout")
+  let attach_stderr = json_field_bool(obj: v, key: "AttachStderr")
+  let tty = json_field_bool(obj: v, key: "Tty")
+  let open_stdin = json_field_bool(obj: v, key: "OpenStdin")
+  let stdin_once = json_field_bool(obj: v, key: "StdinOnce")
+  let env = json_field_string_list(obj: v, key: "Env")
+  let cmd = json_field_string_list(obj: v, key: "Cmd")
+  let image = json_field_string(obj: v, key: "Image")
+  let volumes = json_field_opaque_entry_list(obj: v, key: "Volumes")
+  let working_dir = json_field_string(obj: v, key: "WorkingDir")
+  let entrypoint = json_field_string_list(obj: v, key: "Entrypoint")
+  let labels = json_field_opaque_entry_list(obj: v, key: "Labels")
+  let mac_address = json_field_string(obj: v, key: "MacAddress")
+  let exposed_ports = json_field_opaque_entry_list(obj: v, key: "ExposedPorts")
+  let network_disabled = json_field_bool(obj: v, key: "NetworkDisabled")
+  let causes = present_strings(xs: [
+    json_field_cause(r: hostname), json_field_cause(r: domainname), json_field_cause(r: user),
+    json_field_cause(r: attach_stdin), json_field_cause(r: attach_stdout), json_field_cause(r: attach_stderr),
+    json_field_cause(r: tty), json_field_cause(r: open_stdin), json_field_cause(r: stdin_once),
+    json_field_cause(r: env), json_field_cause(r: cmd), json_field_cause(r: image),
+    json_field_cause(r: volumes), json_field_cause(r: working_dir), json_field_cause(r: entrypoint),
+    json_field_cause(r: labels), json_field_cause(r: mac_address), json_field_cause(r: exposed_ports),
+    json_field_cause(r: network_disabled),
+  ])
+  if count(causes) > 0 {
+    ContainerConfigMalformed { causes: map(causes, c => join(["Config.", c], "")) }
+  } else {
+    ContainerConfigDecoded { config: ContainerConfig {
+      hostname: json_field_value(r: hostname),
+      domainname: json_field_value(r: domainname),
+      user: json_field_value(r: user),
+      attach_stdin: json_field_value(r: attach_stdin),
+      attach_stdout: json_field_value(r: attach_stdout),
+      attach_stderr: json_field_value(r: attach_stderr),
+      tty: json_field_value(r: tty),
+      open_stdin: json_field_value(r: open_stdin),
+      stdin_once: json_field_value(r: stdin_once),
+      env: json_field_value(r: env),
+      cmd: json_field_value(r: cmd),
+      image: json_field_value(r: image),
+      volumes: json_field_value(r: volumes),
+      working_dir: json_field_value(r: working_dir),
+      entrypoint: json_field_value(r: entrypoint),
+      labels: json_field_value(r: labels),
+      mac_address: json_field_value(r: mac_address),
+      exposed_ports: json_field_value(r: exposed_ports),
+      network_disabled: json_field_value(r: network_disabled),
+    } }
+  }
+}
+
+type NetworkSettingsRead
+  = NetworkSettingsDecoded { settings: NetworkSettings }
+  | NetworkSettingsMalformed { causes: List<String> }
+
+fn docker_inspect_network_settings(v: JsonValue) -> NetworkSettingsRead {
+  let bridge = json_field_string(obj: v, key: "Bridge")
+  let gateway = json_field_string(obj: v, key: "Gateway")
+  let ip_address = json_field_string(obj: v, key: "IPAddress")
+  let ip_prefix_len = json_field_nat(obj: v, key: "IPPrefixLen")
+  let mac_address = json_field_string(obj: v, key: "MacAddress")
+  let networks = json_field_opaque_entry_list(obj: v, key: "Networks")
+  let causes = present_strings(xs: [
+    json_field_cause(r: bridge), json_field_cause(r: gateway), json_field_cause(r: ip_address),
+    json_field_cause(r: ip_prefix_len), json_field_cause(r: mac_address), json_field_cause(r: networks),
+  ])
+  if count(causes) > 0 {
+    NetworkSettingsMalformed { causes: map(causes, c => join(["NetworkSettings.", c], "")) }
+  } else {
+    NetworkSettingsDecoded { settings: NetworkSettings {
+      bridge: json_field_value(r: bridge),
+      gateway: json_field_value(r: gateway),
+      ip_address: json_field_value(r: ip_address),
+      ip_prefix_len: json_field_value(r: ip_prefix_len),
+      mac_address: json_field_value(r: mac_address),
+      networks: json_field_value(r: networks),
+    } }
+  }
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────────────────────────────
+//
+// THE STATUS STRING IS REQUIRED AND THE BOOLS ARE NOT INVENTED FROM IT. ContainerStateDetail's
+// parallel bools are the wire's redundancy, already rostered as a frontier above; this decoder READS
+// them rather than deriving them from `status`, because deriving would make the frontier row
+// permanently green -- the illegal state it warns about (status=Running, running=false) would become
+// unwritable through this route while remaining writable through the type, which is a decoration
+// standing where the frontier row states honest work.
+type ContainerStateRead
+  = ContainerStateDecoded { state: ContainerStateDetail }
+  | ContainerStateMalformed { causes: List<String> }
+
+fn json_field_required_bool(obj: JsonValue, key: String) -> JsonFieldRead<Bool> {
+  match json_field_bool(obj: obj, key: key) {
+    FieldAbsent => FieldMalformed { cause: join([key, " is absent, and this reader will not assume false for a state the daemon did not report"], "") }
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: b } => FieldRead { value: b }
+  }
+}
+
+fn docker_inspect_state(v: JsonValue) -> ContainerStateRead {
+  let status_text = json_field_string(obj: v, key: "Status")
+  let running = json_field_required_bool(obj: v, key: "Running")
+  let paused = json_field_required_bool(obj: v, key: "Paused")
+  let restarting = json_field_required_bool(obj: v, key: "Restarting")
+  let oom_killed = json_field_required_bool(obj: v, key: "OOMKilled")
+  let dead = json_field_required_bool(obj: v, key: "Dead")
+  let pid = json_field_nat(obj: v, key: "Pid")
+  let exit_code = json_field_int(obj: v, key: "ExitCode")
+  let error = json_field_string(obj: v, key: "Error")
+  let started_at = json_field_string(obj: v, key: "StartedAt")
+  let finished_at = json_field_string(obj: v, key: "FinishedAt")
+  let status = match json_field_value(r: status_text) {
+    Absent => none
+    Present { value: t } => parse_container_state(raw: t)
+  }
+  let status_cause = match json_field_value(r: status_text) {
+    Absent => Present { value: "State.Status is absent; a container whose state this reader cannot name is refused rather than assumed" }
+    Present { value: t } =>
+      match parse_container_state(raw: t) {
+        Present { value: _ } => none
+        Absent => Present { value: join(["State.Status is ", t, ", which is not one of the five states extdeps.docker.container_inspect ContainerState carries"], "") }
+      }
+  }
+  let causes = present_strings(xs: [
+    json_field_cause(r: status_text), status_cause,
+    json_field_cause(r: running), json_field_cause(r: paused), json_field_cause(r: restarting),
+    json_field_cause(r: oom_killed), json_field_cause(r: dead), json_field_cause(r: pid),
+    json_field_cause(r: exit_code), json_field_cause(r: error),
+    json_field_cause(r: started_at), json_field_cause(r: finished_at),
+  ])
+  match status {
+    Absent => ContainerStateMalformed { causes: map(causes, c => join(["State.", c], "")) }
+    Present { value: st } =>
+      if count(causes) > 0 {
+        ContainerStateMalformed { causes: map(causes, c => join(["State.", c], "")) }
+      } else {
+        match json_field_value(r: running) {
+          Absent => ContainerStateMalformed { causes: ["State.Running is absent"] }
+          Present { value: is_running } =>
+            match json_field_value(r: paused) {
+              Absent => ContainerStateMalformed { causes: ["State.Paused is absent"] }
+              Present { value: is_paused } =>
+                match json_field_value(r: restarting) {
+                  Absent => ContainerStateMalformed { causes: ["State.Restarting is absent"] }
+                  Present { value: is_restarting } =>
+                    match json_field_value(r: oom_killed) {
+                      Absent => ContainerStateMalformed { causes: ["State.OOMKilled is absent"] }
+                      Present { value: was_oom_killed } =>
+                        match json_field_value(r: dead) {
+                          Absent => ContainerStateMalformed { causes: ["State.Dead is absent"] }
+                          Present { value: is_dead } =>
+                            ContainerStateDecoded { state: ContainerStateDetail {
+                              status: st,
+                              running: is_running,
+                              paused: is_paused,
+                              restarting: is_restarting,
+                              oom_killed: was_oom_killed,
+                              dead: is_dead,
+                              pid: json_field_value(r: pid),
+                              exit_code: json_field_value(r: exit_code),
+                              error: json_field_value(r: error),
+                              started_at: json_field_value(r: started_at),
+                              finished_at: json_field_value(r: finished_at),
+                            } }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// ── THE WHOLE DOCUMENT ────────────────────────────────────────────────────────────────────────
+//
+// FOUR MEMBERS ARE REQUIRED AND THE REST ARE NOT, and the four are the ones ContainerInspect
+// declares non-optional: Id, Created, Image and State. A document missing one of them is not a
+// container this model can describe, so it refuses rather than filling a hole.
+type NestedObjectRead<T>
+  = NestedAbsent
+  | NestedRead { value: T }
+  | NestedMalformed { causes: List<String> }
+
+fn docker_inspect_nested_host_config(obj: JsonValue) -> NestedObjectRead<HostConfig> {
+  match json_field(obj: obj, key: "HostConfig") {
+    FieldAbsent => NestedAbsent
+    FieldMalformed { cause: c } => NestedMalformed { causes: [c] }
+    FieldRead { value: v } =>
+      match docker_inspect_host_config(v: v) {
+        HostConfigMalformed { causes: cs } => NestedMalformed { causes: cs }
+        HostConfigDecoded { host_config: hc } => NestedRead { value: hc }
+      }
+  }
+}
+
+fn docker_inspect_nested_config(obj: JsonValue) -> NestedObjectRead<ContainerConfig> {
+  match json_field(obj: obj, key: "Config") {
+    FieldAbsent => NestedAbsent
+    FieldMalformed { cause: c } => NestedMalformed { causes: [c] }
+    FieldRead { value: v } =>
+      match docker_inspect_container_config(v: v) {
+        ContainerConfigMalformed { causes: cs } => NestedMalformed { causes: cs }
+        ContainerConfigDecoded { config: c } => NestedRead { value: c }
+      }
+  }
+}
+
+fn docker_inspect_nested_network_settings(obj: JsonValue) -> NestedObjectRead<NetworkSettings> {
+  match json_field(obj: obj, key: "NetworkSettings") {
+    FieldAbsent => NestedAbsent
+    FieldMalformed { cause: c } => NestedMalformed { causes: [c] }
+    FieldRead { value: v } =>
+      match docker_inspect_network_settings(v: v) {
+        NetworkSettingsMalformed { causes: cs } => NestedMalformed { causes: cs }
+        NetworkSettingsDecoded { settings: s } => NestedRead { value: s }
+      }
+  }
+}
+
+fn nested_host_config_value(r: NestedObjectRead<HostConfig>) -> HostConfig? {
+  match r {
+    NestedAbsent => none
+    NestedMalformed { causes: _ } => none
+    NestedRead { value: v } => Present { value: v }
+  }
+}
+
+fn nested_config_value(r: NestedObjectRead<ContainerConfig>) -> ContainerConfig? {
+  match r {
+    NestedAbsent => none
+    NestedMalformed { causes: _ } => none
+    NestedRead { value: v } => Present { value: v }
+  }
+}
+
+fn nested_network_settings_value(r: NestedObjectRead<NetworkSettings>) -> NetworkSettings? {
+  match r {
+    NestedAbsent => none
+    NestedMalformed { causes: _ } => none
+    NestedRead { value: v } => Present { value: v }
+  }
+}
+
+fn nested_causes(r: NestedObjectRead<T>) -> List<String> {
+  match r {
+    NestedAbsent => []
+    NestedMalformed { causes: cs } => cs
+    NestedRead { value: _ } => []
+  }
+}
+
+fn docker_inspect_object(obj: JsonValue) -> ContainerInspectRead {
+  let id = json_field_string(obj: obj, key: "Id")
+  let created = json_field_string(obj: obj, key: "Created")
+  let image = json_field_string(obj: obj, key: "Image")
+  let path = json_field_string(obj: obj, key: "Path")
+  let args = json_field_string_list(obj: obj, key: "Args")
+  let resolv = json_field_string(obj: obj, key: "ResolvConfPath")
+  let name = json_field_string(obj: obj, key: "Name")
+  let restart_count = json_field_nat(obj: obj, key: "RestartCount")
+  let driver = json_field_string(obj: obj, key: "Driver")
+  let platform = json_field_string(obj: obj, key: "Platform")
+  let host_config = docker_inspect_nested_host_config(obj: obj)
+  let config = docker_inspect_nested_config(obj: obj)
+  let network_settings = docker_inspect_nested_network_settings(obj: obj)
+  let state_read = match json_field(obj: obj, key: "State") {
+    FieldAbsent => ContainerStateMalformed { causes: ["State is absent"] }
+    FieldMalformed { cause: c } => ContainerStateMalformed { causes: [c] }
+    FieldRead { value: v } => docker_inspect_state(v: v)
+  }
+  let state_causes = match state_read {
+    ContainerStateMalformed { causes: cs } => cs
+    ContainerStateDecoded { state: _ } => []
+  }
+  let hostname = match nested_config_value(r: config) {
+    Absent => none
+    Present { value: c } => c.hostname
+  }
+  let causes = concat(
+    concat(
+      present_strings(xs: [
+        json_field_cause(r: id), json_field_cause(r: created), json_field_cause(r: image),
+        json_field_cause(r: path), json_field_cause(r: args), json_field_cause(r: resolv),
+        json_field_cause(r: name), json_field_cause(r: restart_count), json_field_cause(r: driver),
+        json_field_cause(r: platform),
+      ]),
+      concat(nested_causes(r: host_config), concat(nested_causes(r: config), nested_causes(r: network_settings))),
+    ),
+    state_causes,
+  )
+  if count(causes) > 0 {
+    ContainerInspectUnreadable { cause: join(causes, "; ") }
+  } else {
+    match json_field_value(r: id) {
+      Absent => ContainerInspectUnreadable { cause: "docker container inspect JSON names no Id" }
+      Present { value: container_id } =>
+        match json_field_value(r: created) {
+          Absent => ContainerInspectUnreadable { cause: "docker container inspect JSON names no Created" }
+          Present { value: created_at } =>
+            match json_field_value(r: image) {
+              Absent => ContainerInspectUnreadable { cause: "docker container inspect JSON names no Image" }
+              Present { value: image_id } =>
+                match state_read {
+                  ContainerStateMalformed { causes: cs } => ContainerInspectUnreadable { cause: join(cs, "; ") }
+                  ContainerStateDecoded { state: st } =>
+                    ContainerInspectDecoded { container: ContainerInspect {
+                      id: container_id,
+                      created: created_at,
+                      path: match json_field_value(r: path) { Absent => none, Present { value: p } => Present { value: p as FilePath } },
+                      args: json_field_value(r: args),
+                      state: st,
+                      image: image_id,
+                      resolv_conf_path: match json_field_value(r: resolv) { Absent => none, Present { value: p } => Present { value: p as FilePath } },
+                      hostname: hostname,
+                      name: json_field_value(r: name),
+                      restart_count: json_field_value(r: restart_count),
+                      driver: json_field_value(r: driver),
+                      platform: json_field_value(r: platform),
+                      config: nested_config_value(r: config),
+                      network_settings: nested_network_settings_value(r: network_settings),
+                      host_config: nested_host_config_value(r: host_config),
+                    } }
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE ENTRY THIS MODULE EXPORTS, taking the bytes a `docker container inspect` leg wrote to stdout.
+// gunbc.spark.serving_rank_observe is its executing consumer, and the witness over the 2026-09-16
+// Group B captures is what establishes the fold runs on bytes the daemon actually produced rather
+// than on text an author wrote to match it.
+fn container_inspect_from_stdout(stdout: String) -> ContainerInspectRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } => ContainerInspectUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_sole_element(v: v) {
+        Present { value: refusal } => refusal
+        Absent =>
+          match docker_inspect_only_element(v: v) {
+            Absent => ContainerInspectUnreadable { cause: "docker container inspect JSON is a one-element array with no element" }
+            Present { value: obj } => docker_inspect_object(obj: obj)
+          }
+      }
+  }
+}
+
+// ── READING THE THREE INCIDENT FIELDS OFF A DECODED CONTAINER ─────────────────────────────────
+//
+// These three exist so a consumer asks the container what it IS rather than reaching through two
+// optionals and guessing what `Absent` meant. THE ANSWER IS THREE-VALUED IN EACH CASE and the third
+// value is the point: a container whose HostConfig the daemon did not report is not a container
+// without the device, and answering `false` for it would be the fabricated default section 5
+// forbids.
+type VerbsShapeReading
+  = VerbsShapePresent
+  | VerbsShapeAbsent
+  | VerbsShapeUnreported { cause: NonEmptyStr }
+
+fn container_maps_device(inspect: ContainerInspect, host_path: String) -> VerbsShapeReading {
+  match inspect.host_config {
+    Absent => VerbsShapeUnreported { cause: "the inspect document carries no HostConfig, so whether a device is mapped is unread" as NonEmptyStr }
+    Present { value: hc } =>
+      match hc.devices {
+        Absent => VerbsShapeUnreported { cause: "HostConfig names no Devices member, so whether a device is mapped is unread" as NonEmptyStr }
+        Present { value: ds } =>
+          if count(filter(ds, d => (d.path_on_host as String) == host_path)) > 0 {
+            VerbsShapePresent
+          } else {
+            VerbsShapeAbsent
+          }
+      }
+  }
+}
+
+fn container_adds_capability(inspect: ContainerInspect, capability: String) -> VerbsShapeReading {
+  match inspect.host_config {
+    Absent => VerbsShapeUnreported { cause: "the inspect document carries no HostConfig, so whether a capability is added is unread" as NonEmptyStr }
+    Present { value: hc } =>
+      match hc.cap_add {
+        Absent => VerbsShapeAbsent
+        Present { value: cs } =>
+          if count(filter(cs, c => docker_capability_canonical(name: c) == docker_capability_canonical(name: capability))) > 0 {
+            VerbsShapePresent
+          } else {
+            VerbsShapeAbsent
+          }
+      }
+  }
+}
+
+// `CapAdd: null` IS `VerbsShapeAbsent` AND NOT UNREPORTED, and that asymmetry with Devices is read
+// off the capture rather than chosen: the socket incarnation reports `"CapAdd": null` while the RoCE
+// incarnation reports a list, so null is the daemon's spelling for "no capabilities were added" on a
+// member it always emits. `Devices` behaves differently -- the socket side reports `[]`, not null --
+// so an absent Devices member is a document shape this reader has not seen and does not interpret.
+
+// MEMLOCK IS UNLIMITED WHEN BOTH BOUNDS ARE -1, which is what `--ulimit memlock=-1:-1` reads back
+// as. A row naming memlock with any other pair is a real answer of `Absent`: the limit exists and is
+// finite, which is the state that makes verbs registration fail late instead of early.
+data docker_memlock_ulimit_name: String = "memlock"
+
+fn container_unlocks_memlock(inspect: ContainerInspect) -> VerbsShapeReading {
+  match inspect.host_config {
+    Absent => VerbsShapeUnreported { cause: "the inspect document carries no HostConfig, so whether memlock is unlimited is unread" as NonEmptyStr }
+    Present { value: hc } =>
+      match hc.ulimits {
+        Absent => VerbsShapeUnreported { cause: "HostConfig names no Ulimits member, so whether memlock is unlimited is unread" as NonEmptyStr }
+        Present { value: us } =>
+          if count(filter(us, u => (u.name as String) == docker_memlock_ulimit_name && u.soft == -1 && u.hard == -1)) > 0 {
+            VerbsShapePresent
+          } else {
+            VerbsShapeAbsent
+          }
+      }
+  }
+}
+
+fn verbs_shape_wire(r: VerbsShapeReading) -> String {
+  match r {
+    VerbsShapePresent => "present"
+    VerbsShapeAbsent => "absent"
+    VerbsShapeUnreported { cause: c } => join(["unread(", c as String, ")"], "")
+  }
+}

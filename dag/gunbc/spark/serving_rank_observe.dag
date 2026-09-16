@@ -1,0 +1,418 @@
+module gunbc.spark.serving_rank_observe
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { TokenCount, ConcurrentRequestHundredths }
+import product.placement_supply { HostIdentity }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.docker.cli {
+  docker_container_inspect_command, docker_logs_command, DockerLogScope, DockerLogsWhole,
+  docker_exec_command, DockerEnvAssignment,
+}
+import extdeps.docker.container_inspect {
+  ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
+  container_inspect_from_stdout,
+  VerbsShapeReading, VerbsShapePresent, VerbsShapeAbsent, VerbsShapeUnreported,
+  container_maps_device, container_adds_capability, container_unlocks_memlock, verbs_shape_wire,
+}
+import extdeps.nvidia.nccl {
+  NcclTransportVerdict, NcclTransportRead, NcclTransportRefused, NcclTransportReading,
+  NcclRealizedTransport, nccl_realized_transport_wire, nccl_transport_verdict,
+  nccl_transport_refusal_text,
+}
+import extdeps.vllm.log_lines {
+  VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency,
+  vllm_startup_readings, vllm_readings_of_class, vllm_kv_pool_tokens_in, vllm_max_concurrency_in,
+}
+import extdeps.vllm.engine_args {
+  VllmArgvNatRead, VllmArgvNat, VllmArgvNatUnread, vllm_argv_node_rank,
+  vllm_argv_utilization_basis_points,
+}
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
+}
+
+// ── READING A LIVE RANK, WHICH IS THE THING THIS CORPUS COULD NOT DO ──────────────────────────
+//
+// THE GAP THIS CLOSES, STATED AS THE ONE SENTENCE IT WAS FOUND AS: gunbc models the serving facts of
+// this arm well -- the container shape, the engine's startup residuals, the collective transport NCCL
+// actually built -- and had NO producer that read any of them off a running engine. Every carrier was
+// fed by a supplied value. A model with no producer cannot be contradicted by a machine, and on
+// 2026-09-13 this fleet spent two and a half days serving every collective over TCP while every
+// modelled fact about it stayed green.
+//
+// THREE FACTS, THREE ROUTES, ONE SUBJECT. The container's own shape, the engine's startup lines and
+// NCCL's transport announcement are read by three separate legs against ONE container on ONE host,
+// and they are bound together by the container id the first leg returns. That binding is the whole
+// point: a transport verdict that cannot say which incarnation it describes is the verdict
+// gunbc.spark.collective_transport_plan records as having been deleted rather than kept.
+//
+// THE PRIVILEGED LEG IS NOT NEW. Docker's socket on these hosts is root-owned, and
+// gunbc.spark.model_snapshot_materialize spark_remote_run is the one route the corpus models for
+// reaching it. This module binds to that route exactly as gunbc.spark.v41_runtime_image_probe and
+// gunbc.spark.vllm_runtime_image_build already do; a second remote-execution path for the same
+// daemon would be the fork DESIGN section 3 forbids.
+type ObservedRankSubject sole_constructor {
+  host: HostIdentity
+  container: NonEmptyStr
+}
+
+fn observed_rank_subject(host: HostIdentity, container: NonEmptyStr) -> ObservedRankSubject {
+  ObservedRankSubject { host: host, container: container }
+}
+
+fn observed_rank_subject_text(s: ObservedRankSubject) -> String {
+  join([s.container as String, " on ", s.host as String], "")
+}
+
+// EVERY REFUSAL NAMES THE STEP AND THE SUBJECT. "the readback failed" is a sentence an operator
+// cannot act on; "container-inspect on spark-0c75 exited 1 with 'No such container'" is one they can.
+type RankObservationRefusal sole_constructor {
+  subject: ObservedRankSubject
+  step: NonEmptyStr
+  cause: NonEmptyStr
+}
+
+fn rank_observation_refusal_text(r: RankObservationRefusal) -> String {
+  join([r.step as String, " on ", observed_rank_subject_text(s: r.subject), ": ", r.cause as String], "")
+}
+
+// A LEG THAT NEVER LANDED AND A LEG THAT RAN AND FAILED ARE DIFFERENT FACTS with different remedies,
+// and spark_remote_run already keeps them apart. Folding both into "the observation failed" would
+// make an unreachable host read as a broken container.
+type RankLegOutcome
+  = RankLegRan { stdout: String }
+  | RankLegFailed { refusal: RankObservationRefusal }
+
+fn rank_leg(
+  ctx: SparkMaterializeContext,
+  subject: ObservedRankSubject,
+  step: NonEmptyStr,
+  command: ArgvCommand,
+) -> RankLegOutcome
+  uses net: Network
+{
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
+    RemoteUnreachable { cause: why } =>
+      RankLegFailed { refusal: RankObservationRefusal { subject: subject, step: step, cause: why as NonEmptyStr } }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        RankLegFailed { refusal: RankObservationRefusal {
+          subject: subject,
+          step: step,
+          cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") as NonEmptyStr,
+        } }
+      } else {
+        RankLegRan { stdout: out }
+      }
+  }
+}
+
+// ── (a) THE CONTAINER, AS THE DAEMON REPORTS IT ───────────────────────────────────────────────
+
+type RankInspectReading
+  = RankInspected { subject: ObservedRankSubject, container: ContainerInspect }
+  | RankInspectRefused { refusal: RankObservationRefusal }
+
+data rank_inspect_step: NonEmptyStr = "container-inspect" as NonEmptyStr
+
+fn observe_rank_container(ctx: SparkMaterializeContext, subject: ObservedRankSubject) -> RankInspectReading
+  uses net: Network
+{
+  match rank_leg(ctx: ctx, subject: subject, step: rank_inspect_step, command: docker_container_inspect_command(name: subject.container)) {
+    RankLegFailed { refusal: r } => RankInspectRefused { refusal: r }
+    RankLegRan { stdout: out } =>
+      match container_inspect_from_stdout(stdout: out) {
+        ContainerInspectUnreadable { cause: why } =>
+          RankInspectRefused { refusal: RankObservationRefusal { subject: subject, step: rank_inspect_step, cause: why as NonEmptyStr } }
+        ContainerInspectDecoded { container: c } => RankInspected { subject: subject, container: c }
+      }
+  }
+}
+
+// ── THE RANK, READ FROM THE ARGV THE DAEMON HOLDS AND FROM NOTHING ELSE ───────────────────────
+//
+// GROUP B'S RANK ORDER IS NOT ITS ADDRESS ORDER: 192.168.1.236 is rank 0, .237 is rank 1, .239 is
+// rank 2 and .238 is rank 3. Any reader that derived the rank from a sorted host roster would
+// mislabel two of the four and then attribute each one's transport verdict to the other. The rank a
+// container IS, is the `--node-rank` in the argv it was created with.
+//
+// AND `Config.Cmd` IS THE ENGINE'S ARGUMENTS, NOT THE DOCKER LINE. The daemon remembers the second
+// half only -- the first half was consumed by the create call -- which is why
+// gunbc.spark.serving_arm_launch splits the two lists at the plan side as well.
+type RankIdentityReading
+  = RankIdentityRead { incarnation: NonEmptyStr, node_rank: Nat }
+  | RankIdentityUnread { cause: NonEmptyStr }
+
+fn observed_container_argv(c: ContainerInspect) -> List<String>? {
+  match c.config {
+    Absent => none
+    Present { value: cfg } => cfg.cmd
+  }
+}
+
+fn observed_rank_identity(c: ContainerInspect) -> RankIdentityReading {
+  match observed_container_argv(c: c) {
+    Absent => RankIdentityUnread { cause: "the inspect document carries no Config.Cmd, so the rank this container was created as is unread" as NonEmptyStr }
+    Present { value: argv } =>
+      match vllm_argv_node_rank(argv: argv) {
+        VllmArgvNatUnread { cause: why } => RankIdentityUnread { cause: why }
+        VllmArgvNat { value: rank } =>
+          if c.id == "" {
+            RankIdentityUnread { cause: "the inspect document carries an empty Id, so this reading has no incarnation to bind to" as NonEmptyStr }
+          } else {
+            RankIdentityRead { incarnation: c.id as NonEmptyStr, node_rank: rank }
+          }
+      }
+  }
+}
+
+// ── (c) THE TRANSPORT NCCL ANNOUNCED, BOUND TO THE RANK THAT ANNOUNCED IT ─────────────────────
+//
+// WHAT A VERDICT MUST CARRY, taken from the note in gunbc.spark.collective_transport_plan explaining
+// why its first comparison was deleted rather than kept: the incarnation, the rank, the communicator
+// and the raw carrier line the verdict was read from. All four are here -- the incarnation is the
+// container id the inspect leg returned, the rank is the `--node-rank` in that same container's argv,
+// the communicator is the announcement occurrence extdeps.nvidia.nccl binds (its emitter and its
+// ordinal, because NCCL prints no handle on that line), and the line itself rides in the
+// NcclRealizedTransport arm's `read_from`.
+//
+// THE INSPECT COMES FIRST AND THE LOG SECOND, AND THAT ORDER IS THE BINDING. Reading the log of a
+// container whose identity was never established would produce a transport verdict about a name
+// rather than about an incarnation -- and a name is exactly what survives a stop, a rename and a
+// recreate, which is the operation this whole vertical performs.
+type RankTransportVerdict sole_constructor {
+  subject: ObservedRankSubject
+  incarnation: NonEmptyStr
+  node_rank: Nat
+  reading: NcclTransportReading
+}
+
+type RankTransportObservation
+  = RankTransportObserved { verdict: RankTransportVerdict }
+  | RankTransportRefused { refusal: RankObservationRefusal }
+
+data rank_transport_step: NonEmptyStr = "nccl-transport-readback" as NonEmptyStr
+
+fn observe_rank_transport(
+  ctx: SparkMaterializeContext,
+  subject: ObservedRankSubject,
+  container: ContainerInspect,
+) -> RankTransportObservation
+  uses net: Network
+{
+  match observed_rank_identity(c: container) {
+    RankIdentityUnread { cause: why } =>
+      RankTransportRefused { refusal: RankObservationRefusal { subject: subject, step: rank_transport_step, cause: why } }
+    RankIdentityRead { incarnation: id, node_rank: rank } =>
+      match rank_leg(ctx: ctx, subject: subject, step: rank_transport_step, command: docker_logs_command(name: subject.container, scope: DockerLogsWhole)) {
+        RankLegFailed { refusal: r } => RankTransportRefused { refusal: r }
+        RankLegRan { stdout: out } =>
+          match nccl_transport_verdict(captured_text: out) {
+            NcclTransportRefused { cause: c } =>
+              RankTransportRefused { refusal: RankObservationRefusal {
+                subject: subject,
+                step: rank_transport_step,
+                cause: nccl_transport_refusal_text(c: c),
+              } }
+            NcclTransportRead { reading: reading } =>
+              RankTransportObserved { verdict: RankTransportVerdict {
+                subject: subject,
+                incarnation: id,
+                node_rank: rank,
+                reading: reading,
+              } }
+          }
+      }
+  }
+}
+
+fn rank_transport_verdict_text(v: RankTransportVerdict) -> String {
+  join([
+    "rank ", to_string(v.node_rank), " of incarnation ", v.incarnation as String,
+    " on ", v.subject.host as String, " built ", nccl_realized_transport_wire(t: v.reading.transport) as String,
+    " (", to_string(count(v.reading.announcements)), " announcement(s), ",
+    to_string(count(v.reading.channels)), " channel(s)), read from: ",
+    nccl_transport_read_from(t: v.reading.transport) as String,
+  ], "")
+}
+
+fn nccl_transport_read_from(t: NcclRealizedTransport) -> NonEmptyStr {
+  match t {
+    NcclTransportIbVerbs { read_from: l } => l
+    NcclTransportSocket { read_from: l } => l
+  }
+}
+
+// ── (b) THE ENGINE'S STARTUP RESIDUALS, AND THE REVISION THAT EMITTED THEM ────────────────────
+//
+// THE REVISION IS READ FROM THE RUNNING CONTAINER, NOT FROM THE MODELLED ROW. extdeps.vllm.log_lines
+// records why in full: a constructor that stamped the modelled revision made every downstream
+// revision comparison permanently green. So this route asks the engine's own interpreter what it is,
+// inside the container that emitted the lines, and a route that cannot get an answer has no readings
+// -- not readings at an assumed revision.
+data rank_revision_step: NonEmptyStr = "vllm-revision-readback" as NonEmptyStr
+data rank_startup_step: NonEmptyStr = "vllm-startup-lines" as NonEmptyStr
+
+data vllm_version_probe_argv: List<String> = ["python3", "-c", "import vllm;print(vllm.__version__)"]
+data vllm_repository: NonEmptyStr = "github.com/vllm-project/vllm" as NonEmptyStr
+
+type RankRevisionReading
+  = RankRevisionRead { revision: VllmSourceRevision }
+  | RankRevisionRefused { refusal: RankObservationRefusal }
+
+fn observe_rank_vllm_revision(ctx: SparkMaterializeContext, subject: ObservedRankSubject) -> RankRevisionReading
+  uses net: Network
+{
+  match rank_leg(
+    ctx: ctx,
+    subject: subject,
+    step: rank_revision_step,
+    command: docker_exec_command(name: subject.container, env: [], argv: vllm_version_probe_argv),
+  ) {
+    RankLegFailed { refusal: r } => RankRevisionRefused { refusal: r }
+    RankLegRan { stdout: out } => {
+      let text = trim(s: out)
+      if text == "" {
+        RankRevisionRefused { refusal: RankObservationRefusal {
+          subject: subject,
+          step: rank_revision_step,
+          cause: "the engine's own vllm.__version__ answered with nothing, so the revision these readings were taken at is unobserved" as NonEmptyStr,
+        } }
+      } else {
+        RankRevisionRead { revision: vllm_source_revision(repository: vllm_repository, full_revision: text as NonEmptyStr) }
+      }
+    }
+  }
+}
+
+// THE POOL AND THE CONCURRENCY ARE ONE READING PAIR, and both are parsed out of the lines rather than
+// authored beside them. extdeps.vllm.kv_cache's own note states the residual this removes: with the
+// number authored, "a genuine KV-cache-size line paired with a wrong number is admitted, and this
+// module does not detect it".
+type RankStartupReading sole_constructor {
+  subject: ObservedRankSubject
+  incarnation: NonEmptyStr
+  node_rank: Nat
+  revision: VllmSourceRevision
+  readings: List<VllmStartupReading>
+  pool_tokens: TokenCount?
+  max_concurrency: ConcurrentRequestHundredths?
+}
+
+type RankStartupObservation
+  = RankStartupObserved { reading: RankStartupReading }
+  | RankStartupRefused { refusal: RankObservationRefusal }
+
+fn observe_rank_startup(
+  ctx: SparkMaterializeContext,
+  subject: ObservedRankSubject,
+  container: ContainerInspect,
+) -> RankStartupObservation
+  uses net: Network
+{
+  match observed_rank_identity(c: container) {
+    RankIdentityUnread { cause: why } =>
+      RankStartupRefused { refusal: RankObservationRefusal { subject: subject, step: rank_startup_step, cause: why } }
+    RankIdentityRead { incarnation: id, node_rank: rank } =>
+      match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
+        RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
+        RankRevisionRead { revision: rev } =>
+          match rank_leg(ctx: ctx, subject: subject, step: rank_startup_step, command: docker_logs_command(name: subject.container, scope: DockerLogsWhole)) {
+            RankLegFailed { refusal: r } => RankStartupRefused { refusal: r }
+            RankLegRan { stdout: out } =>
+              RankStartupObserved { reading: rank_startup_reading(
+                subject: subject, incarnation: id, node_rank: rank, revision: rev, captured: out) }
+          }
+      }
+  }
+}
+
+// THE POOL FIGURE IS OPTIONAL AND ITS ABSENCE IS NOT A ZERO. An engine still capturing CUDA graphs
+// has not printed its KV lines yet -- that was literally the state of this arm minutes after the
+// relaunch -- so a reader that answered zero tokens would report an engine with no cache rather than
+// an engine that has not said yet.
+fn rank_startup_reading(
+  subject: ObservedRankSubject,
+  incarnation: NonEmptyStr,
+  node_rank: Nat,
+  revision: VllmSourceRevision,
+  captured: String,
+) -> RankStartupReading {
+  let readings = vllm_startup_readings(captured_stdout: captured, observed_at_revision: revision)
+  RankStartupReading {
+    subject: subject,
+    incarnation: incarnation,
+    node_rank: node_rank,
+    revision: revision,
+    readings: readings,
+    pool_tokens: first_present(xs: map(vllm_readings_of_class(readings: readings, class: GpuKvCacheSize), r => vllm_kv_pool_tokens_in(reading: r))),
+    max_concurrency: first_present(xs: map(vllm_readings_of_class(readings: readings, class: MaximumConcurrency), r => vllm_max_concurrency_in(reading: r))),
+  }
+}
+
+fn first_present(xs: List<T?>) -> T? {
+  fold(xs, init: none, f: (acc, x) => match acc {
+    Present { value: _ } => acc
+    Absent => x
+  })
+}
+
+// ── THE THREE-FIELD READBACK THE INCIDENT WAS ABOUT ───────────────────────────────────────────
+//
+// THIS IS WHAT THE READBACK FIDELITY WORK BUYS, SPELLED AS A READING. Before
+// extdeps.docker.container_inspect carried `devices` and `ulimits`, this reading could only have
+// answered about the capability -- and the capability was the one of the three the socket incarnation
+// would have "agreed" on, because a plan that asks for nothing and a container that has nothing
+// agree perfectly.
+type RankVerbsShape sole_constructor {
+  subject: ObservedRankSubject
+  incarnation: NonEmptyStr
+  node_rank: Nat
+  device: VerbsShapeReading
+  capability: VerbsShapeReading
+  memlock: VerbsShapeReading
+}
+
+data verbs_device_host_path: String = "/dev/infiniband"
+data verbs_capability_name: String = "IPC_LOCK"
+
+fn observed_verbs_shape(subject: ObservedRankSubject, container: ContainerInspect) -> RankVerbsShape? {
+  match observed_rank_identity(c: container) {
+    RankIdentityUnread { cause: _ } => none
+    RankIdentityRead { incarnation: id, node_rank: rank } => Present { value: RankVerbsShape {
+      subject: subject,
+      incarnation: id,
+      node_rank: rank,
+      device: container_maps_device(inspect: container, host_path: verbs_device_host_path),
+      capability: container_adds_capability(inspect: container, capability: verbs_capability_name),
+      memlock: container_unlocks_memlock(inspect: container),
+    } }
+  }
+}
+
+// ALL THREE PRESENT IS THE ONLY ARM THAT ANSWERS YES. Two of three is the state that produced this
+// incident's near-misses: a container that can open the device but cannot lock pages fails later and
+// less legibly than one that cannot open it at all.
+fn verbs_shape_is_complete(s: RankVerbsShape) -> Bool {
+  verbs_shape_present(r: s.device) && verbs_shape_present(r: s.capability) && verbs_shape_present(r: s.memlock)
+}
+
+fn verbs_shape_present(r: VerbsShapeReading) -> Bool {
+  match r {
+    VerbsShapePresent => true
+    VerbsShapeAbsent => false
+    VerbsShapeUnreported { cause: _ } => false
+  }
+}
+
+fn verbs_shape_text(s: RankVerbsShape) -> String {
+  join([
+    "rank ", to_string(s.node_rank), " incarnation ", s.incarnation as String,
+    " device=", verbs_shape_wire(r: s.device),
+    " cap_ipc_lock=", verbs_shape_wire(r: s.capability),
+    " memlock_unlimited=", verbs_shape_wire(r: s.memlock),
+  ], "")
+}

@@ -1,0 +1,1138 @@
+module gunbc.spark.serving_relaunch_transaction
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { Second, second, ByteSize, byte_size_count }
+import product.placement_supply { HostIdentity }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.docker.cli {
+  DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping, DockerMount, BindMount, VolumeMount, TmpfsMount,
+  DockerNamespaceMode, DockerRestartPolicy, docker_namespace_mode_wire, docker_restart_policy_wire,
+  docker_create_command, docker_start_command, docker_stop_command, docker_rename_command,
+  docker_remove_force_command,
+}
+import extdeps.docker.container_inspect {
+  ContainerInspect, HostConfig, ContainerConfig, DockerInspectDevice, DockerInspectUlimit,
+  docker_capability_canonical, docker_memlock_ulimit_name,
+}
+import extdeps.nvidia.nccl {
+  NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket, nccl_realized_transport_wire,
+  NcclRoceGidSelection,
+}
+import gunbc.spark.collective_transport_plan { transport_env_names }
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
+}
+import gunbc.spark.serving_rank_observe {
+  ObservedRankSubject, observed_rank_subject, observed_rank_subject_text,
+  RankObservationRefusal, rank_observation_refusal_text,
+  RankInspectReading, RankInspected, RankInspectRefused, observe_rank_container,
+  RankTransportObservation, RankTransportObserved, RankTransportRefused, RankTransportVerdict,
+  observe_rank_transport, rank_transport_verdict_text,
+}
+
+// ── THE RELAUNCH, AS A TRANSACTION RATHER THAN AS A PROCEDURE SOMEONE PERFORMED ───────────────
+//
+// WHAT THIS EXISTS FOR. On 2026-09-16 this arm was relaunched BY HAND over SSH, and it worked: every
+// NCCL channel moved from `via NET/Socket/0` to `via NET/IB/0`. Nothing in the repository could
+// reproduce it. A procedure that lives only in a person's session is a procedure whose preconditions
+// nobody can check, whose rollback nobody can perform, and whose success nobody can verify twice --
+// which is the out-of-band actuation DESIGN section 6 names as a tell, and the operator asked for it
+// to be built rather than left as one.
+//
+// THE ORDER IS THE SPECIFICATION AND IT IS NOT ARBITRARY. Capture, prove the delta, stop with a real
+// grace period, PRESERVE BY RENAME, create, start rank zero first, read back, verify the transport
+// verdict flipped -- or roll back. Each step exists because of something that went wrong:
+//
+//   CAPTURE FIRST     the captured container object IS the rollback record, and it is the only
+//                     complete one -- the daemon's own accounting of every field, with no
+//                     transcription step that could lose one. A readback that was missing three
+//                     fields is exactly what put this fleet on TCP for two and a half days.
+//   PROVE THE DELTA   a relaunch that changes more than it meant to is not a transport experiment,
+//                     it is a new deployment wearing one's name. gunbc.spark.serving_performance_subject
+//                     can only call a comparison one-axis when exactly one axis moved.
+//   RENAME, NOT RM    `docker rm` destroys the rollback record and replaces it with this repository's
+//                     BELIEF about it. The preserved container still exists on all four hosts.
+//   RANK ZERO FIRST   rank zero owns the broadcast queue and hosts the API server; a follower brought
+//                     up against no leader waits on a rendezvous that has not opened.
+//   VERIFY THE FLIP   a successful `docker start` is not evidence about the transport. NCCL falls
+//                     back to Socket SILENTLY whenever the verbs path is unavailable, so a rank can
+//                     start perfectly and serve every collective over TCP -- which is the state this
+//                     whole vertical was built because nobody could see.
+//
+// AND A SUCCESSFUL ACTUATION RETURN MAY NOT MINT A CONVERGENCE. DESIGN section 3d states it directly:
+// selection's receipt cannot substitute for readback, and a successful actuation return cannot mint
+// convergence. Every step below that ends in a claim about the world ends in an INDEPENDENT
+// OBSERVATION of that world through gunbc.spark.serving_rank_observe, never in the exit code of the
+// command that tried to change it.
+
+// ── WHAT THE RELAUNCH IS ALLOWED TO CHANGE ────────────────────────────────────────────────────
+//
+// AN AXIS IS A NAMED REASON A FIELD MAY DIFFER, and a field that differs for no named reason refuses
+// the whole transaction. This is the converse of the usual convergence question: the model is not
+// asking "does the world match", it is asking "is the difference between the world and the successor
+// EXACTLY the difference I intended". A field that changed by accident -- a mount that moved, an
+// image that resolved elsewhere, an argument the plan quietly re-derived -- is a second change riding
+// the first, and it is caught here or it is not caught at all.
+type RelaunchAxis
+  = TransportAxis
+  | BatchingAxis
+  | UtilizationAxis
+
+fn relaunch_axis_wire(a: RelaunchAxis) -> NonEmptyStr {
+  match a {
+    TransportAxis => "collective-transport" as NonEmptyStr
+    BatchingAxis => "batching-bounds" as NonEmptyStr
+    UtilizationAxis => "gpu-memory-utilization" as NonEmptyStr
+  }
+}
+
+// THE COMPARISON IS OVER A CLOSED FIELD ROSTER AND SAYS SO. Three of DockerCreateSpec's fields cannot
+// be compared against today's readback, and the verdict NAMES them rather than omitting them: a
+// reader who sees "agrees" for every field it compared and no statement about the rest would read
+// agreement as agreement on everything, which is the rung inflation DESIGN section 4b(1) forbids.
+type SpecField
+  = SpecName | SpecImage | SpecNetwork | SpecIpc | SpecShmSize | SpecMemlock | SpecGpusAll
+  | SpecDevices | SpecCapAdd | SpecRestart | SpecMounts | SpecEnv | SpecCommand
+
+data relaunch_compared_fields: List<SpecField> = [
+  SpecName, SpecNetwork, SpecIpc, SpecShmSize, SpecMemlock, SpecDevices, SpecCapAdd,
+  SpecRestart, SpecMounts, SpecEnv, SpecCommand,
+]
+
+fn spec_field_wire(f: SpecField) -> NonEmptyStr {
+  match f {
+    SpecName => "name" as NonEmptyStr
+    SpecImage => "image" as NonEmptyStr
+    SpecNetwork => "network" as NonEmptyStr
+    SpecIpc => "ipc" as NonEmptyStr
+    SpecShmSize => "shm_size" as NonEmptyStr
+    SpecMemlock => "memlock_unlimited" as NonEmptyStr
+    SpecGpusAll => "gpus_all" as NonEmptyStr
+    SpecDevices => "devices" as NonEmptyStr
+    SpecCapAdd => "cap_add" as NonEmptyStr
+    SpecRestart => "restart" as NonEmptyStr
+    SpecMounts => "mounts" as NonEmptyStr
+    SpecEnv => "env" as NonEmptyStr
+    SpecCommand => "command" as NonEmptyStr
+  }
+}
+
+// THE TWO FIELDS THE READBACK CANNOT ANSWER, EACH WITH THE CAPABILITY THAT WOULD RESTORE IT. A
+// trigger naming less than the capability it restores is a trigger that will be satisfied while the
+// capability stays dead, so each names what it must be SUFFICIENT FOR.
+type UnobservableField sole_constructor {
+  field: SpecField
+  reason: NonEmptyStr
+  trigger: NonEmptyStr
+}
+
+data relaunch_unobservable_fields: List<UnobservableField> = [
+  UnobservableField {
+    field: SpecImage,
+    reason: "the daemon resolves the image REFERENCE it was given to a content id at create time and reports only the id, so a spec naming a tag or a bare content id has nothing literally comparable in the inspect document" as NonEmptyStr,
+    trigger: "TRIGGER: the transaction resolves the planned reference to an image id on the target host through extdeps.docker.cli docker_image_inspect_id_from_stdout before comparing. SUFFICIENT FOR: a successor spec that names a DIFFERENT image than the incumbent is refused as an off-axis change rather than silently admitted." as NonEmptyStr,
+  },
+  UnobservableField {
+    field: SpecGpusAll,
+    reason: "`--gpus all` reads back as a HostConfig.DeviceRequests entry whose shape extdeps.docker.container_inspect can only hold as a bare string, so the request's Count and Capabilities are not recoverable from the reading" as NonEmptyStr,
+    trigger: "TRIGGER: the typed DeviceRequest carrier named by extdeps.docker.container_inspect hostconfig_containerconfig_anemic_leaves_frontier_rows lands, and this comparison reads Count and Capabilities from it. SUFFICIENT FOR: a successor that stops requesting every GPU is refused rather than reported as agreeing." as NonEmptyStr,
+  },
+]
+
+type FieldComparison
+  = FieldAgrees { field: SpecField }
+  | FieldDiffersOnAxis { field: SpecField, axis: RelaunchAxis, planned: String, observed: String }
+  | FieldDiffersOffAxis { field: SpecField, planned: String, observed: String }
+  | FieldUnreadable { field: SpecField, cause: NonEmptyStr }
+
+fn field_comparison_text(c: FieldComparison) -> String {
+  match c {
+    FieldAgrees { field: f } => join([spec_field_wire(f: f) as String, " agrees"], "")
+    FieldDiffersOnAxis { field: f, axis: a, planned: p, observed: o } =>
+      join([spec_field_wire(f: f) as String, " differs on the ", relaunch_axis_wire(a: a) as String, " axis: planned ", p, ", observed ", o], "")
+    FieldDiffersOffAxis { field: f, planned: p, observed: o } =>
+      join([spec_field_wire(f: f) as String, " differs OFF every declared axis: planned ", p, ", observed ", o], "")
+    FieldUnreadable { field: f, cause: c } =>
+      join([spec_field_wire(f: f) as String, " could not be read back: ", c as String], "")
+  }
+}
+
+// ── THE PROJECTIONS BOTH SIDES ARE COMPARED THROUGH ───────────────────────────────────────────
+//
+// A COMPARISON NEEDS ONE SPELLING PER FIELD, AND NEITHER SIDE'S IS IT. The spec says `IPC_LOCK` and
+// the daemon says `CAP_IPC_LOCK`; the spec says a device triple and the daemon says an object; the
+// spec's env list is ordered and the daemon's is not. Each function below renders BOTH sides into
+// one canonical text, which is why the comparison can be a string equality without that equality
+// being a lie about what was compared.
+//
+// ENV IS COMPARED AS A SET KEYED BY NAME, NOT AS A LIST. The daemon returns Config.Env in an order
+// that is not the create order -- measured on the 2026-09-16 capture, the same eighteen assignments
+// come back in two different orders on two ranks of one arm -- so a positional comparison would
+// report every rank as differing from every other.
+fn sorted_text(xs: List<String>) -> List<String> {
+  xs |> sort_by(x => x)
+}
+
+// ── ENVIRONMENT: PER NAME, BECAUSE THE DAEMON REPORTS THE IMAGE'S VARIABLES TOO ───────────────
+//
+// `Config.Env` IS THE IMAGE'S ENV MERGED WITH THE CREATE CALL'S `--env`, and a comparison that
+// treated it as the create call's list would report a difference on every container ever built from
+// an image that sets anything. Measured on the 2026-09-16 capture: the create call supplied twelve
+// assignments and the daemon reports eighteen, the extra six being the runtime image's own
+// VLLM_BUILD_* and VLLM_IMAGE_TAG rows. A spec makes no claim about those, so it is not entitled to
+// disagree about them.
+//
+// SO THE SPEC'S NAMES ARE THE SUBJECT AND EACH ONE IS ASKED SEPARATELY. A name the spec sets and the
+// container does not carry is a difference; a name whose value differs is a difference; a name only
+// the container carries is the image speaking and is not one. AND THE AXIS IS PER NAME, which is the
+// part a whole-blob comparison structurally cannot do: `NCCL_IB_HCA` moving is the transport
+// decision, and `VLLM_HOST_IP` moving is a rank that thinks it lives somewhere else.
+type EnvDifference sole_constructor {
+  name: NonEmptyStr
+  planned: String
+  observed: String?
+}
+
+fn env_value_in(assignments: List<String>, name: String) -> String? {
+  let prefix = join([name, "="], "")
+  match filter(assignments, a => starts_with(s: a, prefix: prefix)) |> first {
+    Absent => none
+    Present { value: a } => Present { value: substring(s: a, start: string_length(s: prefix), end: string_length(s: a)) }
+  }
+}
+
+fn env_differences(spec: DockerCreateSpec, observed: List<String>) -> List<EnvDifference> {
+  fold(spec.env, init: [], f: (acc, e) =>
+    match env_value_in(assignments: observed, name: e.name as String) {
+      Absent => concat(acc, [EnvDifference { name: e.name, planned: e.value, observed: none }])
+      Present { value: v } =>
+        if v == e.value {
+          acc
+        } else {
+          concat(acc, [EnvDifference { name: e.name, planned: e.value, observed: Present { value: v } }])
+        }
+    })
+}
+
+// A NAME THE TRANSPORT PROJECTION EMITS IS ON THE TRANSPORT AXIS, and the set of such names is read
+// out of gunbc.spark.collective_transport_plan's own projection rather than listed here. A list here
+// would be a second authority for the same set, disagreeing silently the first time an arm gains a
+// variable -- which is the class of defect this vertical exists for, one layer up.
+fn env_difference_axis(name: NonEmptyStr, gid_selection: NcclRoceGidSelection) -> RelaunchAxis? {
+  if count(filter(transport_env_names(gid_selection: gid_selection), n => n == (name as String))) > 0 {
+    Present { value: TransportAxis }
+  } else {
+    none
+  }
+}
+
+fn compare_env_field(spec: DockerCreateSpec, observed: ContainerInspect, gid_selection: NcclRoceGidSelection) -> FieldComparison {
+  match observed_env_assignments(c: observed) {
+    Absent => FieldUnreadable {
+      field: SpecEnv,
+      cause: "the inspect document carries no Config.Env, so the environment this container was created with was not compared" as NonEmptyStr,
+    }
+    Present { value: assignments } => {
+      let differences = env_differences(spec: spec, observed: assignments)
+      let off_axis = filter(differences, d => is_absent(x: env_difference_axis(name: d.name, gid_selection: gid_selection)))
+      match off_axis.first() {
+        Present { value: d } => FieldDiffersOffAxis {
+          field: SpecEnv,
+          planned: join([d.name as String, "=", d.planned], ""),
+          observed: env_difference_observed_text(d: d),
+        }
+        Absent =>
+          match differences.first() {
+            Absent => FieldAgrees { field: SpecEnv }
+            Present { value: _ } => FieldDiffersOnAxis {
+              field: SpecEnv,
+              axis: TransportAxis,
+              planned: join(map(differences, d => join([d.name as String, "=", d.planned], "")), ", "),
+              observed: join(map(differences, d => env_difference_observed_text(d: d)), ", "),
+            }
+          }
+      }
+    }
+  }
+}
+
+fn env_difference_observed_text(d: EnvDifference) -> String {
+  match d.observed {
+    Absent => join([d.name as String, " is not set on the container"], "")
+    Present { value: v } => join([d.name as String, "=", v], "")
+  }
+}
+
+fn observed_env_assignments(c: ContainerInspect) -> List<String>? {
+  match c.config {
+    Absent => none
+    Present { value: cfg } => cfg.env
+  }
+}
+
+fn planned_devices_text(spec: DockerCreateSpec) -> String {
+  join(sorted_text(xs: map(spec.devices, d => join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], ""))), ",")
+}
+
+fn observed_devices_text(hc: HostConfig) -> String? {
+  match hc.devices {
+    Absent => none
+    Present { value: ds } => Present { value: join(sorted_text(xs: map(ds, d => join([d.path_on_host as String, ":", d.path_in_container as String, ":", d.cgroup_permissions as String], ""))), ",") }
+  }
+}
+
+fn planned_cap_add_text(spec: DockerCreateSpec) -> String {
+  join(sorted_text(xs: map(spec.cap_add, c => docker_capability_canonical(name: c as String))), ",")
+}
+
+// A NULL CapAdd IS THE EMPTY SET AND NOT AN UNREAD FIELD. The socket incarnation reads back
+// `"CapAdd": null` while the RoCE one reads a list, so null is this daemon's spelling for "no
+// capabilities were added" on a member it always emits.
+fn observed_cap_add_text(hc: HostConfig) -> String {
+  match hc.cap_add {
+    Absent => ""
+    Present { value: cs } => join(sorted_text(xs: map(cs, c => docker_capability_canonical(name: c))), ",")
+  }
+}
+
+fn planned_memlock_text(spec: DockerCreateSpec) -> String {
+  if spec.memlock_unlimited { "unlimited" } else { "default" }
+}
+
+fn observed_memlock_text(hc: HostConfig) -> String? {
+  match hc.ulimits {
+    Absent => none
+    Present { value: us } => {
+      let memlock = filter(us, u => (u.name as String) == docker_memlock_ulimit_name)
+      match memlock.first() {
+        Absent => Present { value: "default" }
+        Present { value: u } =>
+          if u.soft == -1 && u.hard == -1 {
+            Present { value: "unlimited" }
+          } else {
+            Present { value: join([to_string(u.soft), ":", to_string(u.hard)], "") }
+          }
+      }
+    }
+  }
+}
+
+fn planned_mounts_text(spec: DockerCreateSpec) -> String {
+  join(sorted_text(xs: map(spec.mounts, m => planned_mount_bind_text(m: m))), ",")
+}
+
+// THE `Binds` SPELLING, BECAUSE THAT IS THE ONE THE DAEMON HANDS BACK. A `--mount type=bind,src=..`
+// create flag reads back as `src:dst:ro` in HostConfig.Binds, so the planned side is rendered into
+// that spelling rather than the daemon's reading being rendered into the flag's.
+fn planned_mount_bind_text(m: DockerMount) -> String {
+  match m {
+    BindMount { host_path: h, container_path: c, readonly: ro } =>
+      join([h as String, ":", c as String, if ro { ":ro" } else { ":rw" }], "")
+    VolumeMount { volume: v, container_path: c, readonly: ro } =>
+      join([v as String, ":", c as String, if ro { ":ro" } else { ":rw" }], "")
+    TmpfsMount { container_path: c, size_bytes: n } =>
+      join(["tmpfs:", c as String, ":", to_string(n)], "")
+  }
+}
+
+fn observed_mounts_text(hc: HostConfig) -> String? {
+  match hc.binds {
+    Absent => none
+    Present { value: bs } => Present { value: join(sorted_text(xs: bs), ",") }
+  }
+}
+
+fn observed_command_argv(c: ContainerInspect) -> List<String>? {
+  match c.config {
+    Absent => none
+    Present { value: cfg } => cfg.cmd
+  }
+}
+
+// ── THE ARGV IS COMPARED AS AN ARGV, AND THE ANSWER NAMES THE FIRST WORD THAT DIFFERS ─────────
+//
+// JOINING TWO ARGUMENT LISTS INTO TWO STRINGS AND COMPARING THOSE IS A DIFFERENT QUESTION. Any
+// separator chosen for the join can appear inside a word, so equality of the joins is equality of
+// the lists only if no word contains the separator -- a precondition nothing here can establish about
+// a checkpoint path or a parser name. The lists are compared as lists.
+//
+// AND THE DIFFERENCE IS LOCATED, because an unlocated one is unusable: a previous revision of a
+// readback in this area reported `argv differs first at word 0 (planned 63 words, observed 36)` for
+// every healthy rank, and word zero being "docker" against a model path is what told the reader it
+// was comparing two different lists rather than two different launches.
+type ArgvDifference sole_constructor {
+  index: Nat
+  planned: String
+  observed: String
+}
+
+type ArgvComparison
+  = ArgvEqual
+  | ArgvLengthDiffers { planned_words: Nat, observed_words: Nat }
+  | ArgvWordDiffers { difference: ArgvDifference }
+
+type ArgvScanAcc {
+  index: Nat
+  difference: ArgvDifference?
+}
+
+fn argv_compare(planned: List<String>, observed: List<String>) -> ArgvComparison {
+  if count(planned) != count(observed) {
+    ArgvLengthDiffers { planned_words: count(planned), observed_words: count(observed) }
+  } else {
+    let acc = fold(zip(planned, observed), init: ArgvScanAcc { index: 0, difference: none }, f: (a, pair) =>
+      match a.difference {
+        Present { value: _ } => ArgvScanAcc { index: a.index + 1, difference: a.difference }
+        Absent =>
+          if pair.first == pair.second {
+            ArgvScanAcc { index: a.index + 1, difference: none }
+          } else {
+            ArgvScanAcc { index: a.index + 1, difference: Present { value: ArgvDifference {
+              index: a.index, planned: pair.first, observed: pair.second,
+            } } }
+          }
+      })
+    match acc.difference {
+      Absent => ArgvEqual
+      Present { value: d } => ArgvWordDiffers { difference: d }
+    }
+  }
+}
+
+fn argv_comparison_text(c: ArgvComparison) -> String {
+  match c {
+    ArgvEqual => "equal"
+    ArgvLengthDiffers { planned_words: p, observed_words: o } =>
+      join(["the planned argv is ", to_string(p), " words and the observed argv is ", to_string(o)], "")
+    ArgvWordDiffers { difference: d } =>
+      join(["word ", to_string(d.index), ": planned ", d.planned, ", observed ", d.observed], "")
+  }
+}
+
+// ── THE AXIS EACH DIFFERENCE IS ATTRIBUTED TO ─────────────────────────────────────────────────
+//
+// THE ATTRIBUTION IS PER FIELD AND IS DECLARED, NOT INFERRED. Three fields of the container shape are
+// projections of gunbc.spark.collective_transport_plan and may therefore differ on the transport
+// axis; the environment may too, because four of its assignments are the same projection. Nothing
+// else may differ at all -- the engine argv included, and that last one is the strict part, because
+// the argv is where a batching bound and a utilization figure also live.
+fn container_field_axis(f: SpecField) -> RelaunchAxis? {
+  match f {
+    SpecDevices => Present { value: TransportAxis }
+    SpecCapAdd => Present { value: TransportAxis }
+    SpecMemlock => Present { value: TransportAxis }
+    SpecEnv => Present { value: TransportAxis }
+    SpecName => none
+    SpecImage => none
+    SpecNetwork => none
+    SpecIpc => none
+    SpecShmSize => none
+    SpecGpusAll => none
+    SpecRestart => none
+    SpecMounts => none
+    SpecCommand => none
+  }
+}
+
+fn compare_text_field(field: SpecField, planned: String, observed: String?) -> FieldComparison {
+  match observed {
+    Absent => FieldUnreadable {
+      field: field,
+      cause: "the inspect document does not report this field, so no comparison was made; an unread field is not an agreeing one" as NonEmptyStr,
+    }
+    Present { value: o } =>
+      if o == planned {
+        FieldAgrees { field: field }
+      } else {
+        match container_field_axis(f: field) {
+          Present { value: axis } => FieldDiffersOnAxis { field: field, axis: axis, planned: planned, observed: o }
+          Absent => FieldDiffersOffAxis { field: field, planned: planned, observed: o }
+        }
+      }
+  }
+}
+
+// ── THE DELTA VERDICT ─────────────────────────────────────────────────────────────────────────
+
+type RelaunchDelta
+  = DeltaOnlyIntended { comparisons: List<FieldComparison>, unobservable: List<UnobservableField> }
+  | DeltaRefused { off_axis: List<FieldComparison>, unreadable: List<FieldComparison> }
+
+// AN UNREADABLE FIELD REFUSES THE TRANSACTION JUST AS AN OFF-AXIS DIFFERENCE DOES, and this is the
+// arm most likely to be argued with. "I could not read the mounts" is not "the mounts agree"; a
+// transaction that stopped a serving arm on the strength of a comparison it did not make is the
+// absorbing fallback of DESIGN section 5 in its most expensive form. The two named fields that today's
+// readback structurally cannot answer are carried separately, as declared and triggered, and they are
+// the only ones admitted uncompared.
+fn relaunch_delta(spec: DockerCreateSpec, observed: ContainerInspect, gid_selection: NcclRoceGidSelection) -> RelaunchDelta {
+  let comparisons = relaunch_comparisons(spec: spec, observed: observed, gid_selection: gid_selection)
+  let off_axis = filter(comparisons, c => comparison_is_off_axis(c: c))
+  let unreadable = filter(comparisons, c => comparison_is_unreadable(c: c))
+  if count(off_axis) > 0 || count(unreadable) > 0 {
+    DeltaRefused { off_axis: off_axis, unreadable: unreadable }
+  } else {
+    DeltaOnlyIntended { comparisons: comparisons, unobservable: relaunch_unobservable_fields }
+  }
+}
+
+fn comparison_is_off_axis(c: FieldComparison) -> Bool {
+  match c {
+    FieldDiffersOffAxis { field: _, planned: _, observed: _ } => true
+    FieldAgrees { field: _ } => false
+    FieldDiffersOnAxis { field: _, axis: _, planned: _, observed: _ } => false
+    FieldUnreadable { field: _, cause: _ } => false
+  }
+}
+
+fn comparison_is_unreadable(c: FieldComparison) -> Bool {
+  match c {
+    FieldUnreadable { field: _, cause: _ } => true
+    FieldAgrees { field: _ } => false
+    FieldDiffersOnAxis { field: _, axis: _, planned: _, observed: _ } => false
+    FieldDiffersOffAxis { field: _, planned: _, observed: _ } => false
+  }
+}
+
+fn relaunch_comparisons(spec: DockerCreateSpec, observed: ContainerInspect, gid_selection: NcclRoceGidSelection) -> List<FieldComparison> {
+  match observed.host_config {
+    Absent => [FieldUnreadable {
+      field: SpecDevices,
+      cause: "the inspect document carries no HostConfig at all, so none of the container-shape fields were compared" as NonEmptyStr,
+    }]
+    Present { value: hc } => [
+      compare_text_field(field: SpecName, planned: spec.name as String, observed: observed_name_text(c: observed)),
+      compare_text_field(field: SpecNetwork, planned: docker_namespace_mode_wire(m: spec.network) as String, observed: hc.network_mode),
+      compare_text_field(field: SpecIpc, planned: docker_namespace_mode_wire(m: spec.ipc) as String, observed: hc.ipc_mode),
+      compare_text_field(field: SpecShmSize, planned: to_string(spec.shm_size_bytes), observed: observed_shm_size_text(hc: hc)),
+      compare_text_field(field: SpecMemlock, planned: planned_memlock_text(spec: spec), observed: observed_memlock_text(hc: hc)),
+      compare_text_field(field: SpecDevices, planned: planned_devices_text(spec: spec), observed: observed_devices_text(hc: hc)),
+      compare_text_field(field: SpecCapAdd, planned: planned_cap_add_text(spec: spec), observed: Present { value: observed_cap_add_text(hc: hc) }),
+      compare_text_field(field: SpecRestart, planned: docker_restart_policy_wire(p: spec.restart) as String, observed: observed_restart_text(hc: hc)),
+      compare_text_field(field: SpecMounts, planned: planned_mounts_text(spec: spec), observed: observed_mounts_text(hc: hc)),
+      compare_env_field(spec: spec, observed: observed, gid_selection: gid_selection),
+      compare_command_field(spec: spec, observed: observed),
+    ]
+  }
+}
+
+// THE CONTAINER'S NAME COMES BACK WITH A LEADING SLASH, which is the daemon's own spelling for the
+// object path and not part of the name the create call was given. Comparing the two literally would
+// report every container as differing from its own spec on its own name.
+data docker_inspect_name_prefix: String = "/"
+
+fn observed_name_text(c: ContainerInspect) -> String? {
+  match c.name {
+    Absent => none
+    Present { value: n } =>
+      if starts_with(s: n, prefix: docker_inspect_name_prefix) {
+        Present { value: substring(s: n, start: string_length(s: docker_inspect_name_prefix), end: string_length(s: n)) }
+      } else {
+        Present { value: n }
+      }
+  }
+}
+
+fn observed_shm_size_text(hc: HostConfig) -> String? {
+  match hc.shm_size {
+    Absent => none
+    Present { value: b } => Present { value: to_string(byte_size_count(b: b)) }
+  }
+}
+
+fn observed_restart_text(hc: HostConfig) -> String? {
+  match hc.restart_policy {
+    Absent => none
+    Present { value: p } => Present { value: p.name }
+  }
+}
+
+// THE ENGINE ARGV IS THE FIELD THAT MAY DIFFER ON TWO AXES AT ONCE and on nothing else. The relaunch
+// changes `--max-num-seqs` and `--gpu-memory-utilization`; every other word must be byte-identical,
+// because the argv is also where the checkpoint path, the topology, the rendezvous address and the
+// parsers live, and a relaunch that moved one of those is a different deployment.
+//
+// SO THE COMPARISON IS WORD-WISE AND THE ADMITTED DIFFERENCES ARE NAMED BY THE FLAG THEY FOLLOW.
+// A word that differs and does not sit immediately after one of the two named flags is off-axis.
+data relaunch_batching_flag: String = "--max-num-seqs"
+data relaunch_utilization_flag: String = "--gpu-memory-utilization"
+
+fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> FieldComparison {
+  match observed_command_argv(c: observed) {
+    Absent => FieldUnreadable {
+      field: SpecCommand,
+      cause: "the inspect document carries no Config.Cmd, so the engine arguments this container was created with were not compared" as NonEmptyStr,
+    }
+    Present { value: argv } =>
+      if count(argv) != count(spec.command) {
+        FieldDiffersOffAxis {
+          field: SpecCommand,
+          planned: join([to_string(count(spec.command)), " words"], ""),
+          observed: join([to_string(count(argv)), " words"], ""),
+        }
+      } else {
+        let differences = argv_word_differences(planned: spec.command, observed: argv)
+        let off_axis = filter(differences, d => argv_difference_axis(planned: spec.command, d: d) |> is_absent)
+        match off_axis.first() {
+          Present { value: d } => FieldDiffersOffAxis {
+            field: SpecCommand,
+            planned: join(["word ", to_string(d.index), " = ", d.planned], ""),
+            observed: d.observed,
+          }
+          Absent =>
+            match differences.first() {
+              Absent => FieldAgrees { field: SpecCommand }
+              Present { value: d } =>
+                match argv_difference_axis(planned: spec.command, d: d) {
+                  Absent => FieldDiffersOffAxis { field: SpecCommand, planned: d.planned, observed: d.observed }
+                  Present { value: axis } => FieldDiffersOnAxis {
+                    field: SpecCommand,
+                    axis: axis,
+                    planned: join(map(differences, x => join(["word ", to_string(x.index), " = ", x.planned], "")), ", "),
+                    observed: join(map(differences, x => x.observed), ", "),
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn is_absent(x: T?) -> Bool {
+  match x {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE WORD BEFORE THE DIFFERING WORD IS WHAT NAMES THE AXIS. A value at index i is the value of the
+// flag at index i-1, so a change to `--max-num-seqs`'s value is the batching axis and a change to a
+// bare positional word -- the checkpoint path at index 0, for instance -- is on no axis at all.
+fn argv_difference_axis(planned: List<String>, d: ArgvDifference) -> RelaunchAxis? {
+  if d.index == 0 {
+    none
+  } else {
+    match planned |> skip(d.index - 1) |> first {
+      Absent => none
+      Present { value: flag } =>
+        if flag == relaunch_batching_flag {
+          Present { value: BatchingAxis }
+        } else if flag == relaunch_utilization_flag {
+          Present { value: UtilizationAxis }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+fn argv_word_differences(planned: List<String>, observed: List<String>) -> List<ArgvDifference> {
+  fold(enumerate(zip(planned, observed)), init: [], f: (acc, e) =>
+    if e.second.first == e.second.second {
+      acc
+    } else {
+      concat(acc, [ArgvDifference { index: e.first, planned: e.second.first, observed: e.second.second }])
+    })
+}
+
+fn relaunch_delta_text(d: RelaunchDelta) -> String {
+  match d {
+    DeltaOnlyIntended { comparisons: cs, unobservable: us } =>
+      join([
+        "the successor spec differs from the incumbent only on declared axes:\n",
+        join(map(cs, c => join(["  ", field_comparison_text(c: c)], "")), "\n"),
+        "\n  NOT COMPARED (declared, with triggers): ",
+        join(map(us, u => spec_field_wire(f: u.field) as String), ", "),
+      ], "")
+    DeltaRefused { off_axis: offs, unreadable: uns } =>
+      join([
+        "the successor spec is REFUSED: it differs from the incumbent in ", to_string(count(offs)),
+        " place(s) that no declared axis explains, and ", to_string(count(uns)),
+        " field(s) could not be read back at all:\n",
+        join(map(concat(offs, uns), c => join(["  ", field_comparison_text(c: c)], "")), "\n"),
+      ], "")
+  }
+}
+
+// ── THE ACTUATION ─────────────────────────────────────────────────────────────────────────────
+//
+// THE GRACE PERIOD IS THIRTY SECONDS BECAUSE THAT IS WHAT WAS PERFORMED, and because the daemon's
+// ten-second default SIGKILLs an engine holding tens of gigabytes of device memory mid-teardown.
+data relaunch_stop_grace: Second = second(count: 30)
+
+// THE PRESERVED NAME IS DERIVED FROM THE TRANSPORT THE INCUMBENT WAS RUNNING, not from a timestamp
+// or a counter: `glm-native-tp4` preserved aside becomes `glm-native-tp4-socket`, which is what an
+// operator reading `docker ps -a` needs to know about it. A name that carried a serial number would
+// tell them which one it was and not what it was.
+fn preserved_container_name(name: NonEmptyStr, incumbent: NcclRealizedTransport) -> NonEmptyStr {
+  join([name as String, "-", lowercase_transport(t: incumbent)], "") as NonEmptyStr
+}
+
+fn lowercase_transport(t: NcclRealizedTransport) -> String {
+  match t {
+    NcclTransportIbVerbs { read_from: _ } => "ib"
+    NcclTransportSocket { read_from: _ } => "socket"
+  }
+}
+
+type RelaunchStep
+  = StepCaptureIncumbent
+  | StepProveDelta
+  | StepStopIncumbent
+  | StepPreserveIncumbent
+  | StepCreateSuccessor
+  | StepStartSuccessor
+  | StepReadBackSuccessor
+  | StepVerifyTransport
+
+fn relaunch_step_wire(s: RelaunchStep) -> NonEmptyStr {
+  match s {
+    StepCaptureIncumbent => "capture-incumbent" as NonEmptyStr
+    StepProveDelta => "prove-delta" as NonEmptyStr
+    StepStopIncumbent => "stop-incumbent" as NonEmptyStr
+    StepPreserveIncumbent => "preserve-incumbent-by-rename" as NonEmptyStr
+    StepCreateSuccessor => "create-successor" as NonEmptyStr
+    StepStartSuccessor => "start-successor" as NonEmptyStr
+    StepReadBackSuccessor => "read-back-successor" as NonEmptyStr
+    StepVerifyTransport => "verify-transport-flipped" as NonEmptyStr
+  }
+}
+
+// THE ROLLBACK IS A PATH, NOT A SENTENCE, and it is reachable from every step that has already
+// changed the host. A transaction whose rollback is prose is a transaction with no rollback: the
+// person reading the prose is in the middle of an outage.
+//
+// ITS OWN OUTCOME IS THREE-VALUED. "the incumbent is back and running", "the rollback itself failed
+// and the host needs a human", and -- the one a two-valued rollback loses -- "nothing had been
+// changed yet, so there was nothing to roll back". Reporting the third as a successful rollback
+// would tell an operator a container was restored that was never stopped.
+type RollbackOutcome
+  = NothingToRollBack
+  | RolledBack { restored: NonEmptyStr }
+  | RollbackFailed { step: NonEmptyStr, cause: NonEmptyStr }
+
+fn relaunch_leg(
+  ctx: SparkMaterializeContext,
+  step: RelaunchStep,
+  command: ArgvCommand,
+) -> NonEmptyStr?
+  uses net: Network
+{
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
+    RemoteUnreachable { cause: why } =>
+      Present { value: join([relaunch_step_wire(s: step) as String, ": ", why], "") as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: _, stderr: err } =>
+      if code != 0 {
+        Present { value: join([relaunch_step_wire(s: step) as String, ": exit=", to_string(code), " stderr=", trim(s: err)], "") as NonEmptyStr }
+      } else {
+        none
+      }
+  }
+}
+
+// ── ROLLING BACK: REMOVE THE SUCCESSOR, PUT THE PRESERVED NAME BACK, START IT ─────────────────
+//
+// THE SUCCESSOR IS REMOVED AND THE INCUMBENT IS NOT. That asymmetry is the whole design: the
+// successor is fully derivable from the spec that created it, so destroying it loses nothing, while
+// the incumbent is the only record of a configuration nobody wrote down. `rm -f` on the successor is
+// therefore not the destructive arm -- leaving it in place, holding the name the incumbent needs, is.
+fn rollback_to_preserved(
+  ctx: SparkMaterializeContext,
+  name: NonEmptyStr,
+  preserved: NonEmptyStr,
+  successor_exists: Bool,
+) -> RollbackOutcome
+  uses net: Network
+{
+  let removed = if successor_exists {
+    relaunch_leg(ctx: ctx, step: StepCreateSuccessor, command: docker_remove_force_command(name: name))
+  } else {
+    none
+  }
+  match removed {
+    Present { value: why } => RollbackFailed { step: "remove-successor" as NonEmptyStr, cause: why }
+    Absent =>
+      match relaunch_leg(ctx: ctx, step: StepPreserveIncumbent, command: docker_rename_command(name: preserved, new_name: name)) {
+        Present { value: why } => RollbackFailed { step: "restore-incumbent-name" as NonEmptyStr, cause: why }
+        Absent =>
+          match relaunch_leg(ctx: ctx, step: StepStartSuccessor, command: docker_start_command(name: name)) {
+            Present { value: why } => RollbackFailed { step: "start-restored-incumbent" as NonEmptyStr, cause: why }
+            Absent => RolledBack { restored: name }
+          }
+      }
+  }
+}
+
+// ── THE UNIT OF THIS TRANSACTION IS THE ARM, NOT THE RANK ────────────────────────────────────
+//
+// A PER-RANK RELAUNCH WOULD BE A DIFFERENT AND WRONG OPERATION. These four containers are ONE
+// tensor-parallel engine: rank 1 recreated against a still-running rank 0 does not join anything, it
+// starts a second engine that waits forever on a rendezvous the incumbent already owns. So the phases
+// are arm-wide -- every rank captured and proved before anything stops, every rank stopped and
+// preserved before anything is created, and only then the successors, leader first.
+//
+// AND THE PROOF PHASE COMES ENTIRELY BEFORE THE FIRST EFFECT. That is what makes
+// RelaunchRefusedBeforeActuation a true sentence rather than a hopeful one: a roster whose fourth
+// rank differs off-axis refuses while the first three are still serving.
+type RankPlan sole_constructor {
+  subject: ObservedRankSubject
+  spec: DockerCreateSpec
+  node_rank: Nat
+  gid_selection: NcclRoceGidSelection
+  ctx: SparkMaterializeContext
+}
+
+// THE GID SELECTION TRAVELS WITH THE PLAN BECAUSE THE AXIS SET IS DERIVED FROM IT. The set of
+// environment names the transport decision may touch is read out of the projection in
+// gunbc.spark.collective_transport_plan, and that projection's RoCE arm needs a selection to produce
+// the three GID variables. Passing the caller's own selection keeps the axis set equal to the names
+// the caller's own plan would emit rather than to a default this module chose.
+// AND THE REMOTE CONTEXT TRAVELS WITH THE RANK FOR THE SAME REASON THE RANK DOES. This arm spans four
+// hosts, so a transaction driving one caller-supplied context would send every leg to one of them --
+// rank 3's stop arriving at rank 0's daemon, which is the silent misattribution this whole vertical
+// exists to end. Each leg below resolves its host from the rank it is acting on and from nothing else.
+fn rank_plan(
+  subject: ObservedRankSubject,
+  spec: DockerCreateSpec,
+  node_rank: Nat,
+  gid_selection: NcclRoceGidSelection,
+  ctx: SparkMaterializeContext,
+) -> RankPlan {
+  RankPlan { subject: subject, spec: spec, node_rank: node_rank, gid_selection: gid_selection, ctx: ctx }
+}
+
+type ArmCapture sole_constructor {
+  rank: RankPlan
+  before: RankTransportVerdict
+  preserved: NonEmptyStr
+}
+
+// HOW FAR THIS RANK GOT, WHICH IS WHAT ITS ROLLBACK IS DERIVED FROM. A rank that was stopped and not
+// renamed needs a start; one that was renamed needs its name back; one whose successor exists needs
+// that successor removed first. A single boolean "did we change anything" would make all three the
+// same operation, and two of the three would then be wrong.
+type RankProgress
+  = RankUntouched
+  | RankStopped
+  | RankPreserved
+  | RankSuccessorCreated
+  | RankSuccessorStarted
+
+type RankState sole_constructor {
+  capture: ArmCapture
+  progress: RankProgress
+}
+
+type ArmRelaunchOutcome
+  = ArmCommitted { verdicts: List<RankTransportVerdict>, preserved: List<NonEmptyStr> }
+  | ArmRefusedBeforeActuation { step: RelaunchStep, causes: List<NonEmptyStr> }
+  | ArmRolledBack { step: RelaunchStep, cause: NonEmptyStr, rollbacks: List<RollbackOutcome> }
+
+// ── PHASE 1: CAPTURE AND PROVE, TOUCHING NOTHING ──────────────────────────────────────────────
+//
+// EVERY RANK IS CAPTURED AND EVERY REFUSAL IS COLLECTED, rather than stopping at the first. An
+// operator who has to fix four ranks one round trip at a time against a live arm is being made to
+// pay for the fold's convenience.
+type CaptureAcc {
+  captures: List<ArmCapture>
+  causes: List<NonEmptyStr>
+}
+
+fn capture_rank(plan: RankPlan) -> CaptureAcc
+  uses net: Network
+{
+  match observe_rank_container(ctx: plan.ctx, subject: plan.subject) {
+    RankInspectRefused { refusal: r } =>
+      CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
+    RankInspected { subject: _, container: incumbent } =>
+      match relaunch_delta(spec: plan.spec, observed: incumbent, gid_selection: plan.gid_selection) {
+        DeltaRefused { off_axis: offs, unreadable: uns } =>
+          CaptureAcc {
+            captures: [],
+            causes: [join([
+              observed_rank_subject_text(s: plan.subject), ": ",
+              relaunch_delta_text(d: DeltaRefused { off_axis: offs, unreadable: uns }),
+            ], "") as NonEmptyStr],
+          }
+        DeltaOnlyIntended { comparisons: _, unobservable: _ } =>
+          match observe_rank_transport(ctx: plan.ctx, subject: plan.subject, container: incumbent) {
+            RankTransportRefused { refusal: r } =>
+              CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
+            RankTransportObserved { verdict: before } =>
+              CaptureAcc {
+                captures: [ArmCapture {
+                  rank: plan,
+                  before: before,
+                  preserved: preserved_container_name(name: plan.subject.container, incumbent: before.reading.transport),
+                }],
+                causes: [],
+              }
+          }
+      }
+  }
+}
+
+// THE RANK IN THE PLAN MUST BE THE RANK THE CONTAINER SAYS IT IS. The observed verdict carries the
+// `--node-rank` read out of the incumbent's own argv, and this fleet's rank order is not its address
+// order -- so a plan that believed .238 was rank 2 would hand rank 2's successor spec to rank 3's
+// host and produce an engine whose ranks collide. The disagreement refuses.
+fn capture_rank_agrees(c: ArmCapture) -> NonEmptyStr? {
+  if c.before.node_rank == c.rank.node_rank {
+    none
+  } else {
+    Present { value: join([
+      observed_rank_subject_text(s: c.rank.subject), " is planned as rank ", to_string(c.rank.node_rank),
+      " and its own argv says it is rank ", to_string(c.before.node_rank),
+      "; rank order is not address order on this group, so this is refused rather than reconciled",
+    ], "") as NonEmptyStr }
+  }
+}
+
+fn capture_arm(ranks: List<RankPlan>) -> CaptureAcc
+  uses net: Network
+{
+  let captured = fold(ranks, init: CaptureAcc { captures: [], causes: [] }, f: (acc, plan) => {
+    let one = capture_rank(plan: plan)
+    CaptureAcc { captures: concat(acc.captures, one.captures), causes: concat(acc.causes, one.causes) }
+  })
+  CaptureAcc {
+    captures: captured.captures,
+    causes: concat(captured.causes, fold(captured.captures, init: [], f: (acc, c) =>
+      match capture_rank_agrees(c: c) {
+        Absent => acc
+        Present { value: why } => concat(acc, [why])
+      })),
+  }
+}
+
+// ── THE TWO ORDERS ────────────────────────────────────────────────────────────────────────────
+//
+// SUCCESSORS START LEADER FIRST, AND THAT ORDER IS MECHANICAL. Rank zero constructs the broadcast
+// queue and hosts the API server; a follower brought up first has no leader to rendezvous with and
+// waits. This is the order the relaunch was actually performed in.
+//
+// INCUMBENTS STOP IN THE MIRROR ORDER, followers first and the leader last, BY SYMMETRY AND NOT BY
+// AN OBSERVED FAILURE -- stated that way because no execution has established that the reverse
+// misbehaves, and asserting a mechanism nobody measured is the over-assertion DESIGN section 4d
+// names. What IS established is that the four are one engine, so the order they stop in is a
+// decision and not an accident.
+fn start_order(captures: List<ArmCapture>) -> List<ArmCapture> {
+  captures |> sort_by(c => c.rank.node_rank)
+}
+
+fn stop_order(captures: List<ArmCapture>) -> List<ArmCapture> {
+  start_order(captures: captures) |> reverse
+}
+
+// ── PHASE 2 AND 3: ADVANCE EVERY RANK THROUGH THE SAME LADDER ─────────────────────────────────
+//
+// A FAILED STEP FREEZES THE FOLD AND CARRIES THE STATES FORWARD UNCHANGED, so the rollback sees
+// exactly how far each rank got. Continuing past a failure would leave the arm in a state no single
+// rollback describes.
+type ArmProgressAcc {
+  states: List<RankState>
+  failure: NonEmptyStr?
+  failed_step: RelaunchStep?
+}
+
+fn advance_rank(
+  acc: ArmProgressAcc,
+  capture: ArmCapture,
+  step: RelaunchStep,
+  command: ArgvCommand,
+  reached: RankProgress,
+) -> ArmProgressAcc
+  uses net: Network
+{
+  match acc.failure {
+    Present { value: _ } => acc
+    Absent =>
+      match relaunch_leg(ctx: capture.rank.ctx, step: step, command: command) {
+        Present { value: why } => ArmProgressAcc {
+          states: acc.states,
+          failure: Present { value: join([observed_rank_subject_text(s: capture.rank.subject), ": ", why as String], "") as NonEmptyStr },
+          failed_step: Present { value: step },
+        }
+        Absent => ArmProgressAcc {
+          states: with_progress(states: acc.states, capture: capture, reached: reached),
+          failure: none,
+          failed_step: none,
+        }
+      }
+  }
+}
+
+fn with_progress(states: List<RankState>, capture: ArmCapture, reached: RankProgress) -> List<RankState> {
+  map(states, st =>
+    if (st.capture.rank.subject.container as String) == (capture.rank.subject.container as String)
+      && (st.capture.rank.subject.host as String) == (capture.rank.subject.host as String) {
+      RankState { capture: st.capture, progress: reached }
+    } else {
+      st
+    })
+}
+
+fn stop_and_preserve_arm(acc: ArmProgressAcc, captures: List<ArmCapture>) -> ArmProgressAcc
+  uses net: Network
+{
+  let stopped = fold(stop_order(captures: captures), init: acc, f: (a, c) =>
+    advance_rank(acc: a, capture: c, step: StepStopIncumbent,
+      command: docker_stop_command(name: c.rank.subject.container, grace: relaunch_stop_grace),
+      reached: RankStopped))
+  fold(stop_order(captures: captures), init: stopped, f: (a, c) =>
+    advance_rank(acc: a, capture: c, step: StepPreserveIncumbent,
+      command: docker_rename_command(name: c.rank.subject.container, new_name: c.preserved),
+      reached: RankPreserved))
+}
+
+fn create_and_start_arm(acc: ArmProgressAcc, captures: List<ArmCapture>) -> ArmProgressAcc
+  uses net: Network
+{
+  fold(start_order(captures: captures), init: acc, f: (a, c) => {
+    let created = advance_rank(acc: a, capture: c, step: StepCreateSuccessor,
+      command: docker_create_command(spec: c.rank.spec), reached: RankSuccessorCreated)
+    advance_rank(acc: created, capture: c, step: StepStartSuccessor,
+      command: docker_start_command(name: c.rank.subject.container), reached: RankSuccessorStarted)
+  })
+}
+
+// ── ROLLBACK, DERIVED FROM HOW FAR EACH RANK GOT ──────────────────────────────────────────────
+fn rollback_rank(st: RankState) -> RollbackOutcome
+  uses net: Network
+{
+  let ctx = st.capture.rank.ctx
+  let name = st.capture.rank.subject.container
+  match st.progress {
+    RankUntouched => NothingToRollBack
+    RankStopped => rollback_restart_incumbent(ctx: ctx, name: name)
+    RankPreserved => rollback_to_preserved(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: false)
+    RankSuccessorCreated => rollback_to_preserved(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: true)
+    RankSuccessorStarted => rollback_to_preserved(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: true)
+  }
+}
+
+// THE ROLLBACK RUNS IN THE STOP ORDER TOO, so the leader is the last thing torn down and the first
+// thing brought back -- the same reason the forward path has an order at all.
+fn rollback_arm(states: List<RankState>) -> List<RollbackOutcome>
+  uses net: Network
+{
+  map(states |> sort_by(st => st.capture.rank.node_rank), st => rollback_rank(st: st))
+}
+
+// ── PHASE 4: READ BACK EVERY RANK AND REQUIRE EVERY VERDICT TO HAVE FLIPPED ───────────────────
+//
+// EVERY RANK, NOT RANK ZERO. A four-rank collective in which one rank fell back to sockets runs
+// every collective that touches that rank over TCP, and rank zero's own log would still say IB.
+// Verifying the leader and inferring the arm is the single-source reading this vertical exists to
+// replace.
+type ArmVerification {
+  verdicts: List<RankTransportVerdict>
+  causes: List<NonEmptyStr>
+}
+
+fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
+  uses net: Network
+{
+  fold(start_order(captures: captures), init: ArmVerification { verdicts: [], causes: [] }, f: (acc, c) =>
+    match observe_rank_container(ctx: c.rank.ctx, subject: c.rank.subject) {
+      RankInspectRefused { refusal: r } =>
+        ArmVerification { verdicts: acc.verdicts, causes: concat(acc.causes, [rank_observation_refusal_text(r: r) as NonEmptyStr]) }
+      RankInspected { subject: _, container: successor } =>
+        match observe_rank_transport(ctx: c.rank.ctx, subject: c.rank.subject, container: successor) {
+          RankTransportRefused { refusal: r } =>
+            ArmVerification { verdicts: acc.verdicts, causes: concat(acc.causes, [rank_observation_refusal_text(r: r) as NonEmptyStr]) }
+          RankTransportObserved { verdict: after } =>
+            if transport_flipped(before: c.before, after: after) {
+              ArmVerification { verdicts: concat(acc.verdicts, [after]), causes: acc.causes }
+            } else {
+              ArmVerification {
+                verdicts: acc.verdicts,
+                causes: concat(acc.causes, [join([
+                  "the successor on ", observed_rank_subject_text(s: c.rank.subject),
+                  " did not flip. before: ", rank_transport_verdict_text(v: c.before),
+                  " after: ", rank_transport_verdict_text(v: after),
+                ], "") as NonEmptyStr]),
+              }
+            }
+        }
+    })
+}
+
+// ── THE WHOLE TRANSACTION ─────────────────────────────────────────────────────────────────────
+fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
+  uses net: Network
+{
+  let captured = capture_arm(ranks: ranks)
+  if count(captured.causes) > 0 {
+    ArmRefusedBeforeActuation { step: StepProveDelta, causes: captured.causes }
+  } else if count(captured.captures) != count(ranks) {
+    ArmRefusedBeforeActuation {
+      step: StepCaptureIncumbent,
+      causes: [join([
+        "this arm holds ", to_string(count(ranks)), " ranks and only ", to_string(count(captured.captures)),
+        " were captured; a tensor-parallel arm cannot be relaunched in part",
+      ], "") as NonEmptyStr],
+    }
+  } else {
+    let initial = ArmProgressAcc {
+      states: map(captured.captures, c => RankState { capture: c, progress: RankUntouched }),
+      failure: none,
+      failed_step: none,
+    }
+    let preserved_phase = stop_and_preserve_arm(acc: initial, captures: captured.captures)
+    let started = create_and_start_arm(acc: preserved_phase, captures: captured.captures)
+    match started.failure {
+      Present { value: why } => ArmRolledBack {
+        step: match started.failed_step { Present { value: s } => s, Absent => StepStartSuccessor },
+        cause: why,
+        rollbacks: rollback_arm(states: started.states),
+      }
+      Absent => {
+        let verification = verify_arm(captures: captured.captures)
+        if count(verification.causes) > 0 {
+          ArmRolledBack {
+            step: StepVerifyTransport,
+            cause: join(map(verification.causes, c => c as String), "; ") as NonEmptyStr,
+            rollbacks: rollback_arm(states: started.states),
+          }
+        } else {
+          ArmCommitted {
+            verdicts: verification.verdicts,
+            preserved: map(captured.captures, c => c.preserved),
+          }
+        }
+      }
+    }
+  }
+}
+
+fn arm_relaunch_outcome_text(o: ArmRelaunchOutcome) -> String {
+  match o {
+    ArmCommitted { verdicts: vs, preserved: ps } =>
+      join([
+        "COMMITTED: all ", to_string(count(vs)), " ranks flipped transport.\n",
+        join(map(vs, v => join(["  ", rank_transport_verdict_text(v: v)], "")), "\n"),
+        "\n  preserved incumbents: ", join(map(ps, p => p as String), ", "),
+      ], "")
+    ArmRefusedBeforeActuation { step: s, causes: cs } =>
+      join([
+        "REFUSED at ", relaunch_step_wire(s: s) as String, ", nothing on any host was changed:\n",
+        join(map(cs, c => join(["  ", c as String], "")), "\n"),
+      ], "")
+    ArmRolledBack { step: s, cause: c, rollbacks: rs } =>
+      join([
+        "ROLLED BACK at ", relaunch_step_wire(s: s) as String, ": ", c as String, "\n",
+        join(map(rs, r => join(["  ", rollback_outcome_text(o: r)], "")), "\n"),
+      ], "")
+  }
+}
+
+fn rollback_outcome_text(o: RollbackOutcome) -> String {
+  match o {
+    NothingToRollBack => "nothing on the host had been changed"
+    RolledBack { restored: n } => join([n as String, " is restored and started"], "")
+    RollbackFailed { step: s, cause: c } =>
+      join(["THE ROLLBACK ITSELF FAILED at ", s as String, " -- this host needs a human: ", c as String], "")
+  }
+}

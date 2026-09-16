@@ -1,0 +1,534 @@
+module test.claim.spark.relaunch_vertical_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value, ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count }
+import extdeps.docker.container_inspect {
+  ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
+  container_inspect_from_stdout, docker_capability_canonical,
+  VerbsShapeReading, VerbsShapePresent, VerbsShapeAbsent, VerbsShapeUnreported,
+  container_maps_device, container_adds_capability, container_unlocks_memlock,
+}
+import extdeps.nvidia.nccl {
+  NcclTransportVerdict, NcclTransportRead, NcclTransportRefused, NcclTransportRefusal,
+  NcclNoAnnouncement, NcclAnnouncementsDisagree, NcclUnknownNetworkName,
+  NcclChannelDisagreesWithAnnouncement,
+  NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
+  nccl_realized_transport_wire, nccl_transport_verdict, nccl_log_lines,
+}
+import extdeps.vllm.log_lines {
+  VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency,
+  vllm_startup_readings, vllm_readings_of_class, vllm_kv_pool_tokens_in, vllm_max_concurrency_in,
+}
+import extdeps.vllm.kv_cache {
+  VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading,
+}
+import extdeps.vllm.kv_layout {
+  VllmReportedCapacityAdmission, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
+}
+import extdeps.vllm.engine_args {
+  VllmArgvNatRead, VllmArgvNat, VllmArgvNatUnread,
+  vllm_argv_node_rank, vllm_argv_utilization_basis_points, vllm_argv_value, VllmArgvValue,
+  VllmArgvFlagAbsent, VllmArgvFlagWithoutValue, VllmArgvFlagRepeated, VllmArgvValueRead,
+}
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import gunbc.spark.serving_rank_observe { observed_rank_identity, RankIdentityReading, RankIdentityRead, RankIdentityUnread }
+
+// ── THE SUBJECT IS SIX FILES OF VERBATIM COMMAND OUTPUT, NOT TEXT AN AUTHOR WROTE ─────────────
+//
+// WHY THAT DISTINCTION IS THE WHOLE VALUE OF THIS MODULE. Every carrier these folds produce was, until
+// this change, inhabited only by supplied values -- and a parser tested against text its own author
+// wrote tests the author's belief about the format, not the format. These bytes came off the Group B
+// arm on 2026-09-16 by `docker inspect`, `docker logs` and `docker exec`, and the README beside them
+// records the exact command, host and incarnation each one came from.
+//
+// THEY ARE ALSO A DISCRIMINATING PAIR, which is what makes the rows below walls rather than
+// decorations. The same folds run over the socket incarnation and the RoCE incarnation must reach
+// OPPOSITE answers: `Devices=[] CapAdd=null Ulimits=[]` against a mapped device, a canonicalized
+// capability and an unlimited memlock; `Using network Socket` against `Using network IB`. A fold that
+// answered the same for both would pass a single-sided check and establish nothing.
+data capture_root: String = "artifacts/spark/glm-group-b-2026-09-16/"
+
+fn capture(name: String) -> String {
+  let read = Filesystem.Read(path: join([capture_root, name], ""))
+  if read.success { read.content } else { "" }
+}
+
+fn inspect_socket_rank0() -> String { capture(name: "inspect-socket-rank0.json") }
+fn inspect_socket_rank1() -> String { capture(name: "inspect-socket-rank1.json") }
+fn inspect_roce_rank0() -> String { capture(name: "inspect-roce-rank0.json") }
+fn inspect_roce_rank1() -> String { capture(name: "inspect-roce-rank1.json") }
+fn nccl_socket_rank0() -> String { capture(name: "nccl-socket-rank0.txt") }
+fn nccl_roce_rank0() -> String { capture(name: "nccl-roce-rank0.txt") }
+fn kv_roce_rank0() -> String { capture(name: "kv-roce-rank0.txt") }
+
+fn decoded(text: String) -> ContainerInspect? {
+  match container_inspect_from_stdout(stdout: text) {
+    ContainerInspectUnreadable { cause: _ } => none
+    ContainerInspectDecoded { container: c } => Present { value: c }
+  }
+}
+
+fn with_decoded(text: String, f: fn(ContainerInspect) -> Bool) -> Bool {
+  match decoded(text: text) {
+    Absent => false
+    Present { value: c } => f(c)
+  }
+}
+
+// ── INHABITANCE: THE DECODER RUNS ON WHAT THE DAEMON ACTUALLY ANSWERS ─────────────────────────
+//
+// THE PAIRING OBLIGATION OF DESIGN SECTION 3 IS DISCHARGED HERE AND NOT ASSUMED. Every row below that
+// supplies a captured string to a fold is a hypothesis about a boundary; this row is what makes it a
+// reading, because it asserts that the REAL producer's output inhabits the shape -- four separate
+// `docker inspect` documents, from two incarnations on two hosts, all four decoding.
+test fn w_every_captured_inspect_document_decodes() -> Bool {
+  all([inspect_socket_rank0(), inspect_socket_rank1(), inspect_roce_rank0(), inspect_roce_rank1()],
+    t => match decoded(text: t) { Absent => false, Present { value: _ } => true })
+}
+
+// ── THE DISCRIMINATING ROW OF THE WHOLE CHANGE ────────────────────────────────────────────────
+//
+// THIS IS THE DEFECT, MADE DETECTABLE. Before `devices` and `ulimits` existed on HostConfig, a
+// readback of the socket incarnation could see only `cap_add` -- and would have found it agreeing
+// with a plan that asked for nothing, because a container with no capabilities and a plan wanting
+// none agree perfectly. The two fields that carried the whole difference had nowhere to land.
+//
+// SAME FOLD, TWO REAL DOCUMENTS, OPPOSITE ANSWERS. That is what makes this a wall: its RED is not
+// authorable only in principle, it is sitting in the repository as `inspect-socket-rank0.json`.
+test fn w_the_socket_incarnation_reads_as_missing_the_verbs_shape() -> Bool {
+  with_decoded(text: inspect_socket_rank0(), f: c =>
+    verbs_absent(r: container_maps_device(inspect: c, host_path: "/dev/infiniband"))
+      && verbs_absent(r: container_adds_capability(inspect: c, capability: "IPC_LOCK"))
+      && verbs_absent(r: container_unlocks_memlock(inspect: c)))
+}
+
+test fn w_the_roce_incarnation_reads_as_carrying_the_verbs_shape() -> Bool {
+  all([inspect_roce_rank0(), inspect_roce_rank1()], t => with_decoded(text: t, f: c =>
+    verbs_present(r: container_maps_device(inspect: c, host_path: "/dev/infiniband"))
+      && verbs_present(r: container_adds_capability(inspect: c, capability: "IPC_LOCK"))
+      && verbs_present(r: container_unlocks_memlock(inspect: c))))
+}
+
+fn verbs_present(r: VerbsShapeReading) -> Bool {
+  match r {
+    VerbsShapePresent => true
+    VerbsShapeAbsent => false
+    VerbsShapeUnreported { cause: _ } => false
+  }
+}
+
+fn verbs_absent(r: VerbsShapeReading) -> Bool {
+  match r {
+    VerbsShapeAbsent => true
+    VerbsShapePresent => false
+    VerbsShapeUnreported { cause: _ } => false
+  }
+}
+
+// ── AND THE CAPABILITY ALONE WOULD HAVE AGREED, WHICH IS WHY IT IS ASSERTED SEPARATELY ────────
+//
+// The daemon reads `CAP_IPC_LOCK` back for a plan that spells `IPC_LOCK`. A literal comparison would
+// report a disagreement on every correctly-created container, so the canonicalization is what keeps
+// this row from being a false red -- and it is asserted against the captured spelling rather than
+// against itself.
+test fn w_the_daemon_reads_the_capability_back_with_its_cap_prefix() -> Bool {
+  docker_capability_canonical(name: "IPC_LOCK") == "CAP_IPC_LOCK"
+    && docker_capability_canonical(name: "CAP_IPC_LOCK") == "CAP_IPC_LOCK"
+    && with_decoded(text: inspect_roce_rank0(), f: c =>
+      match c.host_config {
+        Absent => false
+        Present { value: hc } =>
+          match hc.cap_add {
+            Absent => false
+            Present { value: cs } => count(filter(cs, x => x == "CAP_IPC_LOCK")) == 1
+          }
+      })
+}
+
+// A NULL CapAdd AND AN EMPTY Devices ARE DIFFERENT FACTS, and the socket capture carries one of each.
+// Collapsing them would erase the difference between a field the daemon did not set and a field it set
+// to nothing.
+test fn w_a_null_member_reads_absent_and_an_empty_array_reads_empty() -> Bool {
+  with_decoded(text: inspect_socket_rank0(), f: c =>
+    match c.host_config {
+      Absent => false
+      Present { value: hc } =>
+        match hc.cap_add {
+          Present { value: _ } => false
+          Absent =>
+            match hc.devices {
+              Absent => false
+              Present { value: ds } => count(ds) == 0
+            }
+        }
+    })
+}
+
+// ── THE RANK COMES OUT OF THE ARGV ────────────────────────────────────────────────────────────
+//
+// WHAT THESE TWO CAPTURES CAN AND CANNOT ESTABLISH, stated so the row is not read as more than it is:
+// .236 is rank 0 and .237 is rank 1, so this PAIR happens to agree with address order and cannot on
+// its own discriminate the argv reading from an address-order derivation. What it does establish is
+// that the rank is recovered from the document at all, and that the two incarnations of one host --
+// which differ in batching and utilization -- agree on it.
+test fn w_the_node_rank_is_read_from_the_containers_own_argv() -> Bool {
+  argv_rank_is(text: inspect_socket_rank0(), expected: 0)
+    && argv_rank_is(text: inspect_roce_rank0(), expected: 0)
+    && argv_rank_is(text: inspect_socket_rank1(), expected: 1)
+    && argv_rank_is(text: inspect_roce_rank1(), expected: 1)
+}
+
+fn argv_rank_is(text: String, expected: Nat) -> Bool {
+  with_decoded(text: text, f: c =>
+    match observed_rank_identity(c: c) {
+      RankIdentityUnread { cause: _ } => false
+      RankIdentityRead { incarnation: id, node_rank: r } => r == expected && (id as String) != ""
+    })
+}
+
+// THE TWO INCARNATIONS DIFFER IN EXACTLY THE TWO ARGUMENTS THE RELAUNCH CHANGED, read back through
+// the same grammar that renders them. 0.84 is 8400 basis points and 0.8567 is 8567 -- the padding
+// rule is what makes those two numbers rather than 84 and 8567.
+test fn w_the_two_incarnations_differ_in_batching_and_utilization_as_read_back() -> Bool {
+  argv_flag_is(text: inspect_socket_rank0(), flag: "--max-num-seqs", expected: "1")
+    && argv_flag_is(text: inspect_roce_rank0(), flag: "--max-num-seqs", expected: "16")
+    && argv_utilization_is(text: inspect_socket_rank0(), expected: 8400)
+    && argv_utilization_is(text: inspect_roce_rank0(), expected: 8567)
+}
+
+fn container_argv(c: ContainerInspect) -> List<String> {
+  match c.config {
+    Absent => []
+    Present { value: cfg } => match cfg.cmd { Absent => [], Present { value: words } => words }
+  }
+}
+
+fn argv_flag_is(text: String, flag: String, expected: String) -> Bool {
+  with_decoded(text: text, f: c =>
+    match vllm_argv_value(argv: container_argv(c: c), flag: flag) {
+      VllmArgvValue { value: v } => v == expected
+      VllmArgvFlagAbsent => false
+      VllmArgvFlagWithoutValue => false
+      VllmArgvFlagRepeated { values: _ } => false
+    })
+}
+
+fn argv_utilization_is(text: String, expected: Nat) -> Bool {
+  with_decoded(text: text, f: c =>
+    match vllm_argv_utilization_basis_points(argv: container_argv(c: c)) {
+      VllmArgvNatUnread { cause: _ } => false
+      VllmArgvNat { value: bp } => bp == expected
+    })
+}
+
+// A FRACTION THAT CANNOT BE HELD EXACTLY IN BASIS POINTS REFUSES RATHER THAN ROUNDING. This is the
+// authorable RED for the readback direction: without it a container created at 0.856789 would read
+// back as agreeing with a plan that asked for 0.8568.
+test fn w_an_inexact_utilization_fraction_refuses_rather_than_rounding() -> Bool {
+  match vllm_argv_utilization_basis_points(argv: ["--gpu-memory-utilization", "0.856789"]) {
+    VllmArgvNat { value: _ } => false
+    VllmArgvNatUnread { cause: _ } => true
+  }
+}
+
+// A FLAG GIVEN TWICE IS REFUSED WITH BOTH VALUES, never silently resolved to one of them.
+test fn w_a_repeated_flag_refuses_and_carries_both_values() -> Bool {
+  match vllm_argv_value(argv: ["--node-rank", "0", "--node-rank", "3"], flag: "--node-rank") {
+    VllmArgvFlagRepeated { values: vs } => count(vs) == 2
+    VllmArgvValue { value: _ } => false
+    VllmArgvFlagAbsent => false
+    VllmArgvFlagWithoutValue => false
+  }
+}
+
+// AND A FLAG AT THE END OF THE ARGV IS NOT AN ABSENT FLAG.
+test fn w_a_dangling_flag_is_distinguished_from_an_absent_one() -> Bool {
+  match vllm_argv_value(argv: ["--node-rank"], flag: "--node-rank") {
+    VllmArgvFlagWithoutValue => true
+    VllmArgvValue { value: _ } => false
+    VllmArgvFlagAbsent => false
+    VllmArgvFlagRepeated { values: _ } => false
+  }
+}
+
+// ── NCCL: THE VERDICT THAT HAD NO PRODUCER ────────────────────────────────────────────────────
+//
+// THE TWO CAPTURES ARE THE DISCRIMINATING PAIR AND THE SOCKET ONE IS A TRAP. It contains the line
+// `NET/IB : Using [RO]; OOB enp1s0f1np1:...` -- emitted by the IB plugin while reporting that it found
+// NO device -- so a reader keyed on `NET/IB` and `Using` appearing together answers IB for a run that
+// served every collective over TCP. The discriminator is the whole token `Using network `.
+test fn w_the_socket_capture_reads_as_socket_despite_naming_net_ib() -> Bool {
+  string_contains(s: nccl_socket_rank0(), pattern: "NET/IB : Using")
+    && verdict_transport_is(text: nccl_socket_rank0(), expected: "Socket")
+}
+
+test fn w_the_roce_capture_reads_as_ib_verbs() -> Bool {
+  verdict_transport_is(text: nccl_roce_rank0(), expected: "IB")
+}
+
+fn verdict_transport_is(text: String, expected: String) -> Bool {
+  match nccl_transport_verdict(captured_text: text) {
+    NcclTransportRefused { cause: _ } => false
+    NcclTransportRead { reading: r } => (nccl_realized_transport_wire(t: r.transport) as String) == expected
+  }
+}
+
+// THE VERDICT IS BOUND TO THE LINE IT WAS READ FROM, and the line is the raw one with its emitter
+// prefix intact -- which is what lets a consumer say which process on which host announced it.
+test fn w_the_verdict_carries_the_raw_line_it_was_read_from() -> Bool {
+  match nccl_transport_verdict(captured_text: nccl_roce_rank0()) {
+    NcclTransportRefused { cause: _ } => false
+    NcclTransportRead { reading: r } =>
+      string_contains(s: read_from_of(t: r.transport) as String, pattern: "NCCL INFO Using network IB")
+        && string_contains(s: read_from_of(t: r.transport) as String, pattern: "spark-0c75:346:346 [0]")
+  }
+}
+
+fn read_from_of(t: NcclRealizedTransport) -> NonEmptyStr {
+  match t {
+    NcclTransportIbVerbs { read_from: l } => l
+    NcclTransportSocket { read_from: l } => l
+  }
+}
+
+// THE CHANNELS ARE READ AS A SECOND FACT AND MUST AGREE WITH THE ANNOUNCEMENT. The RoCE capture
+// carries eight `via NET/IB/0` channel lines and the socket capture sixteen `via NET/Socket/0`; a
+// reading that produced no channels at all would satisfy the announcement rows above while
+// establishing nothing about what the data path was wired over.
+test fn w_every_channel_line_is_read_and_agrees_with_the_announcement() -> Bool {
+  channels_count_is(text: nccl_roce_rank0(), expected: 8)
+    && channels_count_is(text: nccl_socket_rank0(), expected: 16)
+}
+
+fn channels_count_is(text: String, expected: Nat) -> Bool {
+  match nccl_transport_verdict(captured_text: text) {
+    NcclTransportRefused { cause: _ } => false
+    NcclTransportRead { reading: r } => count(r.channels) == expected
+  }
+}
+
+// THE SOCKET CAPTURE ANNOUNCES TWICE FROM ONE THREAD, which is why the occurrence carries an ordinal:
+// the emitter's pid and tid are identical on both lines, so nothing else separates them.
+test fn w_two_announcements_from_one_emitter_are_kept_apart_by_ordinal() -> Bool {
+  match nccl_transport_verdict(captured_text: nccl_socket_rank0()) {
+    NcclTransportRefused { cause: _ } => false
+    NcclTransportRead { reading: r } =>
+      count(r.announcements) == 2
+        && all(r.announcements, a => a.occurrence.emitter.pid == 346 && a.occurrence.emitter.tid == 346)
+        && count(filter(r.announcements, a => a.occurrence.ordinal == 0)) == 1
+  }
+}
+
+// ── THE REFUSALS, EACH WITH A DISCRIMINATING INPUT ────────────────────────────────────────────
+//
+// AN ABSENT READING IS NOT A SOCKET RUN. This is the arm that matters most: the whole incident was a
+// fleet running on sockets, so a fold that answered "Socket" when it could not read would have
+// produced the right answer for the wrong reason and been believed.
+test fn w_a_capture_with_no_announcement_refuses_rather_than_answering_socket() -> Bool {
+  refuses_as_no_announcement(text: "")
+    && refuses_as_no_announcement(text: "spark-0c75:346:346 [0] NCCL INFO NET/IB : No device found.")
+}
+
+fn refuses_as_no_announcement(text: String) -> Bool {
+  match nccl_transport_verdict(captured_text: text) {
+    NcclTransportRead { reading: _ } => false
+    NcclTransportRefused { cause: c } =>
+      match c {
+        NcclNoAnnouncement => true
+        NcclAnnouncementsDisagree { names: _ } => false
+        NcclUnknownNetworkName { names: _ } => false
+        NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+      }
+  }
+}
+
+// TWO INCARNATIONS' LOGS CONCATENATED ARE NOT ONE VERDICT, and this is built from the two real
+// captures rather than from invented text -- which is what makes it a statement about the fold's
+// behaviour on the documents this fleet actually produces.
+test fn w_disagreeing_announcements_refuse_rather_than_picking_one() -> Bool {
+  match nccl_transport_verdict(captured_text: join([nccl_socket_rank0(), "\n", nccl_roce_rank0()], "")) {
+    NcclTransportRead { reading: _ } => false
+    NcclTransportRefused { cause: c } =>
+      match c {
+        NcclAnnouncementsDisagree { names: ns } => count(ns) == 3
+        NcclNoAnnouncement => false
+        NcclUnknownNetworkName { names: _ } => false
+        NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+      }
+  }
+}
+
+// A NETWORK NAME THIS MODULE DOES NOT CARRY REFUSES RATHER THAN DEFAULTING. NCCL builds networks this
+// fleet has not seen; answering Socket for one of them would report the incident's own state for a run
+// that is not in it.
+test fn w_an_unmodelled_network_name_refuses() -> Bool {
+  match nccl_transport_verdict(captured_text: "spark-0c75:346:346 [0] NCCL INFO Using network NVLS") {
+    NcclTransportRead { reading: _ } => false
+    NcclTransportRefused { cause: c } =>
+      match c {
+        NcclUnknownNetworkName { names: ns } => count(ns) == 1
+        NcclNoAnnouncement => false
+        NcclAnnouncementsDisagree { names: _ } => false
+        NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+      }
+  }
+}
+
+// AN ANNOUNCEMENT OF IB WITH A SOCKET-WIRED CHANNEL REFUSES. Nothing in the captures shows this
+// happening, and that is exactly why the cross-check is written now: a verdict with one source about
+// this fact was already wrong once.
+test fn w_a_channel_wired_over_another_network_refuses() -> Bool {
+  match nccl_transport_verdict(captured_text: join([
+    "spark-0c75:346:346 [0] NCCL INFO Using network IB\n",
+    "spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 2[0] -> 0[0] [receive] via NET/Socket/0",
+  ], "")) {
+    NcclTransportRead { reading: _ } => false
+    NcclTransportRefused { cause: c } =>
+      match c {
+        NcclChannelDisagreesWithAnnouncement { announced: a, channel_lines: ls } =>
+          (a as String) == "IB" && count(ls) == 1
+        NcclNoAnnouncement => false
+        NcclAnnouncementsDisagree { names: _ } => false
+        NcclUnknownNetworkName { names: _ } => false
+      }
+  }
+}
+
+// A LINE WITHOUT THE `NCCL INFO` MARKER IS NOT THIS MODULE'S SUBJECT AND IS NOT A MALFORMED ONE. The
+// captures are FILTERED output, so this row states what the fold does with the engine's own logging
+// interleaved among NCCL's rather than leaving it to be discovered.
+test fn w_only_nccl_info_lines_are_read_as_nccl_lines() -> Bool {
+  count(nccl_log_lines(text: join([
+    "INFO 09-16 20:00:46 [core.py:770] Waiting for init message from front-end.\n",
+    "spark-0c75:346:346 [0] NCCL INFO Using network IB\n",
+    "(EngineCore pid=273) INFO 09-16 20:00:46 [kv_cache_utils.py:2312] GPU KV cache size: 2,195,189 tokens",
+  ], ""))) == 1
+}
+
+// ── vLLM: THE NUMBER IS PARSED, NOT AUTHORED BESIDE THE LINE ──────────────────────────────────
+//
+// THE OBSERVED REVISION COMES FROM THE CAPTURE that recorded it, read by `docker exec` from inside the
+// running container. Stamping the modelled revision here would reproduce exactly the defect
+// extdeps.vllm.log_lines removed from its own constructor.
+data observed_revision_2026_09_16: VllmSourceRevision = vllm_source_revision(
+  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+  full_revision: "0.1.dev1+g8d09804c8" as NonEmptyStr,
+)
+
+fn roce_startup_readings() -> List<VllmStartupReading> {
+  vllm_startup_readings(captured_stdout: kv_roce_rank0(), observed_at_revision: observed_revision_2026_09_16)
+}
+
+// ONE PHYSICAL LINE CARRIES BOTH CLASSES on this build, and a reader that returned the first match
+// and stopped would silently lose the concurrency figure kv_layout cross-checks against.
+test fn w_one_captured_line_yields_both_startup_line_classes() -> Bool {
+  count(vllm_readings_of_class(readings: roce_startup_readings(), class: GpuKvCacheSize)) == 1
+    && count(vllm_readings_of_class(readings: roce_startup_readings(), class: MaximumConcurrency)) == 1
+}
+
+// THE MARKER IS A SUBSTRING AND NOT A LINE PREFIX. The captured line begins
+// `(EngineCore pid=273) INFO ...`, so a `starts_with` reader would find nothing and report an engine
+// that printed no startup lines -- green, empty and wrong.
+test fn w_the_markers_are_matched_behind_the_engines_own_log_prefix() -> Bool {
+  !starts_with(s: trim_first_line(text: kv_roce_rank0()), prefix: "GPU KV cache size:")
+    && count(roce_startup_readings()) == 2
+}
+
+fn trim_first_line(text: String) -> String {
+  match split(s: text, delimiter: "\n") |> skip(1) |> first {
+    Absent => text
+    Present { value: l } => l
+  }
+}
+
+// THE POOL AND THE CONCURRENCY ARE THE ENGINE'S OWN PRINTED FIGURES, grouped digits and all.
+test fn w_the_pool_and_concurrency_are_parsed_out_of_the_captured_line() -> Bool {
+  match vllm_readings_of_class(readings: roce_startup_readings(), class: GpuKvCacheSize) |> first {
+    Absent => false
+    Present { value: r } =>
+      match vllm_kv_pool_tokens_in(reading: r) {
+        Absent => false
+        Present { value: t } => token_count_value(t: t) == 2195189
+      }
+  }
+  && match vllm_readings_of_class(readings: roce_startup_readings(), class: MaximumConcurrency) |> first {
+    Absent => false
+    Present { value: r } =>
+      match vllm_max_concurrency_in(reading: r) {
+        Absent => false
+        Present { value: c } => concurrent_request_hundredths_count(c: c) == 837
+      }
+  }
+}
+
+// AND THE PARSED PAIR FEEDS THE CARRIERS THAT WERE WAITING FOR IT. This is the consumption chain
+// stated end to end: captured bytes -> reading -> pool -> reported capacity, with every refusal arm
+// on the way still live.
+test fn w_the_parsed_readings_admit_a_pool_and_a_reported_capacity() -> Bool {
+  match vllm_readings_of_class(readings: roce_startup_readings(), class: GpuKvCacheSize) |> first {
+    Absent => false
+    Present { value: pool_reading } =>
+      match vllm_kv_pool_tokens_in(reading: pool_reading) {
+        Absent => false
+        Present { value: tokens } =>
+          match vllm_observed_kv_pool_from_reading(tokens: tokens, reading: pool_reading) {
+            KvPoolRefused { cause: _ } => false
+            KvPoolAdmitted { pool: pool } =>
+              match vllm_readings_of_class(readings: roce_startup_readings(), class: MaximumConcurrency) |> first {
+                Absent => false
+                Present { value: conc_reading } =>
+                  match vllm_max_concurrency_in(reading: conc_reading) {
+                    Absent => false
+                    Present { value: conc } =>
+                      match vllm_reported_capacity(pool: pool, max_concurrency: conc, reading: conc_reading) {
+                        ReportedCapacityRefused { cause: _ } => false
+                        ReportedCapacityAdmitted { capacity: _ } => true
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE POOL CANNOT BE BUILT FROM THE WRONG LINE CLASS, and this row exercises that refusal with a
+// reading the real producer emitted rather than one written to fail.
+test fn w_a_pool_built_from_the_concurrency_reading_refuses() -> Bool {
+  match vllm_readings_of_class(readings: roce_startup_readings(), class: MaximumConcurrency) |> first {
+    Absent => false
+    Present { value: r } =>
+      match vllm_observed_kv_pool_from_reading(tokens: token_count(count: 2195189), reading: r) {
+        KvPoolAdmitted { pool: _ } => false
+        KvPoolRefused { cause: _ } => true
+      }
+  }
+}
+
+test fn witness_holds() -> Bool {
+  w_every_captured_inspect_document_decodes()
+    && w_the_socket_incarnation_reads_as_missing_the_verbs_shape()
+    && w_the_roce_incarnation_reads_as_carrying_the_verbs_shape()
+    && w_the_daemon_reads_the_capability_back_with_its_cap_prefix()
+    && w_a_null_member_reads_absent_and_an_empty_array_reads_empty()
+    && w_the_node_rank_is_read_from_the_containers_own_argv()
+    && w_the_two_incarnations_differ_in_batching_and_utilization_as_read_back()
+    && w_an_inexact_utilization_fraction_refuses_rather_than_rounding()
+    && w_a_repeated_flag_refuses_and_carries_both_values()
+    && w_a_dangling_flag_is_distinguished_from_an_absent_one()
+    && w_the_socket_capture_reads_as_socket_despite_naming_net_ib()
+    && w_the_roce_capture_reads_as_ib_verbs()
+    && w_the_verdict_carries_the_raw_line_it_was_read_from()
+    && w_every_channel_line_is_read_and_agrees_with_the_announcement()
+    && w_two_announcements_from_one_emitter_are_kept_apart_by_ordinal()
+    && w_a_capture_with_no_announcement_refuses_rather_than_answering_socket()
+    && w_disagreeing_announcements_refuse_rather_than_picking_one()
+    && w_an_unmodelled_network_name_refuses()
+    && w_a_channel_wired_over_another_network_refuses()
+    && w_only_nccl_info_lines_are_read_as_nccl_lines()
+    && w_one_captured_line_yields_both_startup_line_classes()
+    && w_the_markers_are_matched_behind_the_engines_own_log_prefix()
+    && w_the_pool_and_concurrency_are_parsed_out_of_the_captured_line()
+    && w_the_parsed_readings_admit_a_pool_and_a_reported_capacity()
+    && w_a_pool_built_from_the_concurrency_reading_refuses()
+}
