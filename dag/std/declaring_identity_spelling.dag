@@ -37,13 +37,12 @@ import v2.std.qualified_name { QualifiedName }
 // std.occurrence_binding OccurrenceBindingResult over ScopedOccurrenceRef (gunbc#11264's
 // surviving authority) and must never be a third minted identity here. canonical is
 // ProvenanceResolved.target and is unaffected.
-data declaring_identity_spelling_declared_binding_frontier_dissolve_on: DissolutionCondition =
-  retires_dissolution(
-    ref: decl_ref(
-      module_path: "v2.compiler.repair_input_origin_roster",
-      decl_name: "repair_input_declared_binding_frontier_dissolve_on"
-    )
+data declaring_identity_spelling_declared_binding_frontier_dissolve_on: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "v2.compiler.repair_input_origin_roster",
+    decl_name: "repair_input_declared_binding_frontier_dissolve_on"
   )
+)
 
 type UnresolvableCause
   = IdentityAmbiguous
