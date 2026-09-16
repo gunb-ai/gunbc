@@ -16,6 +16,7 @@ import gunbc.whole_corpus_compile_admission {
 import gunbc.root_demand_measurement {
   RootDemandMeasurementLimitReading,
   MemoryMaxBindsProcess,
+  MemoryHighThrottlesBelowMax,
   MemoryHighOnly,
   NoCgroupMemoryLimit,
   RootDemandMeasurementAdmitted,
@@ -91,6 +92,18 @@ test fn measurement_under_memory_high_only_or_no_limit_refuses() -> Bool {
   string_contains(s: high_only, pattern: "memory.high throttles and never kills")
     && string_contains(s: high_only, pattern: "needs memory.max")
     && string_contains(s: none_at_all, pattern: "needs memory.max")
+}
+
+// RED: a finite memory.high BELOW memory.max throttles first, so memory.max does not bound the run
+// even though it is set; the refusal names the throttle line and the repair.
+test fn measurement_under_memory_high_below_max_refuses() -> Bool {
+  let both = measurement_refusal_reason(l: MemoryHighThrottlesBelowMax {
+    cgroup_dir: "/sys/fs/cgroup/runner.slice" as NonEmptyStr,
+    high: byte_size(8589934592),
+    max: byte_size(17179869184),
+  })
+  string_contains(s: both, pattern: "memory.high is set below memory.max")
+    && string_contains(s: both, pattern: "before the process can reach the kill line")
 }
 
 // POSITIVE CONTROL for authoring: a completed, exit-0 receipt for the root authors its row at

@@ -535,8 +535,21 @@ pub enum RootDemandMeasurementAdmission {
 /// Seed mirror of `gunbc.root_demand_measurement` `RootDemandMeasurementLimitReading`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootDemandMeasurementLimitReading {
-    MemoryMaxBindsProcess { cgroup_dir: String, bytes: u64 },
-    MemoryHighOnly { cgroup_dir: String, high_bytes: u64 },
+    MemoryMaxBindsProcess {
+        cgroup_dir: String,
+        bytes: u64,
+    },
+    /// Both set and high < max: the kernel throttles at memory.high before the kill line is
+    /// reachable, so memory.max does not bound the run even though it is set.
+    MemoryHighThrottlesBelowMax {
+        cgroup_dir: String,
+        high_bytes: u64,
+        max_bytes: u64,
+    },
+    MemoryHighOnly {
+        cgroup_dir: String,
+        high_bytes: u64,
+    },
     NoCgroupMemoryLimit,
 }
 
@@ -545,10 +558,11 @@ pub enum RootDemandMeasurementLimitReading {
 pub fn read_root_demand_measurement_limit() -> RootDemandMeasurementLimitReading {
     if let Some(dir) = binding_cap_cgroup_dir() {
         if let Some(bytes) = read_cgroup_u64(&dir, "memory.max") {
-            return RootDemandMeasurementLimitReading::MemoryMaxBindsProcess {
-                cgroup_dir: dir.display().to_string(),
-                bytes,
-            };
+            // The tightest memory.high on the same walk: if it sits below the kill line it
+            // throttles first, and the reading must say so rather than report memory.max alone.
+            let high = binding_high_cgroup_dir()
+                .and_then(|h| read_cgroup_u64(&h, "memory.high").map(|b| (h, b)));
+            return classify_measurement_limit(dir.display().to_string(), bytes, high);
         }
     }
     if let Some(dir) = binding_high_cgroup_dir() {
@@ -560,6 +574,27 @@ pub fn read_root_demand_measurement_limit() -> RootDemandMeasurementLimitReading
         }
     }
     RootDemandMeasurementLimitReading::NoCgroupMemoryLimit
+}
+
+/// The pure half of the reading: memory.max binds only when no finite memory.high sits below it.
+pub fn classify_measurement_limit(
+    max_dir: String,
+    max_bytes: u64,
+    high: Option<(PathBuf, u64)>,
+) -> RootDemandMeasurementLimitReading {
+    match high {
+        Some((high_dir, high_bytes)) if high_bytes < max_bytes => {
+            RootDemandMeasurementLimitReading::MemoryHighThrottlesBelowMax {
+                cgroup_dir: high_dir.display().to_string(),
+                high_bytes,
+                max_bytes,
+            }
+        }
+        _ => RootDemandMeasurementLimitReading::MemoryMaxBindsProcess {
+            cgroup_dir: max_dir,
+            bytes: max_bytes,
+        },
+    }
 }
 
 /// Admitted ONLY under an observed memory.max that bounds this process (direction ruling on
@@ -582,6 +617,19 @@ pub fn root_demand_measurement_admission(
                 .label(),
             })
         }
+        RootDemandMeasurementLimitReading::MemoryHighThrottlesBelowMax {
+            cgroup_dir,
+            high_bytes,
+            max_bytes,
+        } => RootDemandMeasurementAdmission::RefusedNoEnforceableLimit {
+            root: root.clone(),
+            reason: format!(
+                "memory.high={high_bytes} at {cgroup_dir} is set below memory.max={max_bytes}: the \
+                 kernel throttles and reclaims at memory.high before the process can reach the kill \
+                 line, so memory.max does not bound the measurement; raise memory.high to memory.max \
+                 (or unset it) on the measuring cgroup"
+            ),
+        },
         RootDemandMeasurementLimitReading::MemoryHighOnly { cgroup_dir, high_bytes } => {
             RootDemandMeasurementAdmission::RefusedNoEnforceableLimit {
                 root: root.clone(),
@@ -2268,6 +2316,37 @@ mod tests {
             msg.contains("throttles and never kills") && msg.contains("needs memory.max"),
             "{msg}"
         );
+        // Both set with high below max: the throttle line wins and the reading refuses; the
+        // classifier that produces that reading is exercised on both sides of the line.
+        let below = classify_measurement_limit(
+            "/sys/fs/cgroup/runner.slice".to_string(),
+            17_179_869_184,
+            Some((PathBuf::from("/sys/fs/cgroup/runner.slice"), 8_589_934_592)),
+        );
+        assert!(matches!(
+            below,
+            RootDemandMeasurementLimitReading::MemoryHighThrottlesBelowMax { .. }
+        ));
+        let msg = root_demand_measurement_refusal_diagnostic(&root_demand_measurement_admission(
+            &below, &root,
+        ))
+        .expect("memory.high below memory.max must refuse");
+        assert!(
+            msg.contains("set below memory.max") && msg.contains("before the process can reach"),
+            "{msg}"
+        );
+        assert!(matches!(
+            classify_measurement_limit(
+                "/sys/fs/cgroup/runner.slice".to_string(),
+                17_179_869_184,
+                Some((PathBuf::from("/sys/fs/cgroup/runner.slice"), 17_179_869_184)),
+            ),
+            RootDemandMeasurementLimitReading::MemoryMaxBindsProcess { .. }
+        ));
+        assert!(matches!(
+            classify_measurement_limit("/sys/fs/cgroup/runner.slice".to_string(), 1, None),
+            RootDemandMeasurementLimitReading::MemoryMaxBindsProcess { .. }
+        ));
         let none = root_demand_measurement_admission(
             &RootDemandMeasurementLimitReading::NoCgroupMemoryLimit,
             &root,
