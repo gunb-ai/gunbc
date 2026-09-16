@@ -243,6 +243,31 @@ fn rd_unreadable_root() -> Node {
   }
 }
 
+// THE DISCRIMINATING RED FOR THE HEADERLESS-CONJ ARM (review 66859 on gunbc#11461): a
+// well-formed module tree whose header does not yield a qualified name walks fine (the
+// collector counts nothing unreadable) but the pool cannot name it, and the edge fold used
+// to answer Absent with zero edges while still reporting total. A headerless root is a
+// Conj carrying a body and no header edges; it must be COUNTED in unreadable_roots so the
+// fold is non-total, exactly like the bare-Atom root below.
+fn rd_headerless_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [rd_declaration(decl_sym: ^rd_headerless_decl)],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn a_headerless_module_root_is_counted_unreadable_not_zero_edges() -> Bool {
+  let fold = reference_derived_edges_from_located_roots(
+    items: [
+      LocatedModuleRoot { path: rd_provider_path, root: rd_provider_root },
+      LocatedModuleRoot { path: "headerless.dag", root: rd_headerless_root() }
+    ]
+  )
+  !reference_derived_edge_fold_is_total(fold: fold)
+    && length(xs: fold.unreadable_roots) == 1
+}
+
 test fn unreadable_root_is_counted_not_a_silent_leaf() -> Bool {
   let fold = reference_derived_edges_from_located_roots(
     items: [LocatedModuleRoot { path: "unreadable.dag", root: rd_unreadable_root() }]

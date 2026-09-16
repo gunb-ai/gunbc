@@ -404,6 +404,17 @@ fn emit_reference_edges_for_located_root(
 
 // Edge derivation over an already-selected site collection. Consumed by the production
 // composition above and by the test-boundary mutant.
+// THE ABSENT ARM IS REACHED ONLY FOR A ROOT THE COLLECTOR HAS ALREADY COUNTED AS UNREADABLE.
+// The pool leaves a path out of qn_by_path exactly when qualified_name_from_module_node
+// rejects the root, and reference_site_collector module_reference_sites rejects on the SAME
+// call and snocs the root into unreadable_roots at its locus - one predicate, two consumers.
+// So `edges: none` here is not a silent drop: `collected.unreadable_roots` carries the root,
+// reference_derived_edge_fold_is_total answers false, and the production Outcome refuses.
+// Executed evidence, both root shapes:
+// v2.test.claim.reference_derived_graph_witness unreadable_root_is_counted_not_a_silent_leaf
+// (bare Atom) and a_headerless_module_root_is_counted_unreadable_not_zero_edges (a Conj
+// with a body and no header) - review 66859 on gunbc#11461 read this arm as uncounted; it
+// is counted one call earlier, and counting it here again would double the roster.
 fn reference_edges_for_located_root_sites(
   item: LocatedModuleRoot,
   pool: ReferenceDerivedPool,
