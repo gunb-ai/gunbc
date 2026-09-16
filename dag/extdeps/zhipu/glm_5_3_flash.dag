@@ -394,11 +394,3 @@ fn glm_manifest_gibibytes(m: GlmCheckpointManifest) -> Gibibyte {
   gibibyte(count: (byte_size_count(b: m.safetensors_bytes) + (scale - 1)) / scale)
 }
 
-// THE WEIGHTS CANNOT SIT ON ONE GB10 AND THAT NEEDS NO POLICY TO PROVE. Half of 328,337,455,672 is
-// 164,168,727,836, which exceeds a GB10's ENTIRE 130,663,231,488-byte unified pool -- so one and two
-// ranks are impossible at a hundred percent utilisation, before any memory-fraction decision is
-// consulted. Stating the bound at full utilisation keeps the impossibility independent of a policy
-// number that an operator may change.
-fn glm_manifest_per_rank_bytes_at_full_utilisation(m: GlmCheckpointManifest, ranks: Nat) -> Nat? {
-  if ranks == 0 { none } else { Present { value: byte_size(count: (byte_size_count(b: m.safetensors_bytes) + (ranks - 1)) / ranks) } }
-}

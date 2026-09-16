@@ -32,7 +32,7 @@ import gunbc.spark.serving_arm {
   ServingRuntimeRow, serving_runtime_row, runtime_artifact_wire,
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
-  ArmIntent, ArmNormalServing, serving_arm_admits_for,
+  ArmIntent, ArmNormalServing, serving_arm_admits,
   ServingLaunchProfile, glm_native_initial_profile,
 }
 import gunbc.spark.serving_compatibility {
@@ -344,11 +344,21 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
   }
 }
-
-// NCCL_DEBUG STAYS AT INFO WITH INIT,NET SUBSYSTEMS because that is the producer of the one line this
-// whole repair is judged by: `NET/IB : No device found.` versus `Using network IB`. Turning it down would
-// remove the only evidence that distinguishes a RoCE launch from a socket launch at runtime.
-data glm_native_shm_size: ByteSize = byte_size(count: 10737418240)
+// THE SHARED-MEMORY SIZE IS THIS ARM'S OBSERVED VALUE, NOT THE PAIR ROUTE'S.
+//
+// A PREVIOUS REVISION SPELLED 10737418240 HERE AND HAD NO BASIS FOR IT. That is the pair route's
+// figure (gunbc.spark.pair_serving_realization), copied across because it was the nearest serving
+// container in the corpus -- which is the borrowed-value substitution this fleet already has a
+// recurring-failure-mode row for, committed a second time on a different field. Every rank of the
+// native arm runs 67108864, on both the socket and the RoCE incarnation, read from the captured
+// docker inspect of all four hosts (artifacts/spark/glm-group-b-2026-09-16).
+//
+// IT IS NEARLY INERT AND STILL MUST BE RIGHT. These containers run with IPC namespace host, so the
+// container's own /dev/shm sizing is not what the engine's shared memory comes from. That is a
+// reason the wrong value did no harm, NOT a reason a spec may state a number nobody chose: a
+// readback comparing plan against observation reports disagreement on exactly this field, which is
+// how it was found.
+data glm_native_shm_size: ByteSize = byte_size(count: 67108864)
 
 
 // ── THE ENGINE'S OWN ARGUMENTS, NAMED APART FROM THE DOCKER LINE THAT CARRIES THEM ─────────────
@@ -369,8 +379,8 @@ fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
     "--node-rank", to_string(node.node_rank),
     "--master-addr", render_ipv4_address(addr: master) as String,
     "--master-port", to_string(glm_native_master_port),
-    "--max-model-len", to_string(profile.max_model_len),
-    "--max-num-batched-tokens", to_string(profile.max_num_batched_tokens),
+    "--max-model-len", to_string(token_count_value(t: profile.max_model_len)),
+    "--max-num-batched-tokens", to_string(token_count_value(t: profile.max_num_batched_tokens)),
     "--max-num-seqs", to_string(profile.max_num_seqs),
     "--kv-cache-dtype", profile.kv_cache_dtype_wire as String,
     "--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: profile.decided_gpu_memory_basis_points),
@@ -438,7 +448,11 @@ fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topol
 
 // ── A TUPLE EXECUTION HAS ALREADY REFUSED MAY NOT BE PLANNED AGAIN ─────────────────────────────
 //
-// THIS IS THE WALL WHOSE ABSENCE COST NINE ATTEMPTS. `serving_arm_admits_for` asks whether a tuple is
+// THE INTENT WALL IS `intent_refusal` ABOVE, NOT THIS CHECK. A previous revision routed the intent
+// through `serving_arm_admits_for`, which took an ArmIntent and ignored it -- its body was
+// `serving_arm_admits` verbatim. An inert parameter that reads as a wall is worse than no wall,
+// because the next reader cites it as coverage; it is deleted and the call goes direct.
+// `serving_arm_admits` asks whether a tuple is
 // PLAUSIBLE -- does the image register the architecture, does the checkpoint fit the pool -- and nothing asked
 // whether this exact tuple had already been run and refused. So a subject stayed launchable after execution
 // had settled the question, and attempts 8 and 9 were the same subject.
@@ -516,7 +530,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
   match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent) {
     Present { value: c } => ArmLaunchRefused { cause: c }
     Absent =>
-  match serving_arm_admits_for(checkpoint: checkpoint, runtime: runtime, topology: topology, intent: intent) {
+  match serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology) {
     ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
     ServingArmAdmitted =>
       match serving_checkpoint_row(c: checkpoint) {
