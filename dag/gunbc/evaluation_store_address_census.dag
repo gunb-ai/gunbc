@@ -17,23 +17,19 @@ type ResolvedCallEdgeCensus
   = ResolvedCallEdgeCensusRefused { cause: NonEmptyStr }
   | ResolvedCallEdgeCensusObserved { edges: List<ResolvedCallEdge> }
 
+data evaluation_store_address_home_modules: List<String> = [
+  "std.materialization_provider",
+  "std.materialization_object",
+  "extdeps.realization.materialization_store_local"
+]
+
+data evaluation_store_address_production_exclude: List<String> = ["/test/"]
+
 fn workspace_resolved_call_edges(entry: NonEmptyStr) -> ResolvedCallEdgeCensus {
   compile_dag_resolved_call_edges(
     [entry as String],
     ["__WORKSPACE_CHECKOUT__"],
     entry as String
-  )
-}
-
-fn unique_declaration_refs(xs: List<DeclarationRef>) -> List<DeclarationRef> {
-  xs |> fold(
-    init: [],
-    f: (acc, r) =>
-      if acc |> fold(init: false, f: (hit, o) => hit || declaration_ref_eq(a: r, b: o)) {
-        acc
-      } else {
-        concat(acc, [r])
-      }
   )
 }
 
@@ -43,14 +39,17 @@ fn evaluation_store_address_mutation_census() -> ResolvedCallEdgeCensus {
   )
 }
 
-fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
+fn evaluation_store_address_import_only_census() -> ResolvedCallEdgeCensus {
   compile_dag_importer_resolved_call_edges(
-    [
-      "std.materialization_provider",
-      "std.materialization_object",
-      "extdeps.realization.materialization_store_local"
-    ],
-    ["/test/"]
+    evaluation_store_address_home_modules,
+    evaluation_store_address_production_exclude
+  )
+}
+
+fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
+  compile_dag_callsite_resolved_call_edges(
+    evaluation_store_address_home_modules,
+    evaluation_store_address_production_exclude
   )
 }
 
@@ -59,7 +58,7 @@ fn bound_callers_of_edges(
   callee_module: String,
   callee_decl: String
 ) -> List<DeclarationRef> {
-  unique_declaration_refs(xs: edges |> fold(
+  edges |> fold(
     init: [],
     f: (acc, edge) =>
       if (edge.callee_module as String) == callee_module
@@ -72,7 +71,7 @@ fn bound_callers_of_edges(
       } else {
         acc
       }
-  ))
+  )
 }
 
 fn evaluation_store_address_ref_in_module(module_path: String, name: String, xs: List<DeclarationRef>) -> Bool {

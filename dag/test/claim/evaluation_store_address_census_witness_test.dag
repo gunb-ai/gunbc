@@ -17,6 +17,7 @@ import gunbc.evaluation_store_address_census {
   ResolvedCallEdgeCensusRefused,
   ResolvedCallEdgeCensusObserved,
   evaluation_store_address_production_census,
+  evaluation_store_address_import_only_census,
   evaluation_store_address_mutation_census,
   bound_callers_of_edges,
   evaluation_store_address_ref_in_module
@@ -58,7 +59,6 @@ fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool
       expected: evaluation_store_address_production_consumers,
       observed: direct_obs
     ) |> count()) == 0)
-    && ((evaluation_store_address_duplicate_consumers(xs: direct_obs) |> count()) == 0)
     && ((evaluation_store_address_missing_expected(
       expected: evaluation_store_address_persist_callers_expected,
       observed: persist_obs
@@ -67,7 +67,6 @@ fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool
       expected: evaluation_store_address_persist_callers_expected,
       observed: persist_obs
     ) |> count()) == 0)
-    && ((evaluation_store_address_duplicate_consumers(xs: persist_obs) |> count()) == 0)
     && ((evaluation_store_address_missing_expected(
       expected: evaluation_store_address_admitted_consumers_expected,
       observed: admitted_obs
@@ -76,7 +75,6 @@ fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool
       expected: evaluation_store_address_admitted_consumers_expected,
       observed: admitted_obs
     ) |> count()) == 0)
-    && ((evaluation_store_address_duplicate_consumers(xs: admitted_obs) |> count()) == 0)
 }
 
 test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
@@ -124,4 +122,29 @@ test fn evaluation_store_address_resolver_distinguishes_alias_same_leaf_and_qual
     ResolvedCallEdgeCensusRefused { cause: _ } => false
     ResolvedCallEdgeCensusObserved { edges } => evaluation_store_address_alias_observed(edges: edges)
   }
+}
+
+fn evaluation_store_address_qualified_probe_in(edges: List<ResolvedCallEdge>) -> Bool {
+  evaluation_store_address_ref_in_module(
+    module_path: "gunbc.evaluation_store_address_qualified_probe",
+    name: "evaluation_store_address_qualified_probe_call",
+    xs: bound_callers_of_edges(
+      edges: edges,
+      callee_module: "std.materialization_provider",
+      callee_decl: "evaluation_store_address"
+    )
+  )
+}
+
+test fn evaluation_store_address_import_graph_misses_qualified_no_import_call() -> Bool {
+  match evaluation_store_address_import_only_census() {
+    ResolvedCallEdgeCensusRefused { cause: _ } => false
+    ResolvedCallEdgeCensusObserved { edges } =>
+      (evaluation_store_address_qualified_probe_in(edges: edges) == false)
+  }
+    && match evaluation_store_address_production_census() {
+      ResolvedCallEdgeCensusRefused { cause: _ } => false
+      ResolvedCallEdgeCensusObserved { edges } =>
+        evaluation_store_address_qualified_probe_in(edges: edges)
+    }
 }

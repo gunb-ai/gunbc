@@ -131,7 +131,8 @@ data evaluation_store_address_producer: DeclarationRef = target_decl(
 data evaluation_store_address_production_consumers: List<DeclarationRef> = [
   target_decl(module_path: "std.materialization_object", decl_name: "store_lookup_decide"),
   target_decl(module_path: "std.materialization_object", decl_name: "store_commit_prepare"),
-  target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup")
+  target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup"),
+  target_decl(module_path: "gunbc.evaluation_store_address_qualified_probe", decl_name: "evaluation_store_address_qualified_probe_call")
 ]
 
 data evaluation_store_address_persist_callers_expected: List<DeclarationRef> = [

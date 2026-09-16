@@ -758,24 +758,39 @@ pub fn compile_dag_resolved_call_edges(
 }
 
 static IMPORTER_RESOLVED_CALL_EDGE_CACHE: OnceLock<
-    Mutex<HashMap<(Vec<String>, Vec<String>), crate::cli_run::ResolvedCallEdgeCensus>>,
+    Mutex<HashMap<(Vec<String>, Vec<String>, bool), crate::cli_run::ResolvedCallEdgeCensus>>,
 > = OnceLock::new();
 
 pub fn compile_dag_importer_resolved_call_edges(
     import_modules: &[String],
     exclude_substrings: &[String],
 ) -> crate::cli_run::ResolvedCallEdgeCensus {
+    compile_dag_candidate_resolved_call_edges(import_modules, exclude_substrings, false)
+}
+
+pub fn compile_dag_callsite_resolved_call_edges(
+    import_modules: &[String],
+    exclude_substrings: &[String],
+) -> crate::cli_run::ResolvedCallEdgeCensus {
+    compile_dag_candidate_resolved_call_edges(import_modules, exclude_substrings, true)
+}
+
+fn compile_dag_candidate_resolved_call_edges(
+    import_modules: &[String],
+    exclude_substrings: &[String],
+    include_qualified_spellings: bool,
+) -> crate::cli_run::ResolvedCallEdgeCensus {
     use crate::cli_run::ResolvedCallEdgeCensus;
     if import_modules.iter().any(|m| m.trim().is_empty()) {
         return ResolvedCallEdgeCensus::Refused {
-            cause: "importer resolved call edges: every import module must be nonempty".to_string(),
+            cause: "candidate resolved call edges: every home module must be nonempty".to_string(),
         };
     }
     let mut cache_modules = import_modules.to_vec();
     cache_modules.sort();
     let mut cache_excludes = exclude_substrings.to_vec();
     cache_excludes.sort();
-    let cache_key = (cache_modules, cache_excludes);
+    let cache_key = (cache_modules, cache_excludes, include_qualified_spellings);
     {
         let cache = IMPORTER_RESOLVED_CALL_EDGE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
         if let Ok(guard) = cache.lock() {
@@ -784,8 +799,11 @@ pub fn compile_dag_importer_resolved_call_edges(
             }
         }
     }
-    let computed =
-        compile_dag_importer_resolved_call_edges_uncached(import_modules, exclude_substrings);
+    let computed = compile_dag_candidate_resolved_call_edges_uncached(
+        import_modules,
+        exclude_substrings,
+        include_qualified_spellings,
+    );
     if let Ok(mut guard) = IMPORTER_RESOLVED_CALL_EDGE_CACHE
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
@@ -795,9 +813,42 @@ pub fn compile_dag_importer_resolved_call_edges(
     computed
 }
 
-fn compile_dag_importer_resolved_call_edges_uncached(
+fn qualified_spelling_candidate_paths(
+    homes: &HashSet<String>,
+    exclude_substrings: &[String],
+) -> HashSet<String> {
+    let roots = default_source_roots();
+    let abs_roots = pool_roots_abs(&roots);
+    let needles: Vec<String> = homes.iter().map(|home| format!("{home}.")).collect();
+    let mut out = HashSet::new();
+    for root in &abs_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            if needles.iter().any(|needle| content.contains(needle)) {
+                out.insert(rel);
+            }
+        }
+    }
+    out
+}
+
+fn compile_dag_candidate_resolved_call_edges_uncached(
     import_modules: &[String],
     exclude_substrings: &[String],
+    include_qualified_spellings: bool,
 ) -> crate::cli_run::ResolvedCallEdgeCensus {
     use crate::cli_run::ResolvedCallEdgeCensus;
     let roots = default_source_roots();
@@ -813,20 +864,40 @@ fn compile_dag_importer_resolved_call_edges_uncached(
             entries.insert(decl.path);
         }
     }
+    if include_qualified_spellings {
+        entries.extend(qualified_spelling_candidate_paths(
+            &homes,
+            exclude_substrings,
+        ));
+    }
     if entries.is_empty() {
         return ResolvedCallEdgeCensus::Refused {
-            cause: "importer resolved call edges: no production importer or home path".to_string(),
+            cause: "candidate resolved call edges: no production importer, home, or qualified spelling path"
+                .to_string(),
         };
     }
     let mut entries: Vec<String> = entries.into_iter().collect();
     entries.sort();
     let mut edges = Vec::new();
+    let mut seen: HashSet<(String, String, String, String)> = HashSet::new();
     for entry in entries {
         match resolve_entry_graph_shared(&roots, &entry) {
-            Ok((graph, _)) => edges.extend(resolved_call_edges_from_graph(&graph)),
+            Ok((graph, _)) => {
+                for edge in resolved_call_edges_from_graph(&graph) {
+                    let key = (
+                        edge.caller_module.clone(),
+                        edge.caller_decl.clone(),
+                        edge.callee_module.clone(),
+                        edge.callee_decl.clone(),
+                    );
+                    if seen.insert(key) {
+                        edges.push(edge);
+                    }
+                }
+            }
             Err(cause) => {
                 return ResolvedCallEdgeCensus::Refused {
-                    cause: format!("importer resolved call edges: {entry}: {cause}"),
+                    cause: format!("candidate resolved call edges: {entry}: {cause}"),
                 }
             }
         }

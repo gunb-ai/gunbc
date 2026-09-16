@@ -1,0 +1,7 @@
+module gunbc.evaluation_store_address_qualified_probe
+
+fn evaluation_store_address_qualified_probe_call(
+  req: std.materialization_provider.ArtifactRequest
+) -> std.materialization_provider.EvaluationStoreAddressAdmission {
+  std.materialization_provider.evaluation_store_address(req: req)
+}
