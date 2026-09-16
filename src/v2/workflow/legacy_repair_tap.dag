@@ -21,7 +21,12 @@ import v2.workflow.legacy_binding_observation {
   LegacyBindingObservationSubject
 }
 import v2.workflow.legacy_baseline_capture {
+  BridgeRowSpellingEmpty,
   CheckoutMaterialization,
+  LegacyBaselineCaptureOutcome,
+  LegacyBaselineExecutionRefused,
+  MalformedBridgeRow,
+  RepairCensusPhase,
   TreeDerivedSubjectReceipt,
   capture_legacy_baseline,
   capture_legacy_baseline_from_observed_transport
@@ -63,48 +68,69 @@ fn xl1_primary_root_cut_subjects() -> List<NamespaceCutSubjectIdentity> {
   subjects_deleted_at(stage: StageXL6AtomicCutover)
 }
 
-fn repair_site_from_row(row: ReferenceDerivedCandidateRow) -> RepairSite? {
+// ONE FOLD ADMITS THE BRIDGE ROWS OR REFUSES THEM; nothing is dropped. A row whose spelling is
+// empty is a defect of the seed encoder, and a fold that skipped it would shrink the roster and
+// the observation together while the roster digest still attested a census (review 66826 on
+// gunbc#11461; DESIGN 5 - refuse, never widen). The refusal travels as the located row list, the
+// same shape the reference-site collector uses for unreadable roots.
+type BridgeRowsFold {
+  sites: List<RepairSite>
+  rows: List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>>
+  malformed: List<MalformedBridgeRow>
+  next_index: Int
+}
+
+type BridgeRowsAdmission
+  = BridgeRowsAdmitted {
+      roster: RepairSiteRoster,
+      rows: List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>>
+    }
+  | BridgeRowsRefused { malformed: List<MalformedBridgeRow> }
+
+fn fold_bridge_row(acc: BridgeRowsFold, row: ReferenceDerivedCandidateRow) -> BridgeRowsFold {
   if row.module_name == "" || row.name == "" {
-    none
+    BridgeRowsFold {
+      sites: acc.sites,
+      rows: acc.rows,
+      malformed: concat(acc.malformed, [MalformedBridgeRow {
+        index: acc.next_index,
+        module_name: row.module_name,
+        name: row.name
+      }]),
+      next_index: acc.next_index + 1
+    }
   } else {
-    Present {
-      value: RepairSite {
-        module_name: row.module_name as NonEmptyStr,
-        name: row.name as NonEmptyStr
-      }
+    let site = RepairSite {
+      module_name: row.module_name as NonEmptyStr,
+      name: row.name as NonEmptyStr
+    }
+    BridgeRowsFold {
+      sites: concat(acc.sites, [site]),
+      rows: concat(acc.rows, [LegacyRepairObservationRow { site: site, outcome: row.disposition }]),
+      malformed: acc.malformed,
+      next_index: acc.next_index + 1
     }
   }
 }
 
-fn append_site_from_row(
-  acc: List<RepairSite>,
-  row: ReferenceDerivedCandidateRow
-) -> List<RepairSite> {
-  match repair_site_from_row(row: row) {
-    Absent => acc
-    Present { value: site } => concat(acc, [site])
+fn admit_bridge_rows(rows: List<ReferenceDerivedCandidateRow>) -> BridgeRowsAdmission {
+  let folded = fold(
+    rows,
+    init: BridgeRowsFold { sites: [], rows: [], malformed: [], next_index: 0 },
+    f: fold_bridge_row
+  )
+  if list_length(items: folded.malformed) == 0 {
+    BridgeRowsAdmitted { roster: RepairSiteRoster { sites: folded.sites }, rows: folded.rows }
+  } else {
+    BridgeRowsRefused { malformed: folded.malformed }
   }
 }
 
-fn repair_roster_from_bridge_rows(rows: List<ReferenceDerivedCandidateRow>) -> RepairSiteRoster {
-  RepairSiteRoster { sites: fold(rows, init: [], f: append_site_from_row) }
-}
-
-fn append_observation_row(
-  acc: List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>>,
-  row: ReferenceDerivedCandidateRow
-) -> List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>> {
-  match repair_site_from_row(row: row) {
-    Absent => acc
-    Present { value: site } => concat(acc, [LegacyRepairObservationRow { site: site, outcome: row.disposition }])
-  }
-}
-
-fn repair_observation_from_bridge_rows(
-  rows: List<ReferenceDerivedCandidateRow>,
+fn repair_observation_from_admitted_rows(
+  admitted_rows: List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>>,
+  roster: RepairSiteRoster,
   tree: LegacyBindingObservationSubject
 ) -> LegacyRepairObservation<ReferenceDerivedCandidateDisposition> {
-  let roster = repair_roster_from_bridge_rows(rows: rows)
   LegacyRepairObservation {
     subject: LegacyRepairObservationSubject {
       semantic_source_digest: tree.semantic_source_digest,
@@ -114,7 +140,16 @@ fn repair_observation_from_bridge_rows(
       repair_site_roster_digest: repair_site_roster_identity(roster: roster),
       resolution_registry_digest: tree.declaration_index_digest
     },
-    rows: fold(rows, init: [], f: append_observation_row)
+    rows: admitted_rows
+  }
+}
+
+fn bridge_rows_refused_outcome<O>(
+  malformed: List<MalformedBridgeRow>
+) -> LegacyBaselineCaptureOutcome<O, ReferenceDerivedCandidateDisposition> {
+  LegacyBaselineExecutionRefused {
+    phase: RepairCensusPhase,
+    cause: BridgeRowSpellingEmpty { malformed: malformed }
   }
 }
 
@@ -125,16 +160,21 @@ fn persist_capture_from_bridge_rows<O>(
   transport: ValidatedOccurrenceTransport,
   rows: List<ReferenceDerivedCandidateRow>
 ) -> PersistAdmission<O, ReferenceDerivedCandidateDisposition> {
-  persist_legacy_baseline(
-    outcome: capture_legacy_baseline(
-      materialization: materialization,
-      tree_subject: tree_subject,
-      observation: observation,
-      transport: transport,
-      repair_observation: repair_observation_from_bridge_rows(rows: rows, tree: tree_subject.subject),
-      repair_roster: repair_roster_from_bridge_rows(rows: rows)
-    )
-  )
+  match admit_bridge_rows(rows: rows) {
+    BridgeRowsRefused { malformed: m } =>
+      persist_legacy_baseline(outcome: bridge_rows_refused_outcome(malformed: m))
+    BridgeRowsAdmitted { roster: roster, rows: admitted } =>
+      persist_legacy_baseline(
+        outcome: capture_legacy_baseline(
+          materialization: materialization,
+          tree_subject: tree_subject,
+          observation: observation,
+          transport: transport,
+          repair_observation: repair_observation_from_admitted_rows(admitted_rows: admitted, roster: roster, tree: tree_subject.subject),
+          repair_roster: roster
+        )
+      )
+  }
 }
 
 fn binding_observation_from_tap_rows(
@@ -168,16 +208,21 @@ fn persist_named_base_from_primary_root_tap(
       binding_rows: bindings,
       primary_root: _
     } =>
-      persist_legacy_baseline(
-        outcome: capture_legacy_baseline_from_observed_transport(
-          materialization: materialization,
-          tree_subject: tree_subject,
-          observation: binding_observation_from_tap_rows(subject: tree_subject.subject, rows: bindings),
-          observed_transport: ot,
-          repair_observation: repair_observation_from_bridge_rows(rows: rows, tree: tree_subject.subject),
-          repair_roster: repair_roster_from_bridge_rows(rows: rows)
-        )
-      )
+      match admit_bridge_rows(rows: rows) {
+        BridgeRowsRefused { malformed: m } =>
+          persist_legacy_baseline(outcome: bridge_rows_refused_outcome(malformed: m))
+        BridgeRowsAdmitted { roster: roster, rows: admitted } =>
+          persist_legacy_baseline(
+            outcome: capture_legacy_baseline_from_observed_transport(
+              materialization: materialization,
+              tree_subject: tree_subject,
+              observation: binding_observation_from_tap_rows(subject: tree_subject.subject, rows: bindings),
+              observed_transport: ot,
+              repair_observation: repair_observation_from_admitted_rows(admitted_rows: admitted, roster: roster, tree: tree_subject.subject),
+              repair_roster: roster
+            )
+          )
+      }
   }
 }
 

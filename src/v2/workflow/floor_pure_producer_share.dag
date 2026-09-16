@@ -491,7 +491,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
-  "v2.test.claim.reference_derived_graph_fixture.xl4_fixture_trees",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized"
 ]
 
@@ -1164,6 +1163,12 @@ type CarriedInputWarmRow {
 
 data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
   PreparedEffectInput {
+    acquisition: "v2.test.claim.reference_derived_graph_fixture.fixture_ingest",
+    checkout_input: "dag/test/fixture/reference_derived_graph/",
+    ground: "The NAMESPACE-XL-4 fixture corpus: eleven committed .dag modules under the checkout root, read through filesystem_read into one SourceRootIngest so the reference-derived graph claims measure the SAME files the instrument tools.reference_derived_graph reads (one fixture authority - review 65417 on gunbc#11202). Their content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same ingest every claim would have read for itself. Demanded by v2.test.claim.reference_derived_graph_call_arg_tree and reference_derived_graph_production_ingest through xl4_fixture_trees.",
+    measurement: "The floor's own refusal on gunbc#11461 run 35059914771 (PureProducerShareWarmDispatchedEffect producer=xl4_fixture_trees effects=11) is the absent arm: the warm reached the world eleven times. The present arm is the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger; the acquisition's own arm is the effect-dispatch count for this carrier, which is one prepared acquisition with the row enrolled and eleven inside the warm without it."
+  },
+  PreparedEffectInput {
     acquisition: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
     checkout_input: "dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl",
     ground: "A committed carrier under the checkout root, so hermetic evaluation already reads it as INPUT ACCESS rather than a host effect (v1_interpreter hermetic_checkout_input_disposition). Its content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same value every claim would have read for itself. Demanded by every claim that reaches the roadmap authority: the seven required-lane roadmap claims and gunbc#10994's forecast witness.",
@@ -1172,6 +1177,12 @@ data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
 ]
 
 data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
+  CarriedInputWarmRow {
+    producer: "v2.test.claim.reference_derived_graph_fixture.xl4_fixture_trees",
+    carried_input: "v2.test.claim.reference_derived_graph_fixture.fixture_ingest",
+    dependence: ImplicitAcquisition,
+    measurement: "The parse-and-normalize of the carried ingest, shared by the two XL-4 claim files whose claims name the collector and the edge fold (the seam is the ingest, not the collection). Present-vs-absent as its input row: gunbc#11202 run 34730467598 refused both files ENROLMENT-MARGIN-REFUSED at the 500ms ceiling without the share; run 34762428707 passed with it as a plain warm row; the carried-input shape replaces that row because the warm reached the world (run 35059914771). ImplicitAcquisition: xl4_fixture_trees is nullary and calls fixture_ingest inside itself."
+  },
   CarriedInputWarmRow {
     producer: "gunbc.roadmap_authority.roadmap_authority_projection",
     carried_input: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",

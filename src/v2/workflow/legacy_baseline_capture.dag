@@ -1,6 +1,6 @@
 module v2.workflow.legacy_baseline_capture
 
-import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.types { String, List, Int, Bool, NonEmptyStr, list_length }
 import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity {
   ValidatedOccurrenceTransport,
@@ -138,8 +138,20 @@ type LegacyBaselineCapturePhase
   | BindingObservationPhase
   | RepairCensusPhase
 
+// A BRIDGE ROW WHOSE SPELLING IS EMPTY IS A REFUSAL, NOT A DROP. The seed's repair encoder can
+// only ever produce a degenerate (module_name == "" or name == "") row by defect; a fold that
+// skipped it would shrink the roster and the observation together, silently, and the roster
+// digest would then attest a census that never counted the row (DESIGN 5: a failure arm must
+// refuse, never widen). The row is located by its index in the bridge's own order.
+type MalformedBridgeRow {
+  index: Int
+  module_name: String
+  name: String
+}
+
 type LegacyBaselineCaptureRefusal
   = ObserverNeverReachedDecision {}
+  | BridgeRowSpellingEmpty { malformed: List<MalformedBridgeRow> }
 
 // THE SUBJECT FIELD THAT DISAGREED IS NAMED RATHER THAN COUNTED, because the seven digests have
 // different owners and different repairs: a source-set mismatch means the tree was not the one
@@ -369,5 +381,7 @@ fn capture_phase_label(p: LegacyBaselineCapturePhase) -> String {
 fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
   match cause {
     ObserverNeverReachedDecision {} => "the observer never reached its decision stage"
+    BridgeRowSpellingEmpty { malformed: m } =>
+      concat("the repair bridge emitted a row with an empty spelling (", concat(to_string(list_length(items: m)), " row(s), located by index)"))
   }
 }
