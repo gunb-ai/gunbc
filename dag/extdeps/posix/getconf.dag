@@ -1,0 +1,68 @@
+module extdeps.posix.getconf
+
+import std.types { Bool, Int, Unit }
+import std.string_type { String }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/getconf.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.getconf",
+      decl_name: "posix.Getconf",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE ONE CONFIGURATION VARIABLE THIS REPOSITORY ASKS THE HOST FOR, and why it is asked rather than
+// assumed. proc_pid_stat(5) expresses a process's start time in clock ticks and says to divide by
+// sysconf(_SC_CLK_TCK); getconf(1) is the POSIX utility that reports that value from a shell (getconf
+// CLK_TCK), so it is what a remote argv can ask. The value is 100 on every Linux architecture this
+// fleet runs (the kernel's USER_HZ), and that fact is deliberately NOT written here as a constant: a
+// reader that divides by a number it did not measure is asserting as deduced what it only inferred
+// (DESIGN 4d), and the cost of measuring is one argv on a transport the reader already holds.
+service posix.Getconf {
+  operation ClockTicksPerSecond {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["getconf", "CLK_TCK"] }
+    exit {
+      0 => Unit
+      nonzero => String "getconf CLK_TCK failed"
+    }
+    mock_response {
+      0 => { value: "100\n", success: true } "hermetic posix.Getconf.ClockTicksPerSecond"
+    }
+  }
+}
+
+type ClockTicksReading
+  = ClockTicksObserved { per_second: Int }
+  | ClockTicksUnparseable { field: String }
+  | ClockTicksNotPositive { value: Int }
+
+// getconf prints the value and a newline. A zero or negative tick rate has no meaning as a divisor
+// and is refused rather than carried into arithmetic that would divide by it.
+fn clock_ticks_reading(stdout: String) -> ClockTicksReading {
+  let field = trim(s: stdout)
+  match parse_int(s: field) {
+    Absent => ClockTicksUnparseable { field: field }
+    Present { value: n } => if n <= 0 { ClockTicksNotPositive { value: n } } else { ClockTicksObserved { per_second: n } }
+  }
+}

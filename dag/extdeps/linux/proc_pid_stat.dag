@@ -1,0 +1,104 @@
+module extdeps.linux.proc_pid_stat
+
+import std.types { Int, List, NonEmptyStr }
+import std.string_type { String }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc_pid_stat.5.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.proc_pid_stat",
+      decl_name: "ProcPidStatStartTime",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE SHAPE OF /proc/<pid>/stat, AND THE ONE FIELD THIS REPOSITORY READS FROM ANOTHER PROCESS.
+// proc_pid_stat(5) documents the file as one line of space-separated fields, numbered from 1 with
+// pid as field 1 and comm as field 2, where comm is the executable name in parentheses AND MAY
+// ITSELF CONTAIN SPACES AND PARENTHESES. Every correct reader therefore locates the LAST ')' and
+// counts fields from there; splitting the whole line on spaces reads the wrong field for any
+// process whose name has a space in it. The Rust seed's own /proc/self/stat reader
+// (v1_rt trace_process_tree_cpu_ms) does the same, as extdeps.linux.procfs records.
+//
+// starttime is field 22: "the time the process started after system boot", in clock ticks --
+// divide by sysconf(_SC_CLK_TCK). Counting from the field after ')', which is field 3 (state), it
+// is the twentieth field, index 19 from zero. The constant below is that index and nothing else;
+// the field number it is derived from is stated so the derivation can be checked against the manual
+// rather than against this comment.
+data proc_pid_stat_starttime_field_number: Int = 22
+
+// Fields 1 and 2 precede the ')' and field 3 is the first after it, so the zero-based index into the
+// post-parenthesis split is field_number minus 3.
+fn proc_pid_stat_index_after_comm(field_number: Int) -> Int {
+  field_number - 3
+}
+
+type ProcPidStatStartTime
+  = StartTimeObserved { ticks_since_boot: Int }
+  | StartTimeCommUnterminated
+  | StartTimeFieldAbsent { fields_after_comm: Int }
+  | StartTimeUnparseable { field: String }
+
+fn proc_pid_stat_last_paren_index(s: String, i: Int, found: Int) -> Int {
+  if i >= string_length(s) {
+    found
+  } else if char_at(s, i) == ")" {
+    proc_pid_stat_last_paren_index(s: s, i: i + 1, found: i)
+  } else {
+    proc_pid_stat_last_paren_index(s: s, i: i + 1, found: found)
+  }
+}
+
+fn proc_pid_stat_fields_after_comm(content: String) -> List<String>? {
+  let line = trim(s: content)
+  let close = proc_pid_stat_last_paren_index(s: line, i: 0, found: 0 - 1)
+  if close < 0 {
+    none
+  } else {
+    Present { value: filter(split(s: substring(s: line, start: close + 1, end: string_length(line)), delimiter: " "), w => w != "") }
+  }
+}
+
+type FieldScan {
+  n: Int
+  hit: String?
+}
+
+fn proc_pid_stat_field_at(fields: List<String>, index: Int) -> String? {
+  fold(fields, init: FieldScan { n: 0, hit: none }, f: (acc, w) =>
+    match acc.hit {
+      Present { value: _ } => acc
+      Absent => if acc.n == index { FieldScan { n: acc.n + 1, hit: Present { value: w } } } else { FieldScan { n: acc.n + 1, hit: none } }
+    }).hit
+}
+
+fn proc_pid_stat_start_time(content: String) -> ProcPidStatStartTime {
+  match proc_pid_stat_fields_after_comm(content: content) {
+    Absent => StartTimeCommUnterminated
+    Present { value: fields } => {
+      let index = proc_pid_stat_index_after_comm(field_number: proc_pid_stat_starttime_field_number)
+      match proc_pid_stat_field_at(fields: fields, index: index) {
+        Absent => StartTimeFieldAbsent { fields_after_comm: count(fields) }
+        Present { value: field } =>
+          match parse_int(s: field) {
+            Present { value: ticks } => StartTimeObserved { ticks_since_boot: ticks }
+            Absent => StartTimeUnparseable { field: field }
+          }
+      }
+    }
+  }
+}
