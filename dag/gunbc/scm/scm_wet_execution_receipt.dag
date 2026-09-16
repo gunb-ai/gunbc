@@ -27,6 +27,15 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // that way: the executable it invoked had been overwritten ninety minutes later, and nothing about
 // the run looked wrong.
 //
+// THE DIGESTS NAME A FILE, AND THE FIELD SAYING WHICH ONE IS NOT OPTIONAL. canonical_command records
+// a PATH LOOKUP; it does not say which executable the lookup found, so two digests beside it would
+// describe bytes with no stated subject. resolved_launcher is that subject, and for this inhabitant
+// it is a target directory deliberately ISOLATED from the shared CARGO_TARGET_DIR -- which is why
+// the file is still there, still carrying the recorded digest, when the shared one had been
+// overwritten within the hour. Raised by external review, which also ruled that a path reconstructed
+// from the environment after the fact would be a post-hoc attribution rather than a receipt; this
+// one is re-observed at the path, not inferred from it.
+//
 // WHAT THE PAIR DOES NOT ESTABLISH, stated because an earlier revision of this module claimed it and
 // was wrong in the same way as the fold it replaced. Equal endpoints say the path held these bytes at
 // the START and at the END. They do NOT say the path was never replaced between: a build landing and
@@ -79,6 +88,7 @@ type ScmWetExecutionProvenance {
   cargo_version: NonEmptyStr
   rustc_version: NonEmptyStr
   canonical_command: NonEmptyStr
+  resolved_launcher: NonEmptyStr
   launcher_digest_before: NonEmptyStr
   launcher_digest_after: NonEmptyStr
   worktree_before: WorktreeState
@@ -134,6 +144,7 @@ fn scm_acceptance_wet_execution_receipt() -> ScmWetExecutionReceipt {
       cargo_version: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
       rustc_version: "rustc 1.93.0 (254b59607 2026-01-19)" as NonEmptyStr,
       canonical_command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/scm_acceptance.dag --function scm_acceptance" as NonEmptyStr,
+      resolved_launcher: "/tmp/claude-1000/-home-briansrls--worktrees-gunbc-deep-carp-676/825827b7-c94b-4de8-8cc4-4616121fbc8b/scratchpad/acc-target/release/gunbc" as NonEmptyStr,
       launcher_digest_before: "105d1dcaec427faa3c22daae001bf4385d2eaf1168c3c5a5a60a874158e8cc67" as NonEmptyStr,
       launcher_digest_after: "105d1dcaec427faa3c22daae001bf4385d2eaf1168c3c5a5a60a874158e8cc67" as NonEmptyStr,
       worktree_before: WorktreeClean,
