@@ -267,7 +267,12 @@ fn w_refused(exit: ProcessExit) -> Bool {
 }
 
 test fn an_empty_standing_roster_refuses_instead_of_passing_vacuously() -> Bool {
-  w_refused(exit: capacity_standing_verdict(standings: []))
+  match capacity_standing_verdict(standings: []) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "no serving group is claimed")
+        && string_contains(s: r, pattern: "no subject")
+  }
 }
 
 test fn a_wholly_admitting_standing_roster_still_succeeds() -> Bool {
@@ -285,8 +290,12 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // capacity_standing_verdict its population instead of computing it, which is what lets the empty case
 // exist at all -- but supplied inputs may never be the only thing that runs. This claim executes the
 // real route end to end: the live roster, the real group_report producer, and the binding that joins
-// them. Delete that binding, or stop group_report emitting a GroupStanding, and this goes red while
-// the supplied claims stay green, which is the discrimination the pairing exists to provide.
+// them, AND IT ASSERTS THE ROUTE RATHER THAN TWO MATCHING ANSWERS. That distinction is the whole
+// content of the claim: asking only whether the producer refuses AND the entry refuses is satisfied by
+// an entry that ignores the roster entirely and returns a constant refusal, so it would prove the two
+// endpoints agree while the integration between them was gone. Joining the producer's own text into
+// the entry's reason is what makes deleting the map-over-the-roster binding, bypassing group_report,
+// or substituting an unrelated refusal go red.
 //
 // It asserts refusal rather than success on purpose, and the reason is a frontier rather than a
 // defect: gunbc.instruments.fabric_capacity_standing live_inventory_host_effect_frontier records that
@@ -295,5 +304,10 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // the control that notices, rather than a green that would have said nothing either way.
 test fn the_live_entry_point_runs_its_real_producer_and_refuses_today() -> Bool {
   let live = group_report(group: FabricGroupA)
-  (live.admitting == false) && w_refused(exit: fabric_capacity_standing())
+  match fabric_capacity_standing() {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } =>
+      (live.admitting == false)
+        && string_contains(s: reason, pattern: live.text)
+  }
 }
