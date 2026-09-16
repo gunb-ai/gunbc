@@ -27,8 +27,8 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
 pub use crate::v1_std_core::{
-    authored_name_at, find_child_named, has_child_named, module_item_kind_shape,
-    param_node_name_at, with_required_cardinality,
+    authored_name_at, find_child_named, has_child_named, param_node_name_at,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
@@ -405,8 +405,7 @@ pub fn emit_graph_records_type_decl(
 }
 
 pub fn emit_graph_records_fn_decl(item: Rc<Node>) -> bool {
-    (crate::v1_std_core::module_item_kind_shape(item.module_item_kind.clone())
-        == ParsedModuleItemKind::ModuleItemFunction)
+    (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemFunction)
 }
 
 pub fn derive_variant_to_enum(

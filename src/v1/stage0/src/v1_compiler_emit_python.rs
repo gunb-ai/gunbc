@@ -88,7 +88,7 @@ pub use crate::v1_std_core::{
     if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
     index_expr, is_rest_transport, is_shell_transport, lambda_body, let_binding_name_at, let_body,
     let_value, make_expr_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_item_kind_shape, module_items, param_node_name_at, param_node_type_expr,
+    module_imports, module_items, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
     slice_end, slice_start, transport_auth_header_name, transport_env, transport_has_auth,
     transport_headers, with_required_cardinality,
@@ -638,46 +638,108 @@ pub fn emit_py_typed_item(
     {
         let env = scope.type_env.clone();
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
-        match crate::v1_std_core::module_item_kind_shape(item.module_item_kind.clone()) {
-    ParsedModuleItemKind::ModuleItemTypeDeclaration => if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
-            emit_py_type_def_from_connective(item.clone(), env.clone())
-        } else {
-            if crate::v1_compiler_emit_core_support::is_type_alias_item(item.clone(), env.source_indices.clone()) {
-                v1_rt::concat(v1_rt::concat(item_text.clone(), " = ".to_string()), crate::v1_compiler_emit::emit_node_type(crate::v1_compiler_infer_types::resolved_type(item.clone()), RenderTarget::Python, env.source_indices.clone()))
-            } else {
-                if crate::v1_compiler_emit_core_support::is_type_decl_item(item.clone(), env.source_indices.clone()) {
-                    "".to_string()
+        match item.module_item_kind.clone() {
+            ParsedModuleItemKind::ModuleItemTypeDeclaration => {
+                if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
+                    emit_py_type_def_from_connective(item.clone(), env.clone())
                 } else {
-                    emit_py_item_refusal(item_text.clone(), "type declaration matches no declared type structure".to_string())
+                    if crate::v1_compiler_emit_core_support::is_type_alias_item(
+                        item.clone(),
+                        env.source_indices.clone(),
+                    ) {
+                        v1_rt::concat(
+                            v1_rt::concat(item_text.clone(), " = ".to_string()),
+                            crate::v1_compiler_emit::emit_node_type(
+                                crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                                RenderTarget::Python,
+                                env.source_indices.clone(),
+                            ),
+                        )
+                    } else {
+                        if crate::v1_compiler_emit_core_support::is_type_decl_item(
+                            item.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            "".to_string()
+                        } else {
+                            emit_py_item_refusal(
+                                item_text.clone(),
+                                "type declaration matches no declared type structure".to_string(),
+                            )
+                        }
+                    }
                 }
             }
-        },
-    ParsedModuleItemKind::ModuleItemFunction => match item.body.clone() {
-    Some(fn_body) => if ((item.uses.clone().len() as i64) > 0) {
-            emit_py_func_def(item_text.clone(), item.params.clone(), crate::v1_compiler_infer_types::resolved_type(item.clone()), item.uses.clone(), fn_body.clone(), registry.clone(), scope.clone())
-        } else {
-            emit_py_fn_def(item_text.clone(), item.params.clone(), crate::v1_compiler_infer_types::resolved_type(item.clone()), fn_body.clone(), registry.clone(), scope.clone())
-        },
-    std::option::Option::None => emit_py_item_refusal(item_text.clone(), "function item carries no body".to_string()),
-},
-    ParsedModuleItemKind::ModuleItemDataValue => match item.type_annotation.clone() {
-    Some(anno) => match item.body.clone() {
-    Some(value_expr) => emit_py_data_def(item_text.clone(), anno.clone(), value_expr.clone(), registry.clone(), scope.clone()),
-    std::option::Option::None => emit_py_item_refusal(item_text.clone(), "data item carries no value".to_string()),
-},
-    std::option::Option::None => emit_py_item_refusal(item_text.clone(), "data item carries no declared type".to_string()),
-},
-    ParsedModuleItemKind::ModuleItemService => if ((item.children.clone().len() as i64) == 0) {
-            emit_py_item_refusal(item_text.clone(), "service declares no operations".to_string())
-        } else {
-            emit_py_service_def(item.clone(), registry.clone(), env.clone())
-        },
-    ParsedModuleItemKind::ModuleItemResource => emit_py_resource_def(item.clone(), env.clone()),
-    ParsedModuleItemKind::ModuleItemUnrecognized => emit_py_item_refusal(item_text.clone(), "item form carries no item kind".to_string()),
-    ParsedModuleItemKind::ModuleItemTestFunction => emit_py_item_refusal(item_text.clone(), "module_item_kind_shape erases the test role, so a test kind cannot reach this match".to_string()),
-    ParsedModuleItemKind::ModuleItemTestDataValue => emit_py_item_refusal(item_text.clone(), "module_item_kind_shape erases the test role, so a test kind cannot reach this match".to_string()),
-    ParsedModuleItemKind::NotAModuleItem => emit_py_item_refusal(item_text.clone(), "node in module-item position was not constructed by an item constructor".to_string()),
-}
+            ParsedModuleItemKind::ModuleItemFunction => match item.body.clone() {
+                Some(fn_body) => {
+                    if ((item.uses.clone().len() as i64) > 0) {
+                        emit_py_func_def(
+                            item_text.clone(),
+                            item.params.clone(),
+                            crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                            item.uses.clone(),
+                            fn_body.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                        )
+                    } else {
+                        emit_py_fn_def(
+                            item_text.clone(),
+                            item.params.clone(),
+                            crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                            fn_body.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                        )
+                    }
+                }
+                std::option::Option::None => emit_py_item_refusal(
+                    item_text.clone(),
+                    "function item carries no body".to_string(),
+                ),
+            },
+            ParsedModuleItemKind::ModuleItemDataValue => match item.type_annotation.clone() {
+                Some(anno) => match item.body.clone() {
+                    Some(value_expr) => emit_py_data_def(
+                        item_text.clone(),
+                        anno.clone(),
+                        value_expr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                    ),
+                    std::option::Option::None => emit_py_item_refusal(
+                        item_text.clone(),
+                        "data item carries no value".to_string(),
+                    ),
+                },
+                std::option::Option::None => emit_py_item_refusal(
+                    item_text.clone(),
+                    "data item carries no declared type".to_string(),
+                ),
+            },
+            ParsedModuleItemKind::ModuleItemService => {
+                if ((item.children.clone().len() as i64) == 0) {
+                    emit_py_item_refusal(
+                        item_text.clone(),
+                        "service declares no operations".to_string(),
+                    )
+                } else {
+                    emit_py_service_def(item.clone(), registry.clone(), env.clone())
+                }
+            }
+            ParsedModuleItemKind::ModuleItemResource => {
+                emit_py_resource_def(item.clone(), env.clone())
+            }
+            ParsedModuleItemKind::ModuleItemUnrecognized => emit_py_item_refusal(
+                item_text.clone(),
+                "item form carries no item kind".to_string(),
+            ),
+            ParsedModuleItemKind::NotAModuleItem => emit_py_item_refusal(
+                item_text.clone(),
+                "node in module-item position was not constructed by an item constructor"
+                    .to_string(),
+            ),
+        }
     }
 }
 

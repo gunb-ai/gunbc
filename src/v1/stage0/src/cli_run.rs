@@ -3546,7 +3546,7 @@ pub(crate) fn string_list_data_from_module_source(
         .unwrap_or_else(|| panic!("lens table reader: {module_rel_path} parsed to no module"));
     for item in module.children.iter() {
         if item.name != data_name
-            || crate::v1_std_core::module_item_kind_shape(item.module_item_kind)
+            || item.module_item_kind
                 != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
         {
             continue;
@@ -21167,6 +21167,7 @@ mod closure_bare_disposition_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         });
         Rc::new(GlobalBareCandidate {
@@ -37549,8 +37550,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
 
     let mut embedded_facts: Vec<ExtdepsEmbeddedFactRaw> = Vec::new();
     for item in items.iter() {
-        if crate::v1_std_core::module_item_kind_shape(item.module_item_kind)
-            != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
             || item.name.is_empty()
         {
             continue;
@@ -37678,8 +37678,7 @@ fn project_external_authority_named_data(
     }
     let (module, items, source_indices) = parse_extdeps_module_items(&path);
     for item in items.iter() {
-        if crate::v1_std_core::module_item_kind_shape(item.module_item_kind)
-            != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
             || item.name != data_name
         {
             continue;
@@ -37706,8 +37705,7 @@ fn read_external_authority_anchor_from_items(
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
     for item in items.iter() {
-        if crate::v1_std_core::module_item_kind_shape(item.module_item_kind)
-            != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
             || item.name != "extdeps_external_authority_anchor"
         {
             continue;

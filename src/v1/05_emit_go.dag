@@ -2,7 +2,7 @@ module v1.compiler.emit_go
 
 import std.syntax { LiteralValue, BinOp }
 import v1.std.core {
-  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, module_item_kind_shape,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   Node, InferredNode, Resolved, CompilerError, VarBindingKind, FunctionValueBinding,
   import_is_all, module_imports, module_items, param_node_type_expr, authored_name_at,
@@ -256,7 +256,7 @@ fn go_package_name(module_name: String) -> String {
 fn emit_go_imports(items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   let has_services = items |> any(item => item.module_item_kind == ModuleItemService)
   let has_types = items |> any(item => is_type_def_item(item: item))
-  let has_functions = items |> any(item => module_item_kind_shape(kind: item.module_item_kind) == ModuleItemFunction)
+  let has_functions = items |> any(item => item.module_item_kind == ModuleItemFunction)
   let std_imports = collect_go_std_imports(has_services: has_services, has_types: has_types, has_functions: has_functions)
   let pkg_imports = imports |> map(imp =>
     let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
@@ -297,7 +297,7 @@ fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bo
 fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  match module_item_kind_shape(kind: item.module_item_kind) {
+  match item.module_item_kind {
     ModuleItemTypeDeclaration =>
       if is_type_def_item(item: item) {
         emit_go_type_def_from_connective(item: item, env: env)
@@ -337,10 +337,6 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     ModuleItemResource => emit_go_resource_def(item: item, env: env)
     ModuleItemUnrecognized =>
       emit_go_item_refusal(item_text: item_text, reason: "item form carries no item kind")
-    ModuleItemTestFunction =>
-      emit_go_item_refusal(item_text: item_text, reason: "module_item_kind_shape erases the test role, so a test kind cannot reach this match")
-    ModuleItemTestDataValue =>
-      emit_go_item_refusal(item_text: item_text, reason: "module_item_kind_shape erases the test role, so a test kind cannot reach this match")
     NotAModuleItem =>
       emit_go_item_refusal(item_text: item_text, reason: "node in module-item position was not constructed by an item constructor")
   }
