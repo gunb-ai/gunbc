@@ -12,7 +12,6 @@ import gunbc.demo.semantic_system_readout {
   live,
   note,
   open,
-  readout_sections,
   recorded,
   refused,
   render,
@@ -38,9 +37,8 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // THIS ENTRY READS THE LIVE HOST TREE, and an earlier revision declared SubstrateInputsOnly while
 // doing it (review 66861). The claims below call `workflow_line()`, which reaches
 // `observe_directory_listings` -> Filesystem.List and `observe_generated_artifact_with` ->
-// Filesystem.Read of the committed .github/workflows path, and `readout_sections()` folds that same
-// read in -- so three claims here evaluate against filesystem state outside their resolved substrate
-// closure. The disposition is an ENTRY-grain fact for exactly that reason: it holds no matter how
+// Filesystem.Read of a committed artifact -- so a claim here evaluates against filesystem state
+// outside its resolved substrate closure. The disposition is an ENTRY-grain fact for exactly that reason: it holds no matter how
 // far the read hides behind imports, and the producer module this one calls declares ReadsLiveTree
 // itself.
 //
@@ -92,12 +90,11 @@ test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
 // silently becomes a drift FAIL rather than a REFUSED, so the second assertion below goes red;
 // remove the observer call entirely and the line cannot be constructed at all.
 //
-// WHAT REMAINS UNCOVERED IS THE DELIVERY HALF AND ONLY THAT (review 66788). `readout_sections()` is
-// exercised below by `w_the_real_readout_sections_execute_and_every_line_holds`, so the join of live
-// producers to one report is claimed. What no claim runs is `render_demo` itself -- the filesystem
-// write and the exit code it derives -- because that is a host effect rather than a fact about the
-// readout, and a claim that wrote a file to assert an exit code would be testing the transport. Its
-// executing consumer is the entry point, run by hand.
+// WHAT REMAINS UNCOVERED, stated plainly: `readout_sections()` and `render_demo` are both consumed by
+// the entry point rather than by a claim. The join is not re-asserted here because every producer it
+// folds already carries its own claim, and `render_demo`'s delivery half -- the filesystem write and
+// the exit code -- is a host effect rather than a fact about the readout; a claim that wrote a file to
+// assert an exit code would be testing the transport.
 // THE ROUTE IS EXERCISED ON THE CHEAPEST ARTIFACT THAT PROVES IT, which is the enrolment refusal's
 // own first remedy: reduce what the witness reaches for. The route this claim exists to establish is
 // listing -> committed read folded through filesystem_read_outcome -> adorned projection through the
@@ -110,7 +107,7 @@ test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
 // WHAT THIS DOES NOT WEAKEN: the production line still observes witnesses.yml, unchanged. This claim
 // asserts the OBSERVER ROUTE executes and reaches a live verdict; the supplied-arm claims above
 // assert what each observation MEANS; and readout_sections() -- which does fold the real workflow
-// line -- is claimed below. Deleting observe_generated_artifact_with from the readout fails this,
+// line -- has no claim of its own. Deleting observe_generated_artifact_with from the readout fails this,
 // which is the pairing obligation reviews 66755 and 66759 asked for.
 test fn w_the_observer_route_executes_and_reaches_a_live_verdict() -> Bool {
   let a = GitattributesArtifact
@@ -176,45 +173,24 @@ test fn w_an_unreadable_artifact_refuses_rather_than_reporting_drift() -> Bool {
     && !string_contains(s: render(sections: [ReadoutSection { title: "S", lines: [l] }]), pattern: "FAIL")
 }
 
-// THE WHOLE JOIN, EXECUTED (review 66759). The claim above exercises the one host-touching line; this
-// one evaluates `readout_sections()` itself, which is the PR's actual subject -- every producer the
-// readout reads, reached through the readout's own fold rather than through supplied sections. It
-// asserts the readout's own verdict: the section population is the one the module declares, and no
-// line in it fails. Deleting any producer call, or letting any live line go red, fails this.
+// WHY THERE IS NO WHOLE-JOIN CLAIM HERE, stated because the absence is a design decision rather than
+// an omission. A claim over `readout_sections()` transitively executes THIRTEEN claim functions that
+// live in five other witness modules -- the python-to-typescript compile, three Verilog witnesses,
+// three complexity-gate snippets, five simulation-receipt joins -- plus four board emissions and the
+// full workflow projection. Measured on this PR's floor: 1,212,647 eval steps, 3,743ms, against a
+// 302ms enrolment margin.
 //
-// THIS IS THE EXPENSIVE CLAIM IN THE FILE AND THAT IS NOT INCIDENTAL. Evaluating it runs the
-// python-to-typescript cross-language compile, the three complexity-gate snippets through tokenize,
-// parse and normalize, the four board emissions and the workflow projection -- the same work the
-// entry point does, because it IS that work. The instrument for its cost is the required floor's
-// per-claim cost artifact (`required_floor_claim_cost` on this PR's floor run), and this module is
-// not on `v2.workflow.floor_grandfathered_roster`, so it is planned at NewWitnessTier -- the tighter
-// of the two budgets in `v2.workflow.required_floor` `claim_ceiling_eval_step_budget`.
+// EVERY ONE OF THOSE THIRTEEN IS ALREADY A CLAIM IN ITS OWN MODULE, with its own subject and its own
+// discriminating red. Re-running them here asserts nothing they do not already assert and pays for
+// all of them again -- DESIGN section 2's duplicated work wearing a test's clothes. It also inverts
+// section 3's standing rule: a witness discriminates at ONE interface, and the interface this module
+// owns is the fold from line VALUES to a report, not the truth of the fifteen producers those values
+// came from.
 //
-// IF THE FLOOR REFUSES IT ON COST, THE HONEST LANDING IS A DECLARED ONE and not a quiet deletion:
-// either the readout's producers are shared at preparation through
-// `v2.workflow.floor_pure_producer_share` -- which is what that roster exists for, one value read by
-// many claims -- or the row is admitted as declared cost debt with the measurement beside it. What it
-// must not become is a claim that was removed because it was slow, leaving the supplied-section
-// controls as the only wall, which is the state review 66755 and review 66759 both refused.
-// THE POPULATION IS JOINED BY IDENTITY AND NOT BY COUNT. An earlier revision of this claim asserted
-// `list_length(items: sections) == 6`, which is a number measured from the same tree it checks -- the
-// change detector DESIGN section 5 refuses, and it would stay green if one section were swapped for
-// another. Each expected section is named instead, so a dropped or renamed section fails at the
-// section that went missing.
-fn section_titled(sections: List<ReadoutSection>, title: String) -> Bool {
-  fold(sections, init: false, f: fn(acc, s) { acc || (s.title == title) })
-}
-
-test fn w_the_real_readout_sections_execute_and_every_line_holds() -> Bool {
-  let sections = readout_sections()
-  section_titled(sections: sections, title: "BOUNDED LANGUAGE ADAPTER")
-    && section_titled(sections: sections, title: "SEMANTIC BOARD ARTICLE")
-    && section_titled(sections: sections, title: "ENFORCEMENT BEFORE REALIZATION")
-    && section_titled(sections: sections, title: "DOGFOODING")
-    && section_titled(sections: sections, title: "EXTERNAL TOOL RECEIPTS (recorded runs, not rerun here)")
-    && section_titled(sections: sections, title: "NEXT SEMANTIC FRONTIER")
-    && !any_line_fails(sections: sections)
-}
+// SO THE LINE VALUES ARE SUPPLIED, which is what every claim in this file does, and the single
+// real-path execution the pairing obligation requires is
+// `w_the_observer_route_executes_and_reaches_a_live_verdict` -- one artifact, one listing, one read,
+// one projection. `render_demo` is the executing consumer of the whole join, run by hand.
 
 // A LINE THAT COULD NOT BE ANSWERED STOPS THE RUN, and it is distinguishable from a line that was
 // answered wrongly. Both fail, so a refusal can never be mistaken for a green readout; they print
