@@ -321,6 +321,12 @@ fn observe_rank_vllm_revision(ctx: SparkMaterializeContext, subject: ObservedRan
   }
 }
 
+// THERE IS NO CAPTURE-AND-FOLD CONVENIENCE FOR THE STARTUP READING, unlike the transport one, and the
+// asymmetry is the sharing being real rather than decorative: the only caller that wants the startup
+// lines also wants the transport verdict, so it captures the log once and drives both pure folds. A
+// second entry that captured for itself would put the duplicate transfer back and be the one a future
+// caller reached for.
+
 // THE POOL AND THE CONCURRENCY ARE ONE READING PAIR, and both are parsed out of the lines rather than
 // authored beside them. extdeps.vllm.kv_cache's own note states the residual this removes: with the
 // number authored, "a genuine KV-cache-size line paired with a wrong number is admitted, and this
@@ -351,24 +357,6 @@ fn rank_startup_from_log(
     RankIdentityRead { incarnation: id, node_rank: rank } =>
       RankStartupObserved { reading: rank_startup_reading(
         subject: subject, incarnation: id, node_rank: rank, revision: revision, captured: captured) }
-  }
-}
-
-fn observe_rank_startup(
-  ctx: SparkMaterializeContext,
-  subject: ObservedRankSubject,
-  container: ContainerInspect,
-) -> RankStartupObservation
-  uses net: Network
-{
-  match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
-    RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
-    RankRevisionRead { revision: rev } =>
-      match capture_rank_log(ctx: ctx, subject: subject, step: rank_startup_step) {
-        RankLogRefused { refusal: r } => RankStartupRefused { refusal: r }
-        RankLogCaptured { text: out } =>
-          rank_startup_from_log(subject: subject, container: container, revision: rev, captured: out)
-      }
   }
 }
 

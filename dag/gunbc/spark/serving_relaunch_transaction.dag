@@ -1081,28 +1081,43 @@ fn rollback_arm(states: List<RankState>) -> List<RollbackOutcome>
 // every collective that touches that rank over TCP, and rank zero's own log would still say IB.
 // Verifying the leader and inferring the arm is the single-source reading this vertical exists to
 // replace.
+// THE FAILING STEP IS CARRIED, because "the successor could not be inspected" and "the successor
+// announced the same transport" are different failures with different remedies: the first says the
+// readback leg did not land, the second says the relaunch did the thing and it did not work. Reporting
+// both as the verify step would tell an operator the transport did not flip when what happened is that
+// nobody asked.
 type ArmVerification {
   verdicts: List<RankTransportVerdict>
   causes: List<NonEmptyStr>
+  failed_step: RelaunchStep?
 }
 
 fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
   uses net: Network
 {
-  fold(start_order(captures: captures), init: ArmVerification { verdicts: [], causes: [] }, f: (acc, c) =>
+  fold(start_order(captures: captures), init: ArmVerification { verdicts: [], causes: [], failed_step: none }, f: (acc, c) =>
     match observe_rank_container(ctx: c.rank.ctx, subject: c.rank.subject) {
       RankInspectRefused { refusal: r } =>
-        ArmVerification { verdicts: acc.verdicts, causes: concat(acc.causes, [rank_observation_refusal_text(r: r) as NonEmptyStr]) }
+        ArmVerification {
+          verdicts: acc.verdicts,
+          causes: concat(acc.causes, [rank_observation_refusal_text(r: r) as NonEmptyStr]),
+          failed_step: Present { value: StepReadBackSuccessor },
+        }
       RankInspected { subject: _, container: successor } =>
         match observe_rank_transport(ctx: c.rank.ctx, subject: c.rank.subject, container: successor) {
           RankTransportRefused { refusal: r } =>
-            ArmVerification { verdicts: acc.verdicts, causes: concat(acc.causes, [rank_observation_refusal_text(r: r) as NonEmptyStr]) }
+            ArmVerification {
+              verdicts: acc.verdicts,
+              causes: concat(acc.causes, [rank_observation_refusal_text(r: r) as NonEmptyStr]),
+              failed_step: Present { value: StepVerifyTransport },
+            }
           RankTransportObserved { verdict: after } =>
             if transport_flipped(before: c.before, after: after) {
-              ArmVerification { verdicts: concat(acc.verdicts, [after]), causes: acc.causes }
+              ArmVerification { verdicts: concat(acc.verdicts, [after]), causes: acc.causes, failed_step: acc.failed_step }
             } else {
               ArmVerification {
                 verdicts: acc.verdicts,
+                failed_step: Present { value: StepVerifyTransport },
                 causes: concat(acc.causes, [join([
                   "the successor on ", observed_rank_subject_text(s: c.rank.subject),
                   " did not flip. before: ", rank_transport_verdict_text(v: c.before),
@@ -1147,7 +1162,7 @@ fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
         let verification = verify_arm(captures: captured.captures)
         if count(verification.causes) > 0 {
           ArmRolledBack {
-            step: StepVerifyTransport,
+            step: match verification.failed_step { Present { value: st } => st, Absent => StepVerifyTransport },
             cause: join(map(verification.causes, c => c as String), "; ") as NonEmptyStr,
             rollbacks: rollback_arm(states: started.states),
           }

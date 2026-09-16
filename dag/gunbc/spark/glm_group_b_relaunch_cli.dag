@@ -74,6 +74,12 @@ import gunbc.spark.serving_relaunch_transaction {
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/spark/glm_group_b_relaunch_cli.dag --function glm_group_b_observe_wet
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/spark/glm_group_b_relaunch_cli.dag --function glm_group_b_relaunch_wet
+//
+// Both argv lines are written out because an entry whose invocation lives only in a reviewer's memory
+// is an entry nobody runs, and the second one is the one an operator must be able to find WITHOUT
+// reconstructing it under pressure.
 //
 // ── THE SUBJECT ROSTER IS DERIVED FROM THE GROUP, NOT SPELLED ─────────────────────────────────
 //
