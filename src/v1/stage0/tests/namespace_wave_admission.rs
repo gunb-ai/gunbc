@@ -2509,28 +2509,24 @@ fn an_unowned_consumed_row_on_a_bystanders_merge_group_run_is_admitted() {
     let composition = WaveAdmissionOutcome::Adjudicated {
         base: "base".to_string(),
         head: "head".to_string(),
-        report: Box::new(report.clone()),
+        report: Box::new(report),
         roster_touched: false,
     };
     // THE BYSTANDER IS NO LONGER BILLED. This fixture used to refuse as
     // ConsumedRowOwnerChargeBypassed: an unrelated composition was charged because a PRIOR owner
     // authored no deletion follow-up. That arm was removed (2026-09-16, operator ruling) and this
     // assertion is its inverse, kept executing so the removal has evidence rather than an absence.
-    // The row's own owner is still charged where the debt becomes real -- a consumed row refuses at
-    // landing or on a roster-source edit, which other tests here cover and this change did not touch.
+    // A SECOND CONSTRUCTION USED TO FOLLOW THIS ONE, for the pull_request event. With the event
+    // removed it was byte-identical to `composition`, so it re-asserted this assertion on an equal
+    // value; deleted for the same reason its sibling test was (review 67062). What still refuses on
+    // a consumed row is `roster_due` -- and since the merge queue left `base == head` with no
+    // required run, that is a roster-source edit alone on the required path, which is the coverage
+    // `gunbc.rung_drop.consumed_row_owner_charge_unenforced` declares as dropped.
     assert_eq!(
         wave_admission_refusal(&composition),
         None,
         "a bystander composition must not be charged for a prior owner's unauthored follow-up"
     );
-
-    let pull_request = WaveAdmissionOutcome::Adjudicated {
-        base: "base".to_string(),
-        head: "head".to_string(),
-        report: Box::new(report),
-        roster_touched: false,
-    };
-    assert_eq!(wave_admission_refusal(&pull_request), None);
 }
 
 /// The deletion PR clears the refusal: its composition touches the roster and carries no row, so its
