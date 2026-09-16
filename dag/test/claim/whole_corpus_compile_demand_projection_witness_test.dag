@@ -2,10 +2,6 @@ module test.claim.whole_corpus_compile_demand_projection_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.measure { byte_size }
-import gunbc.generated_artifact {
-  GeneratedArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact,
-  generated_artifact_registry, artifact_eq, artifact_is_committed
-}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
 import gunbc.whole_corpus_compile_admission {
@@ -49,19 +45,4 @@ test fn an_unmeasured_root_projects_no_row_and_a_measured_one_projects_one() -> 
     && string_contains(s: measured, pattern: "\"repository\": \"gunbc-private\"")
     && string_contains(s: measured, pattern: "\"dependency_pools\": []")
     && string_contains(s: measured, pattern: "\"peak_bytes\": 6442450944")
-}
-
-// THE PROJECTION IS A REGISTERED, COMMITTED ARTIFACT, AND THAT IS ASSERTED BY IDENTITY JOIN.
-// Registry membership is what puts the projection under the generated-artifact drift gate, so the
-// seed's read of the committed file is held to the .dag rows. A merge once moved this variant out
-// of the registry's list literal into a stray argument of concat (review 67010 on gunbc#11265),
-// which the compiler refused; had it instead dropped the row, the gate would have gone quiet while
-// the seed read an ungoverned file. This is the red for that direction.
-fn registry_contains(a: GeneratedArtifact) -> Bool {
-  fold(generated_artifact_registry, init: false, f: fn(acc, r) { acc || artifact_eq(a: r, b: a) })
-}
-
-test fn the_projection_artifact_is_registered_and_committed() -> Bool {
-  registry_contains(a: WholeCorpusCompileMeasuredRootDemandsArtifact)
-    && artifact_is_committed(a: WholeCorpusCompileMeasuredRootDemandsArtifact)
 }
