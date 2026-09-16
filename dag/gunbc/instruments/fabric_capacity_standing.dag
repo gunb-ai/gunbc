@@ -498,9 +498,22 @@ fn group_report(group: FabricGroup) -> GroupStanding {
   ], ""))
 }
 
+// AN EMPTY ROSTER IS A MISSING SUBJECT, NOT A PASS. `all` over an empty list is true, so with
+// spark_pair_serving_groups empty this instrument would reach ExitSuccess having examined nothing --
+// gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain, whose recognition rule is
+// that a predicate true on the empty case is not a check until its domain is proven non-empty. That
+// roster's domain is currently populated rather than structurally non-empty: it carries exactly one
+// member, so a single edit empties it, and this instrument would then green loudest at the moment it
+// had least to say.
+//
+// THE BOUND IS THE REPAIR, NOT A DIFFERENT PREDICATE. The length guard below conjoins with the same
+// `all`, exactly as the failure-mode row prescribes, and the sibling actuator already does it --
+// gunbc.spark.pair_serving_apply refuses on an empty plan list rather than succeeding over one.
 fn fabric_capacity_standing() -> ProcessExit {
   let standings = map(spark_pair_serving_groups, g => group_report(group: g))
-  if all(standings, st => st.admitting) {
+  if length(standings) == 0 {
+    exit_failure(reason: "fabric capacity standing: no serving group is claimed, so this instrument has no subject -- an empty roster is a missing subject rather than a passing fleet" as NonEmptyStr)
+  } else if all(standings, st => st.admitting) {
     ExitSuccess
   } else {
     exit_failure(reason: join(concat(["fabric capacity standing"], map(standings, st => st.text)), "\n"))

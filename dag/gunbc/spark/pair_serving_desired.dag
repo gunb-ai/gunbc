@@ -196,12 +196,17 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // PROVEN NON-EMPTY -- ask of every universal what it returns when the collection is empty, and whether
 // the boundary can produce empty. Here the boundary is this edit.
 //
-// ONE VACUOUS CONSUMER IS ALREADY LOCATED, so this is not a hypothetical to go looking for:
-// gunbc.instruments.fabric_capacity_standing maps this roster and then calls all(...), and on an empty
-// roster reaches ExitSuccess vacuously. One that REFUSES is also located, which is why the blanket claim
-// would be wrong: spark_pair_serving_apply_wet checks length(plans) == 0 and refuses with "no group is
-// promoted to pair serving". A third path does not lose its subject at all -- host_commitment keeps the
+// THE ONE VACUOUS CONSUMER FOUND SO FAR IS NOW WALLED RATHER THAN DESCRIBED.
+// gunbc.instruments.fabric_capacity_standing maps this roster and then calls all(...), which on an empty
+// roster reached ExitSuccess having examined nothing; it now refuses on a zero-length standings list, so
+// that path is non-vacuous BY CONSTRUCTION and this paragraph is rationale rather than a warning anyone
+// must act on. Two other shapes are located and need nothing: spark_pair_serving_apply_wet already
+// refuses on an empty plan list, and host_commitment does not lose its subject at all -- it keeps the
 // fleet host population and reclassifies commitment and admissibility over it.
+//
+// THAT IS THE STANDARD FOR THE REST. An annotation is not a wall: no Accepted program reads a comment, so
+// a note here cannot protect a consumer in another module. Anything this partition finds VacuouslySatisfied
+// gets a bound in ITS OWN module, the way the instrument above now has one.
 //
 // So anyone emptying this row owes a PARTITION over every DIRECT AND TRANSITIVE consumer, not merely
 // folds, sorting each empty result into Refused, IntentionallyEmpty, VacuouslySatisfied, or
