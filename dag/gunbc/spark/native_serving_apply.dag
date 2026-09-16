@@ -33,7 +33,7 @@ import gunbc.spark.pair_serving_apply {
 import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
   glm_native_all_unit_renders, glm_native_ranked_hosts, glm_native_head_unit_name,
-  glm_native_container_name,
+  glm_native_container_name, glm_native_head_log_path, glm_native_rank_log_path,
 }
 
 // THE NATIVE ARM'S FIRST CONVERGENCE, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Group B ran from
@@ -56,12 +56,23 @@ import gunbc.spark.native_serving_realization {
 // apply while the head crash-looped, and the store timed out 1/4. Every apply therefore starts
 // a new rendezvous epoch. Re-applying a bit-identical roster still restarts; that is the cost
 // of the epoch, not a defect in the conditional the pair still uses.
+//
+// THE WAIT GREPS A FRESH LOG. The unit appends, so a line from an earlier epoch would satisfy the
+// rendezvous grep immediately; the script truncates the log before restarting, and the grep can
+// only match the epoch this apply started.
+//
+// AND "THE CONTAINER EXISTS" IS NOT "THE RANK IS AT THE RENDEZVOUS". docker run creates the
+// container before the engine has read its config, so the first version of this wait returned
+// while the rank was still in warmup and the head was started into an empty store -- the same
+// 1/4 timeout, one epoch later (measured 2026-09-16, head restart at 22:32 with the ranks still
+// on the 22:19 start). The wait is therefore for the rank's own log line naming the store it is
+// about to join, which is the earliest point the head's start cannot strand it.
 
 data spark_native_apply_receipt_path: String = "target/spark-native-apply-receipt.txt"
 
 data spark_native_apply_attempt_raw: String = "spark-native-apply"
 
-fn spark_native_host_apply_script(unit_name: NonEmptyStr, unit_text: String) -> String {
+fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr, unit_text: String) -> String {
   let ctr = glm_native_container_name as String
   join([
     "set -e\n",
@@ -72,9 +83,10 @@ fn spark_native_host_apply_script(unit_name: NonEmptyStr, unit_text: String) -> 
     "systemctl daemon-reload\n",
     "if docker container inspect ", ctr, " >/dev/null 2>&1; then docker update --restart=no ", ctr, " >/dev/null 2>&1 || true; fi\n",
     "systemctl enable ", unit_name as String, " >/dev/null 2>&1\n",
+    ": > ", log_path as String, "\n",
     "systemctl restart ", unit_name as String, "; echo restarted\n",
-    "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if docker container inspect ", ctr, " >/dev/null 2>&1; then echo container-present; break; fi; sleep 2; done\n",
-    "docker container inspect ", ctr, " >/dev/null 2>&1\n",
+    "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60; do if grep -q \"distributed_init_method=tcp\" ", log_path as String, " 2>/dev/null; then echo rendezvous-entered; break; fi; sleep 5; done\n",
+    "grep -q \"distributed_init_method=tcp\" ", log_path as String, "\n",
     "systemctl is-active ", unit_name as String, "\n",
   ], "")
 }
@@ -86,7 +98,11 @@ fn spark_native_host_plan(host: HostIdentity, render: GlmNativeUnitRender) -> Sp
       Present { value: SparkPairHostApplyPlan {
         host: host,
         unit_name: name,
-        script: spark_native_host_apply_script(unit_name: name, unit_text: text),
+        script: spark_native_host_apply_script(
+          unit_name: name,
+          log_path: if name as String == glm_native_head_unit_name as String { glm_native_head_log_path } else { glm_native_rank_log_path },
+          unit_text: text,
+        ),
       } }
   }
 }
