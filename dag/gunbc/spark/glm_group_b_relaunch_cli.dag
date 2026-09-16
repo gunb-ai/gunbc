@@ -9,6 +9,7 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.placement_supply { HostIdentity }
 import extdeps.docker.cli { DockerCreateSpec }
+import extdeps.docker.container_inspect { ContainerInspect }
 import extdeps.nvidia.nccl { NcclRoceGidSelection }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {
@@ -42,7 +43,10 @@ import gunbc.spark.serving_rank_observe {
   RankInspectReading, RankInspected, RankInspectRefused, observe_rank_container,
   RankTransportObservation, RankTransportObserved, RankTransportRefused,
   observe_rank_transport, rank_transport_verdict_text,
-  RankStartupObservation, RankStartupObserved, RankStartupRefused, observe_rank_startup,
+  RankStartupObservation, RankStartupObserved, RankStartupRefused,
+  RankLogCapture, RankLogCaptured, RankLogRefused, capture_rank_log,
+  rank_transport_from_log, rank_startup_from_log,
+  RankRevisionReading, RankRevisionRead, RankRevisionRefused, observe_rank_vllm_revision,
   RankVerbsShape, observed_verbs_shape, verbs_shape_is_complete, verbs_shape_text,
   RankObservationRefusal, rank_observation_refusal_text,
 }
@@ -124,6 +128,30 @@ type RankReport sole_constructor {
   complete: Bool
 }
 
+// ONE LOG TRANSFER PER RANK, SHARED BY BOTH READERS. The transport announcement and the KV residuals
+// are two facts in one stream; fetching it once per fact would move the whole log twice per rank, of a
+// stream whose size grows with the engine's uptime.
+data glm_group_b_log_step: NonEmptyStr = "container-log-readback" as NonEmptyStr
+
+fn rank_startup_facet(
+  ctx: SparkMaterializeContext,
+  subject: ObservedRankSubject,
+  container: ContainerInspect,
+  log: RankLogCapture,
+) -> RankStartupObservation
+  uses net: Network
+{
+  match log {
+    RankLogRefused { refusal: r } => RankStartupRefused { refusal: r }
+    RankLogCaptured { text: t } =>
+      match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
+        RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
+        RankRevisionRead { revision: rev } =>
+          rank_startup_from_log(subject: subject, container: container, revision: rev, captured: t)
+      }
+  }
+}
+
 // THE STARTUP FACET IS COMPLETE EVEN WHEN THE KV LINES ARE ABSENT, and that asymmetry with the other
 // two is deliberate: an engine still capturing CUDA graphs has not printed them yet, which is a state
 // of the engine and not a failure of the reading. The transport facet has no such state -- a running
@@ -146,11 +174,16 @@ fn observe_rank_report(
         Absent => RankFacet { lines: ["the container's own argv does not name a rank, so this reading has nothing to bind to"], complete: false }
         Present { value: sh } => RankFacet { lines: [verbs_shape_text(s: sh)], complete: verbs_shape_is_complete(s: sh) }
       }
-      let transport = match observe_rank_transport(ctx: ctx, subject: subject, container: c) {
-        RankTransportRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
-        RankTransportObserved { verdict: v } => RankFacet { lines: [rank_transport_verdict_text(v: v)], complete: true }
+      let log = capture_rank_log(ctx: ctx, subject: subject, step: glm_group_b_log_step)
+      let transport = match log {
+        RankLogRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
+        RankLogCaptured { text: t } =>
+          match rank_transport_from_log(subject: subject, container: c, captured: t) {
+            RankTransportRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
+            RankTransportObserved { verdict: v } => RankFacet { lines: [rank_transport_verdict_text(v: v)], complete: true }
+          }
       }
-      let startup = match observe_rank_startup(ctx: ctx, subject: subject, container: c) {
+      let startup = match rank_startup_facet(ctx: ctx, subject: subject, container: c, log: log) {
         RankStartupRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
         RankStartupObserved { reading: sr } => RankFacet {
           lines: [join([

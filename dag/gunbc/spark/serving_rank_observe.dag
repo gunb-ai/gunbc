@@ -196,6 +196,59 @@ type RankTransportObservation
 
 data rank_transport_step: NonEmptyStr = "nccl-transport-readback" as NonEmptyStr
 
+// ── THE LOG IS CAPTURED ONCE AND READ TWICE ───────────────────────────────────────────────────
+//
+// TWO FACTS LIVE IN ONE STREAM. NCCL's transport announcement and the engine's KV residuals are both
+// in the container's stdout, and a reader that fetched it once per fact would transfer the whole log
+// twice per rank -- eight transfers for this arm where four are needed, of a stream whose size grows
+// with uptime. That is DESIGN section 2's duplicated work at its most expensive: the cost is paid on
+// the wire, per rank, every time the arm is observed.
+//
+// SO THE CAPTURE IS ITS OWN STEP AND THE TWO FOLDS ARE PURE. Each fold takes the text, which is also
+// what makes both of them exercisable from a fixture without a host: the witness over the 2026-09-16
+// captures calls exactly these two functions with exactly these arguments.
+type RankLogCapture
+  = RankLogCaptured { text: String }
+  | RankLogRefused { refusal: RankObservationRefusal }
+
+fn capture_rank_log(ctx: SparkMaterializeContext, subject: ObservedRankSubject, step: NonEmptyStr) -> RankLogCapture
+  uses net: Network
+{
+  match rank_leg(ctx: ctx, subject: subject, step: step, command: docker_logs_command(name: subject.container)) {
+    RankLegFailed { refusal: r } => RankLogRefused { refusal: r }
+    RankLegRan { stdout: out } => RankLogCaptured { text: out }
+  }
+}
+
+fn rank_transport_from_log(
+  subject: ObservedRankSubject,
+  container: ContainerInspect,
+  captured: String,
+) -> RankTransportObservation {
+  match observed_rank_identity(c: container) {
+    RankIdentityUnread { cause: why } =>
+      RankTransportRefused { refusal: RankObservationRefusal { subject: subject, step: rank_transport_step, cause: why } }
+    RankIdentityRead { incarnation: id, node_rank: rank } =>
+      match nccl_transport_verdict(captured_text: captured) {
+        NcclTransportRefused { cause: c } =>
+          RankTransportRefused { refusal: RankObservationRefusal {
+            subject: subject,
+            step: rank_transport_step,
+            cause: nccl_transport_refusal_text(c: c),
+          } }
+        NcclTransportRead { reading: reading } =>
+          RankTransportObserved { verdict: RankTransportVerdict {
+            subject: subject,
+            incarnation: id,
+            node_rank: rank,
+            reading: reading,
+          } }
+      }
+  }
+}
+
+// THE SINGLE-FACT ROUTE, for the transaction, which wants the transport verdict and nothing else.
+// It captures and folds in one call because there is no second reader to share the capture with.
 fn observe_rank_transport(
   ctx: SparkMaterializeContext,
   subject: ObservedRankSubject,
@@ -203,29 +256,9 @@ fn observe_rank_transport(
 ) -> RankTransportObservation
   uses net: Network
 {
-  match observed_rank_identity(c: container) {
-    RankIdentityUnread { cause: why } =>
-      RankTransportRefused { refusal: RankObservationRefusal { subject: subject, step: rank_transport_step, cause: why } }
-    RankIdentityRead { incarnation: id, node_rank: rank } =>
-      match rank_leg(ctx: ctx, subject: subject, step: rank_transport_step, command: docker_logs_command(name: subject.container)) {
-        RankLegFailed { refusal: r } => RankTransportRefused { refusal: r }
-        RankLegRan { stdout: out } =>
-          match nccl_transport_verdict(captured_text: out) {
-            NcclTransportRefused { cause: c } =>
-              RankTransportRefused { refusal: RankObservationRefusal {
-                subject: subject,
-                step: rank_transport_step,
-                cause: nccl_transport_refusal_text(c: c),
-              } }
-            NcclTransportRead { reading: reading } =>
-              RankTransportObserved { verdict: RankTransportVerdict {
-                subject: subject,
-                incarnation: id,
-                node_rank: rank,
-                reading: reading,
-              } }
-          }
-      }
+  match capture_rank_log(ctx: ctx, subject: subject, step: rank_transport_step) {
+    RankLogRefused { refusal: r } => RankTransportRefused { refusal: r }
+    RankLogCaptured { text: out } => rank_transport_from_log(subject: subject, container: container, captured: out)
   }
 }
 
@@ -306,6 +339,21 @@ type RankStartupObservation
   = RankStartupObserved { reading: RankStartupReading }
   | RankStartupRefused { refusal: RankObservationRefusal }
 
+fn rank_startup_from_log(
+  subject: ObservedRankSubject,
+  container: ContainerInspect,
+  revision: VllmSourceRevision,
+  captured: String,
+) -> RankStartupObservation {
+  match observed_rank_identity(c: container) {
+    RankIdentityUnread { cause: why } =>
+      RankStartupRefused { refusal: RankObservationRefusal { subject: subject, step: rank_startup_step, cause: why } }
+    RankIdentityRead { incarnation: id, node_rank: rank } =>
+      RankStartupObserved { reading: rank_startup_reading(
+        subject: subject, incarnation: id, node_rank: rank, revision: revision, captured: captured) }
+  }
+}
+
 fn observe_rank_startup(
   ctx: SparkMaterializeContext,
   subject: ObservedRankSubject,
@@ -313,19 +361,13 @@ fn observe_rank_startup(
 ) -> RankStartupObservation
   uses net: Network
 {
-  match observed_rank_identity(c: container) {
-    RankIdentityUnread { cause: why } =>
-      RankStartupRefused { refusal: RankObservationRefusal { subject: subject, step: rank_startup_step, cause: why } }
-    RankIdentityRead { incarnation: id, node_rank: rank } =>
-      match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
-        RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
-        RankRevisionRead { revision: rev } =>
-          match rank_leg(ctx: ctx, subject: subject, step: rank_startup_step, command: docker_logs_command(name: subject.container)) {
-            RankLegFailed { refusal: r } => RankStartupRefused { refusal: r }
-            RankLegRan { stdout: out } =>
-              RankStartupObserved { reading: rank_startup_reading(
-                subject: subject, incarnation: id, node_rank: rank, revision: rev, captured: out) }
-          }
+  match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
+    RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
+    RankRevisionRead { revision: rev } =>
+      match capture_rank_log(ctx: ctx, subject: subject, step: rank_startup_step) {
+        RankLogRefused { refusal: r } => RankStartupRefused { refusal: r }
+        RankLogCaptured { text: out } =>
+          rank_startup_from_log(subject: subject, container: container, revision: rev, captured: out)
       }
   }
 }
