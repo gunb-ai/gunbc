@@ -1,0 +1,66 @@
+module v2.test.claim.parse.test_data_decl_parse
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MARKER IS CONTEXTUAL AND THE FORM IT PRECEDES IS NOT THE MARKER'S BUSINESS.
+//
+// `test` is deliberately not a keyword -- dag_grammar_test_fn_decl_expr matches an ident lexeme so
+// that `test` stays an ordinary identifier everywhere else, which is what lets
+// extdeps.languages.typescript model the TypeScript compiler's own `Cond { test: ... }` field under
+// DESIGN section 3's real-upstream-names rule. What the marker hardcoded was the DECLARATION AFTER
+// it: the production's right side was `fn_decl` alone, so `test data` matched the ident, demanded
+// `fn`, found `data`, and failed. No other top-level alternative starts with an identifier, so the
+// item failed inside the module's `repeat`, the repeat ended -- which is how a repeat legitimately
+// terminates -- and the module surfaced as `parse_g0_tokens_remain` pointing at leftover tokens
+// rather than at a form the grammar has no rule for. That is the not-applicable-rendered-as-
+// malformed class DESIGN keeps: "no rule applies here" and "this input is wrong" reaching one
+// symbol with opposite remedies.
+//
+// v1 DOES NOT HARDCODE THE PAIRING, which is why this is v2 catching up rather than a form being
+// invented: v1.compiler.parse drop_leading_test_marker strips a leading `test` ident before ANY
+// keyword. The corpus uses exactly two spellings, `test fn` and `test data`.
+//
+// WHY THE SECOND CLAIM IS THE ONE THAT MATTERS. `test fn` parsing is the control that the widened
+// choice did not disturb the 19,839 declarations already on that path; `test data` parsing is the
+// treatment. A green on the treatment alone would not distinguish a fixed grammar from a grammar
+// that now accepts anything after the marker, which is why the third claim asserts that a marker
+// followed by a form the top level does not admit still REFUSES. If that claim ever greens, the
+// choice has been widened into an absorbing accept.
+
+fn parse_outcome(src: String, file: Symbol) -> String {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } =>
+          symbol_lexeme(sym: fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason }))
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+      }
+  }
+}
+
+data test_data_source: String = "module m.t\n\ntest data witness_holds: Bool = some_call()\n"
+
+data test_fn_source: String = "module m.t\n\ntest fn witness_holds() -> Bool {\n  true\n}\n"
+
+data test_marker_on_inadmissible_form_source: String = "module m.t\n\ntest import a.b { c }\n"
+
+// TREATMENT: the form the corpus uses and the grammar refused.
+test fn test_data_declaration_parses_holds() -> Bool {
+  parse_outcome(src: test_data_source, file: ^test_data_decl_subject) == "ACCEPTED"
+}
+
+// CONTROL: the 19,839-declaration path must be undisturbed by the widened choice.
+test fn test_fn_declaration_still_parses_holds() -> Bool {
+  parse_outcome(src: test_fn_source, file: ^test_fn_decl_subject) == "ACCEPTED"
+}
+
+// STANDING RED: the marker admits the forms the top level admits, not every form. This does not
+// retire when the treatment greens -- it is the control that the choice stayed a choice.
+test fn test_marker_on_an_inadmissible_form_still_refuses_holds() -> Bool {
+  parse_outcome(
+    src: test_marker_on_inadmissible_form_source,
+    file: ^test_marker_inadmissible_subject
+  ) == "parse_g0_tokens_remain"
+}
