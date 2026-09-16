@@ -59,6 +59,7 @@ test fn unit1_channel_census_mints_bmc_secured_with_managed_secret() -> Bool {
                 BmcSecured { endpoint: _, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: acc } =>
                   r == mtcollins1_managed_credential
                     && r.secret == mtcollins1_bmc_gunbc_secret_ref
+                    && r.secret.version == "2"
                     && match acc {
                       PublishedCredentialRetired { evidence: e, observed_at: at } =>
                         e == mtcollins1_user2_retire_evidence && at == mtcollins1_user2_retire_at
