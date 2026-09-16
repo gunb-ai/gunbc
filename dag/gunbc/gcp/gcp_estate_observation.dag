@@ -1437,6 +1437,8 @@ fn sheets_calling_home_is_selected_outside_the_refused_surface() -> Bool {
   }
 }
 
+// On the selected arm this gets STRONGER, not weaker: the unresolved arm could only say that
+// secrets was the project being refused, while the selected arm can also say the home is not it.
 fn secrets_project_is_refused_as_sheets_api_surface() -> Bool {
   match sheets_calling_home() {
     SheetsCallingHomeUnresolved {
@@ -1447,6 +1449,12 @@ fn secrets_project_is_refused_as_sheets_api_surface() -> Bool {
       pool_host_without_sts: _,
       sts_host_without_sheets: _,
     } => p == fleet_secrets_gcp_project
+    SheetsCallingHomeSelected {
+      project_id: home,
+      writer: _,
+      refused_api_surface_project: p,
+      refused_writer: _,
+    } => p == fleet_secrets_gcp_project && home != fleet_secrets_gcp_project
   }
 }
 
@@ -1460,6 +1468,12 @@ fn fleet_automation_is_refused_as_sheets_writer() -> Bool {
       pool_host_without_sts: _,
       sts_host_without_sheets: _,
     } => w == fleet_automation_sa_email
+    SheetsCallingHomeSelected {
+      project_id: _,
+      writer: chosen,
+      refused_api_surface_project: _,
+      refused_writer: w,
+    } => w == fleet_automation_sa_email && (chosen as String) != (w as String)
   }
 }
 
@@ -1474,6 +1488,14 @@ fn gunb_test_is_enumerated_not_selected(census: GcpEstateCensus) -> Bool {
         pool_host_without_sts: _,
         sts_host_without_sheets: _,
       } => k == gunb_test_project_id
+      // The selected arm does not carry the kitchen-sink field, and does not need to: what this
+      // predicate is for is that gunb-test is enumerated in the census without becoming the home.
+      SheetsCallingHomeSelected {
+        project_id: home,
+        writer: _,
+        refused_api_surface_project: _,
+        refused_writer: _,
+      } => home != gunb_test_project_id
     }
 }
 
@@ -1487,6 +1509,12 @@ fn gunbai_auto_is_not_selected_as_sheets_home() -> Bool {
       pool_host_without_sts: c,
       sts_host_without_sheets: _,
     } => c == gunbai_auto_project_id
+    SheetsCallingHomeSelected {
+      project_id: home,
+      writer: _,
+      refused_api_surface_project: _,
+      refused_writer: _,
+    } => home != gunbai_auto_project_id
   }
 }
 
