@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.v1_compiler_emit_rust_emit_typed_tco_body_tco_loop_iteration_lets
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data v1_compiler_emit_rust_emit_typed_tco_body_tco_loop_iteration_lets: TransitionAdmission = TransitionAdmission {
+  label: "tco_loop_iteration_lets lives beside the Rust loop it rewrites" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("v1.compiler.emit_rust", "emit_typed_tco_body"),
+    spelling: "tco_loop_iteration_lets" as NonEmptyStr,
+    expected_candidates: [decl_ref("v1.compiler.emit_rust", "tco_loop_iteration_lets")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11422 as UInt32,
+}
