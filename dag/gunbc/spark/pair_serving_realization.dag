@@ -15,7 +15,7 @@ import gunbc.spark.model_snapshot_acquisition {
 }
 import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli {
-  DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping,
+  DockerCreateSpec, DockerEnvAssignment,
   NamespaceHost, RestartUnlessStopped,
   docker_create_command, docker_start_command, docker_exec_command, docker_remove_force_command,
   docker_image_pull_command, docker_build_command,
@@ -26,8 +26,12 @@ import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_jit_cache_root, sparkrun_vllm_ds4_gb10_baked_interface_env_names,
   sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names,
 }
+import gunbc.spark.collective_transport_plan {
+  CollectiveTransportPlan, RoceOverInterface, SocketOverInterface,
+  transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited, transport_plan_env,
+}
 import extdeps.nvidia.nccl {
-  NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2, nccl_roce_gid_selection_env,
+  NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2,
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Installable, SystemdServiceDirective,
@@ -225,23 +229,28 @@ fn spark_pair_ray_worker_argv(head: FabricLaneObserved, self: FabricLaneObserved
 // second HCA on the same wire), the rail address for the node identity, plus the two engine facts
 // the operator ruled (zero monitor refresh, long context admitted). Set at create, inherited by
 // every exec.
+//
+// FOUR COLLECTIVE VARIABLES ARE NOT SPELLED HERE -- the transport plan owns NCCL_SOCKET_IFNAME,
+// GLOO_SOCKET_IFNAME, NCCL_IB_HCA and UCX_NET_DEVICES. A first cut of this migration deleted the
+// device, capability and memlock literals and left the two socket names, so the create-env list
+// carried each of them TWICE: once by hand and once from transport_plan_env. Both spellings agreed,
+// which is exactly why it was invisible. The HCA pair was a second instance of the same shape: it
+// is an RDMA endpoint fact, so a socket plan had no use for it, yet the route authored it on every
+// arm. What remains here is the set the plan does not own: the variables naming the leg netdev for
+// non-NCCL users (TP_SOCKET_IFNAME, MN_IF_NAME, the OMPI include), the rail address, and the two
+// engine settings the operator ruled.
 fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignment> {
   let ifname = lane.leg_netdev as String
   let rail_ip = render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String
-  let hca = lane.leg_rdma_device as String
   concat([
-    DockerEnvAssignment { name: "GLOO_SOCKET_IFNAME" as NonEmptyStr, value: ifname },
     DockerEnvAssignment { name: "TP_SOCKET_IFNAME" as NonEmptyStr, value: ifname },
-    DockerEnvAssignment { name: "NCCL_SOCKET_IFNAME" as NonEmptyStr, value: ifname },
     DockerEnvAssignment { name: "MN_IF_NAME" as NonEmptyStr, value: ifname },
     DockerEnvAssignment { name: "OMPI_MCA_btl_tcp_if_include" as NonEmptyStr, value: ifname },
     DockerEnvAssignment { name: "NODE_IP" as NonEmptyStr, value: rail_ip },
     DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: rail_ip },
-    DockerEnvAssignment { name: "NCCL_IB_HCA" as NonEmptyStr, value: hca },
-    DockerEnvAssignment { name: "UCX_NET_DEVICES" as NonEmptyStr, value: join([hca, ":1"], "") },
     DockerEnvAssignment { name: "RAY_memory_monitor_refresh_ms" as NonEmptyStr, value: to_string(millisecond_count(m: first_pair_ray_head.memory_monitor_refresh)) },
     DockerEnvAssignment { name: "VLLM_ALLOW_LONG_MAX_MODEL_LEN" as NonEmptyStr, value: "1" },
-  ], map(nccl_roce_gid_selection_env(s: spark_pair_rail_gid_selection), a => DockerEnvAssignment { name: a.name, value: a.value }))
+  ], transport_plan_env(p: spark_pair_transport_plan(lane: lane)))
 }
 
 // THE GID NCCL SPEAKS FROM IS SELECTED BY WHAT THE RAIL IS, NEVER BY A TABLE SLOT. The rail address is
@@ -251,30 +260,57 @@ fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignmen
 // sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names).
 data spark_pair_rail_gid_selection: NcclRoceGidSelection = NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 }
 
+// ── THIS ROUTE'S TRANSPORT IS ONE VALUE, AND THE CONTAINER FIELDS ARE ITS PROJECTION ──────────
+//
+// The device mapping, the IPC_LOCK capability, the unlimited memlock ulimit and the RoCE GID env
+// used to be spelled inline here, four independent literals for one decision. Group B is what that
+// costs: its GLM engine was launched by hand with none of them, every rank reported
+// `NET/IB : No device found.` then `Using network Socket`, and nothing disagreed for two and a half
+// days because there was no value saying what transport the deployment intended.
+//
+// gunbc.spark.collective_transport_plan is that value. The fields below are now derived from it, so
+// this route cannot lose one of them while still reading as an RDMA deployment.
+fn spark_pair_transport_plan(lane: FabricLaneObserved) -> CollectiveTransportPlan {
+  RoceOverInterface {
+    interface: lane.leg_netdev,
+    rdma_device: lane.leg_rdma_device,
+    gid_selection: spark_pair_rail_gid_selection,
+  }
+}
+
 fn spark_pair_container_env_covers_every_baked_name(env: List<DockerEnvAssignment>) -> Bool {
   all(concat(sparkrun_vllm_ds4_gb10_baked_interface_env_names, sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names), n => any(env, e => (e.name as String) == (n as String)))
 }
 
-fn spark_pair_container_spec(env: List<DockerEnvAssignment>) -> DockerCreateSpec {
+// THE SPEC TAKES THE LANE AND NOTHING ELSE, which is what makes a mismatched pairing unspellable
+// rather than merely discouraged. An earlier revision kept a two-argument
+// `spark_pair_container_spec_for(plan, env)` beside this wrapper and annotated the wrapper as making
+// the bad state impossible -- while the two-argument form sat next to it accepting any plan with any
+// env. The annotation described the wrapper and the corpus kept the hole; the form is deleted rather
+// than documented, so the plan and the env now come from ONE lane by construction.
+fn spark_pair_container_spec(lane: FabricLaneObserved) -> DockerCreateSpec {
+  let plan = spark_pair_transport_plan(lane: lane)
+
   DockerCreateSpec {
     name: spark_pair_container_name,
     image: gunbc_spark_pair_runtime_image_tag,
     network: NamespaceHost,
     ipc: NamespaceHost,
     shm_size_bytes: 10737418240,
-    memlock_unlimited: true,
+    memlock_unlimited: transport_plan_memlock_unlimited(p: plan),
     gpus_all: true,
-    devices: [DockerDeviceMapping { host_path: "/dev/infiniband", container_path: "/dev/infiniband", cgroup_permissions: "rwm" as NonEmptyStr }],
-    cap_add: ["IPC_LOCK" as NonEmptyStr],
+    devices: transport_plan_devices(p: plan),
+    cap_add: transport_plan_cap_add(p: plan),
     restart: RestartUnlessStopped,
     mounts: [
       BindMount { host_path: spark_pair_weights_host_dir, container_path: spark_pair_weights_container_dir, readonly: true },
       BindMount { host_path: spark_pair_jit_cache_host_dir, container_path: sparkrun_vllm_ds4_gb10_jit_cache_root as FilePath, readonly: false },
     ],
-    env: env,
+    env: spark_pair_container_env(lane: lane),
     command: ["sleep", "infinity"],
   }
 }
+
 
 // A systemd Exec line is argv joined by spaces; a word carrying whitespace or a quote would need
 // systemd's own quoting, which this render does not model, so such a word is a refusal.
@@ -445,7 +481,7 @@ fn spark_pair_host_realization(host: HostIdentity, lane: FabricLaneObserved, uni
   if !spark_pair_container_env_covers_every_baked_name(env: env) {
     none
   } else {
-    let spec = spark_pair_container_spec(env: env)
+    let spec = spark_pair_container_spec(lane: lane)
     Present { value: SparkPairHostRealization { host: host, container: spec, create: docker_create_command(spec: spec), unit: unit(spec) } }
   }
 }
