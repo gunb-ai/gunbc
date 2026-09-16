@@ -213,13 +213,17 @@ data serving_launch_join_consumer_frontier: DissolutionCondition = unbound_disso
 // reading. This carrier is that reading's shape: one observation, with a receipt, stating that THIS
 // endpoint process belongs to THIS incarnation.
 //
-// IT IS SOLE-CONSTRUCTED AND NO PRODUCTION PRODUCER CALLS THE CONSTRUCTOR, said here so nobody finds
-// it by grep. The only reader of live launch facts, gunbc.instruments.fabric_capacity_standing
-// launch_from_fields, mints a VllmServingLaunch from a probe and never reads which exporter belongs
-// to it, and its live host read is itself a frontier (live_inventory_host_effect_frontier). Tests
-// construct this as fixture evidence. TRIGGER, named as the capability: an observation on the live
-// host binding the answering endpoint process to a VllmServingLaunch incarnation, SUFFICIENT FOR
-// gunbc.harness.harness_seat harness_serving_realization to carry EndpointIncarnationObserved.
+// IT IS SOLE-CONSTRUCTED, and its production producer is gunbc.spark.serving_incarnation_observe,
+// which binds the answering exporter to a VllmServingLaunch over the fleet key session: it reads the
+// unit invocation and digest, the container id off the process cgroup, and the process whose /proc
+// start instant equals the exporter's process_start_time_seconds, and takes the executable digest
+// off the inspect object. (gunbc.instruments.fabric_capacity_standing launch_from_fields also mints a
+// VllmServingLaunch from a probe but never reads which exporter belongs to it, and its live host read
+// remains a frontier -- that is a different, capacity-facing reader.) Tests still construct this as
+// fixture evidence; production reaches it through that producer, and the trigger this header once
+// named -- an observation binding the answering endpoint to a VllmServingLaunch incarnation,
+// SUFFICIENT FOR gunbc.harness.harness_seat harness_serving_realization to carry
+// EndpointIncarnationObserved -- has landed.
 type EndpointIncarnationObservation sole_constructor {
   endpoint: VllmEndpointProcessLaunch
   launch: VllmServingLaunch
