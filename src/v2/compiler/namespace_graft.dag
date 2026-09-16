@@ -136,6 +136,8 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
         concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
       } else if namespace_graft_is_module_header_subtree(node: edge.target) {
         acc
+      } else if namespace_graft_is_transparent_sequence_spine(node: edge.target) {
+        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
       } else {
         list_snoc_item(xs: acc, item: edge)
       }
