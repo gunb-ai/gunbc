@@ -158,8 +158,10 @@ type MalformedBridgeRow {
 // route that can run it - a session host or the one-time capture run - and that is not a
 // required consumer; the class is rowed as
 // gunbc.recurring_failure_mode.a_gate_sized_for_the_largest_subject_refuses_every_smaller_one. `evidence_route` names the witness that executes it;
-// `restoring_receipt` names what retires this cause: a PersistedLegacyBaseline held against
-// the pinned pre-cut base (the capture taken, which is ACT-0's BaselineCaptureReceipt).
+// `restoring_receipt` names the CAPABILITY that retires this cause - that class's next-rung
+// trigger, a subject-sized compile admission with the Observed-arm controls green on the
+// required floor - never an artifact (DESIGN 4b(3): a persisted baseline is what the XL-1
+// STAGE needs and a session host can already produce one; it would leave this block standing).
 type LegacyBaselineCaptureRefusal
   = ObserverNeverReachedDecision {}
   | BridgeRowSpellingEmpty { malformed: List<MalformedBridgeRow> }
@@ -380,7 +382,7 @@ fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
     phase: RepairCensusPhase,
     cause: ObservedArmUnexercisedOnRequiredRoute {
       evidence_route: "a session host or the one-time capture run - xl1_live_repair_tap_census over a committed root answers Xl1LiveRepairTapRows there; on the required floor the tap's whole-corpus admission gate refuses before discovery, so no enrolled control can exercise the arm (gunbc.recurring_failure_mode.a_gate_sized_for_the_largest_subject_refuses_every_smaller_one)",
-      restoring_receipt: "a PersistedLegacyBaseline held against the pinned pre-cut base - the capture taken (ACT-0 BaselineCaptureReceipt)"
+      restoring_receipt: "the subject-sized compile admission named as the next-rung trigger of gunbc.recurring_failure_mode.a_gate_sized_for_the_largest_subject_refuses_every_smaller_one, sufficient for the Observed-arm controls to return to dag/test/claim/legacy_repair_tap_live_bridge_witness_test and answer Xl1PrimaryRootObserved on the required floor; a PersistedLegacyBaseline is the XL-1 stage's receipt, not this block's"
     }
   }
 }

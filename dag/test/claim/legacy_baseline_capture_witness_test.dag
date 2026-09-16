@@ -457,8 +457,10 @@ test fn a_roster_whose_identity_is_not_the_subject_digest_refuses_as_repair_rost
 
 // The tap entry exists, and that is NOT the capability: the Observed arm has no required
 // executing route (whole-corpus admission refuses on the floor), so the report is
-// CaptureBlocked at the repair census naming the route that executes it and the receipt that
-// retires the block. This claim reds if anyone reads Clear off an unexercised arm again.
+// CaptureBlocked at the repair census naming the route that executes it and the CAPABILITY
+// that retires the block (the admission class's own next-rung trigger, not a persisted
+// artifact - review 66891). This claim reds if anyone reads Clear off an unexercised arm
+// again, or points the block at an artifact again.
 test fn the_reported_capability_is_blocked_until_the_observed_arm_executes_on_a_required_route() -> Bool {
   match legacy_baseline_capture_capability() {
     CaptureAvailable => false
@@ -468,7 +470,7 @@ test fn the_reported_capability_is_blocked_until_the_observed_arm_executes_on_a_
           match c {
             ObservedArmUnexercisedOnRequiredRoute { evidence_route: r, restoring_receipt: t } =>
               string_contains(s: r, pattern: "xl1_live_repair_tap_census")
-                && string_contains(s: t, pattern: "PersistedLegacyBaseline")
+                && string_contains(s: t, pattern: "a_gate_sized_for_the_largest_subject_refuses_every_smaller_one")
             _ => false
           }
         _ => false
