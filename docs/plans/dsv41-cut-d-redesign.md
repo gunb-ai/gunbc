@@ -187,6 +187,33 @@ arm for the first time. That is not a hazard, but it is a state transition produ
 taken, and a cut that triggers it should expect the arm to be reached rather than be surprised
 by it.
 
+### The withdrawal EMPTIES the roster, and that is not a local toggle
+
+`spark_pair_serving_groups` is `[FabricGroupA]`. **Group A is its only member**, so withdrawing
+it does not remove one entry — it leaves the list empty. Every fold over that roster then runs
+over an empty domain, and the repository already carries this class by name:
+`gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain`.
+
+An `all(...)` over an empty list is **true**. So a check of the form *every claimed serving
+group satisfies X* stops being evidence the moment the roster empties — it passes, loudly and
+greenly, because there is nothing left to fail it. That is the opposite of what a safety check
+should do when its subject disappears, and it would arrive exactly when the fleet is least
+ordinary.
+
+This is a **standing obligation on whoever executes the withdrawal**, not a resolved question,
+and it is written here as an obligation because I have not discharged it:
+
+> Before Group A is withdrawn from `spark_pair_serving_groups`, enumerate every fold over that
+> roster — and over `spark_claimed_serving_group_members`, `spark_pair_serving_desired` and
+> `spark_pair_realizations` — and for each one state whether it still carries information on an
+> empty domain. Any that does not must either refuse on emptiness or be shown to have a
+> non-vacuous subject elsewhere. A check that silently becomes vacuous is worse than one that
+> is removed, because it is still cited as coverage.
+
+The roster also reaches **build and probe admission** and **capacity**, not only convergence —
+so "suspend the claim" is a fleet-wide change wearing the costume of a one-line edit. The
+authorization must name what it empties, not merely what it withdraws.
+
 **THREE SUBJECTS, THREE NAMES.** An earlier draft used one word — "baseline" — for the state
 D0 records and the state D1 returns to. Those are mutually exclusive, and the ambiguity sat in
 the one sentence that tells a rollout worker where to leave the hosts.
