@@ -19,6 +19,10 @@ import std.content_hash {
   serialize_content_hash,
   fnv1a64_structural_hex_digest,
   content_hash_family,
+  compare_content_hash,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
 }
 import std.interface_summary { InterfaceHash, ModuleKey, TypedModuleKey, module_key, typed_module_key }
 import std.cache_identity {
@@ -40,6 +44,8 @@ import v2.compiler.self_host.generation {
   PreMaterializationIdentity,
   pre_materialization_digest,
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Terminal }
 import std.measure { ByteSize, byte_size }
 import std.materialization_ladder { DemandNature, PureComputation, IdempotentEffect }
@@ -263,8 +269,13 @@ type NativeModuleVerdictBundleSubject {
 // - PersistedOutputObligation.occurrence_contract (per output, not per family): demand-engine-program
 //   M1 remaining qualification — two parses of one program with different occurrence ids yield equal
 //   demand and materialization identities while occurrence-scoped outputs refuse cross-scope
-//   interpretation. TRIGGER: that M1 inhabitance witness; M2 does not own this field.
+//   interpretation. The real parser does not yet take a caller-supplied OccurrenceIdAllocator, so
+//   this inhabitance is a declared frontier rather than a discharged witness.
 // Omitting a family from request_judgment_contract fails to typecheck by request_fold totality.
+
+data two_parses_occurrence_qualification_frontier: DissolutionCondition = unbound_dissolution(
+  description: "two parses of one source through v2.compiler.parse / tokenize under distinct OccurrenceIdAllocator values, equal DemandIdentity and EvaluationIdentity, occurrence-bearing parse output refused under the other graph scope or rebound through OccurrencePersistenceContract Rebinding. TRIGGER: parser/tokenizer expose the allocator seam as a parameter; a split-on-whitespace token walk is not that seam."
+)
 
 type OccurrencePersistenceContract
   = SemanticOnly
@@ -301,9 +312,21 @@ type EvaluationIdentity {
   demand: DemandIdentity
 }
 
-type ResultContentIdentity {
+type ResultContentIdentity sole_constructor {
   bucket: ContentHash
   canonical_preimage: NonEmptyStr
+}
+
+fn result_content_identity(
+  bucket: ContentHash,
+  canonical_preimage: NonEmptyStr
+) -> ResultContentIdentity admit_callers: [
+  decl_ref(module_path: "std.materialization_object", decl_name: "result_content_identity_from_payloads"),
+  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "evaluation_result_binding_same_eval_different_content_is_conflict"),
+  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "evaluation_result_binding_same_preimage_different_bucket_is_unverifiable"),
+  decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "offered_result_of")
+] {
+  ResultContentIdentity { bucket: bucket, canonical_preimage: canonical_preimage }
 }
 
 type EvaluationResultBinding {
@@ -334,13 +357,21 @@ data evaluation_identity_fnv_store_preimage_exception: EvaluationIdentityCollisi
   restoration_trigger: "in-memory HashFamily cryptographic member callable from .dag without a host file effect, sufficient for request_key and store_object_name to derive EvaluationIdentity under that family for PersistentStoreScope and CrossRunScope"
 }
 
-type EvaluationStoreAddress
-  = CryptographicEvaluationAddress { identity: EvaluationIdentity, digest: ContentHash }
-  | PreimageVerifiedBucketAddress {
-      bucket: ContentHash,
-      canonical_preimage: NonEmptyStr,
-      disposition: EvaluationIdentityCollisionDisposition
-    }
+type EvaluationStoreAddressStanding
+  = CryptographicAddressStanding { family: HashFamily }
+  | PreimageVerifiedBucketStanding { disposition: EvaluationIdentityCollisionDisposition }
+
+type EvaluationStoreAddress sole_constructor {
+  identity: EvaluationIdentity
+  digest: ContentHash
+  canonical_preimage: NonEmptyStr
+  standing: EvaluationStoreAddressStanding
+}
+
+type EvaluationStoreAddressAdmission
+  = CryptographicAddressAdmitted { address: EvaluationStoreAddress }
+  | PreimageVerifiedBucketAdmitted { address: EvaluationStoreAddress }
+  | FamilyRefused { family: HashFamily, scope: KeyingScope }
 
 type LengthPrefixedField {
   value: String
@@ -505,14 +536,6 @@ fn evaluation_identity_canonical(evaluation: EvaluationIdentity) -> NonEmptyStr 
   ) as NonEmptyStr
 }
 
-fn demand_identity_canonical_c1_lossy(demand: DemandIdentity) -> NonEmptyStr {
-  let input_preimage = demand.declared_inputs |> fold(
-    init: join(["n", to_string(demand.declared_inputs |> count())], ""),
-    f: (acc, i) => join([acc, i.ref as String, i.digest.digest as String], ":")
-  )
-  join(["demand", demand.kind as String, demand.subject.digest as String, input_preimage], "/") as NonEmptyStr
-}
-
 fn evaluation_identity_fnv_bucket(evaluation: EvaluationIdentity) -> ContentHash {
   content_hash_tagged(
     tag: "materialization_provider.request",
@@ -537,9 +560,11 @@ fn typecheck_evaluation_index(demand: DemandIdentity) -> ContentHash {
   match get(xs: demand.declared_inputs, index: (demand.declared_inputs |> count()) - 1) {
     Absent => evaluation_identity_fnv_bucket(evaluation: EvaluationIdentity { demand: demand })
     Present { value: compiler } =>
-      typed_module_key(
-        interface_key: module_key(source_hash: demand.subject, direct_import_interface_hashes: imports),
-        compiler_identity: compiler.digest
+      as_content_hash_structural(
+        structural: typed_module_key(
+          interface_key: module_key(source_hash: demand.subject, direct_import_interface_hashes: imports),
+          compiler_identity: compiler.digest
+        )
       )
   }
 }
@@ -548,48 +573,66 @@ fn request_evaluation_identity(req: ArtifactRequest) -> EvaluationIdentity {
   EvaluationIdentity { demand: request_judgment_contract(req: req).demand_identity }
 }
 
-fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddress {
-  let identity = request_evaluation_identity(req: req)
+fn evaluation_bucket(identity: EvaluationIdentity) -> ContentHash {
   if identity.demand.kind == typed_module_artifact_kind {
-    CryptographicEvaluationAddress {
-      identity: identity,
-      digest: typecheck_evaluation_index(demand: identity.demand)
-    }
+    typecheck_evaluation_index(demand: identity.demand)
   } else {
-    match admit_hash_family_for_scope(family: Fnv1a64StructuralFamily, scope: PersistentStoreScope) {
-      StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
-        PreimageVerifiedBucketAddress {
-          bucket: evaluation_identity_fnv_bucket(evaluation: identity),
-          canonical_preimage: evaluation_identity_canonical(evaluation: identity),
-          disposition: evaluation_identity_fnv_store_preimage_exception
-        }
-      HashFamilyAdmittedForScope { family: _, scope: _ } =>
-        CryptographicEvaluationAddress {
+    evaluation_identity_fnv_bucket(evaluation: identity)
+  }
+}
+
+fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
+  let identity = request_evaluation_identity(req: req)
+  let digest = evaluation_bucket(identity: identity)
+  let preimage = evaluation_identity_canonical(evaluation: identity)
+  let family = content_hash_family(hash: digest)
+  match admit_hash_family_for_scope(family: family, scope: PersistentStoreScope) {
+    HashFamilyAdmittedForScope { family: admitted, scope: _ } =>
+      CryptographicAddressAdmitted {
+        address: EvaluationStoreAddress {
           identity: identity,
-          digest: evaluation_identity_fnv_bucket(evaluation: identity)
+          digest: digest,
+          canonical_preimage: preimage,
+          standing: CryptographicAddressStanding { family: admitted }
         }
-      FamilyNotAdmittedForRelation { family: _, scope: _ } =>
-        PreimageVerifiedBucketAddress {
-          bucket: evaluation_identity_fnv_bucket(evaluation: identity),
-          canonical_preimage: evaluation_identity_canonical(evaluation: identity),
-          disposition: evaluation_identity_fnv_store_preimage_exception
+      }
+    StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
+      PreimageVerifiedBucketAdmitted {
+        address: EvaluationStoreAddress {
+          identity: identity,
+          digest: digest,
+          canonical_preimage: preimage,
+          standing: PreimageVerifiedBucketStanding { disposition: evaluation_identity_fnv_store_preimage_exception }
         }
-    }
+      }
+    FamilyNotAdmittedForRelation { family: refused, scope: sc } =>
+      FamilyRefused { family: refused, scope: sc }
+  }
+}
+
+fn evaluation_store_address_admitted(req: ArtifactRequest) -> EvaluationStoreAddress? {
+  match evaluation_store_address(req: req) {
+    CryptographicAddressAdmitted { address: a } => Present { value: a }
+    PreimageVerifiedBucketAdmitted { address: a } => Present { value: a }
+    FamilyRefused { family: _, scope: _ } => none
   }
 }
 
 fn evaluation_store_address_digest(address: EvaluationStoreAddress) -> ContentHash {
-  match address {
-    CryptographicEvaluationAddress { identity: _, digest: d } => d
-    PreimageVerifiedBucketAddress { bucket: b, canonical_preimage: _, disposition: FnvBucketPreimageVerified { restoration_trigger: _ } } => b
+  match address.standing {
+    CryptographicAddressStanding { family: _ } => address.digest
+    PreimageVerifiedBucketStanding { disposition: FnvBucketPreimageVerified { restoration_trigger: _ } } => address.digest
   }
 }
 
 fn evaluation_store_address_preimage(address: EvaluationStoreAddress) -> NonEmptyStr {
-  match address {
-    CryptographicEvaluationAddress { identity: id, digest: _ } =>
-      evaluation_identity_canonical(evaluation: id)
-    PreimageVerifiedBucketAddress { bucket: _, canonical_preimage: p, disposition: FnvBucketPreimageVerified { restoration_trigger: _ } } => p
+  address.canonical_preimage
+}
+
+fn stored_evaluation_preimage_for_request(req: ArtifactRequest) -> NonEmptyStr {
+  match evaluation_store_address_admitted(req: req) {
+    Present { value: a } => evaluation_store_address_preimage(address: a)
+    Absent => "evaluation-store-family-refused" as NonEmptyStr
   }
 }
 
@@ -621,14 +664,24 @@ fn evaluation_result_binding_outcome(
   if (left.canonical_preimage as String).length() == 0 || (observed.canonical_preimage as String).length() == 0 {
     EvaluationResultUnverifiable { cause: "result content preimage is empty" }
   } else {
-    let fam = content_hash_family(hash: left.bucket)
-    let ofam = content_hash_family(hash: observed.bucket)
-    if (fam == ofam) == false {
-      EvaluationResultHashFamilyIncomparable { left: fam, right: ofam }
-    } else if (left.canonical_preimage as String) == (observed.canonical_preimage as String) {
-      EvaluationResultConsistent
-    } else {
-      EvaluationContentConflict { binding: binding, observed: observed }
+    match compare_content_hash(left: left.bucket, right: observed.bucket) {
+      ContentHashCrossFamilyIncomparable =>
+        EvaluationResultHashFamilyIncomparable {
+          left: content_hash_family(hash: left.bucket),
+          right: content_hash_family(hash: observed.bucket)
+        }
+      ContentHashEqual =>
+        if (left.canonical_preimage as String) == (observed.canonical_preimage as String) {
+          EvaluationResultConsistent
+        } else {
+          EvaluationContentConflict { binding: binding, observed: observed }
+        }
+      ContentHashDifferent =>
+        if (left.canonical_preimage as String) == (observed.canonical_preimage as String) {
+          EvaluationResultUnverifiable { cause: "same result preimage derived two buckets" }
+        } else {
+          EvaluationContentConflict { binding: binding, observed: observed }
+        }
     }
   }
 }
@@ -842,18 +895,6 @@ fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
   request_judgment_contract(req: req).demand_identity.kind
 }
 
-fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
-  request_fold(
-    req: req,
-    parse_module: (sd, c) => sd,
-    typecheck_module: (sd, ii, c) => sd,
-    resolve_closure: (cd, c) => cd,
-    native_compiler: g => pre_materialization_digest(pre: g),
-    universe: (tt, rb) => tt,
-    module_verdict_bundle: subject => module_verdict_bundle_subject_digest(subject: subject)
-  )
-}
-
 fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
   request_judgment_contract(req: req).demand_identity.declared_inputs
 }
@@ -897,7 +938,10 @@ fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
 // is witnessed by execution rather than asserted.
 
 fn request_key(req: ArtifactRequest) -> ContentHash {
-  evaluation_store_address_digest(address: evaluation_store_address(req: req))
+  match evaluation_store_address_admitted(req: req) {
+    Present { value: a } => evaluation_store_address_digest(address: a)
+    Absent => as_content_hash_structural(structural: content_hash_atom(value: "evaluation_store_family_refused"))
+  }
 }
 
 // Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape
@@ -1399,7 +1443,11 @@ fn binding_identity_grade(b: RequestArtifactBinding) -> ComputationIdentity {
 
 type ProviderProbe
   = ProbeAbsent
-  | ProbeFound { artifact: MaterializedArtifact, observed_digest: ContentHash }
+  | ProbeFound {
+      artifact: MaterializedArtifact,
+      observed_digest: ContentHash,
+      stored_evaluation_preimage: NonEmptyStr
+    }
 
 type ProviderLookup
   = ProviderHit { artifact: MaterializedArtifact, identity: ComputationIdentity }
@@ -1409,6 +1457,7 @@ type ProviderLookup
   | ProviderRefusedWrongContent { key: ContentHash, recorded: ContentHash, observed: ContentHash }
   | ProviderRefusedCrossFamilyContentHash { key: ContentHash, family: HashFamily }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
+  | ProviderRefusedEvaluationPreimageMismatch { key: ContentHash, expected: NonEmptyStr, found: NonEmptyStr }
 
 type Fnv1a64StructuralAdmission
   = Fnv1a64StructuralAdmitted { digest: Fnv1a64Structural }
@@ -1422,12 +1471,38 @@ type ResolvedGraphPartsSemanticDigestOutcome
   = ResolvedGraphPartsSemanticDigestReady { digest: ContentHash }
   | ResolvedGraphPartsSemanticDigestRefused { lookup: ProviderLookup }
 
+fn probe_found(
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash,
+  stored_evaluation_preimage: NonEmptyStr
+) -> ProviderProbe {
+  ProbeFound {
+    artifact: artifact,
+    observed_digest: observed_digest,
+    stored_evaluation_preimage: stored_evaluation_preimage
+  }
+}
+
+fn probe_found_for_request(
+  req: ArtifactRequest,
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash
+) -> ProviderProbe {
+  probe_found(
+    artifact: artifact,
+    observed_digest: observed_digest,
+    stored_evaluation_preimage: stored_evaluation_preimage_for_request(req: req)
+  )
+}
+
 fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
   let key = request_key(req: req)
+  let expected_preimage = stored_evaluation_preimage_for_request(req: req)
   match probe {
     ProbeAbsent => ProviderMiss { key: key }
-    ProbeFound { artifact: a, observed_digest: obs } =>
-      match request_artifact_binding(req: req, artifact: a, observed_digest: obs) {
+    ProbeFound { artifact: a, observed_digest: obs, stored_evaluation_preimage: stored } =>
+      if (stored as String) == (expected_preimage as String) {
+        match request_artifact_binding(req: req, artifact: a, observed_digest: obs) {
         BindingOk =>
           ProviderHit {
             artifact: a,
@@ -1441,6 +1516,9 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
           ProviderRefusedWrongContent { key: key, recorded: r, observed: o }
         BindingIncomplete { missing: m } =>
           ProviderRefusedIncomplete { key: key, missing: m }
+        }
+      } else {
+        ProviderRefusedEvaluationPreimageMismatch { key: key, expected: expected_preimage, found: stored }
       }
   }
 }
@@ -1716,10 +1794,11 @@ fn serve_resolved_graph_stored_disk_probe(
                       }
                       provider_serve(
                         req: req,
-                        probe: ProbeFound {
+                        probe: probe_found_for_request(
+                          req: req,
                           artifact: artifact,
                           observed_digest: stored_semantic_digest
-                        }
+                        )
                       )
                     }
                     Absent =>
@@ -1799,10 +1878,11 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
                   }
                   provider_serve(
                     req: req,
-                    probe: ProbeFound {
+                    probe: probe_found_for_request(
+                      req: req,
                       artifact: artifact,
                       observed_digest: artifact_content_digest(artifact: artifact)
-                    }
+                    )
                   )
                 }
                 Absent =>
@@ -1846,7 +1926,8 @@ fn lookup_fold<T>(
   wrong_artifact: fn(ContentHash, ContentHash) -> T,
   wrong_content: fn(ContentHash, ContentHash, ContentHash) -> T,
   cross_family: fn(ContentHash, HashFamily) -> T,
-  incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T
+  incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T,
+  evaluation_preimage_mismatch: fn(ContentHash, NonEmptyStr, NonEmptyStr) -> T
 ) -> T {
   match l {
     ProviderHit { artifact: a, identity: i } => hit(a, i)
@@ -1856,6 +1937,7 @@ fn lookup_fold<T>(
     ProviderRefusedWrongContent { key: k, recorded: r, observed: o } => wrong_content(k, r, o)
     ProviderRefusedCrossFamilyContentHash { key: k, family: f } => cross_family(k, f)
     ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
+    ProviderRefusedEvaluationPreimageMismatch { key: k, expected: e, found: f } => evaluation_preimage_mismatch(k, e, f)
   }
 }
 
@@ -1868,7 +1950,8 @@ fn lookup_is_hit(l: ProviderLookup) -> Bool {
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false
   )
 }
 
@@ -1881,7 +1964,8 @@ fn lookup_is_miss(l: ProviderLookup) -> Bool {
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false
   )
 }
 
@@ -1894,7 +1978,8 @@ fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false
   )
 }
 
@@ -1907,7 +1992,8 @@ fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
     wrong_artifact: (k, fk) => true,
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false
   )
 }
 
@@ -1920,7 +2006,8 @@ fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => true,
     cross_family: (k, f) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false
   )
 }
 
@@ -1933,7 +2020,22 @@ fn lookup_is_refused_cross_family_content_hash(l: ProviderLookup) -> Bool {
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
     cross_family: (k, f) => true,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false
+  )
+}
+
+fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => true
   )
 }
 
@@ -1946,7 +2048,8 @@ fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
     wrong_artifact: (k, fk) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } },
     wrong_content: (k, r, o) => IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
     cross_family: (k, f) => IdentityUnknown { cause: MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
-    incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
+    incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } },
+    evaluation_preimage_mismatch: (k, e, f) => IdentityUnknown { cause: MissingEnforcement { detail: "stored evaluation preimage disagrees with the request" } }
   )
 }
 
@@ -1959,7 +2062,8 @@ fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId
     wrong_artifact: (k, fk) => no_output_ids,
     wrong_content: (k, r, o) => no_output_ids,
     cross_family: (k, f) => no_output_ids,
-    incomplete: (k, m) => m
+    incomplete: (k, m) => m,
+    evaluation_preimage_mismatch: (k, e, f) => no_output_ids
   )
 }
 
@@ -1972,7 +2076,8 @@ fn provider_lookup_outcome_tag(l: ProviderLookup) -> String {
     wrong_artifact: (k, fk) => "wrong_artifact",
     wrong_content: (k, r, o) => "wrong_content",
     cross_family: (k, f) => "cross_family_hash",
-    incomplete: (k, m) => "incomplete"
+    incomplete: (k, m) => "incomplete",
+    evaluation_preimage_mismatch: (k, e, f) => "evaluation_preimage_mismatch"
   )
 }
 

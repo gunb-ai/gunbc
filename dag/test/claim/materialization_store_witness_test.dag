@@ -9,10 +9,10 @@ import std.materialization_provider {
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  provider_serve, ProbeFound, lookup_is_hit,
+  provider_serve, ProbeFound, lookup_is_hit, lookup_is_refused_evaluation_preimage_mismatch,
   request_key, request_kind, request_required_outputs, request_declared_inputs,
-  request_judgment_contract, evaluation_store_address, evaluation_store_address_preimage,
-  evaluation_identity_canonical, ResultContentIdentity,
+  request_judgment_contract, evaluation_store_address_admitted, stored_evaluation_preimage_for_request,
+  evaluation_identity_canonical, ResultContentIdentity, result_content_identity,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
   output_native_compiler_executable, output_native_compiler_build_diagnostics,
@@ -32,7 +32,7 @@ import std.materialization_object {
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
   encode_store_object, decode_store_object, percent_encode_payload, percent_decode_payload,
-  result_content_canonical, store_object_name, store_object_magic,
+  result_content_canonical, store_object_name, store_object_magic, store_object_format_version,
   StoreObjectDecoded, StoreObjectMalformed,
   store_observed_digest, artifact_from_manifest, ManifestDecoded,
 }
@@ -125,7 +125,7 @@ fn witness_store() -> OpenedMaterializationStore {
 }
 
 fn eval_preimage(req: ArtifactRequest) -> NonEmptyStr {
-  evaluation_store_address_preimage(address: evaluation_store_address(req: req))
+  stored_evaluation_preimage_for_request(req: req)
 }
 
 fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
@@ -313,7 +313,10 @@ test fn commit_settles_only_on_a_verified_read_back() -> Bool {
 fn offered_result_of(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ResultContentIdentity {
   match store_commit_prepare(req: req, payloads: payloads) {
     StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _, offered_result: r } => r
-    StoreCommitNotPrepared { commit: _ } => ResultContentIdentity { bucket: request_key(req: req), canonical_preimage: "missing" as NonEmptyStr }
+    StoreCommitNotPrepared { commit: _ } => result_content_identity(
+      bucket: request_key(req: req),
+      canonical_preimage: "missing" as NonEmptyStr
+    )
   }
 }
 
@@ -537,9 +540,13 @@ test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
     StoreObjectDecoded { manifest: m, payloads: ps, evaluation_preimage: p, result_preimage: _ } =>
       match artifact_from_manifest(m: m) {
         ManifestDecoded { artifact: a } =>
-          lookup_is_hit(l: provider_serve(
+          lookup_is_refused_evaluation_preimage_mismatch(l: provider_serve(
             req: req,
-            probe: ProbeFound { artifact: a, observed_digest: store_observed_digest(manifest: m, payloads: ps) }
+            probe: ProbeFound {
+              artifact: a,
+              observed_digest: store_observed_digest(manifest: m, payloads: ps),
+              stored_evaluation_preimage: p
+            }
           )) && ((p as String) == (expected as String)) == false
         _ => false
       }
@@ -548,15 +555,23 @@ test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
 
 test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bool {
   let req = bundle_req()
-  let addr = evaluation_store_address(req: req)
-  let name = store_object_name(address: addr)
-  let v1_name = concat(serialize_content_hash(hash: request_key(req: req)) as String, ".materialization")
-  let v1_object = replace(prepared_object(req: req, payloads: bundle_payloads()), store_object_magic, "gunbc-materialization-object v1")
-  match decode_store_object(content: v1_object) {
-    StoreObjectMalformed { cause: c } =>
-      (name == v1_name) == false
-        && (name |> split(delimiter: ".") |> filter(p => p == "v2") |> count()) == 1
-        && (c |> split(delimiter: "v2") |> count()) > 1
-    StoreObjectDecoded { manifest: _, payloads: _, evaluation_preimage: _, result_preimage: _ } => false
+  match evaluation_store_address_admitted(req: req) {
+    Absent => false
+    Present { value: addr } => {
+      let name = store_object_name(address: addr)
+      let v1_name = concat(serialize_content_hash(hash: request_key(req: req)) as String, ".materialization")
+      let v1_object = replace(
+        prepared_object(req: req, payloads: bundle_payloads()),
+        store_object_magic,
+        "gunbc-materialization-object v1"
+      )
+      match decode_store_object(content: v1_object) {
+        StoreObjectMalformed { cause: c } =>
+          (name == v1_name) == false
+            && (name |> split(delimiter: ".") |> filter(p => p == store_object_format_version) |> count()) == 1
+            && (c |> split(delimiter: store_object_format_version) |> count()) > 1
+        StoreObjectDecoded { manifest: _, payloads: _, evaluation_preimage: _, result_preimage: _ } => false
+      }
+    }
   }
 }

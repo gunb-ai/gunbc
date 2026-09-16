@@ -8,7 +8,7 @@ import std.materialization_provider {
   DeclaredInput, ArtifactRequest,
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  request_key, evaluation_store_address, evaluation_store_address_preimage, request_judgment_contract,
+  request_key, evaluation_store_address_admitted, stored_evaluation_preimage_for_request, request_judgment_contract,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
 }
@@ -94,13 +94,14 @@ fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> Str
 }
 
 fn evaluation_preimage_wire(req: ArtifactRequest) -> String {
-  percent_encode_payload(
-    s: evaluation_store_address_preimage(address: evaluation_store_address(req: req)) as String
-  )
+  percent_encode_payload(s: stored_evaluation_preimage_for_request(req: req) as String)
 }
 
 fn object_path(root_path: String, req: ArtifactRequest) -> String {
-  store_path(root_path: root_path, name: store_object_name(address: evaluation_store_address(req: req)))
+  match evaluation_store_address_admitted(req: req) {
+    Absent => ""
+    Present { value: addr } => store_path(root_path: root_path, name: store_object_name(address: addr))
+  }
 }
 
 fn commit_tag(c: StoreCommit) -> String {

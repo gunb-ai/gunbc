@@ -21,6 +21,7 @@ import std.materialization_provider {
   ProviderRefusedWrongArtifact,
   artifact_content_digest,
   request_key,
+  probe_found_for_request,
 }
 import v2.workflow.floor_discovery {
   FloorDiscoverySubject,
@@ -144,12 +145,14 @@ fn artifact_for(entry: PreparedFloorEntryRequest) -> MaterializedArtifact {
 
 fn probe_for(entry: PreparedFloorEntryRequest) -> PreparedFloorEntryProbe {
   let artifact = artifact_for(entry: entry)
+  let req = prepared_floor_entry_artifact_request(discovery: discovery_request(), entry: entry)
   PreparedFloorEntryProbe {
     witness: entry.witness,
-    probe: ProbeFound {
+    probe: probe_found_for_request(
+      req: req,
       artifact: artifact,
-      observed_digest: artifact_content_digest(artifact: artifact),
-    }
+      observed_digest: artifact_content_digest(artifact: artifact)
+    )
   }
 }
 
@@ -200,10 +203,11 @@ test fn wrong_artifact_key_refuses() -> Bool {
     request: request_with(selected: [entry_a()]),
     probes: [PreparedFloorEntryProbe {
       witness: witness_a(),
-      probe: ProbeFound {
+      probe: probe_found_for_request(
+        req: prepared_floor_entry_artifact_request(discovery: discovery_request(), entry: entry_a()),
         artifact: wrong,
-        observed_digest: artifact_content_digest(artifact: wrong),
-      }
+        observed_digest: artifact_content_digest(artifact: wrong)
+      )
     }],
   ) {
     PreparedFloorSubjectRefused {

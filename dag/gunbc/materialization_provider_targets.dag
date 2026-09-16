@@ -2,7 +2,7 @@ module gunbc.materialization_provider_targets
 
 import std.types { Bool, Int, List, String }
 import std.cache_identity { CacheInterfaceId }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import extdeps.realization.reconcile_in_process { parse_cache_id, typed_module_cache_id }
 import extdeps.realization.resolved_graph { resolved_graph_cache_id }
 import extdeps.realization.compile_stage_memo { compile_stage_memo_id }
@@ -120,5 +120,85 @@ fn materialization_provider_targets_all_bound() -> Bool {
       && !(t.cache_row.decl_name == "")
       && !(t.consumer_seam.module_path == "")
       && !(t.consumer_seam.decl_name == "")
+  )
+}
+
+data evaluation_store_address_producer: DeclarationRef = target_decl(
+  module_path: "std.materialization_provider",
+  decl_name: "evaluation_store_address"
+)
+
+data evaluation_store_address_production_consumers: List<DeclarationRef> = [
+  target_decl(module_path: "std.materialization_provider", decl_name: "request_key"),
+  target_decl(module_path: "std.materialization_provider", decl_name: "provider_serve"),
+  target_decl(module_path: "std.materialization_provider", decl_name: "serve_resolved_graph_stored_disk_probe"),
+  target_decl(module_path: "std.materialization_provider", decl_name: "artifact_request_key"),
+  target_decl(module_path: "std.materialization_object", decl_name: "store_object_name"),
+  target_decl(module_path: "std.materialization_object", decl_name: "store_lookup_decide"),
+  target_decl(module_path: "std.materialization_object", decl_name: "store_commit_prepare"),
+  target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup")
+]
+
+data evaluation_store_address_duplicate_derivations: List<DeclarationRef> = []
+
+fn evaluation_store_address_ref_in(wanted: DeclarationRef, xs: List<DeclarationRef>) -> Bool {
+  xs |> fold(init: false, f: (acc, r) => acc || declaration_ref_eq(a: wanted, b: r))
+}
+
+fn evaluation_store_address_joined(expected: List<DeclarationRef>, observed: List<DeclarationRef>) -> List<DeclarationRef> {
+  expected |> fold(
+    init: [],
+    f: (acc, r) =>
+      if evaluation_store_address_ref_in(wanted: r, xs: observed) {
+        concat(acc, [r])
+      } else {
+        acc
+      }
+  )
+}
+
+fn evaluation_store_address_unresolved(expected: List<DeclarationRef>, observed: List<DeclarationRef>) -> List<DeclarationRef> {
+  observed |> fold(
+    init: [],
+    f: (acc, r) =>
+      if evaluation_store_address_ref_in(wanted: r, xs: expected) {
+        acc
+      } else {
+        concat(acc, [r])
+      }
+  )
+}
+
+fn evaluation_store_address_missing_expected(expected: List<DeclarationRef>, observed: List<DeclarationRef>) -> List<DeclarationRef> {
+  expected |> fold(
+    init: [],
+    f: (acc, r) =>
+      if evaluation_store_address_ref_in(wanted: r, xs: observed) {
+        acc
+      } else {
+        concat(acc, [r])
+      }
+  )
+}
+
+fn evaluation_store_address_duplicate_consumers(xs: List<DeclarationRef>) -> List<DeclarationRef> {
+  xs |> fold(
+    init: [],
+    f: (acc, r) => {
+      let n = xs |> fold(
+        init: 0,
+        f: (c, o) =>
+          if declaration_ref_eq(a: r, b: o) {
+            c + 1
+          } else {
+            c
+          }
+      )
+      if n > 1 && (evaluation_store_address_ref_in(wanted: r, xs: acc) == false) {
+        concat(acc, [r])
+      } else {
+        acc
+      }
+    }
   )
 }

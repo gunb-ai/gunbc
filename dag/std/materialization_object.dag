@@ -29,8 +29,9 @@ import std.materialization_provider {
   EvaluationResultHashFamilyIncomparable, EvaluationResultUnverifiable, ResultContentIdentity,
   EvaluationStoreAddress,
   request_key, request_kind,
-  evaluation_store_address, evaluation_store_address_digest, evaluation_store_address_preimage,
-  request_evaluation_identity, length_prefixed_encode,
+  evaluation_store_address_admitted, evaluation_store_address_digest,
+  evaluation_store_address_preimage, stored_evaluation_preimage_for_request,
+  request_evaluation_identity, length_prefixed_encode, result_content_identity, probe_found,
   evaluation_result_binding_outcome,
   artifact_manifest, artifact_from_manifest, artifact_content_digest, artifact_kind, artifact_carried_outputs,
   carried_outputs_digest, request_artifact_binding, provider_serve, lookup_fold,
@@ -112,9 +113,11 @@ fn payload_for(payloads: List<ArtifactPayload>, id: ArtifactOutputId) -> Artifac
 // a manifest committed before its payloads is an incomplete artifact visible to readers, and a GCS
 // object or a create-new file publishes atomically only as a unit. Format (line-oriented, "\n"):
 //
-//   gunbc-materialization-object v1
+//   gunbc-materialization-object <store_object_format_version>
 //   kind <artifact kind id>
 //   request_key <serialized request key>
+//   evaluation_preimage <percent-encoded canonical EvaluationIdentity>
+//   result_preimage <percent-encoded canonical result content>
 //   part <output id> <part digest hex> <part size>      (one per manifest part, manifest order)
 //   payload <output id> <percent-encoded payload>       (one per manifest part, manifest order)
 //   end
@@ -125,13 +128,13 @@ fn payload_for(payloads: List<ArtifactPayload>, id: ArtifactOutputId) -> Artifac
 // Decoding replaces %0A and %20 before %25; since every encoded "%" is followed by "25", "0A" or
 // "20", no decoded escape can be manufactured by an earlier replacement.
 
-data store_object_magic: String = "gunbc-materialization-object v2"
-data store_object_generation: String = "v2"
+data store_object_format_version: String = "v2"
+data store_object_magic: String = concat("gunbc-materialization-object ", store_object_format_version)
 
 fn store_object_name(address: EvaluationStoreAddress) -> String {
   concat(
     concat(serialize_content_hash(hash: evaluation_store_address_digest(address: address)) as String, ".materialization."),
-    store_object_generation
+    store_object_format_version
   )
 }
 
@@ -156,10 +159,10 @@ fn result_content_canonical(parts: List<CarriedOutput>, payloads: List<ArtifactP
 }
 
 fn result_content_identity_from_payloads(parts: List<CarriedOutput>, payloads: List<ArtifactPayload>) -> ResultContentIdentity {
-  ResultContentIdentity {
+  result_content_identity(
     bucket: carried_outputs_digest(outputs: parts),
     canonical_preimage: result_content_canonical(parts: parts, payloads: payloads)
-  }
+  )
 }
 
 fn percent_encode_payload(s: String) -> String {
@@ -514,7 +517,7 @@ fn store_lookup_decide(
   read: StoreObjectRead
 ) -> StoreLookup {
   let key = request_key(req: req)
-  let expected_preimage = evaluation_store_address_preimage(address: evaluation_store_address(req: req))
+  let expected_preimage = stored_evaluation_preimage_for_request(req: req)
   match read {
     StoreObjectAbsent => StoreLookupMiss { key: key }
     StoreObjectUnavailable { fault: f } =>
@@ -543,7 +546,11 @@ fn store_lookup_decide(
                     ManifestDecoded { artifact: a } => {
                       let served = provider_serve(
                         req: req,
-                        probe: ProbeFound { artifact: a, observed_digest: store_observed_digest(manifest: m, payloads: ps) }
+                        probe: probe_found(
+                          artifact: a,
+                          observed_digest: store_observed_digest(manifest: m, payloads: ps),
+                          stored_evaluation_preimage: stored_preimage
+                        )
                       )
                       lookup_fold(
                         l: served,
@@ -565,7 +572,8 @@ fn store_lookup_decide(
                         wrong_artifact: (k, fk) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
                         wrong_content: (k, r, o) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
                         cross_family: (k, f) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
-                        incomplete: (k, missing) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } }
+                        incomplete: (k, missing) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
+                        evaluation_preimage_mismatch: (k, e, f) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } }
                       )
                     }
                     ManifestKindUndeclared { kind: _ } =>
@@ -620,18 +628,23 @@ fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>) -
       match binding {
         BindingOk => {
           let offered_result = result_content_identity_from_payloads(parts: artifact_carried_outputs(artifact: a), payloads: payloads)
-          StoreCommitPrepared {
+          match evaluation_store_address_admitted(req: req) {
+            Absent => StoreCommitNotPrepared {
+              commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: decode } }
+            }
+            Present { value: addr } => StoreCommitPrepared {
           key: key,
-          object_name: store_object_name(address: evaluation_store_address(req: req)),
+          object_name: store_object_name(address: addr),
           object: encode_store_object(
             manifest: artifact_manifest(artifact: a),
             payloads: payloads,
-            evaluation_preimage: evaluation_store_address_preimage(address: evaluation_store_address(req: req)),
+            evaluation_preimage: evaluation_store_address_preimage(address: addr),
             result_preimage: offered_result.canonical_preimage
           ),
           offered_digest: offered_digest,
           offered_result: offered_result
         }
+          }
         }
         BindingKindMismatch { requested: _, found: _ } =>
           StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: binding } } }
