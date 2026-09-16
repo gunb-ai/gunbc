@@ -10,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // merely enrolled.
 
 fn srv1_deploy_fixture() -> RunnerHostDeploy {
-  srv4_runner_host_deploy
+  wt_srv4_deploy()
 }
 
 // A FIXTURE MUST CONSTRUCT THE WORLD IT CLAIMS TO TEST. These witnesses assert what the ACTIVATION
@@ -270,4 +270,26 @@ test fn witness_a_pool_receipt_naming_another_slice_is_refused() -> Bool {
       },
     ),
   ) == false
+}
+
+// THE ADMITTED ROW, ASKED FOR RATHER THAN READ. srv2 has no deploy row at all now -- its width
+// refuses -- so these rows come from the admission and a test that somehow lost its host fails on the
+// fixture rather than on a fabricated production value.
+fn wt_missing_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wt-unadmitted",
+    ssh_target: "unadmitted@invalid.example",
+    runner_user: "unadmitted",
+    unit_user: "unadmitted",
+    job_user: "unadmitted",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+fn wt_srv4_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv4) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
 }
