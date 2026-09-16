@@ -437,7 +437,7 @@ fn converge_vllm_source_with_patches(
 {
   match v41_ensure_revision(target: target, context: context, r: r) {
     VllmSourceRefused { step: st, cause: why } => V41PatchedSourceRefused { step: st, cause: why }
-    VllmSourceAtRevision { revision: _, already_present: present } =>
+    VllmSourceAtRevision { revision: _, already_present: _ } =>
       match vllm_image_leg(target: target, context: context, step: "declared-patches-dir" as NonEmptyStr, command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: join([vllm_build_root() as String, "/declared-patches"], ""))) {
         ImageLegFailed { step: st, cause: why } => V41PatchedSourceRefused { step: st, cause: why }
         ImageLegRan { stdout: _ } =>
