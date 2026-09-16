@@ -10,6 +10,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
   vllm_endpoint_process_launch_key,
 }
 import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent }
+import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted, HarnessBackendUnreachable, HarnessBackendUnreadable,
@@ -181,10 +182,11 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
   let launch = w_launch(field: "1789300000.12")
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
   let bound = harness_bind_candidate(
-    acc: HarnessCandidates { candidates: [], notes: [], retryable: false },
+    acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] },
     group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
     readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
-    route: harness_serving_route(group: FabricGroupA, launch: launch, readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 }),
+    incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+    route: harness_serving_route(group: FabricGroupA, launch: launch, readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 }, incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }),
     subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 4,
   )

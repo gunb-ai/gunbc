@@ -118,7 +118,7 @@ fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
 }
 
 fn t_empty() -> HarnessCandidates {
-  HarnessCandidates { candidates: [], notes: [], retryable: false }
+  HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] }
 }
 
 // RED, THROUGH THE PRODUCTION ROUTE. harness_bind_candidate is the fold production calls; with a
@@ -129,14 +129,14 @@ test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
   let subject = t_subject(prompt: "p", attempt: "a-1")
   let placed = harness_bind_candidate(
     acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
-    readback: t_realization().readback, route: ServingRouteObserved { route: t_route() }, subject: subject,
+    readback: t_realization().readback, incarnation: t_realization().incarnation, route: ServingRouteObserved { route: t_route() }, subject: subject,
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
   )
   match t_bound() {
     SparkOfferBindingRefused { group_wire: _, cause: _ } => false
     SparkOfferBound { bound: projection } =>
       match spark_first_party_admission(
-        realization: harness_serving_realization(group: FabricGroupA, launch: t_launch(), readback: t_realization().readback),
+        realization: harness_serving_realization(group: FabricGroupA, launch: t_launch(), readback: t_realization().readback, incarnation: t_realization().incarnation),
         scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
         offer: projection.offer.id,
       ) {
