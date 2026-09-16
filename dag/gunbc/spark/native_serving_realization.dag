@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { basis_point }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { zip_map }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.systemd.unit_file {
@@ -24,6 +25,8 @@ import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.model_snapshot_acquisition { glm_5_3_flash_snapshot, spark_hub_cache_root, ModelSnapshotPinned, ModelSnapshotUnpinned }
 import gunbc.spark.serving_arm { glm_native_initial_profile }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 // ── THE NATIVE FOUR-RANK ARM AS A DECLARED UNIT SET ────────────────────────────────────────────
 //
@@ -230,5 +233,65 @@ fn glm_native_head_unit_render() -> GlmNativeUnitRender {
     Absent => GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: "the serving head has no observed fabric lane, so the master rail address is unknown" as NonEmptyStr }
     Present { value: head_lane } =>
       glm_native_host_unit_file(host: spark_pair_serving_head(group: FabricGroupB), rank: 0, ranks: count(hosts), master: fabric_rail_address_of(o: head_lane))
+  }
+}
+
+fn glm_native_rank_indices_from(next: Nat, xs: List<HostIdentity>) -> List<Nat> {
+  match xs {
+    Empty => []
+    Cons { head: _, tail: t } => concat([next], glm_native_rank_indices_from(next: next + 1, xs: t))
+  }
+}
+
+// EVERY RANK'S UNIT, RENDERED FOR ITS OWN HOST. The head is rank 0; the rest follow the fabric
+// lane roster's order. The render is pure, so the convergence installs exactly what the harness
+// digests.
+fn glm_native_all_unit_renders() -> List<GlmNativeUnitRender> {
+  let hosts = glm_native_ranked_hosts()
+  match fabric_lane_for_host(host: spark_pair_serving_head(group: FabricGroupB)) {
+    Absent => [GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: "the serving head has no observed fabric lane, so the master rail address is unknown" as NonEmptyStr }]
+    Present { value: head_lane } => {
+      let master = fabric_rail_address_of(o: head_lane)
+      zip_map(a: hosts, b: glm_native_rank_indices_from(next: 0, xs: hosts), f: fn(h, i) { glm_native_host_unit_file(host: h, rank: i, ranks: count(hosts), master: master) })
+    }
+  }
+}
+
+// THE WET RENDER THE CONVERGENCE RUNS. The unit texts are pure; this entry writes each to a
+// host-keyed scratch path so an actuation can install them, failing closed on any leg.
+fn glm_native_units_render_wet() -> ProcessExit {
+  let renders = glm_native_all_unit_renders()
+  let hosts = glm_native_ranked_hosts()
+  let writes = zip_map(a: renders, b: hosts, f: fn(r, h) {
+    match r {
+      GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
+        join(["REFUSED ", c as String], "")
+      GlmNativeUnitRendered { unit_name: name, text: text } => {
+        let w = Filesystem.Write(path: join(["/tmp/", name as String, ".", h as String], ""), content: text)
+        if w.success { "ok" } else { join(["WRITE-FAILED ", w.error], "") }
+      }
+    }
+  })
+  if all(writes, w => w == "ok") {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["glm_native_units_render_wet: ", join(writes, "; ")], ""))
+  }
+}
+
+// THE WET RENDER THE CONVERGENCE RUNS. The unit text is pure; this entry writes it to a scratch
+// path so an actuation can install it on the head host, failing closed on either leg.
+fn glm_native_head_unit_render_wet() -> ProcessExit {
+  match glm_native_head_unit_render() {
+    GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
+      exit_failure(reason: join(["glm_native_head_unit_render_wet: ", c as String], ""))
+    GlmNativeUnitRendered { unit_name: name, text: text } => {
+      let w = Filesystem.Write(path: join(["/tmp/", name as String], ""), content: text)
+      if w.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["glm_native_head_unit_render_wet: scratch write failed: ", w.error], ""))
+      }
+    }
   }
 }
