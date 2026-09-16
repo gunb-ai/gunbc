@@ -38,7 +38,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardEnsureSourceRepo,
   DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
-  DashboardVerifyHealth,
   DashboardInstanceObserved,
   DashboardInstanceReconcile,
   DashboardInstanceConverged,

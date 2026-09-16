@@ -2,7 +2,7 @@ module gunbc.roadmap_dashboard_instance_apply
 
 import std.algebra { trim }
 
-import std.types { String, NonEmptyStr, Bool, Int, Seconds, List, FilePath, GitRef, CommitSha }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
@@ -73,7 +73,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardEnsureSourceRepo,
   DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
-  DashboardVerifyHealth,
   DashboardInstanceObserved,
   DashboardInstanceReconcile,
   DashboardInstanceConverged,
@@ -733,55 +732,6 @@ fn dashboard_health_names_instance(
     )
 }
 
-data dashboard_health_poll_attempts: Int = 31
-data dashboard_health_poll_seconds: Seconds = 2
-
-fn dashboard_verify_health_after_attempts(
-  instance: HostDashboardInstance,
-  remaining: Int,
-) -> DashboardExecResult {
-  let health = dashboard_read_instance_health(instance: instance)
-  if dashboard_health_names_instance(instance: instance, result: health) {
-    health
-  } else if remaining <= 1 {
-    dashboard_exec_refused(
-      detail: join([
-        "health did not name intended instance ",
-        instance.instance_id as String,
-        " within ",
-        to_string(dashboard_health_poll_attempts),
-        " probes; stdout=",
-        health.stdout,
-        "; stderr=",
-        health.stderr,
-      ], ""),
-    )
-  } else {
-    let delay = dashboard_local_exec(
-      workdir: dashboard_instance_controller_workdir(instance: instance),
-      program: "/usr/bin/sleep" as FilePath,
-      args: [to_string(dashboard_health_poll_seconds)],
-    )
-    if delay.success {
-      dashboard_verify_health_after_attempts(
-        instance: instance,
-        remaining: remaining - 1,
-      )
-    } else {
-      dashboard_exec_refused(
-        detail: join(["health retry delay failed: ", delay.stderr], ""),
-      )
-    }
-  }
-}
-
-fn dashboard_verify_health(instance: HostDashboardInstance) -> DashboardExecResult {
-  dashboard_verify_health_after_attempts(
-    instance: instance,
-    remaining: dashboard_health_poll_attempts,
-  )
-}
-
 fn dashboard_apply_provision_op(
   instance: HostDashboardInstance,
   op: DashboardInstanceProvisionOp,
@@ -883,8 +833,6 @@ fn dashboard_apply_provision_op(
           codex_home: state_root as String,
         ),
       )
-    DashboardVerifyHealth { host: _, port: _ } =>
-      dashboard_verify_health(instance: instance)
   }
 }
 
@@ -2121,7 +2069,6 @@ fn dashboard_instance_ensure_dispatch_roots(
         DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
         DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
         DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
-        DashboardVerifyHealth { host: _, port: _ } => false
       }),
     temp_bundle: "/dev/null" as FilePath,
     temp_verify_repo: "/dev/null" as FilePath,

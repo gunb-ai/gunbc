@@ -1536,7 +1536,6 @@ type DashboardInstanceProvisionOp
       executable: FilePath,
       state_root: FilePath,
     }
-  | DashboardVerifyHealth { host: NonEmptyStr, port: Port }
 
 // live_deploy CreateRoot's DispatchWorktreeRoot and AttemptStateRoot, and systemd-launches the
 // dashboard process, only for deployment_spec_srv1 (srv1_live). deployment_spec_for has no
@@ -1544,11 +1543,11 @@ type DashboardInstanceProvisionOp
 // paths through dispatch/belt, and this plan is the only creator those instances have for those
 // directories. Naming live_deploy as owner without keeping that creator is the serve-binary
 // deadlock. Service launch is the other half of the same gap, and restoring tmux would re-fork
-// srv1_live (systemd plus a session). This plan therefore keeps the mkdirs and does not
-// DashboardVerifyHealth or converge on health_current: it does not start the process. Production
-// process start is live_deploy ServiceProcess. For every other instance, start is an operator act
-// until deployment_spec_for is a real caller — the same declared-outside-the-modeled-guarantee
-// arm C7 is given for provider-state mkdir, not a silent requirement this apply cannot discharge.
+// srv1_live (systemd plus a session). This plan therefore keeps the mkdirs and does not poll
+// health after launch: it does not start the process. Production process start is live_deploy
+// ServiceProcess. For every other instance, start is an operator act until deployment_spec_for
+// is a real caller — the same declared-outside-the-modeled-guarantee arm C7 is given for
+// provider-state mkdir, not a silent requirement this apply cannot discharge.
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
@@ -1735,12 +1734,6 @@ fn dashboard_instance_provision_op_row(
         kind: "verify-provider-auth" as NonEmptyStr,
         target: state_root as String,
         detail: executable as String,
-      }
-    DashboardVerifyHealth { host, port } =>
-      DashboardInstanceProvisionPlanRow {
-        kind: "verify-health" as NonEmptyStr,
-        target: join([host as String, ":", to_string(port)], ""),
-        detail: "/instance.json must name the intended instance within the bounded readiness poll",
       }
   }
 }
