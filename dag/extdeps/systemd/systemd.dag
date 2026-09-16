@@ -84,6 +84,8 @@ type SystemdUnitProperty
   | EnvironmentProperty
   | AfterProperty
   | WantsProperty
+  | InvocationIDProperty
+  | FragmentPathProperty
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -122,6 +124,8 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     EnvironmentProperty => "Environment" as NonEmptyStr
     AfterProperty => "After" as NonEmptyStr
     WantsProperty => "Wants" as NonEmptyStr
+    InvocationIDProperty => "InvocationID" as NonEmptyStr
+    FragmentPathProperty => "FragmentPath" as NonEmptyStr
   }
 }
 

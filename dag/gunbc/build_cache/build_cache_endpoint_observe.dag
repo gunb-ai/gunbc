@@ -6,6 +6,13 @@ import std.disposition { Disposition, SingleAuthority }
 import std.algebra { trim }
 import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import extdeps.linux.procfs { ProcfsPath, ProcNetUnix, procfs_path_literal }
+import extdeps.linux.proc_pid_stat {
+  proc_pid_stat_start_time,
+  StartTimeObserved,
+  StartTimeCommUnterminated,
+  StartTimeFieldAbsent,
+  StartTimeUnparseable,
+}
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.gnu_coreutils { cat_command, readlink_command }
 import extdeps.tools.stat { stat_file_type_command, stat_owner_user_name_command }
@@ -591,30 +598,10 @@ fn owner_context_of_cgroup_read(
 
 // --- process identity -------------------------------------------------------
 
-// THE PROCESS START TIME IS FIELD 22 OF /proc/PID/stat, READ FROM AFTER THE LAST `)`. Field 2 is
-// the executable name in parentheses and it may itself contain spaces and parentheses, so splitting
-// the whole line on spaces is wrong for exactly the processes whose names are adversarial. proc(5)
-// fixes the shape: everything after the FINAL `)` is fields 3 onward, separated by single spaces,
-// so starttime is the 20th token of that tail. A tail too short to hold 20 tokens is a refusal, not
-// a zero -- a fabricated start time would make two observations of DIFFERENT processes compare
-// equal, which is the one thing ProcessIdentity exists to prevent.
-
-fn text_after_last(s: String, marker: String) -> String {
-  match s.split(marker).last() {
-    Present { value: tail } => tail
-    Absent => ""
-  }
-}
-
-data proc_stat_starttime_token_index: Int = 19
-
-fn starttime_of_proc_stat_text(text: String) -> String {
-  let tail = trim(text_after_last(s: text, marker: ")"))
-  match tail.split(" ").skip(proc_stat_starttime_token_index).first() {
-    Present { value: tok } => trim(tok)
-    Absent => ""
-  }
-}
+// THE START TIME TOKEN IS DECODED BY extdeps.linux.proc_pid_stat. That module is the cited
+// proc_pid_stat(5) authority; this fold only maps its typed outcome onto ProcessIdentity. A
+// missing or unparseable field is a refusal, not an empty-string identity — a fabricated start
+// time would make two observations of DIFFERENT processes compare equal.
 
 type OwnerIdentityOutcome
   = OwnerIdentityObserved { identity: ProcessIdentity }
@@ -640,18 +627,29 @@ fn owner_identity(
           OwnerIdentityUnread {
             detail: concat("the endpoint owner's /proc/PID/stat could not be read, so its start time is unknown and its pid is not an identity: ", d as String) as NonEmptyStr,
           }
-        HostReadText { text: t } => {
-          let start = starttime_of_proc_stat_text(text: t)
-          if start == "" {
-            OwnerIdentityUnread {
-              detail: "the endpoint owner's /proc/PID/stat did not yield a start time field" as NonEmptyStr,
-            }
-          } else {
-            OwnerIdentityObserved {
-              identity: ProcessIdentity { boot_id: boot, pid: pid, start_time: start as NonEmptyStr },
-            }
+        HostReadText { text: t } =>
+          match proc_pid_stat_start_time(content: t) {
+            StartTimeObserved { ticks_since_boot: ticks } =>
+              OwnerIdentityObserved {
+                identity: ProcessIdentity {
+                  boot_id: boot,
+                  pid: pid,
+                  start_time: to_string(ticks) as NonEmptyStr,
+                },
+              }
+            StartTimeCommUnterminated =>
+              OwnerIdentityUnread {
+                detail: "the endpoint owner's /proc/PID/stat has no terminated comm field" as NonEmptyStr,
+              }
+            StartTimeFieldAbsent { fields_after_comm: n } =>
+              OwnerIdentityUnread {
+                detail: concat("the endpoint owner's /proc/PID/stat did not yield a start time field; fields after comm: ", to_string(n)) as NonEmptyStr,
+              }
+            StartTimeUnparseable { field: f } =>
+              OwnerIdentityUnread {
+                detail: concat("the endpoint owner's /proc/PID/stat starttime field is not an integer: ", f) as NonEmptyStr,
+              }
           }
-        }
       }
   }
 }
