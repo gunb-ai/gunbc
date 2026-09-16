@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.python_target_returns_a_statement
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data python_target_returns_a_statement: RecurringFailureMode = RecurringFailureMode {
+  identity: "python_target_returns_a_statement" as NonEmptyStr,
+
+  receipts: [
+    "**python target returns a statement** (INVALID STATE: a .dag function whose body is a `let` chain or a `match` -- an expression in the source language -- is emitted for the Python target as `return ` followed by Python STATEMENTS, so the emitted module is not a Python program: `python3 -m py_compile` refuses it with SyntaxError at the first such function.",
+
+    "HARM: section 5 silent wrongness on the source-to-python path, and it is worse than the Rust arm of the same family because nothing executes the Python projection anywhere in the repository -- `gunbc compile --target python` exits 0 with 0 diagnostics, no required phase compiles or imports what it emitted, so a consumer who takes `--target python` at the word of the CLI help (`A causal compiler: write .dag, get Rust/Python/Go.`) receives a fabricated plausible output that has never been checked by anyone.",
+
+    "MECHANISM, cited by symbol: `v1.compiler.emit_python` `emit_py_fn_def` renders a non-TCO body as `concat(..., \"return \", emit_py_typed_expr(texpr: body, ...))`, and `emit_py_typed_expr` renders `ExprLet` as an assignment statement line and `ExprMatch` as a `match ... case` statement block. `return` takes an expression; both renderings are statements. The TCO arm beside it (`emit_tco_unified`) emits a `while`/`loop` body and is not affected, so the defect is exactly the non-recursive functions with a `let` or a `match` at the top of the body -- which is most functions.",
+
+    "INSTRUMENT, named rather than transcribed: `gunbc compile --source-root dag --entry dag/examples/weather/weather.dag --output-dir <out> --target python`, then `python3 -m py_compile <out>/examples_weather.py`. The same source emitted with `--target rust` passes `cargo check`, so the source is well-typed and the defect is the Python realization's alone. Reproduced 2026-09-15 on the tree of gunbc#11427 by the onboarding lane (neat-boar-195), which found it while writing a brief that reads .dag through its Python projection.",
+
+    "DISTINGUISHING FACTS, and why this is not a specimen of `accepted_source_emits_uncompilable_target`: that row's invalid state is an ILL-TYPED SOURCE the front end accepts (a variant at a type position, a partial record), whose emission is refused by the target compiler on a type ground -- the source is wrong and the target compiler is the only wall. Here the source is right: the identical program is a checked Rust crate. The realization drops the expression/statement distinction that the Python grammar carries and the .dag grammar does not need, so this is a fidelity defect of ONE target's emission rows, not an acceptance defect of the front end, and repairing the front end's type agreement would retire nothing here. That row's own text records that its Python arm did not inhabit it (its measurement was `py_compile` PASSING); this row is where the Python arm that `py_compile` REFUSES lives.",
+
+    "RECOGNITION RULE: in an emitted Python module, any line matching `return ` followed by an assignment (`return name = `) or by `match ` is this class. The emitting function is `emit_py_fn_def` and the body renderer is `emit_py_typed_expr`; read them before looking anywhere else.",
+
+    "RUNG FOUND AT: below the ladder on the source-to-python path -- the compile accepts, the emit succeeds, no check compiles the result, and the only refusal is a Python interpreter that nothing in the repository runs. Rung honesty at the declared subject grain (section 4b meta-obligation 1): the source-to-rust path of the same programs is mechanically preventable via `cargo check` on the emitted crate; the source-to-python path is not on the ladder at all, and a class's rung is the minimum across its in-scope paths.",
+
+    "CEILING: 4, structurally impossible. Whether a Python form is an expression or a statement is decidable from the target grammar (extdeps.languages.python owns those rows), and an emission fold that lowers a `let` chain to statements before the `return` and a `match` body to a statement block whose arms each `return` -- or that lowers both to expression forms -- has no constructor that places a statement after `return`. No undecidable predicate is involved.",
+
+    "NEXT-RUNG TRIGGER, phrased as the CAPABILITY that retires the row and not as an artifact: Python emission in which every function body is rendered by a statement-aware lowering, sufficient that `py_compile` accepts every module the Python target emits over the emit-compile population -- the same population `gunbc.emitted_closure_compile_seed_growth` names for Rust -- AND that acceptance is executed by a required phase, because a green nothing runs is the state this row was found in. Repairing `emit_py_fn_def` for the `let` case alone, or adding one weather-shaped fixture, satisfies less than that and retires nothing.",
+
+    "SCOPED OUT OF THE LANE THAT FOUND IT, AND SAID SO HERE RATHER THAN ONLY IN THE BRIEF: gunbc.plans.blackjack_onboarding tells its reader to use the Python projection for the type shapes (which are valid: `@dataclass` per record, `Union` per coproduct) and the Rust projection for behaviour, and not to repair this target inside an onboarding project. That is a scoping of a filed class to its owning lane (the emitter), not a workaround: the deficit is on this ledger with its mechanism, its instrument and its trigger, and the brief cites this row instead of transcribing the symptom.",
+  ],
+
+  evidence: [],
+}

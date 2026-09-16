@@ -32,7 +32,7 @@ import gunbc.floor_cost_distribution {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
@@ -48,10 +48,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the `v2.test.` gate prefix, so the PR that lands them must show them measured and inside the
 // margin. A gate whose own witnesses could not clear it would be self-refuting.
 
+// THE STEP COUNT THESE FIXTURES CARRY IS INCIDENTAL AND IS DECLARED AS SUCH (gunbc#11366 Phase 1).
+// Every witness in this file exercises the CPU half -- the margin, the ceiling, the censoring
+// discriminator -- so the count is present because the arm requires one and not because any
+// assertion here reads it. When Phase 2 denominates this gate in eval steps these fixtures gain a
+// step parameter and the value stops being incidental; saying so now is what keeps a later reader
+// from mistaking an arbitrary figure for a measured one.
 fn observed(cpu_ms: Int) -> EnrolmentCostReading {
   EnrolmentCostMeasured {
-    reading: ObservedCpuReading { cpu_ms: millisecond(count: cpu_ms) }
+    reading: ObservedCpuReading {
+      cpu_ms: millisecond(count: cpu_ms),
+      eval_steps: fixture_incidental_steps()
+    }
   }
+}
+
+fn fixture_incidental_steps() -> EvalStepCount {
+  eval_step_count(count: 1000)
 }
 
 fn censored(lower_bound_ms: Int, ceiling_ms: Int) -> EnrolmentCostReading {
@@ -59,6 +72,7 @@ fn censored(lower_bound_ms: Int, ceiling_ms: Int) -> EnrolmentCostReading {
     reading: RightCensoredCpuReading {
       cpu_lower_bound_ms: millisecond(count: lower_bound_ms),
       censoring_ceiling_ms: millisecond(count: ceiling_ms),
+      eval_steps_before_censor: fixture_incidental_steps(),
     }
   }
 }
@@ -67,6 +81,7 @@ fn bound_without_ceiling(lower_bound_ms: Int) -> EnrolmentCostReading {
   EnrolmentCostMeasured {
     reading: CpuLowerBoundWithoutCeiling {
       cpu_lower_bound_ms: millisecond(count: lower_bound_ms),
+      eval_steps_before_censor: fixture_incidental_steps(),
     }
   }
 }
@@ -470,7 +485,7 @@ test fn an_observed_row_at_325ms_is_refused_against_the_required_floor_ceiling()
   !floor_cost_debt_row_is_admitted(
     standing: floor_cost_debt_row(
       identity: "fixture.tripwire_325",
-      reading: ObservedCpuReading { cpu_ms: millisecond(count: 325) },
+      reading: ObservedCpuReading { cpu_ms: millisecond(count: 325), eval_steps: fixture_incidental_steps() },
       ceiling_ms: required_floor_per_subject_cpu_line_ms(),
       verdict: FloorCostDebtReachedAVerdict,
     )

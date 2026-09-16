@@ -15,7 +15,7 @@ import gunbc.spark.serving_arm {
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
-  SubjectAxisDelta, AxisDeltaOnOneAxis, AxisDeltaNone, AxisDeltaOnManyAxes, AxisDeltaUndecidable,
+  SubjectAxisDelta, AxisDeltaOnOneAxis, AxisDeltaOnOneAxisWithUnreadAxes, AxisDeltaNone, AxisDeltaOnManyAxes, AxisDeltaUndecidable,
   serving_subject_axis_delta,
 }
 
