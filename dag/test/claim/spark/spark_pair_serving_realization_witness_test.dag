@@ -129,7 +129,7 @@ test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -
           cause: "fixture" as NonEmptyStr,
         },
         head: h.lane,
-        spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
+        spec: spark_pair_container_spec(lane: h.lane),
       ) {
         SparkPairUnitRendered { unit_name: _, text: _ } => false
         SparkPairUnitSealed { artifact: _ } => false
@@ -167,7 +167,7 @@ test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout()
         args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
         snapshot: w_fixture_snapshot,
         head: h.lane,
-        spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
+        spec: spark_pair_container_spec(lane: h.lane),
       ) {
         SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
         SparkPairUnitSealed { artifact: _ } => false

@@ -1,0 +1,132 @@
+module gunbc.spark.collective_transport_plan
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
+import extdeps.nvidia.nccl { NcclRoceGidSelection, nccl_roce_gid_selection_env }
+
+// ── ONE SEMANTIC CHOICE, NOT SEVEN INDEPENDENT CONTAINER FIELDS ───────────────────────────────
+//
+// WHY THIS TYPE EXISTS, AND WHAT IT COST TO LEARN. Enabling RDMA for a serving container is spelled
+// in at least seven places: a /dev/infiniband device mapping, a CAP_IPC_LOCK capability, an unlimited
+// memlock ulimit, the NCCL interface name, the RoCE GID selection env, the NCCL HCA name and the UCX
+// net-device name. On 2026-09-15 the Group B GLM engine was found running every rank on TCP sockets -- `NET/IB : No device found.` then
+// `Using network Socket`, with every data channel `via NET/Socket/0` -- because its container was
+// created with `Devices=[]`, `CapAdd=null` and `Ulimits=[]` while the host's RoCE device sat ACTIVE
+// and LINK_UP on the very interface the container was told to use.
+//
+// THE SEVEN FIELDS ARE NOT SEVEN DECISIONS. They are one decision -- which collective transport this
+// deployment intends -- projected seven ways. Spelled separately, a reader cannot tell an intentional
+// socket deployment from an RDMA deployment that lost one field, and a repair reads as a seven-field
+// diff rather than as flipping one value. Spelled once here, the projections are derived and the
+// difference between two deployments is a single axis.
+//
+// THE HCA IS ON THE RoCE ARM AND NOT ON THE PLAN, because it is the one endpoint fact a socket
+// deployment has no use for. An earlier cut of this module carried only the five container-shape
+// fields and left NCCL_IB_HCA and UCX_NET_DEVICES with the calling route, which meant a socket plan
+// still handed the container an HCA name -- a value naming a device the plan had just declined to
+// map. Both spellings happened to agree on the pair route, which is why it read as harmless.
+//
+// THIS IS ALSO WHAT MAKES A TRANSPORT EXPERIMENT ONE-AXIS. gunbc.spark.serving_performance_subject
+// can only call a comparison a one-axis cut when exactly one axis moved; hand-counting device,
+// capability, ulimit and four env vars as separate changes would make every Socket-to-RoCE
+// comparison a seven-axis change that attributes nothing.
+// ── THE COMPARISON HALF IS DELIBERATELY NOT HERE ──────────────────────────────────────────────
+//
+// A first version of this module carried `TransportPlanOutcome` -- a fold joining a plan to an
+// observed NcclRealizedTransport, with a fallback arm for "asked for RoCE, got Socket". It is
+// removed rather than kept behind a declared frontier, and the reason is that it was ALREADY KNOWN
+// to be inadequate: it reduced both sides to string projections and discarded
+// NcclRealizedTransport.read_from, so it could not bind its answer to an incarnation, a rank, a
+// communicator or the raw log line it came from. Landing a comparison that loses the provenance of
+// the thing it compares would make the eventual real one a replacement rather than a first.
+//
+// WHAT THE REAL COMPARISON NEEDS, so the next author does not re-derive it: a verdict receipt
+// carrying the incarnation, the rank, the communicator and the raw carrier the verdict was read
+// from, joined to the plan the route intended. That belongs with the producer that can supply those
+// -- the serving throughput instrument reading NCCL's own `Using network` line off a running engine
+// -- and it does not exist yet. Until it does, this module projects a plan and does not judge one.
+//
+// A `collective_transport_plan_wire` string projection went with it, for the same reason one step
+// removed: its only caller was a witness asserting the two plans differ, which the projection rows
+// already establish at the grain that matters -- one arm maps a device, adds a capability, unlocks
+// memlock and sets four env names, and the other does none of it. A string that exists so a test
+// can compare two strings is not a consumer, and a reader reaching for a wire format here should
+// build it where something actually transmits one.
+type CollectiveTransportPlan
+  = SocketOverInterface { interface: NonEmptyStr }
+  | RoceOverInterface { interface: NonEmptyStr, rdma_device: NonEmptyStr, gid_selection: NcclRoceGidSelection }
+
+// ── THE PROJECTIONS, DERIVED ──────────────────────────────────────────────────────────────────
+//
+// A socket plan asks for NOTHING: no device, no capability, no lock. That is not an oversight in the
+// arm, it is the arm's content -- and it is exactly the state Group B was found in, which is why the
+// socket arm must be spellable rather than being what you get when fields go missing.
+fn transport_plan_devices(p: CollectiveTransportPlan) -> List<DockerDeviceMapping> {
+  match p {
+    SocketOverInterface { interface: _ } => []
+    RoceOverInterface { interface: _, rdma_device: _, gid_selection: _ } => [
+      DockerDeviceMapping {
+        host_path: "/dev/infiniband",
+        container_path: "/dev/infiniband",
+        cgroup_permissions: "rwm" as NonEmptyStr,
+      },
+    ]
+  }
+}
+
+// CAP_IPC_LOCK AND UNLIMITED MEMLOCK TRAVEL WITH THE DEVICE, because verbs registers pinned memory
+// regions and a container that can open the device but cannot lock pages fails later and less
+// legibly than one that cannot open it at all.
+fn transport_plan_cap_add(p: CollectiveTransportPlan) -> List<NonEmptyStr> {
+  match p {
+    SocketOverInterface { interface: _ } => []
+    RoceOverInterface { interface: _, rdma_device: _, gid_selection: _ } => ["IPC_LOCK" as NonEmptyStr]
+  }
+}
+
+fn transport_plan_memlock_unlimited(p: CollectiveTransportPlan) -> Bool {
+  match p {
+    SocketOverInterface { interface: _ } => false
+    RoceOverInterface { interface: _, rdma_device: _, gid_selection: _ } => true
+  }
+}
+
+// THE INTERFACE NAME IS REQUIRED BY BOTH ARMS and is therefore a field of the plan rather than of
+// the RoCE arm alone: NCCL_SOCKET_IFNAME selects the socket path's netdev AND the out-of-band
+// bootstrap channel that the verbs path also uses. Group B had it set correctly and still ran on
+// sockets, which is the tell that this variable is not the transport decision.
+fn transport_plan_interface(p: CollectiveTransportPlan) -> NonEmptyStr {
+  match p {
+    SocketOverInterface { interface: i } => i
+    RoceOverInterface { interface: i, rdma_device: _, gid_selection: _ } => i
+  }
+}
+
+data nccl_socket_ifname_env: NonEmptyStr = "NCCL_SOCKET_IFNAME" as NonEmptyStr
+data gloo_socket_ifname_env: NonEmptyStr = "GLOO_SOCKET_IFNAME" as NonEmptyStr
+data nccl_ib_hca_env: NonEmptyStr = "NCCL_IB_HCA" as NonEmptyStr
+data ucx_net_devices_env: NonEmptyStr = "UCX_NET_DEVICES" as NonEmptyStr
+
+// UCX NAMES THE PORT, NCCL NAMES THE DEVICE. UCX_NET_DEVICES is `<device>:<port>` while NCCL_IB_HCA
+// is the bare device name, so the two are not interchangeable spellings of one string even though
+// they are derived from one observation. The port suffix is written here rather than by the caller
+// so that a route cannot supply the device to one variable and a device:port to the other.
+data ucx_rdma_port_suffix: String = ":1"
+
+fn transport_plan_env(p: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
+  let iface = transport_plan_interface(p: p)
+  let base = [
+    DockerEnvAssignment { name: nccl_socket_ifname_env, value: iface as String },
+    DockerEnvAssignment { name: gloo_socket_ifname_env, value: iface as String },
+  ]
+  match p {
+    SocketOverInterface { interface: _ } => base
+    RoceOverInterface { interface: _, rdma_device: d, gid_selection: g } =>
+      concat(
+        concat(base, [
+          DockerEnvAssignment { name: nccl_ib_hca_env, value: d as String },
+          DockerEnvAssignment { name: ucx_net_devices_env, value: join([d as String, ucx_rdma_port_suffix], "") },
+        ]),
+        map(nccl_roce_gid_selection_env(s: g), a => DockerEnvAssignment { name: a.name, value: a.value }))
+  }
+}
