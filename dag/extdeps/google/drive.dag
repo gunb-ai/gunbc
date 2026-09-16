@@ -7,6 +7,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact, Subject, JsonPending }
+import std.credentials { EnvVar }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3" }
@@ -77,6 +78,15 @@ data drive_serviceusage_api_id: NonEmptyStr = "drive.googleapis.com"
 // this application did not create, which drive.file cannot express: drive.file is scoped to files
 // the app itself created or the user opened with it. Naming the narrower scope here would be a
 // scope this module cannot actually operate under.
+// THE CREDENTIAL NEVER BECOMES AN ARGV WORD. gunbc.credential_argv_exposure measures srv1 directly:
+// /proc has no hidepid, cmdline is 0444, and runner slots execute in the host pid namespace, so an
+// argv word is readable by any job payload a pull request can influence. A re-measurement on
+// 2026-09-16 reproduced it and added the other half -- environ is 0400 and cross-user reads are
+// denied -- so auth_source reads the variable in-process at the transport, exactly as
+// github.Workflows does for GITHUB_TOKEN, and no operation below takes a token as an input a caller
+// could interpolate.
+data drive_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"
+
 data drive_full_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/drive"
 
 data drive_file_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/drive.file"
@@ -214,11 +224,11 @@ service drive.Drives {
   config {
     endpoint: drive_api_base
     auth: Bearer
-    auth_input: access_token
+    auth_source: EnvVar { name: drive_token_env }
   }
 
   operation GetDrive {
-    input { access_token: Secret, drive_id: String }
+    input { drive_id: String }
     output { drive: DriveResource, outcome: RestOutcome }
     readonly
     transport rest { method: GET, path: "/drives/\{drive_id\}" }
@@ -244,11 +254,11 @@ service drive.Permissions {
   config {
     endpoint: drive_api_base
     auth: Bearer
-    auth_input: access_token
+    auth_source: EnvVar { name: drive_token_env }
   }
 
   operation ListPermissions {
-    input { access_token: Secret, file_id: String }
+    input { file_id: String }
     output { list: DrivePermissionList, outcome: RestOutcome }
     readonly
     transport rest {
@@ -271,7 +281,6 @@ service drive.Permissions {
 
   operation CreatePermission {
     input {
-      access_token: Secret
       file_id: String
       role: DrivePermissionRole
       principal_type: DrivePrincipalType
@@ -315,11 +324,11 @@ service drive.Files {
   config {
     endpoint: drive_api_base
     auth: Bearer
-    auth_input: access_token
+    auth_source: EnvVar { name: drive_token_env }
   }
 
   operation ListFiles {
-    input { access_token: Secret, drive_id: String, query: String }
+    input { drive_id: String, query: String }
     output { list: DriveFileList, outcome: RestOutcome }
     readonly
     transport rest {
@@ -347,7 +356,6 @@ service drive.Files {
 
   operation CreateFile {
     input {
-      access_token: Secret
       name: String
       mime_type: String
       parent_id: String

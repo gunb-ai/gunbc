@@ -159,13 +159,11 @@ fn converge_review_sheet_all(
       policy: policy,
     ),
     membership: converge_drive_membership(
-      token: token,
       drive_id: drive_id,
       writer: writer,
       policy: policy,
     ),
     spreadsheet: converge_review_spreadsheet(
-      token: token,
       drive_id: drive_id,
       sheet_name: ci_prospect_sheet_name,
       app_value: ci_prospect_sheet_app_property_value,
@@ -279,5 +277,69 @@ fn converge_report_exit(report: ReviewSheetConvergeReport) -> ProcessExit {
     ExitSuccess
   } else {
     exit_failure(reason: report_text(r: report))
+  }
+}
+
+
+// THE DRIVE HALF ALONE, AND THE ENTRY POINT THAT TAKES NO ARGUMENTS AT ALL. The GCP steps read a
+// token as an operation input, so an operator must still hand them one; the Drive operations read
+// theirs at the transport from GUNBC_REVIEW_SHEET_TOKEN, so this entry has nothing a caller could
+// put on a command line. That is the point: gunbc run passes arguments only as argv, and on this
+// fleet an argv word is readable by any job payload a pull request can influence.
+//
+// It is also the half worth running first. The three GCP steps were actuated by hand and observed
+// converged, so running them proves a Noop; membership and the spreadsheet are the two that have
+// never executed.
+type DriveHalfReport {
+  membership: MembershipConvergeOutcome
+  spreadsheet: SpreadsheetConvergeOutcome
+}
+
+fn converge_drive_half(drive_id: NonEmptyStr, writer: ServiceAccountEmail, policy: EnsurePolicy)
+  -> DriveHalfReport uses net: Network {
+  DriveHalfReport {
+    membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
+    spreadsheet: converge_review_spreadsheet(
+      drive_id: drive_id,
+      sheet_name: ci_prospect_sheet_name,
+      app_value: ci_prospect_sheet_app_property_value,
+      policy: policy,
+    ),
+  }
+}
+
+fn drive_half_is_converged(r: DriveHalfReport) -> Bool {
+  membership_is_converged(o: r.membership) && spreadsheet_is_converged(o: r.spreadsheet)
+}
+
+fn drive_half_text(r: DriveHalfReport) -> String {
+  join(
+    [
+      "membership: ", membership_outcome_text(o: r.membership),
+      "\nsheet:      ", spreadsheet_outcome_text(o: r.spreadsheet),
+    ],
+    "",
+  )
+}
+
+fn converge_drive_half_cli() -> ProcessExit uses net: Network {
+  match calling_home_resolution() {
+    HomeUnresolved { cause: c } => exit_failure(reason: c as String)
+    HomeResolved { project_id: _, writer: w } =>
+      match residency_drive(residency: review_sheet_residency) {
+        DriveUnresolved { cause: c } => exit_failure(reason: c as String)
+        DriveResolved { drive_id: d } =>
+          drive_half_exit(
+            report: converge_drive_half(drive_id: d, writer: w, policy: EnsureMayApply)
+          )
+      }
+  }
+}
+
+fn drive_half_exit(report: DriveHalfReport) -> ProcessExit {
+  if drive_half_is_converged(r: report) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: drive_half_text(r: report))
   }
 }

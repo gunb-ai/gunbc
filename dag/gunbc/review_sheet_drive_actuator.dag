@@ -1,6 +1,6 @@
 module gunbc.review_sheet_drive_actuator
 
-import std.types { NonEmptyStr, String, Bool, Secret }
+import std.types { NonEmptyStr, String, Bool }
 import std.resources { Network }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
@@ -54,14 +54,10 @@ type MembershipConvergeOutcome
   | MembershipConvergeRefused { cause: NonEmptyStr }
 
 fn read_membership(
-  token: Secret,
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
 ) -> DriveMembershipObservation uses net: Network {
-  let read = drive.Permissions.ListPermissions(
-    access_token: token,
-    file_id: drive_id as String,
-  )
+  let read = drive.Permissions.ListPermissions(file_id: drive_id as String)
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
     RestExchangeSucceeded => membership_from_permissions(list: read.list, writer: writer)
     RestExchangeStatusRefused { status, body } =>
@@ -87,12 +83,11 @@ fn read_membership(
 // A create that answers 200 has told us what it did, not what is now true; only a read establishes
 // the second, and it is the read this converge would perform on its next pass anyway.
 fn verify_granted_membership(
-  token: Secret,
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   grant_detail: NonEmptyStr,
 ) -> MembershipConvergeOutcome uses net: Network {
-  match read_membership(token: token, drive_id: drive_id, writer: writer) {
+  match read_membership(drive_id: drive_id, writer: writer) {
     MembershipObserved { role: r } => MembershipGrantedAndVerified { role: r }
     MembershipAbsent =>
       MembershipGrantUnverified {
@@ -109,11 +104,9 @@ fn verify_granted_membership(
 }
 
 fn perform_membership_grant(
-  token: Secret,
   plan: MembershipGrantPlan,
 ) -> MembershipConvergeOutcome uses net: Network {
   let created = drive.Permissions.CreatePermission(
-    access_token: token,
     file_id: plan.drive_id as String,
     role: plan.role,
     principal_type: PrincipalUser,
@@ -122,14 +115,12 @@ fn perform_membership_grant(
   match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
     RestExchangeSucceeded =>
       verify_granted_membership(
-        token: token,
         drive_id: plan.drive_id,
         writer: plan.writer,
         grant_detail: "permissions.create answered success" as NonEmptyStr,
       )
     RestExchangeCommitAmbiguous { detail } =>
       verify_granted_membership(
-        token: token,
         drive_id: plan.drive_id,
         writer: plan.writer,
         grant_detail: join(["permissions.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
@@ -153,12 +144,11 @@ fn perform_membership_grant(
 // decide, perform only on Apply, then read again. Re-running it after success observes the member
 // and answers MembershipAlreadyHeld without writing.
 fn converge_drive_membership(
-  token: Secret,
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
 ) -> MembershipConvergeOutcome uses net: Network {
-  let observed = read_membership(token: token, drive_id: drive_id, writer: writer)
+  let observed = read_membership(drive_id: drive_id, writer: writer)
   match ensure_drive_membership(
     policy: policy,
     observed: observed,
@@ -167,7 +157,7 @@ fn converge_drive_membership(
   ) {
     Noop => membership_noop_outcome(observed: observed)
     Refuse { reason: r } => MembershipConvergeRefused { cause: r }
-    Apply { plan: p } => perform_membership_grant(token: token, plan: p)
+    Apply { plan: p } => perform_membership_grant(plan: p)
   }
 }
 

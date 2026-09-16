@@ -1,6 +1,6 @@
 module gunbc.review_sheet_spreadsheet_actuator
 
-import std.types { NonEmptyStr, String, Bool, Secret }
+import std.types { NonEmptyStr, String, Bool }
 import std.resources { Network }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
@@ -48,12 +48,10 @@ type SpreadsheetConvergeOutcome
   | SpreadsheetConvergeRefused { cause: NonEmptyStr }
 
 fn read_spreadsheet(
-  token: Secret,
   drive_id: NonEmptyStr,
   app_value: NonEmptyStr,
 ) -> ReviewSpreadsheetObservation uses net: Network {
   let read = drive.Files.ListFiles(
-    access_token: token,
     drive_id: drive_id as String,
     query: review_sheet_search_query(app_value: app_value),
   )
@@ -84,12 +82,11 @@ fn read_spreadsheet(
 // made. Two is a refusal even here, because a duplicate found at this moment is a duplicate the
 // operator must adjudicate, not one this converge may quietly pick from.
 fn verify_created_spreadsheet(
-  token: Secret,
   drive_id: NonEmptyStr,
   app_value: NonEmptyStr,
   create_detail: NonEmptyStr,
 ) -> SpreadsheetConvergeOutcome uses net: Network {
-  match read_spreadsheet(token: token, drive_id: drive_id, app_value: app_value) {
+  match read_spreadsheet(drive_id: drive_id, app_value: app_value) {
     SheetObservedOne { file_id: id } => SpreadsheetCreatedAndVerified { file_id: id }
     SheetAbsent =>
       SpreadsheetCreateUnverified {
@@ -117,11 +114,9 @@ fn verify_created_spreadsheet(
 }
 
 fn perform_spreadsheet_create(
-  token: Secret,
   plan: SpreadsheetCreatePlan,
 ) -> SpreadsheetConvergeOutcome uses net: Network {
   let created = drive.Files.CreateFile(
-    access_token: token,
     name: plan.name as String,
     mime_type: google_sheet_mime_type as String,
     parent_id: plan.drive_id as String,
@@ -131,14 +126,12 @@ fn perform_spreadsheet_create(
   match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
     RestExchangeSucceeded =>
       verify_created_spreadsheet(
-        token: token,
         drive_id: plan.drive_id,
         app_value: plan.app_property_value,
         create_detail: "files.create answered success" as NonEmptyStr,
       )
     RestExchangeCommitAmbiguous { detail } =>
       verify_created_spreadsheet(
-        token: token,
         drive_id: plan.drive_id,
         app_value: plan.app_property_value,
         create_detail: join(["files.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
@@ -159,13 +152,12 @@ fn perform_spreadsheet_create(
 }
 
 fn converge_review_spreadsheet(
-  token: Secret,
   drive_id: NonEmptyStr,
   sheet_name: NonEmptyStr,
   app_value: NonEmptyStr,
   policy: EnsurePolicy,
 ) -> SpreadsheetConvergeOutcome uses net: Network {
-  let observed = read_spreadsheet(token: token, drive_id: drive_id, app_value: app_value)
+  let observed = read_spreadsheet(drive_id: drive_id, app_value: app_value)
   match ensure_review_spreadsheet(
     policy: policy,
     observed: observed,
@@ -175,7 +167,7 @@ fn converge_review_spreadsheet(
   ) {
     Noop => spreadsheet_noop_outcome(observed: observed)
     Refuse { reason: r } => SpreadsheetConvergeRefused { cause: r }
-    Apply { plan: p } => perform_spreadsheet_create(token: token, plan: p)
+    Apply { plan: p } => perform_spreadsheet_create(plan: p)
   }
 }
 
