@@ -159,11 +159,30 @@ authority can silently reverse is not a terminal.
 So the question is not *may we restore the occupant* — it is **under whose authority do the
 hosts sit while V4.1 is on them**, and the plan must answer it explicitly:
 
-- **suspend Group A's pair-serving desired authority** for the experiment's duration, so the
-  released state is a converged state rather than a race — *suspend*, not *withdraw*: they are
-  different operations and only withdrawal is expressible today (see below); and
-- record that **suspension** as part of the authorization, so the hosts are never in a position
-  where two authorities both believe they own them.
+- **suspend Group A's pair-serving desired authority**, and record that suspension as part of
+  the authorization, so the hosts are never in a position where two authorities both believe
+  they own them. *Suspend*, not *withdraw*: different operations, and only withdrawal is
+  expressible today.
+
+**THE SUSPENSION'S LIFETIME IS ONE RULE, because an earlier draft gave three and they were not
+interchangeable** — "for the experiment's duration", "record that withdrawal", and an
+undifferentiated "claims released" each permitted a different implementation:
+
+```
+atomic transfer into suspension
+→ the suspension AND the exact four-host reservation persist through
+  QuiescentReservedBaseline — they do NOT end when D1 ends
+→ they end only when one of:
+     D2 promotion assumes the authority
+     the prior authority is explicitly restored
+     FleetReleasedBaseline is explicitly selected
+
+D1 cleanup RELEASES      rank and process claims, offers, seats, live allocations
+D1 cleanup RETAINS       the four-host reservation, under QuiescentReservedBaseline
+```
+
+"Claims released" is not one category: the execution claims must end and the host reservation
+must not, and a cut that says only "claims released" leaves an implementer to guess which.
 
 That is a real decision with its own consequences — it means Group A is deliberately not
 pair-serving while this runs — and it belongs in the authorization, not in a footnote. It also
@@ -265,22 +284,16 @@ greenly, because there is nothing left to fail it. That is the opposite of what 
 should do when its subject disappears, and it would arrive exactly when the fleet is least
 ordinary.
 
-**The obligation now lives on the roster, not only here.** A plan document nothing references
-is a parallel ledger, and §6 says the mark on the carrier is the authority. The annotation above
-`spark_pair_serving_groups` in `gunbc.spark.pair_serving_desired` now carries this — the single
-membership, the vacuity consequence, the host-ownership consequence, and the fact that
-suspension has no modeled operation — beside the row that decides, which is where an author
-about to empty it actually reads. That file already carried the previous Group B withdrawal's
-reasoning in the same place; this follows the convention rather than inventing one.
+**The obligation lives on the roster, and this document deliberately does not restate it.** §6
+says the mark on the carrier is the authority; an earlier draft then restated the obligation
+here in its own words, which drifted from the carrier's as the carrier was corrected — the two
+disagreed on whether it covers *folds* or *every direct and transitive consumer*, and on whether
+the row is *ownership* or a *commitment input*. Restating an authority is how you end up
+maintaining two of them.
 
-What remains undischarged, stated as an obligation because I have not discharged it:
-
-> Before Group A is withdrawn from `spark_pair_serving_groups`, enumerate every fold over that
-> roster — and over `spark_claimed_serving_group_members`, `spark_pair_serving_desired` and
-> `spark_pair_realizations` — and for each one state whether it still carries information on an
-> empty domain. Any that does not must either refuse on emptiness or be shown to have a
-> non-vacuous subject elsewhere. A check that silently becomes vacuous is worse than one that
-> is removed, because it is still cited as coverage.
+So the obligation is the annotation above `spark_pair_serving_groups` in
+`gunbc.spark.pair_serving_desired`, and it is authoritative over anything this document says
+about it. Read it there.
 
 The roster also reaches **build and probe admission** and **capacity**, not only convergence —
 so "suspend the claim" is a fleet-wide change wearing the costume of a one-line edit. The
@@ -410,6 +423,29 @@ with four answers, each leading somewhere different:
 | `ForeignOccupantObserved` | something we do not declare | **refuse** — not ours to reclaim |
 | `OccupancyUnread` | the question could not be answered | **refuse** — unread is not empty |
 
+**EVERY ARM NEEDS AN AUTHORITY-STATE TERMINAL, including the refusing ones.** The transfer
+happens before the readings — that is what closes the overlap and gap arms — so a refusal fires
+*after* the authority has already moved, and an earlier draft said nothing about what becomes of
+it. Neither silent answer is acceptable: restoring `PairServingActive` may reactivate
+convergence over a foreign or unread occupant, and leaving `SuspendedForAuthorizedSuccessor`
+standing means a **refused** D0 has permanently changed a long-lived authority. So the transfer
+lands in an intermediate state that inspection happens inside:
+
+```
+PairServingActive
+→ SuspensionPendingReconciliation { transaction, lease,
+                                    old actuator disabled,
+                                    successor actuator disabled }
+→ read and reconcile, then:
+     SuspendedForAuthorizedSuccessor   declared eligible branch
+   | PairServingActive                 only when restoration is shown safe
+   | FencedRefusal                     foreign or unread — needs operator disposition
+```
+
+A versioned compare-and-swap protocol with the same dispositions would serve equally. The
+requirement is that **no D0 answer leaves the authority state undefined**, and that both
+actuators are disabled while the answer is being determined.
+
 And it branches on the incumbent rather than assuming its absence:
 
 ```
@@ -495,16 +531,26 @@ requiring *four agreeing ranks and a produced completion* — which no model-ind
 produce. **That terminal was not separable and the claim of separability was wrong.** The two
 halves come apart like this:
 
-**Model-independent, and genuinely a precondition.** Does the enrolled route reach a listening
-process at all? `serving_enrollment` declares an endpoint, a port and a turn ceiling for
-`FabricGroupA`, and nothing answers there today. Whether that path carries a request is a fact
-about routing, not about V4.1, and it can be established against any responder bound to the
-enrolled endpoint. It is worth doing first precisely because it is cheap and because
-discovering a broken route inside a live transaction is the failure this document exists to
-prevent.
+**Model-independent, but NOT free, and an earlier draft called it cheap.** Whether the enrolled
+route reaches a listening process is a fact about routing rather than about V4.1, and it can be
+established against any responder. But **binding a responder to the enrolled endpoint means
+starting a process on Group A's declared address and port** — that is fleet mutation, on the
+hosts this entire cut exists to fence. It cannot happen before the authority transfer, and it
+owes a teardown like any other launch:
 
-Terminal: a request issued through the enrolled route reaches a process on the declared
-endpoint and is answered.
+```
+after D0 reaches SuspendedForAuthorizedSuccessor
+→ launch a bounded endpoint responder
+→ issue the enrolled-route reachability request
+→ stop the responder
+→ re-establish QuiescentReservedBaseline
+```
+
+Its output is narrow and should be named so nobody reads it as more:
+**`EnrolledEndpointReachabilityReceipt`** — it establishes router-to-endpoint transport and
+listener reachability, and **nothing else**. Not offer selection, not seat acquisition, not rank
+agreement, not model advertisement, not that any candidate serves. D1 and D2 still owe every one
+of those joins.
 
 **Model-dependent, and therefore NOT separable.** The end-to-end join — router request, to
 selected offer, to authorization, to four agreeing ranks, to a produced completion — cannot
