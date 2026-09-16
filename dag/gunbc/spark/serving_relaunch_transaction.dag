@@ -630,12 +630,38 @@ fn relaunch_delta_text(d: RelaunchDelta) -> String {
 // ten-second default SIGKILLs an engine holding tens of gigabytes of device memory mid-teardown.
 data relaunch_stop_grace: Second = second(count: 30)
 
-// THE PRESERVED NAME IS DERIVED FROM THE TRANSPORT THE INCUMBENT WAS RUNNING, not from a timestamp
-// or a counter: `glm-native-tp4` preserved aside becomes `glm-native-tp4-socket`, which is what an
-// operator reading `docker ps -a` needs to know about it. A name that carried a serial number would
-// tell them which one it was and not what it was.
-fn preserved_container_name(name: NonEmptyStr, incumbent: NcclRealizedTransport) -> NonEmptyStr {
-  join([name as String, "-", lowercase_transport(t: incumbent)], "") as NonEmptyStr
+// ── THE PRESERVED NAME CARRIES BOTH WHAT THE INCUMBENT WAS AND WHICH INCUMBENT IT WAS ────────
+//
+// IT NAMES THE TRANSPORT BECAUSE THAT IS WHAT AN OPERATOR READING `docker ps -a` NEEDS, and it names
+// the incarnation because a name that carries only the transport COLLIDES WITH ITS OWN PREDECESSOR.
+// That is not a hypothetical: `glm-native-tp4-socket` exists on all four Group B hosts right now,
+// left by the hand relaunch of 2026-09-16, so a transport-only name collides on this transaction's
+// first contact with the fleet it was written for.
+//
+// AND THE COLLISION IS THE LESSER HALF. A fixed preserved name means the SECOND relaunch destroys the
+// first's rollback point, or refuses forever until a human deletes a container that is the only way
+// back for a live arm. Binding the incarnation gives each relaunch its own rollback object, and the
+// name still answers the question the transport word was there for.
+//
+// THE SHORT ID AND NOT THE FULL ONE, because a container name is something a person types under
+// pressure. Twelve hex characters is what `docker ps` itself prints and what the daemon accepts as a
+// prefix; the FULL id is on the ArmCapture beside this name for anything that needs to be exact.
+data preserved_incarnation_id_length: Nat = 12
+
+fn preserved_container_name(name: NonEmptyStr, incumbent: NcclRealizedTransport, incarnation: NonEmptyStr) -> NonEmptyStr {
+  join([
+    name as String, "-", lowercase_transport(t: incumbent), "-",
+    short_incarnation(incarnation: incarnation),
+  ], "") as NonEmptyStr
+}
+
+fn short_incarnation(incarnation: NonEmptyStr) -> String {
+  let text = incarnation as String
+  if string_length(s: text) <= preserved_incarnation_id_length {
+    text
+  } else {
+    substring(s: text, start: 0, end: preserved_incarnation_id_length)
+  }
 }
 
 fn lowercase_transport(t: NcclRealizedTransport) -> String {
@@ -854,7 +880,11 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
             RankTransportRefused { refusal: r } =>
               CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
             RankTransportObserved { verdict: before } => {
-              let preserved = preserved_container_name(name: plan.subject.container, incumbent: before.reading.transport)
+              let preserved = preserved_container_name(
+                name: plan.subject.container,
+                incumbent: before.reading.transport,
+                incarnation: before.incarnation,
+              )
               match preserved_name_is_free(ctx: plan.ctx, subject: plan.subject, preserved: preserved) {
                 Present { value: why } => CaptureAcc { captures: [], causes: [why] }
                 Absent => CaptureAcc {
@@ -876,9 +906,10 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
 // knowable while it was still serving. So the capture phase asks, and the whole roster refuses
 // before a single container is touched.
 //
-// AND IT REFUSES RATHER THAN CHOOSING ANOTHER NAME. A transaction that appended a serial number
-// would silently accumulate rollback records nobody can tell apart, and the operator would lose the
-// one thing the rename buys: knowing, from the name alone, what the preserved object is.
+// IT STILL REFUSES RATHER THAN CHOOSING ANOTHER NAME. The name now carries the incarnation, so a
+// collision means the daemon already holds an object preserved from THIS EXACT container id -- which
+// is a relaunch that already ran and whose result was never cleaned up, not a naming accident. Making
+// up a second name for it would hide that.
 fn preserved_name_is_free(
   ctx: SparkMaterializeContext,
   subject: ObservedRankSubject,
