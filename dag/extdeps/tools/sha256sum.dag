@@ -1,7 +1,8 @@
 module extdeps.tools.sha256sum
 
-import std.types { NonEmptyStr, Bool, Unit }
+import std.types { NonEmptyStr, Bool, Unit, List }
 import std.string_type { String }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
@@ -126,6 +127,10 @@ data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
 type Sha256FileDigest
   = Sha256FileDigest { digest: Digest }
   | Sha256FileDigestUnavailable { path: NonEmptyStr, reason: String }
+
+fn sha256sum_file_command(path: String) -> ArgvCommand {
+  argv_command(program: "sha256sum" as NonEmptyStr, arguments: ["--", path])
+}
 
 fn sha256sum_file_digest_via_shell(path: NonEmptyStr) -> Sha256FileDigest {
   let observed = sha256sum.Sha256.DigestFile(path: path)

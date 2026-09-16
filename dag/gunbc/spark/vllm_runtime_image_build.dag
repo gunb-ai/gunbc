@@ -852,7 +852,9 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
 // how every read-only fleet instrument here is reached, and both have been EXECUTED that way against
 // srv9, with their receipts in this lane's record. They take the fleet key from an in-run agent and
 // need no credential an authoring session cannot hold, which is why they are CLI entries rather than
-// dispatch modes.
+// dispatch modes. The patched apply seam is a sibling door:
+// gunbc.spark.v41_source_patch_converge_wet v41_patched_source_acquire_wet, which supplies the
+// candidate's P into converge_vllm_source_with_patches and does not replace this vanilla acquire.
 //
 // vllm_runtime_image_build_ci_wet is DIFFERENT and is a declared frontier: it needs the administrator
 // credential, so its only honest invocation is a fleet-converge mode beside spark_runtime_image_probe.

@@ -14,7 +14,8 @@ import std.realization_reconcile {
 }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build { VllmContainerBuildRecipe }
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell, sha256sum_file_command }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.git {
   git_apply_check_command, git_apply_reverse_check_command, git_apply_command, git_diff_binary_head_command,
@@ -277,17 +278,34 @@ fn v41_observe_member(target: SshTarget, context: FleetSshExecutionContext, patc
   match v41_place_declared_patch(target: target, context: context, patch: patch) {
     Present { value: _ } => none
     Absent =>
-      match v41_check_applicable(target: target, context: context, reverse: true, patch: patch) {
-        Absent => none
-        Present { value: rev } =>
-          match v41_check_applicable(target: target, context: context, reverse: false, patch: patch) {
+      match vllm_image_leg(
+        target: target,
+        context: context,
+        step: "declared-patch-digest" as NonEmptyStr,
+        command: sha256sum_file_command(path: v41_remote_declared_patch_path(path: patch.path) as String),
+      ) {
+        ImageLegFailed { step: _, cause: _ } => none
+        ImageLegRan { stdout: line } =>
+          match sha256sum_line_digest(line: line) {
             Absent => none
-            Present { value: fwd } => Present { value: V41PatchMemberRead {
-              path: patch.path,
-              observed_sha256: patch.sha256,
-              reverse_applicable: rev,
-              forward_applicable: fwd,
-            } }
+            Present { value: d } =>
+              match sha256_hex_digest(hex: d.hex as String) {
+                Absent => none
+                Present { value: observed } =>
+                  match v41_check_applicable(target: target, context: context, reverse: true, patch: patch) {
+                    Absent => none
+                    Present { value: rev } =>
+                      match v41_check_applicable(target: target, context: context, reverse: false, patch: patch) {
+                        Absent => none
+                        Present { value: fwd } => Present { value: V41PatchMemberRead {
+                          path: patch.path,
+                          observed_sha256: observed,
+                          reverse_applicable: rev,
+                          forward_applicable: fwd,
+                        } }
+                      }
+                  }
+              }
           }
       }
   }
@@ -363,6 +381,14 @@ fn v41_apply_plan(target: SshTarget, context: FleetSshExecutionContext, plan: V4
 type V41PatchedSourceConverge
   = V41PatchedSourceConverged { already_present: Bool, observed: V41ObservedSourceIdentity }
   | V41PatchedSourceRefused { step: NonEmptyStr, cause: String }
+
+fn v41_patched_source_as_vllm_state(c: V41PatchedSourceConverge) -> VllmSourceState {
+  match c {
+    V41PatchedSourceConverged { already_present: present, observed: obs } =>
+      VllmSourceAtRevision { revision: obs.revision_head, already_present: present }
+    V41PatchedSourceRefused { step: st, cause: why } => VllmSourceRefused { step: st, cause: why }
+  }
+}
 
 fn v41_ensure_revision(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
   uses net: Network

@@ -9,6 +9,8 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.vllm.source_build { vllm_d2d649e6_revision }
 import gunbc.spark.v41_runtime_candidate { v41_engine_patch, V41EnginePatch, v41_storage_backed_patch_population, V41PatchesObserved, V41PatchesUnestablished, V41PatchesAbsentByObservation }
 import extdeps.git { git_apply_args }
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.tools.sha256sum { sha256sum_file_command }
 import gunbc.spark.v41_source_patch_converge {
   V41PatchMemberRead, V41SourceTreeRead, V41SourcePatchPlan,
   v41_source_patch_decision, v41_source_patch_reconcile, v41_sha256_of_bytes,
@@ -159,6 +161,24 @@ test fn empty_diff_has_a_real_digest() -> Bool {
 
 test fn git_apply_updates_the_index_so_diff_head_covers_new_modules() -> Bool {
   any(git_apply_args(repository_dir: "/tmp/vllm", patch_path: "engram_file_backed.py.patch"), a => a == "--index")
+}
+
+test fn the_placed_patch_digest_is_sha256sum_over_the_remote_path() -> Bool {
+  let c = sha256sum_file_command(path: "/tmp/declared-patches/engram_file_backed.py.patch")
+  (c.program as String) == "sha256sum"
+    && any(c.arguments, a => a == "--")
+    && any(c.arguments, a => a.contains("engram_file_backed.py.patch"))
+}
+
+test fn a_sha256sum_line_mismatch_is_authorable_without_the_desired_hex() -> Bool {
+  match sha256sum_line_digest(line: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.patch") {
+    Absent => false
+    Present { value: a } =>
+      match sha256sum_line_digest(line: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  a.patch") {
+        Absent => false
+        Present { value: b } => (a.hex as String) != (b.hex as String)
+      }
+  }
 }
 
 test fn an_untracked_new_module_refuses_rather_than_sharing_a_diff_head_identity() -> Bool {
