@@ -49,16 +49,23 @@ import gunbc.generated_artifact_assessment {
 // a live verdict, a recorded external-tool run joined to today's output, or a frontier that is not
 // claimed. The frontier arm has no verdict field, so an unclaimed capability cannot be printed as
 // passing.
+//
+// ReadoutRefused IS A LINE WHOSE QUESTION COULD NOT BE ANSWERED AT ALL, which is a third thing and
+// not a failing verdict. A host read that refuses says nothing about the subject, so folding it into
+// LiveVerdict { holds: false } would report drift on the strength of our own bookkeeping failing --
+// the error gunbc.generated_artifact_observation exists to prevent. It fails the run like a FAIL,
+// and it prints under its own tag carrying the cause, so the two are never confused.
+//
+// THIS PARAGRAPH SITS HERE RATHER THAN BESIDE THE ARM IT DESCRIBES, and the move was forced: an
+// earlier revision put it between the arms, where DESIGN section 4c admits no annotation at all.
+// Only module-item grain is modeled, so the parse phase refused it five times -- once per line --
+// and a local `gunbc run` over this entry accepted the same file, because that route never runs the
+// phase that enforces the grain.
 type ReadoutStanding
   = LiveVerdict { holds: Bool }
   | RecordedRunJoined { inputs_match_today: Bool }
   | NotClaimed
   | MechanismNote
-  // A LINE WHOSE QUESTION COULD NOT BE ANSWERED AT ALL, which is a third thing and not a failing
-  // verdict. A host read that refuses says nothing about the subject, so folding it into
-  // LiveVerdict { holds: false } would report drift on the strength of our own bookkeeping failing
-  // -- the error gunbc.generated_artifact_observation exists to prevent. It fails the run like a
-  // FAIL, and it prints under its own tag carrying the cause, so the two are never confused.
   | ReadoutRefused { cause: String }
 
 type ReadoutLine {
