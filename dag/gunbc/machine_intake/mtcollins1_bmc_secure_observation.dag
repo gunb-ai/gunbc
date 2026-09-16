@@ -1,0 +1,275 @@
+module gunbc.machine_intake_mtcollins1_bmc_secure_observation
+
+import std.types { EpochMs, List, NonEmptyStr }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.ipmi_channel {
+  IpmiControllerChannelCensus,
+  IpmiMedium8023Lan,
+  IpmiMediumSerialAsync,
+  IpmiPrivilegeNoAccess,
+  IpmiUserId,
+  ipmi_controller_channel_census,
+  ipmi_lan_channel_member,
+  ipmi_non_lan_channel_member,
+  ipmi_user_channel_access,
+}
+import extdeps.network.ipv4 { ipv4_address }
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import gunbc.machine_intake_mtcollins1_access_observation {
+  mtcollins1_endpoint,
+  mtcollins1_firmware,
+  mtcollins1_controller_fru_identity,
+}
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_subject_binding }
+import gunbc.machine_intake_subject {
+  AssemblyManifest,
+  BmcFru,
+  BoardSerialObservation,
+  ChassisComponent,
+  ComponentIdentity,
+  FirmwareEntry,
+  FirmwareManifest,
+  HostSmbios,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  UnitIdentityInputs,
+  UnitKeyBound,
+  UnitKeyRefused,
+  UnitKeyStanding,
+  bind_unit_key,
+  qualification_subject_of,
+}
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.machine_intake_bmc_secure {
+  BmcCredentialRotationObservation,
+  BmcSecured,
+  BmcSecureRefused,
+  BmcSecureStanding,
+  CredentialAccepted,
+  CredentialRejected,
+  ManagedCredentialReference,
+  PublishedCredentialLanProbe,
+  PublishedCredentialRetired,
+  RotationApplied,
+  derive_bmc_secure,
+  observed_bmc_credential_rotation,
+}
+
+// UNIT-1 INTAKE SUBJECT ON THE PUBLIC PATH. The unit key is minted only by
+// gunbc.machine_intake_subject bind_unit_key from the FRU board serial and the host SMBIOS
+// board serial already observed (same spelling, two sources). Assembly carries the observed
+// chassis part number as a chassis component; DIMM and other electronic identities are not
+// restated here because this module is not the memory-census authority and fabricating serials
+// is refused. Firmware carries the BMC release the controller reported (0.32); BIOS/UEFI and
+// configuration digests stay off the manifest until an observation names them. Consumer:
+// derive_bmc_secure, and the boot wrappers that read mtcollins1_secured_account off BmcSecured.
+
+data mtcollins1_intake_attempt: IntakeAttemptId = "intake-20260913-bmc-secure" as IntakeAttemptId
+
+data mtcollins1_assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "1A624RA00-600-G",
+  components: [
+    ComponentIdentity {
+      kind: ChassisComponent,
+      slot: "chassis",
+      identity: "1A624RA00-600-G",
+    },
+  ],
+}
+
+data mtcollins1_firmware_manifest: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: mtcollins1_firmware.raw_version }],
+  configuration_digests: [],
+}
+
+data mtcollins1_unit_identity_inputs: UnitIdentityInputs = UnitIdentityInputs {
+  bmc_endpoint: BmcEndpoint { host: mtcollins1_endpoint.host, protocol: Ipmi },
+  board_serial_observations: [
+    BoardSerialObservation { source: BmcFru, serial: mtcollins1_controller_fru_identity.board_serial },
+    BoardSerialObservation { source: HostSmbios, serial: mtcollins1_subject_binding.smbios_board_serial },
+  ],
+}
+
+data mtcollins1_unit_key_standing: UnitKeyStanding = bind_unit_key(
+  inputs: mtcollins1_unit_identity_inputs,
+  other_units: [],
+)
+
+fn mtcollins1_intake_subject() -> MachineIntakeSubject? {
+  match mtcollins1_unit_key_standing {
+    UnitKeyBound { key: k } =>
+      Present {
+        value: MachineIntakeSubject {
+          subject: qualification_subject_of(
+            unit_key: k,
+            assembly: mtcollins1_assembly,
+            firmware: mtcollins1_firmware_manifest,
+          ),
+          attempt_id: mtcollins1_intake_attempt,
+        },
+      }
+    UnitKeyRefused { cause: _ } => none
+  }
+}
+
+data mtcollins1_managed_credential: ManagedCredentialReference = ManagedCredentialReference {
+  account: "gunbc",
+  role: AccountRoleAdministrator,
+  secret: mtcollins1_bmc_gunbc_secret_ref,
+  credential_epoch: 1,
+}
+
+data mtcollins1_user3_route_path: NonEmptyStr = "artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt"
+
+data mtcollins1_user3_route_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "c193b0614c4685cda269c4f2d72d05c9e1f8e5443c7f45cd5cbe17671ca047ae",
+})
+
+data mtcollins1_prerotation_probe_path: NonEmptyStr = "artifacts/bmc/mtcollins1-bmc-prerotation-probe-2026-09-12.txt"
+
+data mtcollins1_prerotation_probe_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "7472296813cae4976be134d7ce52b285b950a29255842299e6dcad51f1835814",
+})
+
+data mtcollins1_user2_retire_path: NonEmptyStr = "artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt"
+
+data mtcollins1_user2_retire_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "95cad6c8a4efc41dc7451d0b2ac72421d6c820bb31b3bfb34d77f33d7acea040",
+})
+
+data mtcollins1_prerotation_evidence: EvidenceRef = EvidenceRef {
+  label: mtcollins1_prerotation_probe_path,
+  digest: mtcollins1_prerotation_probe_digest,
+}
+
+data mtcollins1_user3_route_evidence: EvidenceRef = EvidenceRef {
+  label: mtcollins1_user3_route_path,
+  digest: mtcollins1_user3_route_digest,
+}
+
+data mtcollins1_user2_retire_evidence: EvidenceRef = EvidenceRef {
+  label: mtcollins1_user2_retire_path,
+  digest: mtcollins1_user2_retire_digest,
+}
+
+data mtcollins1_bootstrap_at: EpochMs = 1789235173000
+data mtcollins1_rotation_applied_at: EpochMs = 1789258770000
+data mtcollins1_managed_probe_at: EpochMs = 1789258777000
+data mtcollins1_census_at: EpochMs = 1789258816000
+data mtcollins1_published_probe_228_at: EpochMs = 1789258829000
+data mtcollins1_published_probe_231_at: EpochMs = 1789258830000
+data mtcollins1_user2_retire_at: EpochMs = 1789270962000
+
+data mtcollins1_published_user: IpmiUserId = 2
+
+data mtcollins1_channel_census: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    ipmi_lan_channel_member(channel: 1, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 228)),
+    ipmi_non_lan_channel_member(channel: 2, medium: IpmiMediumSerialAsync),
+    ipmi_lan_channel_member(channel: 7, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0)),
+    ipmi_lan_channel_member(channel: 8, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 231)),
+  ],
+  user_access: [
+    ipmi_user_channel_access(channel: 1, user: mtcollins1_published_user, privilege: IpmiPrivilegeNoAccess),
+    ipmi_user_channel_access(channel: 2, user: mtcollins1_published_user, privilege: IpmiPrivilegeNoAccess),
+    ipmi_user_channel_access(channel: 7, user: mtcollins1_published_user, privilege: IpmiPrivilegeNoAccess),
+    ipmi_user_channel_access(channel: 8, user: mtcollins1_published_user, privilege: IpmiPrivilegeNoAccess),
+  ],
+)
+
+data mtcollins1_published_probes: List<PublishedCredentialLanProbe> = [
+  PublishedCredentialLanProbe {
+    channel: 1,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 228),
+    outcome: CredentialRejected { evidence: mtcollins1_user3_route_evidence, observed_at: mtcollins1_published_probe_228_at },
+  },
+  PublishedCredentialLanProbe {
+    channel: 8,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 231),
+    outcome: CredentialRejected { evidence: mtcollins1_user3_route_evidence, observed_at: mtcollins1_published_probe_231_at },
+  },
+]
+
+// USER-3 ROUTE ESTABLISHED DisabledNotRetired (firmware reset restores admin). That is a
+// receipt of the 2026-09-13T00:20Z census, not the live standing: #11234 rotated user 2 so
+// the published password no longer authenticates. Asserting Retired from the user-3 file
+// alone is forbidden (DESIGN §4d). The live observation therefore carries Retired with
+// the user-2 retire artifact as account evidence. Bootstrap evidence is the 2026-09-12
+// prerotation probe (factory still accepted); 00:16:25Z on the user-3 artifact is the
+// same-day confirmation bound as rotation/census evidence, not a second bootstrap.
+
+fn mtcollins1_credential_rotation_observation() -> BmcCredentialRotationObservation? {
+  match mtcollins1_intake_subject() {
+    Absent => none
+    Present { value: subject } =>
+      Present {
+        value: observed_bmc_credential_rotation(
+          subject: subject,
+          endpoint: mtcollins1_endpoint,
+          previous_credential_epoch: 0,
+          bootstrap_probe: CredentialAccepted { evidence: mtcollins1_prerotation_evidence, observed_at: mtcollins1_bootstrap_at },
+          rotation: RotationApplied {
+            reference: mtcollins1_managed_credential,
+            applied_at: mtcollins1_rotation_applied_at,
+            evidence: mtcollins1_user3_route_evidence,
+          },
+          managed_probe: CredentialAccepted { evidence: mtcollins1_user3_route_evidence, observed_at: mtcollins1_managed_probe_at },
+          channel_census: mtcollins1_channel_census,
+          census_evidence: mtcollins1_user3_route_evidence,
+          census_observed_at: mtcollins1_census_at,
+          published_probes: mtcollins1_published_probes,
+          published_user: mtcollins1_published_user,
+          published_account: PublishedCredentialRetired {
+            evidence: mtcollins1_user2_retire_evidence,
+            observed_at: mtcollins1_user2_retire_at,
+          },
+        ),
+      }
+  }
+}
+
+fn mtcollins1_bmc_secure_standing() -> BmcSecureStanding? {
+  match mtcollins1_intake_subject() {
+    Absent => none
+    Present { value: subject } =>
+      match mtcollins1_credential_rotation_observation() {
+        Absent => none
+        Present { value: observation } =>
+          Present {
+            value: derive_bmc_secure(
+              subject: subject,
+              observation: observation,
+              policy: intake_qualification_policy(environment: DevelopmentAndTest),
+            ),
+          }
+      }
+  }
+}
+
+fn mtcollins1_secured_account() -> NonEmptyStr? {
+  match mtcollins1_bmc_secure_standing() {
+    Absent => none
+    Present { value: standing } =>
+      match standing.outcome {
+        BmcSecured { endpoint: _, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+          Present { value: r.account }
+        BmcSecureRefused { cause: _ } => none
+      }
+  }
+}
+
+// WET FETCH OF THE MANAGED SECRET IS THE NEXT CONSUMER. Named username rows
+// mtcollins1_bmc_username / mtcollins1_media_username are mtcollins1_secured_account (BmcSecured
+// arm). Boot CLI names stay mtcollins1_netboot_handoff / mtcollins1_cdrom_handoff; they still take
+// password as a caller-supplied path. Wiring fetch_secret_ref_credential over
+// mtcollins1_managed_credential.secret is a separate change (needs token + Network, the srv3
+// resolve shape). Trigger: those wrappers refuse unless the password is materialized from that
+// SecretRef. NOT satisfied by username gunbc, by this BmcSecureStanding, or by a caller still
+// supplying bytes out of band.
+data mtcollins1_managed_secret_fetch_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when mtcollins1 media-attach and oob power/reset wrappers materialize the password from ManagedCredentialReference.secret via gunbc.auth.secret_ref_credential.fetch_secret_ref_credential; NOT satisfied by username gunbc, by this BmcSecureStanding, or by a caller still supplying bytes out of band" as NonEmptyStr,
+)
