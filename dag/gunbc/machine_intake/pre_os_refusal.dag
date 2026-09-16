@@ -1,0 +1,42 @@
+module gunbc.machine_intake_pre_os_refusal
+
+import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
+import std.types { List, NonEmptyStr }
+import gunbc.fleet_observation_collector_ownership { EndpointOwnership }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SubjectAgreement, SourceByteFact }
+import gunbc.fleet_observation_capture_chunk { CommitBinding, ContinuityCoverage, PositionOrder }
+
+// Domain causes inside std.goal_assessment, not a second assessment algebra.
+// Text remains only where the input authority already supplies a textual cause.
+type PreOsRefusalDetail
+  = PreOsTextRefusal { text: NonEmptyStr }
+  | PreOsOwnershipRefusal { ownership: EndpointOwnership }
+  | PreOsSubjectRefusal { disagreement: SubjectAgreement }
+  | PreOsCommitRefusal { binding: CommitBinding }
+  | PreOsContinuityRefusal { coverage: ContinuityCoverage }
+  | PreOsSourceRefusal { source: SourceByteFact }
+  | PreOsPositionRefusal { order: PositionOrder }
+  | PreOsSourceChanged { before: ObservationEnvelope, after: ObservationEnvelope }
+  | PreOsOccurrenceNotAdjacent { before: ObservationEnvelope, after: ObservationEnvelope }
+  | PreOsMachineDisagrees { expected: NonEmptyStr, observed: NonEmptyStr }
+  | PreOsOccurrenceConflict { subject: ObservationEnvelope }
+
+type PreOsRefusal { location: List<NonEmptyStr>, detail: PreOsRefusalDetail }
+
+fn pre_os_text_refusal(text: NonEmptyStr) -> PreOsRefusal {
+  PreOsRefusal { location: ["observation"], detail: PreOsTextRefusal { text: text } }
+}
+
+fn pre_os_refusal_at(cause: PreOsRefusal, location: NonEmptyStr) -> PreOsRefusal {
+  PreOsRefusal { location: concat([location], cause.location), detail: cause.detail }
+}
+
+// Existing firmware parsers produce textual refusals; lift only that boundary.
+fn pre_os_assessment_refusal(assessment: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, PreOsRefusal> {
+  match assessment {
+    GoalSatisfied { evidence } => GoalSatisfied { evidence: evidence }
+    GoalDiverged { deviations } => GoalDiverged { deviations: deviations }
+    GoalIndeterminate { known_deviations, unknowns } => GoalIndeterminate { known_deviations: known_deviations, unknowns: unknowns }
+    GoalAssessmentRefused { cause } => GoalAssessmentRefused { cause: pre_os_text_refusal(text: cause) }
+  }
+}
