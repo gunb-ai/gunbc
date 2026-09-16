@@ -1,0 +1,51 @@
+module gunbc.demo.board_artifacts
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.compute_board.emission_entry {
+  BoardEmission,
+  BoardEmitted,
+  BoardArticleNotAdmitted,
+  BoardTargetRefused,
+  emit_verilog,
+  emit_spice,
+  emit_ngspice_run,
+  emit_pin_constraints,
+}
+
+// THE FOUR ARTIFACTS ONE BOARD ARTICLE PRODUCES, WRITTEN SIDE BY SIDE SO AN EDIT IS VISIBLE AS A
+// DIFF. This exists for the demo: the readout says the emissions hold, and this puts their BYTES on
+// disk so editing the article's equation and re-running shows exactly which files moved. A refusal
+// is not written as text -- a refused target writes no file and fails the run, because a file
+// containing a refusal reads as an artifact.
+fn write_one<R>(path: String, e: BoardEmission<R>) -> ProcessExit {
+  match e {
+    BoardArticleNotAdmitted { causes: _ } => exit_failure(reason: concat("article not admitted for ", path))
+    BoardTargetRefused { cause: _ } => exit_failure(reason: concat("target refused for ", path))
+    BoardEmitted { source: s } => {
+      let w = Filesystem.Write(path: path, content: s)
+      if w.success { ExitSuccess } else { exit_failure(reason: concat("unwritable: ", path)) }
+    }
+  }
+}
+
+fn first_failure(acc: ProcessExit, next: ProcessExit) -> ProcessExit {
+  match acc {
+    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+    ExitSuccess => next
+  }
+}
+
+fn write_artifacts() -> ProcessExit {
+  first_failure(
+    acc: first_failure(
+      acc: write_one(path: "target/demo/board_power_interlock.v", e: emit_verilog()),
+      next: write_one(path: "target/demo/conditioning_network.spice", e: emit_spice())
+    ),
+    next: first_failure(
+      acc: write_one(path: "target/demo/conditioning_network.cir", e: emit_ngspice_run()),
+      next: write_one(path: "target/demo/board_power_interlock.pcf", e: emit_pin_constraints())
+    )
+  )
+}

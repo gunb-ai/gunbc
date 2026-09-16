@@ -7,6 +7,7 @@ import gunbc.demo.semantic_system_readout {
   note,
   open,
   recorded,
+  refused,
   render,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -39,6 +40,21 @@ test fn w_a_stale_receipt_fails_the_readout() -> Bool {
 // live line it does not have.
 test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
   !any_line_fails(sections: [section_of(first: true, joined: true)])
+}
+
+// A LINE THAT COULD NOT BE ANSWERED STOPS THE RUN, and it is distinguishable from a line that was
+// answered wrongly. Both fail, so a refusal can never be mistaken for a green readout; they print
+// under different tags, so a reader repairing one is never sent after the other.
+test fn w_a_refused_line_fails_the_readout() -> Bool {
+  any_line_fails(sections: [
+    ReadoutSection { title: "S", lines: [refused(text: "a", cause: "host read refused")] }
+  ])
+}
+
+test fn w_a_refusal_renders_under_its_own_tag_with_its_cause() -> Bool {
+  render(sections: [
+    ReadoutSection { title: "S", lines: [refused(text: "a", cause: "host read refused")] }
+  ]) == "ONE AUTHORITY, MANY REALIZATIONS\n\nS\n  REFUSED   a — host read refused\n\n"
 }
 
 test fn w_an_open_frontier_never_renders_as_pass() -> Bool {
