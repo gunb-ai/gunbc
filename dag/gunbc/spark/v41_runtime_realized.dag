@@ -11,6 +11,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization { Placement, LocalFilesystem, RemoteNetwork, LocalInProcess, LocalAccelerator }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_runtime_candidate {
+  V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_input,
 }
 import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity }
