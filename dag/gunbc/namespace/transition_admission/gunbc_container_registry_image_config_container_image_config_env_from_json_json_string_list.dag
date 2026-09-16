@@ -1,0 +1,22 @@
+module gunbc.namespace.transition_admission.gunbc_container_registry_image_config_container_image_config_env_from_json_json_string_list
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+// gunbc#11441 json_string_list hoist: the spelling in container_image_config_env_from_json now
+// binds extdeps.languages.json.parse, where both readers (docker inspect, OCI image config) take it.
+// DISSOLVE-ON: gunbc#11441 merging.
+data gunbc_container_registry_image_config_container_image_config_env_from_json_json_string_list: TransitionAdmission = TransitionAdmission {
+  label: "gunbc#11441 json_string_list lives in json.parse" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.container.registry_image_config", "container_image_config_env_from_json"),
+    spelling: "json_string_list" as NonEmptyStr,
+    expected_candidates: [decl_ref("extdeps.languages.json.parse", "json_string_list")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11441 as UInt32,
+}

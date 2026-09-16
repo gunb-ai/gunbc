@@ -1694,7 +1694,10 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
 fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
-    right: dag_grammar_nonterminal(production: ^dag_production_fn_decl)
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_fn_decl),
+      right: dag_grammar_nonterminal(production: ^dag_production_data_decl)
+    )
   )
 }
 

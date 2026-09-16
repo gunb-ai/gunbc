@@ -1,10 +1,11 @@
 module gunbc.serving.turn_demand
 
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, String }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.work {
   Work, WorkContract, WorkStep, OpaqueEffects, OfferedService, ServiceInterfaceRef, ArtifactManifestRef,
   EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
-  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for,
+  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for, identity_frame,
 }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { SatisfactionRequirement }
@@ -43,17 +44,37 @@ import product.fabric.demand { SatisfactionRequirement }
 // construct Work. Both spellings forced a service request through the materialized-program shape.
 //
 // SO A TURN IS product.fabric.work OfferedService. Its identity is what the caller asks for: the
-// interface it speaks, the normalized inputs, the effect and output contracts, and -- through
-// ExecutionRequirements.capabilities -- the model requirement (AnyAdmittedModel or an exact serving
-// unit). The selected endpoint, launch, weights, tokenizer, runtime image, unit and container
-// environment are realization evidence about an OFFER: they feed offer provenance and provider-use
-// admission, never this identity. A demand that genuinely requires one of them states it as a
-// requirement when such a demand exists; no current caller does, so no such arm is declared here.
+// interface it speaks, the normalized inputs, the model requirement (any admitted model, or one
+// exact serving unit), and the effect and output contracts. The selected endpoint, launch,
+// weights, tokenizer, runtime image, unit and container environment are realization evidence
+// about an OFFER: they feed offer provenance and provider-use admission, never this identity. A
+// demand that genuinely requires one of them states it as a requirement when such a demand
+// exists; no current caller does, so no such arm is declared here.
+//
+// THE MODEL REQUIREMENT IS REQUEST IDENTITY, NOT A CAPABILITY. An earlier spelling carried it in
+// ExecutionRequirements.capabilities, and because fungibility compares capabilities by equality
+// the OFFER had to be stamped with whatever the demand required -- so one launch became three
+// different SupplierOffers depending on who was asking. The capability on both sides is now the
+// one stable token-serving capability the route offers; what the caller requires of the model is
+// carried here, reaches the Work key through the contract inputs, and is screened against the
+// observed served unit before any offer is bound.
+type ServingModelRequirementRef = NonEmptyStr where brand("ServingModelRequirementRef")
+
 type ServingTurnRequest {
   interface: ServiceInterfaceRef
   inputs: ArtifactManifestRef
+  model_requirement: ServingModelRequirementRef
   effect_contract: EffectContractRef
   output_contract: OutputContractRef
+}
+
+// The contract's one inputs identity is the normalized inputs and the model requirement together,
+// each length-framed so neither can be read as part of the other.
+fn serving_turn_contract_inputs(request: ServingTurnRequest) -> ArtifactManifestRef {
+  serialize_content_hash(hash: content_hash_of_value(value: concat(
+    identity_frame(label: "inputs", value: request.inputs as String),
+    identity_frame(label: "model-requirement", value: request.model_requirement as String),
+  ))) as ArtifactManifestRef
 }
 
 // A TURN IS ONE STEP WITH OPAQUE EFFECTS, and that arm is the honest one rather than the tidy one. A
@@ -80,7 +101,7 @@ fn serving_turn_contract(request: ServingTurnRequest) -> WorkContract {
   WorkContract {
     execution: OfferedService { interface: request.interface },
     steps: serving_turn_steps(),
-    inputs: request.inputs,
+    inputs: serving_turn_contract_inputs(request: request),
     effect_contract: request.effect_contract,
     output_contract: request.output_contract,
     output_obligations: serving_turn_output_obligations(),
