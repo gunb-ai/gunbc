@@ -248,7 +248,7 @@ fn vllm_kv_pool_tokens_in(reading: VllmStartupReading) -> TokenCount? {
         Present { value: digits } =>
           match parse_int(s: vllm_ungrouped_digits(text: digits)) {
             Absent => none
-            Present { value: n } => if n < 0 { none } else { Present { value: token_count(count: n as Nat) } }
+            Present { value: n } => if n < 0 { none } else { Present { value: token_count(count: n) } }
           }
       }
     MaximumConcurrency => none
@@ -307,7 +307,7 @@ fn vllm_hundredths_of_decimal(text: String) -> ConcurrentRequestHundredths? {
                       if w < 0 || f < 0 {
                         none
                       } else {
-                        Present { value: concurrent_request_hundredths(count: (w as Nat) * 100 + (f as Nat)) }
+                        Present { value: concurrent_request_hundredths(count: w * 100 + f) }
                       }
                   }
               }

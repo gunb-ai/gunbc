@@ -7,7 +7,7 @@ import std.measure { TokenCount, ConcurrentRequestHundredths }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
-  docker_container_inspect_command, docker_logs_command, DockerLogScope, DockerLogsWhole,
+  docker_container_inspect_command, docker_logs_command,
   docker_exec_command, DockerEnvAssignment,
 }
 import extdeps.docker.container_inspect {
@@ -207,7 +207,7 @@ fn observe_rank_transport(
     RankIdentityUnread { cause: why } =>
       RankTransportRefused { refusal: RankObservationRefusal { subject: subject, step: rank_transport_step, cause: why } }
     RankIdentityRead { incarnation: id, node_rank: rank } =>
-      match rank_leg(ctx: ctx, subject: subject, step: rank_transport_step, command: docker_logs_command(name: subject.container, scope: DockerLogsWhole)) {
+      match rank_leg(ctx: ctx, subject: subject, step: rank_transport_step, command: docker_logs_command(name: subject.container)) {
         RankLegFailed { refusal: r } => RankTransportRefused { refusal: r }
         RankLegRan { stdout: out } =>
           match nccl_transport_verdict(captured_text: out) {
@@ -320,7 +320,7 @@ fn observe_rank_startup(
       match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
         RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
         RankRevisionRead { revision: rev } =>
-          match rank_leg(ctx: ctx, subject: subject, step: rank_startup_step, command: docker_logs_command(name: subject.container, scope: DockerLogsWhole)) {
+          match rank_leg(ctx: ctx, subject: subject, step: rank_startup_step, command: docker_logs_command(name: subject.container)) {
             RankLegFailed { refusal: r } => RankStartupRefused { refusal: r }
             RankLegRan { stdout: out } =>
               RankStartupObserved { reading: rank_startup_reading(

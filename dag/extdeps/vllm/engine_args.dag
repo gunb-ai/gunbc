@@ -382,7 +382,7 @@ fn vllm_argv_nat(argv: List<String>, flag: String) -> VllmArgvNatRead {
           if n < 0 {
             VllmArgvNatUnread { cause: join([flag, " carries ", v, ", which is negative"], "") as NonEmptyStr }
           } else {
-            VllmArgvNat { value: n as Nat }
+            VllmArgvNat { value: n }
           }
       }
     VllmArgvFlagAbsent => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
@@ -436,7 +436,7 @@ fn vllm_basis_points_of_fraction(text: String, flag: String) -> VllmArgvNatRead 
                       if w < 0 || f < 0 {
                         VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which is negative"], "") as NonEmptyStr }
                       } else {
-                        VllmArgvNat { value: (w as Nat) * 10000 + (f as Nat) }
+                        VllmArgvNat { value: w * 10000 + f }
                       }
                   }
               }

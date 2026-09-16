@@ -96,10 +96,6 @@ type SpecField
   = SpecName | SpecImage | SpecNetwork | SpecIpc | SpecShmSize | SpecMemlock | SpecGpusAll
   | SpecDevices | SpecCapAdd | SpecRestart | SpecMounts | SpecEnv | SpecCommand
 
-data relaunch_compared_fields: List<SpecField> = [
-  SpecName, SpecNetwork, SpecIpc, SpecShmSize, SpecMemlock, SpecDevices, SpecCapAdd,
-  SpecRestart, SpecMounts, SpecEnv, SpecCommand,
-]
 
 fn spec_field_wire(f: SpecField) -> NonEmptyStr {
   match f {
@@ -236,7 +232,7 @@ fn compare_env_field(spec: DockerCreateSpec, observed: ContainerInspect, gid_sel
     }
     Present { value: assignments } => {
       let differences = env_differences(spec: spec, observed: assignments)
-      let off_axis = filter(differences, d => is_absent(x: env_difference_axis(name: d.name, gid_selection: gid_selection)))
+      let off_axis = filter(differences, d => axis_is_absent(a: env_difference_axis(name: d.name, gid_selection: gid_selection)))
       match off_axis.first() {
         Present { value: d } => FieldDiffersOffAxis {
           field: SpecEnv,
@@ -368,48 +364,6 @@ type ArgvDifference sole_constructor {
   observed: String
 }
 
-type ArgvComparison
-  = ArgvEqual
-  | ArgvLengthDiffers { planned_words: Nat, observed_words: Nat }
-  | ArgvWordDiffers { difference: ArgvDifference }
-
-type ArgvScanAcc {
-  index: Nat
-  difference: ArgvDifference?
-}
-
-fn argv_compare(planned: List<String>, observed: List<String>) -> ArgvComparison {
-  if count(planned) != count(observed) {
-    ArgvLengthDiffers { planned_words: count(planned), observed_words: count(observed) }
-  } else {
-    let acc = fold(zip(planned, observed), init: ArgvScanAcc { index: 0, difference: none }, f: (a, pair) =>
-      match a.difference {
-        Present { value: _ } => ArgvScanAcc { index: a.index + 1, difference: a.difference }
-        Absent =>
-          if pair.first == pair.second {
-            ArgvScanAcc { index: a.index + 1, difference: none }
-          } else {
-            ArgvScanAcc { index: a.index + 1, difference: Present { value: ArgvDifference {
-              index: a.index, planned: pair.first, observed: pair.second,
-            } } }
-          }
-      })
-    match acc.difference {
-      Absent => ArgvEqual
-      Present { value: d } => ArgvWordDiffers { difference: d }
-    }
-  }
-}
-
-fn argv_comparison_text(c: ArgvComparison) -> String {
-  match c {
-    ArgvEqual => "equal"
-    ArgvLengthDiffers { planned_words: p, observed_words: o } =>
-      join(["the planned argv is ", to_string(p), " words and the observed argv is ", to_string(o)], "")
-    ArgvWordDiffers { difference: d } =>
-      join(["word ", to_string(d.index), ": planned ", d.planned, ", observed ", d.observed], "")
-  }
-}
 
 // ── THE AXIS EACH DIFFERENCE IS ATTRIBUTED TO ─────────────────────────────────────────────────
 //
@@ -573,7 +527,7 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
         }
       } else {
         let differences = argv_word_differences(planned: spec.command, observed: argv)
-        let off_axis = filter(differences, d => argv_difference_axis(planned: spec.command, d: d) |> is_absent)
+        let off_axis = filter(differences, d => axis_is_absent(a: argv_difference_axis(planned: spec.command, d: d)))
         match off_axis.first() {
           Present { value: d } => FieldDiffersOffAxis {
             field: SpecCommand,
@@ -599,8 +553,8 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
   }
 }
 
-fn is_absent(x: T?) -> Bool {
-  match x {
+fn axis_is_absent(a: RelaunchAxis?) -> Bool {
+  match a {
     Absent => true
     Present { value: _ } => false
   }
@@ -627,12 +581,25 @@ fn argv_difference_axis(planned: List<String>, d: ArgvDifference) -> RelaunchAxi
   }
 }
 
+// INDEXED ACCESS RATHER THAN A PAIRWISE ZIP, and the reason is a gap rather than a preference: `zip`
+// is a declared primitive contract in std.primitives with no builtin behind it, so a fold over zipped
+// pairs does not resolve. The lists are equal length by the caller's own guard, so the index is always
+// inhabited and the `Absent` arm is unreachable -- it refuses rather than skipping, because a silently
+// skipped word is a word reported as agreeing.
 fn argv_word_differences(planned: List<String>, observed: List<String>) -> List<ArgvDifference> {
-  fold(enumerate(zip(planned, observed)), init: [], f: (acc, e) =>
-    if e.second.first == e.second.second {
-      acc
-    } else {
-      concat(acc, [ArgvDifference { index: e.first, planned: e.second.first, observed: e.second.second }])
+  fold(enumerate(planned), init: [], f: (acc, e) =>
+    match observed |> skip(e.first) |> first {
+      Absent => concat(acc, [ArgvDifference {
+        index: e.first,
+        planned: e.second,
+        observed: "the observed argv ends before this word",
+      }])
+      Present { value: o } =>
+        if o == e.second {
+          acc
+        } else {
+          concat(acc, [ArgvDifference { index: e.first, planned: e.second, observed: o }])
+        }
     })
 }
 
@@ -642,8 +609,10 @@ fn relaunch_delta_text(d: RelaunchDelta) -> String {
       join([
         "the successor spec differs from the incumbent only on declared axes:\n",
         join(map(cs, c => join(["  ", field_comparison_text(c: c)], "")), "\n"),
-        "\n  NOT COMPARED (declared, with triggers): ",
-        join(map(us, u => spec_field_wire(f: u.field) as String), ", "),
+        "\n  NOT COMPARED, declared rather than omitted:\n",
+        join(map(us, u => join([
+          "    ", spec_field_wire(f: u.field) as String, ": ", u.reason as String, "\n      ", u.trigger as String,
+        ], "")), "\n"),
       ], "")
     DeltaRefused { off_axis: offs, unreadable: uns } =>
       join([
@@ -764,6 +733,31 @@ fn rollback_to_preserved(
   }
 }
 
+// A STOP THAT SUCCEEDED AND A RENAME THAT DID NOT LEAVES THE INCUMBENT UNDER ITS OWN NAME, STOPPED.
+// The restoration is therefore a start and nothing else -- renaming it back would be renaming it to
+// the name it still has.
+fn rollback_restart_incumbent(ctx: SparkMaterializeContext, name: NonEmptyStr) -> RollbackOutcome
+  uses net: Network
+{
+  match relaunch_leg(ctx: ctx, step: StepStartSuccessor, command: docker_start_command(name: name)) {
+    Present { value: why } => RollbackFailed { step: "restart-stopped-incumbent" as NonEmptyStr, cause: why }
+    Absent => RolledBack { restored: name }
+  }
+}
+
+// ── THE FLIP, AND WHY THE INCARNATION IS PART OF IT ───────────────────────────────────────────
+//
+// TWO VERDICTS NAMING ONE CONTAINER ID ARE TWO READINGS OF ONE INCARNATION, which is what a readback
+// taken before the daemon replaced the object would return -- and it would then compare a log to
+// itself and report no flip, or report one because the log still held the predecessor's lines. The id
+// is the discriminator that makes the comparison be about two containers rather than about one read
+// twice.
+fn transport_flipped(before: RankTransportVerdict, after: RankTransportVerdict) -> Bool {
+  (after.incarnation as String) != (before.incarnation as String)
+    && (nccl_realized_transport_wire(t: after.reading.transport) as String)
+      != (nccl_realized_transport_wire(t: before.reading.transport) as String)
+}
+
 // ── THE UNIT OF THIS TRANSACTION IS THE ARM, NOT THE RANK ────────────────────────────────────
 //
 // A PER-RANK RELAUNCH WOULD BE A DIFFERENT AND WRONG OPERATION. These four containers are ONE
@@ -859,17 +853,47 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
           match observe_rank_transport(ctx: plan.ctx, subject: plan.subject, container: incumbent) {
             RankTransportRefused { refusal: r } =>
               CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
-            RankTransportObserved { verdict: before } =>
-              CaptureAcc {
-                captures: [ArmCapture {
-                  rank: plan,
-                  before: before,
-                  preserved: preserved_container_name(name: plan.subject.container, incumbent: before.reading.transport),
-                }],
-                causes: [],
+            RankTransportObserved { verdict: before } => {
+              let preserved = preserved_container_name(name: plan.subject.container, incumbent: before.reading.transport)
+              match preserved_name_is_free(ctx: plan.ctx, subject: plan.subject, preserved: preserved) {
+                Present { value: why } => CaptureAcc { captures: [], causes: [why] }
+                Absent => CaptureAcc {
+                  captures: [ArmCapture { rank: plan, before: before, preserved: preserved }],
+                  causes: [],
+                }
               }
+            }
           }
       }
+  }
+}
+
+// ── THE PRESERVED NAME IS CHECKED BEFORE ANYTHING STOPS, NOT WHEN THE RENAME FAILS ───────────
+//
+// A COLLISION HERE IS NOT HYPOTHETICAL: `glm-native-tp4-socket` EXISTS ON ALL FOUR HOSTS RIGHT NOW,
+// left there by the relaunch of 2026-09-16 that this transaction reproduces. Discovering that at the
+// rename step would mean the arm is already stopped -- an outage taken for a reason that was
+// knowable while it was still serving. So the capture phase asks, and the whole roster refuses
+// before a single container is touched.
+//
+// AND IT REFUSES RATHER THAN CHOOSING ANOTHER NAME. A transaction that appended a serial number
+// would silently accumulate rollback records nobody can tell apart, and the operator would lose the
+// one thing the rename buys: knowing, from the name alone, what the preserved object is.
+fn preserved_name_is_free(
+  ctx: SparkMaterializeContext,
+  subject: ObservedRankSubject,
+  preserved: NonEmptyStr,
+) -> NonEmptyStr?
+  uses net: Network
+{
+  match observe_rank_container(ctx: ctx, subject: observed_rank_subject(host: subject.host, container: preserved)) {
+    RankInspectRefused { refusal: _ } => none
+    RankInspected { subject: _, container: existing } => Present { value: join([
+      observed_rank_subject_text(s: subject), ": the name this transaction would preserve the incumbent under, ",
+      preserved as String, ", is already held by container ", existing.id,
+      ". Nothing has been stopped. Remove or rename that object first -- this transaction will not choose a second name, ",
+      "because a rollback record nobody can identify is not a rollback record.",
+    ], "") as NonEmptyStr }
   }
 }
 

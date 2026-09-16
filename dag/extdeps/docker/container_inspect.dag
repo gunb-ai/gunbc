@@ -473,7 +473,7 @@ fn json_field_nat(obj: JsonValue, key: String) -> JsonFieldRead<Nat> {
       if n < 0 {
         FieldMalformed { cause: join([key, " is ", to_string(n), ", which no unsigned carrier can hold; it is refused rather than clamped"], "") }
       } else {
-        FieldRead { value: n as Nat }
+        FieldRead { value: n }
       }
   }
 }

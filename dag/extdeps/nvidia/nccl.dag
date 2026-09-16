@@ -193,7 +193,7 @@ fn nccl_parse_emitter(prefix: String) -> NcclLogEmitter? {
                   } else {
                     match parts |> skip(2) |> first {
                       Absent => none
-                      Present { value: tid_and_device } => nccl_parse_tid_and_device(host: host, pid: pid as Nat, text: tid_and_device)
+                      Present { value: tid_and_device } => nccl_parse_tid_and_device(host: host, pid: pid, text: tid_and_device)
                     }
                   }
               }
@@ -231,8 +231,8 @@ fn nccl_parse_tid_and_device(host: String, pid: Nat, text: String) -> NcclLogEmi
                         Present { value: NcclLogEmitter {
                           host_tag: host as NonEmptyStr,
                           pid: pid,
-                          tid: tid as Nat,
-                          local_device: device as Nat,
+                          tid: tid,
+                          local_device: device,
                         } }
                       }
                   }
@@ -385,7 +385,7 @@ fn nccl_channel_transport(line: NcclLogLine) -> NcclChannelTransport? {
                                         emitter: line.emitter,
                                         channel: channel,
                                         direction: dir,
-                                        net_device: device as Nat,
+                                        net_device: device,
                                         transport: t,
                                       } }
                                   }
@@ -410,7 +410,7 @@ fn nccl_channel_number(body: String) -> Nat? {
     Present { value: digits } =>
       match parse_int(s: trim(s: digits)) {
         Absent => none
-        Present { value: n } => if n < 0 { none } else { Present { value: n as Nat } }
+        Present { value: n } => if n < 0 { none } else { Present { value: n } }
       }
   }
 }

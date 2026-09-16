@@ -161,10 +161,12 @@ fn docker_rename_command(name: NonEmptyStr, new_name: NonEmptyStr) -> ArgvComman
 // ── LOGS ──────────────────────────────────────────────────────────────────────────────────────
 //
 // THE WHOLE LOG, BECAUSE THE LINES THAT MATTER ARE AT THE BEGINNING. NCCL announces the network it
-// built once per communicator init, during startup; `--tail` returns the END of the stream, so a
-// tailed read of a long-running engine returns steady-state request logging and no announcement at
-// all -- and the reader would then report "no transport announced" for a rank that announced one
-// perfectly well. The bounded arm exists for callers whose subject genuinely is the recent output.
+// built once per communicator init, during startup, and the engine prints its KV residuals a few
+// seconds later; `--tail` returns the END of the stream, so a tailed read of a long-running engine
+// returns steady-state request logging and no announcement at all -- and the reader would then
+// report "no transport announced" for a rank that announced one perfectly well. No bounded arm is
+// offered, because an arm nothing constructs is a decoration that will be reached for by the next
+// author who wants the cheap read and does not know why it is the wrong one.
 //
 // THIS IS AN UNBOUNDED READ AND THAT IS A DECLARED COST, not an oversight: an engine logging at INFO
 // with NCCL_DEBUG=INFO produces a stream whose size grows with uptime, and this command transfers all
@@ -173,21 +175,8 @@ fn docker_rename_command(name: NonEmptyStr, new_name: NonEmptyStr) -> ArgvComman
 // arithmetic over extdeps.time.rfc3339 (add a duration to a captured instant), which std does not
 // carry today. SUFFICIENT FOR: reading the startup announcement of a container that has been up for
 // weeks without transferring its steady-state log.
-type DockerLogScope
-  = DockerLogsWhole
-  | DockerLogsLastLines { lines: Nat }
-
-fn docker_logs_command(name: NonEmptyStr, scope: DockerLogScope) -> ArgvCommand {
-  argv_command(
-    program: docker_binary_path,
-    arguments: concat(
-      concat(["logs"], match scope {
-        DockerLogsWhole => []
-        DockerLogsLastLines { lines: n } => ["--tail", to_string(n)]
-      }),
-      [name as String],
-    ),
-  )
+fn docker_logs_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["logs", name as String])
 }
 
 // `docker exec` runs argv inside a running container; env assignments ride `--env`, never the
