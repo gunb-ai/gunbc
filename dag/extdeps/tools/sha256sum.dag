@@ -61,9 +61,6 @@ service sha256sum.Sha256 {
       0 => Unit
       nonzero => String "sha256sum could not read the file"
     }
-    mock_response {
-      0 => { line: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  -", success: true } "hermetic sha256sum.Sha256.DigestFile: the empty-input digest. THE SECOND COLUMN IS A LITERAL AND MUST STAY ONE. Path interpolation in mock_response is unsupported (extdeps.crypto.hash File, gunbc#10934). sha256sum_digest_from_line reads the first field. This arm is the hermetic route for DigestFile claims; it does not hash the named path."
-    }
   }
 
   operation DigestStdin {
@@ -80,9 +77,6 @@ service sha256sum.Sha256 {
     exit {
       0 => Unit
       nonzero => String "sha256sum could not digest standard input"
-    }
-    mock_response {
-      0 => { line: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  -", success: true } "hermetic sha256sum.Sha256.DigestStdin: the empty-input digest, which is also the correct digest of the empty string (empty_diff_has_a_real_digest). THE SECOND COLUMN IS A LITERAL. Capture-verification identities that must hash non-empty consumed bytes stay on the local-repo wet lane (excl_local_repo_wet_digest_stdin_reason); this mock is not sufficient for those and does not discharge that dissolve-on."
     }
   }
 
