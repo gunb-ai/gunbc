@@ -2,14 +2,13 @@ module extdeps.tools.sha256sum
 
 import std.types { NonEmptyStr, Bool, Unit }
 import std.string_type { String }
-import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.crypto.hash { Digest, sha256_digest, sha256sum_program }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
@@ -38,10 +37,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // unlike sha512sum there is no further_citations slot to carry the consumed citation structurally.
 // Declaring one is a modeling act on this module's own subject rather than part of removing the
 // fork, so it stays with this module's owner.
-data sha256sum_path_resolved_program: NonEmptyStr = "sha256sum"
-
 data sha256sum_cli_tool: CliTool = CliTool {
-  name: sha256sum_path_resolved_program as String,
+  name: sha256sum_program as String,
   min_version: none,
   installable_via: [SourceCoreutils],
 }
@@ -129,10 +126,6 @@ data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
 type Sha256FileDigest
   = Sha256FileDigest { digest: Digest }
   | Sha256FileDigestUnavailable { path: NonEmptyStr, reason: String }
-
-fn sha256sum_file_command(path: String) -> ArgvCommand {
-  argv_command(program: sha256sum_path_resolved_program, arguments: ["--", path])
-}
 
 fn sha256sum_file_digest_via_shell(path: NonEmptyStr) -> Sha256FileDigest {
   let observed = sha256sum.Sha256.DigestFile(path: path)

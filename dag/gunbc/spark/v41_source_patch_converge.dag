@@ -14,8 +14,8 @@ import std.realization_reconcile {
 }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build { VllmContainerBuildRecipe }
-import extdeps.crypto.hash { sha256sum_line_digest }
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell, sha256sum_file_command }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.git {
   git_apply_check_command, git_apply_reverse_check_command, git_apply_command, git_diff_binary_head_command,
