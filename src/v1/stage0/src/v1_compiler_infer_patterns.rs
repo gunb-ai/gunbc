@@ -596,19 +596,17 @@ pub fn lookup_variant_in_type(
                 ) {
                     Some(resolved) => {
                         if (resolved.connective.clone() == Connective::Disj) {
-                            match crate::v1_std_core::find_child_named(
+                            match find_variant_child_keyed(
                                 resolved.clone(),
-                                crate::v1_std_core::qualified_last_segment(variant_name.clone()),
+                                variant_name.clone(),
                                 source_indices.clone(),
                             ) {
-                                Some(variant_child) => match crate::v1_std_core::find_child_named(
+                                Some(variant_child) => match find_variant_child_keyed(
                                     expand_scrut_type_for_variant_lookup(
                                         scrut_node.clone(),
                                         env.clone(),
                                     ),
-                                    crate::v1_std_core::qualified_last_segment(
-                                        variant_name.clone(),
-                                    ),
+                                    variant_name.clone(),
                                     source_indices.clone(),
                                 ) {
                                     Some(scrut_child) => node_lookup_resolved(scrut_child.clone()),
@@ -698,12 +696,11 @@ pub fn lookup_variant_in_type(
                                                         == "Present".to_string())
                                                         || (variant_name.clone()
                                                             == "Absent".to_string())));
-                                                let direct_match =
-                                                    crate::v1_std_core::find_child_named(
-                                                        scrut_node.clone(),
-                                                        variant_name.clone(),
-                                                        source_indices.clone(),
-                                                    );
+                                                let direct_match = find_variant_child_keyed(
+                                                    scrut_node.clone(),
+                                                    variant_name.clone(),
+                                                    source_indices.clone(),
+                                                );
                                                 let record_destructure = (((field_binding_count
                                                     .clone()
                                                     > 0)
@@ -818,6 +815,37 @@ pub fn variant_pattern_coverage_key(name: String) -> String {
             segs.iter()
                 .cloned()
                 .fold("".to_string(), |_: String, seg: String| seg.clone())
+        }
+    }
+}
+
+pub fn find_variant_child_keyed(
+    n: Rc<Node>,
+    variant_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    {
+        let key = variant_pattern_coverage_key(variant_name.clone());
+        let matches = Rc::new({
+            let mut __result = Vec::new();
+            for c in n.children.clone().iter().cloned() {
+                if (variant_pattern_coverage_key(crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    c.clone(),
+                )) == key.clone())
+                {
+                    __result.push(c);
+                }
+            }
+            __result
+        });
+        if ((matches.clone().len() as i64) > 1) {
+            std::option::Option::None
+        } else {
+            match matches.clone().first().cloned() {
+                Some(ch) => Some(ch.clone()),
+                std::option::Option::None => std::option::Option::None,
+            }
         }
     }
 }
@@ -960,7 +988,7 @@ pub fn pattern_row_is_irrefutable(row: Rc<Vec<Rc<MatchPattern>>>) -> bool {
 pub fn pattern_matches_constructor(p: Rc<MatchPattern>, ctor: String) -> bool {
     match (*p.clone()).clone() {
         MatchPattern::VariantPattern { name: n, .. } => {
-            (variant_pattern_coverage_key(n.clone()) == ctor.clone())
+            (variant_pattern_coverage_key(n.clone()) == variant_pattern_coverage_key(ctor.clone()))
         }
         MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitBool { value: b, .. } => {
@@ -1109,11 +1137,11 @@ pub fn render_constructor_witness(
             },
         );
         if ((parts.clone().len() as i64) == 0) {
-            ctor.clone()
+            ctor
         } else {
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(ctor.clone(), " { ".to_string()),
+                    v1_rt::concat(ctor, " { ".to_string()),
                     parts.clone().join(&", ".to_string()),
                 ),
                 " }".to_string(),
@@ -1252,7 +1280,11 @@ pub fn exhaustiveness_witnesses(
                                                 for w in sub.iter().cloned() {
                                                     __result.push(Rc::new(PatternWitnessRow {
                                                         cells: v1_rt::concat(
-                                                            Rc::new(vec![c.clone()]),
+                                                            Rc::new(vec![
+                                                                variant_pattern_coverage_key(
+                                                                    c.clone(),
+                                                                ),
+                                                            ]),
                                                             w.cells.clone(),
                                                         ),
                                                     }));
