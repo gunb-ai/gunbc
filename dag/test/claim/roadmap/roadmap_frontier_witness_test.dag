@@ -49,7 +49,7 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
   }
 }
 
-fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+fn undispatchable_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_CMY81J4ZCKAVZFQEAEFV" as RoadmapNodeIdentity,
     node: roadmap_frontier_nid(s: id),
@@ -132,7 +132,7 @@ test fn witness_signed_node_is_done_and_unblocks_child() -> Bool {
 }
 
 test fn witness_unsized_excluded_from_frontier() -> Bool {
-  let node = unsized_derivable(id: "unsized-open", prs: [], title: "NotDispatchable")
+  let node = undispatchable_derivable(id: "unsized-open", prs: [], title: "NotDispatchable")
   let doc = fixture_doc(nodes: [node], edges: [])
   let frontier = spawn_frontier(doc: doc, merged: [])
   count(frontier.ready) == 0

@@ -56,7 +56,7 @@ fn rejected_node(base: RoadmapNode) -> RoadmapNode {
   }
 }
 
-fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+fn undispatchable_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_NHF9FERTMRDJHGNW226Y" as RoadmapNodeIdentity,
     node: roadmap_spawner_nid(s: id),
@@ -103,7 +103,7 @@ test fn witness_unsatisfied_dep_not_spawnable() -> Bool {
 }
 
 test fn witness_unsized_node_excluded() -> Bool {
-  let node_a = unsized_derivable(id: "test-unsized", prs: [], title: "NotDispatchable Node")
+  let node_a = undispatchable_derivable(id: "test-unsized", prs: [], title: "NotDispatchable Node")
   let doc = fixture_doc(nodes: [node_a], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [])
   !any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-unsized"))
