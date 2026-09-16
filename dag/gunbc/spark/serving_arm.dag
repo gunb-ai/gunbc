@@ -768,45 +768,49 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
   ], "")
 }
 
-// ── THE ADMITTED SEQUENCE COUNT, RAISED BY OPERATOR RULING 2026-09-16 ─────────────────────────
-//
-// WHAT 1 WAS, SO THE RAISE IS NOT READ AS A CORRECTION OF A MISTAKE. One admitted sequence was never a
-// claim that the engine can serve only one. It said the runtime sequence capacity is unmeasured AND the
-// KV-resident capacity is unmeasured, and that until both exist the interactive overlap policy admits
-// the one value that cannot over-commit -- which made an unmodelled co-tenant externality structurally
-// impossible while the arm came online, and replaced an earlier 4 that had nothing behind it.
-//
-// WHY IT MOVES NOW. The cost of that conservatism is measured rather than supposed: the live engine on
-// Group B reports one running request with a second queued behind it and 7% KV occupancy at a
-// 262,144-token window, so the bound is serialising every caller while most of the cache sits idle.
-//
-// 16 IS A CHOICE AND NOT A MEASUREMENT, AND CONFLATING THOSE IS A NAMED FAILURE ON THIS FLEET.
-// gunbc.spark.pair_serving_desired SparkPairServingSeqCapacity exists precisely because one route's
-// chosen --max-num-seqs 32 was recorded as though an engine had reported it, and then travelled to
-// every model after it; that type's own basis ends by ruling that the number may not travel across
-// model, quantisation or KV layout and that a GLM arm carries its own. This is that arm's own number,
-// nothing derives it, and the operator's stated reasoning is that over-provisioning is the cheaper
-// error here -- "better to have too many than too little".
-//
-// WHAT WOULD RETIRE THE GUESS: a concurrency run against KV occupancy on this checkpoint at this
-// topology, which is the measurement neither 1 nor 16 ever had. Until it exists this value carries no
-// more evidential weight than the 1 it replaces -- it is a better-judged bound, not a better-grounded
-// one. Refusing to launch until measured is NOT the alternative: that was tried on this fleet and
-// deadlocked it, because the engine that would supply the measurement could never start.
-// ITS PREFIX CACHING IS ENABLED AND ASKED FOR RATHER THAN ASSUMED. Measured by constructing the model
-// configuration inside the derived image on srv9 2026-09-13 -- no engine, no weights -- where
-// zai-org/GLM-5.3-Flash reports runner_type=generate, is_hybrid=True and is_prefix_caching_supported=True,
-// which is what an omitted flag would have resolved to at this revision. Naming it makes that resolution a
-// decision rather than an inference, and keeps the value stable if a later checkpoint answers differently.
 data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: 262144,
   max_num_batched_tokens: 2048,
-  max_num_seqs: 16,
+  max_num_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
   speculation_enabled: false,
   serve_port: 30000,
   served_alias: "glm-5.3-flash" as NonEmptyStr,
+  prefix_caching: PrefixCachingExplicit { enabled: true },
+}
+
+// ── THE CONCURRENT PROFILE IS A DIFFERENT SUBJECT, AND THAT IS THE POINT ──────────────────────
+//
+// WHY THIS IS NOT AN EDIT TO THE ROW ABOVE. A ServingCompatibilitySubject is all five of its fields
+// INCLUDING the profile, so changing a profile in place does not update a configuration -- it silently
+// re-points every receipt attached to that subject at a configuration which never ran. This row exists
+// because I did exactly that: I raised max_num_seqs from 1 to 16 inside the initial profile, which left
+// gunbc.spark.serving_compatibility glm_native_on_derived_nope_standing asserting that a sixteen-sequence
+// subject served on 2026-09-13, when what ran that day carried --max-num-seqs 1 and
+// --gpu-memory-utilization 0.84. That is the borrowed-profile substitution the subject type exists to
+// forbid, committed against the type by editing underneath it.
+//
+// THE TWO DELTAS FROM THE INITIAL PROFILE, both operator decisions of 2026-09-16:
+// sixteen admitted sequences rather than one, on the operator's ruling that over-provisioning is the
+// cheaper error while neither the runtime sequence capacity nor the KV-resident capacity is measured;
+// and 8567 basis points rather than 8400, which is the engine's own advice -- it reports that 0.84 is
+// effectively 0.8233 once CUDA-graph profiling is charged, and names 0.8567 as the value restoring the
+// intended KV size.
+//
+// ITS STANDING IS NOT INHERITED FROM THE ROW ABOVE. This subject carries no execution receipt until an
+// engine running THIS profile is observed serving, which is what
+// gunbc.spark.serving_arm_launch intent_refusal will enforce: an unrun subject is admitted for a bounded
+// experiment and refused for normal serving.
+data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile {
+  max_model_len: 262144,
+  max_num_batched_tokens: 2048,
+  max_num_seqs: 16,
+  decided_gpu_memory_basis_points: basis_point(count: 8567),
+  kv_cache_dtype_wire: "auto" as NonEmptyStr,
+  speculation_enabled: false,
+  serve_port: glm_native_initial_profile.serve_port,
+  served_alias: glm_native_initial_profile.served_alias,
   prefix_caching: PrefixCachingExplicit { enabled: true },
 }
 

@@ -48,7 +48,7 @@ import std.measure { TokenCount, token_count, BasisPoint, basis_point, basis_poi
   ByteSize, byte_size, byte_size_count, second_count, mebibyte_count,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.vllm.engine_args { vllm_prefix_caching_argv }
+import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire }
 import extdeps.vllm.runtime_defaults { defaults_source_revision }
 import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
 
@@ -228,46 +228,6 @@ data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
 // such a checkpoint matches the shape that has been serving rather than inventing a second convention.
 data glm_local_checkout_container_dir: NonEmptyStr = "/model" as NonEmptyStr
 
-// ── THE MEMORY FRACTION ARRIVES AS AN ARGUMENT AND THIS MODULE DOES NOT DECIDE IT ──────────────
-//
-// A ROW HERE NAMED 0.90 AND THE NUMBER IT WAS DERIVED AGAINST HAD NO AUTHORITY OVER THE LAUNCH. The note
-// it carried reasoned carefully about the fraction of the device's TOTAL memory, and the engine admits
-// against FREE device memory at startup -- so the whole derivation was performed against the wrong
-// instrument and read as sound. On 2026-09-10 two of four ranks refused the resulting 109.52 GiB budget
-// against 106.82 GiB free, nine minutes after the incumbent had already been stopped. The class is
-// gunbc.recurring_failure_mode.host_available_memory_read_as_device_admission.
-//
-// SO THE FRACTION IS A PARAMETER, NOT A ROW. There is no value in this module for a launch to reach
-// for: a caller must supply one, and this module never decides it.
-//
-// WHAT RESOLVES IT DOES NOT EXIST YET, AND THIS ANNOTATION WILL NOT PRETEND IT DOES. The intended
-// producer is a fresh per-rank device-memory reading taken at admission time, which lands with the
-// bounded relaunch and imports this module for ArmNode -- the dependency runs that way round so the
-// renderer stays free of the resolution. Until that producer lands, every caller is supplying the
-// incumbent's own unchanged request, which is what a transport-only comparison requires anyway.
-//
-// THE RENDERING IS <digit>.<two digits> AND TWO EARLIER FORMS WERE WRONG AT OPPOSITE ENDS. `"0." + bp/100`
-// rendered 900 basis points as "0.9" -- ten times the intended 0.09 -- and the padded repair then rendered
-// 10000 as "0.100", which is not a fraction at all. NEITHER WAS FOUND BY READING THE CODE OR BY THE
-// TYPECHECK: the first by asking what the low end does, the second by EXECUTING a round trip against the
-// parser over every wire value, which went red immediately. The whole part is divided out rather than assumed
-// zero, so the function is total over basis points instead of over the range its author had in mind.
-// THE REVERSE DIRECTION IS NOT HERE, AND ITS ABSENCE IS DELIBERATE. Reading a utilisation fraction
-// back OUT of an observed argv is a readback concern, and its only consumer is the rank observer that
-// compares a running container's arguments against this plan. That observer is not in this change, so
-// landing the parse here would be a declaration nothing reads -- the two arrive together or not at all.
-fn render_utilization_fraction(basis_points: BasisPoint) -> String {
-  let bp = basis_point_count(bp: basis_points)
-  join([
-    to_string(bp / 10000), ".",
-    pad_two_digits(n: (bp % 10000) / 100),
-  ], "")
-}
-
-fn pad_two_digits(n: Nat) -> String {
-  if n < 10 { join(["0", to_string(n)], "") } else { to_string(n) }
-}
-
 // THE MOUNT AND THE MODEL PATH BOTH COME FROM THE PLACEMENT, AND AN EARLIER REVISION READ ONLY ONE
 // ARM OF IT. This function built the Hub-cache path unconditionally -- correct for the native
 // checkpoint, and silently wrong for any checkpoint placed in a local directory, which is what the
@@ -360,7 +320,7 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // two endpoint names are seven spellings of ONE decision, so they are derived from
 // gunbc.spark.collective_transport_plan rather than listed here. A rank cannot now carry four of the
 // seven.
-fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> DockerCreateSpec {
+fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile) -> DockerCreateSpec {
   let mount = arm_mount_plan(row: crow)
   DockerCreateSpec {
     name: glm_native_container_name,
@@ -381,7 +341,7 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
       DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: to_string(second_count(s: glm_5_3_flash_vllm_engine_ready_timeout)) },
       DockerEnvAssignment { name: "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr, value: to_string(mebibyte_count(m: glm_5_3_flash_gb10_sparse_indexer_max_logits)) },
     ], transport_plan_env(p: node.transport)),
-    command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, utilization_basis_points: utilization_basis_points),
+    command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
   }
 }
 
@@ -399,7 +359,7 @@ data glm_native_shm_size: ByteSize = byte_size(count: 10737418240)
 // revision compared the WHOLE line against what the container reports and refused every healthy rank with
 // "argv differs first at word 0 (planned 63 words, observed 36)" -- word zero being "docker" against the
 // model path. Splitting the list here gives the comparison a referent the observation can actually hold.
-fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> List<String> {
+fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile) -> List<String> {
   concat([
     arm_mount_plan(row: crow).model_path as String,
     "--served-model-name", profile.served_alias as String,
@@ -413,7 +373,7 @@ fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
     "--max-num-batched-tokens", to_string(profile.max_num_batched_tokens),
     "--max-num-seqs", to_string(profile.max_num_seqs),
     "--kv-cache-dtype", profile.kv_cache_dtype_wire as String,
-    "--gpu-memory-utilization", render_utilization_fraction(basis_points: utilization_basis_points),
+    "--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: profile.decided_gpu_memory_basis_points),
     "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
     "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
     "--enable-auto-tool-choice",
@@ -472,8 +432,8 @@ type ArmNodeLaunch sole_constructor {
 // THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
 // any roster. `serving_arm_admits` is the check whose absence let a previous revision admit a
 // known-impossible tuple, so it is consulted before anything renders.
-fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> ArmLaunchPlan {
-  plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, profile: profile, utilization_basis_points: utilization_basis_points)
+fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile) -> ArmLaunchPlan {
+  plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, profile: profile)
 }
 
 // ── A TUPLE EXECUTION HAS ALREADY REFUSED MAY NOT BE PLANNED AGAIN ─────────────────────────────
@@ -548,7 +508,7 @@ fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEm
   }
 }
 
-fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> ArmLaunchPlan {
+fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile) -> ArmLaunchPlan {
   let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
   if measured_subject_refuses(subject: subject) {
     ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
@@ -568,7 +528,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
               match arm_node_roster(group: group, expected_ranks: serving_topology_rank_count(t: topology)) {
                 ArmNodeRosterRefused { cause: c } => ArmLaunchRefused { cause: c }
                 ArmNodesResolved { nodes: ns, master: m } => ArmLaunchPlanned {
-                  lines: map(ns, n => arm_node_launch(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points)),
+                  lines: map(ns, n => arm_node_launch(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile)),
                   master: m,
                 },
               }
@@ -583,13 +543,13 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
 // the same value rather than two renderings that can drift. The engine argv is carried separately
 // because a running container remembers only that half -- the create flags were consumed by the daemon
 // -- so a readback comparing the whole line against a container's own arguments compares nothing.
-fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> ArmNodeLaunch {
-  let spec = arm_container_spec(node: node, master: master, crow: crow, rrow: rrow, ranks: ranks, profile: profile, utilization_basis_points: utilization_basis_points)
+fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile) -> ArmNodeLaunch {
+  let spec = arm_container_spec(node: node, master: master, crow: crow, rrow: rrow, ranks: ranks, profile: profile)
   ArmNodeLaunch {
     node: node,
     container: spec,
     create: docker_create_command(spec: spec),
-    engine_argv: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, utilization_basis_points: utilization_basis_points),
+    engine_argv: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
     image_reference: runtime_artifact_wire(a: rrow.artifact),
   }
 }

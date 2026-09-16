@@ -2,6 +2,7 @@ module test.claim.spark.serving_arm_launch_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
+import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire }
 import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
@@ -9,6 +10,7 @@ import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOv
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.serving_arm {
+  glm_native_concurrent_profile,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
   GunbcSparkrunVllmDs4Gb10,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
@@ -29,7 +31,6 @@ fn planned_lines(f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
     topology: FourSparkTp4,
     group: FabricGroupB,
     profile: glm_native_initial_profile,
-    utilization_basis_points: glm_native_initial_profile.decided_gpu_memory_basis_points,
   ) {
     ArmLaunchRefused { cause: _ } => false
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
@@ -132,8 +133,7 @@ test fn w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory() -> Bool 
             node: fx_socket_rank,
             master: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 21),
             crow: crow, rrow: rrow, ranks: 4,
-            profile: glm_native_initial_profile,
-            utilization_basis_points: glm_native_initial_profile.decided_gpu_memory_basis_points)
+            profile: glm_native_initial_profile)
           length(spec.devices) == 0
             && length(spec.cap_add) == 0
             && !spec.memlock_unlimited
@@ -161,7 +161,6 @@ fn plan_unrun_subject(intent: ArmIntent) -> ArmLaunchPlan {
     group: FabricGroupB,
     intent: intent,
     profile: glm_native_initial_profile,
-    utilization_basis_points: glm_native_initial_profile.decided_gpu_memory_basis_points,
   )
 }
 
@@ -181,6 +180,26 @@ test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_ans
        != plan_refusal_cause(p: plan_unrun_subject(intent: ArmBoundedExperiment))
 }
 
+// ── THE UTILISATION REACHES THE ARGV AT FULL PRECISION, AND IT COMES FROM THE PROFILE ─────────
+//
+// TWO DEFECTS IN ONE ROW, BOTH FOUND AGAINST THE LIVE ARM. This module carried its own
+// basis-point renderer which divided the fractional part by 100 and padded two digits, so 8567
+// rendered as `0.85` -- the plan could not express the value the engine is actually running at.
+// extdeps.vllm.engine_args vllm_basis_point_fraction_wire already owned that projection and
+// preserves full precision while still trimming 8200 to `0.82`, so the local one is deleted rather
+// than repaired.
+//
+// AND THE VALUE IS THE PROFILE'S. The utilisation used to arrive as an independent function
+// argument beside a profile that also carried one, so a caller could hand the renderer 8567 while
+// the compatibility subject -- which is keyed by the profile -- said 8400, and both typechecked.
+// The argument is gone; there is one value and no second place for it to disagree with itself.
+test fn w_the_utilisation_argv_is_the_profiles_value_at_full_precision() -> Bool {
+  planned_lines(f: ls => all(ls, l =>
+    argv_pair_is(argv: l.engine_argv, flag: "--gpu-memory-utilization", value: "0.84")))
+    && (vllm_basis_point_fraction_wire(bp: glm_native_concurrent_profile.decided_gpu_memory_basis_points) == "0.8567")
+    && (vllm_basis_point_fraction_wire(bp: glm_native_initial_profile.decided_gpu_memory_basis_points) == "0.84")
+}
+
 test fn w_all_serving_arm_launch_claims_hold() -> Bool {
   w_the_group_b_arm_plans_exactly_four_ranks()
     && w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory()
@@ -189,4 +208,5 @@ test fn w_all_serving_arm_launch_claims_hold() -> Bool {
     && w_the_engine_argv_states_the_profiles_batching_bounds()
     && w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory()
     && w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer()
+    && w_the_utilisation_argv_is_the_profiles_value_at_full_precision()
 }
