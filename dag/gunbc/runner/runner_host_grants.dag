@@ -46,7 +46,7 @@ import gunbc.fabric_allocation_store_substrate {
   AllocationStoreDirectoryChainEnsure,
   fabric_allocation_store_ensure_effect,
 }
-import gunbc.runner_host_deploy { RunnerHostDeploy }
+import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runner_host_spec_of }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
 import gunbc.runner_host_deploy { runner_index_seq }
@@ -281,14 +281,22 @@ fn runner_slot_grammar_dirs_to_bound(host: HostIdentity, bound: Int) -> List<Non
 }
 
 fn runner_slot_teardown_grant_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  map(runner_slot_grammar_dirs_to_bound(host: deploy.host_label as HostIdentity, bound: runner_slot_teardown_grant_index_bound), d => RemoveDirectoryTree { path: d })
+  runner_slot_refused_teardown_operations(host_label: deploy.host_label)
 }
 
 // The last rows are host-wide: the executor launches runner micro-VMs
 // (gunbc.runner.runner_microvm_host_ready), so it must be able to open /dev/kvm, and the
 // group that owns the device is udev's, not ours.
 fn runner_host_wide_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  let job = deploy.job_user
+  runner_host_wide_refused_operations(spec: runner_host_spec_of(deploy: deploy))
+}
+
+// THE HOST-WIDE ROWS TAKE THE PRINCIPAL, NOT THE DEPLOY. They describe the executor's own operation on
+// the machine -- a converge state directory and /dev/kvm group membership -- and depend on no runner
+// population, so a refused host can render them from its spec alone. Splitting the parameter is what
+// lets one body serve both the admitted and refused projections instead of forking the rows.
+fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  let job = spec.job_user
   [
     EnsureOwnedDirectory {
       path: gunbc_fleet_converge_state_dir,
@@ -298,14 +306,14 @@ fn runner_host_wide_privileged_operations(deploy: RunnerHostDeploy) -> List<Exec
     },
     EnsureOwnedDirectory {
       path: actions_runner_base_dir as NonEmptyStr,
-      owner: deploy.runner_user,
-      group: deploy.runner_user,
+      owner: spec.runner_user,
+      group: spec.runner_user,
       mode: executor_managed_directory_mode,
     },
     EnsureOwnedDirectory {
       path: actions_runner_cache_dir as NonEmptyStr,
-      owner: deploy.runner_user,
-      group: deploy.runner_user,
+      owner: spec.runner_user,
+      group: spec.runner_user,
       mode: executor_managed_directory_mode,
     },
     EnsureSupplementaryGroupMembership { login: job, group: kvm_device_group },
@@ -349,6 +357,59 @@ fn runner_host_sudoers_header(artifact_path: String) -> String {
 // place in the artifact population that every other generated file is adjudicated through. The
 // enrollment is what deleted them: the registry maps this function over the deploy roster, so a
 // fifth executor host acquires its rendered sudoers file with no second edit here.
+// THE REFUSED HOST'S GRANTS, DERIVED FROM ITS SPEC AND NOT FROM A POPULATION IT DOES NOT HAVE.
+//
+// A host whose width refuses has no desired slot roster, so the two families that are FUNCTIONS OF
+// THAT ROSTER cannot be rendered and must not be:
+//
+//   runner_slot_install_operations     -- creates and chowns slot working trees: this is the widening
+//                                         authority, and granting it to a host nobody can size is the
+//                                         one thing a refusal must prevent.
+//   runner_slot_activation_operations  -- enables and starts slot units for the same population.
+//
+// WHAT IS RETAINED IS INDEPENDENTLY JUSTIFIED, and the distinction is the ruling's: "no new deployment
+// admitted" does not mean "delete every administrative grant". Teardown is retained precisely BECAUSE
+// srv2 still carries live runner trees from the width it ran before the refusal -- withdrawing the
+// authority to remove them would strand them with no sanctioned cleanup route, which is a worse state
+// than the one the refusal is protecting against. Teardown is bounded by the host's slot GRAMMAR
+// (index bound), not by a desired width, so it does not depend on a roster this host lacks.
+//
+// Host-wide rows (the converge state dir, /dev/kvm group membership) describe the executor's own
+// operation on the machine and are not derived from any runner population at all.
+//
+// THE FILE IS STILL GENERATED, NOT REFUSED. An `ArtifactGenerationRefused` here would leave the
+// previously committed bytes on disk -- the wide grants of the width that no longer exists -- which is
+// stale authority retained by silence. The refusal must produce a NARROWER artifact, not the absence
+// of one.
+fn runner_host_refused_privileged_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  runner_slot_refused_teardown_operations(host_label: spec.host_label)
+    + runner_host_wide_refused_operations(spec: spec)
+}
+
+fn runner_slot_refused_teardown_operations(host_label: NonEmptyStr) -> List<ExecutorPrivilegedOperation> {
+  map(
+    runner_slot_grammar_dirs_to_bound(
+      host: host_label as HostIdentity,
+      bound: runner_slot_teardown_grant_index_bound,
+    ),
+    d => RemoveDirectoryTree { path: d },
+  )
+}
+
+fn runner_host_refused_sudoers_content(spec: RunnerHostSpec, cause: String, artifact_path: String) -> String {
+  join([
+    runner_host_sudoers_header(artifact_path: artifact_path),
+    join(["# WIDTH REFUSED: ", cause, "\n"], ""),
+    "# No slot-install or slot-activation grants are rendered: both derive from a desired runner\n",
+    "# population, and this host has none. Teardown and host-wide rows are retained -- they are\n",
+    "# bounded by the host slot grammar and by the executor's own operation, not by a width.\n",
+    executor_privileged_operations_sudoers_body(
+      grantee: spec.job_user,
+      ops: runner_host_refused_privileged_operations(spec: spec),
+    ),
+  ], "")
+}
+
 fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) -> String {
   join([
     runner_host_sudoers_header(artifact_path: artifact_path),

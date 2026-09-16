@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.symptom_link_patched_without_the_earliest_unjustified_boundary
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data symptom_link_patched_without_the_earliest_unjustified_boundary: RecurringFailureMode = RecurringFailureMode {
+  identity: "symptom_link_patched_without_the_earliest_unjustified_boundary" as NonEmptyStr,
+
+  receipts: [
+    "**symptom link patched without the earliest unjustified boundary** (a defect is observed at one link `c` of a derivation slice `a -> b -> c -> d`; the repair lands at `c` -- a guard, a cache, a batch, a knob, a special case -- without establishing that `c` is the earliest boundary at which the derivation cannot be justified. DESIGN §6b is the doctrine; this row is its executing class.)",
+
+    "INVALID STATE: a repair that encodes at `c` a fact about `a` or `b` that neither declares -- validation where construction was available (§5), a second positional authority for that fact (§3), redundant with the derivation it shadows (§2). The fact stays undeclared, so the next consumer of it fails the same way, and the patches accumulate into a system nobody can re-derive.",
+
+    "WHY IT SURVIVES REVIEW: each patch is locally sound on the axis it was priced on -- the test goes green, the number moves -- and the reviewer reads the diff at the link where the symptom appeared, which is also where the patch is. Nothing in the diff points upstream because nothing upstream was touched.",
+
+    "THE DISCRIMINATOR, BOTH DIRECTIONS -- what keeps the row from being an over-prohibition on legitimate local fixes. RED: a cache, guard, batch or knob added at the symptom link with no statement of the earliest unjustified boundary (a contract violated, missing, under-specified, duplicated by another authority, or insufficient to ground its consumer) and no identity/recurrence/provider derivation beside a cache. GREEN: a local fix at a link that violates its OWN otherwise-grounded contract, stated as such -- that link IS the earliest unjustified boundary and the local repair is the root-cause repair.",
+
+    "SPECIMEN, RED SHAPE AVOIDED (gunbc#11401 R1): resolve summed to 20 s over 16 modules; the move on offer was a per-module result cache at the symptom link. Reading a -> b found resolve rebuilding the corpus-wide resolution state per module -- a fact established once and never carried. Repair: one ResolutionContext per native ingest in v2.compiler.compile; nothing to cache. The boundary was a missing carrier, upstream of the symptom.",
+
+    "SPECIMEN, GREEN SHAPE (gunbc#11444): CI lanes silent to their 90- and 180-minute caps; the moves on offer were a longer timeout (at d) or a revert of the triggering parser work (at c). Re-deriving the emitter's tail-call lowering found is_tco_identity_passthrough mistaking source-name equality for loop-state identity after the lowering split one binding into a local and a slot -- the lowering's own contract was the earliest unjustified boundary, so the repair was local to that owning link, and correctly so.",
+
+    "RUNG: found BELOW the ladder for the class as a whole -- a symptom-link patch merges green with no typed refusal anywhere. CEILING 2, mechanically preventable: whether a repair names its earliest unjustified boundary is a review reading over the PR, decidable by a reviewer given the slice; it is not decidable structurally because 'earliest unjustified boundary' is a semantic judgment over contracts the corpus does not yet carry as data.",
+
+    "NEXT-RUNG TRIGGER: a review criterion derived from this row in gunbc.roadmap.roadmap_review_criteria that asks, of every defect repair: does it name the relevant derivation slice and the earliest boundary where the derivation fails, including the owning contract and downstream obligations, or does it patch the observed link without establishing that the observed link is itself the root? That reviewer is the mechanism that makes the RED enrollable; until it lands the row is consumed by review diligence only.",
+
+    "REVIEW TELL: a fix whose diff touches only the symptom link with no sentence naming why that link is the boundary; a fix justified by a percentage on one axis; a new cache/pool/batch/knob with no identity, recurrence or provider derivation beside it; a second fix to the same link soon after the first.",
+  ],
+
+  evidence: [],
+}

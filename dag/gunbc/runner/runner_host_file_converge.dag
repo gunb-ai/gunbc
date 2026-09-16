@@ -192,6 +192,17 @@ fn runner_host_files_with_optional_depriv(
   }
 }
 
+// A REFUSED WIDTH IS NOT AN UNMODELED HOST, AND CARRYING ITS CAUSE IS THE WHOLE POINT.
+//
+// `runner_host_deploy_for` answers three ways and this fold reads all three. srv2 IS modeled --
+// address, principals and app are all declared -- and what refuses is its admitted runner width, so
+// the refused arm and the unmodeled arm answer different questions: a reader told "no runner deploy
+// row" would go looking for a missing declaration that is present. The width refusal's own cause
+// travels into the desired-population refusal unedited, rather than being restated here.
+//
+// THIS BLOCK SITS ON THE DECLARATION BECAUSE DESIGN SECTION 4c ADMITS NOTHING ELSE. It was first
+// written inside the match arm it describes, which the parse phase refuses -- "source annotation
+// sits inside a declaration body" -- and that refusal is the same one gunbc#8976 hit.
 fn runner_host_file_desired_population_from_uid_figure(
   host: HostIdentity,
   figure: RunnerJobUserRuntimeUidFigure,
@@ -203,6 +214,10 @@ fn runner_host_file_desired_population_from_uid_figure(
         RunnerHostDeployUnmodeled { host: h } =>
           RunnerHostFilesDesiredRefused {
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
+          }
+        RunnerHostDeployRefused { host: h, cause: c } =>
+          RunnerHostFilesDesiredRefused {
+            cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row because ", c, ", so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
           }
         RunnerHostDeployFound { deploy: d } =>
           match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host) {
@@ -262,6 +277,10 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
     RunnerHostDeployUnmodeled { host: h } =>
       RunnerHostFileSubjectRefused {
         cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so it is not a runner host"], ""),
+      }
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      RunnerHostFileSubjectRefused {
+        cause: join(["runner_host_file_converge: ", h as String, " is refused as a runner host (", c, ")"], ""),
       }
     RunnerHostDeployFound { deploy: d } =>
       if !bootstrap_principal_is_not_the_grantee(bootstrap: executor_bootstrap_principal, deploy: d) {

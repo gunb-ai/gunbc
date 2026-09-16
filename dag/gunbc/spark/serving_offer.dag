@@ -28,14 +28,13 @@ import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
 }
 import gunbc.spark.vllm_serving_launch {
-  EndpointIncarnationObservation, EndpointIncarnationStanding,
+  EndpointIncarnationObservation,
   EndpointIncarnationObserved, EndpointIncarnationUnobserved,
   LaunchUnitProvenance, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
   launch_unit_provenance,
 }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
 import std.content_hash { ContentHash, serialize_content_hash }
-import gunbc.serving.turn_demand { TurnComponentStanding, TurnComponentObserved, TurnComponentUnobserved }
 import gunbc.serving.serving_availability {
   ServingAvailability, ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
 }
@@ -440,21 +439,6 @@ fn spark_serving_route_standing(realization: SparkServingRealization, declared_u
           spark_service_from_observation(realization: realization, declared_unit: declared_unit, observation: obs)
       }
     }
-  }
-}
-
-// ── THE RUNTIME COMPONENT OF A SERVING TURN'S SOURCE ───────────────────────────────────────────
-//
-// The runtime is the container image the answering incarnation was created from, and it is read ONLY
-// through the endpoint-to-incarnation observation. An image digest from the probe with no binding to
-// the answering endpoint would be a fact about some launch on those hosts, not about the one serving
-// this turn. Weights and tokenizer have no counterpart here: VllmServingLaunch carries no digest of
-// the bytes an engine loaded, so gunbc.serving.turn_demand keeps them unobserved.
-fn spark_serving_turn_runtime(incarnation: EndpointIncarnationStanding) -> TurnComponentStanding {
-  match incarnation {
-    EndpointIncarnationUnobserved { obligation: o } => TurnComponentUnobserved { obligation: o }
-    EndpointIncarnationObserved { observation: obs } =>
-      TurnComponentObserved { digest: obs.launch.executable_digest, receipt: obs.receipt }
   }
 }
 
