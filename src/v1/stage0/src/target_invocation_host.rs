@@ -147,6 +147,7 @@ pub fn parse_label(text: &str) -> Result<Label, LabelRefusal> {
 /// Adding one is a row in `instrument_registry` and an arm here; it is not a new route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetProducer {
+    SelfHost,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
     BehavioralReceiptCensus,
@@ -159,6 +160,13 @@ pub enum TargetProducer {
 /// `gunbc.instrument_targets` `heads_reading_differential_source_roots`. The subject is the
 /// instrument's own fact, not a CLI option, so an invocation cannot quietly measure another corpus.
 fn heads_reading_differential_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
+}
+
+/// `gunbc.instrument_targets` `self_host_source_roots`. Which corpus the seed emits v2 FROM is
+/// this instrument's own fact on the same rule its siblings follow, so an invocation cannot quietly
+/// build a different closure while reporting this target's standing.
+fn self_host_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
 
@@ -187,6 +195,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("compile-clean-diagnostic-census"),
             TargetProducer::CompileCleanDiagnosticCensus,
         ),
+        (instrument_label("self-host"), TargetProducer::SelfHost),
     ]
 }
 
@@ -215,6 +224,22 @@ pub enum InvocationRefusal {
     },
 }
 
+/// THE REFUSAL NAMES WHAT WOULD HAVE WORKED, AND IT IS DERIVED RATHER THAN WRITTEN DOWN.
+///
+/// A reader who has forgotten the label is exactly the reader holding this refusal, so the roster
+/// belongs here and not only in a document. It is read from `instrument_registry` -- the same rows
+/// the lookup just failed against -- so a listing cannot disagree with what is invocable: adding an
+/// instrument updates this text by construction, and a prose page listing them would be the second
+/// representation DESIGN sections 2 and 3 price, drifting the first time someone adds a row and
+/// does not think to edit prose.
+fn rostered_targets_rendered() -> String {
+    let mut lines = vec!["  available targets:".to_string()];
+    for (label, _) in instrument_registry() {
+        lines.push(format!("    {}", render_label(&label)));
+    }
+    lines.join("\n")
+}
+
 fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
     {
         match refusal {
@@ -223,7 +248,10 @@ fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
                 label_refusal_rendered(cause)
             ),
             InvocationRefusal::TargetIsUnknown { target } => {
-                format!("gunbc test: no such target: {target}")
+                format!(
+                    "gunbc test: no such target: {target}\n{}",
+                    rostered_targets_rendered()
+                )
             }
         }
     }
@@ -357,6 +385,45 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             cli_run::behavioral_receipt_host::run_selftest(&behavioral_receipt_source_roots()),
         ),
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
+        TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
+    }
+}
+
+/// THE SELF-HOST PRODUCER: the generation this repository can perform, asked as one question.
+///
+/// It calls the SAME producer `--v2-native-route` calls, so the two cannot disagree about whether
+/// the seed can build v2 -- only one of them decides it. That route then spends roughly nine
+/// further minutes executing the v2.test.* universe through the emitted binary, which is a
+/// different claim (what the emitted compiler ANSWERS), and bundling it here would price the
+/// self-host question at the cost of a question nobody asked.
+///
+/// THE THREE TERMINATIONS ARE NOT TWO. A refusal from `prepare_emitted_compiler` is the subject
+/// failing to be reached -- the emit refused, the crate would not write, cargo could not run --
+/// which is `SubjectUnreached` rather than an observation that the seed cannot build v2. Only a
+/// completed build whose own counters are non-zero is `ObservationDidNotHold`. Collapsing those is
+/// the absorbing answer DESIGN section 5 forbids, and here it would report a broken bench as a
+/// broken compiler.
+fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_self_host(source_roots) {
+        Ok(held) => InvocationOutcome {
+            termination: if held.exit_status == 0 && held.warning_count == 0 {
+                Termination::ObservationHeld
+            } else {
+                Termination::ObservationDidNotHold
+            },
+            message: format!(
+                "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={}",
+                held.closure_identity,
+                held.binary_identity,
+                held.seed_identity,
+                held.exit_status,
+                held.warning_count,
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
     }
 }
 

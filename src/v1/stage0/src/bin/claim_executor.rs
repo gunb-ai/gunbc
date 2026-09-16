@@ -271,7 +271,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
     let mut v2_native_route_mode = false;
-    let mut self_host_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -356,14 +355,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             // receipt minted here and one minted by the deleted lane cannot be two facts.
             "--v2-native-route" => {
                 v2_native_route_mode = true;
-            }
-            // THE V1 -> V2 SELF-HOST STEP. Deliberately its own flag and NOT a --required-ci phase:
-            // a phase is a standing claim on a paid runner for every push and every pull request,
-            // and that enrolment is the operator's to make once the wall time has been watched on
-            // real heads. The capability is here either way; what a workflow invokes is a separate
-            // decision from what the binary can do.
-            "--self-host" => {
-                self_host_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -1291,21 +1282,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
         }
-    }
-
-    if self_host_mode {
-        let roots = if source_roots.is_empty() {
-            v1_compiler::cli_run::witness_layer_roots()
-        } else {
-            source_roots.clone()
-        };
-        return match v1_compiler::cli_run::run_self_host(&roots) {
-            Ok(()) => Ok(ExitCode::SUCCESS),
-            Err(e) => {
-                eprintln!("self-host: refused: {e}");
-                Err(ExitCode::from(1))
-            }
-        };
     }
 
     if v2_native_route_mode {
