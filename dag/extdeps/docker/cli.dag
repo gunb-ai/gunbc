@@ -442,6 +442,10 @@ fn docker_container_inspect_named_env_from_object(obj: JsonValue, names: List<No
             }
         }
       }
+    }
+  }
+}
+
 // THE CONTAINER'S TWO IDENTITY FIELDS, AND NOTHING ELSE OFF THE INSPECT OBJECT. `docker container
 // inspect` returns the whole object extdeps.docker.container_inspect ContainerInspect models,
 // including Config.Env, whose values can carry secrets. This reader takes exactly .Id -- the full
@@ -484,6 +488,10 @@ fn docker_container_inspect_named_env_from_stdout(stdout: String, names: List<No
           }
         Present { value: obj } =>
           docker_container_inspect_named_env_from_object(obj: obj, names: names)
+      }
+  }
+}
+
 fn docker_container_inspect_identity_from_stdout(stdout: String) -> DockerContainerInspectIdentityRead {
   match parse_json_document(s: trim(s: stdout)) {
     JsonDocumentUnreadable { gap: g } =>
