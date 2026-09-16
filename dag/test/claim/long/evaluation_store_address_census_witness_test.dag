@@ -1,4 +1,4 @@
-module test.claim.evaluation_store_address_census_witness
+module test.claim.long.evaluation_store_address_census_witness
 
 import std.types { Bool, List }
 import std.decl_ref { DeclarationRef }

@@ -680,14 +680,12 @@ fn resolved_call_edges_from_graph(
     edges
 }
 
-static IMPORTER_RESOLVED_CALL_EDGE_CACHE: OnceLock<
-    Mutex<
-        HashMap<
-            (Vec<String>, Vec<String>, Vec<String>, Vec<String>, bool),
-            crate::cli_run::ResolvedCallEdgeCensus,
-        >,
-    >,
-> = OnceLock::new();
+type ResolvedCallEdgeCacheKey = (Vec<String>, Vec<String>, Vec<String>, Vec<String>, bool);
+type ResolvedCallEdgeCacheMap =
+    HashMap<ResolvedCallEdgeCacheKey, crate::cli_run::ResolvedCallEdgeCensus>;
+
+static IMPORTER_RESOLVED_CALL_EDGE_CACHE: OnceLock<Mutex<ResolvedCallEdgeCacheMap>> =
+    OnceLock::new();
 
 pub fn compile_dag_importer_resolved_call_edges(
     import_modules: &[String],
@@ -846,7 +844,7 @@ struct ReferenceFormFile {
     rel: String,
     module_path: String,
     imports: Vec<String>,
-    idents: HashSet<String>,
+    called_leaves: HashSet<String>,
     aliases: Vec<(String, String)>,
     declared_names: HashSet<String>,
 }
@@ -872,14 +870,11 @@ fn parse_reference_form_file(rel: &str, content: &str) -> Result<ReferenceFormFi
     }
     let tokens = significant_token_shapes(&tokens.iter().cloned().collect::<Vec<_>>());
     let mut imports = Vec::new();
-    let mut idents = HashSet::new();
+    let mut called_leaves = HashSet::new();
     let mut aliases = Vec::new();
     let mut declared_names = HashSet::new();
     let mut i = 0;
     while i < tokens.len() {
-        if let Some(ident) = token_ident(&tokens[i]) {
-            idents.insert(ident.to_string());
-        }
         if token_keyword(&tokens[i], "import") {
             if let Some((path, next)) = dotted_path_from(&tokens, i + 1) {
                 imports.push(path);
@@ -907,13 +902,19 @@ fn parse_reference_form_file(rel: &str, content: &str) -> Result<ReferenceFormFi
                 declared_names.insert(name.to_string());
             }
         }
+        if let Some(ident) = token_ident(&tokens[i]) {
+            if tokens.get(i + 1).map(|t| t.shape) == Some(crate::v1_std_core::TokenShape::ShLParen)
+            {
+                called_leaves.insert(ident.to_string());
+            }
+        }
         i += 1;
     }
     Ok(ReferenceFormFile {
         rel: rel.to_string(),
         module_path,
         imports,
-        idents,
+        called_leaves,
         aliases,
         declared_names,
     })
@@ -996,8 +997,8 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
     };
     let requested_leaves: HashSet<String> = target_leaves
         .iter()
-        .cloned()
         .filter(|leaf| !leaf.is_empty())
+        .cloned()
         .collect();
     let home_leaves: HashSet<String> = if requested_leaves.is_empty() {
         files
@@ -1014,12 +1015,25 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
         let import_hit = file.imports.iter().any(|import| homes.contains(import));
         let home_hit = homes.contains(&file.module_path);
         let reference_hit = include_reference_forms
-            && (file.idents.intersection(&home_leaves).next().is_some()
-                || file.idents.intersection(&alias_names).next().is_some()
+            && (file
+                .called_leaves
+                .intersection(&home_leaves)
+                .next()
+                .is_some()
+                || file
+                    .called_leaves
+                    .intersection(&alias_names)
+                    .next()
+                    .is_some()
                 || file.aliases.iter().any(|(name, target)| {
                     alias_names.contains(name) || alias_targets_home(target, &homes)
                 }));
-        if import_hit || home_hit || reference_hit {
+        let selected = if include_reference_forms {
+            home_hit || reference_hit
+        } else {
+            import_hit || home_hit
+        };
+        if selected {
             entries.insert(file.rel.clone());
         }
     }
