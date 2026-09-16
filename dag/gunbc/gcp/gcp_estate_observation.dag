@@ -1477,6 +1477,8 @@ fn fleet_automation_is_refused_as_sheets_writer() -> Bool {
   }
 }
 
+// The selected arm does not carry the kitchen-sink field and does not need to: what this predicate
+// is for is that gunb-test is enumerated in the census without ever becoming the home.
 fn gunb_test_is_enumerated_not_selected(census: GcpEstateCensus) -> Bool {
   census_subject_is_observed_project_id(census: census, project_id: gunb_test_project_id)
     && match sheets_calling_home() {
@@ -1488,8 +1490,6 @@ fn gunb_test_is_enumerated_not_selected(census: GcpEstateCensus) -> Bool {
         pool_host_without_sts: _,
         sts_host_without_sheets: _,
       } => k == gunb_test_project_id
-      // The selected arm does not carry the kitchen-sink field, and does not need to: what this
-      // predicate is for is that gunb-test is enumerated in the census without becoming the home.
       SheetsCallingHomeSelected {
         project_id: home,
         writer: _,

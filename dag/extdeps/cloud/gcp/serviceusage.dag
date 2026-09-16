@@ -27,7 +27,7 @@ service gcp.ServiceUsage {
       project_id: GcpProjectId
       service_ids: List<String>
     }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", outcome: RestOutcome }
 
     idempotent
     transport rest {
@@ -51,7 +51,7 @@ service gcp.ServiceUsage {
       project_id: GcpProjectId
       service_id: String
     }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", outcome: RestOutcome }
 
     idempotent
     transport rest {

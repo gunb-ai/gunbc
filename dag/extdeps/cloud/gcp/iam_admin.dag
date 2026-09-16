@@ -6,6 +6,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import std.types { Map, NonEmptyStr, Secret, String }
 import v2.std.network { POST }
+import extdeps.transports.rest { RestOutcome }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -30,6 +31,7 @@ service gcp.IamAdmin {
     output {
       email: ServiceAccountEmail
       sa_name: String from "name"
+      outcome: RestOutcome
     }
 
     idempotent
@@ -50,7 +52,7 @@ service gcp.IamAdmin {
 
   operation GetServiceAccount {
     input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
-    output { email: ServiceAccountEmail, sa_name: String from "name" }
+    output { email: ServiceAccountEmail, sa_name: String from "name", outcome: RestOutcome }
     readonly
     transport rest {
       method: GET,
