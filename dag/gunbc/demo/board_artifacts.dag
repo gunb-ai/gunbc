@@ -1,6 +1,6 @@
 module gunbc.demo.board_artifacts
 
-import std.types { String }
+import std.types { String, List }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.compute_board.emission_entry {
@@ -16,18 +16,69 @@ import product.compute_board.emission_entry {
 }
 
 // THE FOUR ARTIFACTS ONE BOARD ARTICLE PRODUCES, WRITTEN SIDE BY SIDE SO AN EDIT IS VISIBLE AS A
-// DIFF. This exists for the demo: the readout says the emissions hold, and this puts their BYTES on
-// disk so editing the article's equation and re-running shows exactly which files moved. A refusal
-// is not written as text -- a refused target writes no file and fails the run, because a file
-// containing a refusal reads as an artifact.
-fn write_one<R>(path: String, e: BoardEmission<R>) -> ProcessExit {
+// DIFF. This exists for the demonstration: the readout says the emissions hold, and this puts their
+// BYTES on disk so editing the article's equation and re-running shows exactly which files moved --
+// the Verilog changes and the SPICE circuit and pin file do not, because they do not depend on the
+// digital equation.
+//
+// PRODUCTION IS SEPARATED FROM DELIVERY, and that split is the review's finding rather than taste
+// (review 66759). An earlier revision had one function that emitted and wrote in the same fold, so
+// the only way to exercise any of it was to run the entry by hand and look at the filesystem -- a
+// declaration whose consumer was a human, which DESIGN section 3c calls dangling. The renderings
+// below are a pure fold a claim can evaluate and assert over; `write_artifacts` is the thin effect
+// wrapper that delivers them. DESIGN section 3b states the same boundary from the other side:
+// producing bytes is not delivery, and the two are different responsibilities.
+//
+// A REFUSED TARGET WRITES NO FILE AND FAILS THE RUN. A file containing a refusal reads as an
+// artifact, which is the fabricated plausible output section 5 forbids at exactly the seam where the
+// caller is furthest from the model.
+
+type BoardArtifactRendering
+  = ArtifactRendered { path: String, source: String }
+  | ArtifactRefusedByTarget { path: String }
+  | ArtifactArticleNotAdmitted { path: String }
+
+fn rendering_of<R>(path: String, e: BoardEmission<R>) -> BoardArtifactRendering {
   match e {
-    BoardArticleNotAdmitted { causes: _ } => exit_failure(reason: concat("article not admitted for ", path))
-    BoardTargetRefused { cause: _ } => exit_failure(reason: concat("target refused for ", path))
-    BoardEmitted { source: s } => {
-      let w = Filesystem.Write(path: path, content: s)
-      if w.success { ExitSuccess } else { exit_failure(reason: concat("unwritable: ", path)) }
-    }
+    BoardEmitted { source: s } => ArtifactRendered { path: path, source: s }
+    BoardTargetRefused { cause: _ } => ArtifactRefusedByTarget { path: path }
+    BoardArticleNotAdmitted { causes: _ } => ArtifactArticleNotAdmitted { path: path }
+  }
+}
+
+// ONE ROW PER TARGET, AND THE PATHS LIVE HERE because a demo artifact's location is a fact about the
+// demonstration rather than about the board. Adding a target adds one row.
+fn board_artifact_renderings() -> List<BoardArtifactRendering> {
+  [
+    rendering_of(path: "target/demo/board_power_interlock.v", e: emit_verilog()),
+    rendering_of(path: "target/demo/conditioning_network.spice", e: emit_spice()),
+    rendering_of(path: "target/demo/conditioning_network.cir", e: emit_ngspice_run()),
+    rendering_of(path: "target/demo/board_power_interlock.pcf", e: emit_pin_constraints()),
+    rendering_of(path: "target/demo/board_power_interlock_truth_table.md", e: emit_truth_table()),
+  ]
+}
+
+fn rendering_is_rendered(r: BoardArtifactRendering) -> Bool {
+  match r {
+    ArtifactRendered { path: _, source: _ } => true
+    ArtifactRefusedByTarget { path: _ } => false
+    ArtifactArticleNotAdmitted { path: _ } => false
+  }
+}
+
+fn rendering_path(r: BoardArtifactRendering) -> String {
+  match r {
+    ArtifactRendered { path: p, source: _ } => p
+    ArtifactRefusedByTarget { path: p } => p
+    ArtifactArticleNotAdmitted { path: p } => p
+  }
+}
+
+fn rendering_source_or_empty(r: BoardArtifactRendering) -> String {
+  match r {
+    ArtifactRendered { path: _, source: s } => s
+    ArtifactRefusedByTarget { path: _ } => ""
+    ArtifactArticleNotAdmitted { path: _ } => ""
   }
 }
 
@@ -38,18 +89,19 @@ fn first_failure(acc: ProcessExit, next: ProcessExit) -> ProcessExit {
   }
 }
 
+fn write_one(r: BoardArtifactRendering) -> ProcessExit {
+  match r {
+    ArtifactArticleNotAdmitted { path: p } => exit_failure(reason: concat("article not admitted for ", p))
+    ArtifactRefusedByTarget { path: p } => exit_failure(reason: concat("target refused for ", p))
+    ArtifactRendered { path: p, source: s } => {
+      let w = Filesystem.Write(path: p, content: s)
+      if w.success { ExitSuccess } else { exit_failure(reason: concat("unwritable: ", p)) }
+    }
+  }
+}
+
 fn write_artifacts() -> ProcessExit {
-  first_failure(
-    acc: first_failure(
-      acc: write_one(path: "target/demo/board_power_interlock.v", e: emit_verilog()),
-      next: write_one(path: "target/demo/conditioning_network.spice", e: emit_spice())
-    ),
-    next: first_failure(
-      acc: write_one(path: "target/demo/conditioning_network.cir", e: emit_ngspice_run()),
-      next: first_failure(
-        acc: write_one(path: "target/demo/board_power_interlock.pcf", e: emit_pin_constraints()),
-        next: write_one(path: "target/demo/board_power_interlock_truth_table.md", e: emit_truth_table())
-      )
-    )
-  )
+  fold(board_artifact_renderings(), init: ExitSuccess, f: fn(acc, r) {
+    first_failure(acc: acc, next: write_one(r: r))
+  })
 }

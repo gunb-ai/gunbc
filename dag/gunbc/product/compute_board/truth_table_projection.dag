@@ -245,7 +245,7 @@ type TableRender
   = TableRendered { text: String }
   | TableRefused { cause: TruthTableRefusal }
 
-fn render_rows(
+fn render_truth_table_rows(
   intent: DigitalControlIntent,
   inputs: List<DigitalSignal>,
   outputs: List<DigitalSignal>,
@@ -286,7 +286,7 @@ fn project_intent_to_truth_table(
           concat(header_cells(signals: concat(inputs, outputs)), "\n"),
           concat(divider_cells(signals: concat(inputs, outputs)), "\n")
         )
-        match render_rows(
+        match render_truth_table_rows(
           intent: intent,
           inputs: inputs,
           outputs: outputs,

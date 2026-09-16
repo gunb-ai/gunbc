@@ -1,15 +1,24 @@
 module test.claim.semantic_system_readout_witness
 
 import gunbc.demo.semantic_system_readout {
+  LiveVerdict,
+  MechanismNote,
+  NotClaimed,
+  ReadoutRefused,
   ReadoutSection,
+  RecordedRunJoined,
   any_line_fails,
   live,
   note,
   open,
+  readout_sections,
   recorded,
   refused,
   render,
+  standing_tag,
+  workflow_line,
 }
+import std.types { List, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -40,6 +49,81 @@ test fn w_a_stale_receipt_fails_the_readout() -> Bool {
 // live line it does not have.
 test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
   !any_line_fails(sections: [section_of(first: true, joined: true)])
+}
+
+// THE INHABITANCE CLAIM THE SUPPLIED-SECTION CONTROLS OWE (DESIGN section 3, review 66755). Every
+// other claim in this file hands `any_line_fails` and `render` sections it CONSTRUCTED, which
+// establishes the exit rule and nothing about the readout's live wiring: deleting the real
+// producers would leave all of them green. This one calls the real `workflow_line`, so the route it
+// exercises is the host-touching one -- a directory listing, a committed read folded through
+// `filesystem_read_outcome`, and the adorned projection generated through the same boundary -- and
+// it asserts the ROUTE and not only the answer, because a LiveVerdict here can only be reached
+// through `observe_generated_artifact_with` returning `GeneratedArtifactObserved`.
+//
+// DELETING THE INTEGRATION MAKES THIS FAIL, which is the test the pairing obligation states. Revert
+// the dogfooding line to a raw `Filesystem.Read(...).content == expected` and an unreadable file
+// silently becomes a drift FAIL rather than a REFUSED, so the second assertion below goes red;
+// remove the observer call entirely and the line cannot be constructed at all.
+//
+// WHAT IT DOES NOT COVER, stated rather than implied: `readout_sections()` and `render_demo` remain
+// unexercised by any claim, because evaluating them runs every producer the readout reads -- the
+// python-to-typescript compile, the three complexity-gate snippets, the four board emissions -- at
+// about five minutes, and this module is NewWitnessTier, the tighter per-claim ceiling. That is a
+// declared frontier with a named trigger: it enters a claim when the readout's producers are shared
+// at preparation (v2.workflow.floor_pure_producer_share) or the claim is admitted as declared cost
+// debt, and until then `render_demo` is the executing consumer and is run by hand.
+test fn w_the_live_dogfooding_line_executes_the_real_observer() -> Bool {
+  match workflow_line().standing {
+    LiveVerdict { holds: h } => h
+    ReadoutRefused { cause: _ } => false
+    RecordedRunJoined { inputs_match_today: _ } => false
+    NotClaimed => false
+    MechanismNote => false
+  }
+}
+
+test fn w_the_live_dogfooding_line_prints_as_a_pass() -> Bool {
+  standing_tag(s: workflow_line().standing) == "  PASS      "
+}
+
+// THE WHOLE JOIN, EXECUTED (review 66759). The claim above exercises the one host-touching line; this
+// one evaluates `readout_sections()` itself, which is the PR's actual subject -- every producer the
+// readout reads, reached through the readout's own fold rather than through supplied sections. It
+// asserts the readout's own verdict: the section population is the one the module declares, and no
+// line in it fails. Deleting any producer call, or letting any live line go red, fails this.
+//
+// THIS IS THE EXPENSIVE CLAIM IN THE FILE AND THAT IS NOT INCIDENTAL. Evaluating it runs the
+// python-to-typescript cross-language compile, the three complexity-gate snippets through tokenize,
+// parse and normalize, the four board emissions and the workflow projection -- the same work the
+// entry point does, because it IS that work. The instrument for its cost is the required floor's
+// per-claim cost artifact (`required_floor_claim_cost` on this PR's floor run), and this module is
+// not on `v2.workflow.floor_grandfathered_roster`, so it is planned at NewWitnessTier -- the tighter
+// of the two budgets in `v2.workflow.required_floor` `claim_ceiling_eval_step_budget`.
+//
+// IF THE FLOOR REFUSES IT ON COST, THE HONEST LANDING IS A DECLARED ONE and not a quiet deletion:
+// either the readout's producers are shared at preparation through
+// `v2.workflow.floor_pure_producer_share` -- which is what that roster exists for, one value read by
+// many claims -- or the row is admitted as declared cost debt with the measurement beside it. What it
+// must not become is a claim that was removed because it was slow, leaving the supplied-section
+// controls as the only wall, which is the state review 66755 and review 66759 both refused.
+// THE POPULATION IS JOINED BY IDENTITY AND NOT BY COUNT. An earlier revision of this claim asserted
+// `list_length(items: sections) == 6`, which is a number measured from the same tree it checks -- the
+// change detector DESIGN section 5 refuses, and it would stay green if one section were swapped for
+// another. Each expected section is named instead, so a dropped or renamed section fails at the
+// section that went missing.
+fn section_titled(sections: List<ReadoutSection>, title: String) -> Bool {
+  fold(sections, init: false, f: fn(acc, s) { acc || (s.title == title) })
+}
+
+test fn w_the_real_readout_sections_execute_and_every_line_holds() -> Bool {
+  let sections = readout_sections()
+  section_titled(sections: sections, title: "BOUNDED LANGUAGE ADAPTER")
+    && section_titled(sections: sections, title: "SEMANTIC BOARD ARTICLE")
+    && section_titled(sections: sections, title: "ENFORCEMENT BEFORE REALIZATION")
+    && section_titled(sections: sections, title: "DOGFOODING")
+    && section_titled(sections: sections, title: "EXTERNAL TOOL RECEIPTS (recorded runs, not rerun here)")
+    && section_titled(sections: sections, title: "NEXT SEMANTIC FRONTIER")
+    && !any_line_fails(sections: sections)
 }
 
 // A LINE THAT COULD NOT BE ANSWERED STOPS THE RUN, and it is distinguishable from a line that was
