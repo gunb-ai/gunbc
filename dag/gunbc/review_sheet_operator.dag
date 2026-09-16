@@ -144,13 +144,22 @@ type ReviewSheetResidency
 
 // Operator-supplied 2026-09-16: https://drive.google.com/drive/folders/0ANpu9VSqUzO-Uk9PVA.
 // A shared drive's root folder id IS the drive id, which is why a drive url reads /folders/.
-// The id's shape is consistent with a shared drive rather than a folder inside one (19 chars
-// leading "0A", against a ~33 char My Drive folder id leading "1") -- that is a read of the
-// FORMAT, not of the resource: no Drive-scoped credential has yet resolved this id, so the
-// drives.get that would ground it is an open obligation, not a discharged one.
+//
+// GROUNDING, AND ITS GRAIN. The id shape alone only suggested a shared drive. The operator then
+// read the drive's own details panel -- Type: Shared drive, Owner: gunb.ai, Creator: the operator,
+// Created: 2026-09-16, and "Security limitations: No limitations applied" -- which settles the
+// TYPE and the NAME by observation rather than by format inference. It is a human read of a
+// console, not a drives.get response, so it grounds what the panel displays and nothing beneath
+// it: the membership list is a separate fact, read separately, and is not established here.
+//
+// The no-limitations reading also narrows why the UI refused to add the writer. It is not this
+// drive restricting external principals -- the drive applies none. The refusal ("Sharing to email
+// addresses without a Google account is not yet supported") is the sharing dialog declining to
+// treat a gserviceaccount.com address as shareable at all, which is a property of that dialog and
+// not of this drive, and is why the API path is the one the converge must take.
 data review_sheet_residency: ReviewSheetResidency = SheetInSharedDrive {
   drive_id: "0ANpu9VSqUzO-Uk9PVA" as NonEmptyStr,
-  drive_name: "Customer acquisition" as NonEmptyStr,
+  drive_name: "Customer Acquisition" as NonEmptyStr,
 }
 
 // Membership in the drive, not a share of one file: FleetOnce, because the whole point of the
