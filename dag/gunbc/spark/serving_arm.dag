@@ -401,6 +401,24 @@ fn runtime_artifact_key(a: RuntimeArtifactIdentity) -> String {
 // the fleet actually has: a row exists so a launch can be PLANNED -- the launch argv reads only the
 // artifact and the defaults revision, never this field -- and the projection is filled in from the
 // completion that launch produces.
+// THE QUANTISATION FLAG IS PASSED ONLY WHERE IT IS THE REQUEST, AND FOR THE NATIVE CHECKPOINT IT IS NOT.
+// A previous revision passed `--quantization fp8` for every arm so the running line would describe its
+// own artifact to the convergence assessor, and defended it at length. That was wrong twice over: the
+// engine reads quant_method from the checkpoint's own config either way, so the flag adds nothing for
+// this arm, and overriding it is how a launch discards the checkpoint's weight_block_size and its
+// 1509-entry modules_to_not_convert list. The identity the assessor needs comes from the REVISION PATH,
+// which every line carries and which determines the weights uniquely.
+//
+// AND THE CONDITION IS NOW THE FACT ITSELF. It used to read `requires_upstream_glm53_integration` -- a fact
+// about what the RUNTIME must support -- which gave the right answer only because the native checkpoint was
+// the single row where the two questions coincided.
+fn checkpoint_quantization_argv(row: ServingCheckpointRow) -> List<String> {
+  match checkpoint_quantization_on_argv(q: row.quantization) {
+    Absent => []
+    Present { value: w } => ["--quantization", w as String]
+  }
+}
+
 type ServingRuntimeRow {
   runtime: ServingRuntime
   artifact: RuntimeArtifactIdentity

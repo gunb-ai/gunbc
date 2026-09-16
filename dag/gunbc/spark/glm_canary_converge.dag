@@ -40,6 +40,7 @@ import gunbc.spark.serving_arm {
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
   serving_arm_admits, serving_checkpoint_row, serving_runtime_row,
+  runtime_artifact_wire, checkpoint_quantization_argv,
 }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotRole, SnapshotSeed,
@@ -299,7 +300,7 @@ fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExec
       container_path: "/out" as NonEmptyStr,
     }
     Present { value: rrow } => ContainerizedCli {
-      image: rrow.image_reference,
+      image: runtime_artifact_wire(a: rrow.artifact),
       cli_path: rrow.hub_cli_path,
       host_path: glm_canary_host_path(arm: arm),
       container_path: "/out" as NonEmptyStr,
@@ -361,15 +362,15 @@ fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
         Absent => none
         Present { value: _ } => Present { value: concat(
           concat(
-            [
+            concat([
               "serve", "/model",
               "--served-model-name", arm.served_model_alias as String,
-              "--quantization", crow.quantization_wire as String,
+            ], concat(checkpoint_quantization_argv(row: crow), [
               "--tensor-parallel-size", to_string(serving_topology_rank_count(t: arm.topology)),
               "--kv-cache-dtype", glm_5_3_flash_vllm_kv_cache_dtype_wire as String,
               "--max-model-len", to_string(token_count_value(t: arm.max_model_len)),
               "--max-num-seqs", to_string(glm_canary_seq_bound(b: arm.max_num_seqs)),
-            ],
+            ])),
             concat(
               glm_canary_batched_token_argv(p: arm.max_num_batched_tokens),
               concat(
@@ -431,7 +432,7 @@ fn glm_canary_parameters(arm: GlmCanaryArm) -> ServingDecisionParameters? {
       kv_layout: KvFp8Layout,
       speculative: glm_canary_speculative_policy(p: arm.speculation),
       runtime: runtime_revision(
-        image: rrow.image_reference,
+        image: runtime_artifact_wire(a: rrow.artifact),
         vllm_revision: (defaults_source_revision(r: rrow.claimed_defaults_revision)).full_revision),
     ) }
   }
@@ -616,7 +617,7 @@ fn glm_canary_run_argv(arm: GlmCanaryArm) -> List<String>? {
           "--network", "host",
           "--ipc", "host",
           "-v", join([glm_canary_host_path(arm: arm) as String, ":/model:ro"], ""),
-          rrow.image_reference as String,
+          runtime_artifact_wire(a: rrow.artifact) as String,
         ], serve.skip(n: 1)) }
       }
   }
@@ -972,7 +973,7 @@ fn glm_canary_checkpoint_wire(arm: GlmCanaryArm) -> String {
 fn glm_canary_runtime_wire(arm: GlmCanaryArm) -> String {
   match serving_runtime_row(r: arm.runtime) {
     Absent => "(unmodelled)"
-    Present { value: r } => r.image_reference as String
+    Present { value: r } => runtime_artifact_wire(a: r.artifact) as String
   }
 }
 
