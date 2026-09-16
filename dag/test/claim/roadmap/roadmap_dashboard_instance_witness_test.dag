@@ -36,7 +36,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
   DashboardEnsureSourceRepo,
-  DashboardEnsureService,
   DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
   DashboardVerifyHealth,
@@ -46,7 +45,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceApply,
   DashboardInstanceRefused,
   DashboardInstanceRetractOp,
-  DashboardStopService,
   DashboardRefuseUnlessAttemptsEmpty,
   DashboardRemoveSourceRepo,
   DashboardRemoveLocalOrigin,
@@ -168,14 +166,6 @@ fn plan_binds_instance_paths(
       origin == instance.local_origin_root && repo == instance.repo_root
     _ => false
   })
-  let attempts_bound = any(plan, op => match op {
-    DashboardEnsureDirectory { path } => path == dashboard_instance_dispatch_worktree_root(instance: instance)
-    _ => false
-  })
-  let attempt_state_bound = any(plan, op => match op {
-    DashboardEnsureDirectory { path } => path == dashboard_instance_dispatch_attempt_state_root(instance: instance)
-    _ => false
-  })
   let marker_bound = any(plan, op => match op {
     DashboardEnsureOwnershipMarker { path, instance_id } =>
       path == dashboard_instance_ownership_marker_path(instance: instance)
@@ -200,31 +190,10 @@ fn plan_binds_instance_paths(
         )
     _ => false
   })
-  let service_bound = any(plan, op => match op {
-    DashboardEnsureService {
-      instance_id,
-      binary,
-      workdir,
-      handler,
-      host,
-      port,
-      tmux_server: _,
-    } =>
-      instance_id == instance.instance_id
-        && binary == instance.serve_binary
-        && workdir == instance.repo_root
-        && handler == instance.serve_function
-        && host == instance.listen_host
-        && port == instance.listen_port
-    _ => false
-  })
   source_bound
-    && attempts_bound
-    && attempt_state_bound
     && marker_bound
     && runtime_bound
     && auth_bound
-    && service_bound
 }
 
 fn plan_binds_source_ref_translation(
@@ -253,7 +222,7 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 16
+  count(plan) == 13
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -287,7 +256,6 @@ fn lab_observed(
     provider_runtime_detail: "codex-cli test",
     provider_authenticated: true,
     provider_auth_detail: "Logged in using ChatGPT",
-    service_present: true,
     health_current: health_current,
     production_untouched: production_untouched,
     source_anchor_matches: source_anchor_matches,
@@ -409,7 +377,6 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     provider_runtime_detail: "codex-cli test",
     provider_authenticated: true,
     provider_auth_detail: "Logged in using ChatGPT",
-    service_present: true,
     health_current: true,
     production_untouched: true,
     source_anchor_matches: true,
@@ -472,7 +439,6 @@ test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
     provider_runtime_detail: "provider runtime unavailable",
     provider_authenticated: false,
     provider_auth_detail: "provider auth unavailable",
-    service_present: false,
     health_current: false,
     production_untouched: true,
     source_anchor_matches: false,
@@ -491,12 +457,7 @@ fn retract_plan_is_safe(
   plan: List<DashboardInstanceRetractOp>,
   instance: HostDashboardInstance,
 ) -> Bool {
-  count(plan) == 5
-    && any(plan, op => match op {
-      DashboardStopService { instance_id, tmux_server: _ } =>
-        instance_id == instance.instance_id
-      _ => false
-    })
+  count(plan) == 4
     && any(plan, op => match op {
       DashboardRefuseUnlessAttemptsEmpty { path } =>
         path == dashboard_instance_dispatch_worktree_root(instance: instance)
@@ -657,7 +618,7 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 16
+  count(plan) == 13
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -762,7 +723,6 @@ fn observed_all_absent(refusals: List<String>) -> DashboardInstanceObserved {
     provider_runtime_detail: "",
     provider_authenticated: false,
     provider_auth_detail: "",
-    service_present: false,
     health_current: false,
     production_untouched: true,
     source_anchor_matches: false,

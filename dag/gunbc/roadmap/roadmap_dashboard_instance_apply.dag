@@ -24,16 +24,6 @@ import extdeps.git {
   shape_git_rev_parse_argv,
 }
 import extdeps.tools.chmod { chmod_binary_path }
-import extdeps.tmux {
-  classify_tmux_has_session,
-  TmuxHasSessionObservation,
-  TmuxHasSessionPresent,
-  TmuxHasSessionAbsent,
-  TmuxHasSessionUnknowable,
-  shape_tmux_has_session_argv_for,
-  shape_tmux_kill_session_argv_for,
-  shape_tmux_new_session_argv_for,
-}
 import extdeps.ssh.session { shape_scp_copy_to_argv }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
@@ -76,10 +66,11 @@ import gunbc.roadmap_dashboard_instance {
   DashboardPrepareGitBundle,
   DashboardStageGitBundle,
   DashboardEnsureDirectory,
+  DashboardEnsureProviderStateRoot,
+  DashboardEnsureServeBinary,
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
   DashboardEnsureSourceRepo,
-  DashboardEnsureService,
   DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
   DashboardVerifyHealth,
@@ -97,10 +88,8 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_platform_executables,
   dashboard_environment_binding_executable,
   dashboard_instance_ownership_marker_path,
-  dashboard_instance_service_session_name,
   dashboard_instance_checkout_branch,
   dashboard_instance_controller_workdir,
-  dashboard_instance_serve_argv,
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
@@ -692,125 +681,6 @@ fn dashboard_ensure_source_repo(
 }
 }
 
-fn dashboard_observe_service_session(
-  instance: HostDashboardInstance,
-) -> TmuxHasSessionObservation {
-  let probe = dashboard_target_probe(
-    instance: instance,
-    program: "/usr/bin/tmux" as FilePath,
-    args: shape_tmux_has_session_argv_for(
-      scope: instance.tmux_server,
-      session_name: dashboard_instance_service_session_name(instance: instance) as String,
-    ),
-  )
-  classify_tmux_has_session(exit_ok: probe.success, stderr: probe.stderr)
-}
-
-fn dashboard_service_session_observation_refusal(
-  obs: TmuxHasSessionObservation,
-) -> List<String> {
-  match obs {
-    TmuxHasSessionPresent => []
-    TmuxHasSessionAbsent => []
-    TmuxHasSessionUnknowable { stderr } =>
-      [join(["service session observation refused: ", trim(stderr)], "")]
-  }
-}
-
-fn dashboard_service_session_present_bit(obs: TmuxHasSessionObservation) -> Bool {
-  match obs {
-    TmuxHasSessionPresent => true
-    TmuxHasSessionAbsent => false
-    TmuxHasSessionUnknowable { stderr: _ } => false
-  }
-}
-
-type DashboardServiceSessionEnsureDecision
-  = EnsureCreateServiceSession
-  | EnsureReplaceServiceSession
-  | EnsureRefuseServiceSession { cause: String }
-
-fn dashboard_service_session_ensure_decision(
-  observation: TmuxHasSessionObservation,
-) -> DashboardServiceSessionEnsureDecision {
-  match observation {
-    TmuxHasSessionPresent => EnsureReplaceServiceSession
-    TmuxHasSessionAbsent => EnsureCreateServiceSession
-    TmuxHasSessionUnknowable { stderr } =>
-      EnsureRefuseServiceSession { cause: trim(stderr) }
-  }
-}
-
-fn dashboard_ensure_service_new_session_argv(
-  instance: HostDashboardInstance,
-  admitted_release_revision: CommitSha,
-) -> List<String> {
-  shape_tmux_new_session_argv_for(
-    scope: instance.tmux_server,
-    session_name: dashboard_instance_service_session_name(instance: instance) as String,
-    working_dir: instance.repo_root as String,
-    inner_argv: concat(
-      [instance.serve_binary as String],
-      dashboard_instance_serve_argv(
-        instance: instance,
-        release_revision: admitted_release_revision,
-      ),
-    ),
-  )
-}
-
-fn dashboard_ensure_service_create(
-  instance: HostDashboardInstance,
-  admitted_release_revision: CommitSha,
-) -> DashboardExecResult {
-  dashboard_target_exec(
-    instance: instance,
-    program: "/usr/bin/tmux" as FilePath,
-    args: dashboard_ensure_service_new_session_argv(
-      instance: instance,
-      admitted_release_revision: admitted_release_revision,
-    ),
-  )
-}
-
-fn dashboard_ensure_service(
-  instance: HostDashboardInstance,
-  admitted_release_revision: CommitSha,
-) -> DashboardExecResult {
-  match dashboard_service_session_ensure_decision(
-    observation: dashboard_observe_service_session(instance: instance),
-  ) {
-    EnsureRefuseServiceSession { cause } =>
-      dashboard_exec_refused(detail: join([
-        "service session observation refused before mutation: ",
-        cause,
-      ], ""))
-    EnsureCreateServiceSession =>
-      dashboard_ensure_service_create(
-        instance: instance,
-        admitted_release_revision: admitted_release_revision,
-      )
-    EnsureReplaceServiceSession => {
-      let stopped = dashboard_target_exec(
-        instance: instance,
-        program: "/usr/bin/tmux" as FilePath,
-        args: shape_tmux_kill_session_argv_for(
-          scope: instance.tmux_server,
-          session_name: dashboard_instance_service_session_name(instance: instance) as String,
-        ),
-      )
-      if !stopped.success {
-        stopped
-      } else {
-        dashboard_ensure_service_create(
-          instance: instance,
-          admitted_release_revision: admitted_release_revision,
-        )
-      }
-    }
-  }
-}
-
 data dashboard_health_loopback_host: String = "127.0.0.1"
 
 data dashboard_health_path: String = "/instance.json"
@@ -917,7 +787,6 @@ fn dashboard_apply_provision_op(
   op: DashboardInstanceProvisionOp,
   temp_bundle: FilePath,
   temp_verify_repo: FilePath,
-  admitted_release_revision: CommitSha?,
 ) -> DashboardExecResult {
   match op {
     DashboardHydrateControllerHistory { controller_repo, history_remote } =>
@@ -979,26 +848,6 @@ fn dashboard_apply_provision_op(
         repo: repo,
         anchor_ref: anchor_ref,
       )
-    DashboardEnsureService {
-      instance_id: _,
-      binary: _,
-      workdir: _,
-      handler: _,
-      host: _,
-      port: _,
-      tmux_server: _,
-    } =>
-      match admitted_release_revision {
-        Present { value: rev } =>
-          dashboard_ensure_service(
-            instance: instance,
-            admitted_release_revision: rev,
-          )
-        Absent =>
-          dashboard_exec_refused(
-            detail: "ensure-service reached a fold that did not admit a release revision",
-          )
-      }
     DashboardVerifyProviderRuntime { executable, state_root } => {
       let result = dashboard_target_exec(
         instance: instance,
@@ -1053,15 +902,13 @@ type DashboardApplyFold {
   refused_detail: String
 }
 
-// Plans that cannot contain DashboardEnsureService pass none. The revision is not an empty
-// CommitSha: that spelling was a validator over a dummy, and ensure-service would have treated it
-// as a launch identity. Apply-after-preflight passes Present with the admitted source revision.
+// Apply-after-preflight still threads the admitted source revision through observation, not
+// through this fold: service launch is gunbc.live_deploy.emit over the systemd ServiceProcess member.
 fn dashboard_apply_plan(
   instance: HostDashboardInstance,
   plan: List<DashboardInstanceProvisionOp>,
   temp_bundle: FilePath,
   temp_verify_repo: FilePath,
-  admitted_release_revision: CommitSha?,
 ) -> DashboardApplyFold {
   fold(
     plan,
@@ -1081,7 +928,6 @@ fn dashboard_apply_plan(
           op: op,
           temp_bundle: temp_bundle,
           temp_verify_repo: temp_verify_repo,
-          admitted_release_revision: admitted_release_revision,
         )
         let detail = if result.success {
           trim(join([result.stdout, "\n", result.stderr], ""))
@@ -1329,7 +1175,14 @@ fn dashboard_instance_observe(
         ),
       )
   }
-  let service = dashboard_observe_service_session(instance: instance)
+  let probe_refusals = fold(
+    [
+      dashboard_exec_refusal_reason(label: "provider runtime", r: provider_runtime),
+      dashboard_exec_refusal_reason(label: "provider auth", r: provider),
+    ],
+    init: [],
+    f: fn(acc, rs) { concat(acc, rs) },
+  )
   let bundle_present = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
     DashboardGitBundle {
@@ -1350,15 +1203,6 @@ fn dashboard_instance_observe(
   let obs_source = dashboard_target_path_observe(instance: instance, flag: "-d", path: instance.repo_root)
   let obs_attempts = dashboard_target_path_observe(instance: instance, flag: "-d", path: dashboard_instance_dispatch_worktree_root(instance: instance))
   let obs_attempt_state = dashboard_target_path_observe(instance: instance, flag: "-d", path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
-  let probe_refusals = fold(
-    [
-      dashboard_exec_refusal_reason(label: "provider runtime", r: provider_runtime),
-      dashboard_exec_refusal_reason(label: "provider auth", r: provider),
-      dashboard_service_session_observation_refusal(obs: service),
-    ],
-    init: [],
-    f: fn(acc, rs) { concat(acc, rs) },
-  )
   let path_refusals = fold(
     [obs_root, obs_marker, obs_origin, obs_source, obs_attempts, obs_attempt_state],
     init: [],
@@ -1396,7 +1240,6 @@ fn dashboard_instance_observe(
       "\n",
       provider.stderr,
     ], "")),
-    service_present: dashboard_service_session_present_bit(obs: service),
     health_current: dashboard_health_names_instance(instance: instance, result: health),
     production_untouched: production_untouched,
     source_anchor_matches: dashboard_source_anchor_matches(instance: instance),
@@ -2086,7 +1929,6 @@ fn dashboard_instance_apply_after_preflight(
               plan: plan,
               temp_bundle: temp_bundle,
               temp_verify_repo: temp_verify_repo,
-              admitted_release_revision: Present { value: desired_source_revision },
             )
             let cleaned = shell.Remove.RecursiveForce(path: temp.path)
             if !applied.running {
@@ -2186,7 +2028,6 @@ fn dashboard_apply_bootstrap_then_escalate(
     plan: dashboard_bootstrap_only_ops(instance: instance),
     temp_bundle: dashboard_bootstrap_unused_temp_path,
     temp_verify_repo: dashboard_bootstrap_unused_temp_path,
-    admitted_release_revision: none,
   )
   dashboard_apply_refused(
     instance: instance,
@@ -2254,13 +2095,13 @@ fn dashboard_instance_apply(
 // A hand-authored mkdir would have been the out-of-band actuation DESIGN 6 names, and it would have
 // drifted from the plan the moment a root was added.
 //
-// WHAT IT DELIBERATELY DOES NOT DO. The full apply also ensures a serve binary, stages source, and
-// installs a systemd unit. The last of those has no macOS realization at all -- launchd is a
-// different service model that nothing in this repository yet describes -- so running the whole
-// apply on a development machine would refuse at that step having already done work. Naming the
-// directory phase separately is what lets the honest part run without pretending the rest exists.
-// Modelling a launchd service realization is its own lane; until it lands, a local instance is
-// started by the operator rather than supervised.
+// WHAT IT DELIBERATELY DOES NOT DO. The full apply still ensures a serve binary and stages source.
+// Service launch is gunbc.live_deploy's systemd members, which have no macOS realization --
+// launchd is a different service model that nothing in this repository yet describes -- so running
+// the whole apply on a development machine would refuse at that step having already done work.
+// Naming the directory phase separately is what lets the honest part run without pretending the
+// rest exists. Modelling a launchd service realization is its own lane; until it lands, a local
+// instance is started by the operator rather than supervised.
 fn dashboard_instance_ensure_dispatch_roots(
   instance: HostDashboardInstance,
 ) -> DashboardApplyFold {
@@ -2277,16 +2118,12 @@ fn dashboard_instance_ensure_dispatch_roots(
         DashboardEnsureOwnershipMarker { path: _, instance_id: _ } => false
         DashboardEnsureLocalOrigin { bundle: _, origin: _, source_ref: _, publish_ref: _ } => false
         DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
-        DashboardEnsureService {
-          instance_id: _, binary: _, workdir: _, handler: _, host: _, port: _, tmux_server: _,
-        } => false
         DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
         DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
         DashboardVerifyHealth { host: _, port: _ } => false
       }),
     temp_bundle: "/dev/null" as FilePath,
     temp_verify_repo: "/dev/null" as FilePath,
-    admitted_release_revision: none,
   )
 }
 
