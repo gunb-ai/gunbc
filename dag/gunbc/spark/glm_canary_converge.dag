@@ -420,21 +420,28 @@ fn glm_canary_candidate(arm: GlmCanaryArm) -> DeploymentCandidate {
 // carries no --distributed-executor-backend, so it takes the single-node default rather than the Ray
 // backend the four-rank pair route requires. Recording Ray here would describe a cluster this arm
 // does not form.
+// A ROW WHOSE DEFAULTS REVISION IS UNMODELLED PRODUCES NO PARAMETERS, rather than borrowing the nearest
+// modelled one. The profile's identity includes the vLLM revision its omitted flags resolve through, so
+// substituting a neighbour's would mint an identity for an engine nobody characterised.
 fn glm_canary_parameters(arm: GlmCanaryArm) -> ServingDecisionParameters? {
   match serving_runtime_row(r: arm.runtime) {
     Absent => none
-    Present { value: rrow } => Present { value: serving_decision_parameters(
-      max_model_len: arm.max_model_len,
-      memory_request: arm.memory_request,
-      max_num_batched_tokens: glm_canary_batched_token_count(p: arm.max_num_batched_tokens),
-      max_num_seqs: glm_canary_seq_bound(b: arm.max_num_seqs),
-      executor: ExecutorMpProfile,
-      kv_layout: KvFp8Layout,
-      speculative: glm_canary_speculative_policy(p: arm.speculation),
-      runtime: runtime_revision(
-        image: runtime_artifact_wire(a: rrow.artifact),
-        vllm_revision: (defaults_source_revision(r: rrow.claimed_defaults_revision)).full_revision),
-    ) }
+    Present { value: rrow } =>
+      match rrow.claimed_defaults_revision {
+        Absent => none
+        Present { value: claimed } => Present { value: serving_decision_parameters(
+          max_model_len: arm.max_model_len,
+          memory_request: arm.memory_request,
+          max_num_batched_tokens: glm_canary_batched_token_count(p: arm.max_num_batched_tokens),
+          max_num_seqs: glm_canary_seq_bound(b: arm.max_num_seqs),
+          executor: ExecutorMpProfile,
+          kv_layout: KvFp8Layout,
+          speculative: glm_canary_speculative_policy(p: arm.speculation),
+          runtime: runtime_revision(
+            image: runtime_artifact_wire(a: rrow.artifact),
+            vllm_revision: (defaults_source_revision(r: claimed)).full_revision),
+        ) }
+      }
   }
 }
 
@@ -890,11 +897,15 @@ fn glm_canary_resolved_memory(arm: GlmCanaryArm) -> ResolvedVllmMemoryPolicy {
   match serving_runtime_row(r: arm.runtime) {
     Absent => MemoryResolutionRefused { cause: "this arm has no runtime row, so no revision governs its omitted memory flags" as NonEmptyStr }
     Present { value: rrow } =>
-      resolve_vllm_memory_policy(
-        request: arm.memory_request,
-        device_total: gb10_torch_device_memory,
-        defaults: vllm_runtime_defaults_for(revision: defaults_source_revision(r: rrow.claimed_defaults_revision)),
-      )
+      match rrow.claimed_defaults_revision {
+        Absent => MemoryResolutionRefused { cause: "this runtime claims a vLLM revision this repository does not model, so no declared default governs its omitted memory flags -- resolving through a neighbour's revision would answer for an engine nobody characterised" as NonEmptyStr }
+        Present { value: claimed } =>
+          resolve_vllm_memory_policy(
+            request: arm.memory_request,
+            device_total: gb10_torch_device_memory,
+            defaults: vllm_runtime_defaults_for(revision: defaults_source_revision(r: claimed)),
+          )
+      }
   }
 }
 

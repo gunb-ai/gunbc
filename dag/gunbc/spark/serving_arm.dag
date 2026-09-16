@@ -427,7 +427,7 @@ type ServingRuntimeRow {
   registry_reading: ArchitectureRegistryReading?
   reasoning_projection: ReasoningResponseProjection?
   provenance: NonEmptyStr
-  claimed_defaults_revision: ModelledVllmDefaultsRevision
+  claimed_defaults_revision: ModelledVllmDefaultsRevision?
 }
 
 // HOW REASONING COMES BACK IS A RUNTIME PROPERTY WITH TWO SHAPES, AND THE MEMBER NAME IS PART OF IT.
@@ -454,7 +454,7 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   registry_reading: Present { value: gitcommit90_glm_53_one_spark_registry_reading },
   reasoning_projection: Present { value: ParsedReasoningField { field: "reasoning" as NonEmptyStr } },
   provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`. The full registry carried here was re-read inside the same digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 377 entries, the three Glm5Next entries among them and DeepseekV41ForCausalLM not" as NonEmptyStr,
-  claimed_defaults_revision: Vllm487ecf187,
+  claimed_defaults_revision: Present { value: Vllm487ecf187 },
 }
 
 data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
@@ -473,7 +473,7 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   registry_reading: Present { value: sparkrun_vllm_ds4_gb10_registry_reading },
   reasoning_projection: Present { value: InlineReasoning { end_token: "</think>" as NonEmptyStr } },
   provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present. The full registry carried here was read inside the pinned digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 361 entries, no Glm5 entry and no DeepseekV41ForCausalLM" as NonEmptyStr,
-  claimed_defaults_revision: Vllm1967a5627,
+  claimed_defaults_revision: Present { value: Vllm1967a5627 },
 }
 
 // THE IMAGE UPSTREAM PRESCRIBES FOR THIS MODEL, PINNED TO WHAT THE FLEET ACTUALLY PULLED. It is its
@@ -505,9 +505,9 @@ data vllm_openai_glm53_flash_row: ServingRuntimeRow = ServingRuntimeRow {
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: "0.28.1rc1.dev580+g385dce36b" as NonEmptyStr,
   registry_reading: none,
-  reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
+  reasoning_projection: none,
   provenance: "pulled by tag vllm/vllm-openai:glm53-flash on the group B hosts 2026-09-10 and pinned here to the digest that tag resolved to; recipes.vllm.ai/zai-org/GLM-5.3-Flash directs NVIDIA deployments to this image for this checkpoint" as NonEmptyStr,
-  claimed_defaults_revision: Vllm487ecf187,
+  claimed_defaults_revision: none,
 }
 
 fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
@@ -838,5 +838,5 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   registry_reading: Present { value: glm53_nope_derived_registry_reading },
   reasoning_projection: Present { value: ParsedReasoningField { field: "reasoning" as NonEmptyStr } },
   provenance: "read inside this exact image on srv9 2026-09-13: 378 registered architectures including all three Glm5Next entries and no DeepseekV41ForCausalLM; flashinfer 0.7.0.dev20260910 and vllm 0.1.dev1+g8d09804c8 reported by import; entrypoint [vllm, serve]; platform linux/arm64; hf at /usr/local/bin/hf; the reasoning parser name this fleet's argv requests (glm45) and the tool parser name (glm47) both RESOLVE here, to Glm47MoeParserReasoningAdapter and Glm47MoeModelToolParser -- established by lookup rather than by reading the registry dict, which is populated lazily and answers empty to a bare import. The NoPE kernel probes both pass: the writer accepts pe_dim 0 and zeroes the reserved tail, and the SM120 sparse reader accepts the 512+0 layout when asked with arbitrary_fp32 scales. THE REASONING PROJECTION IS NO LONGER ABSENT, and it was filled the only way it could be: this image served. A routed completion against the four-rank arm returned a response carrying a `reasoning` member DISTINCT from `content`, with 47 of its 73 completion tokens counted as reasoning_tokens -- so the parser that resolves here also SEPARATES, which resolution alone never showed. That a name resolves in a registry and that a served response comes back split are two different facts, and only the second can be read from a launch" as NonEmptyStr,
-  claimed_defaults_revision: Vllm8d09804,
+  claimed_defaults_revision: Present { value: Vllm8d09804 },
 }
