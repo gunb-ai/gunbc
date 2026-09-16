@@ -400,6 +400,57 @@ type FaithfulComponentRealization
   | RealizationUnfaithful { subject: DeclarationRef, defects: List<NonEmptyStr> }
   | RealizationEvidenceMissing { subject: DeclarationRef, obligation: NonEmptyStr }
 
+// NO POSITIVE FAITHFULNESS VERDICT MAY OUTRUN MEMBERSHIP, AND THE IDENTITY ARM IS NOT THE EXCEPTION IT
+// LOOKS LIKE. An earlier form of this gate exempted IdenticalToPublishedEncoding, reasoning that its claim
+// is about the published SHARD SET -- two files, fully known -- while the residual is about which TENSORS
+// are members. That reasoning is false, and the falsity is worth stating because it is not obvious: the
+// shard set is not independent evidence. extdeps.deepseek.deepseek_v4_1_flash builds
+// deepseek_v4_1_flash_engram_shard_files from the SAME twelve index members the residual is scoped to, so
+// the set's completeness is exactly as open as the membership's.
+//
+// THE ADMITTED COUNTEREXAMPLE. Twelve known Engram rows resolve to shards 47 and 48. The revision's
+// unenumerated index may carry a thirteenth Engram tensor in, say, shard 46. An artifact holding the exact
+// published bytes of 47 and 48 then matches the declared published identity exactly -- and does not contain
+// the component. RealizationFaithful names the SUBJECT, whose identity is the whole semantic Engram
+// component, so that verdict would be false while every byte it compared was right.
+//
+// WHAT SURVIVES IS THE NARROWER FACT: artifact identity equals the declared published identity. That
+// settles without membership. What it cannot mint is "this artifact faithfully realizes the component". If
+// a caller ever needs the narrow equality on its own, it wants its own carrier, not this verdict widened.
+//
+// THE GATE DOWNGRADES A FAITHFUL VERDICT AND NEVER MASKS AN UNFAITHFUL ONE. Refusing on the residual
+// BEFORE the evidence is examined would be the easier fold and the wrong one: a relation about another
+// subject, one preserving too little, or an artifact whose identity is simply not the published one, is a
+// defect that holds whatever the population's closure is, and reporting it as "evidence missing" would hide
+// a found defect behind an unfound one. So each arm is judged first and only its Faithful result is gated
+// -- the residual removes the ability to CONCLUDE faithfulness, not the ability to detect its absence.
+//
+// THE DOWNGRADED VERDICT KEEPS THE SUBJECT THE JUDGED VERDICT NAMED. An earlier form took the subject as a
+// second parameter beside the verdict, which made a relabel authorable: a caller passing a verdict about A
+// with a subject argument of B would get an obligation filed against B. Both call sites passed matching
+// values, but the helper is a declaration anyone may import, and an invariant two arguments have to agree on
+// is one a single argument cannot break.
+fn gate_faithful_on_membership(
+  verdict: FaithfulComponentRealization,
+  residual: List<NonEmptyStr>,
+) -> FaithfulComponentRealization {
+  if length(residual) == 0 { verdict } else {
+    match verdict {
+      RealizationFaithful { subject: s, artifact_identity: _, evidence: _ } =>
+        RealizationEvidenceMissing { subject: s, obligation: faithful_membership_obligation(residual: residual) }
+      RealizationUnfaithful { subject: u, defects: d } => RealizationUnfaithful { subject: u, defects: d }
+      RealizationEvidenceMissing { subject: m, obligation: o } => RealizationEvidenceMissing { subject: m, obligation: o }
+    }
+  }
+}
+
+fn faithful_membership_obligation(residual: List<NonEmptyStr>) -> NonEmptyStr {
+  join([
+    "this artifact is judged against a subject whose membership is scoped rather than closed, so a member absent from the reading would be absent from what was compared and the artifact would still be pronounced faithful: ",
+    join(map(residual, o => o as String), "; "),
+  ], "") as NonEmptyStr
+}
+
 // THE ONLY PRODUCER OF A FAITHFUL REALIZATION, and every arm of it is a COMPARISON.
 fn realize_component(
   standing: ComponentSubjectStanding,
@@ -410,7 +461,7 @@ fn realize_component(
     ComponentSubjectRefused { identity: i, defects: ds } => RealizationUnfaithful { subject: i, defects: ds }
     ComponentSubjectPopulationIncomplete { identity: i, obligation: o } =>
       RealizationEvidenceMissing { subject: i, obligation: o }
-    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _, residual: _ } =>
+    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _, residual: rs } =>
       if !declaration_ref_eq(a: artifact.subject, b: sub.identity) {
         RealizationUnfaithful {
           subject: sub.identity,
@@ -419,8 +470,10 @@ fn realize_component(
       } else {
         match evidence {
           FaithfulnessUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
-          IdenticalToPublishedEncoding => realize_by_identity(sub: sub, artifact: artifact)
-          StructurePreservingTransform { relation: r } => realize_by_relation(sub: sub, artifact: artifact, r: r)
+          IdenticalToPublishedEncoding =>
+            gate_faithful_on_membership(verdict: realize_by_identity(sub: sub, artifact: artifact), residual: rs)
+          StructurePreservingTransform { relation: r } =>
+            gate_faithful_on_membership(verdict: realize_by_relation(sub: sub, artifact: artifact, r: r), residual: rs)
         }
       }
   }
