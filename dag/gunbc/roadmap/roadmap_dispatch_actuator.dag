@@ -1281,8 +1281,6 @@ fn dispatch_audit_unit_argv(
         "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
         "--arg", join(["verdict_dir=", dir], ""),
         "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
-        // Same mint as the worker's, one prefix over: a safe segment from the node id and attempt
-        // key, because the auditor's bind is consumed as a path segment by the fleet ssh context.
         "--arg", join(["attempt_identity=auditor:", node_id as String, "-", attempt_key], ""),
       ],
     ),
@@ -1747,6 +1745,12 @@ data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner 
 // edit. So the entry and source roots are absolute paths under the instance's repo_root -- the
 // controller's own checkout, fixed for the process's life -- while the worktree reaches the worker
 // as the argument that sets its tools' working directory. Tool and subject, named separately.
+// attempt_identity IS MINTED HERE FROM THE SAFE PIECES THE SPAWNER ALREADY HOLDS. The worker and
+// auditor used to build it from the worktree, events and verdict paths -- all absolute, all
+// rejected by the fleet ssh context's safe-segment law, so every seat bind on a host needing that
+// context refused before any ssh leg (measured 2026-09-16 on srv2). node id plus attempt key is
+// the same uniqueness (the key hashes the id and the spawn instant) in a form that is a safe path
+// segment by construction.
 fn gunbc_harness_spawn_argv(
   gunbc_program: String,
   repo_root: String,
@@ -1892,11 +1896,6 @@ fn dispatch_provider_inner_argv_for_instance(
             node_id: node_id,
             attempt_key: attempt_key,
           ),
-          // THE IDENTITY IS MINTED FROM THE SAFE PIECES THE SPAWNER ALREADY HOLDS. The worker used to
-          // build it from the worktree and events paths -- both absolute, both rejected by the fleet
-          // ssh context's safe-segment law, so every seat bind on a host needing that context refused
-          // before any ssh leg. node id plus attempt key is the same uniqueness (the key hashes the
-          // id and the spawn instant) in a form that is a safe path segment by construction.
           attempt_identity: join(["worker:", node_id as String, "-", attempt_key], ""),
         ),
       }
