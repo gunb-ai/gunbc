@@ -142,7 +142,16 @@ type ReviewSheetResidency
   | SheetInOwnerMyDrive
   | SheetInSharedDrive { drive_id: NonEmptyStr, drive_name: NonEmptyStr }
 
-data review_sheet_residency: ReviewSheetResidency = ResidencyUnobserved
+// Operator-supplied 2026-09-16: https://drive.google.com/drive/folders/0ANpu9VSqUzO-Uk9PVA.
+// A shared drive's root folder id IS the drive id, which is why a drive url reads /folders/.
+// The id's shape is consistent with a shared drive rather than a folder inside one (19 chars
+// leading "0A", against a ~33 char My Drive folder id leading "1") -- that is a read of the
+// FORMAT, not of the resource: no Drive-scoped credential has yet resolved this id, so the
+// drives.get that would ground it is an open obligation, not a discharged one.
+data review_sheet_residency: ReviewSheetResidency = SheetInSharedDrive {
+  drive_id: "0ANpu9VSqUzO-Uk9PVA" as NonEmptyStr,
+  drive_name: "Customer acquisition" as NonEmptyStr,
+}
 
 // Membership in the drive, not a share of one file: FleetOnce, because the whole point of the
 // Shared Drive route is that it does not recur per sheet.
