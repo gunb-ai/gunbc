@@ -158,6 +158,12 @@ type SpeculationPolicy
 // name. Prefix caching resolves to ENABLED here, which is a sharing consequence nobody chose;
 // recording the partition as unestablished is what lets the tenancy slice find it rather than infer
 // it.
+// THE PORT IS 30000, NOT THE 30001 THIS ROW CARRIED AT FIRST BOOT. Operator ruling 2026-09-16: the
+// engine on srv9 (spark-0c75, 192.168.1.236) is observed serving glm-5.3-flash on port 30000 with
+// 30001 refused, and the model follows the deployment the operator is running. The collision the
+// original port choice avoided -- pair-serving DeepSeek on 30000 -- lives on a different host
+// (.225), so the two groups' ports may agree; what must not collide is host x port, and the
+// enrollment witness now discriminates on the host half for exactly that reason.
 data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
   checkpoint: Glm53Exl3_205,
   runtime: Gitcommit90Sm121Exl3,
@@ -182,7 +188,7 @@ data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
   },
   prefix_caching_request: PrefixCachingOmitted,
   prefix_cache_partition: PartitionUnestablished,
-  port: 30001,
+  port: 30000,
   container_name: "glm-canary" as NonEmptyStr,
 }
 

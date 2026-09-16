@@ -42,11 +42,14 @@ import product.fabric.demand { ObservationReceiptRef }
 
 // ── 1. BOTH GROUPS ARE ENROLLED, AND EACH ROUTE CARRIES ITS OWN FRONT DOOR ────────────────────
 //
-// THE DISCRIMINATING HALF IS THE PORT, not the count. A roster of two whose routes shared one port
-// row would pass a membership count and would still be the defect this change removed: the second
-// route answers on its own front door, and a single global port made it unreachable without an edit.
-// So the two endpoints are asserted DIFFERENT and each is asserted to resolve, which no single-port
-// spelling can satisfy.
+// THE DISCRIMINATING HALF WAS THE PORT AND IS NOW THE HOST. A roster of two whose routes shared one
+// endpoint row would pass a membership count and would still be the defect this change removed: the
+// second route answers on its own front door, and a single global endpoint made it unreachable
+// without an edit. Until 2026-09-16 the ports themselves differed (30000 vs 30001) and carried the
+// discrimination; the canary's move to 30000 (operator ruling, same date -- see glm_canary_arm)
+// put both groups on one port on DIFFERENT hosts, so the assertions now name the full front doors.
+// What must not collapse is host x port, which is exactly what the inequality plus the two exact
+// suffixes pin.
 fn w_endpoint(group: FabricGroup) -> String {
   match serving_route(group: group) {
     ServingRouteUnresolved { group: _, obligation: _ } => "unresolved"
@@ -59,8 +62,8 @@ test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool
     && w_endpoint(group: FabricGroupA) != "unresolved"
     && w_endpoint(group: FabricGroupB) != "unresolved"
     && w_endpoint(group: FabricGroupA) != w_endpoint(group: FabricGroupB)
-    && ends_with(s: w_endpoint(group: FabricGroupA), suffix: ":30000")
-    && ends_with(s: w_endpoint(group: FabricGroupB), suffix: ":30001")
+    && ends_with(s: w_endpoint(group: FabricGroupA), suffix: "192.168.1.225:30000")
+    && ends_with(s: w_endpoint(group: FabricGroupB), suffix: "192.168.1.236:30000")
 }
 
 // ── 2. A ROUTE'S CEILING IS A DECLARED DECISION, AND THE TWO ROUTES DISAGREE ──────────────────
