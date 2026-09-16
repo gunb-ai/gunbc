@@ -101,6 +101,27 @@ fn compile_clean_diagnostic_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compile-clean-diagnostic-census" } }
 }
 
+// THE SELF-HOST INSTRUMENT: THE GENERATION THIS REPOSITORY CAN PERFORM, ASKED AS ONE QUESTION.
+//
+// The seed emits v2's compiler closure, assembles it as a crate, and builds it. Pass or fail is
+// the whole verdict and WHERE IT STOPS IS THE STATUS, so there is no roster of known-good entries
+// beside it: a roster is a second representation of what this instrument demonstrates by running
+// (DESIGN sections 2 and 3), and it drifts exactly when nobody updates it.
+// `required_v2_emission_entries` has changed once in repository history and that change was a
+// directory move.
+//
+// WHAT A GREEN DOES NOT ESTABLISH, named so it is not cited for more than it carries. It is
+// EMISSION AND COMPILATION, not behavioural equivalence -- DESIGN section 7 asks that the emitted
+// module also behave as the seed does on a discriminating corpus, and that half lives in the three
+// behavioral-receipt instruments beside this one. Nor is it the second generation: the BUILT binary
+// emitting the same closure is the v2 -> v2 boundary, and it refuses today because
+// `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main answers `census` and
+// `adjudicate` and has no compile mode at all. That refusal is the honest next position and belongs
+// in this instrument when a driver can reach it.
+fn self_host_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "self-host" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -131,6 +152,14 @@ fn behavioral_receipt_selftest_target() -> BuildTarget {
 
 fn compile_clean_diagnostic_census_target() -> BuildTarget {
   instrument_test_target(label: compile_clean_diagnostic_census_label())
+}
+
+fn self_host_target() -> BuildTarget {
+  instrument_test_target(label: self_host_label())
+}
+
+fn self_host_binding() -> TargetBinding {
+  TargetBinding { target: self_host_label() producer: SelfHostProducer {} }
 }
 
 fn heads_reading_differential_binding() -> TargetBinding {
@@ -168,6 +197,13 @@ fn heads_reading_differential_source_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
+// The self-host instrument's own subject, on the same rule its siblings follow: which corpus the
+// seed emits v2 FROM is a property of this instrument, not a CLI option, so an invocation cannot
+// quietly build a different closure while reporting this target's standing.
+fn self_host_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
 // One modeled subject shared by the three behavioral producers. The host leaf receives this
 // population; it does not decide it.
 fn behavioral_receipt_source_roots() -> List<String> {
@@ -201,7 +237,7 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label()
+    compile_clean_diagnostic_census_label(), self_host_label()
   ]
 }
 
@@ -209,7 +245,7 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding()
+    compile_clean_diagnostic_census_binding(), self_host_binding()
   ]
 }
 

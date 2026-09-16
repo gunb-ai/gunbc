@@ -1,0 +1,71 @@
+module test.claim.self_host_instrument_binding_witness
+
+import extdeps.bazel.label { Label, label_eq }
+import gunbc.target_binding {
+  TargetProducer,
+  SelfHostProducer,
+  HeadsReadingDifferentialProducer,
+  CompileCleanDiagnosticCensusProducer
+}
+import gunbc.instrument_targets {
+  invoke_target,
+  instrument_targets,
+  instrument_bindings,
+  self_host_label,
+  self_host_source_roots
+}
+import gunbc.target_invocation {
+  TargetInvocationRoute,
+  TargetInvocationRouted,
+  TargetInvocationRouteRefused
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { fold_list, length }
+import std.algebra { Cons, Empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SELF-HOST INSTRUMENT IS REACHABLE BY THE OPERAND A SHELL WOULD HAND THE VERB, and that is
+// the whole claim these rows make. `gunbc test //gunbc/instruments:self-host` is the modeled route
+// to the v1 -> v2 generation, so the operand must end at this instrument's own producer through
+// the LIVE registry -- not through a population authored here, which would pass while the
+// repository's roster had lost the row.
+//
+// WHY THE SECOND ROW IS NOT REDUNDANT WITH THE FIRST. Routing to A producer is not routing to the
+// RIGHT one: a binding that names the wrong producer routes successfully and then measures
+// something else while reporting this target's standing. So the arm is asserted, not merely the
+// absence of a refusal.
+//
+// THE THIRD ROW IS THE STANDING RED AND IT DOES NOT RETIRE. The subject is the instrument's own
+// fact -- `gunbc test` takes no source-root option -- so if these roots ever became an invocation
+// argument, one fact would have two homes and an invocation could quietly build a different
+// closure while reporting this target's standing. That is the same rule its five siblings follow
+// and the reason none of them accepts a corpus option either.
+
+fn routed_producer_is_self_host(route: TargetInvocationRoute) -> Bool {
+  match route {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: self_host_label())
+        && (b.producer == SelfHostProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_self_host_operand_routes_through_the_live_registry_holds() -> Bool {
+  routed_producer_is_self_host(route: invoke_target(operand: "//gunbc/instruments:self-host"))
+}
+
+// A LOST ROW REDS HERE RATHER THAN SILENTLY SHRINKING THE ROSTER. The two lists are built from the
+// same rows the CLI routes against, so a label added without its binding -- or a binding added
+// without its label -- is a length disagreement rather than a target that refuses at invocation
+// time in someone else's session.
+test fn every_rostered_label_carries_a_binding_holds() -> Bool {
+  length(xs: instrument_targets()) == length(xs: instrument_bindings())
+}
+
+// THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN INVOCATION OPTION.
+test fn the_self_host_subject_is_the_instruments_own_fact_holds() -> Bool {
+  length(xs: self_host_source_roots()) == 2
+}

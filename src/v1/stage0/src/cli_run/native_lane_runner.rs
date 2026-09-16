@@ -845,7 +845,19 @@ fn write_host_facts(
 /// refuses today because `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main
 /// answers `census` and `adjudicate` and has no compile mode at all. That refusal is the honest next
 /// position and belongs in this step when a driver exists that can reach it.
-pub fn run_self_host(source_roots: &[String]) -> Result<(), String> {
+/// What the self-host generation observed, as the fields a caller renders. Returned rather than
+/// printed so the instrument seam decides the termination: a producer that only printed would make
+/// every caller re-derive the verdict from stderr, which is the second representation DESIGN
+/// section 3 forbids.
+pub struct SelfHostHeld {
+    pub closure_identity: String,
+    pub binary_identity: String,
+    pub seed_identity: String,
+    pub exit_status: i64,
+    pub warning_count: i64,
+}
+
+pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
     let started = std::time::Instant::now();
     eprintln!(
         "self-host: v1 -> v2 — seed emits {NATIVE_COMPILE_ENTRY}, assembles the crate, and builds it"
@@ -856,22 +868,21 @@ pub fn run_self_host(source_roots: &[String]) -> Result<(), String> {
     // admits only a completed zero-status run, so these are already its verdict; reading them here
     // is what makes the step's claim ("built clean") the one the receipt carries rather than one
     // inferred from control flow having reached this line.
-    if prepared.build.exit_status != 0 || prepared.build.warning_count != 0 {
-        return Err(format!(
-            "SELF-HOST REFUSAL cause=EmittedCompilerNotClean — exit_status={} warning_count={} \
-             (RUSTFLAGS={:?})",
-            prepared.build.exit_status, prepared.build.warning_count, prepared.build.rustflags,
-        ));
-    }
     eprintln!(
-        "self-host: v1->v2 HELD — closure={} binary={} seed={} exit_status={} warning_count={} wall_s={wall_s}",
-        prepared.closure_identity,
-        prepared.binary_identity,
-        prepared.seed_identity,
-        prepared.build.exit_status,
-        prepared.build.warning_count,
+        "self-host: v1->v2 emit and build completed — exit_status={} warning_count={} wall_s={wall_s}",
+        prepared.build.exit_status, prepared.build.warning_count,
     );
-    Ok(())
+    // THE COUNTERS ARE CARRIED, NOT ADJUDICATED HERE. A non-clean build is an observation that DID
+    // NOT HOLD, and a refusal above is the subject never having been reached; those are different
+    // terminations with different exit statuses, and the instrument seam is the one place that
+    // knows the vocabulary. Deciding it here too would give one fact two homes.
+    Ok(SelfHostHeld {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        exit_status: prepared.build.exit_status,
+        warning_count: prepared.build.warning_count,
+    })
 }
 
 pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
