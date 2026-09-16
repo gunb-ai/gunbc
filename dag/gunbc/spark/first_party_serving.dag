@@ -477,7 +477,10 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // THE ENDPOINT AND THE INCARNATION ARE THE SERVICE HALF'S EVIDENCE. The endpoint is the process the
 // route answered on; the incarnation standing says whether anything observed which engine launch that
 // process belongs to. The production caller, gunbc.harness.harness_seat harness_serving_realization,
-// has no such observer and says so with EndpointIncarnationUnobserved. Only
+// takes that standing from gunbc.spark.serving_incarnation_observe -- the producer that binds the
+// answering endpoint to an engine launch over the fleet key session -- so it carries
+// EndpointIncarnationObserved on a bind that observed and EndpointIncarnationUnobserved (with the
+// specific cause) on one that did not. Only
 // gunbc.spark.serving_offer spark_serving_route_standing reads them. The telemetry standing does not,
 // and should not: knowing which incarnation answered is not a reading of its effective environment.
 type SparkServingRealization {

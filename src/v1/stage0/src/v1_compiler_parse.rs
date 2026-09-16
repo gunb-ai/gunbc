@@ -80,9 +80,9 @@ use crate::v1_std_core::TokenShape::{
 };
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v1_std_core::{
-    arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
-    expr_var_name_at, field_access_base, field_access_field_at, field_access_spine,
-    field_binding_pattern, field_from_key_property_name, field_init_node_value,
+    arg_name_at, arg_value, authored_name_at, byte_to_line_col, empty_intern_table, error_type,
+    expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at,
+    field_access_spine, field_binding_pattern, field_from_key_property_name, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, file_transport_node, import_node, intern,
     intern_table_with_authored_token_ordinals, is_compiler_error, is_container_type, kernel_span,
@@ -15689,13 +15689,19 @@ pub fn parse_field_init_list(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<FieldInitsResult> {
-    parse_field_init_list_acc(tokens.clone(), ctx.clone(), Rc::new(vec![]))
+    parse_field_init_list_acc(
+        tokens.clone(),
+        ctx.clone(),
+        Rc::new(vec![]),
+        v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
+    )
 }
 
 pub fn parse_field_init_list_acc(
     mut tokens: Rc<TokenStream>,
     mut ctx: Rc<ParseContext>,
     mut acc: Rc<Vec<Rc<Node>>>,
+    mut seen: Rc<HashMap<String, Rc<SourceSpan>>>,
 ) -> Rc<FieldInitsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -15718,6 +15724,33 @@ pub fn parse_field_init_list_acc(
                     err: r.err.clone(),
                 });
             }
+            let key = r.field.clone().name.clone();
+            let duplicate = match v1_rt::map_get(&seen, key.clone()) {
+                Some(first_span) => {
+                    if (key.clone() == "_".to_string()) {
+                        std::option::Option::None
+                    } else {
+                        Some(parse_error(
+                            duplicate_field_init_message(
+                                ctx.clone(),
+                                key.clone(),
+                                first_span.clone(),
+                                r.field.clone().span.clone(),
+                            ),
+                            r.field.clone().span.clone(),
+                        ))
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            };
+            if has_err(duplicate.clone()) {
+                return Rc::new(FieldInitsResult {
+                    fields: Rc::new(vec![]),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: duplicate.clone(),
+                });
+            }
             let e = eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
@@ -15726,10 +15759,48 @@ pub fn parse_field_init_list_acc(
             {
                 let __tco_0 = parse_context_after_node(r.ctx.clone(), r.field.clone());
                 let __tco_1 = v1_rt::rc_list_push(acc, r.field.clone());
+                let __tco_2 = v1_rt::rc_map_insert(seen, key.clone(), r.field.clone().span.clone());
                 ctx = __tco_0;
                 acc = __tco_1;
+                seen = __tco_2;
                 continue;
             }
+        }
+    }
+}
+
+pub fn duplicate_field_init_message(
+    ctx: Rc<ParseContext>,
+    field: String,
+    first: Rc<SourceSpan>,
+    again: Rc<SourceSpan>,
+) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("duplicate field '".to_string(), field.clone()),
+                    "' in record literal: first at ".to_string(),
+                ),
+                field_init_position(ctx.clone(), first.clone()),
+            ),
+            ", again at ".to_string(),
+        ),
+        field_init_position(ctx.clone(), again.clone()),
+    )
+}
+
+pub fn field_init_position(ctx: Rc<ParseContext>, span: Rc<SourceSpan>) -> String {
+    match v1_rt::map_get(&ctx.source_indices.clone(), span.file.clone()) {
+        Some(index) => {
+            let lc = crate::v1_std_core::byte_to_line_col(index.clone(), span.start.clone());
+            v1_rt::concat(
+                v1_rt::concat(int_to_string(lc.line.clone()), ":".to_string()),
+                int_to_string(lc.col.clone()),
+            )
+        }
+        std::option::Option::None => {
+            v1_rt::concat("byte ".to_string(), int_to_string(span.start.clone()))
         }
     }
 }
