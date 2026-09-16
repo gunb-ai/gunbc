@@ -381,31 +381,3 @@ test fn prepared_choice_stamp_split_agrees_with_ordered_oracle() -> Bool {
     _ => false
   }
 }
-
-test fn grammar_lookahead_consumes_no_token_and_wrong_class_rejects() -> Bool {
-  let tokens = [pcp_token(token_class: ^pcp_a)]
-  match parse_expr(
-    expr: Lookahead { pattern: term(token_class: ^pcp_a) },
-    tokens: tokens,
-    all_tokens: tokens,
-    root: pcp_root(),
-    table: parse_table_empty(),
-    prov: parse_prov_initial()
-  ) {
-    ParseExprRejected { diagnostics: _, table: _ } => false
-    ParseExprAccepted { remaining: remaining, captured: _, diagnostics: _, prov: prov, table: _ } =>
-      (length(xs: remaining) == 1)
-        && (parse_prov_frame_len(prov: prov) == 0)
-        && match parse_expr(
-          expr: Lookahead { pattern: term(token_class: ^pcp_b) },
-          tokens: tokens,
-          all_tokens: tokens,
-          root: pcp_root(),
-          table: parse_table_empty(),
-          prov: parse_prov_initial()
-        ) {
-          ParseExprRejected { diagnostics: _, table: _ } => true
-          ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: _ } => false
-        }
-  }
-}

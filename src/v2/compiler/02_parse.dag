@@ -130,7 +130,6 @@ import v2.std.grammar {
   Repeat,
   Sequence,
   Terminal,
-  Lookahead,
   ValidatedGrammarRoot,
   VoidGrammar,
   TerminalStampMode,
@@ -1292,8 +1291,7 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: List<Symbol>) -> 
       sequence: fn(left_nullable, right_nullable) { left_nullable && right_nullable },
       choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
       optional: fn(_) { true },
-      repeat: fn(_) { true },
-      lookahead: fn(_) { true }
+      repeat: fn(_) { true }
     }
   )
 }
@@ -1494,8 +1492,7 @@ fn expr_first_fold(
       sequence: expr_first_fold_sequence,
       choice: expr_first_fold_choice,
       optional: expr_first_fold_optional,
-      repeat: expr_first_fold_repeat,
-      lookahead: fn(inner) { GrammarExprFirstFold { terminals: inner.terminals, nullable: true } }
+      repeat: expr_first_fold_repeat
     }
   )
 }
@@ -1621,7 +1618,6 @@ type PreparedGrammarExpr
   | PreparedChoice { plan: PreparedChoicePlan, first: GrammarExprFirstFold }
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
-  | PreparedLookahead { pattern: PreparedGrammarExpr }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -1981,11 +1977,6 @@ fn expr_first_fold_from_prepared(
       expr_first_fold_repeat(
         element: expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
       )
-    PreparedLookahead { pattern: pattern } =>
-      GrammarExprFirstFold {
-        terminals: expr_first_fold_from_prepared(expr: pattern, nullable_set: nullable_set, first_rows: first_rows).terminals,
-        nullable: true
-      }
   }
 }
 
@@ -2012,14 +2003,18 @@ fn ordered_backtrack_row(
 }
 
 fn ordered_backtrack_emit(alts: List<PreparedExprFold>, production: Symbol) -> ChoicePlanEmit {
-  let row = ordered_backtrack_row(production: production, alts: alts)
   ChoicePlanEmit {
     plan: ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) },
-    residue: if !is_empty(xs: row.overlap_terminals) || row.both_nullable {
-      Cons { head: row, tail: std.algebra.Empty }
-    } else {
-      std.algebra.Empty
-    }
+    residue: std.algebra.Empty
+  }
+}
+
+fn authored_choice_site_residue(alts: List<PreparedExprFold>, production: Symbol) -> List<GrammarChoiceAmbiguityRow> {
+  let row = ordered_backtrack_row(production: production, alts: alts)
+  if !is_empty(xs: row.overlap_terminals) || row.both_nullable {
+    Cons { head: row, tail: std.algebra.Empty }
+  } else {
+    std.algebra.Empty
   }
 }
 
@@ -2183,14 +2178,10 @@ fn prepare_grammar_expr(
           first: union_first
         },
         first: union_first,
-        residue: list_append(left: concat_prepared_alt_residue(alts: prepared_alts), right: compiled.residue)
-      }
-    Lookahead { pattern: pattern } =>
-      let pattern_prepared = prepare_grammar_expr(expr: pattern, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
-      PreparedExprFold {
-        tree: PreparedLookahead { pattern: pattern_prepared.tree },
-        first: GrammarExprFirstFold { terminals: pattern_prepared.first.terminals, nullable: true },
-        residue: pattern_prepared.residue
+        residue: list_append(
+          left: concat_prepared_alt_residue(alts: prepared_alts),
+          right: authored_choice_site_residue(alts: prepared_alts, production: production)
+        )
       }
     Optional { element: element } =>
       let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
@@ -2416,8 +2407,7 @@ fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: List<Symbol>) -> G
       sequence: expr_corner_fold_sequence,
       choice: expr_corner_fold_choice,
       optional: expr_corner_fold_optional,
-      repeat: expr_corner_fold_repeat,
-      lookahead: fn(_) { GrammarExprCornerFold { corners: std.algebra.Empty, nullable: true } }
+      repeat: expr_corner_fold_repeat
     }
   )
 }
@@ -2579,8 +2569,7 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
       sequence: fn(left_undef, right_undef) { left_undef || right_undef },
       choice: fn(left_undef, right_undef) { left_undef || right_undef },
       optional: fn(element_undef) { element_undef },
-      repeat: fn(element_undef) { element_undef },
-      lookahead: fn(pattern_undef) { pattern_undef }
+      repeat: fn(element_undef) { element_undef }
     }
   )
 }
@@ -3207,26 +3196,6 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    PreparedLookahead { pattern: pattern } =>
-      match parse_expr_with_first(
-        expr: pattern,
-        tokens: tokens,
-        all_tokens: all_tokens,
-        root: root,
-        table: table,
-        prov: prov
-      ) {
-        ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: _ } =>
-          ParseExprAccepted {
-            remaining: tokens,
-            captured: grammar_empty_node(),
-            diagnostics: [],
-            prov: prov,
-            table: table
-          }
-        ParseExprRejected { diagnostics: diags, table: _ } =>
-          ParseExprRejected { diagnostics: diags, table: table }
-      }
     PreparedOptional { element: element } =>
       parse_expr_optional(
         element: element,
