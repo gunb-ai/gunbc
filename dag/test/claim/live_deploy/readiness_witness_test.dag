@@ -1,6 +1,9 @@
 module test.claim.live_deploy.readiness
 
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import test.claim.live_deploy.deploy_release_fixture {
+  deploy_witness_release_revision,
+  deploy_witness_other_release_revision,
+}
 import gunbc.live_deploy.readiness {
   live_deploy_service_ready_once_for_deploy,
   live_deploy_poll_service_ready_after_attempts,
@@ -34,6 +37,7 @@ import gunbc.host_effect {
 }
 import std.types { NonEmptyStr, String, List }
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
+import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_reconcile {
@@ -104,6 +108,19 @@ fn unused_surface_bundle() -> RoadmapSiteSurfaceBundle {
     dispatch_js: unused_surface_artifact(),
     healthz_body: "",
   }
+}
+
+fn unused_process_body_at_admitted_revision() -> String {
+  let bundle = unused_surface_bundle()
+  healthz_body_with_release_identity(
+    roadmap: bundle.roadmap_md,
+    dispatch: bundle.dispatch_json,
+    daily: bundle.daily_html,
+    full: bundle.full_html,
+    dispatch_js: bundle.dispatch_js,
+    release_revision: deploy_witness_release_revision,
+    surface_bundle_identity: bundle.bundle_identity,
+  )
 }
 
 test fn witness_healthz_mock_body_groundable() -> Bool {
@@ -187,14 +204,17 @@ test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
 }
 
 test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Bool {
+  let bundle = unused_surface_bundle()
   match observe_service_readiness_from_healthz(
-    read: HealthzBodyRead { body: "" },
-    bundle: unused_surface_bundle(),
-    expected_revision: deploy_witness_release_revision,
-    expected_surface_identity: witness_expected_surface_identity(),
+    read: HealthzBodyRead { body: unused_process_body_at_admitted_revision() },
+    bundle: bundle,
+    expected_revision: deploy_witness_other_release_revision,
+    expected_surface_identity: bundle.bundle_identity,
   ) {
     Pending { cause: ServiceReadinessIdentityPending { reason } } =>
-      reason != ""
+      string_contains(s: reason, pattern: "ProcessRevisionMismatch")
+        && string_contains(s: reason, pattern: deploy_witness_release_revision as String)
+        && !string_contains(s: reason, pattern: "HealthzBodyUnparseable")
     Pending { cause: ServiceProbeUnanswered { detail: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false
