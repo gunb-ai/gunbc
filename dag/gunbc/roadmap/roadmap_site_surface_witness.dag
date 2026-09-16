@@ -15,9 +15,10 @@ import gunbc.live_deploy.readiness {
   live_deploy_service_ready_once_for_bundle,
   show_healthz_read_fixture_healthy,
   observe_service_readiness_from_healthz,
-  ground_service_ready_from_healthz_with_bundle,
-  Grounds,
-  DoesNotGround,
+  healthz_body_verdict,
+  HealthzBodyGrounds,
+  HealthzBodyDoesNotGround,
+  ServedSurfaceStale,
 }
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
 import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
@@ -58,8 +59,7 @@ fn witness_stale_roadmap_artifact(bundle: RoadmapSiteSurfaceBundle) -> RoadmapSi
 // ProcessSurfaceMismatch arm passes too; and the projected artifact map is the only thing that differs.
 // That makes this the discriminating control for the LAST arm specifically — a process reporting the
 // expected identity while serving a stale artifact map — which is the case the annotation on
-// gunbc.live_deploy.readiness ground_service_ready_from_healthz_with_bundle names as needing its
-// own control.
+// gunbc.live_deploy.readiness healthz_body_verdict names as needing its own control.
 fn witness_stale_healthz_body_for_bundle(
   bundle: RoadmapSiteSurfaceBundle,
   release_revision: CommitSha,
@@ -84,20 +84,16 @@ fn stale_surface_read_does_not_ground_for_bundle(
     release_revision: release_revision,
   )
   stale_surface_read_does_not_ground(bundle: bundle, stale_body: stale_body)
-    && match ground_service_ready_from_healthz_with_bundle(
-      read: HealthzBodyRead { body: stale_body },
+    && match healthz_body_verdict(
+      body: stale_body,
       bundle: bundle,
       expected_revision: release_revision,
       expected_surface_identity: bundle.bundle_identity,
     ) {
-      DoesNotGround { reason: why } =>
-        string_contains(s: why, pattern: "ServedSurfaceStale")
-          && string_contains(s: why, pattern: witness_stale_artifact_digest_hex)
-          && !string_contains(s: why, pattern: "JSON.parse")
-          && !string_contains(s: why, pattern: "ProcessIdentityAbsent")
-          && !string_contains(s: why, pattern: "ProcessRevisionMismatch")
-          && !string_contains(s: why, pattern: "ProcessSurfaceMismatch")
-      Grounds { evidence: _ } => false
+      HealthzBodyDoesNotGround { cause: ServedSurfaceStale { observed: o, expected: _ } } =>
+        string_contains(s: o, pattern: witness_stale_artifact_digest_hex)
+      HealthzBodyDoesNotGround { cause: _ } => false
+      HealthzBodyGrounds { evidence: _ } => false
     }
 }
 

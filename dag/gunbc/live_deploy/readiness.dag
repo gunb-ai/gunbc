@@ -8,9 +8,6 @@ import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
   ReadAbsent,
-  Grounding,
-  Grounds,
-  DoesNotGround,
 }
 import gunbc.live_deploy.service_ready {
   ServiceNotReady,
@@ -361,29 +358,9 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
 // to render the same). Each has its own discriminating control, because a single check covering
 // both would green whenever either happened to agree.
 
-fn ground_service_ready_from_healthz_with_bundle(
-  read: HealthzEffectiveRead,
-  bundle: RoadmapSiteSurfaceBundle,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Grounding<ServiceReadyEvidence> {
-  match read {
-    HealthzProbeRefused { probe_error: detail } =>
-      DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: detail }) }
-    HealthzBodyRead { body: observed_body } =>
-      ground_service_ready_from_healthz_body(
-        body: observed_body,
-        bundle: bundle,
-        expected_revision: expected_revision,
-        expected_surface_identity: expected_surface_identity,
-      )
-  }
-}
-
-// The four stages BELOW the probe, split out so the probe arm above is a match rather than the
-// first clause of a chain. This function only ever sees a body, because only HealthzBodyRead can
-// reach it -- which is the climb: the probe stage cannot be forgotten, mis-ordered, or reached
-// past, because a refusal has no body to hand it.
+// healthz_body_verdict only ever sees a body, because only HealthzBodyRead can reach it -- which
+// is the climb: the probe stage cannot be forgotten, mis-ordered, or reached past, because a
+// refusal has no body to hand it.
 type HealthzBodyVerdict
   = HealthzBodyGrounds { evidence: ServiceReadyEvidence }
   | HealthzBodyDoesNotGround { cause: HealthzRefusalCause }
@@ -431,24 +408,6 @@ fn healthz_body_verdict(
   }
 }
 
-fn ground_service_ready_from_healthz_body(
-  body: String,
-  bundle: RoadmapSiteSurfaceBundle,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Grounding<ServiceReadyEvidence> {
-  match healthz_body_verdict(
-    body: body,
-    bundle: bundle,
-    expected_revision: expected_revision,
-    expected_surface_identity: expected_surface_identity,
-  ) {
-    HealthzBodyGrounds { evidence: e } => Grounds { evidence: e }
-    HealthzBodyDoesNotGround { cause } =>
-      DoesNotGround { reason: healthz_refusal_reason(cause: cause) }
-  }
-}
-
 // THE ORDER IS PARSE, IDENTITY, REVISION, SURFACE, AND IT IS CHOSEN SO THE FIRST REFUSAL IS THE
 // MOST LOCATING ONE. A process at the wrong revision usually also serves the wrong surface, so
 // checking the surface first would report 'stale surface' for what is really 'the pre-restart
@@ -462,30 +421,11 @@ fn ground_service_ready_from_healthz_body(
 // no longer ordered by this note because it is no longer ordered by anything. HealthzEffectiveRead
 // became a coproduct (gunbc.roadmap_site_surface_types), so a refused probe carries no body at all
 // and the parse stage is unreachable from it — not checked-first, but unreachable. The four above
-// remain ordering-by-discipline inside ground_service_ready_from_healthz_body: they are stages over
+// remain ordering-by-discipline inside healthz_body_verdict: they are stages over
 // ONE String, and nothing structural stops a future edit from reordering them, so this note is
 // still doing real work for them. It is stated this way rather than deleted wholesale because a
 // note that shrank silently would read as though the whole ordering had been made structural, which
 // is the rung inflation DESIGN §4b calls worse than sitting low.
-
-fn ground_service_ready_from_healthz(
-  read: HealthzEffectiveRead,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Grounding<ServiceReadyEvidence> {
-  ground_service_ready_from_healthz_with_bundle(
-    read: read,
-    bundle: materialize_live_roadmap_site_surface_bundle(),
-    expected_revision: expected_revision,
-    expected_surface_identity: expected_surface_identity,
-  )
-}
-
-// The healthy fixture is the REAL healthz body, not a hand-spelled {"status":"ok"}. Once readiness
-// means 'answering AND serving this tree', a fixture that merely parses is no longer a healthy read
-// — it is precisely the stale-surface case — so a stand-in body would have made the
-// converges-on-healthy witnesses assert the opposite of the contract. Its counterpart
-// witness_stale_surface_read_does_not_ground keeps the hand-spelled body as the discriminating RED.
 
 fn show_healthz_read_fixture_healthy(
   bundle: RoadmapSiteSurfaceBundle,
@@ -511,7 +451,9 @@ fn show_healthz_read_fixture_healthy(
 // — and a running process never serves it, because a running process also states its release
 // identity. Once readiness checks that identity, a fixture spelling the surface alone is no longer
 // a healthy read: it is the pre-identity process, and the converges-on-healthy witnesses would have
-// been asserting the refusal they exist to exclude.\n\nThe fixture is rendered by
+// been asserting the refusal they exist to exclude.
+//
+// The fixture is rendered by
 // healthz_body_with_release_identity — the SAME producer the live route uses — so the healthy case
 // is a document the process could actually emit rather than a hand-assembled approximation of one.
 // That is the same discipline the original fixture note recorded when it refused a hand-spelled

@@ -8,10 +8,12 @@ import gunbc.live_deploy.readiness {
   live_deploy_service_ready_once_for_deploy,
   live_deploy_poll_service_ready_after_attempts,
   healthz_body_groundable,
-  ground_service_ready_from_healthz,
   live_deploy_healthz_get_for_port,
   service_readiness_reason,
   observe_service_readiness_from_healthz,
+  healthz_body_verdict,
+  HealthzBodyGrounds,
+  HealthzBodyDoesNotGround,
   ServiceProbeUnanswered,
   ServiceReadinessIdentityPending,
   ServiceReadinessPollBound,
@@ -41,10 +43,6 @@ import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteS
 import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_reconcile {
-  DoesNotGround,
-  Grounds,
-}
 import std.measure { measure_fit_count_floor, second_count }
 import extdeps.http.client { http_client_get_argv }
 import extdeps.systemd.systemctl
@@ -142,13 +140,14 @@ test fn witness_healthz_bad_body_not_groundable() -> Bool {
 
 test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
   !healthz_body_groundable(body: witness_ssh_mock_stdout)
-    && match ground_service_ready_from_healthz(
-      read: HealthzBodyRead { body: witness_ssh_mock_stdout },
+    && match healthz_body_verdict(
+      body: witness_ssh_mock_stdout,
+      bundle: unused_surface_bundle(),
       expected_revision: deploy_witness_release_revision,
       expected_surface_identity: witness_expected_surface_identity(),
     ) {
-      DoesNotGround { reason: _ } => true
-      Grounds { evidence: _ } => false
+      HealthzBodyDoesNotGround { cause: _ } => true
+      HealthzBodyGrounds { evidence: _ } => false
     }
 }
 
@@ -175,15 +174,19 @@ test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
 }
 
 test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
-  match ground_service_ready_from_healthz(
+  match observe_service_readiness_from_healthz(
     read: HealthzProbeRefused {
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },
+    bundle: unused_surface_bundle(),
     expected_revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {
-    DoesNotGround { reason: _ } => true
-    Grounds { evidence: _ } => false
+    Pending { cause: ServiceProbeUnanswered { detail } } =>
+      string_contains(s: detail, pattern: "timed out")
+    Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
+    Ready { evidence: _ } => false
+    Refused { cause: _ } => false
   }
 }
 
