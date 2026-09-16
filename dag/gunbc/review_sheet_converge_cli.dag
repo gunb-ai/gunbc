@@ -295,8 +295,11 @@ type DriveHalfReport {
   spreadsheet: SpreadsheetConvergeOutcome
 }
 
-fn converge_drive_half(drive_id: NonEmptyStr, writer: ServiceAccountEmail, policy: EnsurePolicy)
-  -> DriveHalfReport uses net: Network {
+fn converge_drive_half(
+  drive_id: NonEmptyStr,
+  writer: ServiceAccountEmail,
+  policy: EnsurePolicy,
+) -> DriveHalfReport uses net: Network {
   DriveHalfReport {
     membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
     spreadsheet: converge_review_spreadsheet(
