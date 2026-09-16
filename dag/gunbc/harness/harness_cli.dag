@@ -558,9 +558,16 @@ fn harness_worker_cli(
   events_path: String,
   repo_root: String,
   gunbc_program: String,
+  attempt_identity: String,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: join(["worker:", worktree, "@", events_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  // THE ATTEMPT IDENTITY ARRIVES MINTED, because it is consumed as a PATH SEGMENT by the fleet ssh
+  // context (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity refuses anything that is not
+  // a safe segment) as well as by the seat ledger. Building it here from the worktree and events
+  // paths -- both absolute -- made every bind on a host that needs the fleet context fail before any
+  // ssh leg: measured 2026-09-16 on srv2, "attempt identity ... is not a safe path segment". The
+  // spawner holds the safe unique pieces (node id and attempt key), so the mint moves there.
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -720,10 +727,13 @@ fn harness_auditor_cli(
   events_path: String,
   verdict_dir: String,
   verdict_name: String,
+  attempt_identity: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_auditor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "auditor", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  // ATTEMPT IDENTITY IS MINTED BY THE SPAWNER, for the reason harness_worker_cli records: this bind
+  // needs it to be a safe path segment and the verdict path is absolute.
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "auditor", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
