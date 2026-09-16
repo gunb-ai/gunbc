@@ -213,14 +213,8 @@ fn arm_node_roster(group: FabricGroup, expected_ranks: Nat) -> ArmNodeRoster {
 
 // ── THE LAUNCH LINE ────────────────────────────────────────────────────────────────────────────
 
-// THESE TWO DERIVE FROM THE PROFILE RATHER THAN RESTATING IT, because the readback probe, the semantic probe
-// and the launch line must name one port and one alias. Two rows agreeing today is a fork that disagrees the
-// first time one of them is edited.
-data glm_native_served_model_alias: NonEmptyStr = glm_native_initial_profile.served_alias
-data glm_native_serve_port: Port = glm_native_initial_profile.serve_port
 data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_master_port: Port = 29501
-data glm_native_weights_host_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
 
 data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
 
@@ -565,31 +559,6 @@ fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
     create: docker_create_command(spec: spec),
     engine_argv: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
     image_reference: runtime_artifact_wire(a: rrow.artifact),
-  }
-}
-
-// ── THE PLAN AS TEXT, FOR READING BEFORE ANYTHING RUNS ────────────────────────────────────────
-//
-// A launch that stops a live engine should be legible before it is performed, and the thing worth
-// reading is the ARGV THE MODEL PRODUCES rather than a description of it. This renders exactly what
-// would be executed, so a reviewer compares the real line against the arm's declared facts instead of
-// against prose about them. It performs nothing and reaches no host.
-fn arm_launch_line_text(l: ArmNodeLaunch) -> String {
-  join([
-    "rank ", to_string(l.node.node_rank), " on ", l.node.host as String,
-    " (rail ", render_ipv4_address(addr: l.node.rail) as String, "): ",
-    join(concat([l.create.program as String], l.create.arguments), " "),
-  ], "")
-}
-
-fn arm_launch_plan_render(plan: ArmLaunchPlan) -> String {
-  match plan {
-    ArmLaunchRefused { cause: c } => join(["REFUSED: ", c as String], "")
-    ArmLaunchPlanned { lines: ls, master: m } =>
-      join([
-        "master ", render_ipv4_address(addr: m) as String, " port ", to_string(glm_native_master_port), "\n",
-        join(map(ls, l => arm_launch_line_text(l: l)), "\n"),
-      ], "")
   }
 }
 

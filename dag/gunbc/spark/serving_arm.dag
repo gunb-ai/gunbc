@@ -682,65 +682,6 @@ type ServingLaunchProfile sole_constructor {
   prefix_caching: VllmPrefixCachingRequest
 }
 
-// THE FROZEN INITIAL NORMAL PROFILE FOR THE NATIVE ARM, every value an operator decision rather than a
-// derivation, and the identity string is what a compatibility receipt names. Changing any field here changes
-// the identity, which changes the subject, which means a refusal recorded against the old profile does not
-// silently cover the new one.
-// THE PROFILE'S IDENTITY IS DERIVED FROM ITS FIELDS, NEVER AUTHORED BESIDE THEM. It used to be a
-// hand-written `identity` string, and the two drifted immediately: the EXL3 row said "tp4 ... 32seq" while
-// the running engine was tp1 with one sequence, so the very carrier introduced to stop a borrowed profile
-// carried a label describing a different launch. A review named this correctly -- a hand-authored identity is
-// a second authority for what the record already says.
-//
-// SO THE KEY IS A FOLD OVER EVERY FIELD THAT REACHES THE WIRE. Change any of them and the key changes, which
-// changes the compatibility subject, which means a refusal recorded against one profile cannot silently
-// cover another. Nothing can edit the label to make two different launches compare equal, because there is
-// no label.
-// THE SEAL STAYS AND A NAMED MINT IS ADDED, which is the distinction the seal exists to make. Sealing
-// stopped a caller from spelling a profile with fields it invented -- but the profile is an ordinary value
-// that witnesses and future callers legitimately build, so the answer is one constructor here rather than a
-// record literal in every module. A caller still cannot omit a field or reorder the meaning of one.
-fn serving_launch_profile(
-  max_model_len: TokenCount,
-  max_num_batched_tokens: TokenCount,
-  max_num_seqs: Nat,
-  decided_gpu_memory_basis_points: BasisPoint,
-  kv_cache_dtype_wire: NonEmptyStr,
-  speculation_enabled: Bool,
-  serve_port: Port,
-  served_alias: NonEmptyStr,
-  prefix_caching: VllmPrefixCachingRequest,
-) -> ServingLaunchProfile {
-  ServingLaunchProfile {
-    max_model_len: max_model_len,
-    max_num_batched_tokens: max_num_batched_tokens,
-    max_num_seqs: max_num_seqs,
-    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
-    kv_cache_dtype_wire: kv_cache_dtype_wire,
-    speculation_enabled: speculation_enabled,
-    serve_port: serve_port,
-    served_alias: served_alias,
-    prefix_caching: prefix_caching,
-  }
-}
-
-// AND A FIELD-AT-A-TIME VARIANT, because the thing a caller actually wants is "this profile but one value
-// different" -- a mutation control, a retry at a lower fraction. Spelling seven fields to change one is how
-// a copy drifts from its original, which is the failure the profile type was introduced to end.
-fn profile_with_memory_basis_points(p: ServingLaunchProfile, decided_gpu_memory_basis_points: BasisPoint) -> ServingLaunchProfile {
-  ServingLaunchProfile {
-    max_model_len: p.max_model_len,
-    max_num_batched_tokens: p.max_num_batched_tokens,
-    max_num_seqs: p.max_num_seqs,
-    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
-    kv_cache_dtype_wire: p.kv_cache_dtype_wire,
-    speculation_enabled: p.speculation_enabled,
-    serve_port: p.serve_port,
-    served_alias: p.served_alias,
-    prefix_caching: p.prefix_caching,
-  }
-}
-
 // THE PREFIX-CACHING REQUEST IS PART OF THE IDENTITY. Two launches differing only in whether they asked
 // for prefix caching are two different launches, and a compatibility receipt recorded against one must not
 // cover the other -- which is precisely what a key omitting this field would let it do.
