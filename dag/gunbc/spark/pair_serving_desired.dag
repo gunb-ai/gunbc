@@ -171,6 +171,16 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // turn may be offered to -- and gunbc.serving.serving_enrollment now owns the second. This row is
 // the first question only, and it still says what it said on 2026-09-08: group B's hosts are the
 // canary's and are not claimed here.
+
+// THE NOTE ABOVE AND THIS ONE ARE ABOUT DIFFERENT CASES, and read in sequence they otherwise look like
+// a contradiction: it concludes that "the withdrawal belongs in the ROSTER, which is the thing that
+// decides", and this one says removing a member from that roster is the thing to stop and think about.
+// Both are right. The group B withdrawal removed a NON-LAST member to resolve a CONFLICTING claim -- two
+// authorities on one machine, and shrinking the roster was the correct repair, which is what that note
+// records. The case below is the opposite shape: the LAST member, removed for a SUCCESSOR that needs
+// those same hosts kept. Shrinking is right when you want the hosts released to someone else; it is
+// wrong when you want them held for you.
+//
 // READ THIS BEFORE REMOVING THE LAST MEMBER. Group A is the ONLY entry in this row, so a withdrawal
 // here does not remove an entry -- it EMPTIES THE ROSTER, and the two things that follow are not
 // obvious from the edit.

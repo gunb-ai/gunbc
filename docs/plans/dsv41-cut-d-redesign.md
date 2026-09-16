@@ -162,13 +162,15 @@ hosts sit while V4.1 is on them**, and the plan must answer it explicitly:
 - **suspend Group A's pair-serving desired authority** for the experiment's duration, so the
   released state is a converged state rather than a race — *suspend*, not *withdraw*: they are
   different operations and only withdrawal is expressible today (see below); and
-- record that withdrawal as part of the authorization, so the hosts are never in a position
+- record that **suspension** as part of the authorization, so the hosts are never in a position
   where two authorities both believe they own them.
 
 That is a real decision with its own consequences — it means Group A is deliberately not
-pair-serving while this runs — and it belongs in the authorization, not in a footnote.
+pair-serving while this runs — and it belongs in the authorization, not in a footnote. It also
+**cannot be performed today**: the operation it names does not exist, which is the gap this
+section ends on.
 
-**AND IT IS NOT A NOVEL DECISION: the corpus has already made it once, for this exact hazard.**
+**THE CORPUS HAS FACED THIS HAZARD BEFORE, THOUGH IT ANSWERED A DIFFERENT QUESTION.**
 `gunbc.serving.serving_enrollment` records that one list used to answer two questions that move
 for different reasons — *whose hosts this repository claims and converges*, and *which endpoints
 a turn may be offered* — and that they stopped coinciding on 2026-09-08. The reason given is the
@@ -177,8 +179,8 @@ B in the convergence roster left **two authorities claiming one machine, and the
 pair-serving convergence to run would have acted on a host it believed idle.** The operator
 authorised removing the claim, and the module was split so the two questions could move apart.
 
-That split is what makes the withdrawal safe rather than disruptive, and it is observable in the
-current rosters:
+That split is real and is observable in the current rosters — it is why a group can be enrolled
+for serving without being claimed for convergence:
 
 ```
 serving_enrolled_groups   = [FabricGroupA, FabricGroupB]   ← who may be ASKED
