@@ -1,5 +1,6 @@
 module gunbc.census_closure_frontier
 
+import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -20,9 +21,13 @@ import extdeps.docker.endpoint { endpoint_string_type_frontier_rows }
 import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows }
 import extdeps.github.workflow_runs {
   conclusion_authority_consolidation_frontier_rows,
-  workflow_job_run_observed_runner_frontier_rows,
 }
 import extdeps.github.workflows { create_dispatch_unconsumed_frontier_rows }
+import gunbc.public_workload_census {
+  public_workload_census_replay_consumer_frontier_rows,
+  public_workload_census_run_attempt_consumer_frontier_rows,
+  public_workload_census_declared_runner_frontier_rows,
+}
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
 import gunbc.roadmap_dispatch_destination { attempt_admission_subject_frontier_rows }
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
@@ -51,11 +56,13 @@ import product.data_class { data_class_frontier_rows }
 import product.data_category { data_category_frontier_rows }
 
 import product.fabric.job_admission { job_admission_frontier_rows }
+import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
     data_class_frontier_rows,
     data_category_frontier_rows,
+    buyer_review_ensure_projection_frontier_rows,
     hetzner_money_rate_frontier_rows,
     mac_address_anemic_brand_frontier_rows,
     container_state_detail_redundant_bools_frontier_rows,
@@ -70,8 +77,10 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     endpoint_string_type_frontier_rows,
     merge_state_graphql_transport_frontier_rows,
     conclusion_authority_consolidation_frontier_rows,
-    workflow_job_run_observed_runner_frontier_rows,
     create_dispatch_unconsumed_frontier_rows,
+    public_workload_census_replay_consumer_frontier_rows,
+    public_workload_census_run_attempt_consumer_frontier_rows,
+    public_workload_census_declared_runner_frontier_rows,
     ci_workflow_scan_producer_frontier_rows,
     attempt_admission_subject_frontier_rows,
     ipv6_text_codec_staged_frontier_rows,
@@ -95,6 +104,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     colo_types_frontier_rows,
     job_admission_frontier_rows,
     arm_ci_seller_census_later_consumer_frontier_rows,
+    runner_canary_executed_evidence_frontier,
   ]
 }
 

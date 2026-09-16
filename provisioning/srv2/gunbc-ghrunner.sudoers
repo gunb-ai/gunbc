@@ -1,4 +1,8 @@
 # GENERATED from dag/gunbc/runner/runner_host_grants.dag into provisioning/srv2/gunbc-ghrunner.sudoers — do not hand-edit; regenerate through gunbc.generated_artifact_emit artifact_generate
+# WIDTH REFUSED: this host's admitted runner width resolved to zero, which is a REFUSAL to derive a population rather than a request for no slots; no operational deploy row is constructed for it
+# No slot-install or slot-activation grants are rendered: both derive from a desired runner
+# population, and this host has none. Teardown and host-wide rows are retained -- they are
+# bounded by the host slot grammar and by the executor's own operation, not by a width.
 ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-01
 ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-02
 ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-03
@@ -63,21 +67,6 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-61
 ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-62
 ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-63
 ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-64
-ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-01
-ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-02
-ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-03
-ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-04
-ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-05
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-01.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-01.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-02.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-02.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-03.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-03.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-04.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-04.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-05.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-05.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o briansrls -g briansrls /opt/actions-runner
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o briansrls -g briansrls /opt/actions-runner-cache

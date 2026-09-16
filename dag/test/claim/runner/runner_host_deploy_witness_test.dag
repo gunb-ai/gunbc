@@ -6,7 +6,7 @@ import extdeps.exec.command { shell_command_render }
 import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
 import extdeps.systemd.systemctl { systemctl_program }
 import gunbc.runner_host_deploy {
-  srv4_runner_host_deploy,
+  admitted_deploy_for,
   gunbc_ci_github_app,
   github_app_runner_org,
   runner_host_installer_command,
@@ -57,7 +57,7 @@ test fn fleet_surface_no_longer_lies_declares_sccache() -> Bool {
 
 test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
   let outcome = runner_host_installer_command(
-    admission: admit_runner_host(deploy: srv4_runner_host_deploy),
+    admission: admit_runner_host(deploy: wt_srv4_deploy()),
     installer_path: "/tmp/install-actions-runner.sh",
     pem_src_path: "/tmp/app.pem",
   )
@@ -106,18 +106,18 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 // own operands, spelled inline by the builder rather than derived from any row -- so they remain
 // discriminating, and a command that listed the units without the verb still fails here.
 test fn srv4_enables_its_declared_runner_instances() -> Bool {
-  let names = runner_instance_names(deploy: srv4_runner_host_deploy)
-  match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
+  let names = runner_instance_names(deploy: wt_srv4_deploy())
+  match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: wt_srv4_deploy()), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
     RunnerCommandRefused { host_label: _, reason: _ } => false
     RunnerCommandReady { command: cmd } => {
       let enable = shell_command_render(command: cmd)
-      list_length(items: names) == srv4_runner_host_deploy.runner_count
+      list_length(items: names) == wt_srv4_deploy().runner_count
         && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
         && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
         && all(names, n => string_contains(s: enable, pattern: n))
         && !string_contains(
              s: enable,
-             pattern: concat("srv4-", runner_slot_index_suffix(index: srv4_runner_host_deploy.runner_count + 1)),
+             pattern: concat("srv4-", runner_slot_index_suffix(index: wt_srv4_deploy().runner_count + 1)),
            )
         && string_contains(
              s: enable,
@@ -174,7 +174,7 @@ test fn unenrolled_host_cannot_enable_runner_units() -> Bool {
 test fn enrolled_host_still_admits() -> Bool {
   fleet_intent_enrolls_host_label(label: "srv4")
     && !fleet_intent_enrolls_host_label(label: "srv9")
-    && match admit_runner_host(deploy: srv4_runner_host_deploy) {
+    && match admit_runner_host(deploy: wt_srv4_deploy()) {
         RunnerHostEnrolled { deploy: _ } => true
         RunnerHostUnenrolled { host_label: _, reason: _ } => false
       }
@@ -227,21 +227,43 @@ fn pool_declared_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
 
 fn witness_ready_receipt() -> BuildCacheInstanceReady {
   BuildCacheInstanceReady {
-    instance: pool_declared_instance_fixture(host: srv4_runner_host_deploy.host_label as HostIdentity),
+    instance: pool_declared_instance_fixture(host: wt_srv4_deploy().host_label as HostIdentity),
     owner: ProcessIdentity {
       boot_id: "fixture-boot" as NonEmptyStr,
       pid: 4242,
       start_time: "80000000" as NonEmptyStr,
     },
-    managed_unit: ci_cache_instance(host: srv4_runner_host_deploy.host_label as HostIdentity).intended_unit,
+    managed_unit: ci_cache_instance(host: wt_srv4_deploy().host_label as HostIdentity).intended_unit,
   }
 }
 
 fn witness_ready_pool() -> HostCompilePoolReady {
   HostCompilePoolReady {
-    host: srv4_runner_host_deploy.host_label as HostIdentity,
+    host: wt_srv4_deploy().host_label as HostIdentity,
     slice_unit: gunbc_managed_compile_pool_slice,
     pool_declared: true,
     pool_observed: true,
+  }
+}
+
+// THE ADMITTED ROW, ASKED FOR RATHER THAN READ. srv2 has no deploy row at all now -- its width
+// refuses -- so these rows come from the admission and a test that somehow lost its host fails on the
+// fixture rather than on a fabricated production value.
+fn wt_missing_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wt-unadmitted",
+    ssh_target: "unadmitted@invalid.example",
+    runner_user: "unadmitted",
+    unit_user: "unadmitted",
+    job_user: "unadmitted",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+fn wt_srv4_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv4) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
   }
 }
