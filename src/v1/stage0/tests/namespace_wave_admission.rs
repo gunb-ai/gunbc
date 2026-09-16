@@ -2348,22 +2348,27 @@ fn owner_composition(
     }
 }
 
-/// THE RED: the owner's merge_group run refuses a used row whose follow-up is not authored, and the
-/// refusal names the row and the absence.
+/// THE ARM IS GONE, AND THIS IS THE CONTROL THAT SAYS SO. The owner's merge_group run no longer
+/// refuses a used row whose follow-up is `NotAuthored` (2026-09-16, operator ruling). This is the
+/// inverse of the RED this test used to carry, kept executing rather than deleted so the removal is
+/// covered by evidence instead of by an absence of evidence.
+///
+/// WHAT STILL REFUSES IS TESTED ELSEWHERE and is not weakened here: a consumed row at landing
+/// (`base == head`) or on a roster-source edit, a stale row, and an unadjudicated delta. The debt
+/// remains RECORDED on the row and counted in the message; what was removed is the ADVANCE charge,
+/// whose admitting side was free because any number satisfied it.
 #[test]
-fn the_owners_merge_group_run_refuses_a_used_row_without_a_deletion_follow_up() {
-    let refusal = wave_admission_refusal(&owner_composition(
+fn the_owners_merge_group_run_admits_a_used_row_without_a_deletion_follow_up() {
+    let outcome = owner_composition(
         "owner_mg_no_follow_up",
         DeletionFollowUp::NotAuthored,
         AdjudicationEvent::MergeGroup,
-    ))
-    .expect("a used row with no follow-up must refuse on the owner's merge_group run");
-    assert!(refusal.contains("OwnerFollowUpAbsent"), "{refusal}");
-    assert!(
-        refusal.contains("gunbc#77777 fixture transition"),
-        "{refusal}"
     );
-    assert!(refusal.contains("follow-up PR absent"), "{refusal}");
+    assert!(
+        wave_admission_refusal(&outcome).is_none(),
+        "a used row with no follow-up must no longer refuse on the owner's merge_group run: {:?}",
+        wave_admission_refusal(&outcome)
+    );
 }
 
 /// THE POSITIVE CONTROL, case (3) of the requirement: a transition admission still needed for the
@@ -2514,7 +2519,7 @@ fn an_owned_consumed_rows_receipt_coexists_with_the_retained_roster_and_base_equ
 /// bystander composition, refuses and names the owing change -- so X narrowed the backstop to its
 /// true subject rather than deleting it. And off the queue the same bystander stays admitted.
 #[test]
-fn an_unowned_consumed_row_on_a_bystanders_merge_group_run_refuses_naming_the_owing_change() {
+fn an_unowned_consumed_row_on_a_bystanders_merge_group_run_is_admitted() {
     let sides = [
         ("home.dag", HOME),
         ("other.dag", OTHER),
@@ -2537,18 +2542,17 @@ fn an_unowned_consumed_row_on_a_bystanders_merge_group_run_refuses_naming_the_ow
         roster_touched: false,
         event: AdjudicationEvent::MergeGroup,
     };
-    let refusal = wave_admission_refusal(&composition)
-        .expect("an unowned base-consumed row on a composition is the owner charge's bypass");
-    assert!(
-        refusal.contains("ConsumedRowOwnerChargeBypassed"),
-        "{refusal}"
+    // THE BYSTANDER IS NO LONGER BILLED. This fixture used to refuse as
+    // ConsumedRowOwnerChargeBypassed: an unrelated composition was charged because a PRIOR owner
+    // authored no deletion follow-up. That arm was removed (2026-09-16, operator ruling) and this
+    // assertion is its inverse, kept executing so the removal has evidence rather than an absence.
+    // The row's own owner is still charged where the debt becomes real -- a consumed row refuses at
+    // landing or on a roster-source edit, which other tests here cover and this change did not touch.
+    assert_eq!(
+        wave_admission_refusal(&composition),
+        None,
+        "a bystander composition must not be charged for a prior owner's unauthored follow-up"
     );
-    assert!(refusal.contains("NOT this change's"), "{refusal}");
-    assert!(
-        refusal.contains("gunbc#77777 fixture transition"),
-        "{refusal}"
-    );
-    assert!(refusal.contains("owner gunbc#77777"), "{refusal}");
 
     let pull_request = WaveAdmissionOutcome::Adjudicated {
         base: "base".to_string(),

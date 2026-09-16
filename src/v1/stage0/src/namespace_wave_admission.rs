@@ -380,25 +380,25 @@ pub struct ConsumedRowReceipt {
 
 /// WHO OWES THE DELETION, AUTHORED WHERE THE DEBT IS CREATED.
 ///
-/// A row used to admit its own change's base->candidate delta is satisfied at the candidate by
-/// construction (the head check in `adjudicate` proves exactly that), so its consumption on landing
-/// is KNOWN at the owner's own merge-queue run. That is the instant to charge the deletion: the
-/// owner's `merge_group` run refuses a used row whose follow-up is `NotAuthored`
-/// (`OwnerFollowUpAbsent` in `wave_admission_refusal`). Charging it anywhere later bills a
-/// bystander -- the externalized degradation gunbc#9824 removed -- and charging it at the owner's
-/// pull_request run would refuse before the follow-up can reasonably exist.
+/// `deletion_follow_up` RECORDS A DEBT; NOTHING ENFORCES IT IN ADVANCE, AND THAT IS DELIBERATE.
+/// The field stays on the row and stays read, so a row can say which pull request is meant to
+/// delete it once its owner lands. What was removed (2026-09-16, operator ruling) are the two
+/// `merge_group` arms that refused on its absence: `OwnerFollowUpAbsent`, charging a row's owner at
+/// their own queue run, and `ConsumedRowOwnerChargeBypassed`, charging a BYSTANDER composition for
+/// someone else's unauthored follow-up.
 ///
-/// RUNG, STATED HONESTLY: the wall establishes that a follow-up NUMBER is authored, and NOTHING
-/// MORE. Whether that number names an OPEN pull request that deletes these rows is checked by NO
-/// EXECUTING ROUTE IN THIS REPOSITORY -- not by this binary, which reads no forge, and not by any
-/// other consumer (review 65476, verified). The pre-enqueue landing procedure that reads it is
-/// out-of-band human review, so that property is OUTSIDE THE MODELED GUARANTEE (DESIGN section 4b)
-/// and its trigger is the CLASS B forge read. A fabricated number passes this wall and, today, is
-/// caught by nothing here. The bypass backstop covers the ABSENCE of an authored follow-up number -- it reads
-/// `consumed_without_follow_up`, and any `PullRequest(n)`, valid or fabricated, enters the owned
-/// population instead -- so it does NOT cover the invalidity or lifecycle of a number that WAS
-/// authored. Reference verification happens out of band or not at all, and its failure is caught
-/// by nothing in this repository.
+/// THE DEBT IS STILL ENFORCED WHERE IT BECOMES REAL. A consumed row still refuses at landing
+/// (`base == head`) or on a roster-source edit, so the deletion is still compelled -- just at the
+/// point the row is actually spent rather than in advance of it.
+///
+/// WHY THE ADVANCE CHARGE WAS NOT WORTH ITS COST. Its admitting side was free: the wall established
+/// that a NUMBER was authored and nothing more. Whether that number named an open pull request that
+/// deletes these rows was checked by no executing route in this repository -- not by this binary,
+/// which reads no forge, and not by any other consumer (review 65476, verified). A fabricated
+/// number passed it and was caught by nothing. A check whose RED is authorable but whose GREEN is
+/// free buys the APPEARANCE of a wall (DESIGN section 4b), and the second arm made a bystander pay
+/// for it. Reference verification remains out of band or absent, which is now stated rather than
+/// implied by a wall that could not perform it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeletionFollowUp {
     NotAuthored,
@@ -1836,20 +1836,20 @@ fn parse_decl_ref_list(
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
 /// Stale rows and unadjudicated deltas always refuse. Consumed rows refuse at landing
-/// (base == head) or on a roster-source edit. On a `merge_group` composition two more arms hold:
-/// a row the composition USES whose owner authored no `deletion_follow_up` refuses
-/// (`OwnerFollowUpAbsent`, the owner's charge, known at the owner's own queue run because a used
-/// row is satisfied at the candidate), and a base-consumed row on a composition that does not touch
-/// the roster refuses as `ConsumedRowOwnerChargeBypassed` ONLY when its owner authored no
-/// deletion follow-up, naming each owing change so the blocked author reads whose debt it is. A
-/// base-consumed row WITH an authored follow-up does not refuse there: it is an
-/// `owned_consumed_receipts` entry. The two arms are NOT exclusive by construction -- the owner's
-/// charge establishes that a follow-up number is authored, not that the deletion has landed -- so
-/// between the owner's landing and its follow-up's landing every composition sees the owned row, and
-/// refusing it would bill a bystander for that window (review 65313; lane ruling X). The forge state
-/// of the follow-up (open, closed unmerged, merged with the row present) is read by no executing
-/// route here: it is printed as a receipt and left outside the modeled guarantee until the CLASS B
-/// forge read lands (review 65476). The roster-touched and base == head arms are unchanged by X. Lane ruling (fierce-lark-661, 2026-09-13):
+/// (base == head) or on a roster-source edit. THAT IS THE WHOLE REFUSAL SET.
+///
+/// Two `merge_group` arms were removed on 2026-09-16 (operator ruling): `OwnerFollowUpAbsent`,
+/// which refused a used row whose owner had authored no `deletion_follow_up`, and
+/// `ConsumedRowOwnerChargeBypassed`, which refused a bystander composition for a prior owner's
+/// unauthored follow-up. Neither took a guarantee with it. The first established only that a
+/// number had been typed -- its own message conceded it "checks that a number is authored, never
+/// that it names an open or deleting pull request" -- so its admitting side was free and a
+/// fabricated number passed. The second billed a change for a debt its own comment said was not
+/// its own. The deletion of a consumed row is still compelled by the landing arm above, which is
+/// where the debt becomes real.
+///
+/// `used_without_follow_up` is still COUNTED in the message, so the debt stays visible as a
+/// receipt; it just no longer refuses.
 /// the merge queue moved the required verdict off the push to the default branch, and with it the
 /// only run where base == head. Lifecycle is derived from the candidate-set
 /// proof, never predicted by an authored row. Policy authority:
@@ -1865,53 +1865,37 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             head,
             report,
             roster_touched,
-            event,
+            // NO READER LEFT, AND SAID RATHER THAN HIDDEN. `event` existed here to compute
+            // `composition` for the two removed merge_group arms; nothing in this function reads it
+            // now, and `claim_executor`'s destructuring already ignored it. So the variant's
+            // `event` field is currently constructed everywhere and read nowhere -- a DESIGN 3c
+            // dangling field that this removal created. It is left in place rather than pulled out
+            // of ~15 construction sites in the same change; the honest disposition is a follow-up
+            // that either finds it a consumer or deletes it.
+            event: _,
         } => {
             let unadjudicated = report_unadjudicated(report);
             let roster_due = base == head || *roster_touched;
-            let composition = *event == AdjudicationEvent::MergeGroup;
-            // THE OWNER'S CHARGE: a row this composition uses will be consumed when it lands, so a
-            // merge_group run refuses it unless its owner authored the deletion follow-up.
-            let owner_follow_up_due = composition && !report.used_without_follow_up.is_empty();
-            // THE BACKSTOP: a base-consumed row whose owner authored NO follow-up, on a composition
-            // that does not touch the roster, is the genuine bypass of the owner's charge -- it
-            // refuses and says the debt is not this change's. An OWNED consumed row is a receipt,
-            // not a refusal: its follow-up may simply not have landed yet (review 65313).
-            let bypass_due =
-                composition && !roster_due && !report.consumed_without_follow_up.is_empty();
+            // THE FOLLOW-UP ARMS ARE GONE, AND THE DEBT IS STILL ENFORCED. Two merge_group arms
+            // used to refuse here: OwnerFollowUpAbsent (a used row whose owner authored no
+            // deletion_follow_up) and ConsumedRowOwnerChargeBypassed (a bystander composition
+            // charged for someone else's unauthored follow-up). Both are removed.
+            //
+            // NO GUARANTEE FALLS WITH THEM. `deletion_follow_up` remains on the row and is still
+            // read, so the debt is still RECORDED; and `consumed_due` below still refuses a
+            // consumed row at landing or on a roster-source edit, so the deletion is still
+            // ENFORCED at the point it becomes real. What the arms added was an ADVANCE
+            // commitment whose admitting side was free -- the wall's own words were that it
+            // "checks that a number is authored, never that it names an open or deleting pull
+            // request" -- so any digits satisfied it. A check whose RED is authorable but whose
+            // GREEN is unverified buys the appearance of a wall (DESIGN 4b), and the second arm
+            // billed a BYSTANDER for an owner's debt, which its own comment flagged as the thing
+            // to avoid.
             let consumed_due = roster_due && !report.consumed_admissions.is_empty();
             let stale_due = !report.stale_admissions.is_empty();
-            if unadjudicated.is_empty()
-                && !stale_due
-                && !consumed_due
-                && !bypass_due
-                && !owner_follow_up_due
-            {
+            if unadjudicated.is_empty() && !stale_due && !consumed_due {
                 return None;
             }
-            let owner_clause = if owner_follow_up_due {
-                format!(
-                    "; OwnerFollowUpAbsent: author each row's deletion_follow_up -- the number of \
-                     the pull request that deletes it after this change lands. This wall checks \
-                     that a number is authored, never that it names an open or deleting pull \
-                     request. Author it before enqueueing: {}",
-                    report.used_without_follow_up.join("; ")
-                )
-            } else {
-                String::new()
-            };
-            let bypass_clause = if bypass_due {
-                format!(
-                    "; ConsumedRowOwnerChargeBypassed: this debt is NOT this change's -- the rows \
-                     below were consumed by a PRIOR merge whose owner authored no deletion \
-                     follow-up, so the owner's merge_group charge was bypassed; each names its \
-                     owning change, and a deletion of these rows must land before this \
-                     composition can: {}",
-                    report.consumed_without_follow_up.join("; ")
-                )
-            } else {
-                String::new()
-            };
             let remedy = if stale_due || consumed_due {
                 let rows = report
                     .stale_admissions
@@ -1929,8 +1913,7 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             };
             Some(format!(
                 "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){}, {} used row(s) without a deletion follow-up){remedy}\
-                 {owner_clause}{bypass_clause}",
+                 consumed admission(s){}, {} used row(s) without a deletion follow-up){remedy}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
                 report.consumed_admissions.len(),
