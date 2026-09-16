@@ -1074,45 +1074,45 @@ fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
       tail: Cons {
         head: FloorRouteGapExpectation { identity: "test.claim.serving.serving_availability_bind_wet_witness.a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path", operation: "DigestStdin", ground: NoMockResponse {} },
           tail: Cons {
-            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.a_different_reported_path_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
+            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_different_reported_path_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
             tail: Cons {
-              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.a_different_reported_path_refuses_the_service_without_claiming_a_different_launch", operation: "DigestStdin", ground: NoMockResponse {} },
+              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_different_reported_path_refuses_the_service_without_claiming_a_different_launch", operation: "DigestStdin", ground: NoMockResponse {} },
               tail: Cons {
-                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.a_host_outside_the_allocation_refuses_and_names_it", operation: "DigestStdin", ground: NoMockResponse {} },
+                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_host_outside_the_allocation_refuses_and_names_it", operation: "DigestStdin", ground: NoMockResponse {} },
                 tail: Cons {
-                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.a_matching_configuration_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
+                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_matching_configuration_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
                   tail: Cons {
-                    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.a_matching_configuration_does_not_establish_the_specific_service", operation: "DigestStdin", ground: NoMockResponse {} },
+                    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_matching_configuration_does_not_establish_the_specific_service", operation: "DigestStdin", ground: NoMockResponse {} },
                     tail: Cons {
-                      head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_agreeing_unit_digest_without_an_observation_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                      head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_agreeing_unit_digest_without_an_observation_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
                       tail: Cons {
-                        head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_incarnation_from_a_different_unit_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                        head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_incarnation_from_a_different_unit_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
                         tail: Cons {
-                          head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_incarnation_on_another_host_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                          head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_incarnation_on_another_host_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
                           tail: Cons {
-                            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_observation_about_a_replaced_endpoint_process_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_observation_about_a_replaced_endpoint_process_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
                             tail: Cons {
-                              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_observed_declared_incarnation_with_a_disagreeing_readback_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_observed_declared_incarnation_with_a_disagreeing_readback_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
                               tail: Cons {
-                                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_observed_digest_in_another_family_is_incomparable_and_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_observed_digest_in_another_family_is_incomparable_and_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
                                 tail: Cons {
-                                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_observed_incarnation_without_a_declared_unit_digest_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_observed_incarnation_without_a_declared_unit_digest_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
                                   tail: Cons {
-                                    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_unidentified_service_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
+                                    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_unidentified_service_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
                                     tail: Cons {
-                                      head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.an_unreadable_group_membership_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                                      head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_unreadable_group_membership_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
                                       tail: Cons {
-                                        head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_the_region", operation: "DigestStdin", ground: NoMockResponse {} },
+                                        head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_the_region", operation: "DigestStdin", ground: NoMockResponse {} },
                                         tail: Cons {
-                                          head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation", operation: "DigestStdin", ground: NoMockResponse {} },
+                                          head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation", operation: "DigestStdin", ground: NoMockResponse {} },
                                           tail: Cons {
-                                            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.fixture_evidence_of_all_three_facts_binds_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
+                                            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.fixture_evidence_of_all_three_facts_binds_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
                                             tail: Cons {
-                                              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.the_allocation_survives_a_service_refusal_with_its_date", operation: "DigestStdin", ground: NoMockResponse {} },
+                                              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.the_allocation_survives_a_service_refusal_with_its_date", operation: "DigestStdin", ground: NoMockResponse {} },
                                               tail: Cons {
-                                                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.the_production_route_consumes_an_observed_incarnation", operation: "DigestStdin", ground: NoMockResponse {} },
+                                                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.the_production_route_consumes_an_observed_incarnation", operation: "DigestStdin", ground: NoMockResponse {} },
                                                 tail: Cons {
-                                                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness.the_production_route_refuses_because_no_incarnation_is_observed", operation: "DigestStdin", ground: NoMockResponse {} },
+                                                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.the_production_route_refuses_because_no_incarnation_is_observed", operation: "DigestStdin", ground: NoMockResponse {} },
                                                   tail: Empty {}
                                                 }
                                               }
