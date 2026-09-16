@@ -1,0 +1,31 @@
+module test.claim.spark.spark_serving_usage_stats_evidence_seal_probe_test
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CensusObserved, CensusNotRunnable, compile_dag_diagnostic_census, census_rows_of_class, census_total_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SEAL ON ServingUsageStatsEvidence, PROBED AT THE SOURCE. gunbc.spark.serving_incarnation_observe
+// is the only module that can construct the evidence policy acts on; every other route to a
+// Disabled telemetry standing is a caller-authored one, and this probe shows such a route does not
+// compile: a foreign module wrapping an authored standing as evidence is a SoleConstructorViolation.
+// Egress closure, by enumeration: the exported functions returning a carrier of the evidence are
+// spark_usage_stats_inspect_unread (Unobserved arm only), endpoint_incarnation_usage_stats (takes
+// a ServingIncarnationReading, whose Observed arm already carries evidence it cannot mint) and
+// observe_endpoint_incarnation (takes a fleet ssh context and executes the inspect). None lets a
+// caller aim the confined value.
+// RED, AT THE SOURCE: caller-authored JSON cannot produce ServingUsageStatsEvidence. A foreign module
+// that decodes any stdout and tries to wrap the standing as evidence refuses to compile; the seal is
+// on the record, so neither a literal nor a cast reaches the Observed arm.
+data forged_evidence_source: String = "module probe_forged_usage_stats_evidence\nimport std.types { NonEmptyStr, String }\nimport product.fabric.demand { ObservationReceiptRef }\nimport gunbc.spark.vllm_serving_launch { VllmServingLaunch }\nimport extdeps.vllm.usage_stats { UsageStatsDisabledByLaunch }\nimport gunbc.spark.serving_incarnation_observe { ServingUsageStatsEvidence, ServingUsageStatsSubject, ServingUsageStatsObservation, ServingUsageStatsObserved }\nfn forged(launch: VllmServingLaunch) -> ServingUsageStatsObservation {\n  ServingUsageStatsObserved { evidence: ServingUsageStatsEvidence { subject: ServingUsageStatsSubject { launch: launch, standing: UsageStatsDisabledByLaunch { mechanism: \"VLLM_NO_USAGE_STATS\" as NonEmptyStr }, receipt: \"forged\" as ObservationReceiptRef } } }\n}\n"
+
+test fn caller_authored_evidence_refuses_to_compile() -> Bool {
+  match compile_dag_diagnostic_census(forged_evidence_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation")) >= 1
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+

@@ -54,7 +54,10 @@ import gunbc.spark.serving_offer {
   spark_serving_incarnation_unobserved_obligation,
 }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
-import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, endpoint_incarnation_standing }
+import gunbc.spark.serving_incarnation_observe {
+  observe_endpoint_incarnation, endpoint_incarnation_standing, endpoint_incarnation_usage_stats,
+  ServingUsageStatsObservation, spark_usage_stats_inspect_unread,
+}
 import gunbc.spark.pair_serving_desired { spark_pair_group_head_host }
 import gunbc.fleet_ssh_locus { FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
 import gunbc.serving.turn_admission {
@@ -71,7 +74,7 @@ import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.identity { FabricIdentity, DemandKey }
 import product.fabric.provider_admission { refusal_reason }
 import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
-import gunbc.spark.serving_usage_stats_observe { ServingUsageStatsObservation, spark_usage_stats_inspect_unread }
+
 import gunbc.serving.engine_progress {
   EngineProgressGate, WithholdRouteNotProgressing, ProgressDoesNotWithhold,
   engine_progress_read, engine_progress_gate, serving_engine_step_bound,
@@ -511,16 +514,24 @@ type HarnessCandidate {
 // it is admitted, and every later candidate on that same launch -- next round, or a co-located group
 // on the same engine -- reuses the reading. A restart mints a new launch key, so the memo re-observes
 // exactly when the engine actually changed, never otherwise.
+// One inspect per launch per bind yields BOTH projections; the memo carries both so neither is
+// re-observed and neither can be supplied apart from the other.
 type IncarnationMemoEntry {
   launch_key: NonEmptyStr
   standing: EndpointIncarnationStanding
+  usage_stats: ServingUsageStatsObservation
 }
 
-fn incarnation_memo_lookup(memo: List<IncarnationMemoEntry>, key: NonEmptyStr) -> EndpointIncarnationStanding? {
+type HarnessIncarnationRead {
+  standing: EndpointIncarnationStanding
+  usage_stats: ServingUsageStatsObservation
+}
+
+fn incarnation_memo_lookup(memo: List<IncarnationMemoEntry>, key: NonEmptyStr) -> HarnessIncarnationRead? {
   fold(memo, init: none, f: (acc, e) =>
     match acc {
       Present { value: _ } => acc
-      Absent => if (e.launch_key as String) == (key as String) { Present { value: e.standing } } else { none }
+      Absent => if (e.launch_key as String) == (key as String) { Present { value: HarnessIncarnationRead { standing: e.standing, usage_stats: e.usage_stats } } } else { none }
     })
 }
 
@@ -568,7 +579,7 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 //
 // THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
 // through exactly what production passes. The incarnation standing is an ARGUMENT: production takes
-// it from gunbc.spark.serving_incarnation_observe at candidate time (harness_incarnation_standing
+// it from gunbc.spark.serving_incarnation_observe at candidate time (harness_incarnation_read
 // below), reading the group's head host over the fleet key session at the same instant the endpoint
 // launch was read, and a witness hands in a fixture observation to drive the arms past the
 // incarnation refusal. One absence remains real on this path and is stated where it is passed: no
@@ -595,16 +606,27 @@ fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, 
 // than as a bind refusal: the harness can still enumerate and diagnose routes without host access,
 // it just cannot name the service, and the route standing says exactly that. A group with no
 // desired head host has nothing to observe and says so.
-fn harness_incarnation_standing(access: FleetSshContextPreparation, group: FabricGroup, launch: VllmEndpointProcessLaunch) -> EndpointIncarnationStanding {
+fn harness_incarnation_read(access: FleetSshContextPreparation, group: FabricGroup, launch: VllmEndpointProcessLaunch) -> HarnessIncarnationRead {
   match access {
     FleetSshContextRefused { cause: c } =>
-      EndpointIncarnationUnobserved { obligation: join([spark_serving_incarnation_unobserved_obligation as String, " -- this bind holds no fleet ssh context: ", c], "") as NonEmptyStr }
+      HarnessIncarnationRead {
+        standing: EndpointIncarnationUnobserved { obligation: join([spark_serving_incarnation_unobserved_obligation as String, " -- this bind holds no fleet ssh context: ", c], "") as NonEmptyStr },
+        usage_stats: spark_usage_stats_inspect_unread(),
+      }
     FleetSshContextReady { context: context, receipt: _ } =>
       match spark_pair_group_head_host(group: group) {
         Absent =>
-          EndpointIncarnationUnobserved { obligation: join(["gunbc.spark.pair_serving_desired names no ready head host for ", fabric_group_wire(g: group) as String, ", so there is no host to observe the incarnation on"], "") as NonEmptyStr }
-        Present { value: head } =>
-          endpoint_incarnation_standing(reading: observe_endpoint_incarnation(context: context, group: group, head: head, endpoint: launch))
+          HarnessIncarnationRead {
+            standing: EndpointIncarnationUnobserved { obligation: join(["gunbc.spark.pair_serving_desired names no ready head host for ", fabric_group_wire(g: group) as String, ", so there is no host to observe the incarnation on"], "") as NonEmptyStr },
+            usage_stats: spark_usage_stats_inspect_unread(),
+          }
+        Present { value: head } => {
+          let reading = observe_endpoint_incarnation(context: context, group: group, head: head, endpoint: launch)
+          HarnessIncarnationRead {
+            standing: endpoint_incarnation_standing(reading: reading),
+            usage_stats: endpoint_incarnation_usage_stats(reading: reading),
+          }
+        }
       }
   }
 }
@@ -612,9 +634,9 @@ fn harness_incarnation_standing(access: FleetSshContextPreparation, group: Fabri
 // THE ROUTE STANDING IS A SUPPLIED VALUE HERE, computed by the caller from harness_serving_route,
 // so this one interface can be driven with a fixture route that binds and shown to take the bound
 // offer INTO admission (test.claim.harness_turn_admission_witness). The incarnation standing is
-// supplied beside it (observed per candidate by harness_incarnation_standing, memoized per
+// supplied beside it (observed per candidate by harness_incarnation_read, memoized per
 // collection) because the realization admission is judged on carries it too.
-fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding, route: SparkServingRoute, subject: HarnessTurnSubject, model: NonEmptyStr, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
+fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding, usage_stats: ServingUsageStatsObservation, route: SparkServingRoute, subject: HarnessTurnSubject, model: NonEmptyStr, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
@@ -632,7 +654,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
       harness_admit_bound_offer(
         acc: acc, group: group, endpoint: endpoint, launch: launch,
         realization: harness_serving_realization(group: group, launch: launch, readback: readback, incarnation: incarnation),
-        usage_stats: spark_usage_stats_inspect_unread(),
+        usage_stats: usage_stats,
         projection: projection, subject: subject, unit: unit, seats: seats,
       )
   }
@@ -641,11 +663,10 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
 // THE ADMISSION STEP OF A BOUND OFFER, separated so the realization it is judged on is an argument:
 // production passes harness_serving_realization, and a witness can drive the same step with fixture
 // evidence and observe exactly which admission arm the turn reached.
-// THE USAGE-STATS OBSERVATION IS A SUPPLIED VALUE, like the realization: production has no
-// producer for it yet and passes spark_usage_stats_inspect_unread (DECLARED FRONTIER, DESIGN 3c:
-// gunbc#11362's one authorized inspect feeds gunbc.spark.serving_usage_stats_observe in the same
-// operation that mints the incarnation observation, SUFFICIENT FOR a launch whose env disables the
-// reporter to reach ProviderPathAbsent here). Until then admission refuses on the unread path.
+// THE USAGE-STATS OBSERVATION ARRIVES BESIDE THE INCARNATION, from the same inspect: the host
+// operation in gunbc.spark.serving_incarnation_observe projects both from one authorized
+// `docker container inspect` and is the only mint of the sealed evidence, so what reaches admission
+// here was observed on the answering container or is typed Unobserved with the operation's refusal.
 fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, realization: SparkServingRealization, usage_stats: ServingUsageStatsObservation, projection: SparkOfferProjection<NonEmptyStr>, subject: HarnessTurnSubject, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
   let offer = projection.offer
   match bind_candidate(
@@ -818,12 +839,12 @@ fn harness_add_serving_candidate(
       let launch_key = vllm_endpoint_process_launch_key(launch: launch)
       match incarnation_memo_lookup(memo: acc.incarnations, key: launch_key) {
         Present { value: cached } =>
-          harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, incarnation: cached, route: harness_serving_route(group: group, launch: launch, readback: readback, incarnation: cached), subject: subject, model: model, unit: unit, seats: seats)
+          harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, incarnation: cached.standing, usage_stats: cached.usage_stats, route: harness_serving_route(group: group, launch: launch, readback: readback, incarnation: cached.standing), subject: subject, model: model, unit: unit, seats: seats)
         Absent => {
-          let observed = harness_incarnation_standing(access: access, group: group, launch: launch)
+          let observed = harness_incarnation_read(access: access, group: group, launch: launch)
           harness_bind_candidate(
-            acc: HarnessCandidates { candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: append(acc.incarnations, IncarnationMemoEntry { launch_key: launch_key, standing: observed }) },
-            group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, incarnation: observed, route: harness_serving_route(group: group, launch: launch, readback: readback, incarnation: observed), subject: subject, model: model, unit: unit, seats: seats)
+            acc: HarnessCandidates { candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: append(acc.incarnations, IncarnationMemoEntry { launch_key: launch_key, standing: observed.standing, usage_stats: observed.usage_stats }) },
+            group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, incarnation: observed.standing, usage_stats: observed.usage_stats, route: harness_serving_route(group: group, launch: launch, readback: readback, incarnation: observed.standing), subject: subject, model: model, unit: unit, seats: seats)
         }
       }
     }

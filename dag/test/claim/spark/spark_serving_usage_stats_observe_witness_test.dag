@@ -33,10 +33,14 @@ import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.provider_admission { ProviderUseAdmitted, ProviderUseDenied, refusal_reason }
 import product.fabric.provider_route { ProviderPathAbsent, ProviderPathUnread, ProviderPathLocated }
 import gunbc.spark.serving_usage_stats_observe {
-  spark_serving_usage_stats_observe, spark_usage_stats_inspect_unread,
-  ServingUsageStatsObservation, ServingUsageStatsObserved, ServingUsageStatsUnobserved,
+  spark_serving_usage_stats_decode,
   spark_usage_stats_marker_unread, spark_usage_stats_container_id_mismatch_obligation,
   spark_usage_stats_marker_unread_obligation, docker_assignments_as_vllm,
+}
+import gunbc.spark.serving_incarnation_observe {
+  ServingUsageStatsSubject, spark_usage_stats_inspect_unread, endpoint_incarnation_usage_stats,
+  ServingUsageStatsObservation, ServingUsageStatsObserved, ServingUsageStatsUnobserved,
+  ServingIncarnationReading, IncarnationRefused, IncarnationNoEngineProcess,
 }
 import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
 import gunbc.spark.pair_serving_realization {
@@ -71,13 +75,21 @@ fn t_launch() -> VllmServingLaunch {
 
 data t_receipt: String = "test.claim.spark.spark_serving_usage_stats_observe_witness_test"
 
-// The host boundary, executed: raw stdout goes in, only the typed observation comes out.
-fn t_observe(inspect_stdout: String) -> ServingUsageStatsObservation {
-  spark_serving_usage_stats_observe(
-    launch: t_launch(),
-    inspect_stdout: inspect_stdout,
+// A SUBJECT over the decoder: the unsealed reading of caller-supplied stdout for a launch. The
+// join rows below drive the policy folds at the subject grain
+// (spark_usage_stats_telemetry_path_of_subject); the sealed evidence admission consumes is minted
+// only by the inspect operation in gunbc.spark.serving_incarnation_observe and is not authorable
+// here -- which is the wall the forgery probe at the end of this file exercises.
+fn t_subject(launch: VllmServingLaunch, inspect_stdout: String) -> ServingUsageStatsSubject {
+  ServingUsageStatsSubject {
+    launch: launch,
+    standing: spark_serving_usage_stats_decode(launch: launch, inspect_stdout: inspect_stdout),
     receipt: t_receipt as ObservationReceiptRef,
-  )
+  }
+}
+
+fn t_observe(inspect_stdout: String) -> ServingUsageStatsSubject {
+  t_subject(launch: t_launch(), inspect_stdout: inspect_stdout)
 }
 
 // THE MARKER-SUPPLIED STANDING is driven at the extdeps fold, not through the observer: the
@@ -139,15 +151,11 @@ test fn upstream_disables_only_on_exact_one() -> Bool {
 // disabling env term is Unread from the observer itself -- there is no argument by which a caller
 // could assert the do-not-track marker present and green admission (review 66882).
 test fn the_observer_never_disables_without_an_observed_env_term() -> Bool {
-  match t_observe(inspect_stdout: t_inspect(env: ["OTHER=1"], id: t_container_id)) {
-    ServingUsageStatsObserved { evidence: ev } =>
-      match ev.subject.standing {
-        UsageStatsLaunchUnread { obligation: o } => (o as String) == (spark_usage_stats_marker_unread_obligation as String)
-        UsageStatsDisabledByLaunch { mechanism: _ } => false
-        UsageStatsEnabledByDefault { basis: _, destination: _ } => false
-        UsageStatsEnvMalformed { cause: _ } => false
-      }
-    ServingUsageStatsUnobserved { obligation: _ } => false
+  match spark_serving_usage_stats_decode(launch: t_launch(), inspect_stdout: t_inspect(env: ["OTHER=1"], id: t_container_id)) {
+    UsageStatsLaunchUnread { obligation: o } => (o as String) == (spark_usage_stats_marker_unread_obligation as String)
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsEnabledByDefault { basis: _, destination: _ } => false
+    UsageStatsEnvMalformed { cause: _ } => false
   }
 }
 
@@ -471,9 +479,9 @@ fn t_foreign_realization_observed() -> SparkServingRealization {
 }
 
 test fn disabled_launch_is_an_absent_telemetry_path() -> Bool {
-  match spark_usage_stats_telemetry_path(
+  match spark_usage_stats_telemetry_path_of_subject(
     realization: t_realization_observed(),
-    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
+    subject: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
   ) {
     ProviderPathAbsent { evidence: _ } => true
     ProviderPathUnread { obligation: _, consulted: _ } => false
@@ -493,27 +501,32 @@ fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
   FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "group-a@http://192.168.1.225:30000@1" as OfferKey }
 }
 
-test fn first_party_admission_reaches_admitted_when_usage_stats_are_disabled() -> Bool {
+// THE ADMITTED ARM HAS NO HERMETIC POSITIVE CONTROL, AND THAT IS THE WALL WORKING: the only mint of
+// ServingUsageStatsEvidence is the inspect operation in gunbc.spark.serving_incarnation_observe,
+// which reads the fleet over ssh, so no fixture can hand spark_first_party_admission a Disabled
+// observation. DECLARED FRONTIER (DESIGN 3c): the positive control is the live Group A probe --
+// a real inspect of a launch whose env disables the reporter, carried by the harness into
+// admission -- and it lands with the manual end-to-end probe. What IS claimed here: the join that
+// decides Absent (disabled_launch_is_an_absent_telemetry_path and its REDs, at the subject grain
+// the sealed path delegates to), and that admission over an unobserved telemetry path refuses.
+test fn first_party_admission_refuses_while_usage_stats_are_unobserved() -> Bool {
   match spark_first_party_admission(
     realization: t_realization_observed(),
-    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
-    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
-    offer: t_offer(),
-  ) {
-    ProviderUseAdmitted { permit: _ } => true
-    ProviderUseDenied { decision: _, cause: _ } => false
-  }
-}
-
-test fn a_foreign_readback_does_not_admit_on_a_disabled_inspect() -> Bool {
-  match spark_first_party_admission(
-    realization: t_foreign_realization_observed(),
-    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
+    usage_stats: spark_usage_stats_inspect_unread(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
     ProviderUseAdmitted { permit: _ } => false
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "route facts incomplete"
+  }
+}
+
+// A refused incarnation reading carries an Unobserved telemetry projection with the operation's own
+// refusal, never a default standing.
+test fn a_refused_incarnation_reading_projects_unobserved_usage_stats() -> Bool {
+  match endpoint_incarnation_usage_stats(reading: IncarnationRefused { refusal: IncarnationNoEngineProcess { pattern: "vllm" as NonEmptyStr } }) {
+    ServingUsageStatsUnobserved { obligation: o } => (o as String).contains("no process on the host runs vllm")
+    ServingUsageStatsObserved { evidence: _ } => false
   }
 }
 
@@ -551,13 +564,13 @@ fn t_realization_with_observation_endpoint(
 }
 
 test fn a_foreign_observation_endpoint_does_not_absent_on_disabled_inspect() -> Bool {
-  match spark_usage_stats_telemetry_path(
+  match spark_usage_stats_telemetry_path_of_subject(
     realization: t_realization_with_observation_endpoint(
       observation_endpoint: "http://10.0.0.1:8001",
       process_start: "2",
       launch: t_launch(),
     ),
-    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
+    subject: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
   ) {
     ProviderPathAbsent { evidence: _ } => false
     ProviderPathUnread { obligation: _, consulted: _ } => true
@@ -566,7 +579,7 @@ test fn a_foreign_observation_endpoint_does_not_absent_on_disabled_inspect() -> 
 }
 
 test fn an_observation_outside_hosts_does_not_absent_on_disabled_inspect() -> Bool {
-  match spark_usage_stats_telemetry_path(
+  match spark_usage_stats_telemetry_path_of_subject(
     realization: t_realization_with_observation_endpoint(
       observation_endpoint: "http://10.0.0.1:8000",
       process_start: "1",
@@ -580,7 +593,7 @@ test fn an_observation_outside_hosts_does_not_absent_on_disabled_inspect() -> Bo
         started_at: 1788907506,
       ),
     ),
-    usage_stats: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
+    subject: t_observe(inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
   ) {
     ProviderPathAbsent { evidence: _ } => false
     ProviderPathUnread { obligation: _, consulted: _ } => true
@@ -589,9 +602,9 @@ test fn an_observation_outside_hosts_does_not_absent_on_disabled_inspect() -> Bo
 }
 
 test fn marker_unread_without_disable_is_unread_never_located() -> Bool {
-  match spark_usage_stats_telemetry_path(
+  match spark_usage_stats_telemetry_path_of_subject(
     realization: t_realization_observed(),
-    usage_stats: t_observe(inspect_stdout: t_inspect(env: [], id: t_container_id)),
+    subject: t_observe(inspect_stdout: t_inspect(env: [], id: t_container_id)),
   ) {
     ProviderPathUnread { obligation: _, consulted: _ } => true
     ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
@@ -657,13 +670,9 @@ fn t_other_launch() -> VllmServingLaunch {
 // observation that agrees with the realization, must not Absent the path. The admission fold joins
 // the observation's launch and container to the answering incarnation before it trusts the standing.
 test fn an_observation_of_another_launch_does_not_absent_the_path() -> Bool {
-  match spark_usage_stats_telemetry_path(
+  match spark_usage_stats_telemetry_path_of_subject(
     realization: t_realization_observed(),
-    usage_stats: spark_serving_usage_stats_observe(
-      launch: t_other_launch(),
-      inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: "fixture-container-2"),
-      receipt: t_receipt as ObservationReceiptRef,
-    ),
+    subject: t_subject(launch: t_other_launch(), inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: "fixture-container-2")),
   ) {
     ProviderPathAbsent { evidence: _ } => false
     ProviderPathUnread { obligation: _, consulted: _ } => true
@@ -684,13 +693,9 @@ test fn a_contradicting_reading_of_the_same_launch_does_not_absent_the_path() ->
     unit_digest: t_sha256(hex: "6666666666666666666666666666666666666666666666666666666666666666"),
     started_at: 1788907506,
   )
-  match spark_usage_stats_telemetry_path(
+  match spark_usage_stats_telemetry_path_of_subject(
     realization: t_realization_observed(),
-    usage_stats: spark_serving_usage_stats_observe(
-      launch: contradicting,
-      inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
-      receipt: t_receipt as ObservationReceiptRef,
-    ),
+    subject: t_subject(launch: contradicting, inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id)),
   ) {
     ProviderPathAbsent { evidence: _ } => false
     ProviderPathUnread { obligation: _, consulted: _ } => true
@@ -720,8 +725,9 @@ fn observe_witness_main() -> ProcessExit {
     && env_not_a_string_list_is_unreadable()
     && empty_env_list_is_valid_empty()
     && disabled_launch_is_an_absent_telemetry_path()
-    && first_party_admission_reaches_admitted_when_usage_stats_are_disabled()
-    && a_foreign_readback_does_not_admit_on_a_disabled_inspect()
+    && first_party_admission_refuses_while_usage_stats_are_unobserved()
+    && a_refused_incarnation_reading_projects_unobserved_usage_stats()
+
     && a_foreign_observation_endpoint_does_not_absent_on_disabled_inspect()
     && an_observation_outside_hosts_does_not_absent_on_disabled_inspect()
     && marker_unread_without_disable_is_unread_never_located()

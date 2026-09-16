@@ -19,7 +19,7 @@ import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
 import gunbc.spark.pair_serving_realization { spark_pair_model_path_in_container, spark_pair_desired_snapshot }
 import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
-import gunbc.spark.serving_usage_stats_observe { spark_usage_stats_inspect_unread }
+import gunbc.spark.serving_incarnation_observe { spark_usage_stats_inspect_unread }
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused, ServingRouteObserved,
   bind_spark_serving_offer, spark_serving_incarnation_unobserved_obligation,
@@ -132,7 +132,7 @@ test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
   let subject = t_subject(prompt: "p", attempt: "a-1")
   let placed = harness_bind_candidate(
     acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
-    readback: t_realization().readback, incarnation: t_realization().incarnation, route: ServingRouteObserved { route: t_route() }, subject: subject,
+    readback: t_realization().readback, incarnation: t_realization().incarnation, usage_stats: spark_usage_stats_inspect_unread(), route: ServingRouteObserved { route: t_route() }, subject: subject,
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
   )
   match t_bound() {

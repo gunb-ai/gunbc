@@ -38,8 +38,8 @@ import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
   EndpointIncarnationObservation, launch_wire, same_launch, SameLaunch, DifferentLaunch, LaunchContradiction,
 }
-import gunbc.spark.serving_usage_stats_observe {
-  ServingUsageStatsObservation, ServingUsageStatsObserved, ServingUsageStatsUnobserved,
+import gunbc.spark.serving_incarnation_observe {
+  ServingUsageStatsObservation, ServingUsageStatsObserved, ServingUsageStatsUnobserved, ServingUsageStatsSubject,
 }
 import gunbc.fleet_physical_inventory { operator_site }
 import gunbc.fleet_intent_network {
@@ -634,7 +634,7 @@ data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extd
 // environment a container is CREATED WITH. That is the fabricated evidence this module refuses.
 // Matching reported configuration is still not being the launch. What locates or absents the
 // path now is inspect stdout bound to the offered incarnation, not that declaration.
-data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the declared unit environment gunbc.spark.pair_serving_realization spark_pair_container_env is still not consulted, because a construction is not a reading of the answering process. THE PRODUCER THAT READS THE RUNNING CONTAINER is gunbc.spark.serving_usage_stats_observe spark_serving_usage_stats_observe, over docker_container_inspect_named_env_from_stdout, projecting only the names from extdeps.vllm.usage_stats vllm_usage_stats_inspect_env_names -- VLLM_NO_USAGE_STATS, VLLM_DO_NOT_TRACK, DO_NOT_TRACK and VLLM_USAGE_STATS_SERVER -- bound to the offered VllmServingLaunch container_id. spark_serving_usage_stats_unread_cause must agree the realization with the declared pair-serving configuration and host-lane coverage before that inspect may Absent the path. Unread is when that cause is not TelemetryConfigurationMatchedButUnread, inspect stdout was not supplied (spark_usage_stats_inspect_unread_obligation), the incarnation is unobserved, or inspect Id disagrees with that container_id. A second construction function or a restatement of the declared environment does NOT substitute for that inspect. THE READING IS AUTHORIZED BY gunbc.spark.managed_access_bootstrap InspectServingContainer; until that grant is used to supply stdout, standing stays Unread. The destination half is the inspect projection of VLLM_USAGE_STATS_SERVER or the upstream default_server; it is still a reading of the container rather than of the process. The content class it is read against is bound to a revision by that module's established_against."
+data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the declared unit environment gunbc.spark.pair_serving_realization spark_pair_container_env is still not consulted, because a construction is not a reading of the answering process. THE PRODUCER THAT READS THE RUNNING CONTAINER is gunbc.spark.serving_incarnation_observe (the one authorized inspect, whose stdout it hands to gunbc.spark.serving_usage_stats_observe spark_serving_usage_stats_decode over docker_container_inspect_named_env_from_stdout), projecting only the names from extdeps.vllm.usage_stats vllm_usage_stats_inspect_env_names -- VLLM_NO_USAGE_STATS, VLLM_DO_NOT_TRACK, DO_NOT_TRACK and VLLM_USAGE_STATS_SERVER -- bound to the offered VllmServingLaunch container_id. spark_serving_usage_stats_unread_cause must agree the realization with the declared pair-serving configuration and host-lane coverage before that inspect may Absent the path. Unread is when that cause is not TelemetryConfigurationMatchedButUnread, inspect stdout was not supplied (spark_usage_stats_inspect_unread_obligation), the incarnation is unobserved, or inspect Id disagrees with that container_id. A second construction function or a restatement of the declared environment does NOT substitute for that inspect. THE READING IS AUTHORIZED BY gunbc.spark.managed_access_bootstrap InspectServingContainer; until that grant is used to supply stdout, standing stays Unread. The destination half is the inspect projection of VLLM_USAGE_STATS_SERVER or the upstream default_server; it is still a reading of the container rather than of the process. The content class it is read against is bound to a revision by that module's established_against."
 
 data spark_serving_usage_stats_unobserved_hosts_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: one or more hosts of the realization that answered has no observed fabric lane, so the telemetry answer would rest on its siblings. Partial evidence is missing evidence, and this arm refuses rather than answering from the observed half. READING THOSE LANES IS NECESSARY AND IS NOT SUFFICIENT: an earlier spelling ended by asking for them as though the path would then resolve. A fully lane-covered realization still refuses, because a lane's DECLARED container environment is not a reading of the process that answered -- see spark_serving_usage_stats_declared_environment_obligation."
 
@@ -703,12 +703,39 @@ fn spark_telemetry_unread_obligation(cause: SparkTelemetryUnreadCause) -> NonEmp
 // inheritance this module withdrew. spark_serving_usage_stats_unread_cause must refuse
 // TelemetryReportedPathDiffers (and the other unresolved identity arms) before
 // the observation's standing may Absent the path. POLICY RECEIVES ONLY THE TYPED
-// ServingUsageStatsObservation: raw inspect stdout is consumed and discarded at the host boundary
-// by gunbc.spark.serving_usage_stats_observe spark_serving_usage_stats_observe, and the observation
+// ServingUsageStatsObservation: raw inspect stdout is consumed and discarded inside the host operation
+// gunbc.spark.serving_incarnation_observe, the only mint of the sealed evidence, and the observation
 // must name the same launch and container as the agreed incarnation observation.
 fn spark_serving_usage_stats_standing(
   realization: SparkServingRealization,
   usage_stats: ServingUsageStatsObservation,
+) -> VllmUsageStatsLaunchStanding {
+  match usage_stats {
+    ServingUsageStatsUnobserved { obligation: o } => {
+      let cause = spark_serving_usage_stats_unread_cause(realization: realization)
+      match cause {
+        TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => UsageStatsLaunchUnread { obligation: o }
+        TelemetryReadbackUnresolved => UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+        TelemetryDeclaredPathUnpinned => UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+        TelemetryReportedPathDiffers { reported: _, declared: _ } => UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+        TelemetryNoHostMembership => UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+        TelemetryHostsWithoutObservedLanes => UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
+      }
+    }
+    ServingUsageStatsObserved { evidence: ev } =>
+      spark_serving_usage_stats_standing_of_subject(realization: realization, subject: ev.subject)
+  }
+}
+
+// THE JOIN IS A FOLD OVER THE SUBJECT, SEPARATE FROM THE SEAL. What policy consumes is the sealed
+// evidence above, minted only by the inspect operation; what this fold decides is whether a subject
+// -- a launch, a standing, a receipt -- is a reading of the incarnation that answered this
+// realization. Keeping the fold at the subject grain is what lets its refusal arms be driven by
+// witnesses with authored subjects (turnover, contradiction, foreign endpoint, foreign hosts,
+// unmatched readback) without any of them being able to mint the evidence admission consumes.
+fn spark_serving_usage_stats_standing_of_subject(
+  realization: SparkServingRealization,
+  subject: ServingUsageStatsSubject,
 ) -> VllmUsageStatsLaunchStanding {
   let cause = spark_serving_usage_stats_unread_cause(realization: realization)
   match cause {
@@ -723,45 +750,48 @@ fn spark_serving_usage_stats_standing(
     TelemetryHostsWithoutObservedLanes =>
       UsageStatsLaunchUnread { obligation: spark_telemetry_unread_obligation(cause: cause) }
     TelemetryConfigurationMatchedButUnread { configured_model_path: _ } =>
-      match usage_stats {
-        ServingUsageStatsUnobserved { obligation: o } =>
+      match realization.incarnation {
+        EndpointIncarnationUnobserved { obligation: o } =>
           UsageStatsLaunchUnread { obligation: o }
-        ServingUsageStatsObserved { evidence: ev } =>
-          match realization.incarnation {
-            EndpointIncarnationUnobserved { obligation: o } =>
-              UsageStatsLaunchUnread { obligation: o }
-            EndpointIncarnationObserved { observation: obs } =>
-              match spark_incarnation_observation_agreement(realization: realization, observation: obs) {
-                ObservationAgreesWithThisRealization =>
-                  match same_launch(a: ev.subject.launch, b: obs.launch) {
-                    SameLaunch => ev.subject.standing
-                    DifferentLaunch { left: _, right: _ } =>
-                      UsageStatsLaunchUnread { obligation: spark_usage_stats_observation_names_another_launch_obligation }
-                    LaunchContradiction { invocation: _, field: f } =>
-                      UsageStatsLaunchUnread { obligation: join([spark_usage_stats_observation_contradicts_launch_obligation as String, " (field: ", f as String, ")"], "") as NonEmptyStr }
-                  }
-                ObservationNamesAnotherEndpoint { observed: ob, answering: an } =>
-                  UsageStatsLaunchUnread {
-                    obligation: spark_incarnation_observation_unread_obligation(
-                      agreement: ObservationNamesAnotherEndpoint { observed: ob, answering: an },
-                    ),
-                  }
-                ObservationIncarnationOutsideRealization { incarnation: i } =>
-                  UsageStatsLaunchUnread {
-                    obligation: spark_incarnation_observation_unread_obligation(
-                      agreement: ObservationIncarnationOutsideRealization { incarnation: i },
-                    ),
-                  }
+        EndpointIncarnationObserved { observation: obs } =>
+          match spark_incarnation_observation_agreement(realization: realization, observation: obs) {
+            ObservationAgreesWithThisRealization =>
+              match same_launch(a: subject.launch, b: obs.launch) {
+                SameLaunch => subject.standing
+                DifferentLaunch { left: _, right: _ } =>
+                  UsageStatsLaunchUnread { obligation: spark_usage_stats_observation_names_another_launch_obligation }
+                LaunchContradiction { invocation: _, field: f } =>
+                  UsageStatsLaunchUnread { obligation: join([spark_usage_stats_observation_contradicts_launch_obligation as String, " (field: ", f as String, ")"], "") as NonEmptyStr }
+              }
+            ObservationNamesAnotherEndpoint { observed: ob, answering: an } =>
+              UsageStatsLaunchUnread {
+                obligation: spark_incarnation_observation_unread_obligation(
+                  agreement: ObservationNamesAnotherEndpoint { observed: ob, answering: an },
+                ),
+              }
+            ObservationIncarnationOutsideRealization { incarnation: i } =>
+              UsageStatsLaunchUnread {
+                obligation: spark_incarnation_observation_unread_obligation(
+                  agreement: ObservationIncarnationOutsideRealization { incarnation: i },
+                ),
               }
           }
       }
   }
 }
 
-// THE LAUNCH JOIN IS same_launch, THE ONE AUTHORITY. An earlier spelling compared launch_wire (group
-// and invocation) plus container id -- a second, weaker join that let two readings contradicting
-// each other about one launch's unit or image digest still Absent the path (review, side-chat
-// 2026-09-16). same_launch compares every identity field and separates turnover from contradiction.
+// The subject-grain telemetry path, for the same reason: the join's consequences for the path
+// (Absent only on a disabled standing of the answering launch; Unread otherwise) are claimed here
+// with authored subjects, while spark_usage_stats_telemetry_path takes only sealed evidence.
+fn spark_usage_stats_telemetry_path_of_subject(
+  realization: SparkServingRealization,
+  subject: ServingUsageStatsSubject,
+) -> ProviderPathStanding {
+  spark_usage_stats_path_from_launch_standing(
+    standing: spark_serving_usage_stats_standing_of_subject(realization: realization, subject: subject),
+  )
+}
+
 data spark_usage_stats_observation_contradicts_launch_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the usage-stats observation and the incarnation observation name the same launch invocation but disagree about its identity, so neither reading is trusted and the telemetry path stays unread" as NonEmptyStr
 
 data spark_usage_stats_observation_names_another_launch_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the usage-stats observation is bound to a launch or container other than the incarnation observed answering this route, so its standing is not a reading of the answering process and cannot Absent the telemetry path." as NonEmptyStr
