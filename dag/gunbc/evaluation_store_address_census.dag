@@ -2,6 +2,7 @@ module gunbc.evaluation_store_address_census
 
 import std.types { Bool, List, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -42,6 +43,8 @@ data evaluation_store_address_production_leaves: List<String> = [
 data evaluation_store_address_fixture_leaves: List<String> = [
   "evaluation_store_address"
 ]
+
+data evaluation_store_address_alias_discovery_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v2.std.namespace_alias resolution/normalize consumes AliasBindingRow as ordinary binding nodes (the follow-on consumer named on that module), AND this census requalifies alias/re-export discovery with an authorable RED: alias Provider = home-module; alias Address = Provider.evaluation_store_address; a third source calling Address(...) containing neither the leaf nor the original path; import-only misses that caller; callsite census observes its ResolvedCallee. Until that consumer lands, alias-chain discovery is inadmissible and this census does not claim it — a reverse-alias walk with no ResolvedCallee discriminator is not coverage.")
 
 fn evaluation_store_address_mutation_census() -> ResolvedCallEdgeCensus {
   evaluation_store_address_fixture_callsite_census()

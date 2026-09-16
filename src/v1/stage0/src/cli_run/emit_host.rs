@@ -845,7 +845,6 @@ struct ReferenceFormFile {
     module_path: String,
     imports: Vec<String>,
     called_leaves: HashSet<String>,
-    aliases: Vec<(String, String)>,
     declared_names: HashSet<String>,
 }
 
@@ -871,7 +870,6 @@ fn parse_reference_form_file(rel: &str, content: &str) -> Result<ReferenceFormFi
     let tokens = significant_token_shapes(&tokens.iter().cloned().collect::<Vec<_>>());
     let mut imports = Vec::new();
     let mut called_leaves = HashSet::new();
-    let mut aliases = Vec::new();
     let mut declared_names = HashSet::new();
     let mut i = 0;
     while i < tokens.len() {
@@ -880,18 +878,6 @@ fn parse_reference_form_file(rel: &str, content: &str) -> Result<ReferenceFormFi
                 imports.push(path);
                 i = next;
                 continue;
-            }
-        }
-        if token_keyword(&tokens[i], "alias") {
-            if let Some(name) = tokens.get(i + 1).and_then(|t| token_ident(t)) {
-                if tokens.get(i + 2).map(|t| t.shape) == Some(crate::v1_std_core::TokenShape::ShEq)
-                {
-                    if let Some((target, next)) = dotted_path_from(&tokens, i + 3) {
-                        aliases.push((name.to_string(), target));
-                        i = next;
-                        continue;
-                    }
-                }
             }
         }
         if token_keyword(&tokens[i], "fn")
@@ -915,7 +901,6 @@ fn parse_reference_form_file(rel: &str, content: &str) -> Result<ReferenceFormFi
         module_path,
         imports,
         called_leaves,
-        aliases,
         declared_names,
     })
 }
@@ -958,30 +943,6 @@ fn load_reference_form_pool(
     Ok(loaded)
 }
 
-fn alias_targets_home(target: &str, homes: &HashSet<String>) -> bool {
-    homes
-        .iter()
-        .any(|home| target == home || target.starts_with(&format!("{home}.")))
-}
-
-fn reverse_alias_names(files: &[ReferenceFormFile], homes: &HashSet<String>) -> HashSet<String> {
-    let mut aliases: HashSet<String> = HashSet::new();
-    loop {
-        let before = aliases.len();
-        for file in files {
-            for (name, target) in &file.aliases {
-                if alias_targets_home(target, homes) || aliases.contains(target) {
-                    aliases.insert(name.clone());
-                }
-            }
-        }
-        if aliases.len() == before {
-            break;
-        }
-    }
-    aliases
-}
-
 fn compile_dag_candidate_resolved_call_edges_uncached(
     import_modules: &[String],
     exclude_substrings: &[String],
@@ -1009,27 +970,18 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
     } else {
         requested_leaves
     };
-    let alias_names = reverse_alias_names(&files, &homes);
     let mut entries: HashSet<String> = HashSet::new();
     for file in &files {
         let import_hit = file.imports.iter().any(|import| homes.contains(import));
         let home_hit = homes.contains(&file.module_path);
-        let reference_hit = include_reference_forms
-            && (file
+        let call_hit = include_reference_forms
+            && file
                 .called_leaves
                 .intersection(&home_leaves)
                 .next()
-                .is_some()
-                || file
-                    .called_leaves
-                    .intersection(&alias_names)
-                    .next()
-                    .is_some()
-                || file.aliases.iter().any(|(name, target)| {
-                    alias_names.contains(name) || alias_targets_home(target, &homes)
-                }));
+                .is_some();
         let selected = if include_reference_forms {
-            home_hit || reference_hit
+            home_hit || call_hit
         } else {
             import_hit || home_hit
         };

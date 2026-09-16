@@ -2,6 +2,7 @@ module test.claim.long.evaluation_store_address_census_witness
 
 import std.types { Bool, List }
 import std.decl_ref { DeclarationRef }
+import std.dissolution { dissolution_description }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.materialization_provider_targets {
   evaluation_store_address_producer,
@@ -21,7 +22,8 @@ import gunbc.evaluation_store_address_census {
   evaluation_store_address_fixture_import_only_census,
   evaluation_store_address_fixture_callsite_census,
   bound_callers_of_edges,
-  evaluation_store_address_ref_in_module
+  evaluation_store_address_ref_in_module,
+  evaluation_store_address_alias_discovery_dissolve_on
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -34,6 +36,7 @@ test fn evaluation_store_address_expected_rosters_are_well_formed() -> Bool {
     && ((evaluation_store_address_duplicate_consumers(xs: persist) |> count()) == 0)
     && ((evaluation_store_address_duplicate_consumers(xs: admitted) |> count()) == 0)
     && ((evaluation_store_address_producer.decl_name as String) == "evaluation_store_address")
+    && (dissolution_description(condition: evaluation_store_address_alias_discovery_dissolve_on) != "")
 }
 
 fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool {
@@ -85,7 +88,7 @@ test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> 
   }
 }
 
-fn evaluation_store_address_alias_observed(edges: List<ResolvedCallEdge>) -> Bool {
+fn evaluation_store_address_imported_same_leaf_and_qualified_observed(edges: List<ResolvedCallEdge>) -> Bool {
   let home_callers = bound_callers_of_edges(
     edges: edges,
     callee_module: "test.fixture.evaluation_store_address_alias.home",
@@ -118,10 +121,11 @@ fn evaluation_store_address_alias_observed(edges: List<ResolvedCallEdge>) -> Boo
     ) == false)
 }
 
-test fn evaluation_store_address_resolver_distinguishes_alias_same_leaf_and_qualified() -> Bool {
+test fn evaluation_store_address_resolver_distinguishes_imported_same_leaf_and_qualified() -> Bool {
   match evaluation_store_address_mutation_census() {
     ResolvedCallEdgeCensusRefused { cause: _ } => false
-    ResolvedCallEdgeCensusObserved { edges } => evaluation_store_address_alias_observed(edges: edges)
+    ResolvedCallEdgeCensusObserved { edges } =>
+      evaluation_store_address_imported_same_leaf_and_qualified_observed(edges: edges)
   }
 }
 
