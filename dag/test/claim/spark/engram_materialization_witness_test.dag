@@ -597,20 +597,26 @@ test fn a_faithfulness_relation_preserving_nothing_is_refused() -> Bool {
   }
 }
 
-// THE TWO ENCODINGS THIS SUBJECT ACTUALLY DECLARES, AND THEY LAND DIFFERENTLY. The published shard set
-// has an established identity that matches, so it is faithful. The resident parameter representation
-// has none, so it DEFERS -- and that asymmetry is the whole point of keeping identity, encoding and
-// faithfulness apart.
+// THE TWO ENCODINGS THIS SUBJECT DECLARES LAND DIFFERENTLY, AND THAT ASYMMETRY IS WHAT THIS CLAIM IS FOR:
+// the published shard set has an established identity that matches, the resident parameter representation
+// has none and so defers. Keeping identity, encoding and faithfulness apart is what makes those two
+// outcomes different rather than one.
+//
+// IT RUNS OVER THE CLOSED SUBJECT because the membership gate would otherwise make BOTH arms Open -- the
+// first for a scoped membership, the second for a missing identity -- and the asymmetry it exists to show
+// would vanish into a single verdict. The consequence for the LIVE subject is real and is asserted next
+// door rather than lost here: the published Engram artifact's realization is Open, not Faithful, until the
+// revision's index is enumerated. That is the honest state, and it is what the gate exists to produce.
 test fn the_published_encoding_is_faithful_and_the_resident_one_defers() -> Bool {
   match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: engram_published_artifact,
     evidence: engram_published_faithfulness)) {
     RealizationSettledFaithful => true
     RealizationSettledUnfaithful => false
     RealizationStandingOpen => false
   } && match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: engram_resident_artifact,
     evidence: engram_resident_faithfulness)) {
     RealizationStandingOpen => true
@@ -1788,16 +1794,24 @@ fn artifact_with_identity(i: EncodingIdentity) -> MaterializedComponentArtifact 
     encoded_size: EncodedBytes { bytes: byte_size(count: 1) })
 }
 
+// THIS CONTROL DISCRIMINATES THE IDENTITY COMPARISON, so it moves to the closed subject for the same
+// reason the relation controls did: over the live scoped subject every arm of it would now be Open, and a
+// claim that cannot tell a matching published identity from a substituted one has stopped being a control.
+//
+// WORTH RECORDING: this very test was my argument for exempting the identity arm from the membership gate --
+// gating it, I said, would red a claim that is not about membership. That was circular. A test's current
+// expectation is not evidence for the behaviour it encodes; it is the thing that has to move when the
+// behaviour is found wrong.
 test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -> Bool {
   match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: artifact_with_identity(i: engram_published_identity),
     evidence: IdenticalToPublishedEncoding)) {
     RealizationSettledFaithful => true
     RealizationSettledUnfaithful => false
     RealizationStandingOpen => false
   } && match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: artifact_with_identity(i: ShardSetIdentity {
       shards: [shard_identity(path: "model-00047-of-00048.safetensors" as NonEmptyStr, sha256: fixture_digest_a())],
     }),
@@ -1806,7 +1820,7 @@ test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -
     RealizationSettledFaithful => false
     RealizationStandingOpen => false
   } && match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: artifact_with_identity(i: EncodingIdentityUnestablished { obligation: "fixture: nobody digested it" as NonEmptyStr }),
     evidence: IdenticalToPublishedEncoding)) {
     RealizationStandingOpen => true
