@@ -44,13 +44,31 @@ import gunbc.spark.serving_compatibility {
   measured_subject_refuses, measured_refusal_cause, spark_gb10_accelerator,
   serving_compatibility_subject,
 }
-import std.measure { TokenCount, token_count, BasisPoint, basis_point,
+import std.measure { TokenCount, token_count, BasisPoint, basis_point, basis_point_count,
   ByteSize, byte_size, byte_size_count, second_count, mebibyte_count,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.vllm.engine_args { vllm_prefix_caching_argv }
 import extdeps.vllm.runtime_defaults { defaults_source_revision }
 import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
+
+// ── THIS MODULE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER, AND THE TRIGGER IS NAMED ────────
+//
+// `plan_arm_launch` is called today only by its witness. That is a frontier under DESIGN section 3c,
+// not a consumed authority, and it is admissible only because the trigger is stated here rather than
+// left to be inferred: the consumer is the bounded transport-only relaunch, which stops the incumbent,
+// creates four containers from these specs and reads back what they became. That change is not in this
+// tree, and it requires an actuation authority this repository does not grant itself.
+//
+// WHY THE PLAN LANDS BEFORE ITS ACTUATOR, rather than the two arriving together: the plan is what makes
+// the transport defect REFUSABLE. The launcher this replaces mapped no verbs device while naming the
+// fabric leg correctly, so a launch built faithfully from the model reproduced the defect; landing the
+// corrected plan first means the actuator, when it comes, has nothing to reproduce it FROM. An actuator
+// landing first would only have automated the wrong line faster.
+//
+// WHAT THIS DOES NOT CLAIM: that a plan is a deployment. Nothing here performs an effect, reaches a
+// host, or observes one. A green witness over this module establishes what would be SENT, and says
+// nothing about what any engine is running.
 
 // ── WHY THIS IS A SECOND MULTI-HOST LAUNCHER AND NOT A FORK ────────────────────────────────────
 //
@@ -219,12 +237,14 @@ data glm_local_checkout_container_dir: NonEmptyStr = "/model" as NonEmptyStr
 // against 106.82 GiB free, nine minutes after the incumbent had already been stopped. The class is
 // gunbc.recurring_failure_mode.host_available_memory_read_as_device_admission.
 //
-// SO THE FRACTION IS A PARAMETER, NOT A ROW. It is resolved per attempt by
-// gunbc.spark.device_memory_envelope from one fresh reading per planned rank, and a caller that wants a
-// plan must have obtained one -- there is no longer a value in this module for a launch to reach for.
-// THE DEPENDENCY RUNS THAT WAY ROUND ON PURPOSE: the envelope module imports this one for ArmNode and
-// produces the native plan from a resolved envelope, so the renderer stays free of the resolution and the
-// resolution stays the only producer of the number.
+// SO THE FRACTION IS A PARAMETER, NOT A ROW. There is no value in this module for a launch to reach
+// for: a caller must supply one, and this module never decides it.
+//
+// WHAT RESOLVES IT DOES NOT EXIST YET, AND THIS ANNOTATION WILL NOT PRETEND IT DOES. The intended
+// producer is a fresh per-rank device-memory reading taken at admission time, which lands with the
+// bounded relaunch and imports this module for ArmNode -- the dependency runs that way round so the
+// renderer stays free of the resolution. Until that producer lands, every caller is supplying the
+// incumbent's own unchanged request, which is what a transport-only comparison requires anyway.
 //
 // THE RENDERING IS <digit>.<two digits> AND TWO EARLIER FORMS WERE WRONG AT OPPOSITE ENDS. `"0." + bp/100`
 // rendered 900 basis points as "0.9" -- ten times the intended 0.09 -- and the padded repair then rendered
@@ -236,10 +256,11 @@ data glm_local_checkout_container_dir: NonEmptyStr = "/model" as NonEmptyStr
 // back OUT of an observed argv is a readback concern, and its only consumer is the rank observer that
 // compares a running container's arguments against this plan. That observer is not in this change, so
 // landing the parse here would be a declaration nothing reads -- the two arrive together or not at all.
-fn render_utilization_fraction(basis_points: Nat) -> String {
+fn render_utilization_fraction(basis_points: BasisPoint) -> String {
+  let bp = basis_point_count(bp: basis_points)
   join([
-    to_string(basis_points / 10000), ".",
-    pad_two_digits(n: (basis_points % 10000) / 100),
+    to_string(bp / 10000), ".",
+    pad_two_digits(n: (bp % 10000) / 100),
   ], "")
 }
 
@@ -297,10 +318,10 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 //
 // `--quantization` IS SPELLED EXPLICITLY EVEN THOUGH THE ENGINE WOULD INFER IT. The checkpoint's own
 // config declares quant_method fp8, so vLLM resolves it unaided -- but an omitted flag makes the RUNNING
-// LINE unable to say which weights it loaded, and gunbc.spark.serving_arm_convergence reads exactly that
-// line to decide whether the desired arm is serving. Omitting it would make every convergence read
-// report an incomplete identity and withhold. A launch line that names its own artifact is what makes
-// the arm observable at all.
+// LINE unable to say which weights it loaded, and the convergence reader that decides whether the
+// desired arm is serving reads exactly that line. Omitting it would make every such read report an
+// incomplete identity and withhold. A launch line that names its own artifact is what makes the arm
+// observable at all -- and that reader is a later change, not a module in this tree today.
 //
 // `--master-addr` IS THE HEAD'S RAIL ADDRESS, WHICH IS THE WHOLE POINT OF THE FABRIC. Tensor-parallel
 // collectives cross this address on every forward pass; pointing it at a management address would route
@@ -311,10 +332,11 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // named no prefix-caching flag at all, so every launch took whatever the engine inferred. At the revision
 // this fleet runs that inference goes through the MODEL configuration rather than a declared default, so
 // "nothing said" was not a stable request -- it was a different request per checkpoint.
-// THE TWO NCCL_DEBUG ASSIGNMENTS ARE AN OBSERVATION OBLIGATION, NOT A TUNING KNOB, and they are the
-// whole reason gunbc.spark.native_rank_observer can answer at all. That observer greps the engine log for
-// the interface NCCL actually bound, deliberately refusing to read NCCL_SOCKET_IFNAME back because a check
-// that reads its own request only agrees with itself. But NCCL prints that line ONLY under NCCL_DEBUG, and
+// THE TWO NCCL_DEBUG ASSIGNMENTS ARE AN OBSERVATION OBLIGATION, NOT A TUNING KNOB, and they exist for a
+// reader that is not in this tree yet: the rank observer that lands with the baseline instrument. That
+// observer greps the engine log for the interface NCCL actually bound, deliberately refusing to read
+// NCCL_SOCKET_IFNAME back because a check that reads its own request only agrees with itself. But NCCL
+// prints that line ONLY under NCCL_DEBUG, and
 // no launch path in this repository set it -- so the line never existed, the reading was permanently Absent,
 // and the readback refused every rank of an otherwise healthy deployment. Measured 2026-09-13: a cutover
 // whose engine had already answered GET /v1/models with 200 OK rolled back with FabricInterfaceUnread on
@@ -338,7 +360,7 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // two endpoint names are seven spellings of ONE decision, so they are derived from
 // gunbc.spark.collective_transport_plan rather than listed here. A rank cannot now carry four of the
 // seven.
-fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> DockerCreateSpec {
+fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> DockerCreateSpec {
   let mount = arm_mount_plan(row: crow)
   DockerCreateSpec {
     name: glm_native_container_name,
@@ -377,7 +399,7 @@ data glm_native_shm_size: ByteSize = byte_size(count: 10737418240)
 // revision compared the WHOLE line against what the container reports and refused every healthy rank with
 // "argv differs first at word 0 (planned 63 words, observed 36)" -- word zero being "docker" against the
 // model path. Splitting the list here gives the comparison a referent the observation can actually hold.
-fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> List<String> {
+fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> List<String> {
   concat([
     arm_mount_plan(row: crow).model_path as String,
     "--served-model-name", profile.served_alias as String,
@@ -450,7 +472,7 @@ type ArmNodeLaunch sole_constructor {
 // THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
 // any roster. `serving_arm_admits` is the check whose absence let a previous revision admit a
 // known-impossible tuple, so it is consulted before anything renders.
-fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> ArmLaunchPlan {
+fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> ArmLaunchPlan {
   plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, profile: profile, utilization_basis_points: utilization_basis_points)
 }
 
@@ -466,7 +488,7 @@ fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topol
 // consult the roster would close a cycle, which is the one structural law the import graph has. A first
 // revision of this change did exactly that. The plan renderer already imports both, so it is the earliest
 // acyclic point at which the refusal can bind -- and binding it to the PLAN is the stronger placement anyway,
-// because gunbc.spark.device_memory_envelope makes this the only producer of a native launch.
+// because this module is the only producer of a native launch plan.
 //
 // A SUBJECT ABSENT FROM THE ROSTER IS UNKNOWN AND STAYS LAUNCHABLE, which is how a new tuple is measured at
 // all. The topology is part of the match, so a different rank count is a different subject; a patched image
@@ -497,7 +519,7 @@ fn launch_compatibility_subject(
     accelerator: fabric_group_accelerator(g: group), profile: profile)
 }
 
-fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> ArmLaunchPlan {
+fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> ArmLaunchPlan {
   let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
   if measured_subject_refuses(subject: subject) {
     ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
@@ -528,7 +550,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
 // the same value rather than two renderings that can drift. The engine argv is carried separately
 // because a running container remembers only that half -- the create flags were consumed by the daemon
 // -- so a readback comparing the whole line against a container's own arguments compares nothing.
-fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> ArmNodeLaunch {
+fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: BasisPoint) -> ArmNodeLaunch {
   let spec = arm_container_spec(node: node, master: master, crow: crow, rrow: rrow, ranks: ranks, profile: profile, utilization_basis_points: utilization_basis_points)
   ArmNodeLaunch {
     node: node,

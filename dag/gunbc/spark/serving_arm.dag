@@ -2,7 +2,7 @@ module gunbc.spark.serving_arm
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count }
+import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, BasisPoint, basis_point, basis_point_count }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_published_min_version, glm_5_3_flash_vllm_prerelease_image_nvidia }
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804 }
@@ -652,9 +652,10 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
 // two that have to be kept in agreement by hand.
 //
 // IT CARRIES THE WIRE VALUES AND NOT THE POLICY THAT CHOSE THEM. The memory fraction here is the DECIDED one
-// for the initial normal deployment; a fraction resolved per attempt from observed supply overrides it at
-// plan time, and gunbc.spark.device_memory_envelope owns that. Storing a resolved value in a profile would
-// make the profile's identity change every time a machine's free memory did.
+// for the initial normal deployment; a fraction resolved per attempt from observed supply is intended to
+// override it at plan time, and the admission reader that would own that resolution is a later change.
+// Storing a resolved value in a profile would make the profile's identity change every time a machine's
+// free memory did, which is why the override is a plan-time parameter rather than a row here.
 // PREFIX CACHING IS A REQUEST THIS PROFILE MAKES, NOT A DEFAULT IT INHERITS. At the revision this fleet
 // runs, an omitted flag is not answered by the engine's declared CacheConfig value: EngineArgs starts the
 // field at None and resolves it from the MODEL configuration, so "say nothing and get True" was never the
@@ -673,7 +674,7 @@ type ServingLaunchProfile sole_constructor {
   max_model_len: Nat
   max_num_batched_tokens: Nat
   max_num_seqs: Nat
-  decided_gpu_memory_basis_points: Nat
+  decided_gpu_memory_basis_points: BasisPoint
   kv_cache_dtype_wire: NonEmptyStr
   speculation_enabled: Bool
   serve_port: Port
@@ -703,7 +704,7 @@ fn serving_launch_profile(
   max_model_len: Nat,
   max_num_batched_tokens: Nat,
   max_num_seqs: Nat,
-  decided_gpu_memory_basis_points: Nat,
+  decided_gpu_memory_basis_points: BasisPoint,
   kv_cache_dtype_wire: NonEmptyStr,
   speculation_enabled: Bool,
   serve_port: Port,
@@ -726,7 +727,7 @@ fn serving_launch_profile(
 // AND A FIELD-AT-A-TIME VARIANT, because the thing a caller actually wants is "this profile but one value
 // different" -- a mutation control, a retry at a lower fraction. Spelling seven fields to change one is how
 // a copy drifts from its original, which is the failure the profile type was introduced to end.
-fn profile_with_memory_basis_points(p: ServingLaunchProfile, decided_gpu_memory_basis_points: Nat) -> ServingLaunchProfile {
+fn profile_with_memory_basis_points(p: ServingLaunchProfile, decided_gpu_memory_basis_points: BasisPoint) -> ServingLaunchProfile {
   ServingLaunchProfile {
     max_model_len: p.max_model_len,
     max_num_batched_tokens: p.max_num_batched_tokens,
@@ -748,7 +749,7 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
     "len=", to_string(p.max_model_len),
     " batch=", to_string(p.max_num_batched_tokens),
     " seqs=", to_string(p.max_num_seqs),
-    " util_bp=", to_string(p.decided_gpu_memory_basis_points),
+    " util_bp=", to_string(basis_point_count(bp: p.decided_gpu_memory_basis_points)),
     " kv=", p.kv_cache_dtype_wire as String,
     " spec=", if p.speculation_enabled { "on" } else { "off" },
     " port=", to_string(p.serve_port),
@@ -769,7 +770,7 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: 262144,
   max_num_batched_tokens: 2048,
   max_num_seqs: 1,
-  decided_gpu_memory_basis_points: 8400,
+  decided_gpu_memory_basis_points: basis_point(count: 8400),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
   speculation_enabled: false,
   serve_port: 30000,
@@ -783,8 +784,7 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
 // THE CANARY'S PROFILE IS READ OFF THE ENGINE THAT RAN, NOT ASSEMBLED FROM WHAT WAS DECIDED. A first
 // revision of this row carried tp=4, 32 sequences and 2048 batched tokens -- the shared production decision
 // parameters -- while the container on spark-0c75 was running tp=1, ONE sequence and 7168 batched tokens, as
-// `docker inspect` reported on 2026-09-10 and as the fixture in
-// test.claim.spark.serving_arm_convergence_witness_test still carries verbatim. That is the borrowed-profile
+// `docker inspect` reported on 2026-09-10. That is the borrowed-profile
 // substitution this profile type exists to stop, committed inside the type itself.
 //
 // THE MEMORY FRACTION IS THE ENGINE'S DEFAULT, BECAUSE THE LINE NAMES NONE. Recording a decided 0.82 here
@@ -793,7 +793,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: 262144,
   max_num_batched_tokens: 7168,
   max_num_seqs: 1,
-  decided_gpu_memory_basis_points: 9000,
+  decided_gpu_memory_basis_points: basis_point(count: 9000),
   kv_cache_dtype_wire: "fp8" as NonEmptyStr,
   speculation_enabled: false,
   serve_port: 30001,
