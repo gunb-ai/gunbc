@@ -974,7 +974,6 @@ fn adjudicated_with_a_consumed_row(name: &str, roster_touched: bool) -> WaveAdmi
         head: "head".to_string(),
         report: Box::new(report),
         roster_touched,
-        event: AdjudicationEvent::PullRequest,
     }
 }
 
@@ -1025,7 +1024,6 @@ fn touching_the_roster_with_no_consumed_row_is_admitted() {
         head: "head".to_string(),
         report: Box::new(report),
         roster_touched: true,
-        event: AdjudicationEvent::PullRequest,
     };
     assert_eq!(
         wave_admission_refusal(&outcome),
@@ -2063,7 +2061,6 @@ fn stale_rows_refuse_every_run_and_unadjudicated_deltas_still_refuse() {
             head: if same_revision { "base" } else { "head" }.into(),
             report: Box::new(report),
             roster_touched,
-            event: AdjudicationEvent::PullRequest,
         };
         assert_eq!(
             wave_admission_refusal(&outcome).is_some(),
@@ -2123,7 +2120,6 @@ fn multi_candidate_narrowing_admits_then_consumes_only_the_exact_authored_set() 
                 head: "head".into(),
                 report: Box::new(report),
                 roster_touched: false,
-                event: AdjudicationEvent::PullRequest,
             };
             if matches {
                 assert!(wave_admission_refusal(&outcome).is_none());
@@ -2315,11 +2311,7 @@ fn used_row(follow_up: DeletionFollowUp) -> [TransitionAdmission; 1] {
 }
 
 /// The owner's composition: the candidate moves the binding, and the row admits it.
-fn owner_composition(
-    name: &str,
-    follow_up: DeletionFollowUp,
-    event: AdjudicationEvent,
-) -> WaveAdmissionOutcome {
+fn owner_composition(name: &str, follow_up: DeletionFollowUp) -> WaveAdmissionOutcome {
     let base = [
         ("home.dag", HOME),
         ("other.dag", OTHER),
@@ -2344,7 +2336,6 @@ fn owner_composition(
         head: "head".to_string(),
         report: Box::new(report),
         roster_touched: true,
-        event,
     }
 }
 
@@ -2359,11 +2350,7 @@ fn owner_composition(
 /// whose admitting side was free because any number satisfied it.
 #[test]
 fn the_owners_merge_group_run_admits_a_used_row_without_a_deletion_follow_up() {
-    let outcome = owner_composition(
-        "owner_mg_no_follow_up",
-        DeletionFollowUp::NotAuthored,
-        AdjudicationEvent::MergeGroup,
-    );
+    let outcome = owner_composition("owner_mg_no_follow_up", DeletionFollowUp::NotAuthored);
     assert!(
         wave_admission_refusal(&outcome).is_none(),
         "a used row with no follow-up must no longer refuse on the owner's merge_group run: {:?}",
@@ -2379,8 +2366,7 @@ fn the_owners_merge_group_run_admits_a_used_row_whose_follow_up_is_authored() {
     assert_eq!(
         wave_admission_refusal(&owner_composition(
             "owner_mg_with_follow_up",
-            DeletionFollowUp::PullRequest(77778),
-            AdjudicationEvent::MergeGroup,
+            DeletionFollowUp::PullRequest(77778)
         )),
         None
     );
@@ -2393,8 +2379,7 @@ fn a_used_row_without_a_follow_up_does_not_refuse_the_pull_request_run() {
     assert_eq!(
         wave_admission_refusal(&owner_composition(
             "owner_pr_no_follow_up",
-            DeletionFollowUp::NotAuthored,
-            AdjudicationEvent::PullRequest,
+            DeletionFollowUp::NotAuthored
         )),
         None
     );
@@ -2437,7 +2422,6 @@ fn an_owned_consumed_row_is_a_receipt_on_a_bystanders_merge_group_run_not_a_refu
         head: "head".to_string(),
         report: Box::new(report),
         roster_touched: false,
-        event: AdjudicationEvent::MergeGroup,
     };
     assert_eq!(
         wave_admission_refusal(&composition),
@@ -2481,7 +2465,6 @@ fn an_owned_consumed_rows_receipt_coexists_with_the_retained_roster_and_base_equ
         head: "head".to_string(),
         report: Box::new(roster_touched_report),
         roster_touched: true,
-        event: AdjudicationEvent::MergeGroup,
     };
     let roster_refusal = wave_admission_refusal(&roster_touched)
         .expect("the retained roster-touch rule still refuses an owned consumed row (gunbc#9824)");
@@ -2505,7 +2488,6 @@ fn an_owned_consumed_rows_receipt_coexists_with_the_retained_roster_and_base_equ
         head: "same".to_string(),
         report: Box::new(base_equals_head_report),
         roster_touched: false,
-        event: AdjudicationEvent::MergeGroup,
     };
     let base_refusal = wave_admission_refusal(&base_equals_head)
         .expect("the retained base == head rule still refuses an owned consumed row (gunbc#9824)");
@@ -2540,7 +2522,6 @@ fn an_unowned_consumed_row_on_a_bystanders_merge_group_run_is_admitted() {
         head: "head".to_string(),
         report: Box::new(report.clone()),
         roster_touched: false,
-        event: AdjudicationEvent::MergeGroup,
     };
     // THE BYSTANDER IS NO LONGER BILLED. This fixture used to refuse as
     // ConsumedRowOwnerChargeBypassed: an unrelated composition was charged because a PRIOR owner
@@ -2559,7 +2540,6 @@ fn an_unowned_consumed_row_on_a_bystanders_merge_group_run_is_admitted() {
         head: "head".to_string(),
         report: Box::new(report),
         roster_touched: false,
-        event: AdjudicationEvent::PullRequest,
     };
     assert_eq!(wave_admission_refusal(&pull_request), None);
 }
@@ -2579,7 +2559,6 @@ fn the_deletion_follow_ups_merge_group_run_is_admitted() {
         head: "head".to_string(),
         report: Box::new(report),
         roster_touched: true,
-        event: AdjudicationEvent::MergeGroup,
     };
     assert_eq!(wave_admission_refusal(&outcome), None);
 }

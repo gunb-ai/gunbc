@@ -1399,8 +1399,6 @@ pub enum WaveAdmissionOutcome {
         /// Whether this diff touches the roster source. Consumed rows come due here
         /// and on main (base == head); stale rows refuse regardless of this flag.
         roster_touched: bool,
-        /// The CI event whose subject this run adjudicated.
-        event: AdjudicationEvent,
     },
 }
 
@@ -1880,14 +1878,6 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             head,
             report,
             roster_touched,
-            // NO READER LEFT, AND SAID RATHER THAN HIDDEN. `event` existed here to compute
-            // `composition` for the two removed merge_group arms; nothing in this function reads it
-            // now, and `claim_executor`'s destructuring already ignored it. So the variant's
-            // `event` field is currently constructed everywhere and read nowhere -- a DESIGN 3c
-            // dangling field that this removal created. It is left in place rather than pulled out
-            // of ~15 construction sites in the same change; the honest disposition is a follow-up
-            // that either finds it a consumer or deletes it.
-            event: _,
         } => {
             let unadjudicated = report_unadjudicated(report);
             let roster_due = base == head || *roster_touched;
@@ -2122,7 +2112,6 @@ pub fn base_records(
 /// whole graphs, since an unmoved module's subject or bindings can be moved by one that did.
 pub fn run_required_wave_admission(
     head_index: &DeclarationIndex,
-    event: AdjudicationEvent,
 ) -> Result<WaveAdmissionOutcome, String> {
     let workspace = workspace_root();
     let head = git_stdout(&workspace, &["rev-parse", "HEAD"])?;
@@ -2139,7 +2128,7 @@ pub fn run_required_wave_admission(
             })
         }
     };
-    run_wave_admission_between(&workspace, &base, &head, head_index, event)
+    run_wave_admission_between(&workspace, &base, &head, head_index)
 }
 
 /// The wave adjudication over an EXPLICIT repository and revision pair.
@@ -2446,7 +2435,6 @@ pub fn run_wave_admission_between(
     base: &str,
     head: &str,
     head_index: &DeclarationIndex,
-    event: AdjudicationEvent,
 ) -> Result<WaveAdmissionOutcome, String> {
     let admissions = load_transition_admissions(workspace)?;
     let (base, head, base_index, head_touched) =
@@ -2461,7 +2449,6 @@ pub fn run_wave_admission_between(
                     head,
                     report: Box::new(adjudicate(head_index, head_index, &admissions)),
                     roster_touched: false,
-                    event,
                 });
             }
             BaselineReconstruction::NotEvaluated { reason } => {
@@ -2486,7 +2473,6 @@ pub fn run_wave_admission_between(
         head,
         report: Box::new(report),
         roster_touched,
-        event,
     })
 }
 

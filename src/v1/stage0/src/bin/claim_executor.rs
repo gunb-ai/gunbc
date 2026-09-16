@@ -825,9 +825,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                     let adjudicated = v1_compiler::cli_run::namespace_wave_admission::adjudication_event_from_name(
                         event_name.as_deref(),
                     )
-                    .and_then(|event| {
+                    // THE EVENT IS VALIDATED AND DISCARDED, AND THE VALIDATION IS THE POINT.
+                    // `adjudication_event_from_name` REFUSES a GITHUB_EVENT_NAME the consumption
+                    // policy does not model rather than applying the pull_request policy to it, so
+                    // this call is kept for its refusal after gunbc#11481 removed the last reader of
+                    // the event value itself. Dropping the call would drop that refusal.
+                    .and_then(|_event| {
                         v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
-                            index, event,
+                            index,
                         )
                     });
                     match adjudicated {
@@ -1945,7 +1950,6 @@ fn report_wave_admission_outcome(
             head,
             report,
             roster_touched: _,
-            event: _,
         } => {
             let p = &report.population;
             eprintln!(
