@@ -55,13 +55,26 @@ there to restore. The available targets are:
   leftover with no consumer, we did not create it and do not hold a declaration that produces
   it, so "restore" would mean *reconstruct from an observation*, which is not a restoration
   and cannot be verified against anything;
-- **release to a verified empty baseline** — hosts carrying no serving process, no occupant,
-  and memory returned to its idle reading. **This is the target.** It is weaker than the
-  original but it is checkable, and it is the state the experiment must be able to reach from
-  any failure arm.
+- **release to a verified empty state** — hosts carrying no serving process, no occupant, and
+  memory returned to its idle reading. **This is the target.** It is weaker than the original
+  but it is checkable, and it is the state the experiment must be able to reach from any
+  failure arm.
 
-So the rollback proof changes shape: from *the incumbent serves again* to *the hosts return to
-a declared baseline and that baseline is read back*. Cut D must not claim the stronger one.
+**TWO STATES, TWO NAMES, because an earlier draft of this document used one word for both and
+that was a meaning fork.** They are not the same state and the cut turns on the difference:
+
+| name | what it is | who records it | is it a return target |
+|---|---|---|---|
+| **entry state** | the ranks as found — occupied by the Ray container, ~108 GiB held | D0 | **no** |
+| **released state** | no occupant, no serving process, memory at its idle reading | D1's terminal | **yes** |
+
+D1 returns to the RELEASED state, not to the entry state. Returning to the entry state would
+mean reconstructing the occupant, which §2 rejects above. So the entry receipt is evidence of
+*what we changed*, never a thing to restore — and any sentence that says "return to baseline"
+without saying which one is ambiguous in the one place ambiguity is expensive.
+
+So the rollback proof changes shape: from *the incumbent serves again* to *the hosts reach the
+declared released state and it is read back*. Cut D must not claim the stronger one.
 
 ### 3. The risk profile inverts, and that makes P1 Cut 3 more important rather than less
 
@@ -74,7 +87,7 @@ The original brief said P1 Cut 3 "should block" ordinary production promotion. A
 incumbent, that hedge was defensible because restoring the incumbent was itself a cleanup path.
 Without one it is not: **promotion must refuse** unless P1 Cut 3 lands or an equivalent cleanup
 realization is modeled, authorized, and demonstrated to stop partial ranks, withdraw offers,
-release every held seat, and return the hosts to baseline.
+release every held seat, and return the hosts to the released state.
 
 ### 4. The serving route is declared and unfulfilled, and the experiment must not paper over it
 
@@ -90,7 +103,7 @@ carries a request is its own precondition, and it is stated as one below.
 
 ## The replacement cut
 
-### D0 — capture the baseline as a receipt (no mutation)
+### D0 — capture the ENTRY state as a receipt (no mutation)
 
 Before anything is stopped, record per rank: occupant container identity and creation time,
 memory used and free, absence of a serving process, absence of an answer on the enrolled
@@ -98,13 +111,13 @@ endpoint, and free disk. This is simultaneously the **rollback reference**, the 
 the transaction changed what it claims to have changed, and the record that makes the occupant
 reconstructible-in-principle if the decision in §2 is ever revisited.
 
-Terminal: a baseline receipt exists for all four ranks, and no host state was altered.
+Terminal: an entry-state receipt exists for all four ranks, and no host state was altered.
 
-### D1 — reclaim, bounded experiment, mandatory return to baseline
+### D1 — reclaim, bounded experiment, mandatory return to the RELEASED state
 
 Authorization is exact and time-bounded over: candidate key, the four host identities, the
 **produced** runtime image digest, model source identity, the four row-store identities, the
-TP4 profile, the selected Engram route, the D0 baseline receipt, and the cleanup path of §3.
+TP4 profile, the selected Engram route, the D0 entry-state receipt, and the cleanup path of §3.
 Candidate identity is not authorization.
 
 ```
@@ -116,11 +129,12 @@ claim the four ranks
 → complete model load
 → complete graph/runtime initialisation
 → answer semantic and differential probes
-→ RETURN TO BASELINE, unconditionally
-→ read back the baseline
+→ RETURN TO THE RELEASED STATE, unconditionally
+→ read back the released state
 ```
 
-D1 **always** ends at baseline. It does not promote. That is what makes its idempotence receipt
+D1 **always** ends at the released state — not at the entry state, which it deliberately does
+not restore. It does not promote. That is what makes its idempotence receipt
 meaningful — there is one desired end state, and a rerun that mutates nothing is checkable
 against it.
 
@@ -128,19 +142,33 @@ Weight loading is not success. Acceptance begins after runtime initialisation an
 semantic completion. An HTTP 200 discharges nothing.
 
 Every stage capable of preventing a later observation carries a terminal disposition: ranks
-stopped, claims released, hosts at baseline, baseline read back — or a typed refusal naming the
-missing cleanup evidence. A failure arm that cannot reach baseline is the one outcome that must
+stopped, claims released, hosts at the released state, that state read back — or a typed refusal
+naming the missing cleanup evidence. A failure arm that cannot reach it is the one outcome that must
 stop the line loudly, because it is the risk this cut actually carries.
 
-### D1a — the routed request, as its own precondition
+### D1a — the route reaches a process, which is the only model-independent half
 
-Establishing that the enrolled Group A route carries a request is separable from V4.1 and is
-currently unproven for any model. It is listed before D2 because D2 depends on it and because
-discovering it inside a live transaction is the failure this document exists to prevent.
+An earlier draft claimed the routed request was separable from V4.1 and then wrote a terminal
+requiring *four agreeing ranks and a produced completion* — which no model-independent step can
+produce. **That terminal was not separable and the claim of separability was wrong.** The two
+halves come apart like this:
 
-Terminal: one request reaches a process on the enrolled endpoint and is answered, joined
-end-to-end — router request, selected offer, authorization, four agreeing ranks, produced
-completion.
+**Model-independent, and genuinely a precondition.** Does the enrolled route reach a listening
+process at all? `serving_enrollment` declares an endpoint, a port and a turn ceiling for
+`FabricGroupA`, and nothing answers there today. Whether that path carries a request is a fact
+about routing, not about V4.1, and it can be established against any responder bound to the
+enrolled endpoint. It is worth doing first precisely because it is cheap and because
+discovering a broken route inside a live transaction is the failure this document exists to
+prevent.
+
+Terminal: a request issued through the enrolled route reaches a process on the declared
+endpoint and is answered.
+
+**Model-dependent, and therefore NOT separable.** The end-to-end join — router request, to
+selected offer, to authorization, to four agreeing ranks, to a produced completion — cannot
+exist without a TP4 model actually loaded. It belongs inside D1 (as the experiment's semantic
+terminal) and inside D2 (as the promotion terminal), and it is stated in both. Extracting it
+into a precondition would be specifying a step nobody can perform alone.
 
 ### D2 — production promotion, separately authorized
 
@@ -149,8 +177,8 @@ A new authorization over the already-proven realization. Promotion **refuses** u
 - the candidate is realized, not merely keyed — produced image digest, applied patch
   population, four row-store identities;
 - row-store faithfulness is established over the **published** population, not a fixture;
-- D1 completed and returned to baseline;
-- D1a established that the enrolled route carries a request;
+- D1 completed and returned to the released state;
+- D1a established that the enrolled route reaches a process, and D1 produced the end-to-end join;
 - **P1 Cut 3 or a demonstrated equivalent cleanup path exists**;
 - a second convergence run mutates no unit, image, row store or route.
 
