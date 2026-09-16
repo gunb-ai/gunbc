@@ -2344,8 +2344,10 @@ fn owner_composition(name: &str, follow_up: DeletionFollowUp) -> WaveAdmissionOu
 /// inverse of the RED this test used to carry, kept executing rather than deleted so the removal is
 /// covered by evidence instead of by an absence of evidence.
 ///
-/// WHAT STILL REFUSES IS TESTED ELSEWHERE and is not weakened here: a consumed row at landing
-/// (`base == head`) or on a roster-source edit, a stale row, and an unadjudicated delta. The debt
+/// WHAT STILL REFUSES IS TESTED ELSEWHERE and is not weakened here: a consumed row when
+/// `roster_due` -- `base == head`, which the merge queue left with no required run, or a
+/// roster-source edit, which is what remains of it there -- a stale row, and an unadjudicated
+/// delta. The debt
 /// remains RECORDED on the row and counted in the message; what was removed is the ADVANCE charge,
 /// whose admitting side was free because any number satisfied it.
 #[test]

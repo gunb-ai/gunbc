@@ -387,9 +387,16 @@ pub struct ConsumedRowReceipt {
 /// their own queue run, and `ConsumedRowOwnerChargeBypassed`, charging a BYSTANDER composition for
 /// someone else's unauthored follow-up.
 ///
-/// THE DEBT IS STILL ENFORCED WHERE IT BECOMES REAL. A consumed row still refuses at landing
-/// (`base == head`) or on a roster-source edit, so the deletion is still compelled -- just at the
-/// point the row is actually spent rather than in advance of it.
+/// WHERE THE DEBT STILL REFUSES, AT THE GRAIN THE REQUIRED PATH ACTUALLY HAS. A consumed row
+/// refuses when `roster_due` -- `base == head` OR a roster-source edit. An earlier revision of this
+/// paragraph stopped there and read as though the deletion were still compelled; it is not, on the
+/// path that gates a merge. The merge queue moved the required verdict off the push to the default
+/// branch (fierce-lark-661, 2026-09-13), and that was the only run where `base == head`, so on the
+/// required path `roster_due` reduces to `roster_touched` alone: a base-consumed row whose owner
+/// authored no follow-up refuses on NO required run until somebody edits the roster directory.
+/// That loss is declared, not implied -- `gunbc.rung_drop.consumed_row_owner_charge_unenforced` --
+/// and citing the `base == head` arm without saying it is off the required path is the §4b(1)
+/// inflation that row exists to prevent.
 ///
 /// WHY THE ADVANCE CHARGE WAS NOT WORTH ITS COST -- WHICH IS NOT THE SAME AS SAYING IT COST NOTHING
 /// TO REMOVE. What it established was that a NUMBER was authored and nothing more: whether that
@@ -476,8 +483,12 @@ pub struct WaveAdmissionReport {
     /// refusal in `stale_admissions`.
     pub consumed_admissions: Vec<String>,
     /// Rows USED to admit a delta in this run whose owner authored no deletion follow-up. Each is
-    /// satisfied at the candidate, so it will be consumed when the candidate lands; on a
-    /// merge_group run that is the owner's refusal.
+    /// satisfied at the candidate, so it will be consumed when the candidate lands.
+    ///
+    /// NOTHING REFUSES ON THIS SET. It used to be the owner's refusal on a `merge_group` run
+    /// (`OwnerFollowUpAbsent`); that arm was removed on 2026-09-16 and declared as the drop
+    /// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed`. The set is still COUNTED in the
+    /// refusal message when some other arm produces one, which is the record the ruling kept.
     pub used_without_follow_up: Vec<String>,
     /// The subset of `consumed_admissions` whose owner authored NO deletion follow-up.
     ///
