@@ -50,7 +50,7 @@ import v1.std.core {
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
   intern_table_with_authored_token_ordinals,
   field_access_base,
-  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, ModuleItemTestFunction, ModuleItemTestDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
 }
 import std.occurrence_identity {
@@ -670,11 +670,35 @@ fn drop_leading_type_modifier(tokens: TokenStream, modifier: String) -> TokenStr
   }
 }
 
-fn drop_leading_test_marker(tokens: TokenStream) -> TokenStream {
-  if tok_is_ident_text(tok: token_stream_first(stream: tokens), text: "test") && (tok_keyword_text(tok: token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))) != "") {
-    token_stream_advance(stream: tokens, n: 1)
-  } else {
-    tokens
+fn leads_with_test_marker(tokens: TokenStream) -> Bool {
+  tok_is_ident_text(tok: token_stream_first(stream: tokens), text: "test") && (tok_keyword_text(tok: token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))) != "")
+}
+
+// THE TEST MARKER IS CARRIED, NOT DROPPED. It used to be skipped here and re-read from source text
+// by scanners beside the compiler, so nothing that consumed the parse could tell a test from an
+// ordinary item. It now selects the item's kind. Only a function or data item may carry it: any
+// other marked item is refused rather than silently treated as unmarked, which is what dropping
+// the marker used to do.
+fn test_marked_item_result(r: ItemResult) -> ItemResult {
+  if has_err(err: r.err) { return r }
+  let n = r.item
+  let kind = match n.module_item_kind {
+    ModuleItemFunction => Present { value: ModuleItemTestFunction }
+    ModuleItemDataValue => Present { value: ModuleItemTestDataValue }
+    ModuleItemTypeDeclaration => none
+    ModuleItemTestFunction => none
+    ModuleItemTestDataValue => none
+    ModuleItemService => none
+    ModuleItemResource => none
+    ModuleItemUnrecognized => none
+    NotAModuleItem => none
+  }
+  match kind {
+    Present { value: k } => ItemResult {
+      item: Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: k, expr_data: n.expr_data },
+      tokens: r.tokens, ctx: r.ctx, err: none
+    }
+    Absent => ItemResult { item: n, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: "the `test` marker applies only to a fn or data item", span: n.span) } }
   }
 }
 fn type_body_tokens_after_modifiers(tokens: TokenStream) -> TokenStream {
@@ -1680,7 +1704,9 @@ fn parsed_module_item_role(node: Node) -> ParsedOccurrenceRole {
   match node.module_item_kind {
     ModuleItemTypeDeclaration => ParsedOccurrenceDeclaration { category: TypeOccurrence }
     ModuleItemFunction => ParsedOccurrenceUnclassified
+    ModuleItemTestFunction => ParsedOccurrenceUnclassified
     ModuleItemDataValue => ParsedOccurrenceUnclassified
+    ModuleItemTestDataValue => ParsedOccurrenceUnclassified
     ModuleItemService => ParsedOccurrenceUnclassified
     ModuleItemResource => ParsedOccurrenceUnclassified
     ModuleItemUnrecognized => ParsedOccurrenceUnclassified
@@ -2356,7 +2382,13 @@ fn find_item_form(forms: List<ItemForm>, keyword: String) -> ItemForm? {
 
 fn parse_item(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let tokens = skip_newlines(tokens: tokens)
-  let tokens = drop_leading_test_marker(tokens: tokens)
+  if leads_with_test_marker(tokens: tokens) {
+    return test_marked_item_result(r: parse_unmarked_item(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx))
+  }
+  parse_unmarked_item(tokens: tokens, ctx: ctx)
+}
+
+fn parse_unmarked_item(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let tok = token_stream_first(stream: tokens)
   let kw = tok_keyword_text(tok: tok)
   let span = token_span(tok: tok)

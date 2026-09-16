@@ -2,7 +2,7 @@ module v1.compiler.emit_python
 
 import std.syntax { LiteralValue, BinOp }
 import v1.std.core {
-  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, module_item_kind_shape,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   Node, InferredNode, Resolved, CompilerError, VarBindingKind, FunctionValueBinding,
   import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
@@ -274,7 +274,7 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
 fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  match item.module_item_kind {
+  match module_item_kind_shape(kind: item.module_item_kind) {
     ModuleItemTypeDeclaration =>
       if is_type_def_item(item: item) {
         emit_py_type_def_from_connective(item: item, env: env)
@@ -314,6 +314,10 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     ModuleItemResource => emit_py_resource_def(item: item, env: env)
     ModuleItemUnrecognized =>
       emit_py_item_refusal(item_text: item_text, reason: "item form carries no item kind")
+    ModuleItemTestFunction =>
+      emit_py_item_refusal(item_text: item_text, reason: "module_item_kind_shape erases the test role, so a test kind cannot reach this match")
+    ModuleItemTestDataValue =>
+      emit_py_item_refusal(item_text: item_text, reason: "module_item_kind_shape erases the test role, so a test kind cannot reach this match")
     NotAModuleItem =>
       emit_py_item_refusal(item_text: item_text, reason: "node in module-item position was not constructed by an item constructor")
   }

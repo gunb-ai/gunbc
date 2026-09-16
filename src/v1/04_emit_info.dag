@@ -13,7 +13,7 @@ import v1.std.core {
   Connective, Conj, NoConnective, Arrow,
   CardOptional,
   param_node_name_at,
-  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, module_item_kind_shape,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   LeafOwner,
 }
@@ -313,7 +313,7 @@ fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineI
 // module_item_kind, stamped by the parse constructor, so both stages read ONE authority that is
 // upstream of both and neither re-derives a shape.
 fn emit_graph_records_fn_decl(item: Node) -> Bool {
-  item.module_item_kind == ModuleItemFunction
+  module_item_kind_shape(kind: item.module_item_kind) == ModuleItemFunction
 }
 
 fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {

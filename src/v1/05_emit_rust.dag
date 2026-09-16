@@ -19,7 +19,7 @@ import std.algebra { trim, AlgebraFieldTemplate, is_collection_filter_template }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   call_semantics_target,
-  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, module_item_kind_shape,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   resolved_node_is_kernel_identity_for_name,
   match_pattern_is_irrefutable,
@@ -2430,7 +2430,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
   } else { match wire_contract_item {
     Absent => rust_tagged_object_policy()
     Present { value: wc } =>
-      if (wc.module_item_kind == ModuleItemDataValue) {
+      if (module_item_kind_shape(kind: wc.module_item_kind) == ModuleItemDataValue) {
         match wc.body {
           Absent =>
             rust_serde_error_policy(message: "wire_contract: data item has no initializer body")
@@ -2470,7 +2470,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                           Divergent =>
                             rust_serde_error_policy(message: "wire_contract: initializer diverges, so it names no VariantEncoding alias")
                           Resolved { node } =>
-                            if (node.module_item_kind == ModuleItemDataValue) {
+                            if (module_item_kind_shape(kind: node.module_item_kind) == ModuleItemDataValue) {
                               resolve_wire_serde_policy_for_coproduct_seen(
                                 wire_contract_item: Present { value: node },
                                 source_indices: source_indices,
@@ -2498,7 +2498,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                       Divergent =>
                         rust_serde_error_policy(message: "wire_contract: initializer diverges, so it names no VariantEncoding alias")
                       Resolved { node } =>
-                        if (node.module_item_kind == ModuleItemDataValue) {
+                        if (module_item_kind_shape(kind: node.module_item_kind) == ModuleItemDataValue) {
                           resolve_wire_serde_policy_for_coproduct_seen(
                             wire_contract_item: Present { value: node },
                             source_indices: source_indices,
@@ -2583,7 +2583,7 @@ fn module_defines_local_coproduct_wire_contract_type(module_items: List<Node>, s
 }
 
 fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if (item.module_item_kind != ModuleItemDataValue) {
+  if (module_item_kind_shape(kind: item.module_item_kind) != ModuleItemDataValue) {
     false
   } else if module_defines_local_coproduct_wire_contract_type(module_items: module_items, source_indices: source_indices) {
     false
@@ -2797,7 +2797,7 @@ fn build_data_variant_wire_spellings(modules: List<TypedModule>, data_items: Map
       data_items: data_items
     )
     let wire_contract_item = wire_items
-      |> filter(i => i.module_item_kind == ModuleItemDataValue && authored_name_at(source_indices: si, node: i) == "wire_contract")
+      |> filter(i => module_item_kind_shape(kind: i.module_item_kind) == ModuleItemDataValue && authored_name_at(source_indices: si, node: i) == "wire_contract")
       |> first
     tm.items
       |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
@@ -2829,7 +2829,7 @@ fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     tm.items
-      |> filter(item => item.module_item_kind == ModuleItemDataValue)
+      |> filter(item => module_item_kind_shape(kind: item.module_item_kind) == ModuleItemDataValue)
       |> fold(init: acc, f: (item_acc, item) =>
         let item_name = authored_name_at(source_indices: tm.type_env.source_indices, node: item)
         let qualified_name = concat(module_name, ".", item_name)
@@ -2922,7 +2922,7 @@ fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: 
 fn build_scoped_data_item_index(typed_module: TypedModule, data_items: Map<String, Node>) -> Map<String, List<Node>> {
   let module_name = authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module)
   let local = typed_module.items
-    |> filter(item => item.module_item_kind == ModuleItemDataValue)
+    |> filter(item => module_item_kind_shape(kind: item.module_item_kind) == ModuleItemDataValue)
     |> fold(init: empty_map(), f: (acc, item) =>
       insert_scoped_data_item(
         scoped: acc,
@@ -5506,7 +5506,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let wire_contract_item = wire_context_items
     |> filter(i =>
-      i.module_item_kind == ModuleItemDataValue
+      module_item_kind_shape(kind: i.module_item_kind) == ModuleItemDataValue
       && authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
     |> first
   let items_str = typed_module.items
@@ -7187,7 +7187,7 @@ INCREMENT 2 (generic-argument axis, #6986): build_field_type_map also walks the 
 
 fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   unique_strings(items: items
-    |> filter(item => item.module_item_kind == ModuleItemDataValue)
+    |> filter(item => module_item_kind_shape(kind: item.module_item_kind) == ModuleItemDataValue)
     |> flat_map(item => {
       let type_name = match item.type_annotation {
         Present { value: ta } => authored_name_at(source_indices: source_indices, node: ta)
@@ -7415,7 +7415,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
   let item_text = authored_name(env: env, node: item)
-  match item.module_item_kind {
+  match module_item_kind_shape(kind: item.module_item_kind) {
     ModuleItemTypeDeclaration =>
       if is_type_def_item(item: item) {
         emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
@@ -7581,6 +7581,10 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       emit_resource_def(item: item, shared_types: shared_types, env: env)
     ModuleItemUnrecognized =>
       emit_rust_item_refusal(item_text: item_text, reason: "item form carries no item kind")
+    ModuleItemTestFunction =>
+      emit_rust_item_refusal(item_text: item_text, reason: "module_item_kind_shape erases the test role, so a test kind cannot reach this match")
+    ModuleItemTestDataValue =>
+      emit_rust_item_refusal(item_text: item_text, reason: "module_item_kind_shape erases the test role, so a test kind cannot reach this match")
     NotAModuleItem =>
       emit_rust_item_refusal(item_text: item_text, reason: "node in module-item position was not constructed by an item constructor")
   }
@@ -16678,7 +16682,7 @@ fn module_compiler_pipeline_entry_decls(tm: TypedModule) -> List<CompilerPipelin
   let si = tm.type_env.source_indices
   let module_name = authored_name_at(source_indices: si, node: tm.module)
   tm.items
-    |> filter(item => item.module_item_kind == ModuleItemDataValue)
+    |> filter(item => module_item_kind_shape(kind: item.module_item_kind) == ModuleItemDataValue)
     |> flat_map(item => {
       let type_name = match item.type_annotation {
         Present { value: ta } => authored_name_at(source_indices: si, node: ta)

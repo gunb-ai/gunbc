@@ -1441,7 +1441,9 @@ pub struct DeclaredFuncEnv {
 pub enum ParsedModuleItemKind {
     ModuleItemTypeDeclaration,
     ModuleItemFunction,
+    ModuleItemTestFunction,
     ModuleItemDataValue,
+    ModuleItemTestDataValue,
     ModuleItemService,
     ModuleItemResource,
     ModuleItemUnrecognized,
@@ -1470,6 +1472,24 @@ pub struct Node {
     pub match_pattern: Option<Rc<MatchPattern>>,
     pub module_item_kind: ParsedModuleItemKind,
     pub expr_data: Rc<ExprData>,
+}
+
+pub fn module_item_kind_shape(kind: ParsedModuleItemKind) -> ParsedModuleItemKind {
+    match kind.clone() {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => {
+            ParsedModuleItemKind::ModuleItemTypeDeclaration
+        }
+        ParsedModuleItemKind::ModuleItemFunction => ParsedModuleItemKind::ModuleItemFunction,
+        ParsedModuleItemKind::ModuleItemTestFunction => ParsedModuleItemKind::ModuleItemFunction,
+        ParsedModuleItemKind::ModuleItemDataValue => ParsedModuleItemKind::ModuleItemDataValue,
+        ParsedModuleItemKind::ModuleItemTestDataValue => ParsedModuleItemKind::ModuleItemDataValue,
+        ParsedModuleItemKind::ModuleItemService => ParsedModuleItemKind::ModuleItemService,
+        ParsedModuleItemKind::ModuleItemResource => ParsedModuleItemKind::ModuleItemResource,
+        ParsedModuleItemKind::ModuleItemUnrecognized => {
+            ParsedModuleItemKind::ModuleItemUnrecognized
+        }
+        ParsedModuleItemKind::NotAModuleItem => ParsedModuleItemKind::NotAModuleItem,
+    }
 }
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
@@ -5309,7 +5329,11 @@ pub struct ModuleItemTypeDeclaration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleItemFunction;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemTestFunction;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleItemDataValue;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemTestDataValue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleItemService;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

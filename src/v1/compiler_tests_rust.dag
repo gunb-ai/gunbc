@@ -4730,6 +4730,55 @@ fn ct_entry_point_absent_refusal_test() -> String {
     "    }\n\n")
 }
 
+fn ct_test_marker_item_kind_test() -> String {
+  concat(
+    "    fn parse_item_kinds(src: &'static str) -> Result<Vec<(String, crate::v1_std_core::ParsedModuleItemKind)>, String> {\n",
+    "        let (tx, rx) = std::sync::mpsc::channel();\n",
+    "        std::thread::Builder::new()\n",
+    "            .name(\"parse-test-marker\".to_string())\n",
+    "            .stack_size(8 * 1024 * 1024)\n",
+    "            .spawn(move || {\n",
+    "                let tokens = tokenize(\n",
+    "                    src.to_string(),\n",
+    "                    \"test.dag\".to_string(),\n",
+    "                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),\n",
+    "                );\n",
+    "                let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));\n",
+    "                let verdict = match (&result.error, &result.module) {\n",
+    "                    (Some(e), _) => Err(format!(\"{:?}\", e)),\n",
+    "                    (None, Some(m)) => Ok(crate::v1_std_core::module_items(m.clone()).iter().map(|n| (n.name.clone(), n.module_item_kind)).collect::<Vec<_>>()),\n",
+    "                    (None, None) => Err(\"missing module\".to_string()),\n",
+    "                };\n",
+    "                let _ = tx.send(verdict);\n",
+    "            })\n",
+    "            .expect(\"spawn parse-test-marker\");\n",
+    "        rx.recv_timeout(std::time::Duration::from_secs(8)).expect(\"seed parser hung\")\n",
+    "    }\n",
+    "\n",
+    "    // The `test` marker selects the item's kind, and the ordinary forms beside it keep theirs:\n",
+    "    // the positive control that the marker is carried rather than dropped.\n",
+    "    #[test]\n",
+    "    fn test_marker_selects_the_test_item_kind() {\n",
+    "        use crate::v1_std_core::ParsedModuleItemKind::*;\n",
+    "        let items = parse_item_kinds(\"module test\\n\\ntest fn t() -> Bool {\\n  true\\n}\\n\\nfn f() -> Bool {\\n  true\\n}\\n\\ntest data d: Bool = true\\n\\ndata e: Bool = true\\n\").expect(\"parses\");\n",
+    "        let kind = |n: &str| items.iter().find(|i| i.0 == n).map(|i| i.1);\n",
+    "        assert_eq!(kind(\"t\"), Some(ModuleItemTestFunction));\n",
+    "        assert_eq!(kind(\"f\"), Some(ModuleItemFunction));\n",
+    "        assert_eq!(kind(\"d\"), Some(ModuleItemTestDataValue));\n",
+    "        assert_eq!(kind(\"e\"), Some(ModuleItemDataValue));\n",
+    "    }\n",
+    "\n",
+    "    // The discriminating red: the marker used to be dropped before ANY item form, so a marked type\n",
+    "    // declaration parsed as an ordinary one. It must refuse.\n",
+    "    #[test]\n",
+    "    fn test_marker_on_a_type_declaration_is_refused() {\n",
+    "        let err = parse_item_kinds(\"module test\\n\\ntest type T {\\n  a: Bool\\n}\\n\").expect_err(\"a test-marked type declaration must refuse\");\n",
+    "        assert!(err.contains(\"the `test` marker applies only to a fn or data item\"), \"{}\", err);\n",
+    "    }\n",
+    "\n"
+  )
+}
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -4738,6 +4787,7 @@ fn compiler_tests_source() -> String {
     ct_source_builders(),
     ct_tokenizer_tests(),
     ct_parse_tests(),
+    ct_test_marker_item_kind_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),

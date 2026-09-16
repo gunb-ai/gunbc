@@ -1132,10 +1132,19 @@ type DeclaredFuncEnv {
 // item keywords it recognises. Constructions that rebuild an existing node propagate the field from
 // the node they rebuild, so an item keeps the kind its constructor gave it across resolve,
 // inference and emission.
+//
+// A `test`-marked function or data item is its OWN kind, not an ordinary function or data item
+// carrying a flag. A test is a runner-entered entry: the resolver refuses to bind an ordinary
+// reference to one, so the distinction has to reach the resolver from the parser that saw the
+// marker, rather than be re-read from source text by a scanner beside it. Consumers that ask only
+// what SHAPE an item has read module_item_kind_shape, which is total and states the one axis on
+// which a test item and its ordinary counterpart agree.
 type ParsedModuleItemKind
   = ModuleItemTypeDeclaration
   | ModuleItemFunction
+  | ModuleItemTestFunction
   | ModuleItemDataValue
+  | ModuleItemTestDataValue
   | ModuleItemService
   | ModuleItemResource
   | ModuleItemUnrecognized
@@ -1164,6 +1173,23 @@ type Node {
   match_pattern: MatchPattern?
   module_item_kind: ParsedModuleItemKind
   expr_data: ExprData
+}
+
+// The item's shape with the test role erased: a test function is function-shaped and a test data
+// item is data-shaped. This is the ONLY place the two kinds are equated, so a consumer that must
+// tell a test from an ordinary item reads module_item_kind itself and never this projection.
+fn module_item_kind_shape(kind: ParsedModuleItemKind) -> ParsedModuleItemKind {
+  match kind {
+    ModuleItemTypeDeclaration => ModuleItemTypeDeclaration
+    ModuleItemFunction => ModuleItemFunction
+    ModuleItemTestFunction => ModuleItemFunction
+    ModuleItemDataValue => ModuleItemDataValue
+    ModuleItemTestDataValue => ModuleItemDataValue
+    ModuleItemService => ModuleItemService
+    ModuleItemResource => ModuleItemResource
+    ModuleItemUnrecognized => ModuleItemUnrecognized
+    NotAModuleItem => NotAModuleItem
+  }
 }
 
 fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {

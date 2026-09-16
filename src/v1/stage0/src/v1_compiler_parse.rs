@@ -68,7 +68,8 @@ use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcar
 use crate::v1_std_core::OperationModifier::{Hermetic, Idempotent, Readonly};
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
-    ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
+    ModuleItemTestDataValue, ModuleItemTestFunction, ModuleItemTypeDeclaration,
+    ModuleItemUnrecognized, NotAModuleItem,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TokenShape::{
@@ -1656,14 +1657,71 @@ pub fn drop_leading_type_modifier(tokens: Rc<TokenStream>, modifier: String) -> 
     }
 }
 
-pub fn drop_leading_test_marker(tokens: Rc<TokenStream>) -> Rc<TokenStream> {
-    if (tok_is_ident_text(token_stream_first(tokens.clone()), "test".to_string())
+pub fn leads_with_test_marker(tokens: Rc<TokenStream>) -> bool {
+    (tok_is_ident_text(token_stream_first(tokens.clone()), "test".to_string())
         && (tok_keyword_text(token_stream_first(token_stream_advance(tokens.clone(), 1)))
             != "".to_string()))
+}
+
+pub fn test_marked_item_result(r: Rc<ItemResult>) -> Rc<ItemResult> {
     {
-        token_stream_advance(tokens.clone(), 1)
-    } else {
-        tokens.clone()
+        if has_err(r.err.clone()) {
+            return r;
+        }
+        let n = r.item.clone();
+        let kind = match n.module_item_kind.clone() {
+            ParsedModuleItemKind::ModuleItemFunction => {
+                Some(ParsedModuleItemKind::ModuleItemTestFunction)
+            }
+            ParsedModuleItemKind::ModuleItemDataValue => {
+                Some(ParsedModuleItemKind::ModuleItemTestDataValue)
+            }
+            ParsedModuleItemKind::ModuleItemTypeDeclaration => std::option::Option::None,
+            ParsedModuleItemKind::ModuleItemTestFunction => std::option::Option::None,
+            ParsedModuleItemKind::ModuleItemTestDataValue => std::option::Option::None,
+            ParsedModuleItemKind::ModuleItemService => std::option::Option::None,
+            ParsedModuleItemKind::ModuleItemResource => std::option::Option::None,
+            ParsedModuleItemKind::ModuleItemUnrecognized => std::option::Option::None,
+            ParsedModuleItemKind::NotAModuleItem => std::option::Option::None,
+        };
+        match kind.clone() {
+            Some(k) => Rc::new(ItemResult {
+                item: Rc::new(Node {
+                    occurrence_identity: n.occurrence_identity.clone(),
+                    name: n.name.clone(),
+                    ident: n.ident.clone(),
+                    span: n.span.clone(),
+                    ident_span: n.ident_span.clone(),
+                    children: n.children.clone(),
+                    connective: n.connective.clone(),
+                    params: n.params.clone(),
+                    inferred: n.inferred.clone(),
+                    return_cardinality: n.return_cardinality.clone(),
+                    uses: n.uses.clone(),
+                    body: n.body.clone(),
+                    transport: n.transport.clone(),
+                    properties: n.properties.clone(),
+                    type_annotation: n.type_annotation.clone(),
+                    is_self_recursive: n.is_self_recursive.clone(),
+                    has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                    match_pattern: n.match_pattern.clone(),
+                    module_item_kind: k.clone(),
+                    expr_data: n.expr_data.clone(),
+                }),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: std::option::Option::None,
+            }),
+            std::option::Option::None => Rc::new(ItemResult {
+                item: n.clone(),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: Some(parse_error(
+                    "the `test` marker applies only to a fn or data item".to_string(),
+                    n.span.clone(),
+                )),
+            }),
+        }
     }
 }
 
@@ -3173,7 +3231,13 @@ pub fn parsed_module_item_role(node: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
         ParsedModuleItemKind::ModuleItemFunction => {
             Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
         }
+        ParsedModuleItemKind::ModuleItemTestFunction => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
         ParsedModuleItemKind::ModuleItemDataValue => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemTestDataValue => {
             Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
         }
         ParsedModuleItemKind::ModuleItemService => {
@@ -4217,7 +4281,18 @@ pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<R
 pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let tokens = skip_newlines(tokens.clone());
-        let tokens = drop_leading_test_marker(tokens.clone());
+        if leads_with_test_marker(tokens.clone()) {
+            return test_marked_item_result(parse_unmarked_item(
+                token_stream_advance(tokens.clone(), 1),
+                ctx.clone(),
+            ));
+        }
+        parse_unmarked_item(tokens.clone(), ctx.clone())
+    }
+}
+
+pub fn parse_unmarked_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+    {
         let tok = token_stream_first(tokens.clone());
         let kw = tok_keyword_text(tok.clone());
         let span = token_span(tok.clone());
