@@ -168,38 +168,34 @@ published runtime; a file-backed runtime is a new candidate subject and does not
 
 ## Why the program is still worth running
 
-**Named, not transcribed** — an earlier draft of this section re-derived the fit in prose and got
-it backwards. The authority is `gunbc.spark.serving_deployment_selection`
-`candidate_component_budget`, and the reading it consumes is
-`gunbc.spark.pair_serving_observed` `group_rank_free_memory_observed`.
+**Named, not transcribed.** An earlier draft re-derived the fit in prose and inverted it. The
+correction is not a better number — it is that this document should not carry the number at
+all.
 
-Its result, at the grain the fold actually computes:
+The authority is `gunbc.spark.serving_deployment_selection` `candidate_component_budget`. The
+reading it consumes is `gunbc.spark.pair_serving_observed` `group_rank_free_memory_observed`.
+Its per-rank verdict at 8 and at 4 ranks, the component breakdown behind the budget, and the
+corroborating figure from the rollout lane's independent instrument are all carried in the
+annotation beside `test.claim.spark.serving_deployment_selection_witness_test`'s selecting
+witness. Read them there; they move when the fold's inputs move, and a copy here would not.
 
-```
-ranks = 8   Engram needs 23.64 GiB per rank against an 81.14 GiB budget   fits, with room
-ranks = 4   Engram needs 47.28 GiB per rank against a  45.42 GiB budget   SHORT BY 1.86 GiB
-```
+What this document needs to state is the **shape** of that result, because the cut depends on
+it: **route A at TP4 is excluded by a measured shortfall that exceeds the reading's own
+precision** — an established exclusion, not a near miss.
 
-So route A at TP4 is **excluded by a measured shortfall**, not by a near miss. Three things in
-that fold are easy to get wrong from outside it, and getting any of them wrong inverts the
-answer:
+Three things invert that answer if taken from outside the fold, and all three are mistakes this
+document made before it was corrected:
 
-- the denominator is the **observed idle free** reading — 116.85 GiB at its lower endpoint —
-  not the 121 GiB device total. `candidate_component_budget` says so explicitly, and a missing
-  reading refuses rather than substituting the total;
-- the budget is what remains after the artifact's **other three** components, not one. The
-  vision tower with its aligner and the DSpark draft model are 7.89 GiB that a two-component
-  reading omits — and they are the entire difference between a sum saying *+0.113 GiB of
-  headroom* and the fold saying *−1.86*;
-- the shortfall must exceed the reading's own precision. The runtime prints one decimal of GiB,
-  so 116.9 means [116.85, 116.95); 1.86 GiB clears that uncertainty and is therefore
-  established rather than borderline.
-
-The corpus already records a second derivation on a different path: the Group A rollout lane,
-reading the published checkpoint index and dividing rather than running this decision, reported
-118.81 GiB per rank against 116.9 free. Two derivations sharing no method, 0.1 GiB apart, both
-short.
+- **the denominator is the observed idle-free reading, not the device total.**
+  `candidate_component_budget` says so in as many words, and refuses rather than substituting
+  the total when a reading is missing;
+- **the budget is what remains after the artifact's other three components, not one.** The
+  vision tower with its aligner and the DSpark draft model are the difference between a
+  two-component sum showing headroom and the fold showing a shortfall;
+- **the shortfall must clear the reading's precision.** The runtime prints one decimal of GiB,
+  so the free figure is an interval, and a verdict drawn against it is established only if it
+  exceeds that width. The fold's does.
 
 **That is why Cut B exists.** Not because the published runtime nearly fits — it does not fit,
-by a margin larger than the measurement's own uncertainty — but because moving Engram off the
-resident budget is the only change that alters the term the fold is short on.
+by a margin the measurement can carry — but because moving Engram off the resident budget is
+the only change that alters the term the fold is short on.
