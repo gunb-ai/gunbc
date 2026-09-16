@@ -176,7 +176,7 @@ type DesiredRosterRefusal
   | DesiredRosterDuplicateInstanceId { instance_id: String }
 
 type DesiredRosterStanding
-  = DesiredRosterAdmitted
+  = DesiredRosterAdmitted { keyed: List<KeyedRow<String, DesiredDeployment>> }
   | DesiredRosterRefused { refusal: DesiredRosterRefusal }
 
 type DesiredDeploymentLookup
@@ -192,24 +192,28 @@ fn desired_row_keyed(row: DesiredDeployment) -> KeyedRow<String, DesiredDeployme
   KeyedRow { row_key: instance_id_text(id: row.instance.instance_id), value: row }
 }
 
-fn desired_roster_surface_standing(rows: List<DesiredDeployment>) -> DesiredRosterStanding {
+fn desired_roster_surface_standing(
+  rows: List<DesiredDeployment>,
+  keyed: List<KeyedRow<String, DesiredDeployment>>,
+) -> DesiredRosterStanding {
   let surfaces = map(rows, r => desired_deployment_surface(row: r))
+  let admitted = DesiredRosterAdmitted { keyed: keyed }
   fold(
     surfaces,
-    init: DesiredRosterAdmitted,
+    init: admitted,
     f: (acc, a) =>
       match acc {
         DesiredRosterRefused { refusal } => DesiredRosterRefused { refusal: refusal }
-        DesiredRosterAdmitted =>
+        DesiredRosterAdmitted { keyed: k } =>
           fold(
             surfaces,
-            init: DesiredRosterAdmitted,
+            init: DesiredRosterAdmitted { keyed: k },
             f: (inner, b) =>
               match inner {
                 DesiredRosterRefused { refusal } => DesiredRosterRefused { refusal: refusal }
-                DesiredRosterAdmitted =>
+                DesiredRosterAdmitted { keyed: k2 } =>
                   if a.row.instance.instance_id == b.row.instance.instance_id {
-                    DesiredRosterAdmitted
+                    DesiredRosterAdmitted { keyed: k2 }
                   } else {
                     if spec_same_host_surface_collision(
                       a: a.spec,
@@ -223,7 +227,7 @@ fn desired_roster_surface_standing(rows: List<DesiredDeployment>) -> DesiredRost
                         },
                       }
                     } else {
-                      DesiredRosterAdmitted
+                      DesiredRosterAdmitted { keyed: k2 }
                     }
                   }
               },
@@ -238,7 +242,7 @@ fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStandi
       DesiredRosterRefused {
         refusal: DesiredRosterDuplicateInstanceId { instance_id: key },
       }
-    KeyedRosterBuilt { rows: _ } => desired_roster_surface_standing(rows: rows)
+    KeyedRosterBuilt { rows: keyed } => desired_roster_surface_standing(rows: rows, keyed: keyed)
   }
 }
 
@@ -246,13 +250,13 @@ fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeploymentL
   let rows = desired_deployment_roster()
   match desired_roster_standing(rows: rows) {
     DesiredRosterRefused { refusal } => DesiredDeploymentRosterRefused { refusal: refusal }
-    DesiredRosterAdmitted =>
+    DesiredRosterAdmitted { keyed } =>
       match keyed_row_find(
-        rows: map(rows, r => desired_row_keyed(row: r)),
+        rows: keyed,
         wanted_key: instance_id,
         key_eq: string_key_eq,
       ) {
-        Present { value: keyed } => DesiredDeploymentFound { row: keyed.value }
+        Present { value: found } => DesiredDeploymentFound { row: found.value }
         Absent => DesiredDeploymentUnknownInstanceId { instance_id: instance_id }
       }
   }

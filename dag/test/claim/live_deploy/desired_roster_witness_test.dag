@@ -72,7 +72,7 @@ test fn the_desired_roster_admits_three_disjoint_deployments() -> Bool {
   let rows = desired_deployment_roster()
   count(rows) == 3
     && match desired_roster_standing(rows: rows) {
-      DesiredRosterAdmitted => true
+      DesiredRosterAdmitted { keyed: _ } => true
       DesiredRosterRefused { refusal: _ } => false
     }
 }
@@ -97,7 +97,7 @@ test fn a_same_host_roster_that_shares_production_names_is_a_collision_on_srv1()
         DesiredRosterSameHostCollision { host } => host == "srv1"
         DesiredRosterDuplicateInstanceId { instance_id: _ } => false
       }
-    DesiredRosterAdmitted => false
+    DesiredRosterAdmitted { keyed: _ } => false
   }
 }
 
@@ -110,7 +110,7 @@ test fn a_roster_with_a_repeated_instance_id_is_not_admitted() -> Bool {
           instance_id == instance_id_text(id: live.instance.instance_id)
         DesiredRosterSameHostCollision { host: _ } => false
       }
-    DesiredRosterAdmitted => false
+    DesiredRosterAdmitted { keyed: _ } => false
   }
 }
 
