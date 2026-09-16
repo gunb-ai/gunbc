@@ -49,7 +49,7 @@ pub fn nat_range_inclusive(lo: Nat, hi: Nat) -> Rc<Vec<i64>> {
 pub fn nat_range_accumulate(mut lo: Nat, mut hi: Nat, mut acc: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
     loop {
         if (lo.clone() > hi.clone()) {
-            break acc;
+            break acc.clone();
         } else {
             {
                 let __tco_0 = (lo.clone() + 1);

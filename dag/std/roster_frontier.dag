@@ -31,7 +31,7 @@ import std.keyed_roster {
   KeyedRosterBuildDuplicateKey,
   keyed_roster_build,
 }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, List }
 
 type FrontierSubject
   = PathSubject { path: String }
@@ -57,6 +57,30 @@ fn frontier_row_decl(ref: DeclarationRef, reason: String, dissolution: Dissoluti
     reason: reason as NonEmptyStr,
     dissolution: dissolution,
   }
+}
+
+// ONE ROSTER FROM ONE SHARED FACT, MAPPED OVER THE NAMES IT COVERS. A module whose frontier rows
+// share a single reason and a single trigger -- several declarations held back by the SAME missing
+// consumer -- writes the fact once here instead of once per name. Copying the row per name is DESIGN
+// 2 authored duplication and makes each new name a paste; it also loses the grain, because six copies
+// each saying "sufficient for deleting this row" imply the frontier retires on the first import when
+// what retires is one NAME from the list.
+//
+// LIFTED HERE ON ITS SECOND INSTANCE, which is the moment DESIGN 2's re-invention test names:
+// extdeps.deepseek.deepseek_v4_1_flash had the only copy, product.data_category needed the same
+// shape, and a second private fold would have made "one shared reason mapped over decl names" a
+// concept with two authorities (review 65996). Both callers now consume this one.
+fn frontier_rows_for_decls(
+  module_path: String,
+  decl_names: List<NonEmptyStr>,
+  reason: String,
+  dissolution: DissolutionCondition,
+) -> List<FrontierRow> {
+  map(decl_names, n => frontier_row_decl(
+    ref: decl_ref(module_path: module_path, decl_name: n as String),
+    reason: reason,
+    dissolution: dissolution,
+  ))
 }
 
 fn frontier_row_well_formed(row: FrontierRow) -> Bool {

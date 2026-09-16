@@ -1,0 +1,147 @@
+module test.claim.durable_cas_file_store_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set {
+  CasAttempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_attempt,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
+  CasGenerationPublicationRefused,
+  cas_generation_count,
+}
+import gunbc.durable_cas_file_store {
+  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
+  admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path,
+}
+
+// Wet controls for the file-backed CAS provider. Hermetic mint and classification
+// live in test.claim.durable_cas_file_store_witness. This file reaches the host.
+// Enrolled on the local-repo wet lane (throwaway temp directory, no network).
+//
+// Concurrent publication of one name is executed at write_file_create_new_tests
+// concurrent_same_target_creates_produce_one_winner_and_no_residue. Sequential
+// second writers here exercise the CAS fold's occupied arm through
+// file_compare_and_set itself.
+
+fn honest(key: NonEmptyStr, payload: NonEmptyStr, expected: CasExpectation) -> CasAttempt<NonEmptyStr> {
+  cas_attempt(key: key, expected: expected, proposed: payload, proposed_content: content_hash_of_value(value: payload))
+}
+
+fn run_cas(root: NonEmptyStr, attempt: CasAttempt<NonEmptyStr>) -> CasOutcome<NonEmptyStr> {
+  match admit_cas_attempt(attempt: attempt) {
+    CasAttemptAdmitted { verified: v } => file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v)
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "mint digest mismatch" as NonEmptyStr } }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "mint digest incomparable" as NonEmptyStr } }
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "key not slot-addressable" as NonEmptyStr } }
+  }
+}
+
+fn is_committed(o: CasOutcome<NonEmptyStr>, payload: NonEmptyStr, generation: Int) -> Bool {
+  match o {
+    CasCommitted { committed: v } => v.value == payload && cas_generation_count(g: v.generation) == generation
+    CasPreconditionFailed { expected: _, observed: _ } => false
+    CasStoreRefused { cause: _ } => false
+  }
+}
+
+fn is_precondition_present(o: CasOutcome<NonEmptyStr>, payload: NonEmptyStr) -> Bool {
+  match o {
+    CasPreconditionFailed { expected: _, observed: r } =>
+      match r {
+        CasReadablePresent { version: v } => v.value == payload
+        CasReadableAbsent => false
+      }
+    CasCommitted { committed: _ } => false
+    CasStoreRefused { cause: _ } => false
+  }
+}
+
+fn is_store_refused(o: CasOutcome<NonEmptyStr>) -> Bool {
+  match o {
+    CasStoreRefused { cause: _ } => true
+    CasCommitted { committed: _ } => false
+    CasPreconditionFailed { expected: _, observed: _ } => false
+  }
+}
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_cas.XXXXXX").path
+}
+
+test fn commit_then_independent_read_back_agrees_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = run_cas(root: root, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
+  let path = cas_file_slot_path(root: root, key: "cell", generation: 1)
+  let bytes = Filesystem.Read(path: path)
+  let observed = observe_cas_slot_state(root: root, key: "cell")
+  let digest_ok = match observed {
+    CasObservedReadable { readable: r } =>
+      match r {
+        CasReadablePresent { version: v } =>
+          v.value == "held-A"
+            && v.content == content_hash_of_value(value: "held-A")
+            && cas_generation_count(g: v.generation) == 1
+        CasReadableAbsent => false
+      }
+    CasObservedUnreadable { cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  is_committed(o: first, payload: "held-A", generation: 1)
+    && bytes.success
+    && bytes.content == "held-A"
+    && digest_ok
+    && removed.success
+}
+
+test fn a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = run_cas(root: root, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
+  let second = run_cas(root: root, attempt: honest(key: "cell", payload: "held-B", expected: ExpectSlotAbsent))
+  let path = cas_file_slot_path(root: root, key: "cell", generation: 1)
+  let bytes = Filesystem.Read(path: path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  is_committed(o: first, payload: "held-A", generation: 1)
+    && is_precondition_present(o: second, payload: "held-A")
+    && bytes.success
+    && bytes.content == "held-A"
+    && removed.success
+}
+
+test fn an_advance_after_commit_lands_generation_two_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = run_cas(root: root, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
+  let second = run_cas(
+    root: root,
+    attempt: honest(key: "cell", payload: "held-B", expected: ExpectSlotGeneration { generation: 1 }),
+  )
+  let path = cas_file_slot_path(root: root, key: "cell", generation: 2)
+  let bytes = Filesystem.Read(path: path)
+  let gen1 = Filesystem.Read(path: cas_file_slot_path(root: root, key: "cell", generation: 1))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  is_committed(o: first, payload: "held-A", generation: 1)
+    && is_committed(o: second, payload: "held-B", generation: 2)
+    && bytes.success
+    && bytes.content == "held-B"
+    && gen1.content == "held-A"
+    && removed.success
+}
+
+test fn a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let blocker = concat(root_path, "/not-a-directory")
+  let planted = Filesystem.Write(path: blocker, content: "not a store root")
+  let outcome = run_cas(
+    root: blocker as NonEmptyStr,
+    attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent),
+  )
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  planted.success && is_store_refused(o: outcome) && removed.success
+}

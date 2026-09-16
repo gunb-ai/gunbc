@@ -46,17 +46,62 @@ data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
   app_pem_secret: gunbai_ci_app_pem_secret,
 }
 
+// THE NON-CAPACITY FACTS ARE THEIR OWN CARRIER, AND THEY EXIST WHATEVER THE WIDTH RESOLVES TO.
+//
+// A host's address, its principals and its GitHub app are true of srv2 exactly as they are of srv1 --
+// none of them depends on how many runner slots it may carry. Only `runner_count` does. Keeping them
+// in one record with the width forced a choice between constructing a MISLEADING deploy for a host
+// whose width refuses, or having no way to name that host at all.
+type RunnerHostSpec {
+  host_label: NonEmptyStr
+  ssh_target: NonEmptyStr
+  runner_user: NonEmptyStr
+  unit_user: NonEmptyStr
+  job_user: NonEmptyStr
+  app: GithubAppRunnerConfig
+}
+
+// AN OPERATIONAL DEPLOY IS A SPEC PLUS AN ADMITTED WIDTH, and it is constructed in exactly one place.
+//
+// An earlier revision of this repair inspected a CANDIDATE: it built an ordinary
+// `RunnerHostDeploy { runner_count: 0 }` for srv2 and handed it to an admission function, which
+// returned a refusal. That repaired CONSUMPTION and left the zero representable and actually
+// constructed on the normal resolution path -- two authorities again, the misleading value plus a
+// later wrapper deciding who may read it. The handback claimed "no deploy row" while the row was
+// being built on every resolution.
+//
+// `runner_host_deploy_of` is now the only constructor, and it cannot produce a row without a positive
+// width because the refusal arm has no `deploy` field to fill.
 type RunnerHostDeploy {
   host_label: NonEmptyStr
   ssh_target: NonEmptyStr
   runner_user: NonEmptyStr
+  unit_user: NonEmptyStr
   job_user: NonEmptyStr
   app: GithubAppRunnerConfig
   runner_count: Int
 }
 
+fn runner_host_spec_of(deploy: RunnerHostDeploy) -> RunnerHostSpec {
+  RunnerHostSpec {
+    host_label: deploy.host_label,
+    ssh_target: deploy.ssh_target,
+    runner_user: deploy.runner_user,
+    unit_user: deploy.unit_user,
+    job_user: deploy.job_user,
+    app: deploy.app,
+  }
+}
+
+data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
+
+// runner_user is the fragment's User= (the account that owns the runner tree). unit_user is the
+// depriv drop-in's User= (root mints the JIT config). job_user is CTRL_RUNNER_JOB_USER after
+// setpriv. Borrowing another host's principal for any of the three is the neighbour-row arm
+// runner_host_deploy_for already refuses.
+
 // srv4's historical five-slot pin is RETIRED (operator ruling 2026-08-06) and runner_count on
-// srv4_runner_host_deploy names the materialization target, DERIVED from
+// srv4_runner_host_spec names the materialization target, DERIVED from
 // gunbc_runner_slots_per_host rather than authored here. Disk binding lives in APPLY-TIME preflight
 // in gunbc.runner_lifecycle runner_width_disk_preflight -- not a silent row pin, and never an
 // absorbing fallback to 5 when disk is unobservable.
@@ -116,13 +161,13 @@ type RunnerHostDeploy {
 //
 // BOTH CARRY INTERACTIVE SESSIONS AND THAT IS ALREADY PRICED. gunbc.session_residency places
 // session containers on exactly these two hosts, and the conservation wall charges each of them a
-// sessions slice out of the same RAM before any width is admitted -- which is why srv2 commits five
+// sessions slice out of the same RAM before any width is admitted -- which is why srv2 was held at five before the 26/25 transition deleted that arm (it now yields a typed width refusal and no deploy row)
 // where srv3 and srv4 commit twenty-one. Nothing here re-decides that; the row consumes the width
 // the admission axes produced.
 //
 // srv1 AND srv2 DIFFER FROM EACH OTHER FOR A HARDWARE REASON, not a policy one: srv1 took the 64
 // GiB DIMM upgrade and srv2's failed memory training and was reverted. srv1 is bound by cores at
-// twenty-one. srv2 commits five, and this row previously said it was BOUND BY MEMORY at that number
+// twelve under the 26/25 slot. srv2 commits nothing -- its width refuses and it has no deploy row -- and this row previously said it was BOUND BY MEMORY at five
 // -- which was false, and false in the direction that reads as a measurement. That five came from
 // subtracting a session reservation that is UNESTABLISHED on srv2, so no memory axis ever measured
 // it; with the axis honestly unmeasured nothing sits at srv2's committed width and the five is a
@@ -132,45 +177,110 @@ type RunnerHostDeploy {
 // re-grounding the denominator. Two rows that look identical here still resolve to very different
 // widths, and that is the derivation working rather than an inconsistency.
 
-data srv1_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
+data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv1",
   ssh_target: "briansrls@192.168.1.185",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
-  runner_count: gunbc_runner_slots_per_host(host: operator_host_srv1),
 }
 
-data srv2_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
+// ZERO MAY NOT INHABIT `RunnerHostDeploy`, AND srv2 IS WHY.
+//
+// This row was an ordinary deploy whose `runner_count` came from the scalar
+// `gunbc_runner_slots_per_host`, which maps an unresolved derivation to 0. srv2's session denominator
+// is unestablished, so the row asserted BOTH "this is an operational deploy" and "it desires zero
+// runners" -- while every consumer was expected to remember that the zero means REFUSED. That is
+// sentinel encoding: construct the misleading value, then require each reader to reinterpret it.
+//
+// The late guard in `fleet_converge_slot_family` (`runner_count == 0` -> SlotFamilyHostRefused)
+// prevented the immediate remove-all plan and did NOT repair the producer. `no_deploy_row_out_commits_
+// the_memory_budget` states the real law over every row -- `runner_count > 0` -- and srv2's row
+// violated it, which is the invariant catching the encoding rather than a control needing an
+// exception.
+//
+// SO THE RESOLUTION IS TYPED AND THE OPERATIONAL ROW EXISTS ONLY IN THE ADMITTED ARM. A refused host
+// yields a cause, not a number. The refusal is preserved as its own disposition rather than filtered
+// away, because dropping srv2 from the fleet authority would convert "refused" into "not modeled" --
+// a different fact with a different remedy, and the one that lets a fleet total look complete.
+// THE REFUSAL CARRIES THE SPEC, so a refused host is still fully named -- address, principals, app --
+// and a consumer that needs those facts (a generated sudoers projection, say) is not forced to
+// reconstruct them or to fabricate a deploy to get at them.
+type RunnerHostDeployAdmission
+  = RunnerHostDeployAdmitted { deploy: RunnerHostDeploy }
+  | RunnerHostDeployWidthRefused { spec: RunnerHostSpec, host: HostIdentity, cause: String }
+
+// THE WIDTH IS RESOLVED BEFORE ANY ROW EXISTS, AND THE ROW IS BUILT ONLY IN THE ADMITTED ARM.
+//
+// Every host goes through this one constructor, so there is no second place a deploy can be authored
+// with an unchecked count -- srv1, srv3 and srv4 are not hand-written rows that happen to be positive,
+// they are specs admitted by the same test srv2 fails. `runner_count` is written exactly once, from
+// the resolved width, and only where that width is positive.
+fn runner_host_deploy_of(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHostDeployAdmission {
+  let width = gunbc_runner_slots_per_host(host: host)
+  if width > 0 {
+    RunnerHostDeployAdmitted {
+      deploy: RunnerHostDeploy {
+        host_label: spec.host_label,
+        ssh_target: spec.ssh_target,
+        runner_user: spec.runner_user,
+        unit_user: spec.unit_user,
+        job_user: spec.job_user,
+        app: spec.app,
+        runner_count: width,
+      },
+    }
+  } else {
+    RunnerHostDeployWidthRefused {
+      spec: spec,
+      host: host,
+      cause: "this host's admitted runner width resolved to zero, which is a REFUSAL to derive a population rather than a request for no slots; no operational deploy row is constructed for it",
+    }
+  }
+}
+
+fn admitted_deploy_or_refusal(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHostDeployResolution {
+  match runner_host_deploy_of(host: host, spec: spec) {
+    RunnerHostDeployAdmitted { deploy: d } => RunnerHostDeployFound { deploy: d }
+    RunnerHostDeployWidthRefused { spec: _, host: h, cause: c } => RunnerHostDeployRefused { host: h, cause: c }
+  }
+}
+
+data srv2_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv2",
   ssh_target: "briansrls@192.168.1.188",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
-  runner_count: gunbc_runner_slots_per_host(host: operator_host_srv2),
 }
-
-data srv3_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
+data srv3_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv3",
   ssh_target: "briansrls@192.168.1.221",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
-  runner_count: gunbc_runner_slots_per_host(host: operator_host_srv3),
 }
 
-data srv4_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
+data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv4",
   ssh_target: "briansrls@192.168.1.196",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
-  runner_count: gunbc_runner_slots_per_host(host: operator_host_srv4),
 }
 
+// A REFUSED HOST IS A THIRD DISPOSITION, NOT A SPELLING OF UNMODELED. srv2 is modeled precisely
+// enough to know its width cannot be derived; calling that "unmodeled" would hand it the remedy for a
+// host nobody described, and would let a fleet total read as complete because the refusal vanished
+// into an absence.
 type RunnerHostDeployResolution
   = RunnerHostDeployFound { deploy: RunnerHostDeploy }
   | RunnerHostDeployUnmodeled { host: HostIdentity }
+  | RunnerHostDeployRefused { host: HostIdentity, cause: String }
 
 // AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW. This dispatch is the seam
 // where a width becomes a provisioning target, and the tempting failure arm is to hand an
@@ -185,24 +295,81 @@ type RunnerHostDeployResolution
 
 fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
   if (host as String) == (operator_host_srv1 as String) {
-    RunnerHostDeployFound { deploy: srv1_runner_host_deploy }
+    admitted_deploy_or_refusal(host: host, spec: srv1_runner_host_spec)
   } else if (host as String) == (operator_host_srv2 as String) {
-    RunnerHostDeployFound { deploy: srv2_runner_host_deploy }
+    admitted_deploy_or_refusal(host: host, spec: srv2_runner_host_spec)
   } else if (host as String) == (operator_host_srv3 as String) {
-    RunnerHostDeployFound { deploy: srv3_runner_host_deploy }
+    admitted_deploy_or_refusal(host: host, spec: srv3_runner_host_spec)
   } else if (host as String) == (operator_host_srv4 as String) {
-    RunnerHostDeployFound { deploy: srv4_runner_host_deploy }
+    admitted_deploy_or_refusal(host: host, spec: srv4_runner_host_spec)
   } else {
     RunnerHostDeployUnmodeled { host: host }
   }
 }
 
-data fleet_runner_host_deploys: List<RunnerHostDeploy> = [
-  srv1_runner_host_deploy,
-  srv2_runner_host_deploy,
-  srv3_runner_host_deploy,
-  srv4_runner_host_deploy,
-]
+// THE FOUR-HOST ROSTER, EVERY ROW THROUGH THE SAME ADMISSION. srv2's refusal is a member of this list
+// rather than an absence from it, so "refused" cannot be read as "not modeled" and a fleet total that
+// walks this roster cannot look complete while one host cannot be sized.
+fn fleet_runner_host_admissions() -> List<RunnerHostDeployAdmission> {
+  [
+    runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec),
+    runner_host_deploy_of(host: operator_host_srv2, spec: srv2_runner_host_spec),
+    runner_host_deploy_of(host: operator_host_srv3, spec: srv3_runner_host_spec),
+    runner_host_deploy_of(host: operator_host_srv4, spec: srv4_runner_host_spec),
+  ]
+}
+
+// THE ADMITTED ROW FOR ONE HOST, OPTIONAL BECAUSE ADMISSION IS NOT GUARANTEED. A consumer that wants
+// "srv3's deploy" asks for it and handles the absence, rather than reading a data row that exists
+// whether or not the host can be sized. There is no arm here that manufactures a row for a refused
+// host, which is the property the whole split exists to hold.
+// THE SPEC IS AVAILABLE WHETHER OR NOT THE WIDTH ADMITS, which is the point of splitting it out: a
+// refused host is still fully named, so a generated projection can render its non-capacity grants
+// without anyone fabricating a deploy to reach them.
+// A NAMED COPRODUCT RATHER THAN Optional SUGAR, matching this module's own vocabulary for exactly
+// this shape (`RunnerHostDeployResolution` next to it) instead of introducing a second spelling for
+// "found or not" in one file.
+type RunnerHostSpecLookup
+  = RunnerHostSpecFound { spec: RunnerHostSpec }
+  | RunnerHostSpecAbsent { host: HostIdentity }
+
+fn runner_host_spec_for(host: HostIdentity) -> RunnerHostSpecLookup {
+  if (host as String) == (operator_host_srv1 as String) {
+    RunnerHostSpecFound { spec: srv1_runner_host_spec }
+  } else if (host as String) == (operator_host_srv2 as String) {
+    RunnerHostSpecFound { spec: srv2_runner_host_spec }
+  } else if (host as String) == (operator_host_srv3 as String) {
+    RunnerHostSpecFound { spec: srv3_runner_host_spec }
+  } else if (host as String) == (operator_host_srv4 as String) {
+    RunnerHostSpecFound { spec: srv4_runner_host_spec }
+  } else {
+    RunnerHostSpecAbsent { host: host }
+  }
+}
+
+fn admitted_deploy_for(host: HostIdentity) -> RunnerHostDeploy? {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployFound { deploy: d } => Present { value: d }
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+  }
+}
+
+fn admitted_deploy_rows() -> List<RunnerHostDeploy> {
+  fleet_runner_host_admissions() |> flat_map(a => match a {
+    RunnerHostDeployAdmitted { deploy: d } => [d]
+    RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => []
+  })
+}
+
+// THE ADMITTED LIST CARRIES ONLY OPERATIONAL ROWS, and srv2 is absent from it because it has no such
+// row -- not because it was filtered. Its refusal is carried separately by
+// `fleet_runner_host_deploy_resolutions`, so a consumer that wants the whole fleet gets four
+// dispositions and a consumer that wants deployable hosts gets three positive rows. Neither can
+// silently read the other's population as complete.
+data fleet_runner_host_deploys: List<RunnerHostDeploy> = admitted_deploy_rows()
+
+data fleet_runner_host_deploy_resolutions: List<RunnerHostDeployAdmission> = fleet_runner_host_admissions()
 
 // runner_count names slots via runner_instance_names / runner_index_seq but does NOT reach
 // runner_host_installer_command_argv — install-actions-runner.sh has no slot-count parameter
@@ -294,7 +461,7 @@ fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: 
     bindings: [
       EnvSet { name: "CTRL_RUNNER_HOST_LABEL", value: deploy.host_label as String },
       EnvSet { name: "CTRL_RUNNER_USER", value: deploy.runner_user as String },
-      EnvSet { name: "CTRL_RUNNER_JOB_USER", value: deploy.job_user as String },
+      EnvSet { name: runner_job_user_env_name, value: deploy.job_user as String },
       EnvSet { name: "CTRL_RUNNER_APP_PEM_SRC", value: pem_src_path as String },
     ],
     command: sudo_preserve_environment_command(

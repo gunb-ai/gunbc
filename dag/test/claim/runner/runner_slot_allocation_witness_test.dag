@@ -103,21 +103,32 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // subtraction cannot run, and its axis is AxisUnmeasured rather than a number. The five it still
 // runs is a HELD allocation reached through host_held_runner_width, asserted below on its own terms.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 25
-    && host_memory_admitted_width(host: operator_host_srv3) == 29
-    && host_memory_admitted_width(host: operator_host_srv4) == 29
+  host_memory_admitted_width(host: operator_host_srv1) == 15
+    && host_memory_admitted_width(host: operator_host_srv3) == 17
+    && host_memory_admitted_width(host: operator_host_srv4) == 17
     && !host_memory_width_is_established(host: operator_host_srv2)
 }
 
-// THE HELD WIDTH IS ASSERTED AS HELD, NOT AS AN ADMISSION. Without this row the hold would be
-// invisible: nothing else states that srv2 still runs five, and a reader would find only the
-// refusal and conclude the host was down to nothing.
-test fn srv2_width_is_held_rather_than_derived() -> Bool {
+// THE HOLD IS GONE AND THIS ROW NOW ASSERTS ITS ABSENCE, which is the property that matters after
+// 2026-09-12. It previously read `srv2_width_is_held_rather_than_derived` and existed so a reader
+// would not mistake an underived host for an empty one. That reason expired with the arm: srv2 is
+// no longer underived-but-running-five, it is REFUSED, and the refusal is the answer rather than a
+// gap to be papered over.
+//
+// IT ASSERTS NO HOST HOLDS, not merely that srv2 does not. A hold on any host would reinstate the
+// bypass this deletion closed -- a description of what a machine runs outranking the walls that
+// decide what it may run -- so the discriminating red is "someone authored a hold again", not
+// "srv2 specifically".
+test fn no_host_bypasses_derivation_with_a_held_width() -> Bool {
   match host_held_runner_width(host: operator_host_srv2) {
-    Present { value: n } => n == 5
-    Absent => false
+    Present { value: _ } => false
+    Absent => true
   }
     && match host_held_runner_width(host: operator_host_srv1) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match host_held_runner_width(host: operator_host_srv3) {
       Present { value: _ } => false
       Absent => true
     }
@@ -137,11 +148,26 @@ test fn srv2_width_is_held_rather_than_derived() -> Bool {
 // property under test. An assertion whose oracle is an unestablished derivation is worse than a
 // missing one, because it reads as coverage. srv2's width is asserted on its own terms, as a hold,
 // by srv2_width_is_held_rather_than_derived above.
+// CPU STILL BINDS AT 26 GiB, AND THE REASON IS THAT THE TWO AXES ARE NOT INDEPENDENT.
+//
+// The first draft of this row asserted that the binding axis flipped to memory -- srv1 15,
+// srv3/srv4 17 -- and it was WRONG, caught by this witness rather than by reading. cores_per_slot
+// is DERIVED from the slot's memory ceiling (`gunbc_runner_cores_per_slot`:
+// ceil(memory_max / memory_per_core), against the cited Ubicloud arm64 ratio of 3 GB decimal per
+// vCPU). So raising memory 16 -> 26 GiB raises cores_per_slot 6 -> 10, and the CPU axis falls
+// 128/6 = 21 to 128/10 = 12. Memory admits 15 and 17; CPU admits 12; the minimum is 12 everywhere.
+//
+// THE COUPLING IS THE FINDING AND IT IS RECORDED HERE BECAUSE IT IS INVISIBLE AT THE LITERAL. A
+// reader raising the memory ceiling sees a memory decision and pays a CPU one, at a ratio taken
+// from a cloud vendor's shape catalog rather than from any measurement of this workload -- whose
+// floor run uses about one core sustained (cpu 20 min against 24 min wall). Most of the width lost
+// by this change is therefore not bought by the memory it needed; it is bought by CPU quota
+// nothing asked for.
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  gunbc_runner_slots_per_host(host: operator_host_srv1) == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
+  gunbc_runner_slots_per_host(host: operator_host_srv1) == 12
+    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 0
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 12
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 12
     && gunbc_runner_slots_per_host(host: operator_host_srv1) < host_memory_admitted_width(host: operator_host_srv1)
     && gunbc_runner_slots_per_host(host: operator_host_srv3) < host_memory_admitted_width(host: operator_host_srv3)
     && gunbc_runner_slots_per_host(host: operator_host_srv4) < host_memory_admitted_width(host: operator_host_srv4)
@@ -215,9 +241,14 @@ test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
 // against the CI floor consumer (gunbc_srv2_03_converge_floor_fit_note). No OOM outcome and no
 // floor byte figure are asserted.
 
-test fn witness_declared_row_pins_16_15_gib_from_floor_peak_ruling() -> Bool {
-  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(17179869184))
-    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(16106127360))
+// RENAMED AND RE-PINNED 2026-09-12 to the row it now guards. The 16/15 pair it named was the
+// 2026-08-17 ruling's, and every reading behind that ruling was a THROTTLE PIN -- a peak landing
+// on the MemoryHigh line, which that ruling itself called a censored lower bound. The 26/25 pair
+// derives from the first UNCENSORED floor-lane measurement (`high=max`, stall 0 faults/min), so
+// this witness pins a demand rather than the last place a pin happened to land.
+test fn witness_declared_row_pins_26_25_gib_from_floor_demand_ruling() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(27917287424))
+    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(26843545600))
 }
 
 test fn witness_declared_high_clears_measured_floor_peak() -> Bool {
@@ -233,14 +264,28 @@ test fn witness_RED_binary_unit_reading_would_exceed_the_armed_line() -> Bool {
   byte_size_count(b: byte_size(16750372454)) > byte_size_count(b: gunbc_floor_measured_peak_armed_high)
 }
 
-test fn witness_srv2_03_observation_no_longer_drifts_after_ruling() -> Bool {
+// RENAMED 2026-09-12, AND THE RENAME IS THE POINT RATHER THAN BOOKKEEPING. The old name --
+// `..._no_longer_drifts_after_ruling` -- was true only because the 2026-08-17 ruling had moved the
+// DECLARATION to meet what srv2-03 was already running. The 2026-09-12 demand ruling moves the
+// declaration to 26/25 while the fleet still runs 16/15, so the observation drifts again, and it
+// SHOULD: a declaration ahead of the hosts is exactly what drift means, and this witness is where
+// the model says so out loud.
+//
+// THAT IS THE DRAIN-BEFORE-RAISE ORDERING SURFACING STRUCTURALLY. Nothing here is broken and
+// nothing should be "fixed" by editing the observation: `gunbc_srv2_03_effective_cap_observation`
+// is a MEASURED READBACK of a live host, and
+// `gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation` forbids reconciling a
+// declaration toward a readback precisely so that this gap stays visible until a converge closes
+// it. The witness therefore asserts the observation's own bytes unchanged and asserts that drift
+// IS detected, which is the true state between the ruling and the rollout.
+test fn witness_srv2_03_observation_drifts_until_the_fleet_is_converged() -> Bool {
   match gunbc_srv2_03_effective_cap_observation {
     RunnerSlotEffectiveCapMeasured { runner_unit: unit, memory_max: max, memory_high: high, probed_at: _ } =>
       unit == "actions-runner@srv2-03.service"
         && byte_size_count(b: max) == byte_size_count(b: byte_size(17179869184))
         && byte_size_count(b: high) == byte_size_count(b: byte_size(16106127360))
-        && !runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
-        && !runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
+        && runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
+        && runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
     _ => false
   }
 }

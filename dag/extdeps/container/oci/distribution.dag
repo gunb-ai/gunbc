@@ -1,0 +1,24 @@
+module extdeps.container.oci.distribution
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/distribution-spec/blob/main/spec.md"
+  }
+}
+
+// THE DISTRIBUTION API SHAPE, not a transport and not a registry product. Endpoints are
+// GET /v2/<name>/manifests/<reference> and GET /v2/<name>/blobs/<digest>. Who hosts them, how a
+// client authenticates, and which curl flags are used are realization/policy elsewhere.
+
+fn oci_distribution_manifest_path(repository: NonEmptyStr, reference: NonEmptyStr) -> NonEmptyStr {
+  join(["/v2/", repository as String, "/manifests/", reference as String], "") as NonEmptyStr
+}
+
+fn oci_distribution_blob_path(repository: NonEmptyStr, digest: NonEmptyStr) -> NonEmptyStr {
+  join(["/v2/", repository as String, "/blobs/", digest as String], "") as NonEmptyStr
+}

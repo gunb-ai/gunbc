@@ -103,7 +103,7 @@ import v2.std.node {
   TypeNode,
   is_empty_conj_root,
 }
-import v2.std.node_query { find_named_child }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   CanonicalOperation,
@@ -4557,9 +4557,10 @@ fn dag_round_trip_authorities_ready() -> Bool {
 }
 
 fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
-  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {
-    Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)
-    Rejected { diagnostics: _ } => Absent
+  match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
+    NamedChildFound { target: id_node } => node_atom_identity_optional(node: id_node)
+    NamedChildMissing => Absent
+    NamedChildAmbiguous => Absent
   }
 }
 
@@ -4571,9 +4572,10 @@ fn dag_node_is_fn_decl(node: Node) -> Bool {
 }
 
 fn parse_production_captured_child_optional(node: Node) -> Optional<Node> {
-  match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {
-    Accepted { value: captured, diagnostics: _ } => Present { value: captured }
-    Rejected { diagnostics: _ } => Absent
+  match named_child_lookup(root: node, name: ^grammar_production_captured_node_projection) {
+    NamedChildFound { target: captured } => Present { value: captured }
+    NamedChildMissing => Absent
+    NamedChildAmbiguous => Absent
   }
 }
 

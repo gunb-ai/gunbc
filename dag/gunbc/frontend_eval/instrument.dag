@@ -1,0 +1,51 @@
+module gunbc.frontend_eval.instrument
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.frontend_eval.task { frontend_eval_model_tasks_json, frontend_eval_judge_spec_json }
+import gunbc.frontend_eval.card { frontend_language_card }
+
+// THE ENTRY POINTS A DRIVER CALLS. Each writes one projection of an in-repo authority to a path the
+// driver names, so the driver never re-types a task row or a card line: it consumes bytes this
+// module produced from the same declarations the witnesses exercise. Attempt rows come back the
+// other way -- the driver emits them as a `.dag` data module and a generated entry folds them
+// through gunbc.frontend_eval.attempt.frontend_eval_report, so the table is computed in the
+// interpreter from typed rows rather than in the driver.
+//
+// CONSUMPTION, CLASSIFIED (DESIGN section 3c). Today's consumer of write_model_tasks, write_judge_spec and write_card is the
+// Demo 0 driver, which is local tooling outside the substrate by the repo_workspace rule that no
+// Python is committed; it is therefore a DECLARED FRONTIER, not an executing in-tree consumer. The
+// named terminal consumer is the harness worker (gunbc.harness.harness_cli harness_worker_cli)
+// running on a fleet host over an isolated-closure workspace built the way
+// gunbc.frontend_eval.control builds one; the trigger is that worker being able to run off a
+// fleet host at all (harness_bind_seat is host-bound today) -- the same trigger that dissolves the
+// local driver. The roster itself is consumed in-tree and by execution by control_run.
+fn write_projection(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["write failed for ", path, ": ", w.error], ""))
+  }
+}
+
+fn write_model_tasks(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_eval_model_tasks_json())
+}
+
+fn write_judge_spec(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_eval_judge_spec_json())
+}
+
+// THE REPORT: gunbc.frontend_eval.attempt frontend_eval_report is the fold; its rows are NOT in
+// this tree. A run's attempt records are the driver's output and stay beside the run (a generated
+// entry under target/ folds them through the same fn), because committing measured numbers as
+// source would be the transcription DESIGN section 6 forbids, and excusing that with a drop
+// declared inside the module it excuses would be the self-authorization section 5 forbids. The
+// numbers reach a reader through the PR that ran them, cited to the driver and the identities each
+// row binds; they enter the tree only when an in-tree instrument produces them (same trigger as
+// the frontier above).
+fn write_card(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_language_card())
+}

@@ -4,17 +4,25 @@ import std.algebra { trim }
 
 import gunbc.bash_materialized_transport { bash_materialized_transport }
 import gunbc.output_policy { ExpectFailure }
-import v2.std.effect_plan { Do, EffectPlan, EffectPlanStep }
+import v2.std.effect_plan { Call, Do, EffectPlan, EffectPlanStep, If, Let }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv {
   OperationInputBinding,
   OperationRef,
   operation_argv_bind_text
 }
-import v2.std.orchestration { FailFast }
+import v2.std.orchestration {
+  ExprCmdSubst,
+  ExprLit,
+  ExprVarRef,
+  FailFast,
+  Not,
+  StrEq
+}
 import v2.workflow.effect_plan_bash_materialize {
   BashBoundOperationInvocation,
   bash_bind_operation_invocation,
+  bash_bind_operation_invocation_host_env_executable,
   effect_plan_bash_materialize
 }
 
@@ -25,6 +33,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // file write, environment mutation, network, repo state, or cleanup obligation. They prove two
 // typed declared operations run, metachar/newline arguments stay one word, and grammar-owned &&
 // enforces FailFast by preventing the observable second command after the first fails.
+//
+// The If / Let / Call witnesses below observe each arm's effect the same way: a Let-bound variable
+// is observed by executing THROUGH it (HostEnvVar argv[0] reads "$TOOL"), a Call is observed by the
+// bytes printf writes, and an If is observed by which branch's printf runs. Every metacharacter
+// probe must either round-trip as one word or fail with no output -- never run the payload.
 
 fn wet_ref(path: String, service: String, operation: String) -> OperationRef {
   OperationRef { path: path, service: service, operation: operation }
@@ -114,4 +127,153 @@ test fn effect_plan_bash_metachar_and_newline_cannot_open_a_statement() -> Bool 
     ) }
   ]))
   metachar && newline
+}
+
+fn wet_id_uid_via(env_var: String) -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation_host_env_executable(
+    at: wet_ref(path: "dag/extdeps/tools/id.dag", service: "os.Id", operation: "Uid"),
+    bindings: [],
+    env_var: env_var
+  )
+}
+
+fn wet_printf(text: String) -> EffectPlanStep<BashBoundOperationInvocation> {
+  Call { callee: "printf", args: ["%s", text] }
+}
+
+fn wet_exec_stdout_is(plan: EffectPlan<BashBoundOperationInvocation>, expected: String) -> Bool {
+  match bash_materialized_transport(materialization: effect_plan_bash_materialize(plan: plan)) {
+    Present { value: script } => {
+      let result = shell.Exec.Run(script: script)
+      result.success && result.stdout == expected
+    }
+    Absent => false
+  }
+}
+
+// ---- Let ----
+
+test fn effect_plan_bash_let_binds_a_variable_a_later_operation_executes_through() -> Bool {
+  let lit = wet_exec_succeeds_with_output(plan: wet_plan(steps: [
+    Let { name: "TOOL", value: ExprLit { spelling: "id" } },
+    Do { effect: wet_id_uid_via(env_var: "TOOL") }
+  ]))
+  let var_ref = wet_exec_succeeds_with_output(plan: wet_plan(steps: [
+    Let { name: "FIRST", value: ExprLit { spelling: "id" } },
+    Let { name: "TOOL", value: ExprVarRef { name: "FIRST" } },
+    Do { effect: wet_id_uid_via(env_var: "TOOL") }
+  ]))
+  let cmdsubst = wet_exec_succeeds_with_output(plan: wet_plan(steps: [
+    Let { name: "TOOL", value: ExprCmdSubst { callee: "printf", args: ["%s", "id"] } },
+    Do { effect: wet_id_uid_via(env_var: "TOOL") }
+  ]))
+  lit && var_ref && cmdsubst
+}
+
+test fn effect_plan_bash_RED_let_value_with_metacharacters_stays_one_word_and_cannot_run() -> Bool {
+  let lit = wet_exec_fails_without_output(plan: wet_plan(steps: [
+    Let { name: "TOOL", value: ExprLit { spelling: "id; printf PWN" } },
+    Do { effect: wet_id_uid_via(env_var: "TOOL") }
+  ]))
+  let cmdsubst_arg = wet_exec_fails_without_output(plan: wet_plan(steps: [
+    Let { name: "TOOL", value: ExprCmdSubst { callee: "printf", args: ["%s", "id; printf PWN"] } },
+    Do { effect: wet_id_uid_via(env_var: "TOOL") }
+  ]))
+  let newline = wet_exec_fails_without_output(plan: wet_plan(steps: [
+    Let { name: "TOOL", value: ExprLit { spelling: "true\nprintf PWN" } },
+    Do { effect: wet_id_uid_via(env_var: "TOOL") }
+  ]))
+  lit && cmdsubst_arg && newline
+}
+
+// ---- Call ----
+
+test fn effect_plan_bash_call_runs_the_callee_with_each_arg_round_tripped_exactly() -> Bool {
+  let payload = "a'b; $(id) `id` | printf PWN > /dev/null \"x\" \\ $HOME"
+  wet_exec_stdout_is(plan: wet_plan(steps: [wet_printf(text: payload)]), expected: payload)
+    && wet_exec_stdout_is(
+      plan: wet_plan(steps: [wet_printf(text: "one"), wet_printf(text: "two")]),
+      expected: "onetwo"
+    )
+}
+
+test fn effect_plan_bash_RED_call_callee_with_metacharacters_is_a_name_and_cannot_run() -> Bool {
+  wet_exec_fails_without_output(plan: wet_plan(steps: [
+    Call { callee: "true; printf PWN", args: [] }
+  ]))
+    && wet_exec_fails_without_output(plan: wet_plan(steps: [
+      Call { callee: "true\nprintf PWN", args: [] },
+      wet_printf(text: "after")
+    ]))
+}
+
+// ---- If ----
+
+test fn effect_plan_bash_if_selects_the_observed_branch() -> Bool {
+  let then_ = wet_plan(steps: [wet_printf(text: "then")])
+  let else_ = wet_plan(steps: [wet_printf(text: "else")])
+  wet_exec_stdout_is(
+    plan: wet_plan(steps: [
+      If { cond: StrEq { lhs: "a", rhs: "a" }, then_: then_, else_: Present { value: else_ } }
+    ]),
+    expected: "then"
+  )
+    && wet_exec_stdout_is(
+      plan: wet_plan(steps: [
+        If { cond: StrEq { lhs: "a", rhs: "b" }, then_: then_, else_: Present { value: else_ } }
+      ]),
+      expected: "else"
+    )
+    && wet_exec_stdout_is(
+      plan: wet_plan(steps: [
+        If { cond: Not { inner: StrEq { lhs: "a", rhs: "b" } }, then_: then_, else_: Absent },
+        wet_printf(text: "after")
+      ]),
+      expected: "thenafter"
+    )
+    && wet_exec_stdout_is(
+      plan: wet_plan(steps: [
+        If { cond: StrEq { lhs: "a", rhs: "b" }, then_: then_, else_: Absent },
+        wet_printf(text: "after")
+      ]),
+      expected: "after"
+    )
+}
+
+test fn effect_plan_bash_RED_if_operand_with_metacharacters_compares_as_one_word() -> Bool {
+  let payload = "a; printf PWN | id -u"
+  wet_exec_stdout_is(
+    plan: wet_plan(steps: [
+      If {
+        cond: StrEq { lhs: payload, rhs: payload },
+        then_: wet_plan(steps: [wet_printf(text: "eq")]),
+        else_: Present { value: wet_plan(steps: [wet_printf(text: "ne")]) }
+      }
+    ]),
+    expected: "eq"
+  )
+    && wet_exec_stdout_is(
+      plan: wet_plan(steps: [
+        If {
+          cond: StrEq { lhs: payload, rhs: "a" },
+          then_: wet_plan(steps: [wet_printf(text: "eq")]),
+          else_: Present { value: wet_plan(steps: [wet_printf(text: "ne")]) }
+        }
+      ]),
+      expected: "ne"
+    )
+}
+
+test fn effect_plan_bash_if_branch_fail_fast_stops_the_branch_and_the_plan() -> Bool {
+  wet_exec_fails_without_output(plan: wet_plan(steps: [
+    If {
+      cond: StrEq { lhs: "a", rhs: "a" },
+      then_: wet_plan(steps: [
+        Do { effect: wet_test_path(operation: "IsFile", path: "/gunbc-wave-a-definitely-absent") },
+        wet_printf(text: "inside")
+      ]),
+      else_: Absent
+    },
+    wet_printf(text: "after")
+  ]))
 }

@@ -1,7 +1,13 @@
 module extdeps.cloudflare.account_api_tokens
 
-import std.string_type { String }
+// THE DECLARING MODULE IS NAMED, NOT A MODULE THAT MERELY MENTIONS THE SPELLING. std.types does not
+// declare String -- std.string_type does (type String = FreeMonoid<Char>) -- so importing it from
+// std.types bound nothing and left `String` here as an ambiguous bare read between std.string_type
+// and v2.std.text. The floor's bare-name wall says exactly that, and warns that copying an adjacent
+// file's import line is the usual way to get it wrong; the 41 sibling extdeps modules that name
+// std.string_type are the convention this now follows.
 import std.types { NonEmptyStr, Secret, Timestamp, List, Map, Bool }
+import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 import std.dissolution { unbound_dissolution }
