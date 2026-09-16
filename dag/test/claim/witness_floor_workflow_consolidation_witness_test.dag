@@ -559,10 +559,16 @@ test fn w_concurrency_group_resolves_pull_request_to_pr_number() -> Bool {
   )
 }
 
-test fn w_concurrency_group_resolves_push_to_github_ref() -> Bool {
+// THE PUSH-ON-MAIN TRIGGER IS GONE, so a push event reaches no branch of the group expression and
+// falls to the run-id fallback. This is the discriminating RED for the cut: while the trigger stood,
+// this fixture resolved to `witness-floor-refs/heads/main`, and restoring either the trigger or its
+// `RefAfterEvent` branch reddens this row. The fallback is the right destination and not a gap --
+// a push that somehow reaches this workflow shares a group with nothing, which is the same grain the
+// merge_group `mg-<sha>` branch gives every landing.
+test fn w_concurrency_group_no_longer_groups_push_by_ref() -> Bool {
   group_resolved_as(
     fx: group_fx(event: github_event_name_push, inputs: []),
-    expected: "witness-floor-refs/heads/main"
+    expected: "witness-floor-run-rid"
   )
 }
 
@@ -593,8 +599,7 @@ test fn w_emitted_group_expression_names_each_event_branch() -> Bool {
          )
        )
     && string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_pull_request, "' && format('pr-{0}', github.event.pull_request.number)")))
-    && string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_push, "' && github.ref")))
-    && !string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_push, "' && format('pr-{0}'")))
+    && !string_contains(s: s, pattern: github_event_name_push)
 }
 
 test fn w_RED_unmodeled_format_arity_and_base_ref_refuse() -> Bool {
@@ -621,8 +626,12 @@ test fn w_RED_unmodeled_format_arity_and_base_ref_refuse() -> Bool {
       ExpressionEvaluationRefused { cause: _ } => false
       ExpressionValue { value: _ } => false
     }
+    && match evaluate_against_group_fixture(expression: ContextAccess { context: Github, path: ["ref"] }, fx: fx) {
+      ExpressionValue { value: v } => v == "refs/heads/main"
+      ExpressionEvaluationRefused { cause: _ } => false
+    }
     && match resolve_witness_floor_concurrency_group(fx: fx) {
-      WitnessFloorGroupResolved { group: g } => g == "witness-floor-refs/heads/main"
+      WitnessFloorGroupResolved { group: g } => g == "witness-floor-run-rid"
       WitnessFloorGroupRefused { cause: _ } => false
     }
 }

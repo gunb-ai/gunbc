@@ -1921,32 +1921,12 @@ pub struct TransitionAdmission {
 /// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
 /// runner hardware observation, DGX PXE and PXE-rescue consumers.
 ///
-// gunbc#11177: process_identity_eq moves unchanged from gunbc.runner_connectivity_recovery
-// to gunbc.build_cache_instance beside ProcessIdentity. CI run 34702135326 measured exactly
-// these two TargetChanged bindings. Remove these permissions once consumed at the base;
-// retain runner_connectivity_recovery_witness_test and runner_canary_receipt_witness_test
-// as the executed evidence that the relocation preserves the process identity contract.
+/// THE gunbc#11177 ROWS DISSOLVED HERE (2026-09-16), by the trigger their own comment wrote:
+/// "remove these permissions once consumed at the base". #11177 is on main, so the relocation
+/// of process_identity_eq into gunbc.build_cache_instance is PRESENT AT THE BASE and both
+/// TargetChanged bindings report consumed. runner_connectivity_recovery_witness_test and
+/// runner_canary_receipt_witness_test stay enrolled as the executed evidence of the relocation.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11177 process_identity_eq: gunbc.runner_connectivity_recovery -> gunbc.build_cache_instance",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner_connectivity_recovery",
-            in_declaration: "decide_wedged_runner_connectivity_action",
-            spelling: "process_identity_eq",
-            expected_candidates: &["gunbc.build_cache_instance"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11177 process_identity_eq: gunbc.runner_connectivity_recovery -> gunbc.build_cache_instance",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner_connectivity_recovery",
-            in_declaration: "verify_incarnation_replace_postcondition",
-            spelling: "process_identity_eq",
-            expected_candidates: &["gunbc.build_cache_instance"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     // gunbc#11461 (integration of XL-1 gunbc#11209, commit 42323e5bab "Give
     // ReferenceDerivedCandidateRow its generated module home"): the reference-derived candidate
     // row and disposition types moved from v1.compiler.emit_rust to their one dag home

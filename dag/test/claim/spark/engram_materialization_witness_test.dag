@@ -52,6 +52,9 @@ import extdeps.safetensors.format {
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram,
+  deepseek_v4_1_flash_engram_shard_files,
+  deepseek_v4_1_flash_engram_population_reading,
+  deepseek_v4_1_flash_index_tensor_count,
   deepseek_v4_1_flash_hidden_size,
   deepseek_v4_1_flash_weight_block_size,
   deepseek_v4_1_flash_safetensors_payload_footprint,
@@ -548,6 +551,10 @@ fn repacked_artifact() -> MaterializedComponentArtifact {
   )
 }
 
+// THE IDENTITY-NEGATIVE HALF RUNS OVER THE LIVE SUBJECT, and that placement is the point. A repacked
+// encoding is not the published byte identity whatever the membership closure is, so this is a defect the
+// program knows independently -- and keeping it live means one more control still exercises the real
+// subject, and proves the gate does not dilute a known defect into incompleteness.
 test fn a_repacked_encoding_may_not_claim_the_published_byte_identity() -> Bool {
   match realize_component(
     standing: engram_component_standing,
@@ -556,8 +563,15 @@ test fn a_repacked_encoding_may_not_claim_the_published_byte_identity() -> Bool 
     RealizationUnfaithful { subject: _, defects: ds } => count(ds) > 0
     RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => false
     RealizationEvidenceMissing { subject: _, obligation: _ } => false
-  } && match realize_component(
-    standing: engram_component_standing,
+  }
+}
+
+// THE TRANSFORM-POSITIVE HALF NEEDS CLOSED MEMBERSHIP, because it is the half that CONCLUDES. Splitting it
+// out keeps one witness to one interface rather than one witness spanning two, which is what the conjoined
+// form was doing once the live subject stopped being usable for a positive verdict.
+test fn a_relation_naming_both_exact_ends_realizes_the_repacked_encoding() -> Bool {
+  match realize_component(
+    standing: closed_membership_standing(),
     artifact: repacked_artifact(),
     evidence: StructurePreservingTransform {
       relation: faithfulness_relation(
@@ -594,20 +608,26 @@ test fn a_faithfulness_relation_preserving_nothing_is_refused() -> Bool {
   }
 }
 
-// THE TWO ENCODINGS THIS SUBJECT ACTUALLY DECLARES, AND THEY LAND DIFFERENTLY. The published shard set
-// has an established identity that matches, so it is faithful. The resident parameter representation
-// has none, so it DEFERS -- and that asymmetry is the whole point of keeping identity, encoding and
-// faithfulness apart.
+// THE TWO ENCODINGS THIS SUBJECT DECLARES LAND DIFFERENTLY, AND THAT ASYMMETRY IS WHAT THIS CLAIM IS FOR:
+// the published shard set has an established identity that matches, the resident parameter representation
+// has none and so defers. Keeping identity, encoding and faithfulness apart is what makes those two
+// outcomes different rather than one.
+//
+// IT RUNS OVER THE CLOSED SUBJECT because the membership gate would otherwise make BOTH arms Open -- the
+// first for a scoped membership, the second for a missing identity -- and the asymmetry it exists to show
+// would vanish into a single verdict. The consequence for the LIVE subject is real and is asserted next
+// door rather than lost here: the published Engram artifact's realization is Open, not Faithful, until the
+// revision's index is enumerated. That is the honest state, and it is what the gate exists to produce.
 test fn the_published_encoding_is_faithful_and_the_resident_one_defers() -> Bool {
   match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: engram_published_artifact,
     evidence: engram_published_faithfulness)) {
     RealizationSettledFaithful => true
     RealizationSettledUnfaithful => false
     RealizationStandingOpen => false
   } && match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: engram_resident_artifact,
     evidence: engram_resident_faithfulness)) {
     RealizationStandingOpen => true
@@ -1535,6 +1555,12 @@ test fn a_half_read_population_needs_evidence_rather_than_reporting_no_feasible_
 // AND A DECIDED NEGATIVE STILL EXCLUDES. The asymmetry is the whole content of the three-state fold:
 // an encoding that demonstrably is not the subject's reads zero and is refused before Pareto, while
 // an unread one defers. If this scored absent too, the faithfulness constraint would be a decoration.
+// THREE STATES, NOT TWO, NOW THAT A SCOPED MEMBERSHIP CAN WITHHOLD A READING. A decided-unfaithful
+// encoding reads zero and is excluded -- that is the original point and it holds over the live subject,
+// because an identity that is simply not the published one is a defect whatever the closure is. A matching
+// identity reads one only once membership is CLOSED. And the same matching identity over the LIVE subject
+// yields NO reading at all, which is the state the gate introduced: absent is not zero, and a consumer that
+// treated it as zero would read "proven unfaithful" where the truth is "not established either way".
 test fn a_decided_unfaithful_encoding_still_reads_zero_and_excludes() -> Bool {
   match faithfulness_reading(r: realize_component(
     standing: engram_component_standing,
@@ -1543,11 +1569,17 @@ test fn a_decided_unfaithful_encoding_still_reads_zero_and_excludes() -> Bool {
     Present { value: r } => r.interval_micro.low == 0 && r.interval_micro.high == 0
     Absent => false
   } && match faithfulness_reading(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: engram_published_artifact,
     evidence: engram_published_faithfulness)) {
     Present { value: r } => r.interval_micro.low == 1
     Absent => false
+  } && match faithfulness_reading(r: realize_component(
+    standing: engram_component_standing,
+    artifact: engram_published_artifact,
+    evidence: engram_published_faithfulness)) {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
@@ -1785,16 +1817,24 @@ fn artifact_with_identity(i: EncodingIdentity) -> MaterializedComponentArtifact 
     encoded_size: EncodedBytes { bytes: byte_size(count: 1) })
 }
 
+// THIS CONTROL DISCRIMINATES THE IDENTITY COMPARISON, so it moves to the closed subject for the same
+// reason the relation controls did: over the live scoped subject every arm of it would now be Open, and a
+// claim that cannot tell a matching published identity from a substituted one has stopped being a control.
+//
+// WORTH RECORDING: this very test was my argument for exempting the identity arm from the membership gate --
+// gating it, I said, would red a claim that is not about membership. That was circular. A test's current
+// expectation is not evidence for the behaviour it encodes; it is the thing that has to move when the
+// behaviour is found wrong.
 test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -> Bool {
   match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: artifact_with_identity(i: engram_published_identity),
     evidence: IdenticalToPublishedEncoding)) {
     RealizationSettledFaithful => true
     RealizationSettledUnfaithful => false
     RealizationStandingOpen => false
   } && match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: artifact_with_identity(i: ShardSetIdentity {
       shards: [shard_identity(path: "model-00047-of-00048.safetensors" as NonEmptyStr, sha256: fixture_digest_a())],
     }),
@@ -1803,13 +1843,83 @@ test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -
     RealizationSettledFaithful => false
     RealizationStandingOpen => false
   } && match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
+    standing: closed_membership_standing(),
     artifact: artifact_with_identity(i: EncodingIdentityUnestablished { obligation: "fixture: nobody digested it" as NonEmptyStr }),
     evidence: IdenticalToPublishedEncoding)) {
     RealizationStandingOpen => true
     RealizationSettledFaithful => false
     RealizationSettledUnfaithful => false
   }
+}
+
+// A SCOPED MEMBERSHIP CANNOT CONCLUDE THE ARTIFACT IS FAITHFUL, BY EITHER ROUTE. The live Engram subject
+// closes its membership against the twelve rows that were READ, not against the revision's 96085-name
+// index. The published shard set is built from those same twelve rows, so its completeness is exactly as
+// open as the membership's: a thirteenth Engram tensor in an unread shard would leave an artifact holding
+// the exact published bytes of shards 47 and 48 matching the declared identity perfectly while not
+// containing the component. So neither arm may conclude.
+//
+// THE THIRD CONJUNCT IS WHAT KEEPS THIS FROM BEING A BLANKET REFUSAL: a genuinely defective relation still
+// reports Unfaithful rather than being masked as evidence-missing. The residual removes the ability to
+// conclude faithfulness, never the ability to detect its absence.
+test fn a_scoped_membership_blocks_a_faithful_verdict_by_either_route() -> Bool {
+  (match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: repacked_artifact(),
+    evidence: StructurePreservingTransform {
+      relation: relation_with_target(t: repacked_artifact().identity),
+    })) {
+    RealizationStandingOpen => true
+    RealizationSettledFaithful => false
+    RealizationSettledUnfaithful => false
+  })
+    && (match component_realization_standing(r: realize_component(
+      standing: engram_component_standing,
+      artifact: artifact_with_identity(i: engram_published_identity),
+      evidence: IdenticalToPublishedEncoding)) {
+      RealizationStandingOpen => true
+      RealizationSettledFaithful => false
+      RealizationSettledUnfaithful => false
+    })
+    && (match component_realization_standing(r: realize_component(
+      standing: engram_component_standing,
+      artifact: repacked_artifact(),
+      evidence: StructurePreservingTransform {
+        relation: faithfulness_relation(
+          relation: fixture_relation(), subject: fixture_relation(),
+          source_encoding: engram_published_encoding, source_identity: engram_published_identity,
+          target_encoding: repacked_encoding(), target_identity: repacked_artifact().identity,
+          preserved: [PreservesTensorNames, PreservesDeclaredShapes, PreservesElementValues],
+          ground: fixture_proven_ground()),
+      })) {
+      RealizationSettledUnfaithful => true
+      RealizationSettledFaithful => false
+      RealizationStandingOpen => false
+    })
+}
+
+// THE POSITIVE CONTROL FOR THE GATE, over the same two routes. Close the membership and nothing else, and
+// both arms settle faithful again -- which is what makes the three refusals above evidence about the
+// residual rather than about fixtures that cannot conclude at all.
+test fn closing_the_membership_lets_both_routes_conclude_faithful() -> Bool {
+  (match component_realization_standing(r: realize_component(
+    standing: closed_membership_standing(),
+    artifact: artifact_with_identity(i: engram_published_identity),
+    evidence: IdenticalToPublishedEncoding)) {
+    RealizationSettledFaithful => true
+    RealizationSettledUnfaithful => false
+    RealizationStandingOpen => false
+  })
+    && (match component_realization_standing(r: realize_component(
+      standing: closed_membership_standing(),
+      artifact: repacked_artifact(),
+      evidence: StructurePreservingTransform {
+        relation: relation_with_target(t: repacked_artifact().identity),
+      })) {
+      RealizationSettledFaithful => true
+      RealizationSettledUnfaithful => false
+      RealizationStandingOpen => false
+    })
 }
 
 // A RELATION MUST NAME BOTH ENDS AND PRESERVE THE REQUIRED PROPERTIES. Each clause is its own red,
@@ -1876,19 +1986,19 @@ test fn a_relation_must_name_the_exact_bytes_it_mapped_from_and_produced() -> Bo
   let silent = relation_with_target(
     t: EncodingIdentityUnestablished { obligation: "fixture: the transform did not record what it wrote" as NonEmptyStr })
   match component_realization_standing(r: realize_component(
-    standing: engram_component_standing, artifact: repacked_artifact(),
+    standing: closed_membership_standing(), artifact: repacked_artifact(),
     evidence: StructurePreservingTransform { relation: matching })) {
     RealizationSettledFaithful => true
     RealizationSettledUnfaithful => false
     RealizationStandingOpen => false
   } && match component_realization_standing(r: realize_component(
-    standing: engram_component_standing, artifact: repacked_artifact(),
+    standing: closed_membership_standing(), artifact: repacked_artifact(),
     evidence: StructurePreservingTransform { relation: foreign })) {
     RealizationSettledUnfaithful => true
     RealizationSettledFaithful => false
     RealizationStandingOpen => false
   } && match realize_component(
-    standing: engram_component_standing, artifact: repacked_artifact(),
+    standing: closed_membership_standing(), artifact: repacked_artifact(),
     evidence: StructurePreservingTransform { relation: silent }) {
     RealizationEvidenceMissing { subject: _, obligation: o } =>
       string_contains(s: o as String, pattern: "does not say which bytes it produced")
@@ -1907,29 +2017,62 @@ test fn a_relation_must_name_the_exact_bytes_it_mapped_from_and_produced() -> Bo
 // the artifact's actual target. Nothing joined the relation's declared source to the subject's actual
 // published bytes. The end standings are three-valued over BOTH operands, so the second case is now an
 // evidence need naming which side is missing.
-fn subject_with_published_identity(i: EncodingIdentity) -> ComponentSubjectStanding {
+// THE SAME POPULATION, READ AS IF THE INDEX HAD BEEN ENUMERATED. The controls below discriminate the
+// RELATION -- matching versus foreign, preserving enough versus too little, an established target identity
+// versus none -- and the live subject's membership residual now gates the transform arm before any of that
+// is reached. Flipping those controls to expect Open would make them pass whatever the relation says, which
+// is the one outcome that destroys what they exist to test: a claim that cannot distinguish a matching
+// relation from a foreign one has stopped being a control.
+//
+// SO THEY GET A SUBJECT WHOSE MEMBERSHIP IS CLOSED, differing from the live one in the closure for every
+// input the comparison reads -- same members, same shards, same reading. Its label and upstream_revision are
+// synthetic too, which no arm of realize_component consults. The residual gate is then vacuous for them by construction, and
+// a_scoped_membership_blocks_a_faithful_verdict_by_either_route remains the single claim that exercises it.
+fn closed_membership_population() -> SafetensorsPopulationStanding {
+  safetensors_population_standing(
+    members: deepseek_v4_1_flash_engram_index_members,
+    shards: deepseek_v4_1_flash_engram_shard_files,
+    closure: MembershipClosedAgainstFullIndex {
+      index_population_count: deepseek_v4_1_flash_index_tensor_count,
+      how: "fixture: this closure is asserted by the test, not read from the revision's index" as NonEmptyStr,
+    },
+    reading: deepseek_v4_1_flash_engram_population_reading,
+  )
+}
+
+// THIS REPLACES THE LIVE-POPULATION FIXTURE RATHER THAN SITTING BESIDE IT. The variant that built this
+// subject over deepseek_v4_1_flash_engram_population had no callers left once the relation controls moved,
+// and leaving it standing would be the attractor: the next author reaches for the obvious-looking fixture,
+// gets a scoped membership, and their relation control goes Open for a reason that has nothing to do with
+// the relation -- silently vacuous, exactly the defect this pair of commits exists to remove.
+fn closed_subject_with_published_identity(i: EncodingIdentity) -> ComponentSubjectStanding {
   establish_component_subject(subject: component_subject(
     identity: engram_component_identity,
-    label: "fixture: the Engram subject with a substituted published identity" as NonEmptyStr,
+    label: "fixture: the Engram subject with a closed membership and a substituted published identity" as NonEmptyStr,
     upstream_revision: "fixture-revision" as NonEmptyStr,
-    population: deepseek_v4_1_flash_engram_population,
+    population: closed_membership_population(),
     published_encoding: engram_published_encoding,
     published_identity: i,
     population_standing: deepseek_v4_1_flash_engram_population_standing,
   ))
 }
 
+fn closed_membership_standing() -> ComponentSubjectStanding {
+  closed_subject_with_published_identity(i: engram_published_identity)
+}
+
+
 test fn an_unestablished_actual_source_identity_is_an_obligation_rather_than_faithful() -> Bool {
   let rel = relation_with_target(t: repacked_artifact().identity)
   match component_realization_standing(r: realize_component(
-    standing: subject_with_published_identity(i: engram_published_identity),
+    standing: closed_subject_with_published_identity(i: engram_published_identity),
     artifact: repacked_artifact(),
     evidence: StructurePreservingTransform { relation: rel })) {
     RealizationSettledFaithful => true
     RealizationSettledUnfaithful => false
     RealizationStandingOpen => false
   } && match realize_component(
-    standing: subject_with_published_identity(i: EncodingIdentityUnestablished {
+    standing: closed_subject_with_published_identity(i: EncodingIdentityUnestablished {
       obligation: "fixture: nobody has established an identity for the published bytes" as NonEmptyStr }),
     artifact: repacked_artifact(),
     evidence: StructurePreservingTransform { relation: rel }) {
@@ -2010,7 +2153,19 @@ test fn addressing_capability_does_not_establish_verified_integrity() -> Bool {
     })
 }
 
+// THE ORIGIN-VERIFICATION CONTROLS NEED A REALIZATION THAT ACTUALLY REALIZED, so this helper supplies the
+// closed subject. Over the live one it would be EvidenceMissing, which those controls themselves map to
+// TargetUnrealized -- so the helper would have made them contradict themselves through their own fixture.
 fn published_realization() -> FaithfulComponentRealization {
+  realize_component(
+    standing: closed_membership_standing(),
+    artifact: engram_published_artifact,
+    evidence: engram_published_faithfulness)
+}
+
+// AND THE LIVE ONE IS UNREALIZED, asserted rather than implied, so the helper's substitution above cannot
+// quietly become the only statement about the live subject's origin standing.
+fn live_published_realization() -> FaithfulComponentRealization {
   realize_component(
     standing: engram_component_standing,
     artifact: engram_published_artifact,
@@ -2165,6 +2320,10 @@ test fn an_origin_readback_about_another_subject_or_encoding_does_not_verify_thi
       TargetUnrealized => true
       TargetIs { subject: _, identity: _ } => false
     }
+    && (match verification_target(r: live_published_realization()) {
+      TargetUnrealized => true
+      TargetIs { subject: _, identity: _ } => false
+    })
 }
 
 // ── FINDING 9: A LAUNCH RECEIPT MUST BE ABOUT THIS ROUTE AND ITS TOKEN-TIME PROVIDER ───────────
