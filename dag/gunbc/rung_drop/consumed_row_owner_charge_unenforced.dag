@@ -8,14 +8,16 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // merge_group follow-up arms of wave_admission_refusal on an operator ruling that mandating a
 // deletion follow-up pull request is not worth its cost.
 //
-// ONLY ONE OF THE TWO REMOVALS IS A DROP, AND SAYING WHICH IS THE POINT. OwnerFollowUpAbsent
-// established that a NUMBER had been typed and nothing more -- its own message conceded it checks
-// that a number is authored, never that it names an open or deleting pull request -- so its
-// admitting side was free and a fabricated number passed it. Removing a check whose RED is
-// authorable but whose GREEN is unverified removes a decoration, not a guarantee.
+// BOTH REMOVALS ARE DROPS AND EACH HAS ITS OWN ROW. An earlier revision of this row said only one
+// was, on the ground that OwnerFollowUpAbsent established a number had been TYPED and nothing more.
+// That is true of its GREEN and does not make it a decoration -- section 4b reserves that word for a
+// check whose forbidden state cannot be expressed anywhere the check could run, and that arm's RED
+// was authorable and fired. Review 67014 caught it. The owner-side class is declared separately at
+// gunbc.rung_drop.owner_deletion_follow_up_charge_removed, which is where the reasoning lives.
 //
-// ConsumedRowOwnerChargeBypassed is different and this row exists for it. Its RED discriminated on
-// the ABSENCE of any number, which is a real distinction the tree can still make.
+// THIS ROW IS FOR ConsumedRowOwnerChargeBypassed, whose lost coverage is a different class with a
+// different restoration trigger: its RED discriminated on the ABSENCE of any number on a BYSTANDER
+// composition, and what has to come back is the ability to adjudicate a consumed row at all.
 //
 // WHY THE LANDING ARM DOES NOT COVER IT, measured rather than assumed. The surviving consumed-row
 // arm fires when roster_due, and roster_due is base == head OR roster_touched. Lane ruling

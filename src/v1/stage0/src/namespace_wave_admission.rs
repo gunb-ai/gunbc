@@ -1846,22 +1846,26 @@ fn parse_decl_ref_list(
 /// Two `merge_group` arms were removed on 2026-09-16 (operator ruling): `OwnerFollowUpAbsent`,
 /// which refused a used row whose owner had authored no `deletion_follow_up`, and
 /// `ConsumedRowOwnerChargeBypassed`, which refused a bystander composition for a prior owner's
-/// unauthored follow-up. Neither took a guarantee with it. The first established only that a
-/// number had been typed -- its own message conceded it "checks that a number is authored, never
-/// that it names an open or deleting pull request" -- so its admitting side was free and a
-/// fabricated number passed. The second billed a change for a debt its own comment said was not
-/// its own.
+/// unauthored follow-up. BOTH TOOK COVERAGE WITH THEM AND BOTH ARE DECLARED AS §4b(3) DROPS —
+/// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. Two earlier revisions of this note said
+/// otherwise and both were caught in review. The first arm did establish only that a number had
+/// been typed -- its own message conceded it "checks that a number is authored, never that it names
+/// an open or deleting pull request" -- but a weak GREEN is not a decoration: §4b reserves that for
+/// a check whose RED cannot be authored at all, and this one's RED was authored and fired
+/// (review 67014). The second billed a change for a debt its own comment said was not its own,
+/// which is a reason to remove it, not a reason its coverage was nothing.
 ///
-/// WHAT THIS COSTS, STATED PLAINLY AND DECLARED AS A DROP. An earlier revision of this note claimed
+/// WHAT THIS COSTS, STATED PLAINLY. An earlier revision of this note claimed
 /// the landing arm still compels a consumed row's deletion. On the REQUIRED path it does not.
 /// Lane ruling (fierce-lark-661, 2026-09-13): the merge queue moved the required verdict off the
 /// push to the default branch, and with it the only run where base == head -- so `roster_due`
 /// reduces to `roster_touched` alone there. With `ConsumedRowOwnerChargeBypassed` gone, a
 /// base-consumed row whose owner authored no follow-up refuses on NO required run until somebody
-/// happens to edit the roster directory. That arm's RED discriminated on the ABSENCE of any number,
-/// so unlike `OwnerFollowUpAbsent` -- whose admitting side was free and which was a decoration --
-/// removing it is a COVERAGE LOSS. It is declared as a 4b(3) rung drop,
-/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`, not passed off as a no-op.
+/// happens to edit the roster directory. That is the coverage the consumed-row drop declares, and
+/// it is a separate row from the owner-side one because the two are restored by different
+/// capabilities: adjudicating a consumed row at all, versus resolving an authored follow-up number
+/// to the pull request it claims to name.
 ///
 /// `used_without_follow_up` is still COUNTED in the message, so the debt stays visible as a
 /// receipt; it just no longer refuses. Lifecycle is derived from the candidate-set
@@ -1886,16 +1890,14 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             // deletion_follow_up) and ConsumedRowOwnerChargeBypassed (a bystander composition
             // charged for someone else's unauthored follow-up). Both are removed.
             //
-            // NO GUARANTEE FALLS WITH THEM. `deletion_follow_up` remains on the row and is still
-            // read, so the debt is still RECORDED; and `consumed_due` below still refuses a
-            // consumed row at landing or on a roster-source edit, so the deletion is still
-            // ENFORCED at the point it becomes real. What the arms added was an ADVANCE
-            // commitment whose admitting side was free -- the wall's own words were that it
-            // "checks that a number is authored, never that it names an open or deleting pull
-            // request" -- so any digits satisfied it. A check whose RED is authorable but whose
-            // GREEN is unverified buys the appearance of a wall (DESIGN 4b), and the second arm
-            // billed a BYSTANDER for an owner's debt, which its own comment flagged as the thing
-            // to avoid.
+            // COVERAGE FALLS WITH THEM AND IT IS DECLARED, NOT WAVED OFF. Each removal has its
+            // own §4b(3) row -- `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+            // `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. What SURVIVES is a record
+            // rather than a refusal: `deletion_follow_up` remains on the row and is still read, and
+            // `consumed_due` below still refuses a consumed row at landing or on a roster-source
+            // edit -- which, since the merge queue moved the required verdict off the push to the
+            // default branch, means on a roster-source edit alone on the required path. The two
+            // rows say exactly what that leaves uncovered and what would restore it.
             let consumed_due = roster_due && !report.consumed_admissions.is_empty();
             let stale_due = !report.stale_admissions.is_empty();
             if unadjudicated.is_empty() && !stale_due && !consumed_due {

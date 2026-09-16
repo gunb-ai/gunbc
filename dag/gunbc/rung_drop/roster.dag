@@ -62,6 +62,7 @@ import gunbc.rung_drop.determinism_transitive_reachability { determinism_transit
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
 import gunbc.rung_drop.consumed_row_owner_charge_unenforced { consumed_row_owner_charge_unenforced }
+import gunbc.rung_drop.owner_deletion_follow_up_charge_removed { owner_deletion_follow_up_charge_removed }
 import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
 import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
@@ -119,6 +120,7 @@ data rung_drop_roster: List<RungDrop> = [
   transitional_admission_exception(),
   v2_native_route_off_the_merge_path,
   consumed_row_owner_charge_unenforced,
+  owner_deletion_follow_up_charge_removed,
   main_per_commit_floor_verdict,
   v1_consumer_census_live_population_off_the_merge_path(),
   long_module_changed_witness_cpu_observed_only,
