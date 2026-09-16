@@ -12,6 +12,7 @@ import product.compute_board.emission_entry {
   emit_spice,
   emit_ngspice_run,
   emit_pin_constraints,
+  emit_truth_table,
 }
 
 // THE FOUR ARTIFACTS ONE BOARD ARTICLE PRODUCES, WRITTEN SIDE BY SIDE SO AN EDIT IS VISIBLE AS A
@@ -45,7 +46,10 @@ fn write_artifacts() -> ProcessExit {
     ),
     next: first_failure(
       acc: write_one(path: "target/demo/conditioning_network.cir", e: emit_ngspice_run()),
-      next: write_one(path: "target/demo/board_power_interlock.pcf", e: emit_pin_constraints())
+      next: first_failure(
+        acc: write_one(path: "target/demo/board_power_interlock.pcf", e: emit_pin_constraints()),
+        next: write_one(path: "target/demo/board_power_interlock_truth_table.md", e: emit_truth_table())
+      )
     )
   )
 }
