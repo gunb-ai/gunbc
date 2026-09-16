@@ -9,7 +9,7 @@ import gunbc.spark.v41_runtime_candidate { v41_input }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
 }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
@@ -129,11 +129,4 @@ data v41_engram_disk_justification_standing: CitedFigureStanding = TranscribedUn
 
 data v41_group_a_staging_standing: V41StagingReceipt = V41StagingUnestablished {
   obligation: "Door 3 is cleared for disk. Occupant cited from proud-deer-538: gunbc-spark-pair stays up on spark-a3ee, spark-3bd5, spark-c2b1, spark-ac79; this cut stages around it and does not tear it down. Staging dirs exist at /home/briansrls/v41-engram-staging. Fill is Unestablished until published-shard rank stores have a modeled identity and a readback; a verified receipt is not minted from empty directories. Disk justification: v41_engram_disk_justification_standing. Patch apply is the next PR in this lane, not this one." as NonEmptyStr,
-}
-
-fn v41_engram_disk_justification() -> NonEmptyStr {
-  match cited_figure_read_obligation(standing: v41_engram_disk_justification_standing) {
-    Present { value: o } => o
-    Absent => "v41_engram_disk_justification_standing is TranscribedUncited and must carry a read obligation" as NonEmptyStr
-  }
 }

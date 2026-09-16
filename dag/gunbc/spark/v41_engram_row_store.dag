@@ -396,33 +396,57 @@ type V41TransformResult
   | V41PublishedTransformUnestablished { obligation: NonEmptyStr }
   | V41TransformUnfaithful { defects: List<NonEmptyStr> }
 
-fn v41_source_row_precedes(before: V41SourceRow, after: V41SourceRow) -> Bool {
-  before.global_row < after.global_row || (before.global_row == after.global_row && (before.tensor as String) < (after.tensor as String))
-}
-
 fn v41_placed_row_precedes(before: V41PlacedRow, after: V41PlacedRow) -> Bool {
   before.global_row < after.global_row || (before.global_row == after.global_row && (before.tensor as String) < (after.tensor as String))
 }
 
-fn v41_count_on_rank_before(rows: List<V41SourceRow>, row: V41SourceRow, rank: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
-  length(filter(rows, r => v41_source_row_precedes(before: r, after: row) && match v41_dest_rank(global_row: r.global_row, spec: spec) {
-    Present { value: d } => d == rank
-    Absent => false
-  }))
+type V41PlaceState sole_constructor {
+  placed: List<V41PlacedRow>
+  counts: List<Nat>
 }
 
-fn v41_place_all(rows: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> List<V41PlacedRow> {
-  flat_map(rows, row => match v41_dest_rank(global_row: row.global_row, spec: spec) {
-    Absent => [] as List<V41PlacedRow>
+fn v41_rank_count_at(counts: List<Nat>, rank: Nat) -> Nat {
+  match get(xs: counts, index: rank) {
+    Present { value: c } => c
+    Absent => 0
+  }
+}
+
+fn v41_bump_rank_count(counts: List<Nat>, rank: Nat) -> List<Nat> {
+  map(enumerate(counts), p => if p.first == rank { p.second + 1 } else { p.second })
+}
+
+fn v41_ordered_source_rows(rows: List<V41SourceRow>) -> List<V41SourceRow> {
+  rows.sort_by(r => r.tensor as String).sort_by(r => r.global_row)
+}
+
+fn v41_place_step(acc: V41PlaceState, row: V41SourceRow, spec: V41RowStoreEncodingSpec) -> V41PlaceState {
+  match v41_dest_rank(global_row: row.global_row, spec: spec) {
+    Absent => acc
     Present { value: rank } => match v41_place_row(
       row: row,
       spec: spec,
-      prior_on_rank: v41_count_on_rank_before(rows: rows, row: row, rank: rank, spec: spec),
+      prior_on_rank: v41_rank_count_at(counts: acc.counts, rank: rank),
     ) {
-      Present { value: placed } => [placed]
-      Absent => [] as List<V41PlacedRow>
+      Absent => acc
+      Present { value: placed } => V41PlaceState {
+        placed: concat([placed], acc.placed),
+        counts: v41_bump_rank_count(counts: acc.counts, rank: rank),
+      }
     }
-  })
+  }
+}
+
+fn v41_place_all(rows: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> List<V41PlacedRow> {
+  let done = fold(
+    v41_ordered_source_rows(rows: rows),
+    init: V41PlaceState {
+      placed: [] as List<V41PlacedRow>,
+      counts: map(nat_ranks(n: spec.rank_count), _ => 0),
+    },
+    f: (acc, row) => v41_place_step(acc: acc, row: row, spec: spec),
+  )
+  reverse(done.placed)
 }
 
 fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat, order: V41RowStoreOrder) -> String? {
@@ -447,26 +471,64 @@ fn v41_rank_digest(placed: List<V41PlacedRow>, rank: Nat, spec: V41RowStoreEncod
   }
 }
 
+fn v41_placed_in_rank_offset_order(placed: List<V41PlacedRow>) -> List<V41PlacedRow> {
+  placed.sort_by(p => byte_size_count(b: p.offset)).sort_by(p => p.rank)
+}
+
+fn v41_adjacent_offset_defects(prev: V41PlacedRow, cur: V41PlacedRow) -> List<NonEmptyStr> {
+  if prev.rank != cur.rank {
+    [] as List<NonEmptyStr>
+  } else {
+    concat(
+      if prev.offset == cur.offset {
+        [join(["rank ", to_string(cur.rank), " offset ", to_string(byte_size_count(b: cur.offset)), " is not unique"], "") as NonEmptyStr]
+      } else { [] as List<NonEmptyStr> },
+      if v41_placed_row_precedes(before: cur, after: prev) {
+        [join(["rank ", to_string(cur.rank), " offset order is not global-ascending; row ", to_string(cur.global_row), " is not after every preceding global_row on that rank"], "") as NonEmptyStr]
+      } else { [] as List<NonEmptyStr> })
+  }
+}
+
+fn v41_rank_offset_scan_defects(placed: List<V41PlacedRow>) -> List<NonEmptyStr> {
+  let ordered = v41_placed_in_rank_offset_order(placed: placed)
+  flat_map(enumerate(ordered), p => if p.first == 0 {
+    [] as List<NonEmptyStr>
+  } else {
+    match get(xs: ordered, index: p.first - 1) {
+      Absent => [] as List<NonEmptyStr>
+      Present { value: prev } => v41_adjacent_offset_defects(prev: prev, cur: p.second)
+    }
+  })
+}
+
+fn v41_lost_image_defects(source: List<V41SourceRow>, placed: List<V41PlacedRow>) -> List<NonEmptyStr> {
+  if length(source) != length(placed) {
+    [] as List<NonEmptyStr>
+  } else {
+    let ss = v41_ordered_source_rows(rows: source)
+    let ps = placed.sort_by(p => p.tensor as String).sort_by(p => p.global_row)
+    flat_map(enumerate(ss), p => match get(xs: ps, index: p.first) {
+      Absent => [join(["source row ", p.second.tensor as String, "#", to_string(p.second.global_row), " has no exact placed image"], "") as NonEmptyStr]
+      Present { value: q } => if (q.tensor as String) == (p.second.tensor as String) && q.global_row == p.second.global_row && (q.payload as String) == (p.second.payload as String) {
+        [] as List<NonEmptyStr>
+      } else {
+        [join(["source row ", p.second.tensor as String, "#", to_string(p.second.global_row), " has no exact placed image"], "") as NonEmptyStr]
+      }
+    })
+  }
+}
+
 fn v41_correspondence_defects(source: List<V41SourceRow>, placed: List<V41PlacedRow>, spec: V41RowStoreEncodingSpec) -> List<NonEmptyStr> {
   let count_mismatch = if length(source) == length(placed) { [] as List<NonEmptyStr> } else {
     [join(["placed ", to_string(length(placed)), " rows from ", to_string(length(source)), " source rows"], "") as NonEmptyStr]
   }
-  let lost = map(
-    filter(source, s => !any(placed, p => (p.tensor as String) == (s.tensor as String) && p.global_row == s.global_row && (p.payload as String) == (s.payload as String))),
-    s => join(["source row ", s.tensor as String, "#", to_string(s.global_row), " has no exact placed image"], "") as NonEmptyStr)
-  let dup = map(
-    filter(placed, p => length(filter(placed, q => q.rank == p.rank && q.offset == p.offset)) != 1),
-    p => join(["rank ", to_string(p.rank), " offset ", to_string(byte_size_count(b: p.offset)), " is not unique"], "") as NonEmptyStr)
   let wrong_rank = map(
     filter(placed, p => match v41_dest_rank(global_row: p.global_row, spec: spec) {
       Absent => true
       Present { value: d } => p.rank != d
     }),
     p => join(["row ", to_string(p.global_row), " placed on rank ", to_string(p.rank), " against the declared partition rule"], "") as NonEmptyStr)
-  let not_ascending = map(
-    filter(placed, p => any(placed, q => q.rank == p.rank && v41_placed_row_precedes(before: q, after: p) && byte_size_count(b: q.offset) >= byte_size_count(b: p.offset))),
-    p => join(["rank ", to_string(p.rank), " offset order is not global-ascending; row ", to_string(p.global_row), " is not after every preceding global_row on that rank"], "") as NonEmptyStr)
-  concat(concat(concat(concat(count_mismatch, lost), dup), wrong_rank), not_ascending)
+  concat(concat(concat(count_mismatch, v41_lost_image_defects(source: source, placed: placed)), v41_rank_offset_scan_defects(placed: placed)), wrong_rank)
 }
 
 fn v41_transform_fixture(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V41TransformResult {
