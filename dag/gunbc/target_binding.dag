@@ -21,6 +21,7 @@ type TargetProducer
   | BehavioralReceiptSelftestProducer
   | HeadsReadingDifferentialProducer
   | CompileCleanDiagnosticCensusProducer
+  | V2NativeCliProducer
 
 type TargetBinding {
   target: Label

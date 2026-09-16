@@ -148,6 +148,7 @@ pub fn parse_label(text: &str) -> Result<Label, LabelRefusal> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetProducer {
     SelfHost,
+    V2NativeCli,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
     BehavioralReceiptCensus,
@@ -167,6 +168,12 @@ fn heads_reading_differential_source_roots() -> Vec<String> {
 /// this instrument's own fact on the same rule its siblings follow, so an invocation cannot quietly
 /// build a different closure while reporting this target's standing.
 fn self_host_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
+}
+
+/// `gunbc.instrument_targets` `v2_native_cli_source_roots`. Which corpus the v2-native CLI's closure
+/// is emitted FROM is this instrument's own fact, on the same rule its siblings follow.
+fn v2_native_cli_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
 
@@ -196,6 +203,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CompileCleanDiagnosticCensus,
         ),
         (instrument_label("self-host"), TargetProducer::SelfHost),
+        (
+            instrument_label("v2-native-cli"),
+            TargetProducer::V2NativeCli,
+        ),
     ]
 }
 
@@ -386,6 +397,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         ),
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
+        TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
     }
 }
 
@@ -413,6 +425,42 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
             },
             message: format!(
                 "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={}",
+                held.closure_identity,
+                held.binary_identity,
+                held.seed_identity,
+                held.exit_status,
+                held.warning_count,
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE V2-NATIVE CLI PRODUCER: does the v2-exclusive front door compile.
+///
+/// The three terminations are the same partition its sibling makes and for the same reason. A
+/// refusal from the preparation is the subject never having been reached -- the emit refused, the
+/// crate would not write, cargo could not run -- and only a completed build with non-zero counters
+/// is an observation that did not hold. Collapsing them would report a broken bench as a broken
+/// door.
+///
+/// IT SHARES `prepare_emitted_compiler_for_entry` WITH THE SELF-HOST STEP, parameterised by the
+/// entry, so the two instruments cannot disagree about what "emitted and built clean" means. What
+/// they do not share is the closure: this one compiles `v2.cli.compile_cli`, which declares
+/// `NativeCliDriver` and reaches no part of `v2.compiler.compile`.
+fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_native_cli(source_roots) {
+        Ok(held) => InvocationOutcome {
+            termination: if held.exit_status == 0 && held.warning_count == 0 {
+                Termination::ObservationHeld
+            } else {
+                Termination::ObservationDidNotHold
+            },
+            message: format!(
+                "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={}",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,

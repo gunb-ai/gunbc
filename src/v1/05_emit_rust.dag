@@ -16669,6 +16669,8 @@ data compiler_entry_source_root_eval_driver: String = "SourceRootEvalDriver"
 
 data compiler_entry_direct_ingest_driver: String = "DirectIngestDriver"
 
+data compiler_entry_native_cli_driver: String = "NativeCliDriver"
+
 type CompilerPipelineEntryDecl {
   module_name: String
   driver: String
@@ -16752,7 +16754,31 @@ fn compiler_pipeline_entry_driver_is_known(modules: List<TypedModule>) -> Bool {
       d.driver == compiler_entry_retained_host_driver
       || d.driver == compiler_entry_source_root_eval_driver
       || d.driver == compiler_entry_direct_ingest_driver
+      || d.driver == compiler_entry_native_cli_driver
     Absent => true
+  }
+}
+
+fn compiler_pipeline_entry_is_native_cli(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver == compiler_entry_native_cli_driver
+    Absent => false
+  }
+}
+
+// THE DIRECT-INGEST ARM IS ASKED BY NAME, WHICH IT WAS NOT BEFORE. It used to be the RESIDUE of the
+// selection below -- whatever matched neither of two predicates -- and that residue is precisely the
+// class `gunbc.recurring_failure_mode` `closed_variant_partition_read_as_a_default_arm` records: a
+// reading matching no declared driver silently rendered this main. `compiler_pipeline_entry_driver_is_known`
+// closed that by refusing an unrecognised reading first, but the residue SHAPE survived, and a
+// fourth driver is exactly the edit that makes a surviving residue wrong again -- a NativeCliDriver
+// reading would have rendered the direct-ingest main had this predicate not been added in the same
+// change. So each arm is now asked for itself and the selection ends in a refusal rather than in an
+// arm.
+fn compiler_pipeline_entry_is_direct_ingest(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver == compiler_entry_direct_ingest_driver
+    Absent => false
   }
 }
 
@@ -16863,7 +16889,16 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     if compiler_pipeline_entry_is_source_root_eval(modules: modules) {
       return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
-    return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+    if compiler_pipeline_entry_is_native_cli(modules: modules) {
+      return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+    }
+    if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
+      return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+    }
+    return emit_unknown_compiler_pipeline_driver_main_rs(
+      module_name: pipeline_module,
+      driver_reading: compiler_pipeline_entry_driver_reading(modules: modules)
+    )
   }
   if workflow_funcs |> count == 0 && retained_host_pipeline == false {
     return emit_entry_point_absent_main_rs(crate_name: crate_name)
@@ -16954,6 +16989,152 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
       "        }\n",
       "    }\n",
       "}\n")
+  }
+}
+
+// THE SOURCE-ROOT WALK AND THE BYTE READS, RENDERED ONCE FOR EVERY DRIVER THAT OWNS THAT BOUNDARY.
+//
+// Two rendered mains now need the same host operation -- SourceRootEvalDriver and NativeCliDriver
+// both take source roots on argv and must hand the resulting ingest to a `.dag` fold -- and the
+// second one is exactly the edit that turns "a block inside one template" into two copies of one
+// program. They would drift in the way copied text always drifts: a fix to the extension test, the
+// path sort, or the witness fields would land in whichever main its author was reading.
+//
+// IT IS TOTAL OVER ITS ROOT LIST, deliberately, and that is a behavioural change from the text it
+// replaces. The eval driver's `read_ingest` refused an EMPTY root list with exit 2 inside the
+// shared body; that refusal is a fact about what THAT driver's modes require, not about reading
+// files, and it is wrong for the CLI driver, whose `.dag` entry already refuses a verb with no root
+// (`cli_no_source_root`) and owes the operator that located cause rather than a harness message.
+// So the guard moved out to the eval driver's own two call sites and this reader answers for
+// whatever it is handed -- including the empty list, which reads zero files.
+fn emit_host_source_root_read_rs() -> String {
+  concat(
+      "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> \{", "\n",
+      "    let entries = match std::fs::read_dir(dir) \{", "\n",
+      "        Ok(entries) => entries,", "\n",
+      "        Err(cause) => return Err(format!(\"could not walk source root {}: \{cause\}\", dir.display())),", "\n",
+      "    \};", "\n",
+      "    for entry in entries \{", "\n",
+      "        let entry = match entry \{", "\n",
+      "            Ok(entry) => entry,", "\n",
+      "            Err(cause) => return Err(format!(\"could not read entry under {}: \{cause\}\", dir.display())),", "\n",
+      "        \};", "\n",
+      "        let path = entry.path();", "\n",
+      "        if path.is_dir() \{", "\n",
+      "            collect_dag_paths(&path, out)?;", "\n",
+      "        \} else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) \{", "\n",
+      "            out.push(path.to_string_lossy().into_owned());", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "    Ok(())", "\n",
+      "\}", "\n",
+      "\n",
+      "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> \{", "\n",
+      "    let mut paths: Vec<String> = Vec::new();", "\n",
+      "    for root in source_roots \{", "\n",
+      "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) \{", "\n",
+      "            eprintln!(\"REFUSED: \{cause\}\");", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "    paths.sort();", "\n",
+      "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();", "\n",
+      "    for path in &paths \{", "\n",
+      "        let text = match std::fs::read_to_string(path) \{", "\n",
+      "            Ok(text) => text,", "\n",
+      "            Err(cause) => \{", "\n",
+      "                eprintln!(\"REFUSED: could not read \{path\}: \{cause\}\");", "\n",
+      "                std::process::exit(2);", "\n",
+      "            \}", "\n",
+      "        \};", "\n",
+      "        reads.push(Rc::new(DagSourceReadWitness \{", "\n",
+      "            source: Rc::new(Medium \{", "\n",
+      "                carried: text,", "\n",
+      "                fidelity: DecodeFidelity::Lossless,", "\n",
+      "                _phantom: std::marker::PhantomData,", "\n",
+      "            \}),", "\n",
+      "            artifact: Rc::new(Artifact \{", "\n",
+      "                kind: ArtifactKind::SourceFile,", "\n",
+      "                id: path.clone(),", "\n",
+      "                file_path: path.clone(),", "\n",
+      "            \}),", "\n",
+      "            compilation_unit: path.clone(),", "\n",
+      "            source_root: source_root_for_storage_path(path.clone()),", "\n",
+      "        \}));", "\n",
+      "    \}", "\n",
+      "    reads", "\n",
+      "\}", "\n",
+      "\n",
+  )
+}
+
+// THE V2-EXCLUSIVE CLI'S MAIN, AND THE REASON IT IS THIS SHORT.
+//
+// Everything below argv is a call. The verb, every refusal, what gets emitted and what status the
+// process takes are decided in `v2.cli.compile_cli` -- this template performs the four operations a
+// `.dag` fold cannot and hands each back as a VALUE: it reads argv, walks and reads the source
+// roots the PLAN named, writes the emitted text to stdout, and sets the status the `.dag` fold
+// returned. That is deliberately the shape `gunbc.source_root_eval_driver_seed_growth` states as the
+// capability retiring its own row ("the rendered main becomes one call into that fold"), so this
+// driver is written to it from the start rather than growing a second ~500-line hand-authored main
+// that would have to shrink later.
+//
+// IT IS TWO CALLS AND NOT ONE, and the reason is the boundary rather than convenience. The host
+// cannot know which roots to walk until argv has been parsed, and the `.dag` entry cannot parse
+// argv and then read the roots itself, so the plan comes back as a value the host acts on. The
+// roots come from `v2_cli_plan_source_roots` and NEVER from re-reading argv here: two readings of
+// one fact are free to disagree, and the disagreement would be a run that walked one closure while
+// reporting the verb's.
+//
+// THE EMPTY WALK IS NOT SHORT-CIRCUITED HERE, and that is load-bearing. A refused plan names no
+// roots, so the reader is handed an empty list and returns zero witnesses; the `.dag` fold then
+// answers with the PLAN'S OWN located cause rather than a harness message about missing roots. An
+// `if` here that refused early would put a second refusal authority in the shim, and it would
+// report the wrong one.
+//
+// THE STATUS IS NOT DERIVED FROM THE OUTPUT. `std.process` `ProcessExit` is the carrier for an exit
+// this program declares for itself, `v2_cli_exit` returns it, and this main maps the arm to a
+// number. Choosing the status here from whether stdout was empty would be a second representation
+// of the verdict, free to disagree with the outcome it came from -- and it would report a
+// legitimately empty emission as a failure.
+fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.", "\n",
+      "\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]", "\n",
+      "\n",
+      "use std::rc::Rc;", "\n",
+      "\n",
+      "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};", "\n",
+      "use ", crate_name, "::v2_compiler_source_authority::\{source_root_for_storage_path, DagSourceReadWitness\};", "\n",
+      "use ", crate_name, "::v2_std_artifact::\{Artifact, ArtifactKind\};", "\n",
+      "use ", crate_name, "::std_process::ProcessExit;", "\n",
+      "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
+      "    v2_cli_exit, v2_cli_outcome_text, v2_cli_parse, v2_cli_plan_source_roots, v2_cli_run,", "\n",
+      "\};", "\n",
+      "\n",
+      emit_host_source_root_read_rs(),
+      "fn main() \{", "\n",
+      "    let argv: Vec<String> = std::env::args().skip(1).collect();", "\n",
+      "    let plan = v2_cli_parse(Rc::new(argv.into()));", "\n",
+      "    let roots: Vec<String> = v2_cli_plan_source_roots(plan.clone()).iter().cloned().collect();", "\n",
+      "    let reads = read_ingest(&roots);", "\n",
+      "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));", "\n",
+      "    let text = v2_cli_outcome_text(outcome.clone());", "\n",
+      "    match &*v2_cli_exit(outcome) \{", "\n",
+      "        ProcessExit::ExitSuccess => \{", "\n",
+      "            print!(\"\{text\}\");", "\n",
+      "            std::process::exit(0);", "\n",
+      "        \}", "\n",
+      "        ProcessExit::ExitFailure \{ code, reason \} => \{", "\n",
+      "            eprintln!(\"REFUSED: \{reason\}\");", "\n",
+      "            std::process::exit(*code as i32);", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "\}", "\n")
   }
 }
 
@@ -17093,66 +17274,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "\};", "\n",
       "use ", crate_name, "::std_measure::\{nanosecond, nanosecond_count\};", "\n",
       "\n",
-      "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> \{", "\n",
-      "    let entries = match std::fs::read_dir(dir) \{", "\n",
-      "        Ok(entries) => entries,", "\n",
-      "        Err(cause) => return Err(format!(\"could not walk source root {}: \{cause\}\", dir.display())),", "\n",
-      "    \};", "\n",
-      "    for entry in entries \{", "\n",
-      "        let entry = match entry \{", "\n",
-      "            Ok(entry) => entry,", "\n",
-      "            Err(cause) => return Err(format!(\"could not read entry under {}: \{cause\}\", dir.display())),", "\n",
-      "        \};", "\n",
-      "        let path = entry.path();", "\n",
-      "        if path.is_dir() \{", "\n",
-      "            collect_dag_paths(&path, out)?;", "\n",
-      "        \} else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) \{", "\n",
-      "            out.push(path.to_string_lossy().into_owned());", "\n",
-      "        \}", "\n",
-      "    \}", "\n",
-      "    Ok(())", "\n",
-      "\}", "\n",
-      "\n",
-      "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> \{", "\n",
-      "    if source_roots.is_empty() \{", "\n",
-      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
-      "        std::process::exit(2);", "\n",
-      "    \}", "\n",
-      "    let mut paths: Vec<String> = Vec::new();", "\n",
-      "    for root in source_roots \{", "\n",
-      "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) \{", "\n",
-      "            eprintln!(\"REFUSED: \{cause\}\");", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \}", "\n",
-      "    paths.sort();", "\n",
-      "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();", "\n",
-      "    for path in &paths \{", "\n",
-      "        let text = match std::fs::read_to_string(path) \{", "\n",
-      "            Ok(text) => text,", "\n",
-      "            Err(cause) => \{", "\n",
-      "                eprintln!(\"REFUSED: could not read \{path\}: \{cause\}\");", "\n",
-      "                std::process::exit(2);", "\n",
-      "            \}", "\n",
-      "        \};", "\n",
-      "        reads.push(Rc::new(DagSourceReadWitness \{", "\n",
-      "            source: Rc::new(Medium \{", "\n",
-      "                carried: text,", "\n",
-      "                fidelity: DecodeFidelity::Lossless,", "\n",
-      "                _phantom: std::marker::PhantomData,", "\n",
-      "            \}),", "\n",
-      "            artifact: Rc::new(Artifact \{", "\n",
-      "                kind: ArtifactKind::SourceFile,", "\n",
-      "                id: path.clone(),", "\n",
-      "                file_path: path.clone(),", "\n",
-      "            \}),", "\n",
-      "            compilation_unit: path.clone(),", "\n",
-      "            source_root: source_root_for_storage_path(path.clone()),", "\n",
-      "        \}));", "\n",
-      "    \}", "\n",
-      "    reads", "\n",
-      "\}", "\n",
-      "\n",
+      emit_host_source_root_read_rs(),
       "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String \{", "\n",
       "    match facts.get(key) \{", "\n",
       "        Some(value) => value.clone(),", "\n",
@@ -17254,6 +17376,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "\}", "\n",
       "\n",
       "fn run_census(source_roots: &[String]) \{", "\n",
+      "    if source_roots.is_empty() \{", "\n",
+      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
       "    let reads = read_ingest(source_roots);", "\n",
       "    let context = match &*native_test_context_from_ingest(Rc::new(reads.into())) \{", "\n",
       "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
@@ -17370,6 +17496,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // the load row: reading the declared roots off disk. Its own exclusive row rather than a", "\n",
       "    // field on another phase, so the IO is never mixed into a fold's number.", "\n",
       "    let load_started = Instant::now();", "\n",
+      "    if source_roots.is_empty() \{", "\n",
+      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
       "    let reads = read_ingest(source_roots);", "\n",
       "    let corpus_reads = reads.len();", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
