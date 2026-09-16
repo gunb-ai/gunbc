@@ -1319,8 +1319,8 @@ fn claim_eval_step_standing_blocks(standing: ClaimEvalStepStanding) -> Bool {
 }
 
 // THE STANDING FOR ONE IDENTITY, WHICH IS WHAT THE FLOOR DECIDES WITH. It applies the declared 4b(3)
-// drops whose population is `v2.workflow.floor_eval_step_cost_drop` (live-roadmap projection and
-// the apply-witness keystone), and applies them NARROWLY:
+// drop `gunbc.rung_drop` `roadmap_live_projection_new_witness_eval_step_cost`, whose population is
+// `v2.workflow.floor_eval_step_cost_drop`, and applies it NARROWLY:
 //
 //   - only an OVER-budget standing is rewritten; a within-budget one is returned as is, so the drop
 //     arm never claims a member needed it on a run where it did not;

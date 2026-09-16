@@ -3,7 +3,7 @@ module gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost
 import std.types { String, List, NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import v2.workflow.floor_eval_step_cost_drop { live_roadmap_projection_eval_step_cost_drop_rows }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 
 // DECLARED 4b(3) DROP (fierce-lark-661, 2026-09-14, relayed verbatim via bright-boar-435).
 // This file is the authority for the DECLARATION (rungs, reason, trigger). The POPULATION's authority
@@ -42,7 +42,7 @@ import v2.workflow.floor_eval_step_cost_drop { live_roadmap_projection_eval_step
 // cost artifact as a supplied input with a typed refusal; the floor witness cannot read the cost
 // artifact of the run executing it, and `test.claim.floor_cost_distribution_witness_test` declares
 // `SubstrateInputsOnly` for that reason.
-data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> = live_roadmap_projection_eval_step_cost_drop_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop; measured by "), m.measured_by))
+data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop; measured by "), m.measured_by))
 
 data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "roadmap_live_projection_new_witness_eval_step_cost" as NonEmptyStr,
