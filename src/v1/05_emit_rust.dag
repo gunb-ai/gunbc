@@ -14176,7 +14176,7 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
   let inner = emit_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   concat(
     "loop {\n",
-    tco_loop_iteration_lets(params: params, source_indices: scope.type_env.source_indices, depth: depth + 1, target: Rust),
+    tco_loop_iteration_lets(params: params, source_indices: scope.type_env.source_indices, depth: depth + 1),
     make_indent(level: depth + 1),
     inner,
     "\n}"

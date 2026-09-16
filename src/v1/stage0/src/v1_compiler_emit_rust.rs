@@ -32837,7 +32837,6 @@ pub fn emit_typed_tco_body(
                             params.clone(),
                             scope.type_env.clone().source_indices.clone(),
                             (depth.clone() + 1),
-                            RenderTarget::Rust,
                         ),
                     ),
                     crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),

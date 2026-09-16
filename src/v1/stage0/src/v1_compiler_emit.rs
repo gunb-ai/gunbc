@@ -3536,46 +3536,40 @@ pub fn tco_loop_iteration_lets(
     params: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
-    target: RenderTarget,
 ) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for p in params.iter().cloned() {
             __result.push({
                 let n = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
-                let authored = emit_ident(n.clone(), target.clone());
-                let slot = emit_ident(tco_loop_slot_name(n.clone()), target.clone());
-                match target.clone() {
-                    RenderTarget::Rust => v1_rt::concat(
+                let authored = emit_ident(n.clone(), RenderTarget::Rust);
+                let slot = emit_ident(tco_loop_slot_name(n.clone()), RenderTarget::Rust);
+                v1_rt::concat(
+                    v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(
-                                                crate::v1_compiler_emit_core_support::make_indent(
-                                                    depth.clone(),
-                                                ),
-                                                "#[allow(unused_mut)]\n".to_string(),
-                                            ),
                                             crate::v1_compiler_emit_core_support::make_indent(
                                                 depth.clone(),
                                             ),
+                                            "#[allow(unused_mut)]\n".to_string(),
                                         ),
-                                        "let mut ".to_string(),
+                                        crate::v1_compiler_emit_core_support::make_indent(
+                                            depth.clone(),
+                                        ),
                                     ),
-                                    authored.clone(),
+                                    "let mut ".to_string(),
                                 ),
-                                " = ".to_string(),
+                                authored.clone(),
                             ),
-                            slot.clone(),
+                            " = ".to_string(),
                         ),
-                        ";\n".to_string(),
+                        slot.clone(),
                     ),
-                    RenderTarget::Python => "".to_string(),
-                    RenderTarget::Go => "".to_string(),
-                    RenderTarget::Dag => "".to_string(),
-                }
+                    ";\n".to_string(),
+                )
             });
         }
         __result
