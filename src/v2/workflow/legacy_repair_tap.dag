@@ -39,11 +39,6 @@ import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   ReferenceDerivedCandidateRow
 }
-import gunbc.namespace_cut_subject_roster {
-  NamespaceCutSubjectIdentity,
-  subjects_deleted_at
-}
-import gunbc.namespace_cut_stage { StageXL6AtomicCutover }
 import v2.workflow.legacy_baseline_persisted_observation {
   persist_legacy_baseline,
   PersistAdmission,
@@ -64,9 +59,6 @@ type Xl1PrimaryRootTap
     }
   | Xl1PrimaryRootRefused { cause: String }
 
-fn xl1_primary_root_cut_subjects() -> List<NamespaceCutSubjectIdentity> {
-  subjects_deleted_at(stage: StageXL6AtomicCutover)
-}
 
 // ONE FOLD ADMITS THE BRIDGE ROWS OR REFUSES THEM; nothing is dropped. A row whose spelling is
 // empty is a defect of the seed encoder, and a fold that skipped it would shrink the roster and
