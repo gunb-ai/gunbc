@@ -81,8 +81,7 @@ type ServiceReadyEvidence {
 }
 
 type HealthzRefusalCause
-  = HealthzProbeFailed { detail: String }
-  | HealthzBodyUnparseable { body: String }
+  = HealthzBodyUnparseable { body: String }
   | ProcessIdentityAbsent { body: String }
   | ProcessIdentityMalformed { detail: String, body: String }
   | ProcessRevisionMismatch { expected: String, observed: String }
@@ -306,7 +305,6 @@ fn healthz_release_identity_refusal(body: String, cause: RunningReleaseUnidentif
 
 fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
   match cause {
-    HealthzProbeFailed { detail: d } => d
     ProcessIdentityAbsent { body: b } =>
       join([
         "ProcessIdentityAbsent: the unit answered /healthz but stated no release identity, so it is a",
@@ -492,7 +490,7 @@ fn live_deploy_service_ready_once_for_bundle(
 ) -> ServiceReadiness {
   match show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision) {
     ReadAbsent { reason: why } =>
-      Pending { cause: ServiceReadinessIdentityPending { cause: HealthzProbeFailed { detail: why } } }
+      Pending { cause: ServiceProbeUnanswered { detail: why } }
     ReadObserved { value: observed } =>
       observe_service_readiness_from_healthz(
         read: observed,
