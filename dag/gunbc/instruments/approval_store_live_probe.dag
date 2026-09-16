@@ -4,10 +4,14 @@ import std.types { Bool, NonEmptyStr, String, Timestamp, POST, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest, AuthorizationGranted, AuthorizationDenied, AuthorizationPending }
-import extdeps.crypto.mac { MacKey, HmacSha256 }
+import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex }
 import extdeps.tailscale.identity { tailnet_identity_of }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied }
+import gunbc.auth.approval_request_submission {
+  approval_submission_mac_key_id, sign_submission, submit_parsed_submission, submission_outcome_reason,
+  PublisherTokenUnavailable, SubmissionFiledPublisherTokenUnavailable, SubmissionAlreadyFiled, SubmissionRefused, SubmissionNotEnrolled,
+}
 import gunbc.auth.approval_decision_store {
   ApprovalKeyLoaded, approval_mac_key_id,
   StoredApprovalRequest, file_approval_request, StoreWritten, StoreSlotOccupied, StoreRefused,
@@ -137,6 +141,48 @@ fn approval_store_live_probe(root: String) -> ProcessExit {
       ExitSuccess
     } else {
       exit_failure(reason: concat("approval store live probe: a stage did not answer as the store's law requires\n", report))
+    }
+  }
+}
+
+// THE FILING SIDE OVER A REAL STORE, publish excepted: a run signs a request with the submission
+// key, the server admits it and files generation 1, and a second filing reports the slot occupied.
+// The publisher token is a fixture refusal so no message leaves this probe; the publish leg's
+// receipt is part D's first real run. A request signed with the CAPABILITY key is refused as not
+// enrolled, over the same store.
+data probe_submission_key_hex: String = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+
+fn probe_submission_key() -> MacKey {
+  MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: probe_submission_key_hex as Secret }
+}
+
+fn probe_submit(root: NonEmptyStr, signer: MacKey) -> String {
+  match sign_submission(key: signer, request: probe_request()) {
+    MacKeyMaterialNotHex { key_id: _ } => "unsigned"
+    MacSigned { tag: t } => submission_outcome_reason(o: submit_parsed_submission(
+      root: root,
+      submission_keyring: ApprovalKeyLoaded { key: probe_submission_key() },
+      capability_keyring: ApprovalKeyLoaded { key: probe_key() },
+      publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "probe fixture: no message leaves this probe" },
+      tag_hex: t.hex,
+      request: probe_request(),
+    ))
+  }
+}
+
+fn approval_submission_live_probe(root: String) -> ProcessExit {
+  if root == "" {
+    exit_failure(reason: "approval submission live probe: --arg root=<empty directory> is required")
+  } else {
+    let r = root as NonEmptyStr
+    let wrong_key = probe_submit(root: r, signer: probe_key())
+    let filed = probe_submit(root: r, signer: probe_submission_key())
+    let refiled = probe_submit(root: r, signer: probe_submission_key())
+    let report = join(["wrong-key=", wrong_key, "\nfiled=", filed, "\nrefiled=", refiled], "")
+    if contains(wrong_key, "not enrolled") && contains(filed, "publisher token is unavailable") && contains(refiled, "already filed") {
+      ExitSuccess
+    } else {
+      exit_failure(reason: concat("approval submission live probe: a stage did not answer as the filing law requires\n", report))
     }
   }
 }

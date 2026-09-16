@@ -2,6 +2,13 @@ module gunbc.roadmap_serve
 
 import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_request_submission {
+  submit_parsed_submission, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status_text,
+  parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
+  SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
+  SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionCapabilityKeyUnavailable,
+  SubmissionVerified, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled, SubmissionAuthorityRefused,
+}
 import gunbc.auth.approval_decision_store {
   approval_decision_store_root, approval_identity_trust, read_approval_keyring, redeem_over_store, store_redemption_reason,
   RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionSegmentMalformed, RedemptionEscalationNotFiled,
@@ -9,7 +16,7 @@ import gunbc.auth.approval_decision_store {
   RedemptionIdentityUntrusted, RedemptionCommitRefused,
   IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
 }
-import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -212,6 +219,8 @@ type RoadmapServeHandler
   | BeltPublishHandler
   | ApprovalConfirmPageHandler
   | ApprovalDecideHandler
+  | ApprovalSubmitHandler
+  | ApprovalStatusHandler
 
 // Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -293,6 +302,8 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/approve/\{capability\}", handler: ApprovalConfirmPageHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/approve/\{capability\}", handler: ApprovalDecideHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/approvals", handler: ApprovalSubmitHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/approvals/\{escalation_id\}", handler: ApprovalStatusHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
@@ -607,6 +618,61 @@ fn approval_decide_response(
   )
 }
 
+// THE FILING ROUTE. No identity gate here: the filer is a workflow run on a tagged node with no
+// login to present, and its enrolment is the MAC over the canonical request under the submission
+// key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
+// the body and renders the outcome, and the response never carries a link -- links go only to the
+// operator's phone.
+fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
+  let outcome = match parse_submission_envelope(text: request.body) {
+    SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { verdict: SubmissionUnreadable { detail: d } }
+    SubmissionEnvelopeParsed { tag_hex: tag, request: r } => submit_parsed_submission(
+      root: approval_decision_store_root,
+      submission_keyring: read_submission_keyring(),
+      capability_keyring: read_approval_keyring(),
+      publisher: read_publisher_token(),
+      tag_hex: tag,
+      request: r,
+    )
+  }
+  let status = match outcome {
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => 201
+    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => 502
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => 503
+    SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => 503
+    SubmissionAlreadyFiled { escalation_id: _ } => 409
+    SubmissionStoreRefused { detail: _ } => 503
+    SubmissionRefused { verdict: v } => match v {
+      SubmissionVerified { request: _ } => 500
+      SubmissionUnreadable { detail: _ } => 400
+      SubmissionKeyUnavailable { cause: _ } => 503
+      SubmissionNotEnrolled { detail: _ } => 403
+      SubmissionAuthorityRefused { requester: _, authority: _ } => 403
+    }
+    SubmissionCapabilityKeyUnavailable { cause: _ } => 503
+  }
+  serve_text_response(
+    status: status,
+    content_type: text_plain_utf8,
+    body: join(["approval submission: ", submission_outcome_reason(o: outcome), "\n"], ""),
+  )
+}
+
+// THE STATUS ROUTE a filing run polls: standing and, once decided, who and when. Nothing here is
+// a secret and nothing here decides, so it takes no identity and performs no write.
+fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+  let escalation_id = path_param_value(params: params, name: "escalation_id")
+  if escalation_id == "" {
+    serve_text_response(status: 400, content_type: text_plain_utf8, body: "approval status: escalation id is empty\n")
+  } else {
+    serve_text_response(
+      status: 200,
+      content_type: text_plain_utf8,
+      body: escalation_status_text(root: approval_decision_store_root, escalation_id: escalation_id as NonEmptyStr),
+    )
+  }
+}
+
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
   serve_dispatch_handler_response_for_instance(
     instance: srv1_live_dashboard_instance(),
@@ -768,6 +834,8 @@ fn roadmap_serve_invoke_over(
     SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
     ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params)
     ApprovalDecideHandler => approval_decide_response(request: request, params: params)
+    ApprovalSubmitHandler => approval_submit_response(request: request)
+    ApprovalStatusHandler => approval_status_response(params: params)
     SandboxEchoHandler => sandbox_echo_response(request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
