@@ -139,6 +139,7 @@ import gunbc.fleet_converge_plan {
   FullHost,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  LiveDeploy,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
   LaunchEnvironment,
@@ -378,6 +379,10 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
         observed_timers: observe_timer_members_wet(),
       },
     }
+    ScopeDecoded { scope: LiveDeploy } =>
+      FleetConvergeRequestUnobserved {
+        reason: "live-deploy observation refuses a host-only request; admit_live_deploy_converge is the constructor and requires selected instance, candidate, roster, observed population, decisions and effect plan",
+      }
     ScopeDecoded { scope: FullHost } =>
           match observe_runner_slot_members_with_provenance_wet(host: host) {
             RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }

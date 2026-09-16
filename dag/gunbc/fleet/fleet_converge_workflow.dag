@@ -117,7 +117,7 @@ import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subje
 import gunbc.host_reset_return { ResetObserverPairing }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
-import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly }
+import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, LiveDeploy }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -245,14 +245,9 @@ data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostP
 // is not encoded in the result; a carrier that separated them would be a different return type, and
 // widening one here to record a gap would be minting vocabulary ahead of the consumer that needs it.
 //
-// WHY DashboardDeploy IS STILL none. Making it a FleetConvergeScope member obliges a
-// FleetConvergeRequest variant, and that obligation is real rather than ceremonial: nine match sites
-// derive a plan's baseline text, axis lines and refusal counters per request, and those modules are
-// explicit that an absent row is itself a claim about the host. A deployment request carrying only a
-// host would render a baseline of scope-and-host that apply re-observes and compares against
-// nothing -- a gate that cannot fail, which is worse than an absent one because it would be cited as
-// the admission the deployment gained. The baseline has to be the candidate-bound total member
-// decision population, and building that is its own change.
+// DashboardDeploy selects LiveDeploy. The request is LiveDeployConverge over
+// LiveDeployConvergePayload (sole_constructor): selected instance, candidate, roster,
+// observed population, decisions and effect plan. A host-only request has no spelling.
 fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeScope? {
   match mode {
     FullHostPlan => Present { value: FullHost }
@@ -269,7 +264,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkBootstrap => none
     SparkServingApply => none
     SparkRuntimeImageProbe => none
-    DashboardDeploy => none
+    DashboardDeploy => Present { value: LiveDeploy }
     RlmLaunchDeploymentReceipt => none
     HostResetReturn => none
     RunnerHostFileObserve => none
