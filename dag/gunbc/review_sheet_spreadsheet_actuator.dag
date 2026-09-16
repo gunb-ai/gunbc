@@ -1,0 +1,212 @@
+module gunbc.review_sheet_spreadsheet_actuator
+
+import std.types { NonEmptyStr, String, Bool, Secret }
+import std.resources { Network }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy }
+import extdeps.transports.rest {
+  RestReadExchange,
+  RestMutationExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.drive
+import extdeps.google.drive { google_sheet_mime_type }
+import gunbc.review_sheet_drive_converge {
+  ReviewSpreadsheetObservation,
+  SheetObservedOne,
+  SheetAbsent,
+  SheetDuplicated,
+  SheetSearchIncomplete,
+  SheetSearchUnreadable,
+  SpreadsheetCreatePlan,
+  spreadsheet_from_file_list,
+  ensure_review_spreadsheet,
+  review_sheet_search_query,
+  review_sheet_app_property_key,
+}
+
+// THE HARDER AMBIGUITY, AND THE REASON THE KEY IS CHOSEN BEFORE THE CALL. A lost answer from
+// files.create may have minted a spreadsheet whose id this process never saw. Nothing in the
+// response recovers it, because there was no response -- so the only way back to that file is a
+// property written ONTO it at creation time, which is exactly what app_properties_key is. The
+// recovery read is therefore not a nicety: it is the whole reason a create is allowed at all.
+//
+// Membership had the same shape but a milder consequence: a lost permissions.create leaves a
+// principal that may or may not be a member, and re-reading settles it. A lost files.create leaves
+// a FILE, and without the key the next pass would find nothing and mint a second one, with the
+// first invisible and holding whatever was written to it.
+
+type SpreadsheetConvergeOutcome
+  = SpreadsheetAdopted { file_id: NonEmptyStr }
+  | SpreadsheetCreatedAndVerified { file_id: NonEmptyStr }
+  | SpreadsheetCreateUnverified { cause: NonEmptyStr }
+  | SpreadsheetConvergeRefused { cause: NonEmptyStr }
+
+fn read_spreadsheet(
+  token: Secret,
+  drive_id: NonEmptyStr,
+  app_value: NonEmptyStr,
+) -> ReviewSpreadsheetObservation uses net: Network {
+  let read = drive.Files.ListFiles(
+    access_token: token,
+    drive_id: drive_id as String,
+    query: review_sheet_search_query(app_value: app_value),
+  )
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded => spreadsheet_from_file_list(list: read.list)
+    RestExchangeStatusRefused { status, body } =>
+      SheetSearchUnreadable {
+        reason: join(["files.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      SheetSearchUnreadable {
+        reason: join(["files.list never reached Drive: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      SheetSearchUnreadable {
+        reason: join(["files.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      SheetSearchUnreadable {
+        reason: join(["files.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// THE RECOVERY READ. After a create -- successful or ambiguous -- the question is not what the
+// create said but what the drive now holds under our key. Exactly one is the answer in both cases:
+// after a success it is the file just made, and after an ambiguity it is the file the lost answer
+// made. Two is a refusal even here, because a duplicate found at this moment is a duplicate the
+// operator must adjudicate, not one this converge may quietly pick from.
+fn verify_created_spreadsheet(
+  token: Secret,
+  drive_id: NonEmptyStr,
+  app_value: NonEmptyStr,
+  create_detail: NonEmptyStr,
+) -> SpreadsheetConvergeOutcome uses net: Network {
+  match read_spreadsheet(token: token, drive_id: drive_id, app_value: app_value) {
+    SheetObservedOne { file_id: id } => SpreadsheetCreatedAndVerified { file_id: id }
+    SheetAbsent =>
+      SpreadsheetCreateUnverified {
+        cause: join(
+          ["no file carries the key after ", create_detail as String, "; the create did not take and was not refused"],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetDuplicated { file_ids: ids } =>
+      SpreadsheetConvergeRefused {
+        cause: join(
+          ["after ", create_detail as String, " two or more files carry the key (", join(ids, ", "), "); an earlier create also landed and only an operator can say which is real"],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetSearchIncomplete =>
+      SpreadsheetCreateUnverified {
+        cause: join([create_detail as String, ", and the verifying search was incomplete, so nothing may be reported as created"], "") as NonEmptyStr
+      }
+    SheetSearchUnreadable { reason: r } =>
+      SpreadsheetCreateUnverified {
+        cause: join([create_detail as String, ", and the verifying read could not settle it: ", r as String], "") as NonEmptyStr
+      }
+  }
+}
+
+fn perform_spreadsheet_create(
+  token: Secret,
+  plan: SpreadsheetCreatePlan,
+) -> SpreadsheetConvergeOutcome uses net: Network {
+  let created = drive.Files.CreateFile(
+    access_token: token,
+    name: plan.name as String,
+    mime_type: google_sheet_mime_type as String,
+    parent_id: plan.drive_id as String,
+    app_properties_key: plan.app_property_key as String,
+    app_properties_value: plan.app_property_value as String,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
+    RestExchangeSucceeded =>
+      verify_created_spreadsheet(
+        token: token,
+        drive_id: plan.drive_id,
+        app_value: plan.app_property_value,
+        create_detail: "files.create answered success" as NonEmptyStr,
+      )
+    RestExchangeCommitAmbiguous { detail } =>
+      verify_created_spreadsheet(
+        token: token,
+        drive_id: plan.drive_id,
+        app_value: plan.app_property_value,
+        create_detail: join(["files.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
+      )
+    RestExchangeStatusRefused { status, body } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.create never reached Drive: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+  }
+}
+
+fn converge_review_spreadsheet(
+  token: Secret,
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  app_value: NonEmptyStr,
+  policy: EnsurePolicy,
+) -> SpreadsheetConvergeOutcome uses net: Network {
+  let observed = read_spreadsheet(token: token, drive_id: drive_id, app_value: app_value)
+  match ensure_review_spreadsheet(
+    policy: policy,
+    observed: observed,
+    drive_id: drive_id,
+    sheet_name: sheet_name,
+    app_value: app_value,
+  ) {
+    Noop => spreadsheet_noop_outcome(observed: observed)
+    Refuse { reason: r } => SpreadsheetConvergeRefused { cause: r }
+    Apply { plan: p } => perform_spreadsheet_create(token: token, plan: p)
+  }
+}
+
+fn spreadsheet_noop_outcome(observed: ReviewSpreadsheetObservation) -> SpreadsheetConvergeOutcome {
+  match observed {
+    SheetObservedOne { file_id: id } => SpreadsheetAdopted { file_id: id }
+    SheetAbsent =>
+      SpreadsheetConvergeRefused {
+        cause: "converged on an absent spreadsheet, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
+      }
+    SheetDuplicated { file_ids: _ } =>
+      SpreadsheetConvergeRefused {
+        cause: "converged on duplicated spreadsheets, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
+      }
+    SheetSearchIncomplete =>
+      SpreadsheetConvergeRefused {
+        cause: "converged on an incomplete search, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
+      }
+    SheetSearchUnreadable { reason: r } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["converged on an unreadable search: ", r as String], "") as NonEmptyStr
+      }
+  }
+}
+
+fn spreadsheet_outcome_text(o: SpreadsheetConvergeOutcome) -> String {
+  match o {
+    SpreadsheetAdopted { file_id: id } => join(["adopted existing sheet ", id as String], "")
+    SpreadsheetCreatedAndVerified { file_id: id } =>
+      join(["created and verified by readback: ", id as String], "")
+    SpreadsheetCreateUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
+    SpreadsheetConvergeRefused { cause: c } => join(["REFUSED: ", c as String], "")
+  }
+}

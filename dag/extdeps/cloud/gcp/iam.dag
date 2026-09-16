@@ -3,7 +3,8 @@ module extdeps.cloud.gcp.iam
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpProject, GcpOperation }
+import extdeps.transports.rest { RestOutcome }
 import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import v2.std.algebra { filter, fold_list }
 import v2.std.network { GET, POST }
@@ -409,8 +410,54 @@ service gcp.IamRoles {
   }
 }
 
+// CreateProject DOES NOT RETURN A PROJECT. It returns a long-running Operation, so its response
+// establishes that the request was accepted and nothing about whether the project exists -- which
+// is why its output carries an operation name rather than a GcpProject, and why GetProject is the
+// only thing in this module that may answer "it is there". A 409 means the id is already taken,
+// which for a converge keyed on project_id is the ordinary already-converged answer rather than a
+// failure, and is left for the caller to classify because this module does not know the caller's
+// intent for an id it did not choose.
 service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
+
+  operation GetProject {
+    input { access_token: Secret, project_id: GcpProjectId }
+    output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name" }
+    readonly
+    transport rest { method: GET, path: "/v3/projects/\{project_id\}" }
+    response {
+      200 => GcpProject
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreateProject {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      display_name: NonEmptyStr
+      parent: NonEmptyStr
+    }
+    output { operation_name: String from "name", outcome: RestOutcome }
+    transport rest {
+      method: POST,
+      path: "/v3/projects",
+      body: { projectId: project_id, displayName: display_name, parent: parent }
+    }
+    response {
+      200 => GcpOperation
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
 
   operation GetIamPolicy {
     input { access_token: Secret, project_id: GcpProjectId }

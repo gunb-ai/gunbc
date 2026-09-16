@@ -1,0 +1,224 @@
+module gunbc.sheets_bootstrap_converge
+
+import std.types { NonEmptyStr, String, Bool, Secret, List, Int }
+import std.resources { Network }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.serviceusage
+import extdeps.transports.rest {
+  RestReadExchange,
+  RestMutationExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import gunbc.gcp_service_enablement {
+  ServiceEnablementObservation,
+  ServiceObservedEnabled,
+  ServiceObservedDisabled,
+  ServiceEnablementUnobserved,
+  ServiceEnablementStateForeign,
+}
+
+// THE BOOTSTRAP I PERFORMED BY HAND, MODELLED SO IT NEVER HAS TO BE PERFORMED BY HAND AGAIN.
+//
+// On 2026-09-16 the gunbai-sheets project, the Sheets and Drive API enablements, and the
+// review-sheet-writer service account were created with curl against an operator token. That
+// worked and left no trace any program can read: the repository's only record of it was a
+// conversation. This module is the repair, and the test of the repair is that running it now
+// answers already-converged for all three rather than creating anything.
+//
+// EVERY STEP IS KEYED ON A NAME THE CALLER SUPPLIES, which is what makes re-running safe: a
+// project id, a service id and a service-account email are all chosen before the call, so the
+// observation that answers "does it exist" is available before and after every write.
+
+type ProjectConvergeObservation
+  = ProjectObservedActive { project_id: GcpProjectId }
+  | ProjectObservedOtherState { project_id: GcpProjectId, state: String }
+  | ProjectAbsent
+  | ProjectUnreadable { reason: NonEmptyStr }
+
+type ProjectConvergeOutcome
+  = ProjectAlreadyPresent { project_id: GcpProjectId }
+  | ProjectCreateAccepted { operation_name: String }
+  | ProjectConvergeRefused { cause: NonEmptyStr }
+
+data gcp_project_state_active: NonEmptyStr = "ACTIVE"
+
+// A project in DELETE_REQUESTED is not absent and not usable, and it is the one state where
+// creating would silently do the wrong thing: the id is taken, so the create refuses, and the
+// converge would report a failure whose real cause is a pending deletion nobody mentioned.
+fn project_observation_from_state(project_id: GcpProjectId, state: String) -> ProjectConvergeObservation {
+  if state == (gcp_project_state_active as String) {
+    ProjectObservedActive { project_id: project_id }
+  } else {
+    ProjectObservedOtherState { project_id: project_id, state: state }
+  }
+}
+
+fn read_project(
+  token: Secret,
+  project_id: GcpProjectId,
+) -> ProjectConvergeObservation uses net: Network {
+  let read = gcp.ResourceManager.GetProject(access_token: token, project_id: project_id)
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded => project_observation_from_state(project_id: project_id, state: read.state)
+    RestExchangeStatusRefused { status, body } => project_refusal_is_absence(status: status, body: body)
+    RestExchangeUnreached { cause } =>
+      ProjectUnreadable {
+        reason: join(["projects.get never reached Resource Manager: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ProjectUnreadable {
+        reason: join(["projects.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      ProjectUnreadable {
+        reason: join(["projects.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// A 404 IS AN ANSWER AND A 403 IS NOT. Resource Manager answers 403 for a project that exists but
+// is not visible to this caller, and folding that to absence would authorize a create whose only
+// possible outcome is a 409 -- reporting a permission problem as a naming collision.
+fn project_refusal_is_absence(status: Int, body: String) -> ProjectConvergeObservation {
+  if status == 404 {
+    ProjectAbsent
+  } else {
+    ProjectUnreadable {
+      reason: join(["projects.get refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+    }
+  }
+}
+
+fn converge_project(
+  token: Secret,
+  project_id: GcpProjectId,
+  display_name: NonEmptyStr,
+  parent: NonEmptyStr,
+  policy: EnsurePolicy,
+) -> ProjectConvergeOutcome uses net: Network {
+  match read_project(token: token, project_id: project_id) {
+    ProjectObservedActive { project_id: p } => ProjectAlreadyPresent { project_id: p }
+    ProjectObservedOtherState { project_id: p, state: s } =>
+      ProjectConvergeRefused {
+        cause: join(
+          ["project ", p as String, " exists in state ", s, ", which is neither usable nor absent; creating would refuse on the taken id and report a collision for a lifecycle state"],
+          "",
+        ) as NonEmptyStr
+      }
+    ProjectUnreadable { reason: r } => ProjectConvergeRefused { cause: r }
+    ProjectAbsent => converge_absent_project(token: token, project_id: project_id, display_name: display_name, parent: parent, policy: policy)
+  }
+}
+
+fn converge_absent_project(
+  token: Secret,
+  project_id: GcpProjectId,
+  display_name: NonEmptyStr,
+  parent: NonEmptyStr,
+  policy: EnsurePolicy,
+) -> ProjectConvergeOutcome uses net: Network {
+  match policy {
+    EnsureObserveOnly =>
+      ProjectConvergeRefused {
+        cause: join(["project ", project_id as String, " is absent and policy is observe-only"], "") as NonEmptyStr
+      }
+    EnsureMayApply => perform_project_create(token: token, project_id: project_id, display_name: display_name, parent: parent)
+  }
+}
+
+// ProjectCreateAccepted is NOT ProjectAlreadyPresent, and the distance between them is the whole
+// honesty of this arm. projects.create returns a long-running Operation: the project is being made,
+// and only a later projects.get establishes that it was. A converge that reported success here
+// would be reporting an accepted request as a resource.
+fn perform_project_create(
+  token: Secret,
+  project_id: GcpProjectId,
+  display_name: NonEmptyStr,
+  parent: NonEmptyStr,
+) -> ProjectConvergeOutcome uses net: Network {
+  let created = gcp.ResourceManager.CreateProject(
+    access_token: token,
+    project_id: project_id,
+    display_name: display_name,
+    parent: parent,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
+    RestExchangeSucceeded => ProjectCreateAccepted { operation_name: created.operation_name }
+    RestExchangeStatusRefused { status, body } =>
+      ProjectConvergeRefused {
+        cause: join(["projects.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      ProjectConvergeRefused {
+        cause: join(["projects.create never reached Resource Manager, so the project may or may not be being created: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ProjectConvergeRefused {
+        cause: join(["projects.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      ProjectConvergeRefused {
+        cause: join(["projects.create left the request ambiguous; re-read projects.get before retrying: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// API ENABLEMENT. The DECISION already exists in gunbc.gcp_service_enablement; this reads the
+// observation it consumes and performs the plan it produces.
+// ---------------------------------------------------------------------------------------------
+
+type ServiceEnableOutcome
+  = ServiceAlreadyEnabled { service_id: NonEmptyStr }
+  | ServiceEnableAccepted { service_id: NonEmptyStr, operation_name: String }
+  | ServiceEnableRefused { cause: NonEmptyStr }
+
+fn read_service_enablement(
+  token: Secret,
+  project_id: GcpProjectId,
+  service_id: NonEmptyStr,
+) -> ServiceEnablementObservation uses net: Network {
+  let read = gcp.ServiceUsage.GetService(
+    access_token: token,
+    project_id: project_id,
+    service_id: service_id as String,
+  )
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded => enablement_from_state(project_id: project_id, service_id: service_id, state: read.state)
+    RestExchangeStatusRefused { status: _, body: _ } =>
+      ServiceEnablementUnobserved { project: project_id, service_id: service_id }
+    RestExchangeUnreached { cause: _ } =>
+      ServiceEnablementUnobserved { project: project_id, service_id: service_id }
+    RestExchangeUndecodable { status: _, cause: _ } =>
+      ServiceEnablementUnobserved { project: project_id, service_id: service_id }
+    RestExchangeCommitAmbiguous { detail: _ } =>
+      ServiceEnablementUnobserved { project: project_id, service_id: service_id }
+  }
+}
+
+// A state string this model does not know is ServiceEnablementStateForeign and never Disabled.
+// Disabled would authorize an enable against a service whose actual state we failed to read.
+fn enablement_from_state(
+  project_id: GcpProjectId,
+  service_id: NonEmptyStr,
+  state: String,
+) -> ServiceEnablementObservation {
+  if state == "ENABLED" {
+    ServiceObservedEnabled { project: project_id, service_id: service_id }
+  } else {
+    if state == "DISABLED" {
+      ServiceObservedDisabled { project: project_id, service_id: service_id }
+    } else {
+      ServiceEnablementStateForeign { project: project_id, service_id: service_id, raw: state }
+    }
+  }
+}

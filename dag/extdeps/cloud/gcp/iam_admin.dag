@@ -48,6 +48,24 @@ service gcp.IamAdmin {
     }
   }
 
+  operation GetServiceAccount {
+    input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
+    output { email: ServiceAccountEmail, sa_name: String from "name" }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/serviceAccounts/\{sa_email\}"
+    }
+    response {
+      200 => GcpServiceAccount
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
   operation CreateWorkloadIdentityPool {
     input {
       access_token: Secret
