@@ -245,9 +245,10 @@ data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostP
 // is not encoded in the result; a carrier that separated them would be a different return type, and
 // widening one here to record a gap would be minting vocabulary ahead of the consumer that needs it.
 //
-// DashboardDeploy selects LiveDeploy. The request is LiveDeployConverge over
-// LiveDeployConvergePayload (sole_constructor): selected instance, candidate, roster,
-// observed population, decisions and effect plan. A host-only request has no spelling.
+// DashboardDeploy selects LiveDeploy. The request coproduct arm that would carry
+// DesiredDeployment waits on C2. A host-only LiveDeploy request has no spelling: wet observation
+// cannot mint FleetConvergeRequest from hostname, and FleetConvergeRequest has no LiveDeploy
+// variant until that field's real type exists.
 fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeScope? {
   match mode {
     FullHostPlan => Present { value: FullHost }

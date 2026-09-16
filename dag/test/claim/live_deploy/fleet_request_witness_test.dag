@@ -5,37 +5,43 @@ import extdeps.crypto.hash { Digest, sha256_digest }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.live_deploy.candidate { CandidateRelease }
 import gunbc.live_deploy.member_identity {
+  ConvergedMember,
   DirectoryRoot,
+  Executable,
+  TreePublication,
+  UnitFile,
+  UnitManager,
+  ServiceProcess,
   TreePublicationIdentity, UnitFileIdentity, ManagerLoadedCurrent,
   ProcessRunningRelease,
   MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt,
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
-  MemberDecision, Create, Replace, MemberRefused,
-  decide_member, release_member_roster, plan_mutation_count,
-  HostUnobservable,
+  MemberDecision, Create,
+  release_member_roster, plan_mutation_count,
+  ReleaseTarget,
   converged_member_eq,
 }
 import gunbc.live_deploy.fleet_request {
-  admit_live_deploy_converge,
+  admit_live_deploy_member_basis,
   admit_live_deploy_supplied_decisions,
-  LiveDeployRequestAdmitted,
-  LiveDeployRequestRefused,
-  LiveDeployUnknownInstance,
+  LiveDeployBasisAdmitted,
+  LiveDeployBasisRefused,
   LiveDeployIncompletePopulation,
   LiveDeployUnreadableMember,
   LiveDeployWrongMember,
   LiveDeployForeignReplacement,
   LiveDeployEffectsRefused,
-  live_deploy_instance_for_id,
+  live_deploy_apply_shell_note,
+  live_deploy_admission_refusal_text,
+  live_deploy_host_only_request_refusal_reason,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv1_dashboard_live_id }
 import gunbc.fleet_converge_plan {
-  LiveDeployConverge,
-  fleet_converge_request_scope,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire,
   LiveDeploy,
-  fleet_converge_plan_artifact_of_request,
+  ScopeDecoded,
+  ScopeUndecodable,
 }
-import v2.std.collection { Present, Absent }
 
 fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }
 fn rev_b() -> CommitSha { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as CommitSha }
@@ -49,6 +55,14 @@ fn candidate() -> CandidateRelease {
   CandidateRelease {
     revision: rev_a(),
     expected_surface_identity: content_hash_atom(value: "surface" as NonEmptyStr),
+  }
+}
+
+fn target() -> ReleaseTarget {
+  ReleaseTarget {
+    revision: rev_a(),
+    executable: bin_a(),
+    unit: unit_name(),
   }
 }
 
@@ -73,17 +87,10 @@ fn matching_obs() -> List<ObservedMember> {
   map(release_member_roster(), m => MemberObserved { identity: desired_for(m: m) })
 }
 
-fn instance() -> HostDashboardInstance {
-  match live_deploy_instance_for_id(instance_id: srv1_dashboard_live_id as String) {
-    Present { value: i } => i
-    Absent => srv1_live_dashboard_instance()
-  }
-}
-
-fn admit_obs(observed: List<ObservedMember>) -> gunbc.live_deploy.fleet_request.LiveDeployRequestAdmission {
-  admit_live_deploy_converge(
-    instance: instance(),
+fn admit_obs(observed: List<ObservedMember>) -> gunbc.live_deploy.fleet_request.LiveDeployMemberBasisAdmission {
+  admit_live_deploy_member_basis(
     candidate: candidate(),
+    target: target(),
     observed: observed,
     desired: m => desired_for(m: m),
   )
@@ -100,20 +107,15 @@ fn one_drift(member: ConvergedMember, observed: ObservedMember) -> List<Observed
 
 test fn matching_identities_derive_zero_operations() -> Bool {
   match admit_obs(observed: matching_obs()) {
-    LiveDeployRequestRefused { cause: _ } => false
-    LiveDeployRequestAdmitted { payload: p } =>
-      plan_mutation_count(plan: p.effects) == 0
-        && match fleet_converge_request_scope(request: LiveDeployConverge { payload: p }) {
-          LiveDeploy => true
-          _ => false
-        }
+    LiveDeployBasisRefused { cause: _ } => false
+    LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) == 0
   }
 }
 
 test fn fresh_absence_derives_creates() -> Bool {
   match admit_obs(observed: one_drift(member: Executable, observed: MemberAbsentOnHost { member: Executable })) {
-    LiveDeployRequestRefused { cause: _ } => false
-    LiveDeployRequestAdmitted { payload: p } => plan_mutation_count(plan: p.effects) > 0
+    LiveDeployBasisRefused { cause: _ } => false
+    LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) > 0
   }
 }
 
@@ -122,19 +124,22 @@ test fn stale_identities_derive_replacements() -> Bool {
     member: Executable,
     observed: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } },
   )) {
-    LiveDeployRequestRefused { cause: _ } => false
-    LiveDeployRequestAdmitted { payload: p } => plan_mutation_count(plan: p.effects) > 0
+    LiveDeployBasisRefused { cause: _ } => false
+    LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) > 0
   }
 }
 
-test fn unreadable_members_refuse_rather_than_create() -> Bool {
+test fn unreadable_members_refuse_because_the_observation_was_unusable() -> Bool {
   match admit_obs(observed: one_drift(
     member: Executable,
     observed: MemberUnobservable { member: Executable, cause: "sha256sum refused" },
   )) {
-    LiveDeployRequestAdmitted { payload: _ } => false
-    LiveDeployRequestRefused { cause: c } => match c {
-      LiveDeployUnreadableMember { member: Executable, cause: _ } => true
+    LiveDeployBasisAdmitted { basis: _ } => false
+    LiveDeployBasisRefused { cause: c } => match c {
+      LiveDeployUnreadableMember { member: Executable, cause: why } =>
+        why == "sha256sum refused"
+          && string_contains(s: live_deploy_admission_refusal_text(cause: c), pattern: "sha256sum refused")
+          && !string_contains(s: live_deploy_admission_refusal_text(cause: c), pattern: "IncompletePopulation")
       _ => false
     }
   }
@@ -144,14 +149,14 @@ test fn a_decision_about_the_wrong_member_refuses() -> Bool {
   let wrong = map(release_member_roster(), m =>
     Create { member: TreePublication, to: desired_tree() })
   match admit_live_deploy_supplied_decisions(
-    instance: instance(),
     candidate: candidate(),
+    target: target(),
     observed: matching_obs(),
     desired: m => desired_for(m: m),
     decisions: wrong,
   ) {
-    LiveDeployRequestAdmitted { payload: _ } => false
-    LiveDeployRequestRefused { cause: c } => match c {
+    LiveDeployBasisAdmitted { basis: _ } => false
+    LiveDeployBasisRefused { cause: c } => match c {
       LiveDeployWrongMember { expected: Executable, found: TreePublication } => true
       _ => false
     }
@@ -160,8 +165,8 @@ test fn a_decision_about_the_wrong_member_refuses() -> Bool {
 
 test fn incomplete_member_populations_cannot_produce_an_admitted_empty_plan() -> Bool {
   match admit_obs(observed: [MemberObserved { identity: desired_bin() }]) {
-    LiveDeployRequestAdmitted { payload: p } => plan_mutation_count(plan: p.effects) != 0
-    LiveDeployRequestRefused { cause: c } => match c {
+    LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) != 0
+    LiveDeployBasisRefused { cause: c } => match c {
       LiveDeployIncompletePopulation { missing: m } => count(m) > 0
       _ => false
     }
@@ -180,30 +185,45 @@ test fn a_foreign_unowned_member_cannot_derive_destructive_replacement() -> Bool
       },
     },
   )) {
-    LiveDeployRequestAdmitted { payload: _ } => false
-    LiveDeployRequestRefused { cause: c } => match c {
+    LiveDeployBasisAdmitted { basis: _ } => false
+    LiveDeployBasisRefused { cause: c } => match c {
       LiveDeployForeignReplacement { member: UnitFile } => true
       _ => false
     }
   }
 }
 
-test fn unknown_instance_refuses() -> Bool {
-  match live_deploy_instance_for_id(instance_id: "not-a-rostered-deployment") {
-    Present { value: _ } => false
-    Absent => true
+test fn a_desired_identity_for_another_member_refuses_the_effect_plan() -> Bool {
+  match admit_live_deploy_member_basis(
+    candidate: candidate(),
+    target: target(),
+    observed: matching_obs(),
+    desired: m =>
+      match m {
+        Executable => desired_tree()
+        _ => desired_for(m: m)
+      },
+  ) {
+    LiveDeployBasisAdmitted { basis: _ } => false
+    LiveDeployBasisRefused { cause: c } => match c {
+      LiveDeployEffectsRefused { refusals: r } => count(r) > 0
+      LiveDeployUnreadableMember { member: _, cause: _ } => false
+      LiveDeployIncompletePopulation { missing: _ } => false
+      _ => false
+    }
   }
 }
 
-test fn plan_artifact_of_an_admitted_live_deploy_request_is_plan_only() -> Bool {
-  match admit_obs(observed: matching_obs()) {
-    LiveDeployRequestRefused { cause: _ } => false
-    LiveDeployRequestAdmitted { payload: p } => {
-      let artifact = fleet_converge_plan_artifact_of_request(
-        request: LiveDeployConverge { payload: p },
-        prior_generation: 0,
-      )
-      string_contains(s: artifact.apply_shell, pattern: "no host mutation")
-    }
+test fn live_deploy_scope_exists_and_no_constructible_request_inhabits_it() -> Bool {
+  match fleet_converge_scope_of_wire(wire: fleet_converge_scope_wire(scope: LiveDeploy)) {
+    ScopeUndecodable { cause: _ } => false
+    ScopeDecoded { scope: LiveDeploy } =>
+      string_contains(s: live_deploy_host_only_request_refusal_reason(), pattern: "unconstructible")
+        && string_contains(s: live_deploy_host_only_request_refusal_reason(), pattern: "host-only")
+    ScopeDecoded { scope: _ } => false
   }
+}
+
+test fn plan_only_apply_note_names_no_host_mutation() -> Bool {
+  string_contains(s: live_deploy_apply_shell_note(), pattern: "no host mutation")
 }
