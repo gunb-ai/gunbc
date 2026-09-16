@@ -55,7 +55,7 @@ fn projected_source(intent: DigitalControlIntent) -> String {
 // and not a sample of it. The reset_release column is the reason this projection needed an
 // evaluator: its equation references power_permit, which is a driven OUTPUT, so the value in each
 // row is computed through that signal's own equation rather than read from the row.
-data expected_interlock_table: String = "| conditioned_good | fault | power_permit | reset_release |\n| ---: | ---: | ---: | ---: |\n| 0 | 0 | 0 | 0 |\n| 1 | 0 | 1 | 1 |\n| 0 | 1 | 0 | 0 |\n| 1 | 1 | 0 | 0 |\n"
+data expected_interlock_table: String = "| conditioned_good | fault | power_permit | reset_release |\n| --: | --: | --: | --: |\n| 0 | 0 | 0 | 0 |\n| 1 | 0 | 1 | 1 |\n| 0 | 1 | 0 | 0 |\n| 1 | 1 | 0 | 0 |"
 
 test fn w_the_production_board_emits_its_exhaustive_truth_table() -> Bool {
   projected_source(intent: board_power_interlock_intent) == expected_interlock_table
@@ -105,8 +105,8 @@ fn unnegated_intent() -> DigitalControlIntent {
 test fn w_dropping_the_negation_changes_the_table_answers() -> Bool {
   let t = projected_source(intent: unnegated_intent())
   t != expected_interlock_table
-    && string_contains(s: t, pattern: "| 1 | 1 | 1 | 1 |\n")
-    && !string_contains(s: t, pattern: "| 1 | 0 | 1 | 1 |\n")
+    && string_contains(s: t, pattern: "| 1 | 1 | 1 | 1 |")
+    && !string_contains(s: t, pattern: "| 1 | 0 | 1 | 1 |")
 }
 
 // AN OUTPUT NOTHING DRIVES REFUSES, rather than being reported as 0. A fabricated 0 would be

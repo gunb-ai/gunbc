@@ -21,7 +21,11 @@ import gunbc.demo.semantic_system_readout {
   workflow_line_for,
   workflow_line_text,
 }
-import gunbc.generated_artifact { GitignoreArtifact, WitnessFloorYamlArtifact }
+import gunbc.generated_artifact { GitattributesArtifact, GitignoreArtifact, WitnessFloorYamlArtifact, artifact_directory }
+import gunbc.generated_artifact_observation {
+  observe_directory_listings,
+  observe_generated_artifact_with,
+}
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactCommittedAbsent,
   GeneratedArtifactObservation,
@@ -94,8 +98,24 @@ test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
 // write and the exit code it derives -- because that is a host effect rather than a fact about the
 // readout, and a claim that wrote a file to assert an exit code would be testing the transport. Its
 // executing consumer is the entry point, run by hand.
-test fn w_the_live_dogfooding_line_executes_the_real_observer() -> Bool {
-  match workflow_line().standing {
+// THE ROUTE IS EXERCISED ON THE CHEAPEST ARTIFACT THAT PROVES IT, which is the enrolment refusal's
+// own first remedy: reduce what the witness reaches for. The route this claim exists to establish is
+// listing -> committed read folded through filesystem_read_outcome -> adorned projection through the
+// same bytes boundary -> the readout's standing. Nothing about that route is specific to
+// witnesses.yml; what IS specific to witnesses.yml is the 82KB workflow projection, which is where
+// the 1357ms measured on gunbc#11457's floor run went. .gitattributes is a full registry member --
+// location, commit policy, generator -- at 5.6KB, so the same fold runs end to end for a fraction of
+// the projection.
+//
+// WHAT THIS DOES NOT WEAKEN: the production line still observes witnesses.yml, unchanged. This claim
+// asserts the OBSERVER ROUTE executes and reaches a live verdict; the supplied-arm claims above
+// assert what each observation MEANS; and readout_sections() -- which does fold the real workflow
+// line -- is claimed below. Deleting observe_generated_artifact_with from the readout fails this,
+// which is the pairing obligation reviews 66755 and 66759 asked for.
+test fn w_the_observer_route_executes_and_reaches_a_live_verdict() -> Bool {
+  let a = GitattributesArtifact
+  let rows = observe_directory_listings(directories: [artifact_directory(a: a)])
+  match workflow_line_for(observation: observe_generated_artifact_with(a: a, rows: rows)).standing {
     LiveVerdict { holds: h } => h
     ReadoutRefused { cause: _ } => false
     RecordedRunJoined { inputs_match_today: _ } => false

@@ -23,6 +23,14 @@ import product.compute_board.admission {
   admitted_article,
 }
 import product.compute_board.article { BoardArticleIdentity }
+import std.markdown {
+  AlignRight,
+  MarkdownAlignment,
+  MarkdownTableCell,
+  MarkdownTableRow,
+  TextInline,
+}
+import extdeps.languages.markdown { commonmark_gfm_spellings, md_table }
 import v2.std.optional { Absent, Present }
 
 // A THIRD TARGET FOR THE SAME DIGITAL INTENT, ADDED AS ONE PROJECTION AND NOT AS A CONVERTER. The
@@ -192,7 +200,7 @@ fn bit(v: Bool) -> String {
 // Verilog projection's lexical admission, and it is the only spelling rule this target has: the
 // logical name is used directly, because Markdown imposes no identifier grammar.
 fn name_is_renderable(name: SignalName) -> Bool {
-  !string_contains(s: (name as String), pattern: "|")
+  !string_contains(s: (name as String), pattern: commonmark_gfm_spellings.table_pipe)
 }
 
 fn first_unrenderable(signals: List<DigitalSignal>) -> SignalName? {
@@ -204,16 +212,22 @@ fn first_unrenderable(signals: List<DigitalSignal>) -> SignalName? {
   })
 }
 
-fn header_cells(signals: List<DigitalSignal>) -> String {
-  fold(signals, init: "|", f: fn(acc, s) { concat(acc, concat(concat(" ", (s.name as String)), " |")) })
+fn text_cell(text: String) -> MarkdownTableCell {
+  MarkdownTableCell { inlines: [TextInline { text: text }] }
 }
 
-fn divider_cells(signals: List<DigitalSignal>) -> String {
-  fold(signals, init: "|", f: fn(acc, _s) { concat(acc, " ---: |") })
+fn header_row(signals: List<DigitalSignal>) -> MarkdownTableRow {
+  MarkdownTableRow {
+    cells: map(signals, s => text_cell(text: (s.name as String)))
+  }
+}
+
+fn right_alignments(signals: List<DigitalSignal>) -> List<MarkdownAlignment> {
+  map(signals, _s => AlignRight)
 }
 
 type RowRender
-  = RowRendered { text: String }
+  = RowRendered { row: MarkdownTableRow }
   | RowRefused { cause: TruthTableRefusal }
 
 // THE INPUT CELLS COME FROM THE ROW ITSELF, WHICH IS WHY THERE IS NO MISS TO HANDLE (review 66788).
@@ -235,38 +249,38 @@ fn row_render(
   assignments: List<SignalAssignment>
 ) -> RowRender {
   let depth = list_length(items: intent.equations) + 1
-  let input_text = fold(assignments, init: "|", f: fn(acc, a) {
-    concat(acc, concat(concat(" ", bit(v: a.value)), " |"))
-  })
-  fold(outputs, init: RowRendered { text: input_text }, f: fn(acc, s) {
+  let input_cells = map(assignments, a => text_cell(text: bit(v: a.value)))
+  fold(outputs, init: RowRendered { row: MarkdownTableRow { cells: input_cells } }, f: fn(acc, s) {
     match acc {
       RowRefused { cause: c } => RowRefused { cause: c }
-      RowRendered { text: t } =>
+      RowRendered { row: r } =>
         match eval_signal(intent: intent, name: s.name, assignments: assignments, depth: depth) {
           EvalRefused { cause: c } => RowRefused { cause: c }
-          EvalValue { value: v } => RowRendered { text: concat(t, concat(concat(" ", bit(v: v)), " |")) }
+          EvalValue { value: v } =>
+            RowRendered {
+              row: MarkdownTableRow { cells: concat(r.cells, [text_cell(text: bit(v: v))]) }
+            }
         }
     }
   })
 }
 
 type TableRender
-  = TableRendered { text: String }
+  = TableRendered { rows: List<MarkdownTableRow> }
   | TableRefused { cause: TruthTableRefusal }
 
 fn render_truth_table_rows(
   intent: DigitalControlIntent,
   outputs: List<DigitalSignal>,
-  rows: List<List<SignalAssignment>>,
-  init: String
+  rows: List<List<SignalAssignment>>
 ) -> TableRender {
-  fold(rows, init: TableRendered { text: init }, f: fn(acc, assignments) {
+  fold(rows, init: TableRendered { rows: [] }, f: fn(acc, assignments) {
     match acc {
       TableRefused { cause: c } => TableRefused { cause: c }
-      TableRendered { text: t } =>
+      TableRendered { rows: acc_rows } =>
         match row_render(intent: intent, outputs: outputs, assignments: assignments) {
           RowRefused { cause: c } => TableRefused { cause: c }
-          RowRendered { text: row } => TableRendered { text: concat(t, concat(row, "\n")) }
+          RowRendered { row: r } => TableRendered { rows: concat(acc_rows, [r]) }
         }
     }
   })
@@ -290,20 +304,24 @@ fn project_intent_to_truth_table(
           cause: TruthTableInputPopulationTooWide { inputs: list_length(items: inputs) }
         }
       } else {
-        let head = concat(
-          concat(header_cells(signals: concat(inputs, outputs)), "\n"),
-          concat(divider_cells(signals: concat(inputs, outputs)), "\n")
-        )
+        let columns = concat(inputs, outputs)
         match render_truth_table_rows(
           intent: intent,
           outputs: outputs,
-          rows: input_rows(inputs: inputs),
-          init: head
+          rows: input_rows(inputs: inputs)
         ) {
           TableRefused { cause: c } => TruthTableRefused { cause: c }
-          TableRendered { text: t } =>
+          TableRendered { rows: body } =>
             TruthTableProjected {
-              receipt: TruthTableEmissionReceipt { source_article: article_identity, source: t }
+              receipt: TruthTableEmissionReceipt {
+                source_article: article_identity,
+                source: md_table(
+                  header: header_row(signals: columns),
+                  alignments: right_alignments(signals: columns),
+                  rows: body,
+                  sp: commonmark_gfm_spellings
+                )
+              }
             }
         }
       }
