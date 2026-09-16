@@ -449,10 +449,20 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
 // asked for rather than assumed: measured by constructing the model configuration inside the
 // derived image on srv9 2026-09-13 -- no engine, no weights -- where zai-org/GLM-5.3-Flash
 // reports runner_type=generate, is_hybrid=True and is_prefix_caching_supported=True.
+//
+// max_num_seqs IS A CHOSEN BOUND, NOT A MEASURED ONE, and the row says so rather than dressing the
+// number as a capacity reading. It stood at 1 under the launch policy "admit one until the runtime
+// sequence capacity and the KV-resident capacity are both measured". On 2026-09-16 the operator
+// replaced that posture ahead of any measurement: 16, on the stated basis that over-admission is
+// preferable to under-admission while the measurement is unfunded ("better to have too many than
+// too little"). The live evidence agrees the floor was far below the hardware: one sequence at a
+// 262k window occupied 7% of the KV cache. This number is THIS arm's -- it may not travel to
+// another model, quantisation or KV layout -- and the measurement that would replace a chosen
+// bound with a derived one (concurrent-request KV occupancy) remains the standing trigger.
 data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: 262144,
   max_num_batched_tokens: 2048,
-  max_num_seqs: 1,
+  max_num_seqs: 16,
   decided_gpu_memory_basis_points: 8400,
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
   speculation_enabled: false,

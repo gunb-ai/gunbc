@@ -75,15 +75,17 @@ test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool
 // the two routes carry ceilings from DIFFERENT AUTHORITIES. That property got STRONGER when group B's
 // route stopped naming the canary: group A carries a ceiling somebody DECIDED for the route, and group
 // B now carries the sequence bound its engine was LAUNCHED with, so the two are different VARIANTS and
-// not merely different numbers. The counts happen to coincide at 1, which is exactly why the variant
-// check below carries the discrimination and the counts alone would not.
+// not merely different numbers. The counts once coincided at 1, which is exactly why the variant
+// check below carries the discrimination and the counts alone would not; group B's count has since
+// moved to the operator's chosen 16 (gunbc.spark.serving_arm glm_native_initial_profile), and the
+// variant check is still what keeps the two routes' ceilings from being confused.
 fn w_ceiling(group: FabricGroup) -> Nat {
   serving_route_turn_ceiling_count(c: serving_route_ceiling(group: group))
 }
 
 test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measurement() -> Bool {
   w_ceiling(group: FabricGroupA) == 4
-    && w_ceiling(group: FabricGroupB) == 1
+    && w_ceiling(group: FabricGroupB) == 16
     && w_ceiling(group: FabricGroupA) != w_ceiling(group: FabricGroupB)
     && (match serving_route_ceiling(group: FabricGroupA) {
           CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>

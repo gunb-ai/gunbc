@@ -16,6 +16,7 @@ import gunbc.spark.managed_access_bootstrap {
   spark_managed_grant_disclosure_standing,
   spark_managed_grant_install_basis,
   spark_install_basis_accepts_risk_for,
+  spark_install_basis_accepting_risk_for,
   spark_managed_grant_population,
   spark_managed_grant_wire,
   spark_managed_grant_sudoers_command,
@@ -162,7 +163,7 @@ type SparkGrantInstallAdmission
 
 fn spark_grant_install_admission(
   standing: SparkManagedGrantStanding,
-  basis: SparkGrantInstallBasis,
+  basis: List<SparkGrantInstallBasis>,
 ) -> SparkGrantInstallAdmission {
   match standing {
     GrantHeld { grant: _ } => GrantInstallNotNeeded
@@ -171,10 +172,9 @@ fn spark_grant_install_admission(
       match spark_managed_grant_disclosure_standing(grant: g) {
         GrantReturnsNoHostData => GrantInstallAdmitted { grant: g }
         GrantDisclosureUnestablished { obligation: o } =>
-          if spark_install_basis_accepts_risk_for(basis: basis, grant: g) {
-            GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: basis }
-          } else {
-            GrantInstallWithheld { grant: g, obligation: o }
+          match spark_install_basis_accepting_risk_for(bases: basis, grant: g) {
+            Absent => GrantInstallWithheld { grant: g, obligation: o }
+            Present { value: b } => GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: b }
           }
       }
   }
@@ -182,7 +182,7 @@ fn spark_grant_install_admission(
 
 fn spark_grant_install_admissions_under(
   outcome: SparkGrantOutcome,
-  basis: SparkGrantInstallBasis,
+  basis: List<SparkGrantInstallBasis>,
 ) -> List<SparkGrantInstallAdmission> {
   map(spark_managed_grant_standings(outcome: outcome), s =>
     spark_grant_install_admission(standing: s, basis: basis))
@@ -190,7 +190,7 @@ fn spark_grant_install_admissions_under(
 
 fn spark_managed_grants_to_install_under(
   outcome: SparkGrantOutcome,
-  basis: SparkGrantInstallBasis,
+  basis: List<SparkGrantInstallBasis>,
 ) -> List<SparkManagedGrant> {
   flat_map(spark_grant_install_admissions_under(outcome: outcome, basis: basis), a =>
     match a {
@@ -208,7 +208,7 @@ fn spark_managed_grants_to_install(outcome: SparkGrantOutcome) -> List<SparkMana
 
 fn spark_managed_grants_withheld_under(
   outcome: SparkGrantOutcome,
-  basis: SparkGrantInstallBasis,
+  basis: List<SparkGrantInstallBasis>,
 ) -> List<SparkGrantInstallAdmission> {
   flat_map(spark_grant_install_admissions_under(outcome: outcome, basis: basis), a =>
     match a {
