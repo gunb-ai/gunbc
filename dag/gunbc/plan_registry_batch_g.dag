@@ -23,6 +23,7 @@ import gunbc.plans.discrete_cost_derivation { discrete_cost_derivation_plan }
 import gunbc.plans.floor_claim_cost_distribution { floor_claim_cost_distribution_plan }
 import gunbc.plans.v2_complexity_capability_parity { v2_complexity_capability_parity_plan }
 import gunbc.plans.joint_incompatibility_claim_join { joint_incompatibility_claim_join_plan }
+import gunbc.plans.blackjack_onboarding { blackjack_onboarding_plan }
 import gunbc.plans.demand_engine_program { demand_engine_program_plan }
 
 data batch_g_plans: List<Plan> = [
@@ -48,5 +49,6 @@ data batch_g_plans: List<Plan> = [
   import_namespace_program_plan,
   floor_claim_cost_distribution_plan,
   joint_incompatibility_claim_join_plan,
-  demand_engine_program_plan
+  blackjack_onboarding_plan,
+  demand_engine_program_plan,
 ]

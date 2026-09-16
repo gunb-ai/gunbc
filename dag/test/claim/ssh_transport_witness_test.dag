@@ -1,11 +1,7 @@
 module test.claim.ssh_transport_witness
 
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
 import std.types { Bool, NonEmptyStr }
-import std.measure { byte_size_count }
-import gunbc.live_deploy.emit { live_deploy_apply_script_for, RevisionBoundAtEmission }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
+import std.types { Bool, NonEmptyStr }
 import extdeps.ssh.mock_corpus { ssh_session_mock_case_exec_script }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -13,17 +9,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 
-// FLIPPED with belt B (PR 6940), same move as test.claim.shell_exec_run_argv_embed_witness: the
-// live apply script no longer embeds a frozen program (server.js is gone; gunbc serve renders
-// live), so the pre-B exceedance receipt is dissolved and the clause becomes the regression wall —
-// apply must stay UNDER the argv embed budget. The ssh ExecScript stdin transport stays pinned by
-// the sibling witnesses regardless of script size.
-
-test fn witness_apply_script_stays_under_argv_embed_budget() -> Bool {
-  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())))
-  let budget = byte_size_count(b: host_exec_arg_max_strlen)
-  script_len > 0 && script_len < budget
-}
+// THE ARGV-EMBED BUDGET CLAIM LIVED HERE TOO AND IT WAS THE SAME CLAIM, NOT A SIBLING OF ONE.
+//
+// `witness_apply_script_stays_under_argv_embed_budget` stood in this module and in
+// test.claim.shell_exec_run_argv_embed_witness as BYTE-IDENTICAL bodies — same spec, same plan,
+// same `host_exec_arg_max_strlen` budget, same conjunction — and its own annotation said so
+// ("same move as test.claim.shell_exec_run_argv_embed_witness"). That is one fact with two
+// authorities, which DESIGN section 3 forbids, and the required floor measured the duplication
+// exactly: run 34888954422 records both at 194,291 eval steps and 962ms, to the step.
+//
+// IT IS DELETED HERE AND KEPT THERE, because the fact is about the APPLY EMISSION against the
+// exec argv limit — `extdeps.exec.exec_arg_limit`, which that module already owns as its subject —
+// and nothing in it is ssh-specific. What IS ssh-specific is the transport shape, and that is
+// what the two claims below assert: the ExecScript operation is enrolled in the mock corpus, and
+// its remote receiver is `bash -s` rather than argv embedding. Neither depends on script size,
+// which is precisely why the budget claim added nothing here: an ssh transport that streams the
+// script over stdin is correct for arbitrary sizes.
+//
+// NOTHING IN THE DELETED ROW'S HISTORY IS DROPPED WITH IT. Its receipt — that pre-belt-B the live
+// apply genuinely EXCEEDED MAX_ARG_STRLEN because it embedded the emitted server.js, which is what
+// made the stdin transport load-bearing, and that belt B (PR 6940) dissolved that premise and
+// flipped the clause into a regression wall — is carried in full on the surviving row.
 
 test fn witness_exec_script_mock_enrolled() -> Bool {
   ssh_session_mock_case_exec_script.operation == "ExecScript"

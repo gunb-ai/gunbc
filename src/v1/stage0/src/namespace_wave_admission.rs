@@ -1925,96 +1925,34 @@ pub struct TransitionAdmission {
 /// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
 /// runner hardware observation, DGX PXE and PXE-rescue consumers.
 ///
-/// gunbc#11306 repository-visibility unification (2026-09-13). Six rows for one move: the
-/// spellings `RepositoryVisibility`, `PublicRepository` and `PrivateRepository` relocate from
-/// `extdeps.github.actions_token` to `extdeps.github.repository`. The concept was FORKED, which is
-/// what made the move necessary rather than cosmetic: `actions_token` declared
-/// `RepositoryVisibility = PublicRepository | PrivateRepository` for the fork-token rule while
-/// `hosted_runners` declared `RepoVisibility = PublicRepo | PrivateRepo` for the runner hardware
-/// tables -- one upstream fact under two spellings, free to disagree, and neither reusable by a
-/// third consumer that needed to ask whether a repository is world-readable. GitHub's repository
-/// resource owns `visibility` as a field, so the resource gets the module and the field gets the
-/// type.
-///
-/// THREE SPELLINGS ACROSS TWO MODULES, ENUMERATED BY EXACT IDENTITY. Every row is `TargetChanged`
-/// and the claim is this roster's header claim verbatim: a spelling authored on both sides now
-/// resolves to a different module, and NOT ONE of them changes which declaration the spelling
-/// denotes -- the coproduct and its two arms move unedited, so a binding whose meaning had actually
-/// moved would refuse on its own row rather than hide under these. The membership half of the same
-/// motion is reported separately and auto-admitted as `ExplicitlyEvaluatedZeroDelta`. The rows are
-/// enumerated rather than patterned over the module pair, because a pattern would admit a genuine
-/// rebind that happened to land in the same two modules. `hosted_runners` produces no row here: its
-/// arms were spelled `PublicRepo`/`PrivateRepo` and are new names at the head, not rebinds.
-///
-/// DISSOLVE-ON: gunbc#11306 merging. Once the relocation is on main, base and head of every
-/// pull_request build both carry it, the `TargetChanged` deltas stop being producible, all six
-/// report stale and refuse every unrelated PR. The deletion PR is authored and linked from #11306
-/// BEFORE this lands, so the trigger has a waiting actuator rather than a sentence. Remove them by
-/// that trigger, not by reinterpreting it.
-///
 /// ALSO STANDING: CONVERGENCE-ONE C2 `deployment_spec_srv1` home
 /// `gunbc.live_deploy.spec` → `gunbc.live_deploy.desired`. Trigger: this PR merges.
 const C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL: &str =
     "CONVERGENCE-ONE C2 deployment_spec_srv1 home gunbc.live_deploy.desired";
 
+// gunbc#11177: process_identity_eq moves unchanged from gunbc.runner_connectivity_recovery
+// to gunbc.build_cache_instance beside ProcessIdentity. CI run 34702135326 measured exactly
+// these two TargetChanged bindings. Remove these permissions once consumed at the base;
+// retain runner_connectivity_recovery_witness_test and runner_canary_receipt_witness_test
+// as the executed evidence that the relocation preserves the process identity contract.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "repository visibility unifies onto its resource module (gunbc#11306)",
+        label: "gunbc#11177 process_identity_eq: gunbc.runner_connectivity_recovery -> gunbc.build_cache_instance",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.github.actions_token",
-            in_declaration: "ActionsRepositoryPolicyObservation",
-            spelling: "RepositoryVisibility",
-            expected_candidates: &["extdeps.github.repository"],
+            module: "gunbc.runner_connectivity_recovery",
+            in_declaration: "decide_wedged_runner_connectivity_action",
+            spelling: "process_identity_eq",
+            expected_candidates: &["gunbc.build_cache_instance"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "repository visibility unifies onto its resource module (gunbc#11306)",
+        label: "gunbc#11177 process_identity_eq: gunbc.runner_connectivity_recovery -> gunbc.build_cache_instance",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.github.actions_token",
-            in_declaration: "fork_write_tokens_reachable",
-            spelling: "PrivateRepository",
-            expected_candidates: &["extdeps.github.repository"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "repository visibility unifies onto its resource module (gunbc#11306)",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.github.actions_token",
-            in_declaration: "fork_write_tokens_reachable",
-            spelling: "PublicRepository",
-            expected_candidates: &["extdeps.github.repository"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "repository visibility unifies onto its resource module (gunbc#11306)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.actions_job_grant_witness",
-            in_declaration: "fork_policy_allows",
-            spelling: "PrivateRepository",
-            expected_candidates: &["extdeps.github.repository"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "repository visibility unifies onto its resource module (gunbc#11306)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.actions_job_grant_witness",
-            in_declaration: "fork_policy_denies",
-            spelling: "PrivateRepository",
-            expected_candidates: &["extdeps.github.repository"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "repository visibility unifies onto its resource module (gunbc#11306)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.actions_job_grant_witness",
-            in_declaration: "public_fork_policy_allows",
-            spelling: "PublicRepository",
-            expected_candidates: &["extdeps.github.repository"],
+            module: "gunbc.runner_connectivity_recovery",
+            in_declaration: "verify_incarnation_replace_postcondition",
+            spelling: "process_identity_eq",
+            expected_candidates: &["gunbc.build_cache_instance"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

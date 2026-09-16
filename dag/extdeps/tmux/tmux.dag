@@ -203,6 +203,30 @@ fn tmux_session_list_stderr_is_no_server(stderr: String) -> Bool {
     )
 }
 
+// tmux has-session exits 1 both when the named session is absent (`can't find session: <name>`,
+// cmd-find.c) and when no server is running (client.c spellings above). Both are observed ABSENCE,
+// not an unobservable service; every other nonzero exit stays unknowable. This predicate is the
+// ONE absence classifier; classify_tmux_has_session is the total observation that consumes it.
+fn tmux_has_session_stderr_is_absent(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "can't find session")
+    || tmux_session_list_stderr_is_no_server(stderr: stderr)
+}
+
+type TmuxHasSessionObservation
+  = TmuxHasSessionPresent
+  | TmuxHasSessionAbsent
+  | TmuxHasSessionUnknowable { stderr: String }
+
+fn classify_tmux_has_session(exit_ok: Bool, stderr: String) -> TmuxHasSessionObservation {
+  if exit_ok {
+    TmuxHasSessionPresent
+  } else if tmux_has_session_stderr_is_absent(stderr: stderr) {
+    TmuxHasSessionAbsent
+  } else {
+    TmuxHasSessionUnknowable { stderr: stderr }
+  }
+}
+
 fn classify_tmux_session_list(
   exit_ok: Bool,
   stdout: String,
