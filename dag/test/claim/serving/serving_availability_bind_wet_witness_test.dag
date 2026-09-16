@@ -29,7 +29,7 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_declared_unit_artifact_unavailable_obligation,
 }
 import gunbc.harness.harness_seat {
-  HarnessCandidates, HarnessTurnSubject, harness_add_serving_candidate, AnyAdmittedModel,
+  HarnessCandidates, HarnessTurnSubject, harness_add_serving_candidate, harness_declared_unit_digest, AnyAdmittedModel,
   harness_turn_subject, harness_turn_request,
 }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
@@ -99,6 +99,7 @@ fn w_place() -> HarnessCandidates {
     seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
     now: 1789400000,
     access: FleetSshContextRefused { cause: "wet witness supplies a refused fleet context so incarnation is unobserved" },
+    declared_unit: harness_declared_unit_digest(group: FabricGroupA),
   )
 }
 
