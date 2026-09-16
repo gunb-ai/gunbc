@@ -424,15 +424,20 @@ type FaithfulComponentRealization
 // defect that holds whatever the population's closure is, and reporting it as "evidence missing" would hide
 // a found defect behind an unfound one. So each arm is judged first and only its Faithful result is gated
 // -- the residual removes the ability to CONCLUDE faithfulness, not the ability to detect its absence.
+//
+// THE DOWNGRADED VERDICT KEEPS THE SUBJECT THE JUDGED VERDICT NAMED. An earlier form took the subject as a
+// second parameter beside the verdict, which made a relabel authorable: a caller passing a verdict about A
+// with a subject argument of B would get an obligation filed against B. Both call sites passed matching
+// values, but the helper is a declaration anyone may import, and an invariant two arguments have to agree on
+// is one a single argument cannot break.
 fn gate_faithful_on_membership(
   verdict: FaithfulComponentRealization,
-  subject: DeclarationRef,
   residual: List<NonEmptyStr>,
 ) -> FaithfulComponentRealization {
   if length(residual) == 0 { verdict } else {
     match verdict {
-      RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } =>
-        RealizationEvidenceMissing { subject: subject, obligation: faithful_membership_obligation(residual: residual) }
+      RealizationFaithful { subject: s, artifact_identity: _, evidence: _ } =>
+        RealizationEvidenceMissing { subject: s, obligation: faithful_membership_obligation(residual: residual) }
       RealizationUnfaithful { subject: u, defects: d } => RealizationUnfaithful { subject: u, defects: d }
       RealizationEvidenceMissing { subject: m, obligation: o } => RealizationEvidenceMissing { subject: m, obligation: o }
     }
@@ -466,15 +471,9 @@ fn realize_component(
         match evidence {
           FaithfulnessUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
           IdenticalToPublishedEncoding =>
-            gate_faithful_on_membership(
-              verdict: realize_by_identity(sub: sub, artifact: artifact),
-              subject: sub.identity,
-              residual: rs)
+            gate_faithful_on_membership(verdict: realize_by_identity(sub: sub, artifact: artifact), residual: rs)
           StructurePreservingTransform { relation: r } =>
-            gate_faithful_on_membership(
-              verdict: realize_by_relation(sub: sub, artifact: artifact, r: r),
-              subject: sub.identity,
-              residual: rs)
+            gate_faithful_on_membership(verdict: realize_by_relation(sub: sub, artifact: artifact, r: r), residual: rs)
         }
       }
   }
