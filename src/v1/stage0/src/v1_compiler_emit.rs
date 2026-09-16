@@ -882,9 +882,9 @@ pub fn has_nested_records_node(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut n = __tco_loop_n.clone();
+        let mut n = __tco_loop_n;
         #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices.clone();
+        let mut source_indices = __tco_loop_source_indices;
         let is_product = (n.connective.clone() == Connective::Conj);
         let is_coproduct = (n.connective.clone() == Connective::Disj);
         if is_product.clone() {
@@ -3570,22 +3570,10 @@ pub fn tco_loop_iteration_lets(
                             ),
                             slot.clone(),
                         ),
-                        ".clone();\n".to_string(),
+                        ";\n".to_string(),
                     ),
-                    RenderTarget::Python => v1_rt::concat(
-                        v1_rt::concat(
-                            crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
-                            emit_let_binding(n.clone(), slot.clone(), RenderTarget::Python),
-                        ),
-                        "\n".to_string(),
-                    ),
-                    RenderTarget::Go => v1_rt::concat(
-                        v1_rt::concat(
-                            crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
-                            emit_let_binding(n.clone(), slot.clone(), RenderTarget::Go),
-                        ),
-                        "\n".to_string(),
-                    ),
+                    RenderTarget::Python => "".to_string(),
+                    RenderTarget::Go => "".to_string(),
                     RenderTarget::Dag => "".to_string(),
                 }
             });
@@ -3692,23 +3680,23 @@ pub fn emit_shared_tco_expr(
 ) -> String {
     loop {
         #[allow(unused_mut)]
-        let mut frame = __tco_loop_frame.clone();
+        let mut frame = __tco_loop_frame;
         #[allow(unused_mut)]
-        let mut fn_name = __tco_loop_fn_name.clone();
+        let mut fn_name = __tco_loop_fn_name;
         #[allow(unused_mut)]
-        let mut emit_self_call_reassign = __tco_loop_emit_self_call_reassign.clone();
+        let mut emit_self_call_reassign = __tco_loop_emit_self_call_reassign;
         #[allow(unused_mut)]
-        let mut emit_non_self_call = __tco_loop_emit_non_self_call.clone();
+        let mut emit_non_self_call = __tco_loop_emit_non_self_call;
         #[allow(unused_mut)]
-        let mut emit_if = __tco_loop_emit_if.clone();
+        let mut emit_if = __tco_loop_emit_if;
         #[allow(unused_mut)]
-        let mut emit_match = __tco_loop_emit_match.clone();
+        let mut emit_match = __tco_loop_emit_match;
         #[allow(unused_mut)]
-        let mut emit_let = __tco_loop_emit_let.clone();
+        let mut emit_let = __tco_loop_emit_let;
         #[allow(unused_mut)]
-        let mut emit_block = __tco_loop_emit_block.clone();
+        let mut emit_block = __tco_loop_emit_block;
         #[allow(unused_mut)]
-        let mut emit_default_return = __tco_loop_emit_default_return.clone();
+        let mut emit_default_return = __tco_loop_emit_default_return;
         let si = frame.scope.clone().type_env.clone().source_indices.clone();
         match (*frame.expr.clone().expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
@@ -4836,11 +4824,11 @@ pub fn suffix_escape_collides_with_reserved_chain(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut name = __tco_loop_name.clone();
+        let mut name = __tco_loop_name;
         #[allow(unused_mut)]
-        let mut suffix = __tco_loop_suffix.clone();
+        let mut suffix = __tco_loop_suffix;
         #[allow(unused_mut)]
-        let mut keywords = __tco_loop_keywords.clone();
+        let mut keywords = __tco_loop_keywords;
         let suffix_len = v1_rt::string_length(&suffix);
         let name_len = v1_rt::string_length(&name);
         if ((suffix_len.clone() == 0) || (name_len.clone() < suffix_len.clone())) {
@@ -4923,9 +4911,9 @@ pub fn hex_digit_char(d: i64) -> String {
 pub fn int_to_upper_hex_inner(mut __tco_loop_n: i64, mut __tco_loop_acc: String) -> String {
     loop {
         #[allow(unused_mut)]
-        let mut n = __tco_loop_n.clone();
+        let mut n = __tco_loop_n;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         if (n.clone() == 0) {
             break acc.clone();
         } else {
@@ -4958,17 +4946,17 @@ pub fn escape_emoji_codepoints_inner(
 ) -> String {
     loop {
         #[allow(unused_mut)]
-        let mut s = __tco_loop_s.clone();
+        let mut s = __tco_loop_s;
         #[allow(unused_mut)]
-        let mut pos = __tco_loop_pos.clone();
+        let mut pos = __tco_loop_pos;
         #[allow(unused_mut)]
-        let mut n = __tco_loop_n.clone();
+        let mut n = __tco_loop_n;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         #[allow(unused_mut)]
-        let mut prefix = __tco_loop_prefix.clone();
+        let mut prefix = __tco_loop_prefix;
         #[allow(unused_mut)]
-        let mut suffix = __tco_loop_suffix.clone();
+        let mut suffix = __tco_loop_suffix;
         if (pos.clone() >= n.clone()) {
             break acc.clone();
         } else {
@@ -5941,13 +5929,13 @@ pub fn transparent_representation_root(
 ) -> Rc<Node> {
     loop {
         #[allow(unused_mut)]
-        let mut n = __tco_loop_n.clone();
+        let mut n = __tco_loop_n;
         #[allow(unused_mut)]
-        let mut env = __tco_loop_env.clone();
+        let mut env = __tco_loop_env;
         #[allow(unused_mut)]
-        let mut target = __tco_loop_target.clone();
+        let mut target = __tco_loop_target;
         #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel.clone();
+        let mut fuel = __tco_loop_fuel;
         if (fuel.clone() <= 0) {
             break n.clone();
         } else {
@@ -6550,17 +6538,17 @@ pub fn emit_block_stmts_shared(
 ) -> Rc<BlockEmitState> {
     loop {
         #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining.clone();
+        let mut remaining = __tco_loop_remaining;
         #[allow(unused_mut)]
-        let mut text = __tco_loop_text.clone();
+        let mut text = __tco_loop_text;
         #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope.clone();
+        let mut scope = __tco_loop_scope;
         #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth.clone();
+        let mut depth = __tco_loop_depth;
         #[allow(unused_mut)]
-        let mut prepend_indent = __tco_loop_prepend_indent.clone();
+        let mut prepend_indent = __tco_loop_prepend_indent;
         #[allow(unused_mut)]
-        let mut emit_expr = __tco_loop_emit_expr.clone();
+        let mut emit_expr = __tco_loop_emit_expr;
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(BlockEmitState {
@@ -6615,17 +6603,17 @@ pub fn emit_init_block_stmts_shared(
 ) -> Rc<BlockEmitState> {
     loop {
         #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining.clone();
+        let mut remaining = __tco_loop_remaining;
         #[allow(unused_mut)]
-        let mut text = __tco_loop_text.clone();
+        let mut text = __tco_loop_text;
         #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope.clone();
+        let mut scope = __tco_loop_scope;
         #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth.clone();
+        let mut depth = __tco_loop_depth;
         #[allow(unused_mut)]
-        let mut prepend_indent = __tco_loop_prepend_indent.clone();
+        let mut prepend_indent = __tco_loop_prepend_indent;
         #[allow(unused_mut)]
-        let mut emit_expr = __tco_loop_emit_expr.clone();
+        let mut emit_expr = __tco_loop_emit_expr;
         match remaining.clone().first().cloned() {
             std::option::Option::None => {
                 break Rc::new(BlockEmitState {

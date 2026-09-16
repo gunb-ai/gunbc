@@ -67,9 +67,9 @@ pub fn oci_encoded_digest_syntax_valid(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut text = __tco_loop_text.clone();
+        let mut text = __tco_loop_text;
         #[allow(unused_mut)]
-        let mut index = __tco_loop_index.clone();
+        let mut index = __tco_loop_index;
         if (index.clone() >= v1_rt::string_length(&text)) {
             break (v1_rt::string_length(&text) > 0);
         } else {
@@ -115,11 +115,11 @@ pub fn oci_digest_algorithm_syntax_valid(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut text = __tco_loop_text.clone();
+        let mut text = __tco_loop_text;
         #[allow(unused_mut)]
-        let mut index = __tco_loop_index.clone();
+        let mut index = __tco_loop_index;
         #[allow(unused_mut)]
-        let mut in_component = __tco_loop_in_component.clone();
+        let mut in_component = __tco_loop_in_component;
         if (index.clone() >= v1_rt::string_length(&text)) {
             break in_component.clone();
         } else {

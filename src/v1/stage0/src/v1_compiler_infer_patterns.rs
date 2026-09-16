@@ -237,9 +237,9 @@ pub fn expand_scrut_type_for_variant_lookup(
 ) -> Rc<Node> {
     loop {
         #[allow(unused_mut)]
-        let mut scrut_node = __tco_loop_scrut_node.clone();
+        let mut scrut_node = __tco_loop_scrut_node;
         #[allow(unused_mut)]
-        let mut env = __tco_loop_env.clone();
+        let mut env = __tco_loop_env;
         let name =
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);

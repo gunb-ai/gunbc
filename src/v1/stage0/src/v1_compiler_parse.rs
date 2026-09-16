@@ -689,13 +689,13 @@ pub fn mint_parsed_string_part_nodes(
 ) -> Rc<ParsedNodesResult> {
     loop {
         #[allow(unused_mut)]
-        let mut parts = __tco_loop_parts.clone();
+        let mut parts = __tco_loop_parts;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut span = __tco_loop_span.clone();
+        let mut span = __tco_loop_span;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         match parts.clone().first().cloned() {
             Some(part) => {
                 let minted = mint_parsed_node_identity(ctx.clone());
@@ -2095,7 +2095,7 @@ pub fn is_name_keyword(token: Rc<Token>, env: Rc<ParseEnvironment>) -> bool {
 pub fn skip_newlines(mut __tco_loop_tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         match token_stream_first(tokens.clone()) {
             Some(t) => {
                 if is_newline_shape(t.shape.clone()) {
@@ -2621,13 +2621,13 @@ pub fn parse_dotted_ident_rest(
 ) -> Rc<NameResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         #[allow(unused_mut)]
-        let mut span = __tco_loop_span.clone();
+        let mut span = __tco_loop_span;
         #[allow(unused_mut)]
-        let mut env = __tco_loop_env.clone();
+        let mut env = __tco_loop_env;
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectDot))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = expect_name(__ec.clone(), env.clone());
@@ -3756,11 +3756,11 @@ pub fn parse_imports_acc(
 ) -> Rc<ImportsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
             let r = parse_import(tokens.clone(), ctx.clone());
@@ -3800,13 +3800,13 @@ pub fn last_consumed_token_end(
 ) -> Option<i64> {
     loop {
         #[allow(unused_mut)]
-        let mut all = __tco_loop_all.clone();
+        let mut all = __tco_loop_all;
         #[allow(unused_mut)]
-        let mut from = __tco_loop_from.clone();
+        let mut from = __tco_loop_from;
         #[allow(unused_mut)]
-        let mut until = __tco_loop_until.clone();
+        let mut until = __tco_loop_until;
         #[allow(unused_mut)]
-        let mut end = __tco_loop_end.clone();
+        let mut end = __tco_loop_end;
         if (from.clone() >= until.clone()) {
             break end.clone();
         } else {
@@ -3861,11 +3861,11 @@ pub fn parse_import_statement_extents_acc(
 ) -> Rc<ParsedImportStatements> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
             let before = tokens.pos.clone();
@@ -3982,11 +3982,11 @@ pub fn parse_items_acc(
 ) -> Rc<ItemsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ItemsResult {
@@ -4151,11 +4151,11 @@ pub fn parse_import_names_acc(
 ) -> Rc<NamesResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_rbrace(token_stream_first(tokens.clone())) {
             break Rc::new(NamesResult {
@@ -5603,11 +5603,11 @@ pub fn parse_predicates_acc(
 ) -> Rc<PredsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         let r = parse_single_predicate(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(PredsResult {
@@ -6302,11 +6302,11 @@ pub fn parse_more_variants_acc(
 ) -> Rc<VariantsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectPipe))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
@@ -6603,11 +6603,11 @@ pub fn parse_callable_param_types(
 ) -> Rc<ParamsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         let r = parse_type_expr(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
@@ -6790,11 +6790,11 @@ pub fn collect_type_param_names(
 ) -> Rc<TypeParamsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut params = __tco_loop_params.clone();
+        let mut params = __tco_loop_params;
         if tok_is_ident(token_stream_first(tokens.clone())) {
             let r = expect_ident(tokens.clone());
             let span = r.span.clone();
@@ -6854,11 +6854,11 @@ pub fn collect_type_args(
 ) -> Rc<TypeArgsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut args = __tco_loop_args.clone();
+        let mut args = __tco_loop_args;
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_type_angle_arg(__ec.clone(), ctx.clone());
@@ -6949,11 +6949,11 @@ pub fn parse_field_list_acc(
 ) -> Rc<FieldsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if ((tok_is_rbrace(tok.clone()) || tok_is_rparen(tok.clone())) || tok_is_eof(tok.clone())) {
@@ -7552,11 +7552,11 @@ pub fn parse_uses_list_acc(
 ) -> Rc<UsesResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         let r = parse_uses_entry(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(UsesResult {
@@ -7732,11 +7732,11 @@ pub fn parse_resource_config_acc(
 ) -> Rc<ResConfigResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         if tok_is_rparen(token_stream_first(tokens.clone())) {
             return Rc::new(ResConfigResult {
                 fields: acc.clone(),
@@ -8058,15 +8058,15 @@ pub fn parse_service_entries(
 ) -> Rc<ServiceBodyResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut config = __tco_loop_config.clone();
+        let mut config = __tco_loop_config;
         #[allow(unused_mut)]
-        let mut transport = __tco_loop_transport.clone();
+        let mut transport = __tco_loop_transport;
         #[allow(unused_mut)]
-        let mut operations = __tco_loop_operations.clone();
+        let mut operations = __tco_loop_operations;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_rbrace(tok.clone()) || tok_is_eof(tok.clone())) {
@@ -8273,19 +8273,19 @@ pub fn parse_config_fields(
 ) -> Rc<ConfigResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut endpoint = __tco_loop_endpoint.clone();
+        let mut endpoint = __tco_loop_endpoint;
         #[allow(unused_mut)]
-        let mut auth = __tco_loop_auth.clone();
+        let mut auth = __tco_loop_auth;
         #[allow(unused_mut)]
-        let mut auth_input = __tco_loop_auth_input.clone();
+        let mut auth_input = __tco_loop_auth_input;
         #[allow(unused_mut)]
-        let mut auth_source = __tco_loop_auth_source.clone();
+        let mut auth_source = __tco_loop_auth_source;
         #[allow(unused_mut)]
-        let mut rate_limit = __tco_loop_rate_limit.clone();
+        let mut rate_limit = __tco_loop_rate_limit;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -8675,23 +8675,23 @@ pub fn parse_rest_fields(
 ) -> Rc<TransportResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut base_url = __tco_loop_base_url.clone();
+        let mut base_url = __tco_loop_base_url;
         #[allow(unused_mut)]
-        let mut method = __tco_loop_method.clone();
+        let mut method = __tco_loop_method;
         #[allow(unused_mut)]
-        let mut path_template = __tco_loop_path_template.clone();
+        let mut path_template = __tco_loop_path_template;
         #[allow(unused_mut)]
-        let mut query = __tco_loop_query.clone();
+        let mut query = __tco_loop_query;
         #[allow(unused_mut)]
-        let mut request_body = __tco_loop_request_body.clone();
+        let mut request_body = __tco_loop_request_body;
         #[allow(unused_mut)]
-        let mut response_format = __tco_loop_response_format.clone();
+        let mut response_format = __tco_loop_response_format;
         #[allow(unused_mut)]
-        let mut headers = __tco_loop_headers.clone();
+        let mut headers = __tco_loop_headers;
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -9015,13 +9015,13 @@ pub fn parse_shell_fields(
 ) -> Rc<TransportResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut argv = __tco_loop_argv.clone();
+        let mut argv = __tco_loop_argv;
         #[allow(unused_mut)]
-        let mut stdin = __tco_loop_stdin.clone();
+        let mut stdin = __tco_loop_stdin;
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -9181,13 +9181,13 @@ pub fn parse_file_fields(
 ) -> Rc<TransportResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut base_path = __tco_loop_base_path.clone();
+        let mut base_path = __tco_loop_base_path;
         #[allow(unused_mut)]
-        let mut verb = __tco_loop_verb.clone();
+        let mut verb = __tco_loop_verb;
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -9588,23 +9588,23 @@ pub fn parse_op_body_entries(
 ) -> Rc<OpBodyResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut inputs = __tco_loop_inputs.clone();
+        let mut inputs = __tco_loop_inputs;
         #[allow(unused_mut)]
-        let mut outputs = __tco_loop_outputs.clone();
+        let mut outputs = __tco_loop_outputs;
         #[allow(unused_mut)]
-        let mut modifier_props = __tco_loop_modifier_props.clone();
+        let mut modifier_props = __tco_loop_modifier_props;
         #[allow(unused_mut)]
-        let mut transport = __tco_loop_transport.clone();
+        let mut transport = __tco_loop_transport;
         #[allow(unused_mut)]
-        let mut exit_props = __tco_loop_exit_props.clone();
+        let mut exit_props = __tco_loop_exit_props;
         #[allow(unused_mut)]
-        let mut response_props = __tco_loop_response_props.clone();
+        let mut response_props = __tco_loop_response_props;
         #[allow(unused_mut)]
-        let mut mock_props = __tco_loop_mock_props.clone();
+        let mut mock_props = __tco_loop_mock_props;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let span = token_span(tok.clone());
@@ -10226,9 +10226,9 @@ pub fn int_to_string_acc(
 ) -> Rc<Vec<String>> {
     loop {
         #[allow(unused_mut)]
-        let mut value = __tco_loop_value.clone();
+        let mut value = __tco_loop_value;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         if (value.clone() == 0) {
             break acc.clone();
         } else {
@@ -10387,11 +10387,11 @@ pub fn parse_exit_entries_acc(
 ) -> Rc<ExitEntriesResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -10490,11 +10490,11 @@ pub fn parse_operation_modifiers_acc(
 ) -> Rc<ModsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         let kw = tok_keyword_text(token_stream_first(tokens.clone()));
         if (kw.clone() == "idempotent".to_string()) {
             let minted = mint_parsed_bool_property(
@@ -10767,11 +10767,11 @@ pub fn parse_response_entries_acc(
 ) -> Rc<RespEntriesResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -10929,11 +10929,11 @@ pub fn parse_mock_response_entries_acc(
 ) -> Rc<MockEntriesResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -11190,13 +11190,13 @@ pub fn parse_resource_entries(
 ) -> Rc<ResPropResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut properties = __tco_loop_properties.clone();
+        let mut properties = __tco_loop_properties;
         #[allow(unused_mut)]
-        let mut capabilities = __tco_loop_capabilities.clone();
+        let mut capabilities = __tco_loop_capabilities;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let span = token_span(tok.clone());
@@ -11642,13 +11642,13 @@ pub fn parse_io_blocks_acc(
 ) -> Rc<IOResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut inputs = __tco_loop_inputs.clone();
+        let mut inputs = __tco_loop_inputs;
         #[allow(unused_mut)]
-        let mut outputs = __tco_loop_outputs.clone();
+        let mut outputs = __tco_loop_outputs;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -12139,11 +12139,11 @@ pub fn parse_param_list_acc(
 ) -> Rc<ParamsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         let r = parse_param(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
@@ -12332,17 +12332,17 @@ pub fn heads_skip_data_value_tokens_at(
 ) -> Rc<HeadsDataValueSkipResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut offset = __tco_loop_offset.clone();
+        let mut offset = __tco_loop_offset;
         #[allow(unused_mut)]
-        let mut braces = __tco_loop_braces.clone();
+        let mut braces = __tco_loop_braces;
         #[allow(unused_mut)]
-        let mut parens = __tco_loop_parens.clone();
+        let mut parens = __tco_loop_parens;
         #[allow(unused_mut)]
-        let mut brackets = __tco_loop_brackets.clone();
+        let mut brackets = __tco_loop_brackets;
         #[allow(unused_mut)]
-        let mut seen = __tco_loop_seen.clone();
+        let mut seen = __tco_loop_seen;
         let tok = token_stream_peek(tokens.clone(), offset.clone());
         if tok_is_eof(tok.clone()) {
             if (((seen.clone() && (braces.clone() == 0)) && (parens.clone() == 0))
@@ -12478,9 +12478,9 @@ pub fn heads_skip_block_tokens(
 ) -> Rc<HeadsBlockSkipResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth.clone();
+        let mut depth = __tco_loop_depth;
         if (depth.clone() == 0) {
             return Rc::new(HeadsBlockSkipResult {
                 tokens: tokens.clone(),
@@ -12664,11 +12664,11 @@ pub fn parse_stmts_acc(
 ) -> Rc<StmtsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -13030,13 +13030,13 @@ pub fn parse_expr_loop(
 ) -> Rc<ExprResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut lhs = __tco_loop_lhs.clone();
+        let mut lhs = __tco_loop_lhs;
         #[allow(unused_mut)]
-        let mut min_bp = __tco_loop_min_bp.clone();
+        let mut min_bp = __tco_loop_min_bp;
         ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ExprResult {
@@ -13291,15 +13291,15 @@ pub fn parse_pipe_callee_rest(
 ) -> Rc<PipeCalleeResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut spine = __tco_loop_spine.clone();
+        let mut spine = __tco_loop_spine;
         #[allow(unused_mut)]
-        let mut name = __tco_loop_name.clone();
+        let mut name = __tco_loop_name;
         #[allow(unused_mut)]
-        let mut name_span = __tco_loop_name_span.clone();
+        let mut name_span = __tco_loop_name_span;
         if tok_is_dot(token_stream_first(tokens.clone())) {
             let r = expect_name(token_stream_advance(tokens.clone(), 1), ctx.env.clone());
             if has_err(r.err.clone()) {
@@ -13897,11 +13897,11 @@ pub fn parse_lambda_stmts(
 ) -> Rc<StmtsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if ((tok_is_rparen(tok.clone()) || tok_is_rbrace(tok.clone())) || tok_is_eof(tok.clone())) {
@@ -14353,11 +14353,11 @@ pub fn parse_constraint_list(
 ) -> Rc<ConstraintsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let is_constraint_kw = match tok.clone() {
@@ -14627,11 +14627,11 @@ pub fn parse_arg_list_acc(
 ) -> Rc<ArgsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let r = parse_single_arg(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -14949,13 +14949,13 @@ pub fn parse_expr_loop_no_brace(
 ) -> Rc<ExprResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut lhs = __tco_loop_lhs.clone();
+        let mut lhs = __tco_loop_lhs;
         #[allow(unused_mut)]
-        let mut min_bp = __tco_loop_min_bp.clone();
+        let mut min_bp = __tco_loop_min_bp;
         ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_eof(tok.clone()) || tok_is_lbrace(tok.clone())) {
@@ -15236,11 +15236,11 @@ pub fn parse_match_arms_acc(
 ) -> Rc<ArmsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -15402,11 +15402,11 @@ pub fn parse_match_arm_stmts(
 ) -> Rc<StmtsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -15455,9 +15455,9 @@ pub fn arm_start_after_qualified_path(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut offset = __tco_loop_offset.clone();
+        let mut offset = __tco_loop_offset;
         if !peek_is_expected_at(
             tokens.clone(),
             offset.clone(),
@@ -15576,9 +15576,9 @@ pub fn scan_for_fat_arrow_after_braces(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining.clone();
+        let mut remaining = __tco_loop_remaining;
         #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth.clone();
+        let mut depth = __tco_loop_depth;
         if (depth.clone() <= 0) {
             match token_stream_first(remaining.clone()) {
                 Some(t) => {
@@ -15894,11 +15894,11 @@ pub fn parse_variant_bindings_brace_acc(
 ) -> Rc<BindingsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -16472,11 +16472,11 @@ pub fn parse_field_init_list_acc(
 ) -> Rc<FieldInitsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -16730,13 +16730,13 @@ pub fn parse_expr_list_until_acc(
 ) -> Rc<ExprsResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut end_expected = __tco_loop_end_expected.clone();
+        let mut end_expected = __tco_loop_end_expected;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let at_end_tag = match token_stream_first(tokens.clone()) {
             Some(t) => token_matches_expected(t.clone(), end_expected.clone()),
@@ -16957,11 +16957,11 @@ pub fn collect_fn_lambda_params(
 ) -> Rc<IdentCollectResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_rparen(token_stream_first(tokens.clone())) {
             break Rc::new(IdentCollectResult {
@@ -17076,11 +17076,11 @@ pub fn collect_lambda_idents(
 ) -> Rc<IdentCollectResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc.clone();
+        let mut acc = __tco_loop_acc;
         if tok_is_ident(token_stream_first(tokens.clone())) {
             let tok = token_stream_first(tokens.clone());
             let minted = mint_parsed_node_identity(ctx.clone());
@@ -17191,13 +17191,13 @@ pub fn parse_interp_parts(
 ) -> Rc<ExprResult> {
     loop {
         #[allow(unused_mut)]
-        let mut tokens = __tco_loop_tokens.clone();
+        let mut tokens = __tco_loop_tokens;
         #[allow(unused_mut)]
-        let mut ctx = __tco_loop_ctx.clone();
+        let mut ctx = __tco_loop_ctx;
         #[allow(unused_mut)]
-        let mut parts = __tco_loop_parts.clone();
+        let mut parts = __tco_loop_parts;
         #[allow(unused_mut)]
-        let mut span = __tco_loop_span.clone();
+        let mut span = __tco_loop_span;
         let r = parse_expr(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {

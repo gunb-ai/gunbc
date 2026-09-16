@@ -1473,17 +1473,17 @@ pub fn infer_parser_always_advancing_members_worklist(
 ) -> Rc<HashMap<String, bool>> {
     loop {
         #[allow(unused_mut)]
-        let mut queue = __tco_loop_queue.clone();
+        let mut queue = __tco_loop_queue;
         #[allow(unused_mut)]
-        let mut func_index = __tco_loop_func_index.clone();
+        let mut func_index = __tco_loop_func_index;
         #[allow(unused_mut)]
-        let mut parser_name_set = __tco_loop_parser_name_set.clone();
+        let mut parser_name_set = __tco_loop_parser_name_set;
         #[allow(unused_mut)]
-        let mut reverse_graph = __tco_loop_reverse_graph.clone();
+        let mut reverse_graph = __tco_loop_reverse_graph;
         #[allow(unused_mut)]
-        let mut proven = __tco_loop_proven.clone();
+        let mut proven = __tco_loop_proven;
         #[allow(unused_mut)]
-        let mut si = __tco_loop_si.clone();
+        let mut si = __tco_loop_si;
         match queue.clone().first().cloned() {
             Some(name) => {
                 let rest = Rc::new(
@@ -2505,11 +2505,11 @@ pub fn expr_descending_witness_source(
 ) -> Option<String> {
     loop {
         #[allow(unused_mut)]
-        let mut expr = __tco_loop_expr.clone();
+        let mut expr = __tco_loop_expr;
         #[allow(unused_mut)]
-        let mut descending_witness_names = __tco_loop_descending_witness_names.clone();
+        let mut descending_witness_names = __tco_loop_descending_witness_names;
         #[allow(unused_mut)]
-        let mut si = __tco_loop_si.clone();
+        let mut si = __tco_loop_si;
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: _, ..
@@ -2844,13 +2844,13 @@ pub fn is_children_of_param(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut expr = __tco_loop_expr.clone();
+        let mut expr = __tco_loop_expr;
         #[allow(unused_mut)]
-        let mut param_name = __tco_loop_param_name.clone();
+        let mut param_name = __tco_loop_param_name;
         #[allow(unused_mut)]
-        let mut vars = __tco_loop_vars.clone();
+        let mut vars = __tco_loop_vars;
         #[allow(unused_mut)]
-        let mut si = __tco_loop_si.clone();
+        let mut si = __tco_loop_si;
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprFieldAccess { .. } => {
                 let base = crate::v1_std_core::field_access_base(expr.clone());
@@ -3173,13 +3173,13 @@ pub fn is_tokens_input_expr(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut expr = __tco_loop_expr.clone();
+        let mut expr = __tco_loop_expr;
         #[allow(unused_mut)]
-        let mut param_name = __tco_loop_param_name.clone();
+        let mut param_name = __tco_loop_param_name;
         #[allow(unused_mut)]
-        let mut vars = __tco_loop_vars.clone();
+        let mut vars = __tco_loop_vars;
         #[allow(unused_mut)]
-        let mut si = __tco_loop_si.clone();
+        let mut si = __tco_loop_si;
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: _, ..
@@ -4352,7 +4352,7 @@ pub fn all_self_calls_descend_inc(
 pub fn unwrap_to_match(mut __tco_loop_body: Rc<Node>) -> Option<Rc<Node>> {
     loop {
         #[allow(unused_mut)]
-        let mut body = __tco_loop_body.clone();
+        let mut body = __tco_loop_body;
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprMatch => {
                 break Some(body.clone());
@@ -6033,7 +6033,7 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
 pub fn extract_unknown_reason(mut __tco_loop_expr: Rc<CostExpr>) -> String {
     loop {
         #[allow(unused_mut)]
-        let mut expr = __tco_loop_expr.clone();
+        let mut expr = __tco_loop_expr;
         match (*expr.clone()).clone() {
             CostExpr::CostUnknown { reason: r, .. } => {
                 break r.clone();
@@ -8170,9 +8170,9 @@ pub fn receiver_size_var(
 ) -> Rc<SizeExpr> {
     loop {
         #[allow(unused_mut)]
-        let mut recv = __tco_loop_recv.clone();
+        let mut recv = __tco_loop_recv;
         #[allow(unused_mut)]
-        let mut si = __tco_loop_si.clone();
+        let mut si = __tco_loop_si;
         match (*recv.expr_data.clone()).clone() {
             ExprData::ExprVar { .. } => {
                 break Rc::new(SizeExpr::SizeLen {

@@ -648,11 +648,11 @@ pub fn expand_transitive_services_loop(
 ) -> Rc<ServiceEffectAnalysis> {
     loop {
         #[allow(unused_mut)]
-        let mut module_callees = __tco_loop_module_callees.clone();
+        let mut module_callees = __tco_loop_module_callees;
         #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry.clone();
+        let mut registry = __tco_loop_registry;
         #[allow(unused_mut)]
-        let mut remaining_passes = __tco_loop_remaining_passes.clone();
+        let mut remaining_passes = __tco_loop_remaining_passes;
         let before = total_service_count(registry.clone());
         let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
         let after = total_service_count(next.clone());

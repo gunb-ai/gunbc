@@ -1128,13 +1128,13 @@ pub fn ceil_log_iter(
 ) -> Option<i64> {
     loop {
         #[allow(unused_mut)]
-        let mut base = __tco_loop_base.clone();
+        let mut base = __tco_loop_base;
         #[allow(unused_mut)]
-        let mut argument = __tco_loop_argument.clone();
+        let mut argument = __tco_loop_argument;
         #[allow(unused_mut)]
-        let mut k = __tco_loop_k.clone();
+        let mut k = __tco_loop_k;
         #[allow(unused_mut)]
-        let mut power = __tco_loop_power.clone();
+        let mut power = __tco_loop_power;
         if (power.clone() >= argument.clone()) {
             break Some(k.clone());
         } else {

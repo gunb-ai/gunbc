@@ -2088,7 +2088,7 @@ pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
 pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
     loop {
         #[allow(unused_mut)]
-        let mut n = __tco_loop_n.clone();
+        let mut n = __tco_loop_n;
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
             && has_structure.clone())
@@ -2299,11 +2299,11 @@ pub fn node_type_compatible(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut left = __tco_loop_left.clone();
+        let mut left = __tco_loop_left;
         #[allow(unused_mut)]
-        let mut right = __tco_loop_right.clone();
+        let mut right = __tco_loop_right;
         #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices.clone();
+        let mut source_indices = __tco_loop_source_indices;
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
@@ -3109,11 +3109,11 @@ pub fn first_matching_algebra_field(
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
         #[allow(unused_mut)]
-        let mut n = __tco_loop_n.clone();
+        let mut n = __tco_loop_n;
         #[allow(unused_mut)]
-        let mut candidates = __tco_loop_candidates.clone();
+        let mut candidates = __tco_loop_candidates;
         #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices.clone();
+        let mut source_indices = __tco_loop_source_indices;
         match candidates.clone().first().cloned() {
             std::option::Option::None => {
                 break std::option::Option::None;

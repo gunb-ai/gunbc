@@ -807,9 +807,9 @@ pub fn string_list_eq(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut left = __tco_loop_left.clone();
+        let mut left = __tco_loop_left;
         #[allow(unused_mut)]
-        let mut right = __tco_loop_right.clone();
+        let mut right = __tco_loop_right;
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
         } else {
@@ -842,9 +842,9 @@ pub fn schedule_witness_entry_list_eq(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut left = __tco_loop_left.clone();
+        let mut left = __tco_loop_left;
         #[allow(unused_mut)]
-        let mut right = __tco_loop_right.clone();
+        let mut right = __tco_loop_right;
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
         } else {
@@ -939,9 +939,9 @@ pub fn runnable_batch_eq(
 ) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut left = __tco_loop_left.clone();
+        let mut left = __tco_loop_left;
         #[allow(unused_mut)]
-        let mut right = __tco_loop_right.clone();
+        let mut right = __tco_loop_right;
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
         } else {
@@ -967,9 +967,9 @@ continue;
 pub fn schedule_eq(mut __tco_loop_left: Schedule, mut __tco_loop_right: Schedule) -> bool {
     loop {
         #[allow(unused_mut)]
-        let mut left = __tco_loop_left.clone();
+        let mut left = __tco_loop_left;
         #[allow(unused_mut)]
-        let mut right = __tco_loop_right.clone();
+        let mut right = __tco_loop_right;
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
         } else {

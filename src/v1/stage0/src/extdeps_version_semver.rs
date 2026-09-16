@@ -89,9 +89,9 @@ pub fn semver_compare_identifiers(
 ) -> Ordering {
     loop {
         #[allow(unused_mut)]
-        let mut a = __tco_loop_a.clone();
+        let mut a = __tco_loop_a;
         #[allow(unused_mut)]
-        let mut b = __tco_loop_b.clone();
+        let mut b = __tco_loop_b;
         if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
             break Ordering::Equal;
         } else {
