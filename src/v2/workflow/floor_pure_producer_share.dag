@@ -409,7 +409,33 @@ import v2.std.collection { List }
 // the three test files> [witness] lines, and this run's [floor-shared-fill] ledger, which must
 // show the eight fills landing at preparation with disposition=Stored and the former interrupted
 // claims serving hits.
+// THE TWO LIVE-DEPLOY RENDERS EARN THEIR ROWS ON THE FLOOR'S OWN COST RECEIPT, AND THE SHAPE IS THE
+// ONE THIS ROSTER'S HEADER DESCRIBES: one module-constant value read by many claims of one file,
+// recomputed once per claim frame.
+//
+// `test.claim.live_deploy.emit` holds thirteen claims that read the rendered apply program and five
+// that read the rendered retract. Both renders are module-scope `data` behind a nullary fn, so the
+// value is already shared WITHIN a claim -- what is not shared is across claim frames, and the floor
+// bills the whole render to whichever reader it happens to plan. The instrument is the required
+// floor's per-claim cost artifact: on run 34927164902 the planned retract reader carried 86,034 eval
+// steps and on run 34931137687 the planned apply reader carried 205,451, against a per-claim ceiling
+// of 72,300. Neither claim is expensive; the RENDER is, and which claim pays it is decided by the
+// diff rather than by the tree.
+//
+// WHY THIS RATHER THAN NARROWING THE CLAIMS. Eleven of the eighteen were already moved to producer
+// seams in this lane and that was right, because their subjects are narrower than the program. The
+// remainder are not: `apply_script_stays_within_ci_runner_grants` asserts that EVERY emitted command
+// falls inside the ci-runner's sudo grants, and `witness_apply_emits_no_embedded_preflight_and_only_sudoers`
+// asserts an absence over the whole program. Narrowing those would delete the claim rather than
+// relocate it, which is the coverage-by-illusion this repository already refuses.
+//
+// WARM RATHER THAN CLAIM-FORCED: both producers are nullary and preparation-forceable, so the fill
+// lands outside the fold and is billed to preparation, and no claim pays it at all. Both values are
+// `String` -- the portable shape total reification is least likely to refuse. A warm row that fails
+// to store stops the line, which is the correct outcome if that ever stops being true.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "test.claim.live_deploy.emit.witness_apply_script",
+  "test.claim.live_deploy.emit.witness_retract_script",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",

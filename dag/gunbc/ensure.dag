@@ -1,6 +1,11 @@
 module gunbc.ensure
 
 import std.types { String, Bool, NonEmptyStr }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+}
 import std.upsert_decision {
   UpsertDecision,
   Noop,
@@ -8,23 +13,41 @@ import std.upsert_decision {
   Refuse,
 }
 import std.realization_reconcile {
+  ShowEffectiveRead,
   ReadObserved,
   ReadAbsent,
   Grounds,
   DoesNotGround,
+  Grounding,
   ReconciledEffect,
-  reconcile_effect,
   Application,
 }
+import gunbc.host_convergence_protocol { reconcile_from_read_attempt }
 
 type EnsurePolicy
   = EnsureObserveOnly
   | EnsureMayApply
 
+// Derived spelling of ObservationAttempt<ShowEffectiveRead<E>, String>.
+// C0 RenameOutOfConvergence canonical = ShowEffectiveRead names the ESTABLISHED
+// read. Inaccessible is ObservationRefused, never ReadAbsent (DESIGN §5).
 type EnsureObservation<E>
   = EnsureObserved { evidence: E }
   | EnsureAbsent { reason: String }
   | EnsureInaccessible { reason: String }
+
+fn ensure_observation_as_attempt<E>(
+  observation: EnsureObservation<E>,
+) -> ObservationAttempt<ShowEffectiveRead<E>, String> {
+  match observation {
+    EnsureObserved { evidence: evidence } =>
+      ObservationEstablished { observed: ReadObserved { value: evidence } }
+    EnsureAbsent { reason: reason } =>
+      ObservationEstablished { observed: ReadAbsent { reason: reason } }
+    EnsureInaccessible { reason: reason } =>
+      ObservationRefused { cause: reason }
+  }
+}
 
 type EnsurePlan<P>
   = EnsurePlanAvailable { plan: P }
@@ -107,6 +130,23 @@ fn ensure_decide<P, E>(
 // the same caller it would be checking, so the plan-to-evidence binding belongs to the domain and is
 // discharged by a domain carrier the effect authority alone can mint.
 
+fn ensure_after_grounding<E>(
+  after: EnsureObservation<E>,
+  after_satisfies: Bool,
+  after_mismatch_reason: String,
+) -> Grounding<E> {
+  match after {
+    EnsureObserved { evidence: evidence } =>
+      if after_satisfies {
+        Grounds { evidence: evidence }
+      } else {
+        DoesNotGround { reason: after_mismatch_reason }
+      }
+    EnsureAbsent { reason: reason } => DoesNotGround { reason: reason }
+    EnsureInaccessible { reason: reason } => DoesNotGround { reason: reason }
+  }
+}
+
 fn ensure_reconcile<P, E>(
   policy: EnsurePolicy,
   before: EnsureObservation<E>,
@@ -118,49 +158,20 @@ fn ensure_reconcile<P, E>(
   after_satisfies: Bool,
   after_mismatch_reason: String,
 ) -> ReconciledEffect<P, E> {
-  match after {
-    EnsureObserved { evidence: evidence } =>
-      reconcile_effect(
-        decision: ensure_decide(
-          policy: policy,
-          observation: before,
-          observation_satisfies: before_satisfies,
-          mismatch_reason: mismatch_reason,
-          plan: plan,
-        ),
-        application: application,
-        show_read: ReadObserved { value: evidence },
-        grounding: if after_satisfies {
-          Grounds { evidence: evidence }
-        } else {
-          DoesNotGround { reason: after_mismatch_reason }
-        },
-      )
-    EnsureAbsent { reason: reason } =>
-      reconcile_effect(
-        decision: ensure_decide(
-          policy: policy,
-          observation: before,
-          observation_satisfies: before_satisfies,
-          mismatch_reason: mismatch_reason,
-          plan: plan,
-        ),
-        application: application,
-        show_read: ReadAbsent { reason: reason },
-        grounding: DoesNotGround { reason: reason },
-      )
-    EnsureInaccessible { reason: reason } =>
-      reconcile_effect(
-        decision: ensure_decide(
-          policy: policy,
-          observation: before,
-          observation_satisfies: before_satisfies,
-          mismatch_reason: mismatch_reason,
-          plan: plan,
-        ),
-        application: application,
-        show_read: ReadAbsent { reason: reason },
-        grounding: DoesNotGround { reason: reason },
-      )
-  }
+  reconcile_from_read_attempt(
+    decision: ensure_decide(
+      policy: policy,
+      observation: before,
+      observation_satisfies: before_satisfies,
+      mismatch_reason: mismatch_reason,
+      plan: plan,
+    ),
+    application: application,
+    after: ensure_observation_as_attempt(observation: after),
+    grounding: ensure_after_grounding(
+      after: after,
+      after_satisfies: after_satisfies,
+      after_mismatch_reason: after_mismatch_reason,
+    ),
+  )
 }

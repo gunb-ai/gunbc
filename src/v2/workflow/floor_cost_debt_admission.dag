@@ -101,7 +101,7 @@ fn floor_cost_debt_row(
   verdict: FloorCostDebtVerdictAxis,
 ) -> FloorCostDebtRowStanding {
   match reading {
-    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: c } =>
+    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: c, eval_steps_before_censor: steps } =>
       match verdict {
         FloorCostDebtNeverReachedAVerdict =>
           if millisecond_count(m: c) == millisecond_count(m: ceiling_ms)
@@ -112,6 +112,7 @@ fn floor_cost_debt_row(
                 reading: RightCensoredCpuReading {
                   cpu_lower_bound_ms: b,
                   censoring_ceiling_ms: c,
+                  eval_steps_before_censor: steps,
                 },
               },
             }
@@ -129,17 +130,17 @@ fn floor_cost_debt_row(
             censoring_ceiling_ms: c,
           }
       }
-    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b } =>
+    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b, eval_steps_before_censor: _ } =>
       FloorCostDebtRowRefusedBoundWithoutCeiling {
         identity: identity,
         cpu_lower_bound_ms: b,
       }
-    ObservedCpuReading { cpu_ms: c } =>
+    ObservedCpuReading { cpu_ms: c, eval_steps: steps } =>
       if millisecond_count(m: c) > millisecond_count(m: ceiling_ms) {
         FloorCostDebtRowAdmitted {
           row: FloorCostDebtRow {
             identity: identity,
-            reading: ObservedCpuReading { cpu_ms: c },
+            reading: ObservedCpuReading { cpu_ms: c, eval_steps: steps },
           },
         }
       } else {
