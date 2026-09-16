@@ -57,7 +57,7 @@ import std.materialization_object {
   StoreObjectRead, StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
   StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
   OpenedMaterializationStore,
-  StoreLookup, StoreLookupRefused, StoreLookupObjectUnavailable, StoreLookupObjectMalformed,
+  StoreLookup, StoreLookupRefused, StoreLookupObjectUnavailable,
   StoreLookupStoreFamilyRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,

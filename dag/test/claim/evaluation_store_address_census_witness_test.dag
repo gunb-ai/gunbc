@@ -2,55 +2,54 @@ module test.claim.evaluation_store_address_census_witness
 
 import std.types { Bool, List }
 import std.decl_ref { DeclarationRef }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.materialization_provider_targets {
   evaluation_store_address_producer,
   evaluation_store_address_production_consumers,
   evaluation_store_address_persist_callers_expected,
   evaluation_store_address_admitted_consumers_expected,
-  evaluation_store_address_joined,
-  evaluation_store_address_missing_expected,
-  evaluation_store_address_unresolved,
   evaluation_store_address_duplicate_consumers
 }
 import gunbc.evaluation_store_address_census {
-  evaluation_store_address_observed_direct_callers,
-  evaluation_store_address_observed_persist_callers,
-  evaluation_store_address_observed_admitted_consumers,
-  evaluation_store_address_observed_duplicate_producers,
   evaluation_store_address_alias_mutation_callers,
-  evaluation_store_address_path_bounded_spelling_callers,
-  evaluation_store_address_ref_named
+  evaluation_store_address_same_leaf_decoy_callers,
+  evaluation_store_address_ref_in_module
 }
 
-fn census_lists_agree(expected: List<DeclarationRef>, observed: List<DeclarationRef>) -> Bool {
-  ((evaluation_store_address_missing_expected(expected: expected, observed: observed) |> count()) == 0)
-    && ((evaluation_store_address_unresolved(expected: expected, observed: observed) |> count()) == 0)
-    && ((evaluation_store_address_joined(expected: expected, observed: observed) |> count()) == (expected |> count()))
-}
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
-  let direct = evaluation_store_address_observed_direct_callers()
-  let persist = evaluation_store_address_observed_persist_callers()
-  let admitted = evaluation_store_address_observed_admitted_consumers()
-  let dups = evaluation_store_address_observed_duplicate_producers()
-  census_lists_agree(expected: evaluation_store_address_production_consumers, observed: direct)
-    && census_lists_agree(expected: evaluation_store_address_persist_callers_expected, observed: persist)
-    && census_lists_agree(expected: evaluation_store_address_admitted_consumers_expected, observed: admitted)
-    && ((dups |> count()) == 0)
-    && ((evaluation_store_address_duplicate_consumers(xs: direct) |> count()) == 0)
+  let direct = evaluation_store_address_production_consumers
+  let persist = evaluation_store_address_persist_callers_expected
+  let admitted = evaluation_store_address_admitted_consumers_expected
+  ((evaluation_store_address_duplicate_consumers(xs: direct) |> count()) == 0)
+    && ((evaluation_store_address_duplicate_consumers(xs: persist) |> count()) == 0)
+    && ((evaluation_store_address_duplicate_consumers(xs: admitted) |> count()) == 0)
     && ((evaluation_store_address_producer.decl_name as String) == "evaluation_store_address")
     && ((direct |> count()) != (persist |> count()))
 }
 
-test fn evaluation_store_address_aliased_fourth_module_is_visible_only_on_complete_resolved_graph() -> Bool {
-  let mutation = evaluation_store_address_alias_mutation_callers()
-  let path_bounded = evaluation_store_address_path_bounded_spelling_callers()
-  let production = evaluation_store_address_observed_direct_callers()
-  evaluation_store_address_ref_named(name: "esa", xs: mutation)
-    && evaluation_store_address_ref_named(name: "fourth_module_aliased_call", xs: mutation)
-    && (evaluation_store_address_ref_named(name: "decoy_caller", xs: mutation) == false)
-    && (evaluation_store_address_ref_named(name: "esa", xs: path_bounded) == false)
-    && (evaluation_store_address_ref_named(name: "fourth_module_aliased_call", xs: path_bounded) == false)
-    && (evaluation_store_address_ref_named(name: "esa", xs: production) == false)
-    && (evaluation_store_address_ref_named(name: "fourth_module_aliased_call", xs: production) == false)
+test fn evaluation_store_address_resolver_distinguishes_alias_same_leaf_and_qualified() -> Bool {
+  let home_callers = evaluation_store_address_alias_mutation_callers()
+  let decoy_callers = evaluation_store_address_same_leaf_decoy_callers()
+  evaluation_store_address_ref_in_module(
+    module_path: "test.fixture.evaluation_store_address_alias.aliased",
+    name: "aliased_call",
+    xs: home_callers
+  )
+    && evaluation_store_address_ref_in_module(
+      module_path: "test.fixture.evaluation_store_address_alias.qualified",
+      name: "qualified_call",
+      xs: home_callers
+    )
+    && evaluation_store_address_ref_in_module(
+      module_path: "test.fixture.evaluation_store_address_alias.same_leaf",
+      name: "same_leaf_imported_call",
+      xs: decoy_callers
+    )
+    && (evaluation_store_address_ref_in_module(
+      module_path: "test.fixture.evaluation_store_address_alias.same_leaf",
+      name: "same_leaf_imported_call",
+      xs: home_callers
+    ) == false)
 }

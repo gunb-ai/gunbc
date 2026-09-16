@@ -1,246 +1,29 @@
 module gunbc.evaluation_store_address_census
 
-import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
-import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.node {
-  Atom, Node, NodeFold, TypeNode, fold_node
-}
-import v2.std.node_query { call_callee_target }
-import v2.std.diagnostic { Accepted }
-import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.materialization_provider_targets { evaluation_store_address_producer }
-import v2.lens.module_graph { import_resolution_facts_live, ImportResolutionFact }
+import tools.multi_module_compile_fixture { FixtureSource, fixture_source }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-type CensusScan {
-  i: Int
-  dot: Int
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type ResolvedCallEdge {
+  caller_module: NonEmptyStr
+  caller_decl: NonEmptyStr
+  callee_module: NonEmptyStr
+  callee_decl: NonEmptyStr
 }
 
-type PathScan {
-  i: Int
-  slash: Int
-}
+type ResolvedCallEdgeCensus
+  = ResolvedCallEdgeCensusRefused { cause: NonEmptyStr }
+  | ResolvedCallEdgeCensusObserved { edges: List<ResolvedCallEdge> }
 
-fn last_slash_index(s: String) -> Int {
-  let scan = chars(s: s) |> fold(
-    init: PathScan { i: 0, slash: 0 - 1 },
-    f: (acc, c) =>
-      PathScan {
-        i: acc.i + 1,
-        slash: if c == 47 { acc.i } else { acc.slash }
-      }
-  )
-  scan.slash
-}
-
-fn path_directory(path: String) -> String {
-  let s = last_slash_index(s: path)
-  if s < 0 {
-    path
-  } else {
-    path.substring(start: 0, end: s)
-  }
-}
-
-fn unique_strings(xs: List<String>) -> List<String> {
-  xs |> fold(
-    init: [],
-    f: (acc, s) =>
-      if acc |> fold(init: false, f: (hit, o) => hit || o == s) {
-        acc
-      } else {
-        concat(acc, [s])
-      }
-  )
-}
-
-fn string_in(wanted: String, xs: List<String>) -> Bool {
-  xs |> fold(init: false, f: (acc, s) => acc || s == wanted)
-}
-
-fn materialization_home_modules() -> List<String> {
-  [
-    "std.materialization_provider",
-    "std.materialization_object",
-    "extdeps.realization.materialization_store_local"
-  ]
-}
-
-data evaluation_store_address_import_graph: List<ImportResolutionFact> = import_resolution_facts_live(
-  pool_roots: witness_layer_roots,
-  importer_roots: witness_layer_roots,
-  exclude_substrings: ["/test/"]
-)
-
-fn evaluation_store_address_importer_paths() -> List<String> {
-  unique_strings(xs: evaluation_store_address_import_graph |> fold(
-    init: [],
-    f: (acc, edge) =>
-      if string_in(wanted: edge.import_module, xs: materialization_home_modules()) {
-        concat(acc, [edge.path])
-      } else {
-        acc
-      }
-  ))
-}
-
-fn evaluation_store_address_home_rel_paths() -> List<String> {
-  [
-    "dag/std/materialization_provider.dag",
-    "dag/std/materialization_object.dag",
-    "dag/extdeps/realization/materialization_store_local.dag"
-  ]
-}
-
-fn evaluation_store_address_scope_paths() -> List<String> {
-  unique_strings(xs: concat(evaluation_store_address_importer_paths(), evaluation_store_address_home_rel_paths()))
-}
-
-fn evaluation_store_address_scope_dirs() -> List<String> {
-  unique_strings(xs: evaluation_store_address_scope_paths() |> map(p => path_directory(path: p)))
-}
-
-data evaluation_store_address_census_facts: List<DeclFact> = decl_facts(
-  pool_roots: evaluation_store_address_scope_dirs()
-) |> fold(
-  init: [],
-  f: (acc, fact) =>
-    if string_in(wanted: fact.rel_path, xs: evaluation_store_address_scope_paths()) {
-      concat(acc, [fact])
-    } else {
-      acc
-    }
-)
-
-data evaluation_store_address_alias_fixture_facts: List<DeclFact> = decl_facts(
-  pool_roots: ["dag/test/fixture/evaluation_store_address_alias"]
-)
-
-fn last_dot_index(s: String) -> Int {
-  let scan = chars(s: s) |> fold(
-    init: CensusScan { i: 0, dot: 0 - 1 },
-    f: (acc, c) =>
-      CensusScan {
-        i: acc.i + 1,
-        dot: if c == 46 { acc.i } else { acc.dot }
-      }
-  )
-  scan.dot
-}
-
-fn callee_last_segment(spelling: String) -> String {
-  let d = last_dot_index(s: spelling)
-  if d < 0 {
-    spelling
-  } else {
-    spelling.substring(start: d + 1, end: spelling.length())
-  }
-}
-
-fn fact_module_path(fact: DeclFact) -> String {
-  let q = fact.qualified_name
-  let d = last_dot_index(s: q)
-  if d < 0 {
-    q
-  } else {
-    q.substring(start: 0, end: d)
-  }
-}
-
-fn fact_declaration_ref(fact: DeclFact) -> DeclarationRef {
-  DeclarationRef {
-    module_path: fact_module_path(fact: fact) as NonEmptyStr,
-    decl_name: fact.name as NonEmptyStr,
-    field: WholeDeclaration
-  }
-}
-
-fn target_qualified_name(target: DeclarationRef) -> String {
-  concat((target.module_path as String), concat(".", (target.decl_name as String)))
-}
-
-fn facts_named(name: String, facts: List<DeclFact>) -> List<DeclFact> {
-  facts |> fold(
-    init: [],
-    f: (acc, fact) =>
-      if fact.name == name {
-        concat(acc, [fact])
-      } else {
-        acc
-      }
-  )
-}
-
-fn facts_named_in_module(name: String, module_path: String, facts: List<DeclFact>) -> List<DeclFact> {
-  facts_named(name: name, facts: facts) |> fold(
-    init: [],
-    f: (acc, fact) =>
-      if fact_module_path(fact: fact) == module_path {
-        concat(acc, [fact])
-      } else {
-        acc
-      }
-  )
-}
-
-fn unique_target_fact(xs: List<DeclFact>, target: DeclarationRef) -> Bool {
-  ((xs |> count()) == 1)
-    && (xs |> fold(
-      init: false,
-      f: (acc, fact) => acc || declaration_ref_eq(a: fact_declaration_ref(fact: fact), b: target)
-    ))
-}
-
-fn callee_resolves_to_target(
-  spelling: String,
-  caller: DeclFact,
-  target: DeclarationRef,
-  facts: List<DeclFact>
-) -> Bool {
-  let leaf = callee_last_segment(spelling: spelling)
-  let target_name = target.decl_name as String
-  if leaf != target_name && spelling != target_qualified_name(target: target) {
-    false
-  } else {
-    if last_dot_index(s: spelling) >= 0 {
-      spelling == target_qualified_name(target: target) || spelling == concat((target.module_path as String), concat(".", leaf))
-    } else {
-      let local = facts_named_in_module(name: leaf, module_path: fact_module_path(fact: caller), facts: facts)
-      if (local |> count()) > 0 {
-        unique_target_fact(xs: local, target: target)
-      } else {
-        unique_target_fact(
-          xs: facts_named_in_module(name: leaf, module_path: target.module_path as String, facts: facts),
-          target: target
-        )
-      }
-    }
-  }
-}
-
-fn node_calls_resolved(n: Node, caller: DeclFact, target: DeclarationRef, facts: List<DeclFact>) -> Bool {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(n0) {
-        match call_callee_target(node: n0) {
-          Accepted { value: callee, diagnostics: _ } =>
-            match callee.kind {
-              TypeNode { connective: Atom { identity: s } } =>
-                callee_resolves_to_target(
-                  spelling: s as String,
-                  caller: caller,
-                  target: target,
-                  facts: facts
-                )
-              _ => false
-            }
-          _ => false
-        }
-      },
-      step: fn(acc, e, child) { acc || child }
-    }
+fn fixture_resolved_call_edges(sources: List<FixtureSource>, entry: NonEmptyStr) -> ResolvedCallEdgeCensus {
+  compile_dag_resolved_call_edges(
+    sources |> map(s => s.path as String),
+    sources |> map(s => s.content),
+    entry as String
   )
 }
 
@@ -256,155 +39,67 @@ fn unique_declaration_refs(xs: List<DeclarationRef>) -> List<DeclarationRef> {
   )
 }
 
-fn callers_of_resolved(target: DeclarationRef, facts: List<DeclFact>) -> List<DeclarationRef> {
-  unique_declaration_refs(xs: facts |> fold(
+fn census_edges(census: ResolvedCallEdgeCensus) -> List<ResolvedCallEdge> {
+  match census {
+    ResolvedCallEdgeCensusRefused { cause: _ } => []
+    ResolvedCallEdgeCensusObserved { edges } => edges
+  }
+}
+
+fn evaluation_store_address_mutation_edges() -> List<ResolvedCallEdge> {
+  census_edges(census: fixture_resolved_call_edges(
+    sources: [
+      fixture_source("esa_alias/home.dag", "module test.fixture.evaluation_store_address_alias.home\n\nfn evaluation_store_address() -> Int {\n  0\n}\n\nfn home_marker() -> Int {\n  1\n}\n"),
+      fixture_source("esa_alias/decoy.dag", "module test.fixture.evaluation_store_address_alias.decoy\n\nfn evaluation_store_address() -> Bool {\n  true\n}\n\nfn decoy_caller() -> Bool {\n  evaluation_store_address()\n}\n"),
+      fixture_source("esa_alias/aliased.dag", "module test.fixture.evaluation_store_address_alias.aliased\n\nimport test.fixture.evaluation_store_address_alias.home { evaluation_store_address }\n\nfn aliased_call() -> Int {\n  evaluation_store_address()\n}\n"),
+      fixture_source("esa_alias/same_leaf.dag", "module test.fixture.evaluation_store_address_alias.same_leaf\n\nimport test.fixture.evaluation_store_address_alias.home { home_marker }\nimport test.fixture.evaluation_store_address_alias.decoy { evaluation_store_address }\n\nfn same_leaf_imported_call() -> Bool {\n  evaluation_store_address()\n}\n\nfn same_leaf_home_marker_use() -> Int {\n  home_marker()\n}\n"),
+      fixture_source("esa_alias/qualified.dag", "module test.fixture.evaluation_store_address_alias.qualified\n\nfn qualified_call() -> Int {\n  test.fixture.evaluation_store_address_alias.home.evaluation_store_address()\n}\n"),
+      fixture_source("esa_alias/mutation_entry.dag", "module test.fixture.evaluation_store_address_alias.mutation_entry\n\nimport test.fixture.evaluation_store_address_alias.aliased { aliased_call }\nimport test.fixture.evaluation_store_address_alias.same_leaf { same_leaf_imported_call }\nimport test.fixture.evaluation_store_address_alias.qualified { qualified_call }\n\nfn mutation_touch() -> Int {\n  aliased_call() + qualified_call()\n}\n\nfn mutation_touch_decoy() -> Bool {\n  same_leaf_imported_call()\n}\n")
+    ],
+    entry: "esa_alias/mutation_entry.dag" as NonEmptyStr
+  ))
+}
+
+fn bound_callers_of_edges(
+  edges: List<ResolvedCallEdge>,
+  callee_module: String,
+  callee_decl: String
+) -> List<DeclarationRef> {
+  unique_declaration_refs(xs: edges |> fold(
     init: [],
-    f: (acc, fact) =>
-      if node_calls_resolved(n: fact.node, caller: fact, target: target, facts: facts) {
-        concat(acc, [fact_declaration_ref(fact: fact)])
+    f: (acc, edge) =>
+      if (edge.callee_module as String) == callee_module
+        && (edge.callee_decl as String) == callee_decl {
+        concat(acc, [DeclarationRef {
+          module_path: edge.caller_module,
+          decl_name: edge.caller_decl,
+          field: WholeDeclaration
+        }])
       } else {
         acc
       }
   ))
-}
-
-fn callers_of_resolved_including_one_hop(target: DeclarationRef, facts: List<DeclFact>) -> List<DeclarationRef> {
-  let direct = callers_of_resolved(target: target, facts: facts)
-  let wrappers = facts |> fold(
-    init: [],
-    f: (acc, fact) => {
-      let r = fact_declaration_ref(fact: fact)
-      if evaluation_store_address_ref_named_in(wanted: r, xs: direct)
-        && ((r.decl_name as String) != (target.decl_name as String) || (r.module_path as String) != (target.module_path as String)) {
-        concat(acc, [r])
-      } else {
-        acc
-      }
-    }
-  )
-  unique_declaration_refs(xs: concat(
-    direct,
-    wrappers |> fold(
-      init: [],
-      f: (acc, w) => concat(acc, callers_of_resolved(target: w, facts: facts))
-    )
-  ))
-}
-
-fn evaluation_store_address_ref_named_in(wanted: DeclarationRef, xs: List<DeclarationRef>) -> Bool {
-  xs |> fold(init: false, f: (acc, r) => acc || declaration_ref_eq(a: wanted, b: r))
-}
-
-fn persist_target() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "std.materialization_provider" as NonEmptyStr,
-    decl_name: "persist_evaluation_store_address" as NonEmptyStr,
-    field: WholeDeclaration
-  }
-}
-
-fn digest_target() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "std.materialization_provider" as NonEmptyStr,
-    decl_name: "evaluation_store_address_digest" as NonEmptyStr,
-    field: WholeDeclaration
-  }
-}
-
-fn preimage_target() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "std.materialization_provider" as NonEmptyStr,
-    decl_name: "evaluation_store_address_preimage" as NonEmptyStr,
-    field: WholeDeclaration
-  }
-}
-
-fn admitted_target() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "std.materialization_provider" as NonEmptyStr,
-    decl_name: "evaluation_store_admitted_address" as NonEmptyStr,
-    field: WholeDeclaration
-  }
-}
-
-fn store_object_name_target() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "std.materialization_object" as NonEmptyStr,
-    decl_name: "store_object_name" as NonEmptyStr,
-    field: WholeDeclaration
-  }
-}
-
-fn evaluation_store_address_observed_direct_callers() -> List<DeclarationRef> {
-  callers_of_resolved(target: evaluation_store_address_producer, facts: evaluation_store_address_census_facts)
-}
-
-fn evaluation_store_address_observed_persist_callers() -> List<DeclarationRef> {
-  callers_of_resolved(target: persist_target(), facts: evaluation_store_address_census_facts)
-}
-
-fn evaluation_store_address_observed_admitted_consumers() -> List<DeclarationRef> {
-  unique_declaration_refs(xs: concat(
-    concat(
-      concat(
-        callers_of_resolved(target: digest_target(), facts: evaluation_store_address_census_facts),
-        callers_of_resolved(target: preimage_target(), facts: evaluation_store_address_census_facts)
-      ),
-      callers_of_resolved(target: admitted_target(), facts: evaluation_store_address_census_facts)
-    ),
-    callers_of_resolved(target: store_object_name_target(), facts: evaluation_store_address_census_facts)
-  ))
-}
-
-fn evaluation_store_address_observed_duplicate_producers() -> List<DeclarationRef> {
-  evaluation_store_address_observed_persist_callers() |> fold(
-    init: [],
-    f: (acc, r) => {
-      let n = r.decl_name as String
-      if n == "evaluation_store_address" || n == "provider_serve" {
-        acc
-      } else {
-        concat(acc, [r])
-      }
-    }
-  )
 }
 
 fn evaluation_store_address_alias_mutation_callers() -> List<DeclarationRef> {
-  callers_of_resolved_including_one_hop(
-    target: evaluation_store_address_producer,
-    facts: concat(evaluation_store_address_census_facts, evaluation_store_address_alias_fixture_facts)
+  bound_callers_of_edges(
+    edges: evaluation_store_address_mutation_edges(),
+    callee_module: "test.fixture.evaluation_store_address_alias.home",
+    callee_decl: "evaluation_store_address"
   )
 }
 
-fn evaluation_store_address_path_bounded_spelling_callers() -> List<DeclarationRef> {
-  let scoped = evaluation_store_address_census_facts |> fold(
-    init: [],
-    f: (acc, fact) =>
-      if fact.rel_path == "dag/std/materialization_provider.dag"
-        || fact.rel_path == "dag/std/materialization_object.dag"
-        || fact.rel_path == "dag/extdeps/realization/materialization_store_local.dag" {
-        concat(acc, [fact])
-      } else {
-        acc
-      }
+fn evaluation_store_address_same_leaf_decoy_callers() -> List<DeclarationRef> {
+  bound_callers_of_edges(
+    edges: evaluation_store_address_mutation_edges(),
+    callee_module: "test.fixture.evaluation_store_address_alias.decoy",
+    callee_decl: "evaluation_store_address"
   )
-  unique_declaration_refs(xs: scoped |> fold(
-    init: [],
-    f: (acc, fact) =>
-      if node_calls_resolved(
-        n: fact.node,
-        caller: fact,
-        target: evaluation_store_address_producer,
-        facts: scoped
-      ) {
-        concat(acc, [fact_declaration_ref(fact: fact)])
-      } else {
-        acc
-      }
-  ))
 }
 
-fn evaluation_store_address_ref_named(name: String, xs: List<DeclarationRef>) -> Bool {
-  xs |> fold(init: false, f: (acc, r) => acc || ((r.decl_name as String) == name))
+fn evaluation_store_address_ref_in_module(module_path: String, name: String, xs: List<DeclarationRef>) -> Bool {
+  xs |> fold(
+    init: false,
+    f: (acc, r) => acc || (((r.module_path as String) == module_path) && ((r.decl_name as String) == name))
+  )
 }

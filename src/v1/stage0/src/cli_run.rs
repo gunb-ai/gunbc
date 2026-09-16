@@ -161,7 +161,8 @@ pub use emit_host::{
 };
 pub use emit_host::{
     compile_dag_multi_module_fixture, compile_dag_reference_occurrence_binding_census,
-    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
+    compile_dag_resolved_call_edges, emit_module_storage_binding_manifest,
+    emit_source_root_ingest_manifest,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -3220,6 +3221,8 @@ pub struct ReferenceOccurrenceDenominatorRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceOccurrenceBindingRow {
     pub denominator: ReferenceOccurrenceDenominatorRow,
+    pub consumer_declaration: String,
+    pub provider_declaration: String,
     pub disposition: ReferenceOccurrenceBindingDisposition,
 }
 
@@ -3234,6 +3237,20 @@ pub enum ReferenceOccurrenceBindingCensus {
         denominator: Vec<ReferenceOccurrenceDenominatorRow>,
         observations: Vec<ReferenceOccurrenceBindingRow>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedCallEdgeRow {
+    pub caller_module: String,
+    pub caller_decl: String,
+    pub callee_module: String,
+    pub callee_decl: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedCallEdgeCensus {
+    Refused { cause: String },
+    Observed { edges: Vec<ResolvedCallEdgeRow> },
 }
 
 /// Structural digest of the supplied manifest — path and content of every module, in the order

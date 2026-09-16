@@ -13619,6 +13619,40 @@ fn reference_occurrence_binding_census_row_value(
     }
 }
 
+fn resolved_call_edge_census_value(
+    census: crate::cli_run::ResolvedCallEdgeCensus,
+    ctx: &InterpContext,
+) -> Value {
+    match census {
+        crate::cli_run::ResolvedCallEdgeCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ResolvedCallEdgeCensus"),
+            variant_name: ctx.sym("ResolvedCallEdgeCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ResolvedCallEdgeCensus::Observed { edges } => Value::Variant {
+            type_name: ctx.sym("ResolvedCallEdgeCensus"),
+            variant_name: ctx.sym("ResolvedCallEdgeCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("edges"),
+                list_value(
+                    edges
+                        .into_iter()
+                        .map(|edge| Value::Record {
+                            type_name: ctx.sym("ResolvedCallEdge"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (ctx.sym("caller_module"), str_value(edge.caller_module)),
+                                (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
+                                (ctx.sym("callee_module"), str_value(edge.callee_module)),
+                                (ctx.sym("callee_decl"), str_value(edge.callee_decl)),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+    }
+}
+
 fn reference_occurrence_binding_census_value(
     census: crate::cli_run::ReferenceOccurrenceBindingCensus,
     ctx: &InterpContext,
@@ -13754,6 +13788,14 @@ fn reference_occurrence_binding_census_value(
                                     (
                                         ctx.sym("span_start"),
                                         Value::Int(row.denominator.span_start),
+                                    ),
+                                    (
+                                        ctx.sym("consumer_declaration"),
+                                        str_value(row.consumer_declaration),
+                                    ),
+                                    (
+                                        ctx.sym("provider_declaration"),
+                                        str_value(row.provider_declaration),
                                     ),
                                     (ctx.sym("disposition"), disposition_value(row.disposition)),
                                 ])),
@@ -20632,6 +20674,15 @@ macro_rules! v1_builtin_arms {
                 let entry = expect_str($positional.get(2).copied(), $name)?;
                 Ok(Some(reference_occurrence_binding_census_value(
                     crate::cli_run::compile_dag_reference_occurrence_binding_census(&paths, &contents, &entry), $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_resolved_call_edges" { "compile_dag_resolved_call_edges" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(resolved_call_edge_census_value(
+                    crate::cli_run::compile_dag_resolved_call_edges(&paths, &contents, &entry), $ctx,
                 )))
             },
 

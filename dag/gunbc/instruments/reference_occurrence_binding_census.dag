@@ -28,6 +28,8 @@ type ReferenceOccurrenceBindingRow {
   category: OccurrenceCategory
   file_reference_ordinal: Int
   span_start: Int
+  consumer_declaration: String
+  provider_declaration: String
   disposition: ReferenceOccurrenceBindingDisposition
 }
 
@@ -49,6 +51,14 @@ type ReferenceOccurrenceBindingCensus
       denominator: List<ReferenceOccurrenceDenominatorRow>
       observations: List<ReferenceOccurrenceBindingRow>
     }
+
+fn workspace_reference_occurrence_binding_census(entry: NonEmptyStr) -> ReferenceOccurrenceBindingCensus {
+  compile_dag_reference_occurrence_binding_census(
+    [entry as String],
+    ["__WORKSPACE_CHECKOUT__"],
+    entry as String
+  )
+}
 
 fn reference_occurrence_binding_census(
   sources: List<FixtureSource>,

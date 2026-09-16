@@ -288,7 +288,7 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
   let stale = provider_serve(
     req: witness_typecheck_request_changed_input(),
     probe: minted_in_process(
-      req: witness_closure_request(),
+      req: witness_typecheck_request_changed_input(),
       artifact: witness_stale_typed_artifact(),
       observed_digest: witness_stale_typed_digest()
     )

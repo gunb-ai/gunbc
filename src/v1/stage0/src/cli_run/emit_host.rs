@@ -633,6 +633,209 @@ fn project_resolved_rust_fn_signatures(
     rows
 }
 
+fn collect_alias_call_edges(
+    node: Rc<crate::v1_std_core::Node>,
+    source_indices: Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    alias_targets: &std::collections::HashMap<String, (String, String)>,
+    caller_module: &str,
+    caller_decl: &str,
+    edges: &mut Vec<crate::cli_run::ResolvedCallEdgeRow>,
+) {
+    if let crate::v1_std_core::ExprData::ExprCall { .. } = &*node.expr_data {
+        let spelling = crate::v1_std_core::expr_call_func_at(node.clone(), source_indices.clone());
+        if let Some((callee_module, callee_decl)) = alias_targets.get(&spelling) {
+            edges.push(crate::cli_run::ResolvedCallEdgeRow {
+                caller_module: caller_module.to_string(),
+                caller_decl: caller_decl.to_string(),
+                callee_module: callee_module.clone(),
+                callee_decl: callee_decl.clone(),
+            });
+        }
+    }
+    for child in node.children.iter() {
+        collect_alias_call_edges(
+            child.clone(),
+            source_indices.clone(),
+            alias_targets,
+            caller_module,
+            caller_decl,
+            edges,
+        );
+    }
+}
+
+fn enclosing_declaration_name(
+    reference_containment: Rc<crate::std_occurrence_identity::OccurrenceContainmentPath>,
+    declarations: &[Rc<crate::std_occurrence_identity::DeclarationOccurrence>],
+    names: &std::collections::HashMap<i64, String>,
+) -> String {
+    let mut best: Option<(usize, String)> = None;
+    for declaration in declarations {
+        if crate::std_occurrence_identity::occurrence_containment_path_is_prefix_of(
+            declaration.containment.clone(),
+            reference_containment.clone(),
+        ) {
+            let depth = declaration.containment.ancestors.len();
+            let name = names
+                .get(&declaration.occurrence.value)
+                .cloned()
+                .unwrap_or_default();
+            if best.as_ref().map(|(d, _)| depth >= *d).unwrap_or(true) {
+                best = Some((depth, name));
+            }
+        }
+    }
+    best.map(|(_, name)| name).unwrap_or_default()
+}
+
+pub fn compile_dag_resolved_call_edges(
+    paths: &[String],
+    contents: &[String],
+    entry: &str,
+) -> crate::cli_run::ResolvedCallEdgeCensus {
+    use crate::cli_run::{ResolvedCallEdgeCensus, ResolvedCallEdgeRow};
+    use crate::v1_compiler_infer_service::{build_module_callees, CalleeEdge};
+    let graph = if paths.len() == 1
+        && contents.len() == 1
+        && contents[0] == "__WORKSPACE_CHECKOUT__"
+        && paths[0] == entry
+    {
+        let roots = default_source_roots();
+        match resolve_entry_graph_shared(&roots, entry) {
+            Ok((graph, _)) => graph,
+            Err(cause) => return ResolvedCallEdgeCensus::Refused { cause },
+        }
+    } else {
+        if paths.len() != contents.len() || paths.is_empty() {
+            return ResolvedCallEdgeCensus::Refused {
+                cause: "resolved call edges: manifest is empty or ragged".to_string(),
+            };
+        }
+        let sources: Vec<MultiModuleFixtureSource> = paths
+            .iter()
+            .zip(contents.iter())
+            .map(|(path, content)| MultiModuleFixtureSource {
+                path: path.clone(),
+                content: content.clone(),
+            })
+            .collect();
+        let mut seen = HashSet::new();
+        if sources
+            .iter()
+            .any(|source| source.path.trim().is_empty() || !seen.insert(source.path.clone()))
+        {
+            return ResolvedCallEdgeCensus::Refused {
+                cause: "resolved call edges: every source path must be nonempty and unique"
+                    .to_string(),
+            };
+        }
+        if !sources.iter().any(|source| source.path == entry) {
+            return ResolvedCallEdgeCensus::Refused {
+                cause: format!("resolved call edges: entry '{entry}' names no supplied source"),
+            };
+        }
+        let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
+            .iter()
+            .map(|source| {
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: source.path.clone(),
+                    content: source.content.clone(),
+                })
+            })
+            .collect();
+        let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
+        })) {
+            Ok(value) => value,
+            Err(_) => {
+                return ResolvedCallEdgeCensus::Refused {
+                    cause: "resolved call edges: frontend panicked before producing a graph"
+                        .to_string(),
+                }
+            }
+        };
+        let Some(graph) = resolved.graph.clone() else {
+            return ResolvedCallEdgeCensus::Refused {
+                cause: "resolved call edges: frontend produced no resolved graph".to_string(),
+            };
+        };
+        graph
+    };
+    let mut edges = Vec::new();
+    let module_callees = build_module_callees(graph.modules.clone());
+    for (typed, callees) in graph.modules.iter().zip(module_callees.iter()) {
+        let source_indices = typed.type_env.source_indices.clone();
+        let mut alias_targets: std::collections::HashMap<String, (String, String)> =
+            std::collections::HashMap::new();
+        for alias_item in crate::v1_std_core::module_items(typed.module.clone()).iter() {
+            if !crate::v1_compiler_infer::is_namespace_alias_item(
+                alias_item.clone(),
+                source_indices.clone(),
+            ) {
+                continue;
+            }
+            let alias_name =
+                crate::v1_std_core::authored_name_at(source_indices.clone(), alias_item.clone());
+            let Some(target_path) = crate::v1_compiler_infer::namespace_alias_target_path(
+                alias_item.clone(),
+                source_indices.clone(),
+            ) else {
+                continue;
+            };
+            let Some((callee_module, callee_decl)) = target_path.rsplit_once('.') else {
+                continue;
+            };
+            alias_targets.insert(
+                alias_name,
+                (callee_module.to_string(), callee_decl.to_string()),
+            );
+        }
+        for item in callees.items.iter() {
+            for edge in item.called.iter() {
+                match &**edge {
+                    CalleeEdge::ResolvedCallee { identity } => {
+                        edges.push(ResolvedCallEdgeRow {
+                            caller_module: item.item_identity.owner_module_path.clone(),
+                            caller_decl: item.item_identity.decl_name.clone(),
+                            callee_module: identity.owner_module_path.clone(),
+                            callee_decl: identity.decl_name.clone(),
+                        });
+                    }
+                    CalleeEdge::LocalBindingCallee { name }
+                    | CalleeEdge::UnresolvedCallee { spelling: name } => {
+                        if let Some((callee_module, callee_decl)) = alias_targets.get(name) {
+                            edges.push(ResolvedCallEdgeRow {
+                                caller_module: item.item_identity.owner_module_path.clone(),
+                                caller_decl: item.item_identity.decl_name.clone(),
+                                callee_module: callee_module.clone(),
+                                callee_decl: callee_decl.clone(),
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for item_node in typed.items.iter() {
+            let Some(body) = item_node.body.clone() else {
+                continue;
+            };
+            let caller_decl =
+                crate::v1_std_core::authored_name_at(source_indices.clone(), item_node.clone());
+            let caller_module = typed.type_env.module_path.clone();
+            collect_alias_call_edges(
+                body,
+                source_indices.clone(),
+                &alias_targets,
+                &caller_module,
+                &caller_decl,
+                &mut edges,
+            );
+        }
+    }
+    ResolvedCallEdgeCensus::Observed { edges }
+}
+
 /// Reference-occurrence-grain binding observation over exactly one supplied source vector.
 /// Occurrence discovery and resolution remain separate products in the returned carrier: callers
 /// anti-join them and must not use the resolver's emissions as their own denominator.
@@ -641,60 +844,75 @@ pub fn compile_dag_reference_occurrence_binding_census(
     contents: &[String],
     entry: &str,
 ) -> ReferenceOccurrenceBindingCensus {
-    if paths.len() != contents.len() || paths.is_empty() {
-        return ReferenceOccurrenceBindingCensus::Refused {
-            cause: "reference binding census: manifest is empty or ragged".to_string(),
-        };
-    }
-    let sources: Vec<MultiModuleFixtureSource> = paths
-        .iter()
-        .zip(contents.iter())
-        .map(|(path, content)| MultiModuleFixtureSource {
-            path: path.clone(),
-            content: content.clone(),
-        })
-        .collect();
-    let mut seen = HashSet::new();
-    if sources
-        .iter()
-        .any(|source| source.path.trim().is_empty() || !seen.insert(source.path.clone()))
-    {
-        return ReferenceOccurrenceBindingCensus::Refused {
-            cause: "reference binding census: every source path must be nonempty and unique"
-                .to_string(),
-        };
-    }
-    if !sources.iter().any(|source| source.path == entry) {
-        return ReferenceOccurrenceBindingCensus::Refused {
-            cause: format!("reference binding census: entry '{entry}' names no supplied source"),
-        };
-    }
-    let source_digest = multi_module_fixture_source_digest(&sources, entry);
     let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
-    let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
-        .iter()
-        .map(|source| {
-            Rc::new(v1_compiler_compile::SourceFile {
-                path: source.path.clone(),
-                content: source.content.clone(),
-            })
-        })
-        .collect();
-    let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
-    })) {
-        Ok(value) => value,
-        Err(_) => {
-            return ReferenceOccurrenceBindingCensus::Refused {
-                cause: "reference binding census: frontend panicked before producing a graph"
-                    .to_string(),
-            }
+    let (graph, source_digest) = if paths.len() == 1
+        && contents.len() == 1
+        && contents[0] == "__WORKSPACE_CHECKOUT__"
+        && paths[0] == entry
+    {
+        let roots = default_source_roots();
+        match resolve_entry_graph_shared(&roots, entry) {
+            Ok((graph, _)) => (graph, format!("workspace:{entry}")),
+            Err(cause) => return ReferenceOccurrenceBindingCensus::Refused { cause },
         }
-    };
-    let Some(graph) = resolved.graph.clone() else {
-        return ReferenceOccurrenceBindingCensus::Refused {
-            cause: "reference binding census: frontend produced no resolved graph".to_string(),
+    } else {
+        if paths.len() != contents.len() || paths.is_empty() {
+            return ReferenceOccurrenceBindingCensus::Refused {
+                cause: "reference binding census: manifest is empty or ragged".to_string(),
+            };
+        }
+        let sources: Vec<MultiModuleFixtureSource> = paths
+            .iter()
+            .zip(contents.iter())
+            .map(|(path, content)| MultiModuleFixtureSource {
+                path: path.clone(),
+                content: content.clone(),
+            })
+            .collect();
+        let mut seen = HashSet::new();
+        if sources
+            .iter()
+            .any(|source| source.path.trim().is_empty() || !seen.insert(source.path.clone()))
+        {
+            return ReferenceOccurrenceBindingCensus::Refused {
+                cause: "reference binding census: every source path must be nonempty and unique"
+                    .to_string(),
+            };
+        }
+        if !sources.iter().any(|source| source.path == entry) {
+            return ReferenceOccurrenceBindingCensus::Refused {
+                cause: format!(
+                    "reference binding census: entry '{entry}' names no supplied source"
+                ),
+            };
+        }
+        let source_digest = multi_module_fixture_source_digest(&sources, entry);
+        let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
+            .iter()
+            .map(|source| {
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: source.path.clone(),
+                    content: source.content.clone(),
+                })
+            })
+            .collect();
+        let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
+        })) {
+            Ok(value) => value,
+            Err(_) => {
+                return ReferenceOccurrenceBindingCensus::Refused {
+                    cause: "reference binding census: frontend panicked before producing a graph"
+                        .to_string(),
+                }
+            }
         };
+        let Some(graph) = resolved.graph.clone() else {
+            return ReferenceOccurrenceBindingCensus::Refused {
+                cause: "reference binding census: frontend produced no resolved graph".to_string(),
+            };
+        };
+        (graph, source_digest)
     };
 
     match observed_occurrence_transport_and_bindings(graph.as_ref()) {
@@ -773,6 +991,7 @@ pub(crate) fn observed_occurrence_transport_and_bindings(
             consumer_by_occurrence.insert(reference.occurrence.value, module_path.clone());
         }
     }
+    let declaration_rows = declarations.clone();
     let transport = Rc::new(identity::OccurrenceTransport {
         index: Rc::new(identity::OccurrenceIndex {
             entries: Rc::new(entries.into()),
@@ -917,6 +1136,21 @@ pub(crate) fn observed_occurrence_transport_and_bindings(
         };
         observations.push(ReferenceOccurrenceBindingRow {
             denominator: base,
+            consumer_declaration: enclosing_declaration_name(
+                reference.containment.clone(),
+                &declaration_rows,
+                &names,
+            ),
+            provider_declaration: match &disposition {
+                ReferenceOccurrenceBindingDisposition::Bound {
+                    declaration_occurrence,
+                    ..
+                } => names
+                    .get(declaration_occurrence)
+                    .cloned()
+                    .unwrap_or_default(),
+                _ => String::new(),
+            },
             disposition,
         });
     }
