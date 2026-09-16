@@ -1,7 +1,7 @@
 module test.claim.spark.v41_source_patch_converge_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.optional { Present, Absent }
 import std.upsert_decision { Noop, Apply, Refuse }
 import std.realization_reconcile { Applied, NotApplied, classify_reconciled, EffectConverged, EffectNotConverged }
@@ -19,7 +19,7 @@ import gunbc.spark.v41_source_patch_converge {
   v41_observed_source_identity_of, v41_patched_source_receipt_line, v41_patched_source_converged,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn w_sha(c: String) -> Sha256Digest {
   Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }

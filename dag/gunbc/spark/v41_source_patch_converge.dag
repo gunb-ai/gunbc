@@ -34,7 +34,7 @@ import gunbc.spark.vllm_runtime_image_build {
   VllmSourceState, VllmSourceAtRevision, VllmSourceRefused, VllmImageBuild, VllmImageBuildRefused,
   ImageLegRan, ImageLegFailed, ImageUncheckedRan, ImageUncheckedFailed,
   VllmWorkingTreeMayBeDirty,
-  vllm_source_dir, vllm_build_root, vllm_source_head,
+  vllm_source_dir, vllm_build_root, vllm_source_head, vllm_source_is_clean,
   vllm_image_leg, vllm_image_leg_unchecked, vllm_image_build_key_with_observed_tree, converge_vllm_image_keyed,
   converge_vllm_source_to_revision,
 }
@@ -96,10 +96,6 @@ fn v41_member_named(members: List<V41PatchMemberRead>, path: NonEmptyStr) -> V41
   }
 }
 
-fn v41_source_is_clean(porcelain: String) -> Bool {
-  trim(s: porcelain) == ""
-}
-
 fn v41_porcelain_has_untracked(porcelain: String) -> Bool {
   any(split(s: porcelain, delimiter: "\n"), line => {
     let t = trim(s: line)
@@ -146,7 +142,7 @@ fn v41_source_patch_decision(
         } else if v41_porcelain_has_untracked(porcelain: read.porcelain) {
           Refuse { reason: "untracked paths are not in git diff --binary HEAD, so a tree identity hashed from that diff would omit them" as NonEmptyStr }
         } else if length(desired_patches) == 0 {
-          if v41_source_is_clean(porcelain: read.porcelain) {
+          if vllm_source_is_clean(stdout: read.porcelain) {
             Noop
           } else {
             Refuse { reason: "vanilla desired state requires a clean tree at the revision; a dirty tree is not an unpatched checkout" as NonEmptyStr }
@@ -167,7 +163,7 @@ fn v41_source_patch_decision(
             } else {
               Refuse { reason: "partial application: every patch reverses but at least one still applies forward, so the tree is not a completed P and not a clean R" as NonEmptyStr }
             }
-          } else if length(forward_ok) == n && v41_source_is_clean(porcelain: read.porcelain) {
+          } else if length(forward_ok) == n && vllm_source_is_clean(stdout: read.porcelain) {
             Apply { plan: V41SourcePatchPlan { patches: desired_patches } }
           } else if length(reverse_ok) != 0 || length(forward_ok) != 0 {
             Refuse { reason: "partial application: some patches in P are present and some are not" as NonEmptyStr }
