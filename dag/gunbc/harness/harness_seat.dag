@@ -593,8 +593,9 @@ fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLa
 // (gunbc.spark.pair_serving_realization spark_pair_realization over spark_pair_serving_unit), so the
 // same bytes the apply path wrote are re-rendered here and digested with the same tool the host side
 // is read with (sha256sum, via crypto.Sha256Sum), giving DeclaredUnitDigested a value in the family
-// VllmServingLaunch.unit_digest is read in. The scratch path is content-addressed by construction:
-// the rendered text is deterministic, so concurrent binds write identical bytes to one path. Any
+// VllmServingLaunch.unit_digest is read in. The scratch path carries the group because both groups'
+// head units share one unit_name while their rendered bytes differ, and a worker and an auditor bind
+// concurrently; the path is content-addressed within a group since the render is deterministic. Any
 // leg that cannot produce the digest degrades to DeclaredUnitDigestUnavailable carrying the located
 // cause, never a guess.
 fn harness_declared_head_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
@@ -606,7 +607,7 @@ fn harness_declared_head_unit_digest(group: FabricGroup) -> DeclaredUnitDigestSt
         SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
           DeclaredUnitDigestUnavailable { obligation: join(["the declared head unit could not be rendered for digesting: ", c as String], "") as NonEmptyStr }
         SparkPairUnitRendered { unit_name: name, text: text } => {
-          let path = join(["/tmp/gunbc-declared-unit-", name as String], "")
+          let path = join(["/tmp/gunbc-declared-unit-", fabric_group_wire(g: group) as String, "-", name as String], "")
           let w = Filesystem.Write(path: path, content: text)
           if w.success == false {
             DeclaredUnitDigestUnavailable { obligation: join(["the declared head unit scratch write failed: ", w.error], "") as NonEmptyStr }
