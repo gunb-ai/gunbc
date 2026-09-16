@@ -249,6 +249,7 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
   )
     && count(required) == 16
     && any(required, path => path == ("/usr/bin/sh" as FilePath))
+    && any(required, path => path == ("/usr/bin/tmux" as FilePath))
     && any(required, path => path == ("/usr/bin/tee" as FilePath))
     && any(required, path => path == ("/usr/bin/env" as FilePath))
     && any(required, path => path == ("/usr/bin/install" as FilePath))
