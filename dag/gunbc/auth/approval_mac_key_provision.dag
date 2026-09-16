@@ -1,0 +1,207 @@
+module gunbc.auth.approval_mac_key_provision
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.resources { Network }
+import std.encoding { base64_decode, Standard }
+import std.algebra { trim }
+import extdeps.numeric.base16 { base16_encode_lower }
+import extdeps.entropy { Urandom }
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.secret_manager { GcpSecretVersion, sm_resolved_version_id, SmVersionIdProjected, SmVersionIdNotAVersionResource }
+import extdeps.transports.rest { classify_rest_outcome, RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable, RestReadExchange }
+import gunbc.secret_provision { SecretRef, SecretProvisionAttemptIdentity, fleet_secrets_gcp_project }
+import gunbc.secret_provision_actuator {
+  observe_secret_container, SecretContainerObserved, SecretObservationRefused,
+  create_secret_for_attempt, SecretCreatedForAttempt, SecretCreationRefused, SecretCreationOutcomeUnknown,
+  ObservedSecretContainer, version_add_capability_for_observed_container, add_initial_version,
+  VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown, VersionAddedButUnverified,
+  snapshot_minted_secret, CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
+  verified_version, verified_snapshot_identity,
+}
+import gunbc.auth.secret_rotation { inventory_from_list_response, inventory_enabled_versions, ListSecretVersionsResponse }
+import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
+import gunbc.auth.gcp_secret_access { secret_accessor_grant, secret_access_ensure_for }
+import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref }
+import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
+
+// PROVISION THE TWO APPROVAL-LOOP MAC KEYS THROUGH THE MODELED ACTUATOR, IDEMPOTENTLY. The
+// operator's objection to the first mint was right: it was three curl calls from a session, with
+// the receipt typed afterwards from memory. This entry is the same act as a run of the corpus --
+// gunbc.secret_provision_actuator observes the container, creates it only if absent, adds the
+// initial version from a snapshot it digested itself and reads it back, and
+// gunbc.auth.gcp_secret_access reconciles the accessor binding for the WIF convergence principal --
+// so the version the receipt pins is the one the store answered, not the one a shell printed.
+//
+// IDEMPOTENT BY CONSTRUCTION: a container that exists is observed, not recreated; a container with
+// an ENABLED version is reported with that version and nothing is added, so running this twice
+// cannot rotate a key out from under the links in flight (approval_capability: key_id pins what
+// is checked). Only a container with NO enabled version receives a new one.
+//
+// THE MATERIAL IS 32 OCTETS FROM /dev/urandom RENDERED AS 64 LOWER HEX -- the spelling
+// extdeps.crypto.mac hmac_sha256_hex takes as key material -- and it never reaches argv or a log:
+// the actuator's snapshot writes it 0600 into a run-owned directory, digests the FILE, and the
+// version is verified by reading back the store. What this run prints is the version and the
+// digest prefix, which is what the SecretRef rows pin.
+//
+// THE TOKEN IS THE OPERATOR'S, READ FROM A 0600 FILE NAMED BY GUNBC_GCP_ACCESS_TOKEN_FILE
+// (gunbc.auth.access_token_source read_supplied_access_token): the operator's gcloud session is the
+// only principal with secret-admin on the fleet project, and the standing says that first binding
+// is never self-granted. Run it as
+//
+//   GUNBC_GCP_ACCESS_TOKEN_FILE=<0600 file> gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/auth/approval_mac_key_provision.dag --function provision_approval_mac_keys
+
+data approval_mac_key_octets: Int = 32
+
+data approval_mac_key_provision_attempt: SecretProvisionAttemptIdentity = "approval-mac-keys-2026-09-16" as SecretProvisionAttemptIdentity
+
+type MintedKeyMaterial
+  = KeyMaterialMinted { hex: Secret }
+  | KeyMaterialRefused { cause: NonEmptyStr }
+
+// A SHORT OR EMPTY READ IS A REFUSAL, NOT A SHORTER KEY: the shell transport exits nonzero when
+// /dev/urandom or base64 fails, and the octet count is checked again here after decoding, so a
+// key of the wrong length has no constructor.
+fn mint_key_material() -> MintedKeyMaterial {
+  match base64_decode(s: trim(Urandom.ReadBytes(count: approval_mac_key_octets).octets_b64), variant: Standard) {
+    Absent => KeyMaterialRefused { cause: "the entropy read did not decode as base64" }
+    Present { value: octets } =>
+      if count(octets) != approval_mac_key_octets {
+        KeyMaterialRefused { cause: concat("the entropy read returned the wrong octet count: ", to_string(count(octets))) as NonEmptyStr }
+      } else {
+        KeyMaterialMinted { hex: base16_encode_lower(octets: octets) as Secret }
+      }
+  }
+}
+
+// ONE KEY'S STANDING AFTER THE RUN: which version is enabled and whether this run added it.
+type KeyProvisionStanding
+  = KeyAlreadyEnabled { secret_id: NonEmptyStr, version: NonEmptyStr }
+  | KeyVersionAdded { secret_id: NonEmptyStr, version: NonEmptyStr, digest_prefix: String }
+  | KeyProvisionRefused { secret_id: NonEmptyStr, cause: NonEmptyStr }
+
+fn standing_line(s: KeyProvisionStanding) -> String {
+  match s {
+    KeyAlreadyEnabled { secret_id: id, version: v } => join(["secret=", id as String, " standing=already-enabled version=", v as String], "")
+    KeyVersionAdded { secret_id: id, version: v, digest_prefix: d } => join(["secret=", id as String, " standing=version-added version=", v as String, " sha256_prefix=", d], "")
+    KeyProvisionRefused { secret_id: id, cause: c } => join(["secret=", id as String, " standing=REFUSED cause=", c as String], "")
+  }
+}
+
+fn standing_ok(s: KeyProvisionStanding) -> Bool {
+  match s {
+    KeyAlreadyEnabled { secret_id: _, version: _ } => true
+    KeyVersionAdded { secret_id: _, version: _, digest_prefix: _ } => true
+    KeyProvisionRefused { secret_id: _, cause: _ } => false
+  }
+}
+
+fn first_enabled_version(response: ListSecretVersionsResponse) -> NonEmptyStr? {
+  match inventory_enabled_versions(inventory: inventory_from_list_response(response: response)).first() {
+    Absent => none
+    Present { value: v } => match sm_resolved_version_id(identity: v.name) {
+      SmVersionIdProjected { version: ver } => Present { value: ver }
+      SmVersionIdNotAVersionResource { supplied: _ } => none
+    }
+  }
+}
+
+
+// MINT, SNAPSHOT, ADD, VERIFY -- for a container that exists and holds no enabled version, or one
+// this run just created.
+fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?, token: Secret) -> KeyProvisionStanding
+  uses net: Network
+{
+  match mint_key_material() {
+    KeyMaterialRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
+    KeyMaterialMinted { hex: material } => match snapshot_minted_secret(payload: material) {
+      CredentialSnapshotRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
+      CredentialSnapshotRefusedResidueRemains { workspace: w, cause: c } =>
+        KeyProvisionRefused { secret_id: secret_id, cause: concat(c as String, concat(" (residue remains at ", concat(w as String, ")"))) as NonEmptyStr }
+      CredentialSnapshotTaken { snapshot: snap } => {
+        let outcome = match container {
+          Absent =>
+            match create_secret_for_attempt(attempt: approval_mac_key_provision_attempt, project: fleet_secrets_gcp_project, secret_id: secret_id, snapshot: snap, token: token) {
+              SecretCreatedForAttempt { capability: cap } => Present { value: add_initial_version(capability: cap, token: token) }
+              SecretCreationRefused { cause: _ } => none
+              SecretCreationOutcomeUnknown { cause: _ } => none
+            }
+          Present { value: c } =>
+            Present { value: add_initial_version(
+              capability: version_add_capability_for_observed_container(container: c, attempt: approval_mac_key_provision_attempt, snapshot: snap),
+              token: token,
+            ) }
+        }
+        match outcome {
+          Absent => KeyProvisionRefused { secret_id: secret_id, cause: "the container could not be created for this attempt" }
+          Present { value: added } => match added {
+            VersionAddedAndVerified { verified: v } =>
+              KeyVersionAdded { secret_id: secret_id, version: verified_version(v), digest_prefix: (verified_snapshot_identity(v).hex as String).substring(start: 0, end: 12) }
+            VersionAdditionRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
+            VersionAdditionOutcomeUnknown { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
+            VersionAddedButUnverified { version: _, cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: concat("added but unverified: ", c as String) as NonEmptyStr }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn provision_one(ref: SecretRef, token: Secret) -> KeyProvisionStanding
+  uses net: Network
+{
+  let secret_id = ref.secret
+  match observe_secret_container(project: fleet_secrets_gcp_project, secret_id: secret_id, token: token) {
+    SecretObservationRefused { cause: _ } =>
+      add_first_version(secret_id: secret_id, container: none, token: token)
+    SecretContainerObserved { container: c } => {
+      let listed = gcp.SecretManager.ListVersions(access_token: token, secret_name: c.observed_resource as String)
+      match classify_rest_outcome(standing: RestReadExchange { rest: listed.outcome }) {
+        RestExchangeSucceeded =>
+          match first_enabled_version(response: ListSecretVersionsResponse { versions: listed.versions, next_page_token: Present { value: listed.next_page_token }, total_size: none }) {
+            Present { value: v } => KeyAlreadyEnabled { secret_id: secret_id, version: v }
+            Absent => add_first_version(secret_id: secret_id, container: Present { value: c }, token: token)
+          }
+        RestExchangeStatusRefused { status: _, body: b } => KeyProvisionRefused { secret_id: secret_id, cause: concat("versions could not be listed: ", b) as NonEmptyStr }
+        RestExchangeCommitAmbiguous { detail: d } => KeyProvisionRefused { secret_id: secret_id, cause: d }
+        RestExchangeUnreached { cause: c2 } => KeyProvisionRefused { secret_id: secret_id, cause: c2 }
+        RestExchangeUndecodable { status: _, cause: c2 } => KeyProvisionRefused { secret_id: secret_id, cause: c2 }
+      }
+    }
+  }
+}
+
+fn grant_line(ref: SecretRef, token: Secret) -> String
+  uses net: Network
+{
+  match secret_access_ensure_for(grant: secret_accessor_grant(target: ref), token_source: OperatorSuppliedToken { token: token }) {
+    ExitSuccess => join(["grant secret=", ref.secret as String, " accessor=fleet-cloud-convergence standing=converged"], "")
+    ExitFailure { code: _, reason: r } => join(["grant secret=", ref.secret as String, " standing=REFUSED cause=", r], "")
+  }
+}
+
+fn provision_approval_mac_keys() -> CliWireResponse
+  uses net: Network
+{
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause: c } => CliWirePrintable { bytes: concat("NO TOKEN: ", c as String), exit: exit_failure(reason: c as String) }
+    SuppliedTokenReady { token: token } => {
+      let capability = provision_one(ref: approval_mac_key_secret_ref, token: token)
+      let submission = provision_one(ref: approval_submission_mac_key_secret_ref, token: token)
+      let keys_ok = standing_ok(s: capability) && standing_ok(s: submission)
+      let grants = if keys_ok {
+        join([grant_line(ref: approval_mac_key_secret_ref, token: token), "\n", grant_line(ref: approval_submission_mac_key_secret_ref, token: token)], "")
+      } else {
+        "grants: skipped, a key refused"
+      }
+      let report = join([standing_line(s: capability), "\n", standing_line(s: submission), "\n", grants, "\n"], "")
+      if keys_ok && !contains(grants, "REFUSED") {
+        CliWirePrintable { bytes: report, exit: ExitSuccess }
+      } else {
+        CliWirePrintable { bytes: report, exit: exit_failure(reason: "approval MAC key provisioning did not converge") }
+      }
+    }
+  }
+}

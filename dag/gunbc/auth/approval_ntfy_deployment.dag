@@ -308,7 +308,12 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
 // TLD, which is guaranteed never to resolve. That is a structural failure, not an absorbing
 // fallback: it cannot succeed, cannot widen, and cannot be mistaken for a working endpoint. The
 // arm is witnessed so it is not merely asserted.
-fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+//
+// ONE COMPOSITION FOR EVERY SERVICE TAILSCALE SERVE PUBLISHES ON srv1: the port is the parameter,
+// because that is the only fact that differs between the ntfy address and the roadmap server's
+// (which the approval links point at, gunbc.auth.approval_request_submission). Absent means the
+// default TLS port and no `:port` suffix, which is how tailscale serve renders the 443 listener.
+fn srv1_tailnet_base_url_from(domain: NonEmptyStr?, port: Port?) -> NonEmptyStr {
   match domain {
     Present { value: d } =>
       join([
@@ -316,11 +321,14 @@ fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
         operator_host_srv1 as String,
         ".",
         d as String,
-        ":",
-        to_string(approval_ntfy_serve_port),
+        match port { Present { value: p } => concat(":", to_string(p))  Absent => "" },
       ], "") as NonEmptyStr
     Absent => "https://tailnet-domain-undeclared.invalid" as NonEmptyStr
   }
+}
+
+fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  srv1_tailnet_base_url_from(domain: domain, port: Present { value: approval_ntfy_serve_port })
 }
 
 // The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's

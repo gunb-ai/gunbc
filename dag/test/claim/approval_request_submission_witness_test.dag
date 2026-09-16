@@ -13,7 +13,7 @@ import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id, submission_keyring_from_content,
   sign_submission, submission_envelope_json, parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   admit_approval_submission, SubmissionVerified, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
-  issue_links, LinksIssued, LinksNotIssued, approval_message,
+  issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status_text,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -142,4 +142,12 @@ test fn a_non_hex_capability_key_issues_no_link() -> Bool {
     LinksNotIssued { key_id: _ } => true
     LinksIssued { approve: _, deny: _ } => false
   }
+}
+
+// THE STATUS TEXT A POLLING RUN READS, over a store root under the checkout that holds no slot:
+// the not-filed standing is the filesystem's absence, read through the CAS probe, never inferred
+// from empty content. The pending and decided renderings are covered by the live probe over a real
+// store; this is the one arm the hermetic frame can reach.
+test fn status_text_reports_not_filed_for_an_absent_slot() -> Bool {
+  escalation_status_text(root: "dag/test/claim", escalation_id: "esc-no-such-escalation") == "standing=not-filed\n"
 }

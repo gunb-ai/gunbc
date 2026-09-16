@@ -7,12 +7,13 @@ import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, MacSigning, MacSigned,
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, NtfyPublished, NtfyPublishRefused, NtfyPublishUnreached, NtfyPublishUndecodable, ntfy_publish_outcome_of, ntfy_priority_wire, ntfy_cache_wire }
-import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
+import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_deployment
+import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
 import std.algebra { trim }
 import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal, ApprovalKeyFileAbsent, ApprovalKeyFileUnreadable, ApprovalKeyMalformed,
@@ -194,14 +195,13 @@ fn admit_approval_submission(text: String, keyring: ApprovalKeyringRead) -> Subm
 
 // ── the links and the notification ─────────────────────────────────────────────────────────────
 
-// THE LINK BASE IS THE ROADMAP SERVER'S TAILNET NAME, composed from the two facts the fleet owns
-// (gunbc.fleet_intent_network), as approval_ntfy_deployment composes the ntfy one; the approve
-// route is served there by gunbc.roadmap.roadmap_serve.
+// THE LINK BASE IS THE ROADMAP SERVER'S TAILNET NAME, the same composition the ntfy address uses
+// (gunbc.auth.approval_ntfy_deployment srv1_tailnet_base_url_from) at the default TLS port, where
+// tailscale serve proxies / to the roadmap server; the approve route is served there by
+// gunbc.roadmap.roadmap_serve. The undeclared-domain arm and its `.invalid` reasoning live with
+// that function and are not restated here.
 fn approval_link_base_url() -> NonEmptyStr {
-  match fleet_intent_network.tailnet_domain {
-    Present { value: d } => join(["https://", operator_host_srv1 as String, ".", d as String], "") as NonEmptyStr
-    Absent => "https://tailnet-domain-undeclared.invalid" as NonEmptyStr
-  }
+  srv1_tailnet_base_url_from(domain: fleet_intent_network.tailnet_domain, port: none)
 }
 
 fn approval_link(base: NonEmptyStr, request: StoredApprovalRequest, decision: ProposedDecision, tag_hex: NonEmptyStr) -> NonEmptyStr {

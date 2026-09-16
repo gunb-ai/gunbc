@@ -388,17 +388,6 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
   r.status == 400 && string_contains(s: r.body, pattern: "submission unreadable")
 }
 
-test fn the_status_route_refuses_an_empty_escalation_id() -> Bool {
-  let r = roadmap_serve_respond(
-    method_label: "GET",
-    path: "/approvals/",
-    body: "",
-    tailscale_identity: "",
-    release_revision: deploy_witness_release_revision,
-  )
-  r.status == 400 || r.status == 404
-}
-
 // THE IDENTITY REACHES THE HANDLER. This is the end-to-end assertion for the whole identity
 // change: a login supplied at the serve entry arrives at the route that will consume it. Without
 // this the plumbing could be silently dropping it and every unit-level identity witness would

@@ -660,17 +660,15 @@ fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
 
 // THE STATUS ROUTE a filing run polls: standing and, once decided, who and when. Nothing here is
 // a secret and nothing here decides, so it takes no identity and performs no write.
+// THE SEGMENT IS NON-EMPTY BY THE ROUTER'S CONSTRUCTION (extdeps.uri_path: a ParamToken binds a
+// non-empty segment and empties never match), so this handler is only ever entered with an id and
+// carries no guard for the state the router already makes unreachable (review 67057).
 fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse {
-  let escalation_id = path_param_value(params: params, name: "escalation_id")
-  if escalation_id == "" {
-    serve_text_response(status: 400, content_type: text_plain_utf8, body: "approval status: escalation id is empty\n")
-  } else {
-    serve_text_response(
-      status: 200,
-      content_type: text_plain_utf8,
-      body: escalation_status_text(root: approval_decision_store_root, escalation_id: escalation_id as NonEmptyStr),
-    )
-  }
+  serve_text_response(
+    status: 200,
+    content_type: text_plain_utf8,
+    body: escalation_status_text(root: approval_decision_store_root, escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr),
+  )
 }
 
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
