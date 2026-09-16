@@ -168,11 +168,38 @@ published runtime; a file-backed runtime is a new candidate subject and does not
 
 ## Why the program is still worth running
 
-Measured from the published repository manifest rather than estimated: the checkpoint is
-475.3 GiB across 48 shards, of which the two Engram shards are 189.1 GiB and everything else is
-286.1 GiB. At TP4 with Engram resident, that is **118.8 GiB per rank against a 121 GiB pool** —
-it fits by 2.2 GiB, with nothing left for KV cache, CUDA context, activations or the runtime.
-Moving Engram to storage makes it 71.5 GiB per rank and turns 2.2 GiB of headroom into 49.5.
+**Named, not transcribed** — an earlier draft of this section re-derived the fit in prose and got
+it backwards. The authority is `gunbc.spark.serving_deployment_selection`
+`candidate_component_budget`, and the reading it consumes is
+`gunbc.spark.pair_serving_observed` `group_rank_free_memory_observed`.
 
-That single comparison is why the published runtime's negative is correct rather than
-conservative, and why this cut exists at all.
+Its result, at the grain the fold actually computes:
+
+```
+ranks = 8   Engram needs 23.64 GiB per rank against an 81.14 GiB budget   fits, with room
+ranks = 4   Engram needs 47.28 GiB per rank against a  45.42 GiB budget   SHORT BY 1.86 GiB
+```
+
+So route A at TP4 is **excluded by a measured shortfall**, not by a near miss. Three things in
+that fold are easy to get wrong from outside it, and getting any of them wrong inverts the
+answer:
+
+- the denominator is the **observed idle free** reading — 116.85 GiB at its lower endpoint —
+  not the 121 GiB device total. `candidate_component_budget` says so explicitly, and a missing
+  reading refuses rather than substituting the total;
+- the budget is what remains after the artifact's **other three** components, not one. The
+  vision tower with its aligner and the DSpark draft model are 7.89 GiB that a two-component
+  reading omits — and they are the entire difference between a sum saying *+0.113 GiB of
+  headroom* and the fold saying *−1.86*;
+- the shortfall must exceed the reading's own precision. The runtime prints one decimal of GiB,
+  so 116.9 means [116.85, 116.95); 1.86 GiB clears that uncertainty and is therefore
+  established rather than borderline.
+
+The corpus already records a second derivation on a different path: the Group A rollout lane,
+reading the published checkpoint index and dividing rather than running this decision, reported
+118.81 GiB per rank against 116.9 free. Two derivations sharing no method, 0.1 GiB apart, both
+short.
+
+**That is why Cut B exists.** Not because the published runtime nearly fits — it does not fit,
+by a margin larger than the measurement's own uncertainty — but because moving Engram off the
+resident budget is the only change that alters the term the fold is short on.
