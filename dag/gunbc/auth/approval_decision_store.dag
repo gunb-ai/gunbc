@@ -13,14 +13,15 @@ import std.scoped_authorization {
   Unclaimed,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
 import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+import gunbc.fleet_posix_accounts { fleet_operator_email }
 import gunbc.durable_cas_file_store {
-  DefaultAccessCreateOnly,
+  OwnerOnlyCreateOnly,
   admit_cas_attempt_for_derived_payload,
   DerivedPayloadAdmitted,
   DerivedPayloadKeyNotSlotAddressable,
@@ -108,9 +109,15 @@ data approval_mac_key_suite: MacSuite = HmacSha256
 // declared frontier at the bottom of this module.
 data approval_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-mac-key"
 
+// ABSENT AND UNREADABLE ARE TWO REFUSALS WITH TWO REMEDIES (review 66990;
+// extdeps.filesystem.filesystem_io filesystem_absence_establishment_adoption_standing): an absent
+// key means the materialization frontier has not run; an unreadable one means it ran and the unit
+// cannot read what it wrote -- a permission on the file, not a missing step. Reading `content`
+// alone and calling "" absent would report the second as the first, which fails toward good news.
 type ApprovalKeyringRead
   = ApprovalKeyLoaded { key: MacKey }
   | ApprovalKeyFileAbsent { path: NonEmptyStr }
+  | ApprovalKeyFileUnreadable { path: NonEmptyStr, error: String }
   | ApprovalKeyMalformed { path: NonEmptyStr, length: Int }
 
 // Code points: '0'..'9' are 48..57, 'a'..'f' are 97..102.
@@ -124,19 +131,28 @@ fn is_lower_hex(s: String) -> Bool {
 
 // THE MATERIAL IS 64 LOWERCASE HEX DIGITS AND NOTHING ELSE; a trailing newline from an editor is
 // refused rather than trimmed, because a key that verifies with one reader and not another is
-// worse than one that refuses everywhere.
+// worse than one that refuses everywhere. An empty file is malformed, not absent: absence is the
+// filesystem's answer, established by the exact read below, never inferred from empty content.
 fn approval_keyring_from_content(content: String) -> ApprovalKeyringRead {
-  if content == "" {
-    ApprovalKeyFileAbsent { path: approval_mac_key_path }
-  } else if content.length() != 64 || !is_lower_hex(s: content) {
+  if content.length() != 64 || !is_lower_hex(s: content) {
     ApprovalKeyMalformed { path: approval_mac_key_path, length: content.length() }
   } else {
     ApprovalKeyLoaded { key: MacKey { id: approval_mac_key_id, suite: approval_mac_key_suite, material: content as Secret } }
   }
 }
 
+fn approval_keyring_from_exact_read(exact: FilesystemExactRead) -> ApprovalKeyringRead {
+  match exact {
+    FilesystemExactPathRead { path: _, content: c } => approval_keyring_from_content(content: c)
+    FilesystemExactPathAbsent { path: _ } => ApprovalKeyFileAbsent { path: approval_mac_key_path }
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ApprovalKeyFileUnreadable { path: approval_mac_key_path, error: e }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ApprovalKeyFileUnreadable { path: approval_mac_key_path, error: concat(o, concat(": ", e)) }
+  }
+}
+
 fn read_approval_keyring() -> ApprovalKeyringRead {
-  approval_keyring_from_content(content: Filesystem.Read(path: approval_mac_key_path as String).content)
+  let read = Filesystem.Read(path: approval_mac_key_path as String)
+  approval_keyring_from_exact_read(exact: filesystem_exact_read(path: approval_mac_key_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind))
 }
 
 // ── what the verifier accepts ──────────────────────────────────────────────────────────────────
@@ -157,10 +173,11 @@ data approval_capability_expectation: CapabilityExpectation = CapabilityExpectat
   suite: HmacSha256,
 }
 
-// THE OPERATOR IS ONE TAILNET LOGIN, read from the live tailnet on 2026-09-16 (`tailscale status`
-// on srv1: User LoginName briansrls@gmail.com). The route refuses any other presented identity
-// and an absent one (approval_broker RedemptionIdentityRefused).
-data approval_operator_login: NonEmptyStr = "briansrls@gmail.com"
+// THE OPERATOR IS ONE TAILNET LOGIN, and it is the row the fleet already owns:
+// gunbc.fleet_posix_accounts fleet_operator_email, which the tailscale ACL consumes too. The
+// live tailnet (`tailscale status` on srv1, 2026-09-16) reports the same login. A second literal
+// here would be a second authority on who a tap may be (review 66990).
+data approval_operator_login: NonEmptyStr = fleet_operator_email
 
 // AND THE IDENTITY HEADER IS ONLY EVIDENCE WHEN THE BACKEND IS REACHABLE THROUGH TAILSCALE SERVE
 // ALONE (extdeps.tailscale.identity identity_header_trust_is_a_deployment_property_note). The
@@ -179,6 +196,10 @@ data approval_identity_trust: IdentityTrustStanding = IdentityHeaderTrustNotEsta
 
 // ── the store ──────────────────────────────────────────────────────────────────────────────────
 
+// CONSENT RECORDS ARE AUTHORIZATION STATE, so every generation is published OWNER-ONLY
+// (OwnerOnlyCreateOnly -> Filesystem.WriteOwnerOnly, 0600): the rule gunbc.durable_cas_file_store
+// states for a bare path with no directory-mode authority (review 66990). A record names who asked,
+// for what, whether it is destructive and who decided; none of that is for other users of the host.
 data approval_decision_store_root: NonEmptyStr = "/var/lib/gunbc/approvals"
 
 // THE CLAIMS-GRADE FACTS OF A FILED REQUEST. Everything approval_capability_signing_input reads is
@@ -414,7 +435,7 @@ fn file_approval_request(root: NonEmptyStr, request: StoredApprovalRequest) -> S
   match admit_cas_attempt_for_derived_payload(key: request.escalation_id, expected: ExpectSlotAbsent, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => StoreRefused { detail: "escalation id is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v))
+      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v))
   }
 }
 
@@ -429,7 +450,7 @@ fn commit_broker_decision(root: NonEmptyStr, decision: BrokerDecision) -> StoreW
   match admit_cas_attempt_for_derived_payload(key: escalation_id, expected: ExpectSlotGeneration { generation: cas_generation_first() }, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => StoreRefused { detail: "escalation id is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v))
+      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v))
   }
 }
 
@@ -515,6 +536,7 @@ fn store_redemption_reason(r: StoreRedemption) -> String {
     RedemptionKeyringUnavailable { read: k } => match k {
       ApprovalKeyLoaded { key: _ } => "keyring loaded"
       ApprovalKeyFileAbsent { path: p } => concat("approval MAC key file is absent: ", p as String)
+      ApprovalKeyFileUnreadable { path: p, error: e } => concat("approval MAC key file is unreadable: ", concat(p as String, concat(" -- ", e)))
       ApprovalKeyMalformed { path: p, length: n } => concat("approval MAC key file is malformed (", concat(to_string(n), concat(" chars): ", p as String)))
     }
     RedemptionIdentityUntrusted { standing: s } => match s {

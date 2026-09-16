@@ -557,14 +557,15 @@ fn approval_confirm_page_response(
 // denied, already decided); 403 for a refusal the caller's own presentation caused (identity,
 // MAC, expiry, method); 503 for the store or keyring being unavailable, or the deployment not yet
 // vouching for the header -- the operator did nothing wrong and should try again after the deploy.
+//
+// THE CLOCK AND THE KEYRING ARE READ ONLY PAST THE TRUST GATE. Both are effects, and an effect
+// performed on the way to a refusal is work the refusal should have prevented -- it is also what
+// keeps the hermetic witness able to reach this handler while the row says not established, since
+// Clock.Now has no hermetic arm.
 fn approval_decide_response(
   request: ServeHttpRequest,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
-  // THE CLOCK AND THE KEYRING ARE READ ONLY PAST THE TRUST GATE. Both are effects, and an
-  // effect performed on the way to a refusal is work the refusal should have prevented -- it is
-  // also what keeps the hermetic witness able to reach this handler while the row says not
-  // established, since Clock.Now has no hermetic arm.
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
