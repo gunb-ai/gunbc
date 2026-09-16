@@ -4321,11 +4321,10 @@ pub(crate) fn floor_authority_frame(
 /// declared roster, install admission and the shared-fill observer, and warm every nullary
 /// row so its fill is billed to preparation. FAIL-CLOSED at every arm: the roster module is
 /// a declared closure seed (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`), so a subject that
-/// cannot frame it, a roster that cannot decode, a warm spelling whose module IS in this
-/// subject but names no declaration, a warm that fails to evaluate, and a warm whose value
-/// the store refuses each stop the line. A roster row whose module is simply not in this
-/// gate-bounded subject is printed and not admitted — that is not a skip of the roster
-/// module itself.
+/// cannot frame it, a roster that cannot decode, a warm row whose module is gone, a warm
+/// that fails to evaluate, and a warm whose value the store refuses each stop the line — a
+/// skip at any of these arms would leave admission empty while CI reads green, memoizing
+/// nothing (a green over a flag that never ran).
 // RETURNS ITS OBSERVATIONS RATHER THAN JUST ITS ERRORS, because the warm fills are a shared
 // preparation build and the preparation refusal is denominated over the observations its caller
 // collects. Before this, the warm ran, printed a wall figure and produced nothing the adjudicator
@@ -4336,6 +4335,7 @@ pub(crate) fn floor_authority_frame(
 // other shared build, so all five phases go through ONE refusal.
 pub(crate) fn install_pure_producer_share(
     prepared: &PreparedRepository,
+    corpus_modules: &std::collections::HashSet<String>,
 ) -> Result<Vec<(String, SharedBuildObservation)>, String> {
     const FLOOR_PURE_PRODUCER_SHARE_MODULE: &str = "v2.workflow.floor_pure_producer_share";
     const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
@@ -4376,14 +4376,58 @@ pub(crate) fn install_pure_producer_share(
     // interpreter admits by that node set — a bare-name homonym in a non-rostered module is
     // a different node and never eligible.
     //
-    // TWO ABSENCES, TWO ARMS. The roster is corpus-wide (live-deploy renders, parse fixtures).
-    // The prepared subject is gate prefixes plus the diff. A row whose MODULE is not in this
-    // subject is not stale: it is not a consumer of this subject, so it is not admitted here
-    // (receipt on stderr). A row whose module IS in the subject but whose spelling names no
-    // declaration is stale and stops the line — that is the arm `a_stale_warm_row_stops_the_line`
-    // holds. Conflating them made every spark-only floor refuse on `test.claim.live_deploy.emit`.
+    // THE ROSTER IS GLOBAL AND THE SUBJECT IS LOCAL, so admission is scoped to the subject
+    // actually prepared. Three dispositions, and only one of them is staleness:
+    //   1. the module frames in the prepared subject -> resolve and admit (an unresolved
+    //      spelling there IS stale and stops the line);
+    //   2. the module exists in the corpus but outside the prepared closure -> NOT evaluated,
+    //      counted and announced. This is not a widen: the subject is closed under every edge
+    //      `claim_scope_for` follows, so no claim in it can demand that producer, and not
+    //      warming it relocates no fill onto any claim. The whole-corpus run on main still
+    //      evaluates every row, so a broken row cannot hide behind narrow subjects;
+    //   3. the module exists nowhere in the corpus -> a stale row; stop the line and say so.
+    // Pulling every rostered module into every subject instead would re-grow the per-PR
+    // closure toward the corpus on every roster append — cost denominated in the corpus, not
+    // the change (DESIGN section 5), for fills no claim in the subject can consume.
     let mut resolution_frames: std::collections::HashMap<String, v1_interpreter::InterpContext> =
         std::collections::HashMap::new();
+    let mut outside_subject: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    // Returns Ok(true) when the module framed, Ok(false) when it is outside this subject but
+    // present in the corpus (disposition 2), Err on staleness or any other framing failure.
+    let mut frame_rostered_module =
+        |module: &str,
+         row_kind: &str,
+         row: &str,
+         frames: &mut std::collections::HashMap<String, v1_interpreter::InterpContext>|
+         -> Result<bool, String> {
+            if frames.contains_key(module) {
+                return Ok(true);
+            }
+            if outside_subject.contains(module) {
+                return Ok(false);
+            }
+            match floor_authority_frame(prepared, module) {
+                Ok(frame) => {
+                    frames.insert(module.to_string(), frame);
+                    Ok(true)
+                }
+                Err(_) if !corpus_modules.contains(module) => Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRowModuleAbsentFromCorpus \
+                 {row_kind}={row} module={module} — the roster row names a module no source \
+                 root carries; the row is stale: delete it or restore the module"
+                )),
+                Err(why) if why.contains("cause=EntryModuleOutsidePreparedSubject") => {
+                    outside_subject.insert(module.to_string());
+                    Ok(false)
+                }
+                Err(why) => Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRowModuleUnframeable \
+                 {row_kind}={row} module={module} — the module is in the corpus and was not \
+                 excluded as outside the prepared subject, yet it does not frame; the row is \
+                 NOT shown stale by this, do not delete it to get green: {why}"
+                )),
+            }
+        };
     let mut admitted_nodes = Vec::new();
     let mut admitted_qualified: Vec<String> = Vec::new();
     let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
@@ -4396,28 +4440,8 @@ pub(crate) fn install_pure_producer_share(
             Some((module, _)) => module.to_string(),
             None => qualified.clone(),
         };
-        if !prepared
-            .graph
-            .modules
-            .iter()
-            .any(|m| m.func_env.name == module)
-        {
-            eprintln!(
-                "[floor-plan] PureProducerShareProducerOutsideThisSubject producer={qualified} \
-                 module={module} — rostered for corpus-wide share; this prepared subject does \
-                 not contain the module, so the row is not admitted here"
-            );
+        if !frame_rostered_module(&module, "producer", qualified, &mut resolution_frames)? {
             continue;
-        }
-        if !resolution_frames.contains_key(&module) {
-            let frame = floor_authority_frame(prepared, &module).map_err(|why| {
-                format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerModuleOutsideSubject \
-                     producer={qualified} — the module is in the prepared graph but could not \
-                     be framed: {why}"
-                )
-            })?;
-            resolution_frames.insert(module.clone(), frame);
         }
         let node = resolution_frames[&module]
             .lookup_fn_node(qualified)
@@ -4481,32 +4505,21 @@ pub(crate) fn install_pure_producer_share(
         String,
         std::rc::Rc<crate::v1_std_core::Node>,
     > = std::collections::HashMap::new();
+    let mut inputs_outside_subject: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     for input in &prepared_inputs {
         let module = match input.acquisition.rsplit_once('.') {
             Some((module, _)) => module.to_string(),
             None => input.acquisition.clone(),
         };
-        if !prepared
-            .graph
-            .modules
-            .iter()
-            .any(|m| m.func_env.name == module)
-        {
-            eprintln!(
-                "[floor-plan] PreparedEffectInputOutsideThisSubject acquisition={} module={} — \
-                 not acquired for this prepared subject",
-                input.acquisition, module
-            );
+        if !frame_rostered_module(
+            &module,
+            "acquisition",
+            &input.acquisition,
+            &mut resolution_frames,
+        )? {
+            inputs_outside_subject.insert(input.acquisition.clone());
             continue;
-        }
-        if !resolution_frames.contains_key(&module) {
-            let frame = floor_authority_frame(prepared, &module).map_err(|why| {
-                format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputModuleOutsideSubject acquisition={} — the module is in the prepared graph but could not be framed: {why}",
-                    input.acquisition
-                )
-            })?;
-            resolution_frames.insert(module.clone(), frame);
         }
         let frame = &resolution_frames[&module];
         let node = frame.lookup_fn_node(&input.acquisition).ok_or_else(|| {
@@ -4542,17 +4555,21 @@ pub(crate) fn install_pure_producer_share(
         ));
     }
     for row in &carried_rows {
-        let module = match row.producer.rsplit_once('.') {
-            Some((module, _)) => module.to_string(),
-            None => row.producer.clone(),
+        let producer_module = match row.producer.rsplit_once('.') {
+            Some((module, _)) => module,
+            None => row.producer.as_str(),
         };
-        if !resolution_frames.contains_key(&module) {
-            eprintln!(
-                "[floor-plan] CarriedInputWarmRowOutsideThisSubject producer={} module={} — \
-                 not warmed for this prepared subject",
-                row.producer, module
-            );
+        if outside_subject.contains(producer_module) {
             continue;
+        }
+        // The producer is demandable in this subject but its input was not prepared here: the
+        // claim would be served an uncarried value. Refuse, and name the real cause rather
+        // than reporting the input as unknown to the roster.
+        if inputs_outside_subject.contains(&row.carried_input) {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputOutsideSubject producer={} input={} — the producer's module is in the prepared subject but its carried input's module is not; the closure must carry the acquisition's module (an import from the producer's module is the edge preparation follows)",
+                row.producer, row.carried_input
+            ));
         }
         let acquisition_node = acquisition_nodes.get(&row.carried_input).ok_or_else(|| {
             format!(
@@ -4560,6 +4577,12 @@ pub(crate) fn install_pure_producer_share(
                 row.producer, row.carried_input
             )
         })?;
+        let module = match row.producer.rsplit_once('.') {
+            Some((module, _)) => module.to_string(),
+            None => row.producer.clone(),
+        };
+        // Resolution above already framed every rostered producer's module, carried-input rows
+        // included (they are part of the admitted population), so the frame is present.
         let frame = &resolution_frames[&module];
         let producer_node = frame.lookup_fn_node(&row.producer).ok_or_else(|| {
             format!(
@@ -4638,6 +4661,8 @@ pub(crate) fn install_pure_producer_share(
             Some((module, _)) => module.to_string(),
             None => qualified.clone(),
         };
+        // Resolution above either framed this row's module or recorded it as outside the
+        // prepared subject (not evaluated here, counted below); a stale row already refused.
         let Some(producer_frame) = resolution_frames.get(&module) else {
             continue;
         };
@@ -4740,6 +4765,18 @@ pub(crate) fn install_pure_producer_share(
             }
         }
     }
+    // Disposition 2 is COUNTED, one line, so a subject that quietly stopped evaluating rows
+    // it should carry is visible in the run's own announcement.
+    eprintln!(
+        "[floor-phase] phase=pure-producer-share-scope state=completed \
+         rostered_modules_outside_subject={} modules=[{}]",
+        outside_subject.len(),
+        outside_subject
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(",")
+    );
     Ok(warm_observations)
 }
 
@@ -5830,13 +5867,19 @@ pub fn run_required_floor(
     // REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES closure seed, so its absence from the
     // prepared subject is drift, and the install REFUSES rather than skipping — a silent
     // skip would relocate every warm fill onto the first toucher, the exact
-    // nondeterministic charge this mechanism deletes.
+    // nondeterministic charge this mechanism deletes. The ROWS are scoped to the subject:
+    // the corpus module set is what separates a stale row from one outside this closure.
     // THE WARM OBSERVATIONS JOIN THE SAME VECTOR THE PREPARATION REFUSAL ITERATES, which is the
     // whole of this change: the fills were already outside the per-claim ceiling and were until
     // now outside the preparation bound as well, so a rostered producer could warm for any cost at
     // all and stop nothing. The label carries the producer because the refusal names a phase and
     // "which shared build" must resolve to one roster row, not to the roster.
-    let pure_producer_warms = install_pure_producer_share(&prepared)?;
+    let corpus_modules: std::collections::HashSet<String> = full_inventory
+        .iter()
+        .map(|src| src.module_path.clone())
+        .collect();
+    let pure_producer_warms = install_pure_producer_share(&prepared, &corpus_modules)?;
+    drop(corpus_modules);
     let mut shared_build_warms: Vec<(String, SharedBuildObservation)> = vec![
         ("ModulePathIndexBuild".to_string(), module_path_index_warm),
         ("SharedModuleIndexBuild".to_string(), shared_index_warm),
@@ -9883,6 +9926,82 @@ mod pure_producer_share_tests {
         }
     }
 
+    fn fixture_corpus(extra: &[&str]) -> std::collections::HashSet<String> {
+        extra.iter().map(|m| m.to_string()).collect()
+    }
+
+    const EMPTY_ROSTER_TAIL: &str =
+        "data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
+             type CarriedInputDependence =\n\
+                 BoundParameter { parameter: String }\n\
+               | ImplicitAcquisition\n\
+             type PreparedEffectInput {\n\
+               acquisition: String\n\
+               checkout_input: String\n\
+               ground: String\n\
+               measurement: String\n\
+             }\n\
+             type CarriedInputWarmRow {\n\
+               producer: String\n\
+               carried_input: String\n\
+               dependence: CarriedInputDependence\n\
+               measurement: String\n\
+             }\n\
+             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n";
+
+    fn roster_naming(row: &str) -> String {
+        format!(
+            "module v2.workflow.floor_pure_producer_share\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = [\"{row}\"]\n{EMPTY_ROSTER_TAIL}"
+        )
+    }
+
+    /// THE gunbc#11452 SHAPE: a row naming a LIVE producer whose module the corpus carries but
+    /// this narrow subject does not is not evaluated, and the install succeeds.
+    #[test]
+    fn a_live_row_outside_the_prepared_subject_is_not_evaluated() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            &roster_naming("test.claim.elsewhere.emit.witness_apply_script"),
+        )]);
+        let warms =
+            install_pure_producer_share(&prepared, &fixture_corpus(&["test.claim.elsewhere.emit"]))
+                .expect("a live row outside the subject must not stop the line");
+        assert!(warms.is_empty(), "nothing outside the subject warms");
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// The discriminating RED beside it: the SAME row, with its module absent from the corpus,
+    /// is stale and refuses with the cause that tells the author to delete it.
+    #[test]
+    fn a_row_whose_module_no_root_carries_refuses_as_stale() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            &roster_naming("test.claim.elsewhere.emit.witness_apply_script"),
+        )]);
+        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
+            .expect_err("a row naming no corpus module must refuse");
+        assert!(
+            err.contains("PureProducerShareRowModuleAbsentFromCorpus") && err.contains("stale"),
+            "refusal must name the stale cause: {err}"
+        );
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
     /// THE CLOSURE RED the review asked for: a prepared subject WITHOUT the roster module
     /// must REFUSE, never skip — a skip leaves admission empty while the floor reads green,
     /// memoizing nothing.
@@ -9893,7 +10012,7 @@ mod pure_producer_share_tests {
             "workspace/src/other.dag",
             "module fixture.other\nfn check() -> Bool { true }\n",
         )]);
-        let err = install_pure_producer_share(&prepared)
+        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a subject without the roster must refuse");
         assert!(
             err.contains("PureProducerShareRosterOutsidePreparedSubject"),
@@ -9950,8 +10069,8 @@ mod pure_producer_share_tests {
                }\n\
              ]\n",
         )]);
-        let observations =
-            install_pure_producer_share(&prepared).expect("carried roster installs and warms");
+        let observations = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
+            .expect("carried roster installs and warms");
         let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
         assert_eq!(overflow, 0);
         assert!(stores >= 1, "the warm must land in the store, got {stores}");
@@ -10043,7 +10162,7 @@ mod pure_producer_share_tests {
              data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
              data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
         )]);
-        let err = install_pure_producer_share(&prepared)
+        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("an effectful plain warm row must refuse, never store content-blind");
         assert!(
             err.contains("cause=PureProducerShareWarmDispatchedEffect")
@@ -10101,7 +10220,8 @@ mod pure_producer_share_tests {
              data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
         )]);
 
-        let first = install_pure_producer_share(&prepared).expect("first install warms");
+        let first = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
+            .expect("first install warms");
         assert!(
             matches!(
                 first[0].1.provenance,
@@ -10113,7 +10233,8 @@ mod pure_producer_share_tests {
 
         // No `clear_cross_claim_pure_memos()` here, deliberately: the retained value is the
         // whole subject of this test.
-        let second = install_pure_producer_share(&prepared).expect("second install re-warms");
+        let second = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
+            .expect("second install re-warms");
         match &second[0].1.provenance {
             SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
                 // The label names a BOUNDARY and not a call site, because `AlreadyPresent`
@@ -10227,8 +10348,8 @@ mod pure_producer_share_tests {
     fn a_prepared_effect_input_is_acquired_once_and_its_producer_is_warmed_over_it() {
         v1_interpreter::clear_cross_claim_pure_memos();
         let prepared = carried_input_fixture("ImplicitAcquisition");
-        let observations =
-            install_pure_producer_share(&prepared).expect("the carried input installs and warms");
+        let observations = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
+            .expect("the carried input installs and warms");
         let labels: Vec<&str> = observations.iter().map(|(l, _)| l.as_str()).collect();
         assert!(
             labels.contains(
@@ -10275,7 +10396,8 @@ mod pure_producer_share_tests {
     fn a_changed_carrier_content_is_not_served_the_value_derived_from_the_old_one() {
         v1_interpreter::clear_cross_claim_pure_memos();
         let prepared = carried_input_fixture("ImplicitAcquisition");
-        install_pure_producer_share(&prepared).expect("the carried input installs and warms");
+        install_pure_producer_share(&prepared, &fixture_corpus(&[]))
+            .expect("the carried input installs and warms");
         let frame = floor_authority_frame(&prepared, "v2.workflow.floor_pure_producer_share")
             .expect("fixture frame");
 
@@ -10327,7 +10449,8 @@ mod pure_producer_share_tests {
     fn the_prepared_input_binding_is_absent_after_the_tier_is_cleared() {
         v1_interpreter::clear_cross_claim_pure_memos();
         let prepared = carried_input_fixture("ImplicitAcquisition");
-        install_pure_producer_share(&prepared).expect("the carried input installs and warms");
+        install_pure_producer_share(&prepared, &fixture_corpus(&[]))
+            .expect("the carried input installs and warms");
         let frame = floor_authority_frame(&prepared, "v2.workflow.floor_pure_producer_share")
             .expect("fixture frame");
         let acquisition_node = frame
@@ -10399,7 +10522,7 @@ mod pure_producer_share_tests {
              }\n\
              data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
         )]);
-        let err = install_pure_producer_share(&prepared)
+        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a row naming an unprepared input must stop the line");
         assert!(
             err.contains("CarriedInputWarmRowInputUnknown"),
@@ -10456,7 +10579,7 @@ mod pure_producer_share_tests {
              }\n\
              data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
         )]);
-        let err = install_pure_producer_share(&prepared)
+        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a non-nullary acquisition must stop the line");
         assert!(
             err.contains("PreparedEffectInputAcquisitionFailed") && err.contains("NULLARY"),
@@ -10493,7 +10616,7 @@ mod pure_producer_share_tests {
              data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
 ",
         )]);
-        let err = install_pure_producer_share(&prepared)
+        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a stale warm row must stop the line");
         // The stop now lands at roster RESOLUTION (admission is by resolved declaration
         // identity), before any warm runs — same line-stop, more precisely located.

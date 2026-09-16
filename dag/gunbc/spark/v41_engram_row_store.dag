@@ -39,7 +39,9 @@ data v41_row_store_rank_count: Nat = 4
 // and local_row = global_row / rank_count; the encoding key hashes this variant, not a parallel
 // prose sentence. GlobalAscendingInterleavedByRank is the order the rank payload is concatenated.
 // One-arm coproducts parse as aliases (no constructor). The reserved arm exists so the
-// placement scheme is a closed type the placer and encoding key both match on.
+// placement scheme is a closed type the placer and encoding key both match on. It is not a
+// placement rule: dest_rank / local_row / rank_payload refuse it rather than minting a rank,
+// a zero local row, or an empty payload.
 type V41RowStorePartition
   = InterleaveByRankRemainder
   | RankMapReservedUninhabited
