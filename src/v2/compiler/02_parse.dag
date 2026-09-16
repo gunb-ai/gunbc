@@ -1621,16 +1621,6 @@ type PreparedExprFold {
   residue: List<GrammarChoiceAmbiguityRow>
 }
 
-type ChoicePlanEmit {
-  plan: PreparedChoicePlan
-  residue: List<GrammarChoiceAmbiguityRow>
-}
-
-type TokenCompileAcc {
-  on_token: Map<Symbol, PreparedChoicePlan>
-  residue: List<GrammarChoiceAmbiguityRow>
-}
-
 // list_head HeadFound { value: alt } on List<PreparedExprFold> / List<TokenPrefixRow> types alt as T,
 // so a field read is unwritable. fold_list over GrammarProduction instantiates (p.name in
 // compute_grammar_first_analysis_given). These projectors instantiate the record at a typed
@@ -1998,11 +1988,8 @@ fn ordered_backtrack_row(
   }
 }
 
-fn ordered_backtrack_emit(alts: List<PreparedExprFold>) -> ChoicePlanEmit {
-  ChoicePlanEmit {
-    plan: ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) },
-    residue: std.algebra.Empty
-  }
+fn ordered_backtrack_emit(alts: List<PreparedExprFold>) -> PreparedChoicePlan {
+  ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) }
 }
 
 fn authored_choice_site_residue(alts: List<PreparedExprFold>, production: Symbol) -> List<GrammarChoiceAmbiguityRow> {
@@ -2031,21 +2018,18 @@ fn compile_choice_alts(
   nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>,
   token_dispatch: Bool
-) -> ChoicePlanEmit {
+) -> PreparedChoicePlan {
   match length(xs: alts) {
-    0 => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
+    0 => ChoiceReject
     1 =>
       match list_head(xs: alts) {
         HeadFound { value: alt } =>
-          ChoicePlanEmit {
-            plan: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) },
-            residue: std.algebra.Empty
-          }
-        HeadAbsent => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
+          ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) }
+        HeadAbsent => ChoiceReject
       }
     _ =>
       match list_head(xs: alts) {
-        HeadAbsent => ChoicePlanEmit { plan: ChoiceReject, residue: std.algebra.Empty }
+        HeadAbsent => ChoiceReject
         HeadFound { value: first_alt } =>
           match prepared_sequence_left_atom(expr: prepared_expr_fold_tree(alt: first_alt)) {
             Present { value: prefix } =>
@@ -2056,27 +2040,24 @@ fn compile_choice_alts(
                 first_rows: first_rows
               ) {
                 Present { value: suffixes } =>
-                  let suffix_emit = compile_choice_plan(
-                    alts: suffixes,
-                    nullable_set: nullable_set,
-                    first_rows: first_rows,
-                    token_dispatch: token_dispatch
-                  )
-                  ChoicePlanEmit {
-                    plan: ChoiceSharedPrefix { prefix: prefix, suffix: suffix_emit.plan },
-                    residue: suffix_emit.residue
+                  ChoiceSharedPrefix {
+                    prefix: prefix,
+                    suffix: compile_choice_plan(
+                      alts: suffixes,
+                      nullable_set: nullable_set,
+                      first_rows: first_rows,
+                      token_dispatch: token_dispatch
+                    )
                   }
                 Absent =>
                   match choice_token_prefix_rows(alts: alts, need: 2) {
-                    Present { value: rows } =>
-                      ChoicePlanEmit { plan: ChoiceTokenPrefix { rows: rows }, residue: std.algebra.Empty }
+                    Present { value: rows } => ChoiceTokenPrefix { rows: rows }
                     Absent => ordered_backtrack_emit(alts: alts)
                   }
               }
             Absent =>
               match choice_token_prefix_rows(alts: alts, need: 2) {
-                Present { value: rows } =>
-                  ChoicePlanEmit { plan: ChoiceTokenPrefix { rows: rows }, residue: std.algebra.Empty }
+                Present { value: rows } => ChoiceTokenPrefix { rows: rows }
                 Absent => ordered_backtrack_emit(alts: alts)
               }
           }
@@ -2089,38 +2070,35 @@ fn compile_choice_plan(
   nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>,
   token_dispatch: Bool
-) -> ChoicePlanEmit {
+) -> PreparedChoicePlan {
   if token_dispatch {
       let universe = choice_alts_terminal_universe(alts: alts)
-      let token_fold = fold_list(
+      let on_token = fold_list(
         xs: universe,
-        empty: TokenCompileAcc { on_token: empty_map(), residue: std.algebra.Empty },
+        empty: empty_map(),
         cons: fn(acc, token_class) {
-          let bucket = compile_choice_alts(
-            alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
-            nullable_set: nullable_set,
-            first_rows: first_rows,
-            token_dispatch: token_dispatch
+          map_insert(
+            m: acc,
+            key: token_class,
+            value: compile_choice_alts(
+              alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
+              nullable_set: nullable_set,
+              first_rows: first_rows,
+              token_dispatch: token_dispatch
+            )
           )
-          TokenCompileAcc {
-            on_token: map_insert(m: acc.on_token, key: token_class, value: bucket.plan),
-            residue: list_append(left: acc.residue, right: bucket.residue)
-          }
         }
       )
-      let nullable_emit = compile_choice_alts(
+      let on_nullable = compile_choice_alts(
         alts: choice_alts_nullable(alts: alts),
         nullable_set: nullable_set,
         first_rows: first_rows,
         token_dispatch: token_dispatch
       )
-      ChoicePlanEmit {
-        plan: ChoiceByToken {
-          on_token: token_fold.on_token,
-          on_other: nullable_emit.plan,
-          on_end: nullable_emit.plan
-        },
-        residue: list_append(left: token_fold.residue, right: nullable_emit.residue)
+      ChoiceByToken {
+        on_token: on_token,
+        on_other: on_nullable,
+        on_end: on_nullable
       }
   } else {
     ordered_backtrack_emit(alts: alts)
@@ -2176,7 +2154,7 @@ fn prepare_grammar_expr(
       let union_first = choice_alts_union_first(alts: prepared_alts)
       PreparedExprFold {
         tree: PreparedChoice {
-          plan: compiled.plan,
+          plan: compiled,
           first: union_first
         },
         first: union_first,

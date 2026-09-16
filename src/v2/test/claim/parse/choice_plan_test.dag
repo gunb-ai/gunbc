@@ -363,7 +363,7 @@ test fn compile_choice_alts_stamp_split_is_choice_token_prefix() -> Bool {
     first_rows: empty_map(),
     token_dispatch: true
   )
-  match stamp_bucket.plan {
+  match stamp_bucket {
     ChoiceTokenPrefix { rows: rows } => length(xs: rows) == 2
     _ => false
   }
