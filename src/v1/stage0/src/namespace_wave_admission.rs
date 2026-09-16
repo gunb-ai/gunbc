@@ -1921,9 +1921,12 @@ pub struct TransitionAdmission {
 /// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
 /// runner hardware observation, DGX PXE and PXE-rescue consumers.
 ///
+/// THE gunbc#11177 ROWS DISSOLVED HERE (2026-09-16, gunbc#11441). #11177 landed as `74ba3ba2d5`
+/// with two `process_identity_eq` rows and the instruction to remove them once consumed at the
+/// base; they are consumed at this merge's base and come due on this roster touch.
+///
 /// gunbc#11441 json_string_list hoist (2026-09-15). One TargetChanged: `json_string_list` in
-/// `container_image_config_env_from_json` now binds `extdeps.languages.json.parse`. The roster
-/// was empty at this merge's base (main deleted its consumed #11306 cohort in gunbc#11316).
+/// `container_image_config_env_from_json` now binds `extdeps.languages.json.parse`.
 /// DISSOLVE-ON: gunbc#11441 merging.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
     label: "json_string_list lives in json.parse (gunbc#11441)",
