@@ -222,3 +222,215 @@ fn enablement_from_state(
     }
   }
 }
+
+// THE PERFORMING HALF OF ENABLEMENT. Reading a state and classifying it establishes nothing about
+// the API being on; until this existed the enablement step observed without ever acting, which is
+// a converge in name only.
+fn converge_service_enablement(
+  token: Secret,
+  project_id: GcpProjectId,
+  service_id: NonEmptyStr,
+  policy: EnsurePolicy,
+) -> ServiceEnableOutcome uses net: Network {
+  match read_service_enablement(token: token, project_id: project_id, service_id: service_id) {
+    ServiceObservedEnabled { project: _, service_id: s } => ServiceAlreadyEnabled { service_id: s }
+    ServiceEnablementStateForeign { project: _, service_id: s, raw: raw } =>
+      ServiceEnableRefused {
+        cause: join(
+          ["serviceusage answered an unmodeled state for ", s as String, ": ", raw, "; enabling against a state we could not read would act on an unknown"],
+          "",
+        ) as NonEmptyStr
+      }
+    ServiceEnablementUnobserved { project: _, service_id: s } =>
+      ServiceEnableRefused {
+        cause: join(
+          ["serviceusage GetService is unobserved for ", s as String, "; an unread state is not a disabled one"],
+          "",
+        ) as NonEmptyStr
+      }
+    ServiceObservedDisabled { project: _, service_id: s } =>
+      converge_disabled_service(token: token, project_id: project_id, service_id: s, policy: policy)
+  }
+}
+
+fn converge_disabled_service(
+  token: Secret,
+  project_id: GcpProjectId,
+  service_id: NonEmptyStr,
+  policy: EnsurePolicy,
+) -> ServiceEnableOutcome uses net: Network {
+  match policy {
+    EnsureObserveOnly =>
+      ServiceEnableRefused {
+        cause: join([service_id as String, " is disabled and policy is observe-only"], "") as NonEmptyStr
+      }
+    EnsureMayApply => perform_service_enable(token: token, project_id: project_id, service_id: service_id)
+  }
+}
+
+// services.enable is a long-running operation like projects.create, so this answers Accepted and
+// never Enabled. The next pass's GetService is what establishes the API is on.
+fn perform_service_enable(
+  token: Secret,
+  project_id: GcpProjectId,
+  service_id: NonEmptyStr,
+) -> ServiceEnableOutcome uses net: Network {
+  let enabled = gcp.ServiceUsage.EnableService(
+    access_token: token,
+    project_id: project_id,
+    service_id: service_id as String,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: enabled.outcome }) {
+    RestExchangeSucceeded =>
+      ServiceEnableAccepted { service_id: service_id, operation_name: enabled.operation_name }
+    RestExchangeStatusRefused { status, body } =>
+      ServiceEnableRefused {
+        cause: join(["services.enable refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      ServiceEnableRefused {
+        cause: join(["services.enable never reached serviceusage: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ServiceEnableRefused {
+        cause: join(["services.enable answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      ServiceEnableRefused {
+        cause: join(["services.enable left the request ambiguous; re-read GetService before retrying: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+type ServiceAccountConvergeOutcome
+  = ServiceAccountAlreadyPresent { email: ServiceAccountEmail }
+  | ServiceAccountCreatedAndVerified { email: ServiceAccountEmail }
+  | ServiceAccountCreateUnverified { cause: NonEmptyStr }
+  | ServiceAccountConvergeRefused { cause: NonEmptyStr }
+
+type ServiceAccountObservation
+  = ServiceAccountObserved { email: ServiceAccountEmail }
+  | ServiceAccountAbsent
+  | ServiceAccountUnreadable { reason: NonEmptyStr }
+
+fn read_service_account(
+  token: Secret,
+  project_id: GcpProjectId,
+  sa_email: ServiceAccountEmail,
+) -> ServiceAccountObservation uses net: Network {
+  let read = gcp.IamAdmin.GetServiceAccount(
+    access_token: token,
+    project_id: project_id,
+    sa_email: sa_email,
+  )
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded => ServiceAccountObserved { email: read.email }
+    RestExchangeStatusRefused { status, body } =>
+      service_account_refusal_is_absence(status: status, body: body)
+    RestExchangeUnreached { cause } =>
+      ServiceAccountUnreadable {
+        reason: join(["serviceAccounts.get never reached IAM: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ServiceAccountUnreadable {
+        reason: join(["serviceAccounts.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      ServiceAccountUnreadable {
+        reason: join(["serviceAccounts.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// Same discrimination as the project read: only a 404 is an observation of absence, because IAM
+// answers 403 for an account that exists outside this caller's visibility.
+fn service_account_refusal_is_absence(status: Int, body: String) -> ServiceAccountObservation {
+  if status == 404 {
+    ServiceAccountAbsent
+  } else {
+    ServiceAccountUnreadable {
+      reason: join(["serviceAccounts.get refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+    }
+  }
+}
+
+fn converge_service_account(
+  token: Secret,
+  project_id: GcpProjectId,
+  account_id: NonEmptyStr,
+  display_name: NonEmptyStr,
+  sa_email: ServiceAccountEmail,
+  policy: EnsurePolicy,
+) -> ServiceAccountConvergeOutcome uses net: Network {
+  match read_service_account(token: token, project_id: project_id, sa_email: sa_email) {
+    ServiceAccountObserved { email: e } => ServiceAccountAlreadyPresent { email: e }
+    ServiceAccountUnreadable { reason: r } => ServiceAccountConvergeRefused { cause: r }
+    ServiceAccountAbsent =>
+      match policy {
+        EnsureObserveOnly =>
+          ServiceAccountConvergeRefused {
+            cause: join([sa_email as String, " is absent and policy is observe-only"], "") as NonEmptyStr
+          }
+        EnsureMayApply =>
+          perform_service_account_create(
+            token: token,
+            project_id: project_id,
+            account_id: account_id,
+            display_name: display_name,
+            sa_email: sa_email,
+          )
+      }
+  }
+}
+
+fn perform_service_account_create(
+  token: Secret,
+  project_id: GcpProjectId,
+  account_id: NonEmptyStr,
+  display_name: NonEmptyStr,
+  sa_email: ServiceAccountEmail,
+) -> ServiceAccountConvergeOutcome uses net: Network {
+  let created = gcp.IamAdmin.CreateServiceAccount(
+    access_token: token,
+    project_id: project_id,
+    account_id: account_id,
+    display_name: display_name,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
+    RestExchangeSucceeded =>
+      verify_created_service_account(token: token, project_id: project_id, sa_email: sa_email, detail: "serviceAccounts.create answered success" as NonEmptyStr)
+    RestExchangeCommitAmbiguous { detail } =>
+      verify_created_service_account(token: token, project_id: project_id, sa_email: sa_email, detail: join(["serviceAccounts.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr)
+    RestExchangeStatusRefused { status, body } =>
+      ServiceAccountConvergeRefused {
+        cause: join(["serviceAccounts.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      ServiceAccountConvergeRefused {
+        cause: join(["serviceAccounts.create never reached IAM: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ServiceAccountConvergeRefused {
+        cause: join(["serviceAccounts.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+  }
+}
+
+fn verify_created_service_account(
+  token: Secret,
+  project_id: GcpProjectId,
+  sa_email: ServiceAccountEmail,
+  detail: NonEmptyStr,
+) -> ServiceAccountConvergeOutcome uses net: Network {
+  match read_service_account(token: token, project_id: project_id, sa_email: sa_email) {
+    ServiceAccountObserved { email: e } => ServiceAccountCreatedAndVerified { email: e }
+    ServiceAccountAbsent =>
+      ServiceAccountCreateUnverified {
+        cause: join([sa_email as String, " is still absent after ", detail as String], "") as NonEmptyStr
+      }
+    ServiceAccountUnreadable { reason: r } =>
+      ServiceAccountCreateUnverified {
+        cause: join([detail as String, ", and the verifying read could not settle it: ", r as String], "") as NonEmptyStr
+      }
+  }
+}

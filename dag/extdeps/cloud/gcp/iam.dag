@@ -422,7 +422,7 @@ service gcp.ResourceManager {
 
   operation GetProject {
     input { access_token: Secret, project_id: GcpProjectId }
-    output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name" }
+    output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name", outcome: RestOutcome }
     readonly
     transport rest { method: GET, path: "/v3/projects/\{project_id\}" }
     response {

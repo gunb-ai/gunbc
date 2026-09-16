@@ -1,0 +1,283 @@
+module gunbc.review_sheet_converge_cli
+
+import std.types { NonEmptyStr, String, Bool, Secret, List }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.ensure { EnsurePolicy, EnsureMayApply, EnsureObserveOnly }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.google.drive { drive_serviceusage_api_id }
+import extdeps.google.sheets { sheets_serviceusage_api_id }
+import gunbc.gcp_estate_observation {
+  sheets_calling_home,
+  SheetsCallingHomeUnresolved,
+  SheetsCallingHomeSelected,
+}
+import gunbc.review_sheet_operator {
+  ReviewSheetResidency,
+  ResidencyUnobserved,
+  SheetInOwnerMyDrive,
+  SheetInSharedDrive,
+  review_sheet_residency,
+}
+import gunbc.sheets_bootstrap_converge {
+  ServiceEnableOutcome,
+  ServiceAlreadyEnabled,
+  ServiceEnableAccepted,
+  ServiceEnableRefused,
+  ServiceAccountConvergeOutcome,
+  ServiceAccountAlreadyPresent,
+  ServiceAccountCreatedAndVerified,
+  ServiceAccountCreateUnverified,
+  ServiceAccountConvergeRefused,
+  converge_service_enablement,
+  converge_service_account,
+}
+import gunbc.review_sheet_drive_actuator {
+  MembershipConvergeOutcome,
+  MembershipAlreadyHeld,
+  MembershipGrantedAndVerified,
+  MembershipGrantUnverified,
+  MembershipConvergeRefused,
+  converge_drive_membership,
+  membership_outcome_text,
+}
+import gunbc.review_sheet_spreadsheet_actuator {
+  SpreadsheetConvergeOutcome,
+  SpreadsheetAdopted,
+  SpreadsheetCreatedAndVerified,
+  SpreadsheetCreateUnverified,
+  SpreadsheetConvergeRefused,
+  converge_review_spreadsheet,
+  spreadsheet_outcome_text,
+}
+import gunbc.review_sheet_drive_converge { ci_prospect_sheet_app_property_value }
+
+// THE ONE ENTRY POINT. Everything an operator would otherwise do in a console is reachable from
+// here, and the sequence is the dependency order rather than a preference: the APIs cannot be
+// enabled before the project exists, the writer cannot be created before the project, the writer
+// cannot be added to a drive before it exists, and no sheet may be created before the writer can
+// see the drive it goes in.
+//
+// THE PROJECT STEP IS NOT CALLED HERE, and that is a deliberate refusal rather than an omission.
+// Creating a project needs org-level authority that the writer will never hold, so folding it into
+// the same run would mean this entry point only ever succeeds under an org admin's credential --
+// which is precisely the standing privilege the estate's blast-radius discipline avoids. The
+// project step stays a separately invoked converge run by whoever holds that authority.
+//
+// WHY THE STEPS DO NOT SHORT-CIRCUIT ON THE FIRST REFUSAL. A run that stops at the first problem
+// reports one obstacle per invocation, so an operator clears four in four rounds. Each step here
+// is observed independently and every outcome is reported, so one run names everything standing
+// between the current state and a converged one.
+
+type ReviewSheetConvergeReport {
+  sheets_api: ServiceEnableOutcome
+  drive_api: ServiceEnableOutcome
+  writer: ServiceAccountConvergeOutcome
+  membership: MembershipConvergeOutcome
+  spreadsheet: SpreadsheetConvergeOutcome
+}
+
+data review_sheet_writer_account_id: NonEmptyStr = "review-sheet-writer"
+
+data review_sheet_writer_display_name: NonEmptyStr = "Review sheet writer (Sheets only, shared-drive member)"
+
+data ci_prospect_sheet_name: NonEmptyStr = "CI prospect sheet"
+
+// A residency that is not a shared drive cannot be converged by this entry point, and saying so is
+// better than converging something else: a My Drive sheet needs a per-sheet share that this run
+// does not perform, and an unobserved residency has no drive to read at all.
+type ResidencyDriveResolution
+  = DriveResolved { drive_id: NonEmptyStr }
+  | DriveUnresolved { cause: NonEmptyStr }
+
+fn residency_drive(residency: ReviewSheetResidency) -> ResidencyDriveResolution {
+  match residency {
+    SheetInSharedDrive { drive_id: id, drive_name: _ } => DriveResolved { drive_id: id }
+    SheetInOwnerMyDrive =>
+      DriveUnresolved {
+        cause: "residency is a My Drive sheet, whose access is a per-sheet share this converge does not perform" as NonEmptyStr
+      }
+    ResidencyUnobserved =>
+      DriveUnresolved {
+        cause: "residency is unobserved; no drive has been recorded to converge against" as NonEmptyStr
+      }
+  }
+}
+
+type CallingHomeResolution
+  = HomeResolved { project_id: GcpProjectId, writer: ServiceAccountEmail }
+  | HomeUnresolved { cause: NonEmptyStr }
+
+fn calling_home_resolution() -> CallingHomeResolution {
+  match sheets_calling_home() {
+    SheetsCallingHomeSelected {
+      project_id: p,
+      writer: w,
+      refused_api_surface_project: _,
+      refused_writer: _,
+    } => HomeResolved { project_id: p, writer: w }
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: _,
+      refused_writer: _,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
+    } =>
+      HomeUnresolved {
+        cause: "sheets_calling_home is unresolved; no project has been selected to converge against" as NonEmptyStr
+      }
+  }
+}
+
+fn converge_review_sheet_all(
+  token: Secret,
+  project_id: GcpProjectId,
+  writer: ServiceAccountEmail,
+  drive_id: NonEmptyStr,
+  policy: EnsurePolicy,
+) -> ReviewSheetConvergeReport uses net: Network {
+  ReviewSheetConvergeReport {
+    sheets_api: converge_service_enablement(
+      token: token,
+      project_id: project_id,
+      service_id: sheets_serviceusage_api_id,
+      policy: policy,
+    ),
+    drive_api: converge_service_enablement(
+      token: token,
+      project_id: project_id,
+      service_id: drive_serviceusage_api_id,
+      policy: policy,
+    ),
+    writer: converge_service_account(
+      token: token,
+      project_id: project_id,
+      account_id: review_sheet_writer_account_id,
+      display_name: review_sheet_writer_display_name,
+      sa_email: writer,
+      policy: policy,
+    ),
+    membership: converge_drive_membership(
+      token: token,
+      drive_id: drive_id,
+      writer: writer,
+      policy: policy,
+    ),
+    spreadsheet: converge_review_spreadsheet(
+      token: token,
+      drive_id: drive_id,
+      sheet_name: ci_prospect_sheet_name,
+      app_value: ci_prospect_sheet_app_property_value,
+      policy: policy,
+    ),
+  }
+}
+
+// CONVERGED IS NARROWER THAN "NOT REFUSED". An accepted long-running enable and an unverified
+// create are both progress and neither is a converged state, so both leave this false and the run
+// exits non-zero. An operator re-running after an accepted enable is the intended path.
+fn service_enable_is_converged(o: ServiceEnableOutcome) -> Bool {
+  match o {
+    ServiceAlreadyEnabled { service_id: _ } => true
+    ServiceEnableAccepted { service_id: _, operation_name: _ } => false
+    ServiceEnableRefused { cause: _ } => false
+  }
+}
+
+fn service_account_is_converged(o: ServiceAccountConvergeOutcome) -> Bool {
+  match o {
+    ServiceAccountAlreadyPresent { email: _ } => true
+    ServiceAccountCreatedAndVerified { email: _ } => true
+    ServiceAccountCreateUnverified { cause: _ } => false
+    ServiceAccountConvergeRefused { cause: _ } => false
+  }
+}
+
+fn membership_is_converged(o: MembershipConvergeOutcome) -> Bool {
+  match o {
+    MembershipAlreadyHeld { role: _ } => true
+    MembershipGrantedAndVerified { role: _ } => true
+    MembershipGrantUnverified { cause: _ } => false
+    MembershipConvergeRefused { cause: _ } => false
+  }
+}
+
+fn spreadsheet_is_converged(o: SpreadsheetConvergeOutcome) -> Bool {
+  match o {
+    SpreadsheetAdopted { file_id: _ } => true
+    SpreadsheetCreatedAndVerified { file_id: _ } => true
+    SpreadsheetCreateUnverified { cause: _ } => false
+    SpreadsheetConvergeRefused { cause: _ } => false
+  }
+}
+
+fn report_is_converged(r: ReviewSheetConvergeReport) -> Bool {
+  service_enable_is_converged(o: r.sheets_api)
+    && service_enable_is_converged(o: r.drive_api)
+    && service_account_is_converged(o: r.writer)
+    && membership_is_converged(o: r.membership)
+    && spreadsheet_is_converged(o: r.spreadsheet)
+}
+
+fn service_enable_text(o: ServiceEnableOutcome) -> String {
+  match o {
+    ServiceAlreadyEnabled { service_id: s } => join(["already enabled: ", s as String], "")
+    ServiceEnableAccepted { service_id: s, operation_name: op } =>
+      join(["enable ACCEPTED (not yet on): ", s as String, " via ", op], "")
+    ServiceEnableRefused { cause: c } => join(["REFUSED: ", c as String], "")
+  }
+}
+
+fn service_account_text(o: ServiceAccountConvergeOutcome) -> String {
+  match o {
+    ServiceAccountAlreadyPresent { email: e } => join(["already present: ", e as String], "")
+    ServiceAccountCreatedAndVerified { email: e } => join(["created and verified: ", e as String], "")
+    ServiceAccountCreateUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
+    ServiceAccountConvergeRefused { cause: c } => join(["REFUSED: ", c as String], "")
+  }
+}
+
+fn report_text(r: ReviewSheetConvergeReport) -> String {
+  join(
+    [
+      "sheets api: ", service_enable_text(o: r.sheets_api),
+      "\ndrive api:  ", service_enable_text(o: r.drive_api),
+      "\nwriter:     ", service_account_text(o: r.writer),
+      "\nmembership: ", membership_outcome_text(o: r.membership),
+      "\nsheet:      ", spreadsheet_outcome_text(o: r.spreadsheet),
+    ],
+    "",
+  )
+}
+
+// The CLI surface. The token arrives by value here because the host has no modeled path to hand a
+// Secret by reference to a run; gunbc.auth.access_token_source prefers a path for exactly that
+// reason, and binding this entry to that source is the next step rather than a claim made now.
+fn converge_review_sheet_cli(access_token: String) -> ProcessExit uses net: Network {
+  match calling_home_resolution() {
+    HomeUnresolved { cause: c } => exit_failure(reason: c as String)
+    HomeResolved { project_id: p, writer: w } =>
+      match residency_drive(residency: review_sheet_residency) {
+        DriveUnresolved { cause: c } => exit_failure(reason: c as String)
+        DriveResolved { drive_id: d } =>
+          converge_report_exit(
+            report: converge_review_sheet_all(
+              token: access_token as Secret,
+              project_id: p,
+              writer: w,
+              drive_id: d,
+              policy: EnsureMayApply,
+            )
+          )
+      }
+  }
+}
+
+fn converge_report_exit(report: ReviewSheetConvergeReport) -> ProcessExit {
+  if report_is_converged(r: report) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: report_text(r: report))
+  }
+}
