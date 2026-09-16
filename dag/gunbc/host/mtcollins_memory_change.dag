@@ -34,6 +34,9 @@ import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_
 // verifies the committed artifact identity, and joins catalog and layout facts.
 data mtcollins_training_capture_path: NonEmptyStr = "artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt"
 data mtcollins_training_capture_sha256: NonEmptyStr = "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c"
+// Firmware-emitted captured-cycle marker from the committed Mt. Collins captures.
+data mtcollins_dram_cycle_start: NonEmptyStr = "NOTICE:  DRAM FW version 210525"
+
 data mtcollins_training_capture_source: DeclarationRef = decl_ref(module_path: "gunbc.mtcollins_memory_change", decl_name: "mtcollins_training_capture_path")
 
 data mtcollins_ads_part: DeclarationRef = decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36ads2g72pz_2g1a1_catalog")
@@ -127,7 +130,7 @@ fn mtcollins_training_mixture_finding(
         ObservationRefused { cause: "bounded Mt. Collins attempt requires one populated position per documented channel pair across both sockets" }
       } else if !memory_capture_covers_population(configuration: configuration, collector: collector) {
         ObservationRefused { cause: "positioned inventory incomplete or printed-part catalog binding missing or ambiguous" }
-      } else if !contains(collector.payload, "NOTICE:  DRAM FW version 210525")
+      } else if !contains(collector.payload, mtcollins_dram_cycle_start as String)
         || !contains(collector.payload, concat("ERR: CHANNEL Mismatch Byte 6 SLOT0[", byte_hex_lower(v: actual_byte), "] EXP[", byte_hex_lower(v: expected_byte), "] @MCU[4]"))
         || !contains(collector.payload, "ERROR:   Non-identical DIMM mixture NOT supported!")
         || !contains(collector.payload, "ERROR:   SK[0]: 00110010")

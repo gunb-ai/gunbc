@@ -674,17 +674,35 @@ pub fn merge_remaining_declared(
 }
 
 pub fn topo_resolve_loop(
-    mut remaining: Rc<Vec<String>>,
-    mut resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-    mut declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    mut call_edges: Rc<Vec<Rc<CallEdge>>>,
-    mut local_func_set: Rc<HashMap<String, bool>>,
-    mut module_name: String,
-    mut diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    mut parent_envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
-    mut fuel: i64,
+    mut __tco_loop_remaining: Rc<Vec<String>>,
+    mut __tco_loop_resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    mut __tco_loop_declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    mut __tco_loop_call_edges: Rc<Vec<Rc<CallEdge>>>,
+    mut __tco_loop_local_func_set: Rc<HashMap<String, bool>>,
+    mut __tco_loop_module_name: String,
+    mut __tco_loop_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    mut __tco_loop_parent_envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+    mut __tco_loop_fuel: i64,
 ) -> Rc<ResolveFuncSigsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining;
+        #[allow(unused_mut)]
+        let mut resolved = __tco_loop_resolved;
+        #[allow(unused_mut)]
+        let mut declared_sigs = __tco_loop_declared_sigs;
+        #[allow(unused_mut)]
+        let mut call_edges = __tco_loop_call_edges;
+        #[allow(unused_mut)]
+        let mut local_func_set = __tco_loop_local_func_set;
+        #[allow(unused_mut)]
+        let mut module_name = __tco_loop_module_name;
+        #[allow(unused_mut)]
+        let mut diagnostics = __tco_loop_diagnostics;
+        #[allow(unused_mut)]
+        let mut parent_envs = __tco_loop_parent_envs;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
         if ((remaining.clone().len() as i64) == 0) {
             {
                 let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
@@ -901,12 +919,22 @@ pub fn topo_resolve_loop(
         {
             let __tco_0 = next_remaining.clone();
             let __tco_1 = ready_accum.signatures.clone();
-            let __tco_2 = ready_accum.diagnostics.clone();
-            let __tco_3 = (fuel - 1);
-            remaining = __tco_0;
-            resolved = __tco_1;
-            diagnostics = __tco_2;
-            fuel = __tco_3;
+            let __tco_2 = declared_sigs;
+            let __tco_3 = call_edges;
+            let __tco_4 = local_func_set;
+            let __tco_5 = module_name;
+            let __tco_6 = ready_accum.diagnostics.clone();
+            let __tco_7 = parent_envs;
+            let __tco_8 = (fuel - 1);
+            __tco_loop_remaining = __tco_0;
+            __tco_loop_resolved = __tco_1;
+            __tco_loop_declared_sigs = __tco_2;
+            __tco_loop_call_edges = __tco_3;
+            __tco_loop_local_func_set = __tco_4;
+            __tco_loop_module_name = __tco_5;
+            __tco_loop_diagnostics = __tco_6;
+            __tco_loop_parent_envs = __tco_7;
+            __tco_loop_fuel = __tco_8;
             continue;
         }
     }

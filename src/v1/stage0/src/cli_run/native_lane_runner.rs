@@ -821,6 +821,59 @@ fn write_host_facts(
 
 /// The lane's one phase. Green exactly when the emitted binary's own admission admitted the
 /// receipt it minted; every earlier failure is a located refusal that stops the line.
+/// THE V1 -> V2 SELF-HOST STEP, AND ITS WHOLE POINT IS THAT WHERE IT STOPS IS THE STATUS.
+///
+/// The seed emits v2's compiler closure, assembles it as a crate, and builds it. That is the
+/// generation the repository can perform today, and it either holds or it does not -- there is no
+/// roster of which entries are known-good, because a roster is a second representation of what this
+/// process demonstrates by running (DESIGN sections 2 and 3). A regression here fails the step;
+/// progress moves the failure later. Nothing separate has to be updated for either.
+///
+/// WHY THIS IS A PREFIX OF `--v2-native-route` RATHER THAN A SECOND PATH. That route already
+/// performs exactly these boundaries in `prepare_emitted_compiler` and then spends roughly nine
+/// further minutes executing the v2.test.* universe through the emitted binary. The test fold is a
+/// different claim -- what the emitted compiler ANSWERS -- and bundling it here would price the
+/// self-host question at the cost of a question nobody asked. So this calls the same producer and
+/// returns on its verdict; the two modes cannot disagree about whether the seed can build v2,
+/// because only one of them decides it.
+///
+/// WHAT THIS DOES NOT ESTABLISH, named so the green is not read for more than it carries. It is
+/// EMISSION AND COMPILATION, not behavioural equivalence: DESIGN section 7 asks that the emitted
+/// module also behave as the seed does on a discriminating corpus, and that half
+/// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
+/// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
+/// refuses today because `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main
+/// answers `census` and `adjudicate` and has no compile mode at all. That refusal is the honest next
+/// position and belongs in this step when a driver exists that can reach it.
+pub fn run_self_host(source_roots: &[String]) -> Result<(), String> {
+    let started = std::time::Instant::now();
+    eprintln!(
+        "self-host: v1 -> v2 — seed emits {NATIVE_COMPILE_ENTRY}, assembles the crate, and builds it"
+    );
+    let prepared = prepare_emitted_compiler(source_roots)?;
+    let wall_s = started.elapsed().as_secs();
+    // THE BUILD'S OWN COUNTERS DECIDE, NOT THE ABSENCE OF A REFUSAL ABOVE. prepare_emitted_compiler
+    // admits only a completed zero-status run, so these are already its verdict; reading them here
+    // is what makes the step's claim ("built clean") the one the receipt carries rather than one
+    // inferred from control flow having reached this line.
+    if prepared.build.exit_status != 0 || prepared.build.warning_count != 0 {
+        return Err(format!(
+            "SELF-HOST REFUSAL cause=EmittedCompilerNotClean — exit_status={} warning_count={} \
+             (RUSTFLAGS={:?})",
+            prepared.build.exit_status, prepared.build.warning_count, prepared.build.rustflags,
+        ));
+    }
+    eprintln!(
+        "self-host: v1->v2 HELD — closure={} binary={} seed={} exit_status={} warning_count={} wall_s={wall_s}",
+        prepared.closure_identity,
+        prepared.binary_identity,
+        prepared.seed_identity,
+        prepared.build.exit_status,
+        prepared.build.warning_count,
+    );
+    Ok(())
+}
+
 pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();

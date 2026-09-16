@@ -202,8 +202,15 @@ pub fn to_string(value: i64) -> String {
     })
 }
 
-pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn to_string_helper(
+    mut __tco_loop_value: i64,
+    mut __tco_loop_acc: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
     loop {
+        #[allow(unused_mut)]
+        let mut value = __tco_loop_value;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         if (value.clone() == 0) {
             break acc.clone();
         } else {
@@ -250,8 +257,8 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
             {
                 let __tco_0 = rest.clone();
                 let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
-                value = __tco_0;
-                acc = __tco_1;
+                __tco_loop_value = __tco_0;
+                __tco_loop_acc = __tco_1;
                 continue;
             }
         }

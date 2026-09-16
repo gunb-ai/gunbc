@@ -1,6 +1,8 @@
 module extdeps.procps.pgrep
 
-import std.types { String, Int }
+import std.types { Int, List, Bool, NonEmptyStr, Unit }
+import std.string_type { String }
+import std.algebra { trim }
 
 // pgrep(1) from procps-ng, cited to the upstream manual's EXIT STATUS section. Only the codes this
 // repository reads are modelled.
@@ -14,3 +16,62 @@ import std.types { String, Int }
 // server had stopped. Only 1 is minted: the other three are documented here because they are the
 // reason this row is narrow, not because anything consumes them.
 data pgrep_exit_no_match: Int = 1
+
+type PgrepPidListing
+  = PgrepPidsRead { pids: List<Int> }
+  | PgrepPidLineUnparseable { line: String }
+
+type PgrepPidScan {
+  pids: List<Int>
+  bad: String?
+}
+
+// One pid per line; blank lines (the trailing newline) are skipped; anything that is not an integer
+// refuses the whole listing rather than dropping the line, because a listing with a hole in it
+// would silently understate the population the caller is about to disambiguate.
+fn pgrep_pid_listing(stdout: String) -> PgrepPidListing {
+  let scan = fold(split(s: stdout, delimiter: "\n"), init: PgrepPidScan { pids: [], bad: none }, f: (acc, raw) => {
+    let line = trim(s: raw)
+    match acc.bad {
+      Present { value: _ } => acc
+      Absent =>
+        if line == "" {
+          acc
+        } else {
+          match parse_int(s: line) {
+            Present { value: pid } => PgrepPidScan { pids: append(acc.pids, pid), bad: none }
+            Absent => PgrepPidScan { pids: acc.pids, bad: Present { value: line } }
+          }
+        }
+    }
+  })
+  match scan.bad {
+    Present { value: line } => PgrepPidLineUnparseable { line: line }
+    Absent => PgrepPidsRead { pids: scan.pids }
+  }
+}
+
+// THE SCAN AS TYPED ARGV, and the exit-code contract that makes it safe to read. pgrep's exit code
+// IS its answer: 0 matched (stdout carries the pids), 1 no match, 2 syntax error, 3 fatal. A generic
+// executor that flattens exit to a success bool cannot tell 1 from 2/3, so a caller reading any
+// non-zero as absence commits exactly the fail-open the EXIT STATUS note above forbids -- a malformed
+// pattern or an internal failure proving a server had stopped. So this operation is consumed over a
+// transport that preserves the exit code, and pgrep_scan_outcome classifies it.
+fn pgrep_match_full_command_line_argv(pattern: NonEmptyStr) -> List<String> {
+  ["pgrep", "-f", pattern as String]
+}
+
+type PgrepScanOutcome
+  = PgrepMatched { listing: String }
+  | PgrepNoMatch
+  | PgrepScanFailed { exit_code: Int, stderr: String }
+
+fn pgrep_scan_outcome(exit_code: Int, stdout: String, stderr: String) -> PgrepScanOutcome {
+  if exit_code == 0 {
+    PgrepMatched { listing: stdout }
+  } else if exit_code == pgrep_exit_no_match {
+    PgrepNoMatch
+  } else {
+    PgrepScanFailed { exit_code: exit_code, stderr: stderr }
+  }
+}

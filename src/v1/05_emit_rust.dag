@@ -231,7 +231,7 @@ import v1.compiler.emit {
   module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node,
   emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items,
   order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
-  tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
+  tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
   emit_typed_let_shared,
@@ -9424,7 +9424,7 @@ fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: 
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
-  concat("mut ", emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust), rust_items().param_type_sep, ty)
+  concat("mut ", emit_ident(name: tco_loop_slot_name(param_name: param_node_name_at(n: param, source_indices: source_indices)), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
@@ -14174,7 +14174,13 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, Item
 
 fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let inner = emit_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
-  concat("loop {\n", make_indent(level: depth + 1),inner, "\n}")
+  concat(
+    "loop {\n",
+    tco_loop_iteration_lets(params: params, source_indices: scope.type_env.source_indices, depth: depth + 1),
+    make_indent(level: depth + 1),
+    inner,
+    "\n}"
+  )
 }
 
 fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -14390,32 +14396,20 @@ fn expr_references_var(node: Node, var_name: String, source_indices: Map<String,
 fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let arg_values = args |> map(a => arg_value(n: a))
-  let identity_params = params |> enumerate |> fold(init: empty_map(), f: (m, pair) =>
-    let pname = param_node_name_at(n: pair.second, source_indices: si)
-    let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
-    if is_tco_identity_passthrough(arg_val: av, param_name: pname, si: si) {
-      map_insert(m, pname, true)
-    } else { m }
-  )
-  let filtered_arg_values = params |> enumerate
-    |> filter(pair => match map_get(identity_params, param_node_name_at(n: pair.second, source_indices: si)) { Present { value: _ } => false  Absent => true })
-    |> map(pair => match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second })
-  let filtered_params = params
-    |> filter(p => match map_get(identity_params, param_node_name_at(n: p, source_indices: si)) { Present { value: _ } => false  Absent => true })
-  let tco_movable = filtered_params |> fold(acc: emit_info.movable, f: (m, p) =>
+  let pairs = params |> enumerate
+  let tco_movable = params |> fold(acc: emit_info.movable, f: (m, p) =>
     let pname = param_node_name_at(n: p, source_indices: si)
-    let ref_count = filtered_arg_values |> fold(acc: 0, f: (n, av) =>
+    let ref_count = arg_values |> fold(acc: 0, f: (n, av) =>
       if expr_references_var(node: av, var_name: pname, source_indices: si) { n + 1 } else { n })
     if ref_count <= 1 { set_insert(m, pname) } else { m })
   let tco_emit_info = with(emit_info, { movable: tco_movable })
-  let ordered_args = filtered_arg_values |> map(av => emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024))
-  let param_names = filtered_params |> map(p => emit_ident(name: param_node_name_at(n: p, source_indices: si), target: Rust))
-  let all_lines = tco_reassign_core(
-    ordered_args: ordered_args, param_names: param_names,
-    temp_var_prefix: "__tco_", temp_decl_prefix: "let ",
-    temp_assign_op: " = ", stmt_terminator: ";",
-    continue_str: "continue;", line_prefix: "")
-  concat("{\n", make_indent(level: depth + 1),(all_lines |> join(separator: "\n")), "\n}")
+  let ordered_args = pairs |> map(pair =>
+    let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
+    emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024)
+  )
+  let param_names = pairs |> map(pair => emit_ident(name: tco_loop_slot_name(param_name: param_node_name_at(n: pair.second, source_indices: si)), target: Rust))
+  let inner = shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: Rust))
+  concat("{\n", make_indent(level: depth + 1), inner, "\n}")
 }
 
 fn emit_service_def(
@@ -17093,7 +17087,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::v2_std_diagnostic::Outcome;", "\n",
       "use ", crate_name, "::std_compiler_entry::\{", "\n",
       "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,", "\n",
-      "    native_driver_exclusive_sum, NativeDriverCostAccounting, NativeDriverExclusiveRows,", "\n",
+      "    native_driver_exclusive_sum, NativeDriverCostAccounting,", "\n",
+      "    native_driver_exclusive_rows, native_driver_exclusive_row_name,", "\n",
+      "    NativeDriverExclusiveRowKey,", "\n",
       "\};", "\n",
       "use ", crate_name, "::std_measure::\{nanosecond, nanosecond_count\};", "\n",
       "\n",
@@ -17590,16 +17586,21 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    prepare_samples.sort_unstable();", "\n",
       "    eval_samples.sort_unstable();", "\n",
       "    let parent_span_nanos = span_nanos(driver_start);", "\n",
-      "    let exclusive = Rc::new(NativeDriverExclusiveRows \{", "\n",
-      "        load: nanosecond(native_cost_i64(load_nanos)),", "\n",
-      "        universe_derivation: nanosecond(native_cost_i64(universe_nanos)),", "\n",
-      "        context: nanosecond(native_cost_i64(context_nanos)),", "\n",
-      "        prepare: nanosecond(native_cost_i64(prepare_total_nanos)),", "\n",
-      "        eval: nanosecond(native_cost_i64(evaluate_total_nanos)),", "\n",
-      "        receipt_admission: nanosecond(native_cost_i64(admission_nanos)),", "\n",
-      "        row_serialization: nanosecond(native_cost_i64(row_serialization_nanos)),", "\n",
-      "        module_release: nanosecond(native_cost_i64(module_release_nanos)),", "\n",
-      "        relay_emit: nanosecond(native_cost_i64(relay_emit_nanos)),", "\n",
+      "    // THE DRIVER IS EXHAUSTIVE OVER THE KEY WITH NO WILDCARD, deliberately: a row added to", "\n",
+      "    // std.compiler_entry makes THIS match refuse to compile until the driver says what", "\n",
+      "    // measures it. A wildcard here would answer zero for a span nobody wired up, which is", "\n",
+      "    // the absorbing arm DESIGN section 5 forbids -- and it is what the old record literal", "\n",
+      "    // did silently, three folds running.", "\n",
+      "    let exclusive = native_driver_exclusive_rows(move |k| match k \{", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(native_cost_i64(load_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveUniverseDerivation => nanosecond(native_cost_i64(universe_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveContext => nanosecond(native_cost_i64(context_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusivePrepare => nanosecond(native_cost_i64(prepare_total_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveEval => nanosecond(native_cost_i64(evaluate_total_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(native_cost_i64(admission_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(native_cost_i64(row_serialization_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(native_cost_i64(module_release_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(native_cost_i64(relay_emit_nanos)),", "\n",
       "    \});", "\n",
       "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;", "\n",
       "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;", "\n",
@@ -17644,7 +17645,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        \"verdict\": verdict,", "\n",
       "        \"tolerance_nanos\": tolerance_nanos,", "\n",
       "        \"parent_span_nanos\": parent_span_nanos,", "\n",
-      "        \"exclusive\": exclusive,", "\n",
+      "        \"exclusive\": exclusive.rows.iter().map(|r| (", "\n",
+      "            native_driver_exclusive_row_name(r.key.clone()),", "\n",
+      "            serde_json::json!(r.nanos),", "\n",
+      "        )).collect::<serde_json::Map<String, serde_json::Value>>(),", "\n",
       "        \"sum_exclusive_nanos\": exclusive_sum,", "\n",
       "        \"remainder_nanos\": remainder_nanos,", "\n",
       "        \"corpus_reads\": corpus_reads,", "\n",

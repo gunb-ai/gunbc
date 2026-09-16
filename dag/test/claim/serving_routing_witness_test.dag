@@ -33,7 +33,7 @@ import gunbc.harness.harness_backend {
 import gunbc.harness.harness_seat {
   harness_seat_partition, harness_interactive_quality_seats,
   ServingModelRequirement, AnyAdmittedModel, ExactServingUnit, harness_requirement_admits,
-  harness_required_capability,
+  harness_model_requirement_ref,
 }
 import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved, spark_serving_readiness_of }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch, LaunchObserved }
@@ -349,7 +349,7 @@ test fn an_exact_model_requirement_still_refuses_a_route_serving_another_model()
     && harness_requirement_admits(requirement: AnyAdmittedModel, observed: Glm53FlashOnVllm)
     && harness_requirement_admits(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, observed: Glm53FlashOnVllm)
     && !harness_requirement_admits(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, observed: DeepseekV4FlashOnVllm)
-    && (harness_required_capability(requirement: AnyAdmittedModel) as String) != (harness_required_capability(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }) as String)
+    && (harness_model_requirement_ref(requirement: AnyAdmittedModel) as String) != (harness_model_requirement_ref(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }) as String)
 }
 
 // ── 8. THE WORKING WINDOW FOLLOWS THE BOUND UNIT ──────────────────────────────────────────────

@@ -17,7 +17,7 @@ import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.identity { FabricIdentity, GrantKey, DemandKey, WorkKey }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { unstated_envelope }
-import product.fabric.work {
+import product.fabric.work { MaterializedProgram,
   Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, CapacityClass, ControlPlaneCapacity, work_for,
   declared_artifact_obligations,
@@ -66,11 +66,9 @@ data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
 }
 
 data fixture_contract: WorkContract = WorkContract {
-  program: "gunbc.required-witnesses-build.program:1",
+  execution: MaterializedProgram { program: "gunbc.required-witnesses-build.program:1", source: "source:1", runtime_closure: "runtime:1" },
   steps: [WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable }],
-  source: "source:1",
   inputs: "inputs:1",
-  runtime_closure: "runtime:1",
   effect_contract: "effects:1",
   output_contract: "outputs:1",
   output_obligations: declared_artifact_obligations(ids: ["outputs:1"]),
@@ -83,11 +81,9 @@ data foreign_principal: NonEmptyStr = "other-tenant"
 data subject_work: Work<NonEmptyStr> = work_for(principal: owning_principal, contract: fixture_contract, requirements: fixture_requirements)
 
 data other_contract: WorkContract = WorkContract {
-  program: "gunbc.required-witnesses-build.program:2",
+  execution: MaterializedProgram { program: "gunbc.required-witnesses-build.program:2", source: "source:2", runtime_closure: "runtime:1" },
   steps: [WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable }],
-  source: "source:2",
   inputs: "inputs:1",
-  runtime_closure: "runtime:1",
   effect_contract: "effects:1",
   output_contract: "outputs:1",
   output_obligations: declared_artifact_obligations(ids: ["outputs:1"]),
