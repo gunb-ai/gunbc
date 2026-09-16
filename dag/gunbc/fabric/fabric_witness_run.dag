@@ -10,7 +10,7 @@ import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
 }
-import product.fabric.work {
+import product.fabric.work { MaterializedProgram,
   Work, WorkContract, WorkStep, ResumabilityTier, ReceiptSatisfiable,
   ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
   CapabilityManifestRef, TrustDomainRef,
@@ -178,15 +178,13 @@ fn required_build_contract_from_materials(
   terminal_result_manifest: List<NonEmptyStr>,
 ) -> WorkContract {
   WorkContract {
-    program: concat("gunbc.required-witnesses-build.program:", framed_string(value: command)),
+    execution: MaterializedProgram { program: concat("gunbc.required-witnesses-build.program:", framed_string(value: command)), source: concat("gunbc.required-witnesses-build.source:", concat(framed_string(value: source), framed_string(value: checkout))), runtime_closure: concat("gunbc.required-witnesses-build.runtime:", concat(framed_string(value: toolchain), framed_string(value: executable))) },
     steps: [
       WorkStep { step_id: "checkout-materialize", resumability: ReceiptSatisfiable },
       WorkStep { step_id: "toolchain-and-executable-materialize", resumability: ReceiptSatisfiable },
       WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable },
     ],
-    source: concat("gunbc.required-witnesses-build.source:", concat(framed_string(value: source), framed_string(value: checkout))),
     inputs: concat("gunbc.required-witnesses-build.inputs:", concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))),
-    runtime_closure: concat("gunbc.required-witnesses-build.runtime:", concat(framed_string(value: toolchain), framed_string(value: executable))),
     effect_contract: "gunbc.required-witnesses-build.effects.checkout-read-cache-and-permitted-credentials-only",
     output_contract: "gunbc.required-witnesses-build.outputs",
     output_obligations: declared_output_obligations_from_manifests(
@@ -402,13 +400,11 @@ fn required_witnesses_build_frozen_identity_wire(
 // resumability that would restore it belongs with the cost basis, not here.
 fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
   WorkContract {
-    program: "gunbc.claim_executor",
+    execution: MaterializedProgram { program: "gunbc.claim_executor", source: source, runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt" },
     steps: [
       WorkStep { step_id: "required-ci", resumability: ReceiptSatisfiable },
     ],
-    source: source,
     inputs: floor_inputs_manifest_ref(),
-    runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt",
     effect_contract: "gunbc.floor.effects.read-only-corpus",
     output_contract: "gunbc.floor.outputs.required-floor-summary",
     output_obligations: declared_terminal_obligations(ids: ["required-floor-summary"]),
