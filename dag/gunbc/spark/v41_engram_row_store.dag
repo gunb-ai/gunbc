@@ -460,12 +460,10 @@ fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat, order: V41RowStoreOrd
 fn v41_rank_digest(placed: List<V41PlacedRow>, rank: Nat, spec: V41RowStoreEncodingSpec) -> ContentHash? {
   match v41_rank_payload(placed: placed, rank: rank, order: spec.row_order) {
     Absent => none
-    Present { value: payload } => Present {
-      value: if payload == "" {
-        content_hash_of_value(value: "empty-rank" as NonEmptyStr)
-      } else {
-        content_hash_of_value(value: payload as NonEmptyStr)
-      }
+    Present { value: payload } => if payload == "" {
+      none
+    } else {
+      Present { value: content_hash_of_value(value: payload as NonEmptyStr) }
     }
   }
 }
@@ -603,7 +601,7 @@ fn v41_assess_placed(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, 
       V41TransformUnfaithful { defects: defects }
     } else {
       match v41_rank_stores_from_placed(placed: placed, spec: spec) {
-        Absent => V41TransformUnfaithful { defects: ["rank payload is refused for this row order; an empty-rank digest is not a substitute" as NonEmptyStr] }
+        Absent => V41TransformUnfaithful { defects: ["an empty rank payload is not a store; hashing a sentinel is not identity" as NonEmptyStr] }
         Present { value: ranks } => match v41_identify_row_store(spec: spec, rank_stores: ranks) {
           V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } =>
             V41FixtureCorrespondenceHolds {

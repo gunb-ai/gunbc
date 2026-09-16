@@ -461,6 +461,18 @@ test fn rank_store_identity_is_global_ascending_not_supply_order() -> Bool {
   }
 }
 
+test fn an_empty_source_does_not_mint_identified_rank_stores() -> Bool {
+  match v41_transform_fixture(source: [] as List<V41SourceRow>, spec: w_tiny_spec()) {
+    V41TransformUnfaithful { defects: d } => any(d, x => (x as String).contains("empty rank payload"))
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+    V41PublishedTransformUnestablished { obligation: _ } => false
+  }
+    && match v41_fixture_encoding(source: [] as List<V41SourceRow>, spec: w_tiny_spec()) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
 test fn the_live_storage_backed_patches_are_not_minted_from_transcribed_hex() -> Bool {
   match v41_storage_backed_patch_population() {
     V41PatchesObserved { patches: _, partition: _ } => false
