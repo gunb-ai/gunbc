@@ -28,11 +28,10 @@ import gunbc.spark.v41_runtime_candidate {
 }
 import gunbc.spark.vllm_runtime_image_build {
   VllmImageBuild, vllm_build_host_purpose, vllm_source_dir, vllm_build_root,
-  vllm_source_state_line, vllm_source_acquired,
 }
 import gunbc.spark.v41_source_patch_converge {
   converge_vllm_source_with_patches, converge_vllm_runtime_image_with_patches,
-  v41_patched_source_as_vllm_state,
+  v41_patched_source_receipt_line, v41_patched_source_converged,
 }
 
 // OPERATOR CLI DOOR FOR THE APPLY SEAM. Vanilla vllm_source_acquire_wet still converges an
@@ -84,19 +83,17 @@ fn v41_patched_source_acquire_wet(host: String) -> ProcessExit
                         Present { value: endpoint } => {
                           let target = SshTarget { endpoint: endpoint as NonEmptyStr, principal: spark_managed_executor_login as NonEmptyStr }
                           let r = v41_candidate_recipe()
-                          let state = v41_patched_source_as_vllm_state(
-                            c: converge_vllm_source_with_patches(target: target, context: context, r: r, patches: ps),
-                          )
+                          let converged = converge_vllm_source_with_patches(target: target, context: context, r: r, patches: ps)
                           let body = join([
                             join(["v41 patched source acquire probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint, " principal=", spark_managed_executor_login, "\n"], ""),
                             join(["root=", vllm_build_root() as String, " source=", vllm_source_dir() as String, " clone_url=", vllm_clone_url(source: r.source), "\n"], ""),
                             known_hosts_materialization_receipt(outcome: materialization),
-                            vllm_source_state_line(s: state),
+                            v41_patched_source_receipt_line(c: converged),
                           ], "")
                           let w = Filesystem.Write(path: v41_patched_source_acquire_receipt_path, content: body)
                           if !w.success {
                             exit_failure(reason: join(["v41 patched source acquire receipt write failed: ", w.error], ""))
-                          } else if vllm_source_acquired(s: state) {
+                          } else if v41_patched_source_converged(c: converged) {
                             ExitSuccess
                           } else {
                             exit_failure(reason: join(["the patched source did not converge:\n", body], ""))

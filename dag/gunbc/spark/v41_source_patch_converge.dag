@@ -369,14 +369,27 @@ fn v41_apply_plan(target: SshTarget, context: FleetSshExecutionContext, plan: V4
 }
 
 type V41PatchedSourceConverge
-  = V41PatchedSourceConverged { already_present: Bool, observed: V41ObservedSourceIdentity }
+  = V41PatchedSourceConverged { patches_already_on_tree: Bool, observed: V41ObservedSourceIdentity }
   | V41PatchedSourceRefused { step: NonEmptyStr, cause: String }
 
-fn v41_patched_source_as_vllm_state(c: V41PatchedSourceConverge) -> VllmSourceState {
+fn v41_patched_source_receipt_line(c: V41PatchedSourceConverge) -> String {
   match c {
-    V41PatchedSourceConverged { already_present: present, observed: obs } =>
-      VllmSourceAtRevision { revision: obs.revision_head, already_present: present }
-    V41PatchedSourceRefused { step: st, cause: why } => VllmSourceRefused { step: st, cause: why }
+    V41PatchedSourceConverged { patches_already_on_tree: p, observed: obs } =>
+      join([
+        "patched source revision=", obs.revision_head as String,
+        " patches_already_on_tree=", if p { "true" } else { "false" },
+        " worktree_diff_sha256=", obs.worktree_diff_sha256.hex as String,
+        "\n",
+      ], "")
+    V41PatchedSourceRefused { step: st, cause: why } =>
+      join(["patched source REFUSED step=", st as String, " cause=", why, "\n"], "")
+  }
+}
+
+fn v41_patched_source_converged(c: V41PatchedSourceConverge) -> Bool {
+  match c {
+    V41PatchedSourceConverged { patches_already_on_tree: _, observed: _ } => true
+    V41PatchedSourceRefused { step: _, cause: _ } => false
   }
 }
 
@@ -439,7 +452,7 @@ fn converge_vllm_source_with_patches(
                     decision: decision, application: NotApplied, desired_revision: r.source, desired_patches: patches, after: before,
                   )) {
                     EffectNotConverged { reason: why, attempt: _ } => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: why }
-                    EffectConverged { converged: c } => V41PatchedSourceConverged { already_present: true, observed: c.evidence }
+                    EffectConverged { converged: c } => V41PatchedSourceConverged { patches_already_on_tree: true, observed: c.evidence }
                   }
                 Apply { plan: plan } =>
                   match v41_apply_plan(target: target, context: context, plan: plan) {
@@ -452,7 +465,7 @@ fn converge_vllm_source_with_patches(
                             decision: decision, application: Applied, desired_revision: r.source, desired_patches: patches, after: after,
                           )) {
                             EffectNotConverged { reason: why, attempt: _ } => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: why }
-                            EffectConverged { converged: c } => V41PatchedSourceConverged { already_present: present, observed: c.evidence }
+                            EffectConverged { converged: c } => V41PatchedSourceConverged { patches_already_on_tree: false, observed: c.evidence }
                           }
                       }
                   }
@@ -474,7 +487,7 @@ fn converge_vllm_runtime_image_with_patches(
 {
   match converge_vllm_source_with_patches(target: target, context: context, r: r, patches: patches) {
     V41PatchedSourceRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
-    V41PatchedSourceConverged { already_present: _, observed: obs } =>
+    V41PatchedSourceConverged { patches_already_on_tree: _, observed: obs } =>
       converge_vllm_image_keyed(
         ctx: ctx,
         r: r,

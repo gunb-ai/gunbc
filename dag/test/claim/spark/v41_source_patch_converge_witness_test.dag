@@ -13,8 +13,10 @@ import extdeps.crypto.hash { sha256sum_line_digest }
 import extdeps.tools.sha256sum { sha256sum_file_command }
 import gunbc.spark.v41_source_patch_converge {
   V41PatchMemberRead, V41SourceTreeRead, V41SourcePatchPlan,
+  V41PatchedSourceConverged, V41PatchedSourceRefused,
   v41_source_patch_decision, v41_source_patch_reconcile, v41_sha256_of_bytes,
   v41_patch_member_read, v41_source_tree_read, v41_source_patch_plan,
+  v41_observed_source_identity_of, v41_patched_source_receipt_line, v41_patched_source_converged,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -201,4 +203,18 @@ test fn an_untracked_new_module_refuses_rather_than_sharing_a_diff_head_identity
     Noop => false
     Apply { plan: _ } => false
   }
+}
+
+test fn patched_source_receipt_names_the_observed_tree_not_a_clean_vanilla_checkout() -> Bool {
+  let obs = v41_observed_source_identity_of(revision_head: "deadbeef" as NonEmptyStr, worktree_diff_sha256: w_sha(c: "d"))
+  let applied = v41_patched_source_receipt_line(c: V41PatchedSourceConverged { patches_already_on_tree: false, observed: obs })
+  let refused = v41_patched_source_receipt_line(c: V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: "git apply refused" })
+  applied.contains("patched source revision=deadbeef")
+    && applied.contains("patches_already_on_tree=false")
+    && applied.contains("worktree_diff_sha256=")
+    && !applied.contains("clean=true")
+    && !applied.contains("already_present=")
+    && refused.contains("patched source REFUSED")
+    && v41_patched_source_converged(c: V41PatchedSourceConverged { patches_already_on_tree: false, observed: obs })
+    && !v41_patched_source_converged(c: V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: "git apply refused" })
 }
