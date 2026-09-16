@@ -129,19 +129,22 @@ data evaluation_store_address_producer: DeclarationRef = target_decl(
 )
 
 data evaluation_store_address_production_consumers: List<DeclarationRef> = [
-  target_decl(module_path: "std.materialization_provider", decl_name: "request_key"),
   target_decl(module_path: "std.materialization_provider", decl_name: "provider_serve"),
-  target_decl(module_path: "std.materialization_provider", decl_name: "serve_resolved_graph_stored_disk_probe"),
-  target_decl(module_path: "std.materialization_provider", decl_name: "artifact_request_key"),
-  target_decl(module_path: "std.materialization_object", decl_name: "store_object_name"),
   target_decl(module_path: "std.materialization_object", decl_name: "store_lookup_decide"),
   target_decl(module_path: "std.materialization_object", decl_name: "store_commit_prepare"),
   target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup")
 ]
 
-data evaluation_store_address_reference_census_frontier: DissolutionCondition = unbound_dissolution(
-  description: "exact-head compiler reference index (symbol_index / declaration graph) enumerates production call sites of persist_evaluation_store_address, evaluation_store_address, request_key, provider_serve PersistedProbe, store_object_name, store_lookup_decide, store_commit_prepare, local_store_lookup, serve_resolved_graph_stored_disk_probe; duplicate derivations of the store-key relation are derived from that graph. TRIGGER: a floor-admitted producer returns those DeclarationRef lists from the accepted program. A second authored observed roster is not that producer. SubstrateInputsOnly witnesses cannot ingest the corpus graph."
-)
+data evaluation_store_address_persist_callers_expected: List<DeclarationRef> = [
+  target_decl(module_path: "std.materialization_provider", decl_name: "evaluation_store_address")
+]
+
+data evaluation_store_address_admitted_consumers_expected: List<DeclarationRef> = [
+  target_decl(module_path: "std.materialization_provider", decl_name: "provider_serve_persisted"),
+  target_decl(module_path: "std.materialization_object", decl_name: "store_object_name"),
+  target_decl(module_path: "std.materialization_object", decl_name: "store_commit_prepare"),
+  target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup")
+]
 
 fn evaluation_store_address_ref_in(wanted: DeclarationRef, xs: List<DeclarationRef>) -> Bool {
   xs |> fold(init: false, f: (acc, r) => acc || declaration_ref_eq(a: wanted, b: r))

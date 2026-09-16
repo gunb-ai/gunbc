@@ -58,6 +58,7 @@ import std.materialization_object {
   StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
   OpenedMaterializationStore,
   StoreLookup, StoreLookupRefused, StoreLookupObjectUnavailable, StoreLookupObjectMalformed,
+  StoreLookupStoreFamilyRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
   store_object_name, store_lookup_decide, store_commit_prepare, store_commit_settle,
@@ -268,13 +269,25 @@ fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializati
       }
     Permit => {
       let read = match evaluation_store_address(req: req) {
-        FamilyRefused { family: _, scope: _ } => StoreObjectAbsent
+        FamilyRefused { family: f, scope: sc } =>
+          StoreLookupRefused {
+            key: request_key(req: req),
+            refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc }
+          }
         CryptographicAddressAdmitted { address: addr } =>
-          store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
+          store_lookup_decide(
+            store: store,
+            req: req,
+            read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
+          )
         PreimageVerifiedBucketAdmitted { address: addr } =>
-          store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
+          store_lookup_decide(
+            store: store,
+            req: req,
+            read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
+          )
       }
-      store_lookup_decide(store: store, req: req, read: read)
+      read
     }
   }
 }

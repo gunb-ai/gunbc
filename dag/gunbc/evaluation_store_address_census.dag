@@ -1,0 +1,145 @@
+module gunbc.evaluation_store_address_census
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.node {
+  Atom, Node, NodeFold, TypeNode, fold_node
+}
+import v2.std.node_query { call_callee_target }
+import v2.std.diagnostic { Accepted }
+
+data evaluation_store_address_census_pool_roots: List<String> = [
+  "dag/std",
+  "dag/extdeps/realization"
+]
+
+fn census_rel_path_in_scope(rel_path: String) -> Bool {
+  (rel_path == "dag/std/materialization_provider.dag")
+    || (rel_path == "dag/std/materialization_object.dag")
+    || (rel_path == "dag/extdeps/realization/materialization_store_local.dag")
+}
+
+data evaluation_store_address_census_facts: List<DeclFact> = decl_facts(
+  pool_roots: evaluation_store_address_census_pool_roots
+) |> fold(
+  init: [],
+  f: (acc, fact) =>
+    if census_rel_path_in_scope(rel_path: fact.rel_path) {
+      concat(acc, [fact])
+    } else {
+      acc
+    }
+)
+
+fn callee_spelling_is(spelling: String, name: String) -> Bool {
+  if spelling == name {
+    true
+  } else {
+    let suffix = concat(".", name)
+    let n = spelling.length()
+    let s = suffix.length()
+    if n >= s {
+      spelling.substring(start: n - s, end: n) == suffix
+    } else {
+      false
+    }
+  }
+}
+
+fn node_calls_named(n: Node, name: String) -> Bool {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match call_callee_target(node: n0) {
+          Accepted { value: callee, diagnostics: _ } =>
+            match callee.kind {
+              TypeNode { connective: Atom { identity: s } } => callee_spelling_is(spelling: s as String, name: name)
+              _ => false
+            }
+          _ => false
+        }
+      },
+      step: fn(acc, e, child) { acc || child }
+    }
+  )
+}
+
+fn module_path_of_fact(fact: DeclFact) -> String {
+  let q = fact.qualified_name
+  let d = fact.name
+  let n = q.length()
+  let m = d.length()
+  if n > m + 1 {
+    q.substring(start: 0, end: n - m - 1)
+  } else {
+    q
+  }
+}
+
+fn fact_declaration_ref(fact: DeclFact) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path_of_fact(fact: fact) as NonEmptyStr,
+    decl_name: fact.name as NonEmptyStr,
+    field: WholeDeclaration
+  }
+}
+
+fn callers_of_name(name: String) -> List<DeclarationRef> {
+  evaluation_store_address_census_facts |> fold(
+    init: [],
+    f: (acc, fact) =>
+      if node_calls_named(n: fact.node, name: name) {
+        concat(acc, [fact_declaration_ref(fact: fact)])
+      } else {
+        acc
+      }
+  )
+}
+
+fn evaluation_store_address_observed_direct_callers() -> List<DeclarationRef> {
+  callers_of_name(name: "evaluation_store_address")
+}
+
+fn evaluation_store_address_observed_persist_callers() -> List<DeclarationRef> {
+  callers_of_name(name: "persist_evaluation_store_address")
+}
+
+fn unique_declaration_refs(xs: List<DeclarationRef>) -> List<DeclarationRef> {
+  xs |> fold(
+    init: [],
+    f: (acc, r) =>
+      if acc |> fold(init: false, f: (hit, o) => hit || declaration_ref_eq(a: r, b: o)) {
+        acc
+      } else {
+        concat(acc, [r])
+      }
+  )
+}
+
+fn evaluation_store_address_observed_admitted_consumers() -> List<DeclarationRef> {
+  unique_declaration_refs(xs: concat(
+    concat(
+      concat(
+        callers_of_name(name: "evaluation_store_address_digest"),
+        callers_of_name(name: "evaluation_store_address_preimage")
+      ),
+      callers_of_name(name: "evaluation_store_admitted_address")
+    ),
+    callers_of_name(name: "store_object_name")
+  ))
+}
+
+fn evaluation_store_address_observed_duplicate_producers() -> List<DeclarationRef> {
+  evaluation_store_address_observed_persist_callers() |> fold(
+    init: [],
+    f: (acc, r) =>
+      if (r.decl_name as String) == "evaluation_store_address" {
+        acc
+      } else {
+        concat(acc, [r])
+      }
+  )
+}
+

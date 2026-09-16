@@ -48,13 +48,13 @@ import std.materialization_provider {
   HashFamilyAdmittedForScope, StructuralFingerprintRefusedAsStoreKey, FamilyNotAdmittedForRelation,
   CryptographicAddressAdmitted, PreimageVerifiedBucketAdmitted, FamilyRefused,
   demand_identity_canonical, demand_identity_decode,
-  evaluation_store_address, persist_evaluation_store_address,
+  evaluation_store_address,
   request_evaluation_identity, result_content_identity,
   two_parses_occurrence_qualification_frontier,
   admit_hash_family_for_scope, evaluation_result_binding_outcome,
   artifact_request_key,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
-  compiler_identity_input, in_process_probe,
+  compiler_identity_input, in_process_probe, in_process_probe_for_request,
   output_parse_tree, output_typed_module_interface,
   output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union,
   output_list_contains,
@@ -77,10 +77,6 @@ import gunbc.materialization_provider_targets {
   materialization_provider_target_count,
   materialization_provider_targets_contain,
   materialization_provider_targets_all_bound,
-  evaluation_store_address_producer,
-  evaluation_store_address_production_consumers,
-  evaluation_store_address_reference_census_frontier,
-  evaluation_store_address_duplicate_consumers
 }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -198,7 +194,8 @@ fn witness_v1_shape_digest() -> ContentHash {
 }
 
 fn witness_good_probe() -> ProviderProbe {
-  in_process_probe(
+  in_process_probe_for_request(
+    req: witness_closure_request(),
     artifact: witness_complete_closure_artifact(),
     observed_digest: witness_closure_digest()
   )
@@ -267,7 +264,8 @@ test fn absent_probe_is_a_miss() -> Bool {
 test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe(
+    probe: in_process_probe_for_request(
+      req: witness_closure_request(),
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
     )
@@ -278,7 +276,8 @@ test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
 test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bool {
   let stale = provider_serve(
     req: witness_typecheck_request_changed_input(),
-    probe: in_process_probe(
+    probe: in_process_probe_for_request(
+      req: witness_closure_request(),
       artifact: witness_stale_typed_artifact(),
       observed_digest: witness_stale_typed_digest()
     )
@@ -289,7 +288,8 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
 test fn red_wrong_content_refuses_never_hits() -> Bool {
   let poisoned = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe(
+    probe: in_process_probe_for_request(
+      req: witness_closure_request(),
       artifact: witness_complete_closure_artifact(),
       observed_digest: Fnv1a64(content_hash_atom(value: "closure-payload-corrupt"))
     )
@@ -345,7 +345,8 @@ test fn red_sha256_at_fnv1a64_seam_refuses_without_alias() -> Bool {
 test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe(
+    probe: in_process_probe_for_request(
+      req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     )
@@ -477,7 +478,8 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
 test fn red_forged_output_roster_refuses_as_wrong_content_on_serve() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe(
+    probe: in_process_probe_for_request(
+      req: witness_closure_request(),
       artifact: witness_complete_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     )
@@ -655,7 +657,8 @@ test fn served_hit_carries_a_derived_structural_grade() -> Bool {
 test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
   let mismatched = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe(
+    probe: in_process_probe_for_request(
+      req: witness_closure_request(),
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
     )
@@ -667,7 +670,8 @@ test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
 test fn incomplete_artifact_derives_unknown_identity() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: in_process_probe(
+    probe: in_process_probe_for_request(
+      req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     )
@@ -770,7 +774,8 @@ test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
   let required = request_required_outputs(req: req)
   let refused = provider_serve(
     req: req,
-    probe: in_process_probe(
+    probe: in_process_probe_for_request(
+      req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     )
@@ -806,19 +811,34 @@ test fn parse_and_typecheck_store_addresses_are_preimage_verified_fnv_buckets() 
 }
 
 test fn persist_sha1_bucket_is_typed_family_refused() -> Bool {
-  let identity = request_evaluation_identity(req: witness_parse_request())
-  match sha1_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
-    Absent => false
-    Present { value: d } =>
-      match persist_evaluation_store_address(identity: identity, digest: as_content_hash_sha1(digest: d)) {
-        FamilyRefused { family: _, scope: _ } =>
-          (request_key(req: witness_parse_request()) == as_content_hash_structural(
-            structural: content_hash_atom(value: "evaluation_store_family_refused")
-          )) == false
-        CryptographicAddressAdmitted { address: _ } => false
-        PreimageVerifiedBucketAdmitted { address: _ } => false
-      }
+  match admit_hash_family_for_scope(family: Sha1Family, scope: PersistentStoreScope) {
+    FamilyNotAdmittedForRelation { family: _, scope: _ } =>
+      (request_key(req: witness_parse_request()) == as_content_hash_structural(
+        structural: content_hash_atom(value: "evaluation_store_family_refused")
+      )) == false
+    HashFamilyAdmittedForScope { family: _, scope: _ } => false
+    StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false
   }
+}
+
+test fn in_process_probe_same_bucket_foreign_identity_is_not_a_hit() -> Bool {
+  let req = witness_parse_request()
+  let foreign = request_evaluation_identity(req: witness_typecheck_request())
+  let artifact = ParsedArtifact {
+    request_key: request_key(req: req),
+    parse_tree: witness_graph_part(),
+    parse_diagnostics: witness_indices_part()
+  }
+  let served = provider_serve(
+    req: req,
+    probe: in_process_probe(
+      artifact: artifact,
+      observed_digest: request_key(req: req),
+      observed_evaluation_identity: foreign
+    )
+  )
+  lookup_is_refused_evaluation_preimage_mismatch(l: served)
+    && (lookup_is_hit(l: served) == false)
 }
 
 test fn demand_canonical_encoding_is_injective_and_c1_lossy_collapses() -> Bool {
@@ -962,13 +982,3 @@ test fn two_parses_occurrence_qualification_is_an_explicit_frontier() -> Bool {
     && d.contains("split-on-whitespace")
 }
 
-test fn evaluation_store_address_consumer_census_is_an_explicit_reference_index_frontier() -> Bool {
-  let expected = evaluation_store_address_production_consumers
-  let expected_dups = evaluation_store_address_duplicate_consumers(xs: expected)
-  let d = dissolution_description(condition: evaluation_store_address_reference_census_frontier)
-  (evaluation_store_address_producer.decl_name == "evaluation_store_address")
-    && ((expected |> count()) > 1)
-    && ((expected_dups |> count()) == 0)
-    && d.contains("reference index")
-    && d.contains("second authored observed roster")
-}

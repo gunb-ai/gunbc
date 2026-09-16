@@ -577,7 +577,26 @@ fn request_evaluation_bucket(req: ArtifactRequest) -> ContentHash {
   )
 }
 
-fn persist_evaluation_store_address(identity: EvaluationIdentity, digest: ContentHash) -> EvaluationStoreAddressAdmission {
+type EvaluationBucket sole_constructor {
+  identity: EvaluationIdentity
+  digest: ContentHash
+}
+
+fn evaluation_bucket_for_request(req: ArtifactRequest) -> EvaluationBucket admit_callers: [
+  decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "request_key")
+] {
+  EvaluationBucket {
+    identity: request_evaluation_identity(req: req),
+    digest: request_evaluation_bucket(req: req)
+  }
+}
+
+fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStoreAddressAdmission admit_callers: [
+  decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address")
+] {
+  let identity = bucket.identity
+  let digest = bucket.digest
   let preimage = evaluation_identity_canonical(evaluation: identity)
   let family = content_hash_family(hash: digest)
   match admit_hash_family_for_scope(family: family, scope: PersistentStoreScope) {
@@ -605,8 +624,7 @@ fn persist_evaluation_store_address(identity: EvaluationIdentity, digest: Conten
 }
 
 fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
-  let identity = request_evaluation_identity(req: req)
-  persist_evaluation_store_address(identity: identity, digest: request_evaluation_bucket(req: req))
+  persist_evaluation_store_address(bucket: evaluation_bucket_for_request(req: req))
 }
 
 fn evaluation_store_address_digest(address: EvaluationStoreAddress) -> ContentHash {
@@ -930,7 +948,7 @@ fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
 // is witnessed by execution rather than asserted.
 
 fn request_key(req: ArtifactRequest) -> ContentHash {
-  request_evaluation_bucket(req: req)
+  evaluation_bucket_for_request(req: req).digest
 }
 
 // Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape
@@ -1444,7 +1462,8 @@ type ProviderProbe
   = ProbeAbsent
   | InProcessProbe {
       artifact: MaterializedArtifact,
-      observed_digest: ContentHash
+      observed_digest: ContentHash,
+      observed_evaluation_identity: EvaluationIdentity
     }
   | PersistedProbe {
       artifact: MaterializedArtifact,
@@ -1470,9 +1489,26 @@ data resolved_graph_disk_format_unqualified_frontier: DissolutionCondition = unb
 
 fn in_process_probe(
   artifact: MaterializedArtifact,
+  observed_digest: ContentHash,
+  observed_evaluation_identity: EvaluationIdentity
+) -> ProviderProbe {
+  InProcessProbe {
+    artifact: artifact,
+    observed_digest: observed_digest,
+    observed_evaluation_identity: observed_evaluation_identity
+  }
+}
+
+fn in_process_probe_for_request(
+  req: ArtifactRequest,
+  artifact: MaterializedArtifact,
   observed_digest: ContentHash
 ) -> ProviderProbe {
-  InProcessProbe { artifact: artifact, observed_digest: observed_digest }
+  in_process_probe(
+    artifact: artifact,
+    observed_digest: observed_digest,
+    observed_evaluation_identity: request_evaluation_identity(req: req)
+  )
 }
 
 fn persisted_probe(
@@ -1528,8 +1564,18 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
   let key = request_key(req: req)
   match probe {
     ProbeAbsent => ProviderMiss { key: key }
-    InProcessProbe { artifact: a, observed_digest: obs } =>
-      provider_binding_lookup(req: req, key: key, artifact: a, observed_digest: obs)
+    InProcessProbe { artifact: a, observed_digest: obs, observed_evaluation_identity: observed_id } => {
+      let expected_id = request_evaluation_identity(req: req)
+      if (evaluation_identity_canonical(evaluation: observed_id) as String) == (evaluation_identity_canonical(evaluation: expected_id) as String) {
+        provider_binding_lookup(req: req, key: key, artifact: a, observed_digest: obs)
+      } else {
+        ProviderRefusedEvaluationPreimageMismatch {
+          key: key,
+          expected: evaluation_identity_canonical(evaluation: expected_id),
+          found: evaluation_identity_canonical(evaluation: observed_id)
+        }
+      }
+    }
     PersistedProbe { artifact: a, observed_digest: obs, observed_evaluation_preimage: observed } =>
       match evaluation_store_address(req: req) {
         FamilyRefused { family: f, scope: sc } =>
