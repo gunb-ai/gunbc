@@ -24,7 +24,7 @@ data shared_symbol_projection_is_not_injective: RecurringFailureMode = Recurring
 
     "ATTAINABLE CEILING: structurally impossible once an emitted-symbol allocation cannot share a symbol across distinct authored identities. Until then the wall is rung 2: decidable refusal, state still writable.",
 
-    "NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: an emitted-symbol allocation whose distinct authored identities cannot share a symbol by construction, ANSWERING BY EXECUTION over `type GitWorktree` beside `service git.Worktree`. Adding the diagnostic variant is no longer the missing capability.",
+    "NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY AND NOT AS A RENAME: `sanitize_service_name` (and `service_var_name`) becomes injective against the type-declaration namespace — service symbols carry a distinguishing element a type name cannot produce — ANSWERING BY EXECUTION over `type GitWorktree` beside `service git.Worktree` in one emitted module with no EmittedSymbolCollision. A rename of this one pair satisfies a rename while every future collision still lands. Adding the diagnostic variant is no longer the missing capability.",
 
     "WHAT IS NOT CLAIMED: renaming the live `extdeps.git` declarations. The emitter must refuse the collision; the source names remain two facts.",
   ],
