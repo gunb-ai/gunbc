@@ -403,6 +403,9 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
           if !pw_read.success {
             return exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error))
           }
+          if !mtcollins1_boot_sol_is_held(pid_path: sol_pid_path) {
+            return exit_failure(reason: "mtcollins1 boot: SOL collector process is not held after the approval window; ipmitool sol activate must still be live before any controller write")
+          }
           let actuated = mtcollins1_boot_after_gate(
             gate: gate,
             password_raw: pw_read.content,
