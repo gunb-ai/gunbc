@@ -8,6 +8,7 @@ import gunbc.target_binding {
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
   CompileCleanDiagnosticCensusProducer,
+  EvaluationStoreAddressExactHeadProducer,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -144,6 +145,13 @@ fn v2_native_cli_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-cli" } }
 }
 
+// O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
+// call-form scan. Not a DiscoverySelection floor witness (enrolment_bound_without_ceiling);
+// not a required CI job. `gunbc test //gunbc/instruments:evaluation-store-address-exact-head`.
+fn evaluation_store_address_exact_head_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "evaluation-store-address-exact-head" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -184,6 +192,10 @@ fn v2_native_cli_target() -> BuildTarget {
   instrument_test_target(label: v2_native_cli_label())
 }
 
+fn evaluation_store_address_exact_head_target() -> BuildTarget {
+  instrument_test_target(label: evaluation_store_address_exact_head_label())
+}
+
 fn v2_native_cli_binding() -> TargetBinding {
   TargetBinding { target: v2_native_cli_label() producer: V2NativeCliProducer {} }
 }
@@ -213,6 +225,10 @@ fn behavioral_receipt_selftest_binding() -> TargetBinding {
 
 fn compile_clean_diagnostic_census_binding() -> TargetBinding {
   TargetBinding { target: compile_clean_diagnostic_census_label() producer: CompileCleanDiagnosticCensusProducer {} }
+}
+
+fn evaluation_store_address_exact_head_binding() -> TargetBinding {
+  TargetBinding { target: evaluation_store_address_exact_head_label() producer: EvaluationStoreAddressExactHeadProducer {} }
 }
 
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
@@ -275,7 +291,8 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label()
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(),
+    evaluation_store_address_exact_head_label()
   ]
 }
 
@@ -283,7 +300,8 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding()
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(),
+    evaluation_store_address_exact_head_binding()
   ]
 }
 

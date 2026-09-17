@@ -130,3 +130,29 @@ fn transport_plan_env(p: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
         map(nccl_roce_gid_selection_env(s: g), a => DockerEnvAssignment { name: a.name, value: a.value }))
   }
 }
+
+// ── WHICH ENVIRONMENT NAMES THIS DECISION CAN TOUCH, DERIVED FROM THE PROJECTION ITSELF ───────
+//
+// A READBACK NEEDS TO ASK "is this assignment part of the transport decision", and the only honest
+// answer is the one this module's own projection gives. An authored list beside `transport_plan_env`
+// would be a second authority for the same set, and the first time an arm gains or loses a variable
+// the two would disagree silently -- which is the shape of the defect this whole module was written
+// for, one layer up.
+//
+// THE NAMES DO NOT DEPEND ON THE INTERFACE, so the probe value below is a placeholder and is never
+// projected anywhere: what is read out is the set of KEYS each arm emits. Both arms are unioned
+// because a change of transport can ADD a name or REMOVE one, and a comparison that only knew the
+// destination arm's names would read a removed NCCL_IB_HCA as an unexplained deletion.
+data transport_env_name_probe_interface: NonEmptyStr = "probe" as NonEmptyStr
+data transport_env_name_probe_device: NonEmptyStr = "probe" as NonEmptyStr
+
+fn transport_env_names(gid_selection: NcclRoceGidSelection) -> List<String> {
+  concat(
+    map(transport_plan_env(p: SocketOverInterface { interface: transport_env_name_probe_interface }), e => e.name as String),
+    map(transport_plan_env(p: RoceOverInterface {
+      interface: transport_env_name_probe_interface,
+      rdma_device: transport_env_name_probe_device,
+      gid_selection: gid_selection,
+    }), e => e.name as String),
+  )
+}

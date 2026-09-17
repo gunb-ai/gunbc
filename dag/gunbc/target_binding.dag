@@ -22,6 +22,7 @@ type TargetProducer
   | HeadsReadingDifferentialProducer
   | CompileCleanDiagnosticCensusProducer
   | V2NativeCliProducer
+  | EvaluationStoreAddressExactHeadProducer
 
 type TargetBinding {
   target: Label

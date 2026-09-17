@@ -81,7 +81,6 @@ import gunbc.live_deploy.spec {
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
   deployment_fleet_converge_service_unit_path,
-  deployment_spec_srv1,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
   deployment_step_ownership,

@@ -555,10 +555,10 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_readiness_gate"),
   ),
   census_row(
-    identity: cite(module_path: "gunbc.live_deploy.spec", decl_name: "deployment_spec_srv1"),
+    identity: cite(module_path: "gunbc.live_deploy.desired", decl_name: "deployment_spec_srv1"),
     subject: DeploymentSpecPopulation,
     phases: none_phases(),
-    current_authority: cite(module_path: "gunbc.live_deploy.spec", decl_name: "deployment_spec_srv1"),
+    current_authority: cite(module_path: "gunbc.live_deploy.desired", decl_name: "deployment_spec_srv1"),
     persistent_host_effect: DoesNotMutateHost,
     disposition: BindToAuthority { target: deployment_spec_for() },
     first_consumer: cite(module_path: "gunbc.fleet_converge_plan", decl_name: "timer_retirement_observed_legacy_srv1"),

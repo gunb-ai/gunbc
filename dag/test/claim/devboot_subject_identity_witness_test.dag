@@ -28,8 +28,9 @@ import gunbc.live_deploy.spec {
   TeardownRefuses,
   TeardownActs,
   TeardownOutsideOwnership,
-  deployment_spec_srv1,
+  deployment_srv1_target,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import extdeps.toolchain.types {
   TargetTriple,
   ToolchainRequirement,
@@ -731,7 +732,7 @@ fn devboot_ensured_step_projects_layout(acc: Int, step: DeploymentDependencyStep
 
 test fn the_devboot_store_root_is_an_ensured_host_resource_projecting_the_layout_row() -> Bool {
   fold(
-    deployment_ensured_steps(),
+    deployment_ensured_steps(target: deployment_srv1_target()),
     init: 0,
     f: (acc, step) => devboot_ensured_step_projects_layout(acc: acc, step: step),
   ) == 1
