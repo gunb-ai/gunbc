@@ -109,6 +109,7 @@ fn approval_poll_standing(
     match status {
       StatusApproved { revision: _, decided_by: _, decided_at: _, execute_by: _ } => PollApproved
       StatusDenied { revision: _, decided_by: _, decided_at: _, reason: _ } => PollDenied
+      StatusUnreadable { detail: d } => PollUnreadable { detail: d }
       _ => PollExpired
     }
   } else {

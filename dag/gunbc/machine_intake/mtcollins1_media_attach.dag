@@ -2,6 +2,8 @@ module gunbc.machine_intake_mtcollins1_media_attach
 
 import std.types { NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.scoped_authorization { ScopedAuthorization, AuthorizationGranted }
+import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootSubject }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
@@ -133,29 +135,41 @@ fn mtcollins1_attach_absent_image_control(password_raw: String, attempt: String)
   }
 }
 
-fn mtcollins1_attach_diskless_image(password_raw: String, attempt: String) -> ProcessExit
+fn mtcollins1_attach_diskless_image(
+  authorization: ScopedAuthorization<MtCollins1BootSubject>,
+  password_raw: String,
+  attempt: String,
+) -> ProcessExit
   uses net: std.resources.Network
 {
-  match mtcollins1_media_username {
-    Absent =>
-      exit_failure(reason: "mtcollins1 media attach: BMC is not BmcSecured; refusing before any request")
-    Present { value: username } =>
-      if password_raw == "" {
-        exit_failure(reason: "mtcollins1 media attach: no controller password supplied; refusing before any request")
-      } else if attempt == "" {
-        exit_failure(reason: "mtcollins1 media attach: no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session")
+  match authorization {
+    AuthorizationGranted { grant: g, claim: _ } =>
+      if g.subject.image_name != mtcollins1_diskless_image_name {
+        exit_failure(reason: "mtcollins1 media attach: the stored grant is for a different image; controller untouched")
       } else {
-        mtcollins1_render_attach_result(
-          result: megarac_attach_remote_image(
-            bmc_host: mtcollins1_endpoint.host,
-            username: username,
-            password: password_raw as NonEmptyStr,
-            cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
-            image_name: mtcollins1_diskless_image_name,
-            firmware: mtcollins1_firmware,
-          )
-        )
+        match mtcollins1_media_username {
+          Absent =>
+            exit_failure(reason: "mtcollins1 media attach: BMC is not BmcSecured; refusing before any request")
+          Present { value: username } =>
+            if password_raw == "" {
+              exit_failure(reason: "mtcollins1 media attach: no controller password supplied; refusing before any request")
+            } else if attempt == "" {
+              exit_failure(reason: "mtcollins1 media attach: no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session")
+            } else {
+              mtcollins1_render_attach_result(
+                result: megarac_attach_remote_image(
+                  bmc_host: mtcollins1_endpoint.host,
+                  username: username,
+                  password: password_raw as NonEmptyStr,
+                  cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
+                  image_name: mtcollins1_diskless_image_name,
+                  firmware: mtcollins1_firmware,
+                )
+              )
+            }
+        }
       }
+    _ => exit_failure(reason: "mtcollins1 media attach: no operator grant; controller untouched")
   }
 }
 

@@ -107,9 +107,13 @@ fn mtcollins1_boot_after_gate(
   if !mtcollins1_boot_controller_may_be_written(gate: gate) {
     return mtcollins1_boot_refusal(gate: gate)
   }
-  match mtcollins1_attach_diskless_image(password_raw: password_raw, attempt: attempt) {
-    ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
-    other => other
+  match gate {
+    BootGateAdmitted { authorization: auth } =>
+      match mtcollins1_attach_diskless_image(authorization: auth, password_raw: password_raw, attempt: attempt) {
+        ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
+        other => other
+      }
+    _ => mtcollins1_boot_refusal(gate: gate)
   }
 }
 

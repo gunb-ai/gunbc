@@ -5,7 +5,7 @@ import std.types { Bool, NonEmptyStr, String }
 import gunbc.auth.approval_request_client {
   approval_submit_url, approval_status_url,
   parse_filed_approval_status, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
-  approval_poll_standing, approval_post_admits_poll, PollStillPending, PollApproved, PollExpired,
+  approval_poll_standing, approval_post_admits_poll, PollStillPending, PollApproved, PollExpired, PollUnreadable,
   StoredApprovalRequest,
 }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
@@ -82,6 +82,14 @@ test fn poll_expires_after_expires_at_unless_already_decided() -> Bool {
     }
     && match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T21:00:00Z" }, observed_at: "2026-09-16T20:30:00Z", expires_at: "2026-09-16T21:00:00Z") {
       PollStillPending => true
+      _ => false
+    }
+    && match approval_poll_standing(
+      status: StatusUnreadable { detail: "get failed" as NonEmptyStr },
+      observed_at: "2026-09-16T22:00:00Z",
+      expires_at: "2026-09-16T21:00:00Z",
+    ) {
+      PollUnreadable { detail: _ } => true
       _ => false
     }
 }
