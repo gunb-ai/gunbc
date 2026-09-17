@@ -1,0 +1,21 @@
+# A ONE-OFF EMPIRICAL PROBE, not a lane. It answers one question the docs are read two ways on:
+# does a standard GitHub-hosted runner consume billable minutes in a PUBLIC repository?
+#
+# It is scoped to this branch by its push trigger, so it never runs on a pull request, never joins
+# the required-lane roster, and never competes for a runner with real work. Delete the branch and
+# it is gone. The measurement is the run's timing endpoint: billable is per runner OS and stays
+# empty when the minutes are free.
+name: billing-probe
+on:
+  push:
+    branches: [billing-probe]
+permissions: {}
+jobs:
+  standard-hosted-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: identify the runner and burn a measurable slice of a minute
+        run: |
+          echo "runner_os=$RUNNER_OS arch=$(uname -m)"
+          echo "hosted runner, public repository"
+          sleep 25
