@@ -10,10 +10,12 @@ import gunbc.gcp_service_enablement {
   ServiceEnablementUnobserved,
   ServiceEnablementStateForeign,
 }
+import extdeps.cloud.gcp.iam { ProjectStateDeleteRequested }
 import gunbc.sheets_bootstrap_converge {
   ProjectConvergeObservation,
   ProjectObservedActive,
   ProjectObservedOtherState,
+  ProjectStateUnreadable,
   ProjectAbsent,
   ProjectUnreadable,
   project_observation_from_state,
@@ -36,6 +38,7 @@ test fn active_state_is_the_only_usable_project() -> Bool {
   match project_observation_from_state(project_id: w_project(), state: "ACTIVE") {
     ProjectObservedActive { project_id: p } => (p as String) == "gunbai-sheets"
     ProjectObservedOtherState { project_id: _, state: _ } => false
+    ProjectStateUnreadable { project_id: _, raw: _ } => false
     ProjectAbsent => false
     ProjectUnreadable { reason: _ } => false
   }
@@ -46,7 +49,8 @@ test fn active_state_is_the_only_usable_project() -> Bool {
 // cause is a pending deletion.
 test fn delete_requested_is_neither_usable_nor_absent() -> Bool {
   match project_observation_from_state(project_id: w_project(), state: "DELETE_REQUESTED") {
-    ProjectObservedOtherState { project_id: _, state: s } => s == "DELETE_REQUESTED"
+    ProjectObservedOtherState { project_id: _, state: s } => s == ProjectStateDeleteRequested
+    ProjectStateUnreadable { project_id: _, raw: _ } => false
     ProjectObservedActive { project_id: _ } => false
     ProjectAbsent => false
     ProjectUnreadable { reason: _ } => false
@@ -59,6 +63,7 @@ test fn a_404_is_an_observation_of_absence() -> Bool {
     ProjectUnreadable { reason: _ } => false
     ProjectObservedActive { project_id: _ } => false
     ProjectObservedOtherState { project_id: _, state: _ } => false
+    ProjectStateUnreadable { project_id: _, raw: _ } => false
   }
 }
 
@@ -71,6 +76,7 @@ test fn a_403_is_not_absence() -> Bool {
     ProjectAbsent => false
     ProjectObservedActive { project_id: _ } => false
     ProjectObservedOtherState { project_id: _, state: _ } => false
+    ProjectStateUnreadable { project_id: _, raw: _ } => false
   }
 }
 
@@ -80,6 +86,7 @@ test fn a_500_is_not_absence_either() -> Bool {
     ProjectAbsent => false
     ProjectObservedActive { project_id: _ } => false
     ProjectObservedOtherState { project_id: _, state: _ } => false
+    ProjectStateUnreadable { project_id: _, raw: _ } => false
   }
 }
 
@@ -119,5 +126,19 @@ test fn an_empty_state_string_is_foreign_not_disabled() -> Bool {
     ServiceObservedDisabled { project: _, service_id: _ } => false
     ServiceObservedEnabled { project: _, service_id: _ } => false
     ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
+  }
+}
+
+// A LIFECYCLE STATE THE UPSTREAM DOES NOT PUBLISH IS NOT "SOME OTHER STATE". Before the decoder
+// landed, any spelling that was not exactly ACTIVE became ProjectObservedOtherState carrying the
+// raw string, so a value this model has never seen was indistinguishable from DELETE_REQUESTED --
+// and the refusal an operator read named a lifecycle state when the real subject was the model.
+test fn an_unpublished_lifecycle_state_is_unreadable_rather_than_other() -> Bool {
+  match project_observation_from_state(project_id: w_project(), state: "DELETE_IN_PROGRESS") {
+    ProjectStateUnreadable { project_id: _, raw: r } => r == "DELETE_IN_PROGRESS"
+    ProjectObservedOtherState { project_id: _, state: _ } => false
+    ProjectObservedActive { project_id: _ } => false
+    ProjectAbsent => false
+    ProjectUnreadable { reason: _ } => false
   }
 }

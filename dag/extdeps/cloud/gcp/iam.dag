@@ -420,6 +420,46 @@ service gcp.IamRoles {
 // field; this type is the wire, and it lives beside the service that returns it exactly as
 // GcpPredefinedRole lives beside gcp.IamRoles. Naming them apart is what keeps the estate's
 // project_number from being read as something this response carries, because it does not.
+// THE LIFECYCLE STATE IS A CLOSED UPSTREAM VOCABULARY AND WAS CROSSING AS A RAW STRING. Resource
+// Manager v3 publishes exactly three values for a project's State, and a consumer was comparing the
+// undecoded string to one literal and carrying every other spelling forward verbatim -- so
+// DELETE_REQUESTED, a typo, and a value this model has never seen were one indistinguishable arm.
+// The sibling in extdeps.cloud.gcp.serviceusage has carried the right shape all along:
+// GcpServiceUsageState is a closed sum with a from_wire fold, and a consumer folds through it
+// rather than string-matching. This is that shape for projects.
+//
+// DELETE_REQUESTED is the state the distinction exists for: a project in it is NEITHER absent NOR
+// usable, so a converge that read it as "not active" and created would collide on a taken id and
+// report a naming failure for a pending deletion nobody mentioned.
+type GcpProjectLifecycleState
+  = ProjectStateUnspecified
+  | ProjectStateActive
+  | ProjectStateDeleteRequested
+
+fn gcp_project_lifecycle_state_wire(s: GcpProjectLifecycleState) -> String {
+  match s {
+    ProjectStateUnspecified => "STATE_UNSPECIFIED"
+    ProjectStateActive => "ACTIVE"
+    ProjectStateDeleteRequested => "DELETE_REQUESTED"
+  }
+}
+
+fn gcp_project_lifecycle_state_from_wire(raw: String) -> GcpProjectLifecycleState? {
+  if raw == gcp_project_lifecycle_state_wire(s: ProjectStateActive) {
+    Present { value: ProjectStateActive }
+  } else {
+    if raw == gcp_project_lifecycle_state_wire(s: ProjectStateDeleteRequested) {
+      Present { value: ProjectStateDeleteRequested }
+    } else {
+      if raw == gcp_project_lifecycle_state_wire(s: ProjectStateUnspecified) {
+        Present { value: ProjectStateUnspecified }
+      } else {
+        none
+      }
+    }
+  }
+}
+
 type GcpProjectResourceV3 {
   project_id: GcpProjectId from "projectId"
   state: String

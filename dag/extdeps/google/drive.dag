@@ -181,6 +181,33 @@ type DrivePrincipalType
   | PrincipalDomain
   | PrincipalAnyone
 
+// THE READ DIRECTION EXISTED ONLY AS A WRITE. An earlier revision declared the wire fold below and
+// no decoder, so DrivePermission.type was decoded by nothing and read by nothing while the write
+// side set a typed PrincipalUser. That asymmetry is not cosmetic on this resource: a permission of
+// type domain or anyone can carry the same ROLE as the writer's, so a consumer matching on role
+// alone reads a world-writable drive as "the writer is a member". The decoder is what lets a
+// consumer refuse that, and an unrecognised spelling answers Absent so it can be refused rather
+// than guessed.
+fn drive_principal_type_from_wire(raw: String) -> DrivePrincipalType? {
+  if raw == drive_principal_type_wire(t: PrincipalUser) {
+    Present { value: PrincipalUser }
+  } else {
+    if raw == drive_principal_type_wire(t: PrincipalGroup) {
+      Present { value: PrincipalGroup }
+    } else {
+      if raw == drive_principal_type_wire(t: PrincipalDomain) {
+        Present { value: PrincipalDomain }
+      } else {
+        if raw == drive_principal_type_wire(t: PrincipalAnyone) {
+          Present { value: PrincipalAnyone }
+        } else {
+          none
+        }
+      }
+    }
+  }
+}
+
 fn drive_principal_type_wire(t: DrivePrincipalType) -> String {
   match t {
     PrincipalUser => "user"

@@ -14,6 +14,12 @@ import extdeps.google.drive {
   RoleOrganizer,
   drive_permission_role_wire,
   drive_permission_role_from_wire,
+  DrivePrincipalType,
+  PrincipalUser,
+  PrincipalGroup,
+  PrincipalDomain,
+  PrincipalAnyone,
+  drive_principal_type_from_wire,
   google_sheet_mime_type,
 }
 
@@ -93,7 +99,24 @@ type MembershipGrantPlan {
   role: DrivePermissionRole
 }
 
+// A ROW NAMES THE WRITER ONLY IF IT IS A USER GRANT TO THAT ADDRESS. Matching the email alone was
+// not enough and the gap was real rather than theoretical: Drive permissions of type domain and
+// anyone carry a role exactly as a user grant does, so a role-satisfying `anyone` row would have
+// read as the writer being a member of the drive -- a world-writable drive reported as converged.
+// An unrecognised type is not a user and does not match; it is also not silently dropped, because
+// membership_from_matched_rows answers Absent only when NO row matched, and a principal type this
+// model cannot read is a row it must not claim to have understood.
 fn permission_names_writer(p: DrivePermission, writer: ServiceAccountEmail) -> Bool {
+  match drive_principal_type_from_wire(raw: p.type) {
+    Absent => false
+    Present { value: PrincipalUser } => permission_email_is_writer(p: p, writer: writer)
+    Present { value: PrincipalGroup } => false
+    Present { value: PrincipalDomain } => false
+    Present { value: PrincipalAnyone } => false
+  }
+}
+
+fn permission_email_is_writer(p: DrivePermission, writer: ServiceAccountEmail) -> Bool {
   match p.emailAddress {
     Absent => false
     Present { value: e } => e == (writer as String)

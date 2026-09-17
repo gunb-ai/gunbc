@@ -8,6 +8,14 @@ import std.resources { Network }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.cloud.gcp.iam {
+  GcpProjectLifecycleState,
+  ProjectStateUnspecified,
+  ProjectStateActive,
+  ProjectStateDeleteRequested,
+  gcp_project_lifecycle_state_wire,
+  gcp_project_lifecycle_state_from_wire,
+}
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.serviceusage
@@ -44,7 +52,8 @@ import gunbc.gcp_service_enablement {
 
 type ProjectConvergeObservation
   = ProjectObservedActive { project_id: GcpProjectId }
-  | ProjectObservedOtherState { project_id: GcpProjectId, state: String }
+  | ProjectObservedOtherState { project_id: GcpProjectId, state: GcpProjectLifecycleState }
+  | ProjectStateUnreadable { project_id: GcpProjectId, raw: String }
   | ProjectAbsent
   | ProjectUnreadable { reason: NonEmptyStr }
 
@@ -53,16 +62,24 @@ type ProjectConvergeOutcome
   | ProjectCreateAccepted { operation_name: String }
   | ProjectConvergeRefused { cause: NonEmptyStr }
 
-data gcp_project_state_active: NonEmptyStr = "ACTIVE"
-
 // A project in DELETE_REQUESTED is not absent and not usable, and it is the one state where
 // creating would silently do the wrong thing: the id is taken, so the create refuses, and the
 // converge would report a failure whose real cause is a pending deletion nobody mentioned.
+//
+// THE STATE IS DECODED THROUGH THE UPSTREAM'S OWN CLOSED SUM rather than compared as a string. An
+// earlier revision matched the raw value against one literal "ACTIVE" and carried everything else
+// forward verbatim, which put DELETE_REQUESTED, STATE_UNSPECIFIED and a spelling this model has
+// never seen into one arm. A value the upstream does not publish is now its own refusal: it is not
+// "some other state", it is a response this model could not read, and the difference decides
+// whether an operator looks at the project or at the model.
 fn project_observation_from_state(project_id: GcpProjectId, state: String) -> ProjectConvergeObservation {
-  if state == (gcp_project_state_active as String) {
-    ProjectObservedActive { project_id: project_id }
-  } else {
-    ProjectObservedOtherState { project_id: project_id, state: state }
+  match gcp_project_lifecycle_state_from_wire(raw: state) {
+    Absent => ProjectStateUnreadable { project_id: project_id, raw: state }
+    Present { value: ProjectStateActive } => ProjectObservedActive { project_id: project_id }
+    Present { value: ProjectStateDeleteRequested } =>
+      ProjectObservedOtherState { project_id: project_id, state: ProjectStateDeleteRequested }
+    Present { value: ProjectStateUnspecified } =>
+      ProjectObservedOtherState { project_id: project_id, state: ProjectStateUnspecified }
   }
 }
 
@@ -114,7 +131,14 @@ fn converge_project(
     ProjectObservedOtherState { project_id: p, state: s } =>
       ProjectConvergeRefused {
         cause: join(
-          ["project ", p as String, " exists in state ", s, ", which is neither usable nor absent; creating would refuse on the taken id and report a collision for a lifecycle state"],
+          ["project ", p as String, " exists in state ", gcp_project_lifecycle_state_wire(s: s), ", which is neither usable nor absent; creating would refuse on the taken id and report a collision for a lifecycle state"],
+          "",
+        ) as NonEmptyStr
+      }
+    ProjectStateUnreadable { project_id: p, raw: r } =>
+      ProjectConvergeRefused {
+        cause: join(
+          ["projects.get answered for ", p as String, " with lifecycle state '", r, "', which Resource Manager v3 does not publish; the project may exist in a state this model cannot classify and creating against it would be guessing"],
           "",
         ) as NonEmptyStr
       }
