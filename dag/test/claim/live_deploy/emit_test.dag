@@ -1275,7 +1275,9 @@ test fn a_matching_authorization_applies_the_staged_caps() -> Bool {
     && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
 }
 
-// 2. A WITHHELD DECISION REACHES NO CAP APPLICATION.
+// 2. A WITHHELD DECISION REACHES NO CAP APPLICATION AND DOES NOT ABORT THE APPLY: it is reported
+// on the WITHHELD channel, the caps stay as observed, and no poison is emitted (operator ruling
+// 2026-09-17: a pending retirement is not a reason to keep every other member undeployed).
 test fn a_withheld_decision_applies_no_caps_at_the_production_root() -> Bool {
   let text = pipeline_steps_text(
     steps: deploy_memory_cap_apply_steps(
@@ -1283,8 +1285,10 @@ test fn a_withheld_decision_applies_no_caps_at_the_production_root() -> Bool {
       authorization: CapConvergeWithheld { cause: "no live surplus observation" },
     )
   )
-  string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+  string_contains(s: text, pattern: "__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: no live surplus observation")
+    && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && !string_contains(s: text, pattern: "20-fleet-width.conf")
+    && !string_contains(s: text, pattern: "systemctl")
 }
 
 // 3. AN AUTHORIZATION FOR ANOTHER HOST REACHES NO CAP APPLICATION. An srv4 decision is honest

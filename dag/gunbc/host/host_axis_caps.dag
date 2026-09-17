@@ -391,14 +391,24 @@ type CapAuthorizationForHost
       authorized_retiring: List<NonEmptyStr>,
       target_units: List<NonEmptyStr>,
     }
+  | CapAuthorizationWithheld { cause: String }
   | CapAuthorizationRefused { cause: String }
+
+// WITHHELD AND REFUSED ARE TWO ANSWERS AND THE WRITER MUST NOT COLLAPSE THEM (operator ruling,
+// 2026-09-17). Withheld is the decision's own arm: the retirement evidence is not yet there, and the
+// promise it carries is "existing caps are left exactly as observed" -- a zero-mutation member, the
+// same standing the fleet plan reports for a slot teardown it will not perform. Refused is a
+// decision that cannot be spent here at all: it names another host. Rendering both as the poison
+// that aborts the whole apply turned the deploy of every unrelated member (unit install, restart)
+// into a hostage of the slot-retirement lane, which was the earliest unjustified boundary in the
+// chain that left srv1 serving a stale release.
 
 fn cap_authorization_for_host(
   d: CapConvergeDecision,
   host: HostIdentity,
 ) -> CapAuthorizationForHost {
   match d {
-    CapConvergeWithheld { cause: c } => CapAuthorizationRefused { cause: c }
+    CapConvergeWithheld { cause: c } => CapAuthorizationWithheld { cause: c }
     CapConvergeAuthorized { host: h, authorized_retiring: ar, target_units: tu, desired: ds } =>
       if (h as String) == (host as String) {
         CapAuthorizedForThisHost { desired: ds, authorized_retiring: ar, target_units: tu }
@@ -427,6 +437,7 @@ fn authorized_caps_effect_standing(
   observed: List<CapMember>,
 ) -> CapEffectStanding {
   match cap_authorization_for_host(d: decision, host: host) {
+    CapAuthorizationWithheld { cause: c } => CapEffectsWithheld { cause: c }
     CapAuthorizationRefused { cause: c } => CapEffectsWithheld { cause: c }
     CapAuthorizedForThisHost { desired: d, authorized_retiring: _, target_units: _ } =>
       match caps_effects(desired: d, observed: observed) {
