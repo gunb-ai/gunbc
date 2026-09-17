@@ -29,8 +29,16 @@ import extdeps.google.drive {
 // is not authority but duplication, and the answer is an identity chosen before the call rather
 // than a credential.
 
-// The key is private to this application (Drive scopes properties per-app), so it may be
-// declared once and trusted: another application cannot read or collide with it.
+// THE KEY IS VISIBLE TO EVERY APPLICATION WITH ACCESS TO THE FILE, and an earlier revision of this
+// annotation said the opposite. It said the key was private to this application and could therefore
+// be declared once and trusted, because the field was appProperties then. That privacy was the
+// defect, not the safeguard: the bootstrap create and the recurring search run under different
+// OAuth clients, so a marker only the creator could see would have read as absent and minted a
+// second spreadsheet. extdeps.google.drive carries the full reasoning. What this row may still be
+// trusted for is narrower and worth stating exactly -- it is stable and it is chosen before the
+// call, so a converge can ask for it again -- and what it may NOT be trusted for is exclusivity:
+// another application can read this key and can write it, so two files carrying it is a state this
+// model must represent rather than assume away. SheetDuplicated is that representation.
 //
 // WHAT PINS THIS AND WHAT DOES NOT. This row is the SEARCH side: review_sheet_search_query builds
 // the query from it, and a claim can read that query back. The WRITE side is a literal inside
@@ -214,7 +222,7 @@ fn ensure_drive_membership(
 // THE SPREADSHEET
 // ---------------------------------------------------------------------------------------------
 
-// SheetDuplicated is a REFUSAL and never a selection. Two files carrying one app-properties key
+// SheetDuplicated is a REFUSAL and never a selection. Two files carrying one marker property key
 // means an earlier create was retried after its answer was lost; choosing either one silently
 // abandons whatever was written to the other, and only an operator can say which is the real one.
 type ReviewSpreadsheetObservation

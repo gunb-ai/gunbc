@@ -310,12 +310,31 @@ fn review_sheet_estate_unresolved_calling_home() -> ReviewSheetOperatorAdmission
   }
 }
 
+// THE EXPECTED ACCESS STEP IS DERIVED FROM RESIDENCY, NOT ASSUMED TO BE A FILE SHARE. An earlier
+// revision built the expectation as spreadsheet_share_intervention -- the My Drive route where the
+// operator shares one FILE with the writer -- and compared it against whatever the entry supplied.
+// When residency routing landed, the entry began supplying a shared-drive MEMBER intervention for
+// the live residency, and the two identities can never be equal, so an identified spreadsheet in a
+// shared drive refused forever. Nothing caught it because the live residency is still awaiting
+// creation, so this arm is not yet reached; the create intervention's own next step walks straight
+// into it.
+//
+// The repair is single authority rather than a second branch: review_sheet_access_intervention
+// already decides which access step a residency requires, so the validator asks IT what to expect
+// instead of re-deciding. A residency added later changes both sides at once, which is the property
+// the earlier shape lacked.
 fn admit_identified_spreadsheet_share(
   spreadsheet_id: NonEmptyStr,
+  spreadsheet: BuyerReviewSpreadsheet,
+  residency: ReviewSheetResidency,
   writer: ServiceAccountEmail,
   share: HumanIntervention,
 ) -> ReviewSheetOperatorAdmission {
-  let expected = spreadsheet_share_intervention(spreadsheet_id: spreadsheet_id, writer: writer)
+  let expected = review_sheet_access_intervention(
+    residency: residency,
+    spreadsheet: spreadsheet,
+    writer: writer,
+  )
   if (share.identity as String) == (expected.identity as String) {
     match share.completion_evidence {
       DischargedAt { evidence: _ } =>
@@ -340,6 +359,7 @@ fn admit_identified_spreadsheet_share(
 
 fn admit_review_sheet_after_enablement_ready(
   spreadsheet: BuyerReviewSpreadsheet,
+  residency: ReviewSheetResidency,
   writer: ServiceAccountEmail,
   share: HumanIntervention,
   sharing_policy: WorkspaceDomainSharingPolicy,
@@ -357,6 +377,8 @@ fn admit_review_sheet_after_enablement_ready(
         ReviewSheetPlainGoogleAccount =>
           admit_identified_spreadsheet_share(
             spreadsheet_id: id,
+            spreadsheet: spreadsheet,
+            residency: residency,
             writer: writer,
             share: share,
           )
@@ -379,6 +401,8 @@ fn admit_review_sheet_after_enablement_ready(
             DomainSharingAllowsServiceAccountShare =>
               admit_identified_spreadsheet_share(
                 spreadsheet_id: id,
+                spreadsheet: spreadsheet,
+                residency: residency,
                 writer: writer,
                 share: share,
               )
@@ -415,12 +439,17 @@ fn admit_serviceusage_enable_iam_for_apply(
   }
 }
 
+// RESIDENCY REACHES THE VALIDATOR, and it has to: the access step a residency requires is the step
+// the validator must expect. Passing it here rather than re-deriving it downstream keeps one answer
+// to "how does the writer get access" for both the intervention that is offered and the one that is
+// checked.
 fn admit_review_sheet_operator(
   project: GcpProjectId,
   writer: ServiceAccountEmail,
   enablement: ServiceEnablementObservation,
   enablement_policy: EnsurePolicy,
   spreadsheet: BuyerReviewSpreadsheet,
+  residency: ReviewSheetResidency,
   serviceusage_enable_iam: HumanIntervention,
   share: HumanIntervention,
   sharing_policy: WorkspaceDomainSharingPolicy,
@@ -442,6 +471,7 @@ fn admit_review_sheet_operator(
     Noop =>
       admit_review_sheet_after_enablement_ready(
         spreadsheet: spreadsheet,
+        residency: residency,
         writer: writer,
         share: share,
         sharing_policy: sharing_policy,
@@ -495,6 +525,7 @@ fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
         },
         enablement_policy: EnsureObserveOnly,
         spreadsheet: buyer_review_spreadsheet,
+        residency: review_sheet_residency,
         serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: p, writer: w),
         share: review_sheet_access_intervention(
           residency: review_sheet_residency,

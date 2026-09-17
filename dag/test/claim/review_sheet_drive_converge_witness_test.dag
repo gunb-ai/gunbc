@@ -219,7 +219,7 @@ test fn absent_membership_under_observe_only_refuses() -> Bool {
 // THE LOAD-BEARING ONE. incompleteSearch beside an empty file list is Drive saying it could not
 // look everywhere -- not that the sheet is absent. Folding it to absent is how a converge mints a
 // second spreadsheet beside one it simply failed to find, and the duplicate is unrecoverable
-// because both then carry the same app-properties key.
+// because both then carry the same marker property key.
 test fn incomplete_search_refuses_rather_than_creating() -> Bool {
   match ensure_review_spreadsheet(
     policy: EnsureMayApply,
@@ -323,7 +323,7 @@ test fn absent_files_field_is_unreadable_not_absent() -> Bool {
   }
 }
 
-// The query names the app-properties key and the spreadsheet mime type, and excludes trashed
+// The query names the marker property key and the spreadsheet mime type, and excludes trashed
 // files -- a trashed sheet is not a sheet to adopt, and adopting one would write into a file the
 // operator has already thrown away.
 test fn search_query_keys_on_properties_and_excludes_trashed() -> Bool {
