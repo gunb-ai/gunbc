@@ -174,7 +174,7 @@ fn host_toolchain_target_host_under(
   }
 }
 
-func host_toolchain_ensure(host: HostIdentity, kind: HostToolchainKind) -> ProcessExit
+fn host_toolchain_ensure(host: HostIdentity, kind: HostToolchainKind) -> ProcessExit
   uses net: Network
 {
   match host_toolchain_ensure_reach(kind: kind, host: host) {

@@ -1,0 +1,130 @@
+module extdeps.nvidia.nccl
+
+import std.types { String, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/NVIDIA/nccl/blob/v2.30.4-1/src/transport/net_ib/connect.cc"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.nccl",
+      decl_name: "NcclRoceGidSelection",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The NCCL release these semantics were read from. The engine images on the Sparks load
+// nccl==2.30.4 (vLLM logs `vLLM is using nccl==2.30.4`).
+data nccl_semantics_release: NonEmptyStr = "v2.30.4-1" as NonEmptyStr
+
+// ── HOW NCCL CHOOSES THE GID IT SPEAKS RoCE FROM ────────────────────────────────────────────────
+//
+// `ncclIbGetGidIndex` has two arms for a RoCE port. A non-negative NCCL_IB_GID_INDEX is returned as
+// given, unchecked, and the caller then queries that slot. The default -1 walks the port's GID table
+// and keeps the slot whose address family matches NCCL_IB_ADDR_FAMILY (default AF_INET) and whose
+// RoCE version matches NCCL_IB_ROCE_VERSION_NUM (default 2).
+//
+// The fixed arm names a table SLOT, and the kernel is free to renumber slots: a link flap deletes and
+// re-adds GIDs, and the re-added IPv4 RoCE v2 entry need not land where it was. A slot left empty
+// answers `ibv_query_gid` with EINVAL, which NCCL reports as `unhandled system error` from
+// ncclCommInitRank. So a fixed index is a fact about one moment of one port's table, and the
+// selection arm is the one that names the thing actually wanted.
+type NcclAddressFamily = NcclAfInet | NcclAfInet6
+
+type NcclRoceVersion = NcclRoceV1 | NcclRoceV2
+
+type NcclRoceGidSelection
+  = NcclGidByAddressFamily { family: NcclAddressFamily, version: NcclRoceVersion }
+  | NcclGidFixedIndex { index: String }
+
+data nccl_ib_gid_index_env: NonEmptyStr = "NCCL_IB_GID_INDEX" as NonEmptyStr
+data nccl_ib_addr_family_env: NonEmptyStr = "NCCL_IB_ADDR_FAMILY" as NonEmptyStr
+data nccl_ib_roce_version_num_env: NonEmptyStr = "NCCL_IB_ROCE_VERSION_NUM" as NonEmptyStr
+
+// The index value that selects the scanning arm.
+data nccl_ib_gid_index_select_by_attributes: String = "-1"
+
+fn nccl_address_family_wire(f: NcclAddressFamily) -> String {
+  match f {
+    NcclAfInet => "AF_INET"
+    NcclAfInet6 => "AF_INET6"
+  }
+}
+
+fn nccl_roce_version_wire(v: NcclRoceVersion) -> String {
+  match v {
+    NcclRoceV1 => "1"
+    NcclRoceV2 => "2"
+  }
+}
+
+type NcclEnvAssignment {
+  name: NonEmptyStr
+  value: String
+}
+
+// Every variable the selection is spelled with, all set explicitly. The scanning arm sets the index
+// to -1 as well as the two attributes, because a runtime environment that already carries a fixed
+// index (a baked image default) would otherwise win over the attributes.
+fn nccl_roce_gid_selection_env(s: NcclRoceGidSelection) -> List<NcclEnvAssignment> {
+  match s {
+    NcclGidByAddressFamily { family: f, version: v } => [
+      NcclEnvAssignment { name: nccl_ib_gid_index_env, value: nccl_ib_gid_index_select_by_attributes },
+      NcclEnvAssignment { name: nccl_ib_addr_family_env, value: nccl_address_family_wire(f: f) },
+      NcclEnvAssignment { name: nccl_ib_roce_version_num_env, value: nccl_roce_version_wire(v: v) },
+    ]
+    NcclGidFixedIndex { index: i } => [
+      NcclEnvAssignment { name: nccl_ib_gid_index_env, value: i },
+    ]
+  }
+}
+
+// ── WHICH TRANSPORT A COMMUNICATOR ACTUALLY BUILT, WHICH NCCL ITSELF ANNOUNCES ──────────────────
+//
+// WHY THIS IS A SEPARATE FACT FROM THE ENVIRONMENT THAT ASKED FOR IT. The env assignments above --
+// and gunbc.spark.pair_serving_observed's CollectiveTransportEnvObserved -- record what the launch
+// REQUESTED. They do not record what NCCL BUILT, and the gap between the two is the whole reason
+// this type exists: NCCL falls back to Socket silently whenever the IB path is unavailable, and a
+// launch whose NCCL_IB_* variables are all set correctly still runs on TCP if the container carries
+// no /dev/infiniband node or no CAP_IPC_LOCK. Reading the request and reporting the transport is the
+// authority substitution extdeps.vllm.server refuses for version strings, in a second place.
+//
+// NCCL PUBLISHES THE VERDICT ITSELF, once per communicator init, as the `NCCL INFO ... Using network
+// <name>` line. That line is the producer, and it is the only thing here entitled to answer.
+//
+// EVERY ARM IS A TRANSPORT THAT WAS READ, AND THAT IS THE TYPE'S NAME BEING TRUE. An earlier
+// revision carried a third arm, `NcclTransportUnread`, so a value of a type called RealizedTransport
+// could assert that no transport had been realized -- and consumers then needed a bespoke guard to
+// notice. Absence of a reading is not a kind of reading; it is the absence of this value, spelled by
+// the optional at the use site, so the guard, the sentinel row and the special case all dissolve.
+//
+// THE NETWORK NAME IS DERIVED FROM THE ARM AND IS NOT A FIELD. It was one, on both read arms, and
+// the projection returned the caller's string -- so `NcclTransportSocket { network_name: "IB" }` was
+// writable and compared EQUAL to a genuine IB read, licensing exactly the substitution this type
+// exists to refuse. The identity is the arm; a second copy of it is the one that lies.
+type NcclRealizedTransport
+  = NcclTransportIbVerbs { read_from: NonEmptyStr }
+  | NcclTransportSocket { read_from: NonEmptyStr }
+
+fn nccl_realized_transport_wire(t: NcclRealizedTransport) -> NonEmptyStr {
+  match t {
+    NcclTransportIbVerbs { read_from: _ } => nccl_network_name_ib
+    NcclTransportSocket { read_from: _ } => nccl_network_name_socket
+  }
+}
+
+// The literal NCCL emits for each of the two networks it builds on this fleet, so a reader that has
+// the log line does not have to guess which spelling the verdict uses.
+data nccl_network_name_socket: NonEmptyStr = "Socket" as NonEmptyStr
+data nccl_network_name_ib: NonEmptyStr = "IB" as NonEmptyStr

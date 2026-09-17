@@ -88,7 +88,7 @@ fn mosquitto_options_write_refusal(removed_after_failure: Bool) -> MosquittoOpti
 // would publish with the other's access code or with none. mktemp -d creates a fresh 0700 directory
 // per call, which makes the collision unspellable rather than unlikely -- and here the directory IS
 // the binding, so there is no arm of this function that produces a shared one.
-func place_mosquitto_options_privately(
+fn place_mosquitto_options_privately(
   login: NonEmptyStr,
   password: Secret,
 ) -> MosquittoOptionsPlacement
@@ -121,6 +121,6 @@ func place_mosquitto_options_privately(
 // whole directory goes, not just the file inside it: the directory is what this module created and
 // what the seal names, and removing only its contents would leave a 0700 directory the next mktemp
 // cannot reuse and the caller cannot see.
-func shred_mosquitto_options_binding(binding: MosquittoOptionsBinding) -> Bool {
+fn shred_mosquitto_options_binding(binding: MosquittoOptionsBinding) -> Bool {
   shell.Remove.RecursiveForce(path: binding.dir).success
 }

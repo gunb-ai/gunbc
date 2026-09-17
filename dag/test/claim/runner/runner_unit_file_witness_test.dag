@@ -1,6 +1,6 @@
 module test.claim.runner_unit_file_witness_test
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
 import extdeps.systemd.unit_file {
@@ -33,8 +33,18 @@ import gunbc.runner_unit {
   gunbc_runner_listener_is_main_process,
   lifecycle_intent_cannot_orphan,
 }
-import gunbc.runner_host_deploy { srv1_runner_host_deploy }
+import gunbc.runner_host_deploy {
+  admitted_deploy_for,
+  RunnerHostDeploy }
 import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_posix_accounts {
+  fleet_posix_ci_runner_user,
+  fleet_ci_runner_reported_contradiction,
+}
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, File }
+import extdeps.docker.endpoint { docker_rootless_unix_endpoint }
 import gunbc.compile_permit_scope {
   CompileParallelismRealization,
   BorrowerHeldCooperativeHostFifo,
@@ -59,6 +69,11 @@ import gunbc.runner_unit_file {
   runner_unit_quoted_environment,
   runner_unit_app_environment,
   runner_slot_instance_directory,
+  gunbc_runner_unit_depriv_dropin_text,
+  gunbc_runner_unit_depriv_dropin_text_from_figure,
+  gunbc_runner_unit_fragment_from_deploy,
+  runner_job_user_xdg_runtime_uid,
+  RunnerJobUserRuntimeUidFigure,
 }
 
 // Every claim here is a function of declared substrate rows -- a render and its serialization -- so
@@ -76,7 +91,7 @@ fn srv1_spec() -> RunnerSpec {
 fn rendered_text(intent: RunnerUnitLifecycleIntent) -> String {
   match runner_unit_text(
     rendering: runner_unit_file(
-      deploy: srv1_runner_host_deploy,
+      deploy: wt_srv1_deploy(),
       spec: srv1_spec(),
       permit_scope: live_realization(),
       intent: intent,
@@ -210,11 +225,112 @@ test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool {
     && !string_contains(s: text, pattern: "\nUser=root\n")
 }
 
+fn fixture_cited_job_user_uid() -> RunnerJobUserRuntimeUidFigure {
+  RunnerJobUserRuntimeUidFigure {
+    uid: 4242,
+    evidence: CitedToAuthority {
+      authority: ExternalAuthority {
+        uri: Uri {
+          scheme: File,
+          locator: "dag/test/claim/runner/runner_unit_file_witness_test.dag#fixture_cited_job_user_uid",
+        },
+      },
+    },
+  }
+}
+
+test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_docker() -> Bool {
+  match gunbc_runner_unit_depriv_dropin_text_from_figure(
+    deploy: wt_srv1_deploy(),
+    host: operator_host_srv3,
+    figure: fixture_cited_job_user_uid(),
+  ) {
+    RunnerUnitTextRefused { reason: _ } => false
+    RunnerUnitText { text: text } =>
+      string_contains(s: text, pattern: "\nUser=root\n")
+        && string_contains(s: text, pattern: "\nEnvironment=CTRL_RUNNER_JOB_USER=ghrunner\n")
+        && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_DIR=/var/lib/ctrl/sccache-ci\n")
+        && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock\n")
+        && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_IDLE_TIMEOUT=0\n")
+        && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log\n")
+        && string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: 4242), "\n"))
+        && !string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: runner_job_user_xdg_runtime_uid().uid), "\n"))
+  }
+}
+
+test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool {
+  let poisoned = RunnerHostDeploy {
+    host_label: wt_srv1_deploy().host_label,
+    ssh_target: wt_srv1_deploy().ssh_target,
+    runner_user: wt_srv1_deploy().runner_user,
+    unit_user: "fixture-unit" as NonEmptyStr,
+    job_user: wt_srv1_deploy().job_user,
+    app: wt_srv1_deploy().app,
+    runner_count: wt_srv1_deploy().runner_count,
+  }
+  match gunbc_runner_unit_depriv_dropin_text_from_figure(
+    deploy: poisoned,
+    host: operator_host_srv3,
+    figure: fixture_cited_job_user_uid(),
+  ) {
+    RunnerUnitTextRefused { reason: _ } => false
+    RunnerUnitText { text: text } =>
+      string_contains(s: text, pattern: "\nUser=fixture-unit\n")
+        && !string_contains(s: text, pattern: "\nUser=root\n")
+  }
+}
+
+test fn production_depriv_refuses_transcribed_uncited_docker_host() -> Bool {
+  match gunbc_runner_unit_depriv_dropin_text(deploy: wt_srv1_deploy(), host: operator_host_srv3) {
+    RunnerUnitTextRefused { reason: r } => string_contains(s: r as String, pattern: "TranscribedUncited")
+    RunnerUnitText { text: _ } => false
+  }
+}
+
+test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> Bool {
+  match runner_job_user_xdg_runtime_uid().evidence {
+    TranscribedUncited { read_obligation: o } =>
+      (runner_job_user_xdg_runtime_uid().uid == fleet_ci_runner_reported_contradiction().reported_uid)
+        && (runner_job_user_xdg_runtime_uid().uid != fleet_posix_ci_runner_user.uid)
+        && string_contains(s: o as String, pattern: "id -u")
+    CitedToAuthority { authority: _ } => false
+  }
+}
+
+test fn the_fragment_for_a_host_pins_that_host_and_still_leaves_root_to_depriv() -> Bool {
+  match gunbc_runner_unit_fragment_from_deploy(deploy: wt_srv3_deploy(), host: operator_host_srv3) {
+    RunnerUnitTextRefused { reason: _ } => false
+    RunnerUnitText { text: t } =>
+      string_contains(s: t, pattern: "srv3")
+        && string_contains(s: t, pattern: "\nUser=briansrls\n")
+        && !string_contains(s: t, pattern: "\nUser=root\n")
+        && string_contains(s: t, pattern: "MAKEFLAGS")
+  }
+}
+
+test fn the_fragment_from_deploy_uses_the_passed_row_not_a_second_lookup() -> Bool {
+  let poisoned = RunnerHostDeploy {
+    host_label: wt_srv1_deploy().host_label,
+    ssh_target: wt_srv1_deploy().ssh_target,
+    runner_user: "fixture-runner" as NonEmptyStr,
+    unit_user: wt_srv1_deploy().unit_user,
+    job_user: wt_srv1_deploy().job_user,
+    app: wt_srv1_deploy().app,
+    runner_count: wt_srv1_deploy().runner_count,
+  }
+  match gunbc_runner_unit_fragment_from_deploy(deploy: poisoned, host: operator_host_srv3) {
+    RunnerUnitTextRefused { reason: _ } => false
+    RunnerUnitText { text: t } =>
+      string_contains(s: t, pattern: "\nUser=fixture-runner\n")
+        && !string_contains(s: t, pattern: "\nUser=briansrls\n")
+  }
+}
+
 // ── The two refusals, which are separate facts with separate remedies ───────────────────────────
 
 fn refusal_reason(spec: RunnerSpec) -> String {
   match gunbc_runner_unit_file(
-    deploy: srv1_runner_host_deploy,
+    deploy: wt_srv1_deploy(),
     spec: spec,
     permit_scope: live_realization(),
   ) {
@@ -253,7 +369,7 @@ fn live_realization() -> CompileParallelismRealization {
 fn invocation_local_text() -> String {
   match runner_unit_text(
     rendering: runner_unit_file(
-      deploy: srv1_runner_host_deploy,
+      deploy: wt_srv1_deploy(),
       spec: srv1_spec(),
       permit_scope: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
       intent: gunbc_runner_lifecycle_intent,
@@ -332,11 +448,11 @@ fn expected_live_unit_file(fifo_path: String, daemon_service: NonEmptyStr) -> Sy
     service: concat(
       [
         ServiceType { mode: "simple" as NonEmptyStr },
-        ServiceUser { name: srv1_runner_host_deploy.runner_user },
+        ServiceUser { name: wt_srv1_deploy().runner_user },
         WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
       ],
       concat(
-        runner_unit_app_environment(app: srv1_runner_host_deploy.app),
+        runner_unit_app_environment(app: wt_srv1_deploy().app),
         [
           runner_unit_environment(name: "RUNNER_DIR", value: runner_slot_instance_directory()),
           runner_unit_environment(name: "RUNNER_NAME_PREFIX", value: "%i"),
@@ -373,7 +489,7 @@ fn expected_labels_json() -> String {
 // that refused everything would satisfy "" == "" if the expected side collapsed the same way.
 fn rendered_or_refused(realization: CompileParallelismRealization) -> String {
   match runner_unit_file(
-    deploy: srv1_runner_host_deploy,
+    deploy: wt_srv1_deploy(),
     spec: srv1_spec(),
     permit_scope: realization,
     intent: gunbc_runner_lifecycle_intent,
@@ -430,11 +546,11 @@ fn expected_invocation_local_unit_file(jobs: String) -> SystemdUnitFile {
     service: concat(
       [
         ServiceType { mode: "simple" as NonEmptyStr },
-        ServiceUser { name: srv1_runner_host_deploy.runner_user },
+        ServiceUser { name: wt_srv1_deploy().runner_user },
         WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
       ],
       concat(
-        runner_unit_app_environment(app: srv1_runner_host_deploy.app),
+        runner_unit_app_environment(app: wt_srv1_deploy().app),
         [
           runner_unit_environment(name: "RUNNER_DIR", value: runner_slot_instance_directory()),
           runner_unit_environment(name: "RUNNER_NAME_PREFIX", value: "%i"),
@@ -457,4 +573,33 @@ test fn w_the_cutover_arm_has_exactly_its_intended_complete_shape() -> Bool {
   rendered_or_refused(
     realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
   ) == serialize_systemd_unit_file(file: expected_invocation_local_unit_file(jobs: "8"))
+}
+
+// THE ADMITTED ROW, ASKED FOR RATHER THAN READ. srv2 has no deploy row at all now -- its width
+// refuses -- so these rows come from the admission and a test that somehow lost its host fails on the
+// fixture rather than on a fabricated production value.
+fn wt_missing_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wt-unadmitted",
+    ssh_target: "unadmitted@invalid.example",
+    runner_user: "unadmitted",
+    unit_user: "unadmitted",
+    job_user: "unadmitted",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+fn wt_srv1_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
+}
+
+fn wt_srv3_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv3) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
 }

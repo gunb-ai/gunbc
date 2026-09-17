@@ -14,12 +14,16 @@ import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.cache_identity {
   parse_source_artifact_kind,
   typed_module_artifact_kind,
-  resolved_graph_artifact_kind
+  resolved_graph_artifact_kind,
+  native_compiler_artifact_kind,
+  native_test_universe_artifact_kind,
+  native_module_verdict_bundle_artifact_kind
 }
 import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingEnforcement, MissingConcept,
   identity_grade_is_known
 }
+import std.materialization_ladder { IdempotentEffect }
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, MaterializedArtifact,
@@ -28,7 +32,10 @@ import std.materialization_provider {
   artifact_content_digest, artifact_bytes, artifact_carried_outputs, artifact_kind,
   ProviderProbe, ProbeAbsent, ProbeFound,
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
+  NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
+  NativeModuleVerdictBundleSubject,
   request_key, request_kind, request_required_outputs,
+  request_judgment_contract, SemanticOnly, Scoped,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
   compiler_identity_input,
   output_parse_tree, output_typed_module_interface,
@@ -52,6 +59,7 @@ import gunbc.materialization_provider_targets {
   materialization_provider_targets_contain,
   materialization_provider_targets_all_bound
 }
+import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -642,4 +650,112 @@ test fn incomplete_artifact_derives_unknown_identity() -> Bool {
     }
   )
   identity_grade_is_known(ci: lookup_served_identity(l: refused)) == false
+}
+
+fn witness_native_compiler_request() -> ArtifactRequest {
+  NativeCompilerArtifactRequest {
+    generation: PreMaterializationIdentity {
+      producer_compiler: content_hash_atom(value: "tree-1"),
+      source_closure: content_hash_atom(value: "closure-1"),
+      target_model: content_hash_atom(value: "rust"),
+      toolchain: content_hash_atom(value: "rustc-1.93.0"),
+      build_configuration: content_hash_atom(value: "release"),
+      required_lens_contract: content_hash_atom(value: "lens-contract-1")
+    }
+  }
+}
+
+fn witness_universe_request() -> ArtifactRequest {
+  UniverseArtifactRequest {
+    tested_tree_identity: content_hash_atom(value: "tree-1"),
+    route_binary: DeclaredInput {
+      ref: "route_binary_identity",
+      digest: content_hash_atom(value: "route-binary-1")
+    }
+  }
+}
+
+fn witness_verdict_bundle_request() -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
+    route_binary_identity: content_hash_atom(value: "route-1"),
+    module_identity: content_hash_atom(value: "module-1"),
+    canonical_module_import_closure_identity: content_hash_atom(value: "closure-1"),
+    ordered_test_identity_population: content_hash_atom(value: "tests-1"),
+    eval_interpretation_identity: content_hash_atom(value: "eval-1")
+  })
+}
+
+fn witness_parse_request() -> ArtifactRequest {
+  ParseModuleRequest {
+    source_digest: content_hash_atom(value: "module-source-1"),
+    compiler: witness_compiler()
+  }
+}
+
+fn witness_six_artifact_request_families() -> List<ArtifactRequest> {
+  [
+    witness_parse_request(),
+    witness_typecheck_request(),
+    witness_closure_request(),
+    witness_native_compiler_request(),
+    witness_universe_request(),
+    witness_verdict_bundle_request()
+  ]
+}
+
+// PAIR: six_judgment_contracts_join_the_cache_identity_kinds (specimen: contract kind and
+// occurrence grain against std.cache_identity / OccurrencePersistenceContract, not against the
+// request_* aliases) with provider_serve_completeness_reads_the_judgment_contract (inhabitance).
+// Bypass of the inhabitance: provider_serve that does not use the contract roster greens a
+// v1-shape resolve artifact. A family omitted from request_judgment_contract fails to typecheck.
+test fn six_judgment_contracts_join_the_cache_identity_kinds() -> Bool {
+  let reqs = witness_six_artifact_request_families()
+  let expected = [
+    parse_source_artifact_kind,
+    typed_module_artifact_kind,
+    resolved_graph_artifact_kind,
+    native_compiler_artifact_kind,
+    native_test_universe_artifact_kind,
+    native_module_verdict_bundle_artifact_kind
+  ]
+  let kinds = reqs |> map(r => request_judgment_contract(req: r).kind)
+  let joined = expected |> filter(k => (kinds |> filter(x => x == k) |> count()) == 1) |> count()
+  let left_only = expected |> filter(k => (kinds |> filter(x => x == k) |> count()) == 0) |> count()
+  let right_only = kinds |> filter(k => (expected |> filter(x => x == k) |> count()) == 0) |> count()
+  let typecheck_outputs = request_judgment_contract(req: witness_typecheck_request()).result.required_persisted_outputs
+  let interface_semantic = (typecheck_outputs |> filter(o =>
+    o.id == output_typed_module_interface && o.occurrence_contract == SemanticOnly
+  ) |> count()) == 1
+  let diagnostics_scoped = (typecheck_outputs |> filter(o =>
+    o.id == output_typecheck_diagnostics && o.occurrence_contract == Scoped
+  ) |> count()) == 1
+  (expected.count() == 6)
+    && (kinds.count() == 6)
+    && (joined == 6)
+    && (left_only == 0)
+    && (right_only == 0)
+    && interface_semantic
+    && diagnostics_scoped
+    && (request_judgment_contract(req: witness_native_compiler_request()).demand_nature == IdempotentEffect)
+    && (request_judgment_contract(req: witness_verdict_bundle_request()).demand_nature == IdempotentEffect)
+    && (request_judgment_contract(req: witness_native_compiler_request()).result.carries_effect_requests_receipts == false)
+    && (request_judgment_contract(req: witness_verdict_bundle_request()).result.carries_effect_requests_receipts == false)
+}
+
+test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
+  let req = witness_closure_request()
+  let required = request_required_outputs(req: req)
+  let refused = provider_serve(
+    req: req,
+    probe: ProbeFound {
+      artifact: witness_v1_shape_closure_artifact(),
+      observed_digest: witness_v1_shape_digest()
+    }
+  )
+  let missing = lookup_refused_incomplete_missing(l: refused)
+  (required.count() == 3)
+    && (missing.count() == 1)
+    && output_list_contains(xs: required, wanted: output_compile_clean_diagnostic_union)
+    && output_list_contains(xs: missing, wanted: output_compile_clean_diagnostic_union)
+    && (lookup_is_hit(l: refused) == false)
 }

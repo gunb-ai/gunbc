@@ -5,7 +5,7 @@ import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome }
 import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
 import std.credentials { EnvVar }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 import extdeps.github.workflow_runs_contracts {
   workflow_run_status_wire_contract,
@@ -14,6 +14,11 @@ import extdeps.github.workflow_runs_contracts {
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+
+// WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
+// settle observed architecture and provider. run_attempt is modeled here and copied onto
+// BaselineAdmitted; a production fold that distinguishes attempts is a declared census
+// frontier, not this module's claim.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -39,19 +44,6 @@ type WorkflowRunConclusion
   | TimedOut
   | ActionRequired
   | StartupFailure
-
-// DECLARED FRONTIER for the two fields this change adds to WorkflowJobRun. They are not consumed
-// in this change: the census that reads WorkflowJobRun today asks about starvation and has no use
-// for either, and filling its fixtures with labels: [] and run_attempt: 1 is padding rather than
-// consumption. Section 3c admits that state only with the trigger stated beside it, so it is
-// stated rather than left for a reader to infer from the fields' own rationale.
-data workflow_job_run_observed_runner_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun"),
-    reason: "labels and run_attempt are added for a runtime-observation carrier that does not exist in this change: a row recording what a job's run ACTUALLY selected, joined to the workflow-source identity the file was read at, so a declared runner label and an observed one stay separable. The census that reads WorkflowJobRun today (gunbc.superseded_run_starvation_census) asks a different question and reads neither, so the fixture entries this change adds are shape-completion and not consumption. The fields are modelled here rather than in the consumer because they are what the upstream job resource returns",
-    dissolution: unbound_dissolution(description: "a production fold outside test.claim reads WorkflowJobRun.labels and WorkflowJobRun.run_attempt - the capability being that an OBSERVED runner label and attempt reach a consumer that can tell them apart from the declared ones. NOT satisfied by a witness constructing a WorkflowJobRun, nor by a fixture carrying the fields, nor by a consumer that reads one of the two"),
-  )
-]
 
 data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
@@ -142,6 +134,13 @@ type WorkflowRunList {
 // nothing read it, in this change or in the one that consumes the other two. Interesting is not a
 // consumer. It is deleted rather than parked behind a frontier, because a frontier admits a
 // declaration whose consumer LANDS IN A NAMED LATER CHANGE and there is no such change for it.
+// `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object
+// (docs.github.com/en/rest/actions/workflow-jobs, X-GitHub-Api-Version 2026-03-10) publishes
+// `name` as a required string and does not publish a workflow YAML job key or a matrix object.
+// GitHub's UI and the Jobs API therefore identify a matrix combination only through that
+// rendered name. The parenthetical of combination VALUES in axis order is the rendering this
+// tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
+// GitHub's Jobs docs state that encoding.
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -158,6 +157,14 @@ type WorkflowJobRun {
 type WorkflowJobRunList {
   total_count: Int
   jobs: List<WorkflowJobRun>
+}
+
+data workflow_job_name_matrix_parenthetical_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "docs.github.com/en/rest/actions/workflow-jobs (X-GitHub-Api-Version 2026-03-10) publishes Job.name as a string and does not document a matrix object or that a combination is encoded as a parenthetical of the combination values in axis order; jobs.<job_id>.name in workflow-syntax-for-github-actions likewise does not state that encoding. The parenthetical is the rendering observed on Job.name in this tree, not a deduced REST field",
+}
+
+fn workflow_job_name_matrix_value_parenthetical(values: List<NonEmptyStr>) -> String {
+  concat(" (", concat(join(map(values, v => v as String), ", "), ")"))
 }
 
 fn parse_workflow_run_status(raw: String) -> WorkflowRunStatus? {
@@ -263,6 +270,7 @@ service github.WorkflowRuns {
       owner: String
       repo: String
       head_sha: CommitSha
+      event: String
       per_page: Int = default_per_page
     }
     output {
@@ -272,7 +280,7 @@ service github.WorkflowRuns {
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/actions/runs",
-      query: { head_sha: head_sha, per_page: per_page }
+      query: { head_sha: head_sha, event: event, per_page: per_page }
     }
     response {
       200 => WorkflowRunList

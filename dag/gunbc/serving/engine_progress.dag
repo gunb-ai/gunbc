@@ -1,0 +1,227 @@
+module gunbc.serving.engine_progress
+
+import std.types { String, Bool, NonEmptyStr, Timestamp, EpochSecs }
+import std.nat { Nat }
+import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
+import std.measure { Second, second, second_count }
+import v2.std.optional { Present, Absent }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
+import gunbc.serving.serving_availability {
+  EndpointProcessContinuity, EndpointProcessUnchanged, EndpointProcessWasReplaced, EndpointProcessContinuityUnread,
+  serving_availability_after_launch_read,
+}
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch_key,
+}
+
+// ── AN EXPORTER THAT ANSWERS OVER AN ENGINE CORE THAT HAS STOPPED ───────────────────────────────
+//
+// WHAT CUT 1 LEFT OPEN, NAMED. gunbc.serving.serving_availability establishes that the front door
+// answered under one stable endpoint process. The API server answers /v1/models and /metrics from its
+// own process, so an engine core wedged behind a live API server reads available -- the exact shape
+// that held one harness POST open for over thirty minutes while the route looked healthy.
+//
+// THIS IS A THIRD PROPOSITION AND IT GETS A THIRD VERDICT, for the reason continuity got the second:
+// a front-door read establishes nothing about whether work is advancing, and folding progress into the
+// availability coproduct would let a reading with no progress input mint the arm that claims one.
+// ServingFrontDoorAvailabilityVerdict stays sealed to what a bracketed front-door read establishes.
+//
+// WHAT IT DOES NOT ESTABLISH. A counter that moves says work is advancing; it does not say the engine
+// core behind the exporter is the SAME core -- that is
+// gunbc.rung_drop.serving_offer_identity_is_the_exporter_process, which this cut does not discharge.
+
+// ONE READING OF THE TWO FACTS A STALL IS MADE OF, TAKEN FROM ONE /metrics BODY. The counter travels as
+// the EXPORTED FIELD, byte for byte, and is never parsed into a number: the only operation on it is
+// equality between two readings of one exporter. Parsing would buy nothing and would lose readings --
+// prometheus renders a counter in exponent form once it passes seven integer digits, measured on the
+// enrolled group B head 2026-09-14 (vllm:prompt_tokens_total 9.7885348e+07), and the harness's existing
+// gauge reader refuses that spelling by design. A reader that refused it here would report every warm
+// long-lived engine as unreadable, and a reader that fabricated a zero for it would report every one of
+// them as stalled.
+type EngineProgressSample {
+  running: Nat
+  generation_field: NonEmptyStr
+  at: EpochSecs
+}
+
+// FOUR ARMS, AND THE TWO THAT ARE NOT STALLS ARE THE POINT. An idle engine's counter does not move and
+// is perfectly healthy; an interval shorter than one uninterruptible step cannot distinguish a stall
+// from a step in flight. Both are separated from the stall arm rather than folded into it, because
+// treating either as a stall evicts a healthy route -- the false positive that would make this cut
+// worse than no cut.
+type EngineProgress
+  = EngineProgressed { endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, over: Second, observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | EngineIdle { endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | EngineNotProgressing { endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, running: Nat, over: Second, bound: Second, observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | EngineProgressUnread { endpoint: ServingRouteEndpoint, attempted_at: Timestamp, cause: NonEmptyStr }
+
+// THE EVALUATED VERDICT, SEALED, for the reason the other two are: the arm that says a route is not
+// progressing is a conclusion, and only the fold below may reach it.
+type EngineProgressVerdict sole_constructor {
+  reading: EngineProgress
+}
+
+fn engine_progress_text(p: EngineProgress) -> String {
+  match p {
+    EngineProgressed { endpoint: e, launch: l, over: o, observed_at: t, receipt: _ } =>
+      join([serving_route_endpoint_wire(e: e) as String, " engine advanced over ", to_string(second_count(s: o)), "s at ", t, " on ", vllm_endpoint_process_launch_key(launch: l) as String], "")
+    EngineIdle { endpoint: e, launch: _, observed_at: t, receipt: _ } =>
+      join([serving_route_endpoint_wire(e: e) as String, " engine idle at ", t, ": no request was running, so a motionless counter is the healthy state"], "")
+    EngineNotProgressing { endpoint: e, launch: l, running: r, over: o, bound: b, observed_at: t, receipt: _ } =>
+      join([
+        serving_route_endpoint_wire(e: e) as String, " engine produced no output for ", to_string(second_count(s: o)),
+        "s with ", to_string(r), " request(s) running, past the ", to_string(second_count(s: b)),
+        "s step bound, at ", t, " on ", vllm_endpoint_process_launch_key(launch: l) as String,
+      ], "")
+    EngineProgressUnread { endpoint: e, attempted_at: t, cause: c } =>
+      join([serving_route_endpoint_wire(e: e) as String, " engine progress unread at ", t, ": ", c as String], "")
+  }
+}
+
+// ── HOW LONG IS TOO LONG ────────────────────────────────────────────────────────────────────────
+//
+// THE BOUND IS THIS CONSUMER'S PATIENCE, NOT A FACT ABOUT vLLM, exactly as the front-door probe bound
+// is. What upstream exports is a histogram of decode intervals that COMPLETED, so it bounds the steps a
+// launch has finished and says nothing about one that never will.
+//
+// IT IS DECLARED, NOT MEASURED, AND IT IS DELIBERATELY TOO LARGE. Three readings inform it and none
+// establishes it: the inter-token-latency tail on a 45-hour group A launch (2026-09-07, 1,454,342
+// samples, one above 5s and none above 7.5s); a step measured at 30.1ms alone and 2168.2ms beside a cold
+// prefill (extdeps.vllm.engine_args); and the buckets the enrolled heads actually export, whose top
+// finite boundary is 80s (read 2026-09-14). The error directions are not symmetric: a bound that is too
+// large under-fires, leaving a stalled route a candidate for one more round, while a bound that is too
+// small evicts healthy routes mid-step. So it is set well above every observed step and the standing
+// beside it says the number was chosen rather than measured.
+data serving_engine_step_bound: Second = second(count: 120)
+
+type ServingStepBoundStanding
+  = StepBoundMeasured { tail: Second, receipt: ObservationReceiptRef }
+  | StepBoundDeclaredUnmeasured { basis: NonEmptyStr }
+
+data serving_engine_step_bound_standing: ServingStepBoundStanding = StepBoundDeclaredUnmeasured {
+  basis: "no launch's own inter-token-latency tail has been read for the route under observation; the number is chosen above every step duration observed on this fleet (7.5s tail on a 45h launch 2026-09-07; 2168.2ms beside a cold prefill) rather than derived from one" as NonEmptyStr,
+}
+
+// A SECOND READING TAKEN BEFORE THE FIRST IS NOT A NEGATIVE INTERVAL, it is no interval: the elapsed span
+// is zero, which is below every bound and therefore unread rather than a stall. The Int-to-Nat crossing
+// goes through std.checked_arithmetic's sanctioned entry rather than a cast.
+fn engine_progress_elapsed(before: EngineProgressSample, after: EngineProgressSample) -> Second {
+  if after.at > before.at {
+    match checked_int_magnitude(a: after.at - before.at) {
+      CheckedNatReady { value: n } => second(count: n)
+      CheckedNatOverflow { cause: _ } => second(count: 0)
+    }
+  } else {
+    second(count: 0)
+  }
+}
+
+// THE SAMPLES ARE ONLY COMPARABLE UNDER ONE EXPORTER, so the fold derives that itself from the two
+// launch readings rather than taking a caller's word for it: gunbc.serving.serving_availability owns
+// what "the same endpoint process" means, and this asks it.
+fn engine_progress_continuity(
+  endpoint: ServingRouteEndpoint,
+  before_launch: VllmEndpointProcessLaunchObservation,
+  after_launch: VllmEndpointProcessLaunchObservation,
+  now: Timestamp,
+) -> EndpointProcessContinuity {
+  match before_launch {
+    LaunchUnobserved { group: _, obligation: o } => EndpointProcessContinuityUnread { endpoint: endpoint, attempted_at: now, cause: o }
+    LaunchObserved { launch: b, receipt: _ } =>
+      serving_availability_after_launch_read(endpoint: endpoint, expected: b, observation: after_launch, now: now).reading
+  }
+}
+
+// ── THE FOLD ────────────────────────────────────────────────────────────────────────────────────
+//
+// FIVE REFUSALS BEFORE ANY STALL IS NAMED, in this order, because each one is a way a naive rule
+// reports a healthy route as stalled:
+//   - either sample missing -> unread (absent is not zero);
+//   - the exporter was replaced between the samples -> unread, because a restart resets the counter and
+//     a counter that went BACKWARDS is not a counter that stood still;
+//   - nothing running -> idle, never stall;
+//   - the counter field moved -> progressed;
+//   - the interval did not exceed the declared step bound -> unread, naming the interval, because a
+//     motionless counter inside one step is what a working engine looks like.
+// Only past all five is the route not progressing.
+fn engine_progress_read(
+  endpoint: ServingRouteEndpoint,
+  before_launch: VllmEndpointProcessLaunchObservation,
+  after_launch: VllmEndpointProcessLaunchObservation,
+  before: EngineProgressSample?,
+  after: EngineProgressSample?,
+  bound: Second,
+  now: Timestamp,
+) -> EngineProgressVerdict {
+  EngineProgressVerdict { reading: match engine_progress_continuity(endpoint: endpoint, before_launch: before_launch, after_launch: after_launch, now: now) {
+    EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: c } =>
+      EngineProgressUnread { endpoint: endpoint, attempted_at: now, cause: c }
+    EndpointProcessWasReplaced { endpoint: _, expected: x, observed: o, observed_at: _, receipt: _ } =>
+      EngineProgressUnread {
+        endpoint: endpoint,
+        attempted_at: now,
+        cause: join([
+          "the endpoint process was replaced between the samples (", vllm_endpoint_process_launch_key(launch: x) as String,
+          " then ", vllm_endpoint_process_launch_key(launch: o) as String,
+          "), and a restarted exporter's counters begin again, so neither movement nor stillness is a statement about work",
+        ], "") as NonEmptyStr,
+      }
+    EndpointProcessUnchanged { endpoint: _, launch: l, observed_at: _, receipt: r } =>
+      match before {
+        Absent => EngineProgressUnread { endpoint: endpoint, attempted_at: now, cause: "the first /metrics reading carried no running gauge and generation counter pair" as NonEmptyStr }
+        Present { value: b } =>
+          match after {
+            Absent => EngineProgressUnread { endpoint: endpoint, attempted_at: now, cause: "the second /metrics reading carried no running gauge and generation counter pair" as NonEmptyStr }
+            Present { value: a } =>
+              if a.running == 0 {
+                EngineIdle { endpoint: endpoint, launch: l, observed_at: now, receipt: r }
+              } else if (a.generation_field as String) != (b.generation_field as String) {
+                EngineProgressed { endpoint: endpoint, launch: l, over: engine_progress_elapsed(before: b, after: a), observed_at: now, receipt: r }
+              } else if second_count(s: engine_progress_elapsed(before: b, after: a)) <= second_count(s: bound) {
+                EngineProgressUnread {
+                  endpoint: endpoint,
+                  attempted_at: now,
+                  cause: join([
+                    "the two readings spanned ", to_string(second_count(s: engine_progress_elapsed(before: b, after: a))),
+                    "s, which does not exceed the ", to_string(second_count(s: bound)),
+                    "s step bound, so a motionless counter is a step in flight rather than a stall",
+                  ], "") as NonEmptyStr,
+                }
+              } else {
+                EngineNotProgressing {
+                  endpoint: endpoint,
+                  launch: l,
+                  running: a.running,
+                  over: engine_progress_elapsed(before: b, after: a),
+                  bound: bound,
+                  observed_at: now,
+                  receipt: r,
+                }
+              }
+          }
+      }
+  } }
+}
+
+// ── WHAT A CONSUMER DOES WITH IT ────────────────────────────────────────────────────────────────
+//
+// THE GATE IS ONE FUNCTION SO IT CAN BE ASSERTED, and it is total over the four arms so a fifth could
+// not inherit a decision by wildcard. Only an established stall withholds a route. Advanced and idle are
+// healthy; UNREAD IS NOT A WALL -- whether work is advancing is a different question from whether the
+// route answered, and refusing on an unread progress reading would turn every sub-bound observation into
+// an outage. The withhold is retryable: a wedged engine may clear, and the placement loop re-observes.
+type EngineProgressGate
+  = WithholdRouteNotProgressing { note: String }
+  | ProgressDoesNotWithhold
+
+fn engine_progress_gate(verdict: EngineProgressVerdict) -> EngineProgressGate {
+  match verdict.reading {
+    EngineNotProgressing { endpoint: _, launch: _, running: _, over: _, bound: _, observed_at: _, receipt: _ } =>
+      WithholdRouteNotProgressing { note: engine_progress_text(p: verdict.reading) }
+    EngineProgressed { endpoint: _, launch: _, over: _, observed_at: _, receipt: _ } => ProgressDoesNotWithhold
+    EngineIdle { endpoint: _, launch: _, observed_at: _, receipt: _ } => ProgressDoesNotWithhold
+    EngineProgressUnread { endpoint: _, attempted_at: _, cause: _ } => ProgressDoesNotWithhold
+  }
+}

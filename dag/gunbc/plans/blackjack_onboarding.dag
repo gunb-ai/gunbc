@@ -1,0 +1,259 @@
+module gunbc.plans.blackjack_onboarding
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote, hr }
+
+fn code(text: String) -> MarkdownBlock { CodeBlock { code: text } }
+
+fn table3(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
+  TableBlock { header: header, alignments: [AlignNone, AlignNone, AlignNone], rows: rows }
+}
+
+fn table2(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
+  TableBlock { header: header, alignments: [AlignNone, AlignNone], rows: rows }
+}
+
+fn r3(a: String, b: String, c: String) -> MarkdownTableRow { row(cells: [cell(text: a), cell(text: b), cell(text: c)]) }
+fn r2(a: String, b: String) -> MarkdownTableRow { row(cells: [cell(text: a), cell(text: b)]) }
+
+fn section_0_how_to_read() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** hand-off brief for a new contributor. Nothing here is implemented; the five module files under `dag/examples/blackjack/` exist as markers with one anchor declaration each, and everything else is yours to write. **Consumer of this document:** the person building the example. **Authority for every judgement about a change:** `DESIGN.md` — this page tells you which of its sections you will meet first (§10 below), so you do not have to read all of it on day one."),
+    p(text: "This project is framed as a guided tour of the recurring anatomy of a `.dag` program rather than as a card game. Blackjack is the vehicle because its rules are small, its state machine is real, and the interesting question — *is strategy A better than strategy B?* — needs simulation, which forces the one design decision this language is built around: **keep the engine pure and push randomness to the edge.**"),
+    p(text: "Every feature follows the same four-view loop. Get used to asking the four questions in this order, because the repository's tooling is arranged around them:"),
+    ol(items: [
+      li(text: "**Model the facts.** Which concepts exist, and which module owns each one? (types first, functions second)"),
+      li(text: "**Run a pure example.** Feed a hand-built input to a function and look at the value that comes back."),
+      li(text: "**Inspect the test evidence.** A test is a `test fn ... -> Bool` whose input, expected value and actual value you can read — not a green checkmark."),
+      li(text: "**Inspect the emitted Rust.** The `.dag` source is the program; Rust is one projection of it. Read the projection, never repair it by hand."),
+    ]),
+    p(text: "Randomness and I/O stay explicit boundaries throughout: most of what you write never touches either, and the one place that does is a single narrow module."),
+  ]
+}
+
+fn section_1_central_decision() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. The one design decision"),
+    quote(blocks: [p(text: "**The blackjack engine is deterministic. Randomness enters at the edge.**")]),
+    p(text: "The round engine receives an explicitly ordered `Shoe` (a list of cards, top card first). It never shuffles, never asks for entropy, never reads a clock. Randomness is decomposed into three separate facts, each owned by a different layer:"),
+    ol(items: [
+      li(text: "**Entropy acquisition** — an external effect. The repository already models it: `extdeps.entropy` declares `Urandom.ReadBytes(count: Int)`, returning `\{ octets_b64: String \}`. You reuse that; you do not invent a blackjack randomness source."),
+      li(text: "**Seed selection** — a value. A `ShuffleSeed` is an `Int` that can be recorded in a receipt and replayed."),
+      li(text: "**Shuffling** — a pure function `shuffle(deck: List<Card>, seed: ShuffleSeed) -> Shoe`. Same deck, same seed, same shoe, every time, on every machine."),
+    ]),
+    p(text: "What that buys you, concretely:"),
+    ul(items: [
+      li(text: "Domain logic needs no I/O, so it runs in the interpreter, in a test, and in emitted Rust without any glue."),
+      li(text: "Tests supply a known shoe or a known seed. \"Mocking randomness\" is not a framework; it is constructing the input instead of computing it."),
+      li(text: "A failed simulation round is reproduced by replaying its seed."),
+      li(text: "The same engine serves unit tests, interactive play, and Monte Carlo analysis. There is one blackjack, not three."),
+    ]),
+    p(text: "This is the repository's standing distinction between **interface, realization and policy** (DESIGN §3): what a dependency *means* (`extdeps.entropy` owns the shape), how it is *reached* (a shell transport today — not your concern), and how the application *uses* it (your `SimulationPlan` decides the seed) are three facts in three places."),
+    code(text: "External entropy            extdeps.entropy (exists)\n      |\n      v\nRecorded seed               ShuffleSeed { value: Int }\n      |\n      v\nDeterministic shuffle       shuffle(deck, seed) -> Shoe          examples.blackjack.shuffle\n      |\n      v\nOrdered Shoe                Shoe { cards: List<Card> }\n      |\n      v\nPure round engine           deal / apply_player_action /       examples.blackjack.round\n      |                     play_dealer_turn / settle\n      v\nSimulatedRound            one record per round\n      |\n      v\nAggregation                 summarize(observations)             examples.blackjack.simulation\n      |\n      v\nSimulationSummary           counts that must reconcile\n"),
+  ]
+}
+
+fn section_2_rosetta() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Rosetta stone — `.dag` read through Python"),
+    p(text: "The compiler emits Python (`--target python`) as well as Rust, and the Python it emits is the most direct statement of what each `.dag` construct *is*: a product type becomes a `@dataclass`, a sum type becomes a `Union` of dataclasses, a function becomes a `def`. (The type projection is sound; the function bodies are not yet — §8 names the filed class. The table below is the bridge either way.) Use the table as the bridge from what you already know. Where Java, JavaScript, C or SQL has a closer analogue it is named in the third column."),
+    table3(
+      header: r3("`.dag`", "Python", "also like"),
+      rows: [
+        r3("`module examples.blackjack.cards`", "one file = one module; the header names its dotted path", "Java `package`; JS ES module"),
+        r3("`import examples.blackjack.cards \{ Card, Rank \}`", "`from examples.blackjack.cards import Card, Rank` — every name you use from elsewhere is imported explicitly", "Java `import`; JS named import"),
+        r3("`type Card \{ rank: Rank, suit: Suit \}`", "`@dataclass class Card: rank: Rank; suit: Suit` — a record; immutable", "Java record; C struct; SQL row"),
+        r3("`type Suit = Clubs \\| Diamonds \\| Hearts \\| Spades`", "`Enum` — a closed set of named alternatives", "Java enum; SQL CHECK constraint"),
+        r3("`type RoundState = PlayerTurn \{ … \} \\| DealerTurn \{ … \} \\| RoundComplete \{ … \}`", "`Union[PlayerTurn, DealerTurn, RoundComplete]` of dataclasses — alternatives that carry data (a *sum type*)", "Java sealed interface; TypeScript discriminated union; C tagged union"),
+        r3("`fn hand_value(hand: Hand) -> HandValue \{ … \}`", "`def hand_value(hand: Hand) -> HandValue: return …` — the body is one expression; its value is the result", "Java static method; C function"),
+        r3("`hand_value(hand: h)`", "`hand_value(hand=h)` — arguments to functions you write are named at the call; builtins such as `filter` and `fold` take their list positionally", "Python keyword args"),
+        r3("`let total = hard_total(ranks: rs)`", "`total = hard_total(ranks=rs)` — bound once, never reassigned", "Java `final`; JS `const`"),
+        r3("`if total > 21 \{ a \} else \{ b \}`", "`a if total > 21 else b` — an expression that has a value, so both branches are required", "C ternary"),
+        r3("`match state \{ PlayerTurn \{ hand \} => … DealerTurn \{ … \} => … RoundComplete \{ … \} => … \}`", "`match state: case PlayerTurn(hand=hand): …` — and **every alternative must have an arm**; a missing one is refused by the compiler (the check runs on CI's witness floor), not a runtime surprise", "Java switch over sealed type; SQL CASE"),
+        r3("`cards \\|> filter(c => is_ace(c: c)) \\|> map(c => c.rank)`", "`[c.rank for c in cards if is_ace(c)]` — a pipeline; `x => …` is a lambda", "JS `.filter().map()`; SQL WHERE / SELECT"),
+        r3("`fold(cards, init: 0, f: (acc, c) => acc + pips(c: c))`", "`total = 0; for c in cards: total += pips(c)` — **there is no `for`**; the accumulator loop is spelled as a fold", "`functools.reduce`; JS `.reduce()`; SQL SUM"),
+        r3("`fn soften(total: Int, aces: Int) -> Int \{ if … \{ soften(total: total - 10, aces: aces - 1) \} else \{ total \} \}`", "a recursive `def` — **there is no `while`**; a loop whose trip count you cannot write as a fold is a recursion, and the compiler emits it as a `loop` (you will see `__tco_0` in the Rust)", "tail recursion"),
+        r3("`length(cards)` · `first(cards)` · `all(xs, x => …)` · `any(…)` · `contains(…)` · `take(…)` · `skip(…)` · `reverse(…)` · `enumerate(…)` · `concat(a, b)`", "`len` · `xs[0]` · `all` · `any` · `in` · slicing · `reversed` · `enumerate` · `+`", "builtins — the same names as Python's where Python has one"),
+        r3("`Card?` and `match x \{ Present \{ value \} => … Absent => … \}`", "`Optional[Card]`, and the caller **must** handle `None` — there is no implicit unwrap", "Java `Optional`; TS `T \\| undefined`"),
+        r3("`data standard_deck: List<Card> = …`", "a module-level constant", "Java `static final`; SQL a reference table"),
+        r3("`type RoundStep = RoundStepped \{ state: RoundState \} \\| RoundRefused \{ cause: RoundRefusal \}`", "a return type that carries the failure as data. **There are no exceptions**: a function that can refuse says so in its type, and the caller matches on it", "Rust `Result`; Go `(value, err)`"),
+        r3("`test fn ace_ace_nine_is_twenty_one() -> Bool \{ … \}`", "`def test_ace_ace_nine_is_twenty_one(): assert …` — a test is a function returning `Bool`; it is discovered by its `test` keyword and its location under `dag/test/claim/`", "pytest / JUnit"),
+        r3("`service Urandom \{ operation ReadBytes \{ input \{ count: Int \} output \{ octets_b64: String \} … \} \}` and `Urandom.ReadBytes(count: 16).octets_b64`", "an interface to the outside world, declared once with its input and output shape; calling it looks like a function call. The transport (shell, HTTP, SDK) is bound to the shape, not part of it", "an abstract class + one adapter; a DB driver behind a repository"),
+        r3("`// prose above a module-scope declaration`", "`#` comments — but **only** as a standalone block directly above a `type`, `fn` or `data` at module scope. A comment inside a function body, or trailing a line, is a parse error (DESIGN §4c)", "Javadoc placement"),
+      ]
+    ),
+    p(text: "Three habits to unlearn on day one. **No mutation:** every value is built once; \"update the hand\" means \"construct a new `Hand` with one more card\". **No loops:** `fold` for accumulate-over-a-list, recursion for everything else — both compile to loops. **No `null`, no exceptions, no default cases:** an absent value is `Absent`, a failure is a variant of the return type, and a `match` must name every alternative. The compiler refuses the program otherwise, and that refusal is the feature — it is what makes \"the engine cannot hit after the round is complete\" a fact about the *types* rather than a fact about your test coverage."),
+  ]
+}
+
+fn section_3_scope() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Scope"),
+    p(text: "Deliberately small so that a coherent vertical slice — model, engine, boundary, analysis, emission — finishes inside the timebox. A broad but incomplete blackjack teaches less than a narrow complete one."),
+    h3(text: "In"),
+    ul(items: [
+      li(text: "one player, one dealer; one standard 52-card deck, freshly shuffled for every round"),
+      li(text: "player actions: hit, stand"),
+      li(text: "ace handling (soft / hard totals), busts, natural blackjack"),
+      li(text: "dealer play: stands on soft 17 by default; `BlackjackRules \{ dealer_hits_soft_17: Bool \}` is the one modeled variant"),
+      li(text: "outcomes: player wins, dealer wins, push"),
+      li(text: "two fixed strategies, compared by simulation"),
+    ]),
+    h3(text: "Out"),
+    ul(items: [
+      li(text: "splitting, doubling down, surrender, insurance, betting systems, multiple players, a user interface, performance work"),
+      li(text: "repairing the Python target — see §8; it is a reading aid here, not a deliverable"),
+    ]),
+  ]
+}
+
+fn section_4_model() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. The model, module by module"),
+    p(text: "Five modules under `dag/examples/blackjack/`, one concept family each. Each file already exists with **one anchor declaration** so that you start from something that parses; the rest of each module is sketched below as a skeleton. The skeletons are shapes to inhabit, not text to paste — where a body is left as `…` it is yours, and where a name is given it is because the later milestones and the tests refer to it."),
+    p(text: "**Naming, and why it is not cosmetic here.** Every module in `dag/` shares one name census, and a bare type or variant name that collides with one declared elsewhere is resolved by precedence rather than refused (a known deficit, `gunbc.recurring_failure_mode`). Before you name a variant, grep the corpus for it. `Hit` (`std.cache_interface`), `Push` (`std.stack`), `Complete` (`std.shell_stream_capture`) and `RoundObservation` (`gunbc.harness.harness_throughput`) are all taken, which is why the shapes below say `PlayerHits`, `Pushed`, `RoundComplete` and `SimulatedRound`. `Suit`, `Rank`, `Card`, `Hand`, `Shoe` were free at the time of writing."),
+
+    h3(text: "4.1 `examples.blackjack.cards` — the facts"),
+    p(text: "Anchor in the file: `Suit`. You add `Rank`, `Card`, the pip value of a rank, and the standard deck as a `data` constant (a list comprehension over ranks × suits is a `flat_map` over ranks of a `map` over suits)."),
+    code(text: "module examples.blackjack.cards\n\ntype Suit = Clubs | Diamonds | Hearts | Spades\n\ntype Rank = Ace | Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Jack | Queen | King\n\ntype Card { rank: Rank, suit: Suit }\n\n// Ace counts 11 here; hand evaluation decides when it must count 1.\nfn rank_pips(r: Rank) -> Int { … }\n\nfn is_ace(c: Card) -> Bool { … }\n\n// 52 cards, in a fixed canonical order.\ndata standard_deck: List<Card> = …\n"),
+    p(text: "Python reading: two enums, one dataclass, two functions, one module constant."),
+
+    h3(text: "4.2 `examples.blackjack.hand` — evaluation"),
+    p(text: "Anchor in the file: `HandValue`. This is the first real function you write and the place the four-view loop is first run end to end. A raw total is one fact; *soft*, *bust* and *blackjack* are derived from it and from the hand's shape."),
+    code(text: "module examples.blackjack.hand\n\nimport examples.blackjack.cards { Card, Rank, Ace, rank_pips, is_ace }\n\ntype Hand { cards: List<Card> }\n\ntype HandValue { total: Int, soft: Bool }\n\n// Sum of pips with every ace at 11 — a fold, the for-loop of this language.\nfn hard_total(hand: Hand) -> Int {\n  fold(hand.cards, init: 0, f: (acc, c) => acc + rank_pips(r: c.rank))\n}\n\n// Demote aces from 11 to 1 while the total busts and an ace is still soft.\n// Recursion, not a while loop; the compiler emits a loop.\nfn hand_value(hand: Hand) -> HandValue { … }\n\nfn is_bust(v: HandValue) -> Bool { … }\n\n// Exactly two cards totalling 21.\nfn is_blackjack(hand: Hand) -> Bool { … }\n\n// No mutation: a new Hand with one more card.\nfn add_card(hand: Hand, card: Card) -> Hand { … }\n"),
+    p(text: "Representative cases the tests must cover — write these before the body, they are the specification:"),
+    code(text: "[Ace, Nine]        -> total 20, soft\n[Ace, Ace, Nine]   -> total 21, soft\n[Ace, King]        -> total 21, blackjack\n[King, Queen]      -> total 20, hard\n[King, Nine, Five] -> bust\n[Ace, Ace, Ten]    -> total 12, soft=false (both aces demoted)\n"),
+
+    h3(text: "4.3 `examples.blackjack.round` — the state machine"),
+    p(text: "Anchor in the file: `PlayerAction`. A round is explicit state; an action is a transformation from one state to the next; anything that is not a lawful transition is a **typed refusal**, never a default. This is where you stop seeing a program as a mutable loop with implicit conditions and start seeing it as a graph of lawful transitions."),
+    code(text: "module examples.blackjack.round\n\nimport examples.blackjack.cards { Card }\nimport examples.blackjack.hand { Hand, HandValue, hand_value, is_bust, is_blackjack, add_card }\n\ntype PlayerAction = PlayerHits | PlayerStands\n\ntype BlackjackRules { dealer_hits_soft_17: Bool }\n\n// Ordered; the head of cards is the next card dealt.\ntype Shoe { cards: List<Card> }\n\ntype RoundState\n  = PlayerTurn    { player: Hand, dealer: Hand, shoe: Shoe }\n  | DealerTurn    { player: Hand, dealer: Hand, shoe: Shoe }\n  | RoundComplete { player: Hand, dealer: Hand, outcome: RoundOutcome }\n\ntype RoundOutcome = PlayerWon | DealerWon | Pushed\n\ntype RoundRefusal\n  = ShoeExhausted\n  | ActionAfterRoundComplete\n  | DealerActedOutOfTurn\n  | PlayerActedOutOfTurn\n\ntype RoundStep = RoundStepped { state: RoundState } | RoundRefused { cause: RoundRefusal }\n\n// Two cards each. A natural blackjack on either side ends the round here.\nfn deal(shoe: Shoe) -> RoundStep { … }\n\n// Only lawful from PlayerTurn. A bust ends the round; a stand hands over to the dealer.\nfn apply_player_action(state: RoundState, action: PlayerAction) -> RoundStep { … }\n\n// Only lawful from DealerTurn. Draws until the rules say stand, then settles.\nfn play_dealer_turn(state: RoundState, rules: BlackjackRules) -> RoundStep { … }\n\n// Pure comparison of two final hands.\nfn settle(player: HandValue, dealer: HandValue) -> RoundOutcome { … }\n"),
+    p(text: "The refusals you must be able to produce, each with a test that goes red if it stops firing: hitting after `RoundComplete`; drawing from an empty shoe; asking the dealer to act during `PlayerTurn`; applying a player action during `DealerTurn`. Note that the Python-shaped reflex — `raise InvalidAction` — is unavailable, and that is the point: `RoundRefused \{ cause: ActionAfterRoundComplete \}` is a value the caller must match on, so the invalid transition is unrepresentable as a *successful* result."),
+
+    h3(text: "4.4 `examples.blackjack.shuffle` — the boundary"),
+    p(text: "Anchor in the file: `ShuffleSeed`. Two pure functions and nothing else: a seed-to-permutation and a bytes-to-seed. The **only** effectful call in the whole project lives in one test (§7), not here."),
+    code(text: "module examples.blackjack.shuffle\n\nimport std.integer { UInt8 }\nimport std.encoding { base64_octet_int }\nimport examples.blackjack.cards { Card }\nimport examples.blackjack.round { Shoe }\n\ntype ShuffleSeed { value: Int }\n\n// Deterministic: same deck + same seed = same shoe. A linear congruential step\n// threaded through a fold over positions is enough; this is a teaching fixture,\n// not a claim about randomness quality.\nfn shuffle(deck: List<Card>, seed: ShuffleSeed) -> Shoe { … }\n\n// The step function of the generator, exposed so a test can pin its sequence.\nfn next_seed(seed: ShuffleSeed) -> ShuffleSeed { … }\n\n// The bridge from the entropy boundary. The octets arrive as the List<UInt8> that\n// std.encoding.base64_decode returns; base64_octet_int (same module) reads each one as an\n// Int, and a fold combines them. Take the real decoded type here -- do not mint an Int list.\nfn seed_from_octets(octets: List<UInt8>) -> ShuffleSeed { … }\n"),
+
+    h3(text: "4.5 `examples.blackjack.simulation` — analysis"),
+    p(text: "Anchor in the file: `Strategy`. Reuses the engine; reimplements nothing. Each round emits one observation; a summary is a fold over observations; and the reconciliation invariant is a **test**, not an assumption of the report."),
+    code(text: "module examples.blackjack.simulation\n\nimport examples.blackjack.cards { Card, standard_deck }\nimport examples.blackjack.hand { Hand }\nimport examples.blackjack.round { BlackjackRules, RoundOutcome, RoundState, PlayerAction, deal, apply_player_action, play_dealer_turn }\nimport examples.blackjack.shuffle { ShuffleSeed, shuffle, next_seed }\n\n// Two fixtures, not blackjack advice: hit below the threshold, otherwise stand.\ntype Strategy = HitBelow { threshold: Int }\n\ntype SimulationPlan { rounds: Int, seed: ShuffleSeed, rules: BlackjackRules, strategy: Strategy }\n\ntype SimulatedRound {\n  round_index: Int,\n  seed: ShuffleSeed,\n  player_actions: List<PlayerAction>,\n  player_total: Int,\n  dealer_total: Int,\n  outcome: RoundOutcome,\n}\n\ntype SimulationSummary {\n  rounds_requested: Int,\n  rounds_completed: Int,\n  player_wins: Int,\n  dealer_wins: Int,\n  pushes: Int,\n  player_blackjacks: Int,\n  player_busts: Int,\n}\n\nfn choose(strategy: Strategy, player: Hand) -> PlayerAction { … }\n\n// One full round from a seed: shuffle, deal, drive the player by strategy, dealer plays.\nfn play_round(index: Int, seed: ShuffleSeed, rules: BlackjackRules, strategy: Strategy) -> SimulatedRound { … }\n\n// rounds, each with next_seed(previous) — so round k of plan P is replayable alone.\nfn simulate(plan: SimulationPlan) -> List<SimulatedRound> { … }\n\nfn summarize(plan: SimulationPlan, observations: List<SimulatedRound>) -> SimulationSummary { … }\n\n// player_wins + dealer_wins + pushes == rounds_completed — a first-class test.\nfn summary_reconciles(s: SimulationSummary) -> Bool { … }\n"),
+    p(text: "`win_rate` is deliberately absent from the summary: a ratio is derived from two counts, so storing it beside them is a second copy of one fact (DESIGN §2). Compute it where it is displayed."),
+  ]
+}
+
+fn section_5_tests() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Tests, evidence, and what \"mocking\" means here"),
+    p(text: "Tests live under `dag/test/claim/` — that directory is what CI's witness floor discovers. Put yours at `dag/test/claim/examples/blackjack_hand_witness_test.dag`, `…_round_…`, `…_shuffle_…`, `…_simulation_…`, one file per module under test. A test file is an ordinary module whose functions are marked `test fn` and return `Bool`, plus one declaration every claim file carries:"),
+    code(text: "module test.claim.examples.blackjack_hand_witness\n\nimport v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\nimport examples.blackjack.cards { Card, Ace, Nine, Clubs, Spades }\nimport examples.blackjack.hand { Hand, hand_value }\n\n// Declares that this file reads nothing from the host: no filesystem, no corpus scan.\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\nfn ace_nine() -> Hand {\n  Hand { cards: [Card { rank: Ace, suit: Clubs }, Card { rank: Nine, suit: Spades }] }\n}\n\ntest fn ace_nine_is_soft_twenty() -> Bool {\n  let v = hand_value(hand: ace_nine())\n  v.total == 20 && v.soft\n}\n"),
+    p(text: "Run one file's tests, or one function, with the claim runner (built in §8):"),
+    code(text: "./target/release/claim_batch --source-root dag --source-root src/v2 \\\n  --entry dag/test/claim/examples/blackjack_hand_witness_test.dag \\\n  --functions ace_nine_is_soft_twenty\n"),
+    p(text: "Four levels, and you will use all four. The question to ask before writing any test is not *how do I mock this?* but **what value crosses the boundary I am testing?**"),
+    ol(items: [
+      li(text: "**Pure unit tests** supply cards, hands and values directly. Most of your tests."),
+      li(text: "**State-transition tests** supply a complete `RoundState` and an action, and assert the exact next state or the exact refusal. One test per refusal arm."),
+      li(text: "**Boundary tests** supply the value an effectful producer *would* return — a `List<UInt8>` of octets (built with `std.encoding` `base64_octet_of_int`, the same constructor the decoder uses) handed to `seed_from_octets`, a `ShuffleSeed` handed to `shuffle` — without calling the producer."),
+      li(text: "**One integration test** calls the real producer, `Urandom.ReadBytes`, and establishes only that its output inhabits the shape the boundary tests assumed (the right number of octets, decodable). It does not assert that a random shoe has any particular order."),
+    ]),
+    p(text: "Level 3 without level 4 is the trap DESIGN §3 names: a suite that is fast, green, and proves no program, because every boundary was supplied and none was ever executed. Level 4 is what turns your supplied inputs from hypotheses into readings. Keep it to one test, keep it narrow, and know that it is *wet* — it shells out — so it runs with `--wet` locally and is the one that can fail for reasons that are not yours."),
+    p(text: "**Make the evidence visible.** A `Bool` that comes back `false` tells you nothing about *why*. The convention here: name the test after its case (`ace_ace_nine_is_twenty_one`), build the input in a small named function so the test body is the assertion alone, and for a red test read the value by running a wrapper through `gunbc run` (the interpreter refuses to print a bare value; wrap it: `fn show() -> ProcessExit \{ … ExitSuccess / ExitFailure … \}` from `std.process`). The point is to keep the input, the expected value and the actual value in front of you, so that the tooling never collapses the learning into an unexplained green."),
+    p(text: "Every test you write must be one you can make go **red** by breaking the code it covers. Before you call a milestone done, break each function on purpose once — flip a comparison, drop the ace demotion — and confirm the right test fails. A test that stays green through the mutation is a decoration."),
+  ]
+}
+
+fn section_6_randomness() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. The randomness boundary"),
+    p(text: "Only after deterministic rounds run from hand-ordered shoes do you connect entropy — and even then, the connection is one function call in one test. `dag/test/claim/random_bytes_csprng_witness_test.dag` is the in-tree exemplar: it calls `Urandom.ReadBytes(count: 16).octets_b64`, base64-decodes it with `std.encoding` `base64_decode` to `List<UInt8>?`, and asserts the count. Your integration test does the same, matches the `Present` arm (the `Absent` arm is a refusal of the test, not a skip), hands that `List<UInt8>` to `seed_from_octets` unchanged — it takes the decoder's type, and reads each octet with `base64_octet_int` — then `shuffle`, and asserts that the result is a 52-card shoe containing each card exactly once. That last assertion is a property of `shuffle`, not of the entropy; it is here because it is the one place the whole route executes."),
+    p(text: "The seed is the replay handle. Every `SimulatedRound` carries the seed its shoe was built from, so a surprising row in a 10,000-round simulation is reproduced by one call to `play_round` with that seed — no reruns, no logging, no luck."),
+  ]
+}
+
+fn section_7_analysis() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Analysis"),
+    p(text: "`simulate` is a recursion over the round index threading the seed forward; `summarize` is a fold over observations; `summary_reconciles` is a test. The comparison you are after is two plans differing only in `strategy`, run from the same starting seed, so the two strategies see the *same* shoes — a paired comparison, which is the honest one. `HitBelow \{ threshold: 17 \}` against `HitBelow \{ threshold: 19 \}` is enough to see a difference; neither is a claim about optimal play."),
+    p(text: "What the summary may and may not say (DESIGN §4d): the counts are deduced; any sentence of the form *strategy A is better* is an inference from a sample and belongs beside its sample size and seed, never in a bare field of the summary type."),
+  ]
+}
+
+fn section_8_emission() -> List<MarkdownBlock> {
+  [
+    h2(text: "8. Emission — reading the Rust"),
+    p(text: "`dag/examples/weather/weather.dag` is the reference: domain types, a sum type, `match`, pure functions, list pipelines, and it compiles to a Rust crate that passes `cargo check` with no handwritten glue. Read it first; your example follows the same route. These commands were run against this repository on 2026-09-15 and are the ones to start from — the compiler moves quickly, so record the exact commands and commit you used in your PR rather than trusting this page forever:"),
+    code(text: "# once: the compiler and the claim runner, built into the repository's own target/ (docs/onboarding.md step 3 has this host's caveats)\ncargo build --release -p v1-compiler --bin gunbc --bin claim_batch\n\n# emit the example's closure (only the modules it imports) as a Rust crate\nOUT=/tmp/blackjack-rs\n./target/release/gunbc compile --source-root dag \\\n  --entry dag/examples/blackjack/simulation.dag \\\n  --output-dir \"$OUT\" --target rust\n\n# the projection must type-check without edits\ncargo check --manifest-path \"$OUT/Cargo.toml\"\n"),
+    p(text: "What to look for in `$OUT/src/examples_blackjack_*.rs`: a `type` became a `pub struct` or `pub enum`; a `fn` became a `pub fn` over `Rc<…>` values; your `fold` became a `for` loop building a result; your recursive `hand_value` became a `loop` with `__tco_` temporaries — the compiler proved the recursion was a loop and emitted one. That is DESIGN §4 in one file: recursion is sugar over `Loop`."),
+    p(text: "**Never repair the emitted Rust.** If `cargo check` fails, the defect is in the `.dag` or in the compiler, and either way the fix lands upstream of the projection. Ask when you hit one; a compiler bug found by a new example is a real contribution."),
+    p(text: "`--target python` also runs, and its type projection — `@dataclass` per record, `Union` per sum type — is the best illustration of the Rosetta table in §2. Its function bodies are **not** currently valid Python: the class is filed as `gunbc.recurring_failure_mode` `python_target_returns_a_statement`, which names the emitting function, the reproducing command (the weather example through `--target python`, then `python3 -m py_compile`) and the capability that retires it. So read the Python for the shapes and check the Rust for the behavior. The repair belongs to the emitter lane, not to an onboarding project; the row is where its status lives, and it is named here so you do not lose an afternoon rediscovering it."),
+  ]
+}
+
+fn section_9_milestones() -> List<MarkdownBlock> {
+  [
+    h2(text: "9. Milestones"),
+    p(text: "Five, each ending in a small PR so review can focus on one conceptual layer. Each milestone's *done* is stated as something you can run."),
+    ol(items: [
+      li(text: "**Tour and skeleton.** Build the two binaries; compile the weather example to Rust and `cargo check` it; read `weather.dag` against the Rosetta table. Done when you can name, for the weather example, which file is domain and which files are generated — and you have noticed that it has no `.dag` test file of its own (its checks live in the Rust seed), so yours will be the first example carrying claims."),
+      li(text: "**Cards and hand evaluation.** `cards.dag`, `hand.dag`, and `blackjack_hand_witness_test.dag` covering the six cases in §4.2. Done when every case is green, and each goes red under one deliberate mutation."),
+      li(text: "**Deterministic round engine.** `round.dag` and its tests: a full round replayed from a hand-ordered `Shoe`, one test per refusal arm, the soft-17 rule variant. Done when a complete round is a pure function of its shoe and the four refusals each have a red-capable test."),
+      li(text: "**Randomness boundary.** `shuffle.dag`, its pure tests (seed → shoe reproducible; a shuffle is a permutation), and the one wet integration test through `Urandom.ReadBytes`. Done when the same seed yields the same shoe on your machine and in CI, and the wet test passes with `--wet`."),
+      li(text: "**Analysis and emission.** `simulation.dag`; the reconciliation test; a paired comparison of the two strategies over the same seeds; the example's closure emitted to Rust and `cargo check`ed; a `README.md` beside the example that explains the project through the four-view loop rather than through blackjack rules. Done when the acceptance bar below holds."),
+    ]),
+    h2(text: "Acceptance bar"),
+    ul(items: [
+      li(text: "the model represents the scoped rules with no stringly substitutes — no `String` where a variant belongs, no `Int` standing in for a suit"),
+      li(text: "hand evaluation handles every ace and blackjack case in §4.2"),
+      li(text: "a round replays exactly from the same ordered shoe"),
+      li(text: "each of the four invalid transitions refuses with its named cause, and a test covers each"),
+      li(text: "shuffle output is reproducible from a recorded seed"),
+      li(text: "no unit test depends on live entropy; exactly one test exercises the real entropy route"),
+      li(text: "two strategies compare through the same engine over the same seeds"),
+      li(text: "`player_wins + dealer_wins + pushes == rounds_completed` is a test, and it is green"),
+      li(text: "every test names its case and can be made red by a mutation of the code it covers"),
+      li(text: "the example's closure emits Rust and the crate passes `cargo check` unedited"),
+      li(text: "the README explains the project through the lenses, not the rules"),
+    ]),
+  ]
+}
+
+fn section_10_design_reading() -> List<MarkdownBlock> {
+  [
+    h2(text: "10. What to read in DESIGN.md, and when"),
+    p(text: "`DESIGN.md` is the authority for every judgement about a change and is not a first-day document. This is the subset this project walks you into, in the order you will meet it:"),
+    table2(
+      header: r2("Before…", "read"),
+      rows: [
+        r2("your first `type`", "§2 *minimize redundancy* — model a concept once (why `win_rate` is not a field), and decompose to grounded atoms (why a card is a `Rank` and a `Suit`, not a string)"),
+        r2("your first `//` comment", "§4c — where a comment may sit, and that a comment is never evidence"),
+        r2("your first refusal variant", "§5 *fail-closed* — a wrong answer is a loud error, never a default; the three reviewer questions"),
+        r2("your first test", "§3 *a witness discriminates at one interface* — supply inputs at the boundary, and owe one real-route test per supplied boundary"),
+        r2("your first PR", "§3b conformance and §3c consumption — every declaration you add has a named consumer, and that consumer is in the same PR"),
+        r2("the strategy comparison", "§4d *epistemic humility* — assert the counts, type the inference"),
+      ]
+    ),
+    p(text: "Everything else in that document can wait until a review points you at it."),
+  ]
+}
+
+fn blackjack_onboarding_body() -> List<MarkdownBlock> {
+  concat(section_0_how_to_read(),
+  concat(section_1_central_decision(),
+  concat(section_2_rosetta(),
+  concat(section_3_scope(),
+  concat(section_4_model(),
+  concat(section_5_tests(),
+  concat(section_6_randomness(),
+  concat(section_7_analysis(),
+  concat(section_8_emission(),
+  concat(section_9_milestones(), section_10_design_reading()))))))))))
+}
+
+data blackjack_onboarding_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
+  slug: "blackjack-onboarding",
+  title: "Blackjack — a first .dag project, read through Python",
+  body: blackjack_onboarding_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this brief when the five modules under dag/examples/blackjack/ and their claims under dag/test/claim/examples/ are landed and green on the required floor, and the example carries its own README written through the four-view loop -- at which point the example is the onboarding artifact and this document, whose only consumer was the person building it, has no subject left.")
+  }
+}

@@ -1,0 +1,93 @@
+module extdeps.linux.proc_stat
+
+import std.types { Int, List, NonEmptyStr, EpochSecs }
+import std.string_type { String }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc_stat.5.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.proc_stat",
+      decl_name: "ProcStatBootTime",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE SHAPE OF ONE LINE OF /proc/stat, AND ONLY THE LINE THIS REPOSITORY CONSUMES. proc_stat(5)
+// documents the file as one record per line, each beginning with a keyword; `btime` is "the time at
+// which the system booted, in seconds since the Epoch". extdeps.linux.procfs owns the interface --
+// which paths exist and on which kernels -- and this module owns the field, exactly as
+// extdeps.linux.proc_meminfo owns /proc/meminfo's fields.
+//
+// WHY BOOT TIME IS WORTH ITS OWN ROW. Every per-process start time the kernel exports is measured in
+// clock ticks SINCE BOOT (proc_pid_stat(5), starttime), and the only thing that turns it into an
+// instant on the shared epoch clock is this one number. prometheus_client's process collector does
+// exactly that arithmetic when it exports process_start_time_seconds, so a reader that wants to
+// meet that exporter on equal terms reads the same two kernel facts it read.
+type ProcStatBootTime
+  = BootTimeObserved { epoch_seconds: EpochSecs }
+  | BootTimeLineAbsent
+  | BootTimeUnparseable { field: String }
+  | BootTimeBeforeEpoch { field: String }
+
+data proc_stat_btime_keyword: NonEmptyStr = "btime" as NonEmptyStr
+
+type BtimeScan {
+  seen: Int
+  keyword_first: Bool
+  field: String?
+}
+
+// A fold rather than an index: the line is `btime <n>`, so the answer is the second non-empty word
+// exactly when the first is the keyword. Empty words from repeated spaces are skipped, which is
+// what proc_stat(5)'s "cpu  ..." double space would otherwise trip.
+fn proc_stat_btime_field(line: String) -> String? {
+  fold(split(s: trim(s: line), delimiter: " "), init: BtimeScan { seen: 0, keyword_first: false, field: none }, f: (acc, w) =>
+    if w == "" {
+      acc
+    } else if acc.seen == 0 {
+      BtimeScan { seen: 1, keyword_first: w == (proc_stat_btime_keyword as String), field: none }
+    } else if acc.seen == 1 && acc.keyword_first {
+      BtimeScan { seen: 2, keyword_first: true, field: Present { value: w } }
+    } else {
+      BtimeScan { seen: acc.seen + 1, keyword_first: acc.keyword_first, field: acc.field }
+    }).field
+}
+
+// One pass over the lines; the first `btime` record answers. The file is small and the keyword is
+// unique in it, so a second occurrence is not a case proc_stat(5) admits and is not searched for.
+fn proc_stat_boot_time(content: String) -> ProcStatBootTime {
+  fold(split(s: content, delimiter: "\n"), init: BootTimeLineAbsent, f: (acc, line) =>
+    match acc {
+      BootTimeObserved { epoch_seconds: _ } => acc
+      BootTimeUnparseable { field: _ } => acc
+      BootTimeBeforeEpoch { field: _ } => acc
+      BootTimeLineAbsent =>
+        match proc_stat_btime_field(line: line) {
+          Absent => acc
+          Present { value: field } =>
+            match parse_int(s: field) {
+              Absent => BootTimeUnparseable { field: field }
+              Present { value: n } =>
+                if n < 0 {
+                  BootTimeBeforeEpoch { field: field }
+                } else {
+                  BootTimeObserved { epoch_seconds: n }
+                }
+            }
+        }
+    })
+}

@@ -14,6 +14,7 @@ import gunbc.fleet_converge_plan {
   LaunchEnvironment,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  LiveDeploy,
   FleetConvergeApplyTerminal,
   FullyApplied,
   PartiallyApplied,
@@ -52,6 +53,7 @@ import gunbc.fleet_intent_network { operator_host_srv3 }
 import std.content_hash { serialize_content_hash }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -91,6 +93,7 @@ fn witness_full_host_request() -> FleetConvergeRequest {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   }
 }
 
@@ -111,6 +114,7 @@ fn scope_is_launch_environment(s: FleetConvergeScope) -> Bool {
     FullHost => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    LiveDeploy => false
   }
 }
 
@@ -232,6 +236,7 @@ test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters()
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   string_contains(s: artifact.plan_body, pattern: "# scope=scope:full-host")
         && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
@@ -267,6 +272,7 @@ test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() 
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   let launch = fleet_converge_launch_environment_plan_artifact(
     host: witness_host_srv1,
@@ -307,6 +313,7 @@ test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() 
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   let le = fleet_converge_launch_environment_plan_artifact(
     host: operator_host_srv3 as NonEmptyStr,
@@ -438,13 +445,14 @@ test fn the_launch_environment_wire_round_trips_through_the_decode() -> Bool {
 
 // SCOPE EQUALITY IS NOW ASKED OF THE WIRE FOLD, so the property the old pairwise match had for
 // free must be stated: two scopes sharing a wire spelling would compare equal, and the decode's
-// inverse would be ambiguous too. This pins the four wires pairwise distinct.
+// inverse would be ambiguous too. This pins every FleetConvergeScope wire pairwise distinct.
 test fn every_scope_wire_is_distinct() -> Bool {
   let wires = [
     fleet_converge_scope_wire(scope: FullHost),
     fleet_converge_scope_wire(scope: LaunchEnvironment),
     fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
     fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+    fleet_converge_scope_wire(scope: LiveDeploy),
   ]
   all(wires, w => list_length(items: filter(wires, x => x == w)) == 1)
 }
@@ -493,6 +501,7 @@ fn srv1_full_host_request() -> FleetConvergeRequest {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   }
 }
 
@@ -528,6 +537,7 @@ test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL runner-slot")
         && string_contains(s: artifact.plan_body, pattern: "OwnershipUnknown")

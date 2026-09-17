@@ -21,7 +21,7 @@ import v2.std.collection { List }
 //
 // Any identity enrolled here is withheld FOR COST, and in none of the three evidence classes is it
 // a known red. The PROVEN class passes and its measured marginal CPU exceeds
-// `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`; the CENSORED class was
+// `v2.workflow.required_floor` `required_floor_per_subject_cpu_line_ms`; the CENSORED class was
 // preempted before a verdict, so it asserts only that the row did not finish inside the ceiling
 // on the charged clock. NEITHER is a failure, which is the distinction that matters here.
 //
@@ -110,7 +110,16 @@ import v2.std.collection { List }
 //     against a literal, because a number copied from the current tree is a snapshot;
 //   - the direction is justified: a row leaves by being made cheap, and the forward hole is
 //     already shut -- a NEW or REGRESSED row over 500ms simply refuses, because 500 is the
-//     ceiling and nothing here admits an identity the floor did not already discover;
+//     ceiling and nothing here admits an identity the floor did not already discover.
+//     THE TYPED CONSTRUCTOR `v2.workflow.floor_cost_debt_admission` `floor_cost_debt_row` is
+//     NOT this roster's mint path today. Membership is still the hand-authored identity-string
+//     chunks `floor_cost_debt_roster` folds. Claiming those strings are minted only through
+//     the constructor was a §3c dangling assertion (review 65585). The constructor is the
+//     gate for `floor_cost_debt_typed_admission_attempts`, whose first live consumer is named
+//     at that function: the required-floor runner unioning typed-admitted identities into
+//     the withhold set, with these string chunks frozen against growth. Until that lands,
+//     a margin-crossing identity can still be string-appended here; that hole is the existing
+//     monotone contract (identity-grain stale, shrink-only review), not construction.
 //   - a rostered identity the tree no longer carries REFUSES as a stale row, so the roster
 //     cannot rot into a permission slip for witnesses that no longer exist.
 //
@@ -222,9 +231,19 @@ import v2.std.collection { List }
 // error this file was rebuilt once to correct, in mirror image: there a real number belonged to
 // another row, here a real zero does.
 
-// THE 500ms CEILING ITSELF IS JUDGED UNDER CONTENTION, AND THAT IS NOT THIS FILE'S ROW TO STATE.
-// Every release and hold reasoned about here compares a claim's cost against
-// `required_floor_claim_cpu_safety_limit_ms`, and the standing of that comparison -- its measured
+// THE 500ms FIGURE ITSELF IS JUDGED UNDER CONTENTION, AND THAT IS NOT THIS FILE'S ROW TO STATE.
+// It also NO LONGER GATES A CLAIM DIRECTLY (2026-09-12): the required floor's claim ceiling is
+// claim_eval_step_budget_for_identity, and required_floor_claim_work_envelope_ms carries the 500
+// as the policy that budget is grounded against. THAT is the one mention of the work envelope this
+// file may carry, because it is the only sentence here about the CLAIM CEILING; every other figure
+// in this file is a CPU reading and names `required_floor_per_subject_cpu_line_ms` instead. An
+// earlier revision of this change repointed all of them at the envelope on the grounds that both
+// spell 500, which is the clock fusion review 66007 found elsewhere in the same push.
+// This roster is unchanged by that -- its members
+// were measured and frozen against the CPU line that then stood, and a row is released by the
+// explicit debt-removal transaction and by nothing else.
+// Every release and hold reasoned about here compares a claim's CPU cost against
+// `required_floor_per_subject_cpu_line_ms`, and the standing of that comparison -- its measured
 // inflation, its bounded population, and the capability that restores it -- is carried by
 // `gunbc.rung_drop floor_cost_claim_qualification_unavailable`. Cited rather than repeated: a second telling
 // would drift from the authority that retires it.
@@ -294,7 +313,7 @@ import v2.std.collection { List }
 // destroy the provenance and create two more numbers to rot.
 //
 // POPULATION A -- 225 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
-// CPU exceeded `required_floor_claim_cpu_safety_limit_ms`. Read from main run 33141550579's
+// CPU exceeded `required_floor_per_subject_cpu_line_ms`. Read from main run 33141550579's
 // per-claim cost receipt (`required_floor_claim_cost.tsv`, 12936 rows, `cost_basis=cpu`), so every
 // figure is that run's own and none is transcribed by hand. Measured range 511..3757ms. For these
 // rows the carrier's ordinary premise holds exactly: the witness works and costs too much.
@@ -679,11 +698,21 @@ fn floor_cost_debt_proven_chunk_03() -> List<String> {
 }
 
 fn floor_cost_debt_proven_chunk_04() -> List<String> {
-  Cons { head: "test.claim.roadmap_receipt_continuity_acceptance.roadmap_receipt_continuity_acceptance_contract_holds", tail: Cons { head: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal", tail: Cons { head: "test.claim.roadmap_row_witness.roadmap_row_page_carries_the_cells", tail: Cons { head: "test.claim.roadmap_sandbox_witness.witness_family_fixture_frame_occurrences_exact", tail: Cons { head: "test.claim.roadmap_sandbox_witness.witness_sandbox_carries_auditioner_control", tail: Cons { head: "test.claim.roadmap_site_surface_readiness.witness_roadmap_site_surface_readiness_materialized_batch_holds", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_artifact_digests_are_content_hashes", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_dispatch_artifact_matches_file_content", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_healthz_route_json_ok", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_readback_script_checks_health_and_digests", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_readback_script_curls_are_wall_clock_bounded", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_roadmap_route_is_plain_text", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_site_artifact_model_populated", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_static_site_route_authority_paths_locked", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_text_routes_include_health_and_artifacts", tail: Cons { head: "test.claim.roadmap_tactile_witness.witness_sound_toggle_label_is_painted_by_the_program_not_the_markup", tail: Cons { head: "test.claim.seed_growth_admission_witness.a_live_roster_declaration_is_not_reported_stale", tail: Cons { head: "test.claim.sessions_panel_witness.sessions_panel_keystone_holds", tail: Cons { head: "test.claim.shell_exec_run_argv_embed_witness.witness_apply_script_requires_bash_receiver", tail: Cons { head: "test.claim.shell_exec_run_argv_embed_witness.witness_apply_script_stays_under_argv_embed_budget", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "test.claim.roadmap_receipt_continuity_acceptance.roadmap_receipt_continuity_acceptance_contract_holds", tail: Cons { head: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal", tail: Cons { head: "test.claim.roadmap_row_witness.roadmap_row_page_carries_the_cells", tail: Cons { head: "test.claim.roadmap_sandbox_witness.witness_family_fixture_frame_occurrences_exact", tail: Cons { head: "test.claim.roadmap_sandbox_witness.witness_sandbox_carries_auditioner_control", tail: Cons { head: "test.claim.roadmap_site_surface_readiness.witness_roadmap_site_surface_readiness_materialized_batch_holds", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_artifact_digests_are_content_hashes", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_dispatch_artifact_matches_file_content", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_healthz_route_json_ok", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_readback_script_checks_health_and_digests", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_readback_script_curls_are_wall_clock_bounded", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_roadmap_route_is_plain_text", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_site_artifact_model_populated", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_static_site_route_authority_paths_locked", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_text_routes_include_health_and_artifacts", tail: Cons { head: "test.claim.roadmap_tactile_witness.witness_sound_toggle_label_is_painted_by_the_program_not_the_markup", tail: Cons { head: "test.claim.seed_growth_admission_witness.a_live_roster_declaration_is_not_reported_stale", tail: Cons { head: "test.claim.sessions_panel_witness.sessions_panel_keystone_holds", tail: Cons { head: "test.claim.shell_exec_run_argv_embed_witness.witness_apply_script_requires_bash_receiver", tail: Cons { head: "test.claim.shell_exec_run_argv_embed_witness.witness_apply_script_stays_under_argv_embed_budget", tail: Empty {} } } } } } } } } } } } } } } } } } } } } 
 }
 
+// ONE ROW LEFT THIS ROSTER BECAUSE ITS WITNESS DID (2026-09-14), which is the ordinary exit this
+// file names -- delete the line -- arrived at from the other direction: the identity is gone, so
+// the line no longer describes the tree at all. `test.claim.ssh_transport_witness.witness_apply_script_stays_under_argv_embed_budget`
+// was a BYTE-IDENTICAL duplicate of the claim in test.claim.shell_exec_run_argv_embed_witness --
+// the required floor measured both at 194,291 eval steps and 962ms on run 34888954422, to the step
+// -- and the ssh copy was deleted as the DESIGN section 3 fork it was. Leaving its row here would
+// have refused the floor as `CostDebtUndeclared`: a roster line naming an identity the tree does
+// not declare is exactly what `v2.workflow.required_floor` `cost_debt_roster_standing` blocks on,
+// and that refusal is correct -- the row would have claimed a withhold for something that cannot
+// be withheld. The surviving copy keeps its own row, unchanged.
 fn floor_cost_debt_proven_chunk_05() -> List<String> {
-  Cons { head: "test.claim.ssh_transport_witness.witness_apply_script_stays_under_argv_embed_budget", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_fleet_converge_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_witnesses_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_lane_contexts_collide_with_no_other_emitted_workflow", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_retired_step_names_do_not_return", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_ci_invokes_one_composed_mode_not_a_step_ladder", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_no_phase_precondition_reads_another_phases_outcome", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_carries_both_lanes", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_does_not_build_the_parse_binary", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_build_job_needs_release_bins", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_no_heal_revalidation_paste_through", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.workflow_dispatch_choice_input_projects_options_list", tail: Cons { head: "v2.lens.registry.completeness_test.lens_registry_completeness_holds_live", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds", tail: Empty {} } } } } } } } } } } } } } }  } } } } }
+  Cons { head: "test.claim.toolchain_home_standing_witness.every_fleet_converge_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_witnesses_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_lane_contexts_collide_with_no_other_emitted_workflow", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_retired_step_names_do_not_return", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_ci_invokes_one_composed_mode_not_a_step_ladder", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_no_phase_precondition_reads_another_phases_outcome", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_carries_both_lanes", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_does_not_build_the_parse_binary", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_build_job_needs_release_bins", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_no_heal_revalidation_paste_through", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.workflow_dispatch_choice_input_projects_options_list", tail: Cons { head: "v2.lens.registry.completeness_test.lens_registry_completeness_holds_live", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds", tail: Empty {} } } } } } } } } } } } } } }  } } } }
 }
 
 fn floor_cost_debt_proven_chunk_06() -> List<String> {

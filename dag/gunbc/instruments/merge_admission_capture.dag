@@ -156,7 +156,7 @@ data merge_admission_capture_refusal_wire_relpath: String = "target/merge-admiss
 // edit or the parent's read degrades to its loud wire-absent arm. Same pairing class as
 // floor-population-budget-refusal.txt, under walk_plan_run_stage_claim_executor_seed_deferral.
 
-func tested_subject_capture() -> TestedSubjectCapture {
+fn tested_subject_capture() -> TestedSubjectCapture {
   match capture_walk_attempt_id() {
     Absent => TestedSubjectCaptureRefused { cause: CaptureAttemptIdentityAbsent }
     Present { value: attempt_id } =>
@@ -201,19 +201,19 @@ func tested_subject_capture() -> TestedSubjectCapture {
   }
 }
 
-func capture_refusal_wire_path() -> FilePath {
+fn capture_refusal_wire_path() -> FilePath {
   let root = git.Inspect.Toplevel().path as String
   concat(concat(root, "/"), merge_admission_capture_refusal_wire_relpath) as FilePath
 }
 
-func write_capture_refusal_wire(cause: TestedSubjectCaptureRefusal) -> Bool {
+fn write_capture_refusal_wire(cause: TestedSubjectCaptureRefusal) -> Bool {
   Filesystem.Write(
     path: capture_refusal_wire_path(),
     content: concat(concat("cause=", tested_subject_capture_refusal_label(cause: cause)), "\n")
   ).success
 }
 
-func capture_tested_subject() -> Bool {
+fn capture_tested_subject() -> Bool {
   let _ = shell.Remove.RecursiveForce(path: capture_refusal_wire_path())
   match tested_subject_capture() {
     TestedSubjectCaptured => true

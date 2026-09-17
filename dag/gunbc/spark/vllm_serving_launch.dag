@@ -6,6 +6,8 @@ import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, compare_content_hash, ContentHashComparison, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
+import product.fabric.demand { ObservationReceiptRef }
 
 // ── ONE LAUNCH IS ONE SUBJECT, AND THE UNIT IS NOT IT ──────────────────────────────────────────
 //
@@ -200,3 +202,58 @@ fn launch_wire(i: VllmServingLaunch) -> String {
 }
 
 data serving_launch_join_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.spark.vllm_kv_layout_observe seating_authority_for (and the pair-serving apply that grants seats) joins live observations through same_launch. SUFFICIENT FOR: a live capacity or seat decision cannot be joined on FabricGroup alone. pair_serving_observed.group_kv_pool_observed stays a historical fixture census keyed by group until that apply lands; rewriting it onto same_launch would demand an incarnation the fixture rows do not carry." as NonEmptyStr)
+
+// ── WHICH INCARNATION ANSWERED IS AN OBSERVATION OF ITS OWN, NOT A CONSEQUENCE OF THE UNIT ───────
+//
+// Two subjects already exist and nothing joined them. gunbc.spark.vllm_endpoint_process_launch
+// VllmEndpointProcessLaunch is the process that EXPORTS the endpoint a route answers on, identified
+// by its exported start time; VllmServingLaunch above is the engine incarnation, identified by its
+// systemd invocation, container and digests. The endpoint subject's own annotation says an unchanged
+// exporter does not establish the engine behind it, and that joining the two belongs to a privileged
+// reading. This carrier is that reading's shape: one observation, with a receipt, stating that THIS
+// endpoint process belongs to THIS incarnation.
+//
+// IT IS SOLE-CONSTRUCTED, and its production producer is gunbc.spark.serving_incarnation_observe,
+// which binds the answering exporter to a VllmServingLaunch over the fleet key session: it reads the
+// unit invocation and digest, the container id off the process cgroup, and the process whose /proc
+// start instant equals the exporter's process_start_time_seconds, and takes the executable digest
+// off the inspect object. (gunbc.instruments.fabric_capacity_standing launch_from_fields also mints a
+// VllmServingLaunch from a probe but never reads which exporter belongs to it, and its live host read
+// remains a frontier -- that is a different, capacity-facing reader.) Tests still construct this as
+// fixture evidence; production reaches it through that producer, and the trigger this header once
+// named -- an observation binding the answering endpoint to a VllmServingLaunch incarnation,
+// SUFFICIENT FOR gunbc.harness.harness_seat harness_serving_realization to carry
+// EndpointIncarnationObserved -- has landed.
+type EndpointIncarnationObservation sole_constructor {
+  endpoint: VllmEndpointProcessLaunch
+  launch: VllmServingLaunch
+  receipt: ObservationReceiptRef
+}
+
+fn endpoint_incarnation_observation(endpoint: VllmEndpointProcessLaunch, launch: VllmServingLaunch, receipt: ObservationReceiptRef) -> EndpointIncarnationObservation {
+  EndpointIncarnationObservation { endpoint: endpoint, launch: launch, receipt: receipt }
+}
+
+type EndpointIncarnationStanding
+  = EndpointIncarnationObserved { observation: EndpointIncarnationObservation }
+  | EndpointIncarnationUnobserved { obligation: NonEmptyStr }
+
+// ── LAUNCHED FROM THE DECLARED UNIT IS A DIFFERENT FACT FROM ANSWERED ─────────────────────────
+//
+// An incarnation whose unit digest equals the digest of the unit we render was CREATED from our
+// declaration. That says nothing about whether it is the process answering a given route, and the
+// two are separate types so that this one can never stand in for EndpointIncarnationObservation:
+// no arm here carries an endpoint. It compares through digests_agree, so a cross-family pair is
+// incomparable rather than different.
+type LaunchUnitProvenance
+  = LaunchedFromDeclaredUnit { declared: ContentHash }
+  | LaunchedFromDifferentUnit { observed: ContentHash, declared: ContentHash }
+  | LaunchUnitDigestsIncomparable
+
+fn launch_unit_provenance(launch: VllmServingLaunch, declared: ContentHash) -> LaunchUnitProvenance {
+  match digests_agree(left: launch.unit_digest, right: declared) {
+    DigestsAgree => LaunchedFromDeclaredUnit { declared: declared }
+    DigestsDiffer => LaunchedFromDifferentUnit { observed: launch.unit_digest, declared: declared }
+    DigestsIncomparable => LaunchUnitDigestsIncomparable
+  }
+}

@@ -21,7 +21,7 @@ pub use crate::std_keyed_roster::keyed_roster_build;
 pub use crate::std_keyed_roster::KeyedRosterBuild;
 use crate::std_keyed_roster::KeyedRosterBuild::{KeyedRosterBuildDuplicateKey, KeyedRosterBuilt};
 pub use crate::std_keyed_row::KeyedRow;
-pub use crate::std_types::NonEmptyStr;
+pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -69,6 +69,25 @@ pub fn frontier_row_decl(
         subject: Rc::new(FrontierSubject::DeclSubject { ref_: ref_.clone() }),
         reason: reason.clone(),
         dissolution: dissolution.clone(),
+    })
+}
+
+pub fn frontier_rows_for_decls(
+    module_path: String,
+    decl_names: Rc<Vec<String>>,
+    reason: String,
+    dissolution: Rc<DissolutionCondition>,
+) -> Rc<Vec<Rc<FrontierRow>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for n in decl_names.iter().cloned() {
+            __result.push(frontier_row_decl(
+                crate::std_decl_ref::decl_ref(module_path.clone(), n.clone()),
+                reason.clone(),
+                dissolution.clone(),
+            ));
+        }
+        __result
     })
 }
 

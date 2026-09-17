@@ -34,7 +34,9 @@ import gunbc.roadmap_launch_admission {
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchAlreadyAccepted, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchDependenciesBlocked, LaunchExecutionContractMissing,
+  LaunchNotAgentWork,
 }
+import gunbc.roadmap_execution_contract { OperatorExclusiveMode }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap_component { instrument_tuner_asset_path }
@@ -217,6 +219,7 @@ test fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: na(r: LaunchRevisionUnobserved { cause: "c" })) == 503
     && belt_dispatch_status(r: na(r: LaunchDependenciesBlocked { blockers: ["p"] })) == 409
     && belt_dispatch_status(r: na(r: LaunchExecutionContractMissing { reason: "r" })) == 409
+    && belt_dispatch_status(r: na(r: LaunchNotAgentWork { mode: OperatorExclusiveMode })) == 409
     && all(belt_dispatch_result_exemplars(), r => status_is_typed(s: belt_dispatch_status(r: r)))
 }
 
@@ -351,9 +354,13 @@ test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
     && string_contains(s: r.body, pattern: "abc123")
 }
 
-// THE POST IS A DIFFERENT ROUTE, and it must not answer 200 while the broker is undeployed: a
-// route that reported success here would tell the operator they had approved something no store
-// recorded. It refuses with 501 until the keyring, decision store and publisher exist.
+// THE POST IS A DIFFERENT ROUTE, and it must not answer 200 while the deployment cannot vouch for
+// the identity header: a route that reported success here would tell the operator they had
+// approved something no store recorded, or that someone who set a header had. It now reaches the
+// store's fold (gunbc.auth.approval_decision_store redeem_over_store) and refuses on
+// approval_identity_trust -- 503 with the blocker named -- rather than the 501 it answered while
+// the store did not exist. When the deployment row flips to established, this test's expected
+// status moves with it and the segment below becomes a real redemption.
 test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() -> Bool {
   let r = roadmap_serve_respond(
     method_label: "POST",
@@ -362,7 +369,8 @@ test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() ->
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  r.status == 501
+  r.status == 503
+    && string_contains(s: r.body, pattern: "identity header cannot be trusted on this deployment")
     && !string_contains(s: r.body, pattern: "does not decide anything")
 }
 
@@ -426,6 +434,7 @@ fn caller_supplied_plan_fixture() -> RoadmapAuthorityProjection {
       ],
     },
     accepted: [],
+    withheld: [],
   }
 }
 

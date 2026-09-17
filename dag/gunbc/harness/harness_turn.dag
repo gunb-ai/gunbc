@@ -447,15 +447,7 @@ fn harness_messages_request_json(
     json_kv(key: "max_tokens", value: json_int(n: config.max_tokens)),
     json_kv(key: "system", value: json_string(s: config.system_prompt)),
     json_kv(key: "messages", value: json_array(elements: messages)),
-    json_kv(key: "tools", value: json_array(elements: [
-      json_object([
-        json_kv(key: "name", value: json_string(s: "run_command")),
-        json_kv(key: "description", value: json_string(
-          s: "Run a shell command in the attempt's working directory and return its combined output and exit code.",
-        )),
-        json_kv(key: "input_schema", value: harness_run_command_schema()),
-      ]),
-    ])),
+    json_kv(key: "tools", value: harness_tool_contract_json(shape: AnthropicMessagesShape)),
   ], reasoning_kwargs))
 }
 
@@ -475,19 +467,42 @@ fn harness_chat_request_json(
         json_kv(key: "content", value: json_string(s: config.system_prompt)),
       ]),
     ], messages))),
-    json_kv(key: "tools", value: json_array(elements: [
-      json_object([
-        json_kv(key: "type", value: json_string(s: "function")),
-        json_kv(key: "function", value: json_object([
-          json_kv(key: "name", value: json_string(s: "run_command")),
-          json_kv(key: "description", value: json_string(
-            s: "Run a shell command in the attempt's working directory and return its combined output and exit code.",
-          )),
-          json_kv(key: "parameters", value: harness_run_command_schema()),
-        ])),
-      ]),
-    ])),
+    json_kv(key: "tools", value: harness_tool_contract_json(shape: OpenAiChatCompletionsShape)),
   ], reasoning_kwargs))
+}
+
+// THE TOOL CONTRACT IS RENDERED ONCE AND READ TWICE: it is the tools array the request carries, and
+// it is part of the normalized request identity a turn is placed under (gunbc.harness.harness_cli
+// harness_model_request_inputs), so the identity cannot drift from what the model is actually
+// offered. One schema, two envelopes.
+fn harness_tool_contract_json(shape: HarnessWireShape) -> JsonValue {
+  match shape {
+    AnthropicMessagesShape =>
+      json_array(elements: [
+        json_object([
+          json_kv(key: "name", value: json_string(s: "run_command")),
+          json_kv(key: "description", value: json_string(s: harness_run_command_description)),
+          json_kv(key: "input_schema", value: harness_run_command_schema()),
+        ]),
+      ])
+    OpenAiChatCompletionsShape =>
+      json_array(elements: [
+        json_object([
+          json_kv(key: "type", value: json_string(s: "function")),
+          json_kv(key: "function", value: json_object([
+            json_kv(key: "name", value: json_string(s: "run_command")),
+            json_kv(key: "description", value: json_string(s: harness_run_command_description)),
+            json_kv(key: "parameters", value: harness_run_command_schema()),
+          ])),
+        ]),
+      ])
+  }
+}
+
+data harness_run_command_description: String = "Run a shell command in the attempt's working directory and return its combined output and exit code."
+
+fn harness_tool_contract_wire(shape: HarnessWireShape) -> String {
+  serialize_json(v: harness_tool_contract_json(shape: shape))
 }
 
 // INLINE REASONING IS DECODED, NOT REFUSED. When the serving unit carries no reasoning parser, a

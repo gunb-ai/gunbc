@@ -1,0 +1,103 @@
+module product.data_category
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE HANDLING-CLASS MARKERS, ONE ROW EACH, AND NOTHING ELSE. A category here names a class of data
+// the product handles -- it is the C in product.data_class Classified<C, T> -- and it GRANTS
+// NOTHING: which sinks a category may reach, under which lawful basis, kept for how long, and in
+// whose scope, are rows of the data-handling map, which is private policy and is never enumerated
+// in this tree (parent ruling msg_144d9121, point 4: the marker identifies the handling class; the
+// grant lives on the sink and the permit). So "PersonalIdentity" never reads as "permitted".
+//
+// OPEN BY ROW, NOT A CLOSED ENUM. Each category is its own bare type declaration, so a category is
+// added by adding a declaration and its private description row, not by widening a coproduct every
+// match would then have to re-eliminate. std.magnitude Magnitude is the same shape: a nominal
+// identity with no inhabitant, consulted only as a type argument.
+//
+// ONE ROSTER, TWO HALVES (DESIGN 3, agreed with the M2 compliance lane 2026-09-13). The marker is
+// public and type-level; the DESCRIPTION -- what we process under it, where, for what purpose,
+// under which basis, with what ratification standing -- is gunbc-private strategy.data_map, whose
+// rows cite these declarations by DeclarationRef { module_path: "product.data_category", decl_name }.
+// The eight markers below are one per description row, under the same names that lane authors.
+// The join is walled on the citing side, by a cited-declaration-exists witness; nothing here copies
+// that lane's names.
+//
+// THE SCOPE EXCLUSION IS EXPRESSED BY ABSENCE. The private map states an explicit exclusion: no
+// end-user personal data. PersonalIdentity names the identity of an ACCOUNT or ADMIN principal --
+// the person who signed in -- and there is deliberately no EndUserPersonalData marker: a category
+// with no marker has no Classified constructor, no sink row and no permit, which is the type-level
+// form of "we do not hold it".
+
+type PersonalIdentity
+type SourceAndBuildInput
+type BuildOutput
+type CiSecret
+type JobLog
+type MeteringTelemetry
+type SupportCommunication
+type AbuseAndSanctionsRecord
+
+// THE RUNTIME NAME OF EACH MARKER. A type argument has no value at run time, and the interpretation
+// path does not yet judge marker identity at generic positions (gunbc.recurring_failure_mode
+// generic_application_admits_distinct_unit_variant_arguments and its bare-marker sibling), so
+// every Classified value and every Sink also carries the marker's declaration reference, and the
+// admission fold compares those. These are the only spellings of the references; a consumer that
+// needs one imports it rather than re-spelling the module path. A marker gains its reference
+// function with its FIRST MINT OR SINK, so no function here is a declaration nothing reads
+// (DESIGN 3c, review 65204). They are earned two ways. PersonalIdentity and BuildOutput earned
+// theirs from their MINTS. SourceAndBuildInput, MeteringTelemetry and CiSecret earn theirs from a
+// PUBLIC caller that was already there and spelling this module's path the long way -- the frontier
+// rows of product.data_class, cut over in this change. The rest earn theirs from the first SINK:
+// gunbc-private strategy.data_map binds one marker per description row and hands it to
+// product.data_class admit_data_effect, which compares marker identity -- so without these the
+// private rows would have to re-spell the module path, forking the only spelling this annotation
+// exists to keep single (DESIGN 3).
+//
+// THIS SENTENCE PREVIOUSLY SAID ONLY TWO REFERENCES EXIST, and it stood above two while the corpus
+// needed eight. Prose asserting what the code contradicts rots silently because no Accepted program
+// can read it (DESIGN 4c); the count is gone from this annotation for that reason -- the functions
+// below are the census.
+data data_category_module_path: String = "product.data_category"
+
+fn personal_identity_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "PersonalIdentity") }
+fn build_output_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "BuildOutput") }
+fn source_and_build_input_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "SourceAndBuildInput") }
+fn ci_secret_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "CiSecret") }
+fn job_log_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "JobLog") }
+fn metering_telemetry_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "MeteringTelemetry") }
+fn support_communication_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "SupportCommunication") }
+fn abuse_and_sanctions_record_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "AbuseAndSanctionsRecord") }
+
+// THE REFERENCES WITH NO CALL SITE IN THIS TREE, DECLARED AS A FRONTIER RATHER THAN LEFT TO BE
+// INFERRED. THE LIST BELOW IS THE CENSUS AND THIS SENTENCE DELIBERATELY CARRIES NO COUNT: an earlier
+// revision said SIX here, three of those six turned out to be called already, and a count in prose
+// beside the list it counts is the second census that made this module's other annotation wrong in
+// the first place. The rows below are not called anywhere public, and DESIGN 3c gives a
+// declaration exactly three honest states: consumed by execution here, a declared frontier with its
+// trigger stated BESIDE it, or dangling. These are the second, and the trigger has to be a typed row
+// rather than the paragraph above them -- DESIGN 4c settles that an annotation is never evidence a
+// machine claim holds, because no Accepted program can read one. Review 65961 refused an earlier
+// revision of this module for exactly that: the consumer was named in prose and nowhere a fold could
+// reach it.
+//
+// WHY THIS ROSTER AND NOT product.data_class's. That module already carries frontier rows for these
+// MARKERS -- the types -- and those rows stay its own. These rows are about the REFERENCE FUNCTIONS,
+// a different declaration set in a different module, and merging them would put one module's
+// declarations in another module's roster. The two dissolve together in practice and are still two
+// facts (DESIGN 3).
+data data_category_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: data_category_module_path,
+  decl_names: [
+    "job_log_ref" as NonEmptyStr,
+    "support_communication_ref" as NonEmptyStr,
+    "abuse_and_sanctions_record_ref" as NonEmptyStr,
+  ],
+  reason: "no public call site. THREE OF THE ORIGINAL SIX WERE WRONG TO BE HERE and are gone from this list: source_and_build_input_ref, metering_telemetry_ref and ci_secret_ref are now CALLED, by product.data_class's own frontier rows, which had been re-spelling this module's path the long way beside the functions that name it. Review 66072 caught that, and it caught the worse half: minting a second spelling beside an existing one is the DESIGN 3 nicknaming fork, and this PR CREATED it rather than cutting over -- while the annotation above claims these are the only spellings, which the tree then contradicted at three sites. The remaining three are genuinely uncalled in public: their consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The functions exist ahead of that binding so those rows import one spelling instead of re-spelling this module's path, which is the fork DESIGN 3 forbids. ONE REASON RATHER THAN THREE: they share a single fact -- no public caller, one private consumer -- and review 65976 refused an earlier revision that copied this sentence per name.",
+  dissolution: unbound_dissolution(
+    description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER, STATED AS THE CAPABILITY AND NOT A VEHICLE: gunbc-private strategy.data_map's handling rows IMPORT these names from this module as it stands on public main. Any change carrying that import satisfies it; no particular PR is named, deliberately. THE PREVIOUS WORDING NAMED A VEHICLE AND THE VEHICLE HAS SAILED: it required the binding to land on gunbc-private#118 from eea5674, but #118 merged at 3406db44c WITHOUT the binding and eea5674 is preserved as a WIP side-branch commit marked DO NOT MERGE. A trigger pointing at an artifact that cannot land is a dissolution that can never fire, and the frontier would have sat here forever reading as tracked. That is DESIGN section 4b(3)'s rule -- a trigger must name the CAPABILITY, not an artifact that would contribute to one -- read in the direction where the named artifact is not merely insufficient but impossible. READ OBLIGATION: whoever lands that import names its change here at that time, rather than this row guessing the vehicle in advance a second time. SUFFICIENT FOR deleting a name from the list above; the roster empties when every name in it is imported. NOT satisfied by a public witness calling one of them, which would prove the function evaluates and not that anything consumes the identity it names.",
+  ),
+)
+

@@ -1,6 +1,14 @@
 module gunbc.roadmap_serve
 
 import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_decision_store {
+  approval_decision_store_root, approval_identity_trust, read_approval_keyring, redeem_over_store, store_redemption_reason,
+  RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionSegmentMalformed, RedemptionEscalationNotFiled,
+  RedemptionBrokerRefused, RedemptionLostTheRace, RedemptionStoreUnreadable, RedemptionKeyringUnavailable,
+  RedemptionIdentityUntrusted, RedemptionCommitRefused,
+  IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
+}
 import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
@@ -37,7 +45,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
 }
@@ -405,6 +413,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchReviewRequired => 409
     LaunchSizeMissing => 409
     LaunchExecutionContractMissing { reason: _ } => 409
+    LaunchNotAgentWork { mode: _ } => 409
     LaunchDependenciesBlocked { blockers: _ } => 409
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => 409
     LaunchCauseNotPermitted { cause: _, mode: _ } => 409
@@ -529,30 +538,71 @@ fn approval_confirm_page_response(
   )
 }
 
-// THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's
-// rather than this handler's. The handler's whole job is to hand the broker the three things only
-// the request carries -- the method, the capability from the path, and the AUTHENTICATED IDENTITY
-// -- and to render whatever the broker decides.
+// THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's or
+// the store's rather than this handler's. The handler's whole job is to hand the store's fold the
+// things only the request carries -- the method, the capability segment from the path, the
+// AUTHENTICATED IDENTITY and the clock reading -- and to render whatever comes back.
 //
 // The identity comes from request.identity, which the serve entry populated from the header
 // tailscale serve injects. It is not read from the body, a query parameter, or a cookie: those are
 // all supplied by whoever is making the request, and an identity the caller supplies is not an
-// identity.
+// identity. And whether that header is evidence at all is the deployment's to establish, not this
+// handler's to assume: gunbc.auth.approval_decision_store approval_identity_trust says NOT
+// ESTABLISHED while the unit binds 0.0.0.0, and redeem_over_store refuses on that row before it
+// reads anything else. So until the deployment earns the trust, this route answers a located
+// refusal naming the blocker -- which is the honest successor to the 501 it used to answer, not a
+// silent 200 and not a decision nobody recorded.
+//
+// A 503 IS THE DEPLOYMENT'S OR THE STORE'S FAULT, never the operator's: it names what to fix
+// before trying again, and it is the honest successor to the 501 this route answered while the
+// store did not exist.
+//
+// THE CLOCK AND THE KEYRING ARE READ ONLY PAST THE TRUST GATE. Both are effects, and an effect
+// performed on the way to a refusal is work the refusal should have prevented -- it is also what
+// keeps the hermetic witness able to reach this handler while the row says not established, since
+// Clock.Now has no hermetic arm.
 fn approval_decide_response(
   request: ServeHttpRequest,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
+  let observed_at = match approval_identity_trust {
+    IdentityHeaderTrustNotEstablished { blocker: _ } => ""
+    IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+  }
+  let keyring = match approval_identity_trust {
+    IdentityHeaderTrustNotEstablished { blocker: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_mac_key_path } }
+    IdentityHeaderTrustEstablished { evidence: _ } => read_approval_keyring()
+  }
+  let outcome = redeem_over_store(
+    root: approval_decision_store_root,
+    trust: approval_identity_trust,
+    keyring: keyring,
+    method: request.method,
+    segment: path_param_value(params: params, name: "capability"),
+    presented_identity: request.identity,
+    observed_at: observed_at,
+  )
+  let status = match outcome {
+    RedeemedApproved { decision: _ } => 200
+    RedeemedDenied { decision: _ } => 200
+    AlreadyDecided { decision: _ } => 200
+    RedemptionSegmentMalformed { detail: _ } => 400
+    RedemptionEscalationNotFiled { escalation_id: _ } => 404
+    RedemptionBrokerRefused { cause: _ } => 403
+    RedemptionLostTheRace => 409
+    RedemptionStoreUnreadable { detail: _ } => 503
+    RedemptionKeyringUnavailable { cause: _ } => 503
+    RedemptionIdentityUntrusted { blocker: _ } => 503
+    RedemptionCommitRefused { detail: _ } => 503
+  }
   serve_text_response(
-    status: 501,
+    status: status,
     content_type: text_plain_utf8,
     body: join([
-      "approval decision route: the broker is modeled and its redemption fold is witnessed\n",
-      "(gunbc.auth.approval_broker redeem_capability), but this handler does not yet reach it:\n",
-      "the keyring, the decision store and the notification publisher are not deployed.\n\n",
-      "This refuses with 501 rather than accepting, because a route that answered 200 here would\n",
-      "report a decision nobody recorded -- and the operator would believe they had approved.\n\n",
+      "approval decision: ", store_redemption_reason(r: outcome), "\n",
       "capability: ", path_param_value(params: params, name: "capability"), "\n",
       "identity: ", tailnet_identity_login(i: request.identity), "\n",
+      "observed_at: ", observed_at, "\n",
     ], ""),
   )
 }

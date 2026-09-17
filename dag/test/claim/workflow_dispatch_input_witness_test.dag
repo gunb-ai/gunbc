@@ -3,6 +3,10 @@ module test.claim.workflow_dispatch_input_witness
 import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
+import gunbc.fleet_converge_plan {
+  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly,
+}
+import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
@@ -19,7 +23,8 @@ import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
   ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke }
+import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
@@ -233,6 +238,17 @@ test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_i
     && string_contains(s: fleet_converge_spark_bootstrap_step_if, pattern: "mode == 'spark_bootstrap'")
 }
 
+// THE SERVING APPLY STEP PRINTS THE RECEIPT ITS ENTRY WRITES. The step carried its own spelling of
+// the path, which named a file the entry never writes, so every converged apply (runs 34776045365,
+// 34782197491, 34783266345) ended red on `cat: No such file` after the units had landed. The step
+// now reads the entry's own declaration; the second assertion fails on the old spelling.
+test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes() -> Bool {
+  let invoke = gunbc_ci_spark_serving_apply_invoke()
+  string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/pair_serving_apply.dag --function spark_pair_serving_apply_wet")
+    && string_contains(s: invoke, pattern: join(["cat \"$ROOT/", spark_pair_apply_receipt_path, "\""], ""))
+    && !string_contains(s: invoke, pattern: "spark-pair-serving-apply-receipt")
+}
+
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
   let invoke = gunbc_ci_org_actions_converge_invoke()
   string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet")
@@ -382,14 +398,20 @@ test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
 // changing it is a deliberate act with a red here rather than a quiet consequence of adding a member
 // to FleetConvergeScope. The three modes that DO name a scope are asserted beside it, so a projection
 // that answered `none` for everything cannot pass.
-test fn dashboard_deploy_names_no_fleet_scope_while_the_plan_modes_do() -> Bool {
-  let deploy_absent = match fleet_converge_mode_scope(mode: DashboardDeploy) {
-    Absent => true
-    Present { value: _ } => false
+test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> Bool {
+  let deploy_live = match fleet_converge_mode_scope(mode: DashboardDeploy) {
+    Absent => false
+    Present { value: s } => match s {
+      LiveDeploy => true
+      FullHost => false
+      LaunchEnvironment => false
+      FabricExecutionCellsOnly => false
+      FabricAllocationStoreOnly => false
+    }
   }
   let plans_present = all(
     [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan],
     m => match fleet_converge_mode_scope(mode: m) { Present { value: _ } => true  Absent => false },
   )
-  deploy_absent && plans_present
+  deploy_live && plans_present
 }

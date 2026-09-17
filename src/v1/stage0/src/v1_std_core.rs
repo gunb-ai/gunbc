@@ -763,6 +763,10 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    EffectfulSelfRecursionUnrealized {
+        name: String,
+        span: Rc<SourceSpan>,
+    },
     ModuleFilenameCollision {
         filename: String,
         modules: Rc<Vec<String>>,
@@ -986,6 +990,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
+        CompilerDiagnostic::EffectfulSelfRecursionUnrealized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { span: s, .. } => s.clone(),
@@ -1055,6 +1060,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name: n, .. } => v1_rt::concat(v1_rt::concat("visible declarations of '".to_string(), n.clone()), "' could not be enumerated: the import re-export walk exceeded its depth bound, so no verdict is asserted about how many declarations answer to the name".to_string()),
     CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("default value for parameter '".to_string(), p.clone()), "' is not an admitted form (admitted: ".to_string()), forms.clone().join(&", ".to_string())), ")".to_string()),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
+    CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself: the Rust realization renders an effectful declaration as `async fn`, and rustc refuses recursion in an async fn without boxing (E0733), which no emitter performs. Realize the recursion as a loop, or move the self-call into a pure helper.".to_string()),
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller: c, .. } => v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls the local binding '".to_string()), n.clone()), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer".to_string()),
@@ -1291,6 +1297,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::EffectfulSelfRecursionUnrealized { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -3369,8 +3379,10 @@ pub fn expr_literal_symbol_optional(expr: Rc<Node>) -> Option<String> {
     }
 }
 
-pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
+pub fn expr_is_any_literal(mut __tco_loop_expr: Rc<Node>) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr;
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
                 LiteralValue::LitNull => {
@@ -3388,7 +3400,7 @@ pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
                 ..
             } => {
                 let __tco_0 = unaryop_operand(expr);
-                expr = __tco_0;
+                __tco_loop_expr = __tco_0;
                 continue;
             }
             _ => {

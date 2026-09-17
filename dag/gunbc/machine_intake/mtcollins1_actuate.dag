@@ -13,6 +13,7 @@ import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_access_observation,
   mtcollins1_capability_row,
 }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.machine_intake_oob_boot_handoff {
   BootHandoffCompleted,
   BootHandoffNotAdmitted,
@@ -51,11 +52,11 @@ data mtcollins1_boot_readback_rendering: NonEmptyStr = "Force PXE"
 // hold evidence for.
 data mtcollins1_power_action: NonEmptyStr = "cycle"
 
-// THE ADMINISTRATOR ACCOUNT AS MEASURED, not as assumed: `ipmitool user list 1` reports user ID 2
-// named "admin" with ADMINISTRATOR privilege as the ONLY enabled account on the channel. This is
-// the account the converge rotation phase will re-key, which is why it is a named row rather than
-// a literal buried in a call.
-data mtcollins1_bmc_username: NonEmptyStr = "admin"
+// THE USERNAME IS THE MANAGED ACCOUNT ON BmcSecured, never the published factory literal
+// "admin" and never a second spelling of "gunbc". Password remains a caller file-path argument
+// on mtcollins1_netboot_handoff / mtcollins1_cdrom_handoff (CLI names unchanged). Absent means
+// derive_bmc_secure did not mint BmcSecured; the wrappers refuse before any controller write.
+data mtcollins1_bmc_username: NonEmptyStr? = mtcollins1_secured_account()
 
 // THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment. The first draft
 // read it from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with
@@ -119,26 +120,49 @@ fn mtcollins1_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome)
   }
 }
 
-func mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
+fn mtcollins1_drive_handoff(
+  label: NonEmptyStr,
+  password_file_raw: String,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+  device: NonEmptyStr,
+  expected_rendering: NonEmptyStr,
+) -> ProcessExit
   uses net: std.resources.Network
 {
-  match mtcollins1_password_file(raw: password_file_raw) {
-    CredentialPathMissing =>
-      exit_failure(reason: "mtcollins1 handoff: no credential path supplied; refusing before any controller write")
-    CredentialPathGiven { path: pw } =>
-      mtcollins1_render_outcome(
-        label: "mtcollins1 handoff",
-        outcome: oob_boot_handoff(
-          observation: mtcollins1_access_observation,
-          capability_row: mtcollins1_capability_row,
-          username: mtcollins1_bmc_username,
-          password_file: pw,
-          device: mtcollins1_boot_device,
-          expected_rendering: mtcollins1_boot_readback_rendering,
-          power_action: mtcollins1_power_action,
-        )
-      )
+  match mtcollins1_bmc_username {
+    Absent =>
+      exit_failure(reason: concat(label as String, ": BMC is not BmcSecured; refusing before any controller write"))
+    Present { value: username } =>
+      match mtcollins1_password_file(raw: password_file_raw) {
+        CredentialPathMissing =>
+          exit_failure(reason: concat(label as String, ": no credential path supplied; refusing before any controller write"))
+        CredentialPathGiven { path: pw } =>
+          mtcollins1_render_outcome(
+            label: label,
+            outcome: oob_boot_handoff(
+              observation: mtcollins1_access_observation,
+              capability_row: capability_row,
+              username: username,
+              password_file: pw,
+              device: device,
+              expected_rendering: expected_rendering,
+              power_action: mtcollins1_power_action,
+            ),
+          )
+      }
   }
+}
+
+fn mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  mtcollins1_drive_handoff(
+    label: "mtcollins1 handoff",
+    password_file_raw: password_file_raw,
+    capability_row: mtcollins1_capability_row,
+    device: mtcollins1_boot_device,
+    expected_rendering: mtcollins1_boot_readback_rendering,
+  )
 }
 
 // THE SECOND BOOT ROUTE FOR THE SAME UNIT, and it is the shape this module predicted: a second
@@ -162,26 +186,16 @@ data mtcollins1_cdrom_device: NonEmptyStr = "cdrom"
 // its caller rather than deriving it from the device word.
 data mtcollins1_cdrom_readback_rendering: NonEmptyStr = "Force Boot from CD/DVD"
 
-func mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
+fn mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
   uses net: std.resources.Network
 {
-  match mtcollins1_password_file(raw: password_file_raw) {
-    CredentialPathMissing =>
-      exit_failure(reason: "mtcollins1 cdrom handoff: no credential path supplied; refusing before any controller write")
-    CredentialPathGiven { path: pw } =>
-      mtcollins1_render_outcome(
-        label: "mtcollins1 cdrom handoff",
-        outcome: oob_boot_handoff(
-          observation: mtcollins1_access_observation,
-          capability_row: mtcollins1_capability_row,
-          username: mtcollins1_bmc_username,
-          password_file: pw,
-          device: mtcollins1_cdrom_device,
-          expected_rendering: mtcollins1_cdrom_readback_rendering,
-          power_action: mtcollins1_power_action,
-        )
-      )
-  }
+  mtcollins1_drive_handoff(
+    label: "mtcollins1 cdrom handoff",
+    password_file_raw: password_file_raw,
+    capability_row: mtcollins1_capability_row,
+    device: mtcollins1_cdrom_device,
+    expected_rendering: mtcollins1_cdrom_readback_rendering,
+  )
 }
 
 // THE ENFORCEMENT CONTROL, and it is deliberately not a test of the admission fold. That fold is
@@ -213,24 +227,14 @@ data mtcollins1_mismatched_capability_row: BmcFirmwareReleaseCapabilityRow = Bmc
   ],
 }
 
-func mtcollins1_denied_admission_control(password_file_raw: String) -> ProcessExit
+fn mtcollins1_denied_admission_control(password_file_raw: String) -> ProcessExit
   uses net: std.resources.Network
 {
-  match mtcollins1_password_file(raw: password_file_raw) {
-    CredentialPathMissing =>
-      exit_failure(reason: "mtcollins1 denied-admission control: no credential path supplied")
-    CredentialPathGiven { path: pw } =>
-      mtcollins1_render_outcome(
-        label: "mtcollins1 denied-admission control",
-        outcome: oob_boot_handoff(
-          observation: mtcollins1_access_observation,
-          capability_row: mtcollins1_mismatched_capability_row,
-          username: mtcollins1_bmc_username,
-          password_file: pw,
-          device: mtcollins1_boot_device,
-          expected_rendering: mtcollins1_boot_readback_rendering,
-          power_action: mtcollins1_power_action,
-        )
-      )
-  }
+  mtcollins1_drive_handoff(
+    label: "mtcollins1 denied-admission control",
+    password_file_raw: password_file_raw,
+    capability_row: mtcollins1_mismatched_capability_row,
+    device: mtcollins1_boot_device,
+    expected_rendering: mtcollins1_boot_readback_rendering,
+  )
 }

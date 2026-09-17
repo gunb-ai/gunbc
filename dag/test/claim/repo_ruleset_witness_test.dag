@@ -1,16 +1,21 @@
 module test.claim.repo_ruleset_witness_test
 
 import std.types { Bool, String, Int, NonEmptyStr }
+import std.dissolution { dissolution_description }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
 import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }
 import extdeps.github.actions { github_actions_app_integration_id }
 import gunbc.repo_ruleset {
   RulesetDivergence,
+  RulesetObserved,
+  RulesetObservation,
+  RulesetUnreadable,
+  RulesetReadTransportRefused,
   desired_required_contexts,
   desired_ruleset_rules,
   desired_ruleset_conditions,
-  observed_ruleset_divergences,
+  observed_ruleset_divergences_for,
   render_divergences,
   gunbc_passing_ci_ruleset_name,
   desired_strict_required_status_checks_policy,
@@ -18,7 +23,9 @@ import gunbc.repo_ruleset {
   desired_ruleset_rule_types,
   desired_merge_queue,
   desired_merge_queue_policy,
-  gunbc_merge_queue_proposal,
+  merge_queue_floor_aligned_policy,
+  merge_queue_timeout_below_floor,
+  MergeQueuePolicy,
   MergeQueueUnsigned,
   MergeQueueSignedOff,
   signed_desire_projection_refusal_for,
@@ -26,8 +33,19 @@ import gunbc.repo_ruleset {
   render_unknowns,
   ruleset_unknowns,
   merge_queue_check_response_timeout,
+  desired_merge_queue_standing,
+  desired_bypass_actors,
+  desired_bypass_roster,
+  BypassRosterSignedOff,
+  BypassRosterUnsigned,
+  required_contexts_declaration_refusals,
+  repo_ruleset_ensure_decision,
+  repo_ruleset_ensure_decision_for,
+  ruleset_observation_satisfies_goal,
+  desired_repo_ruleset_goal,
 }
 import v2.std.collection { Absent, Present }
+import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.github.rulesets {
   BypassActorRosterObservation,
   BypassRosterObserved,
@@ -40,6 +58,8 @@ import extdeps.github.rulesets {
   ReaderBypassStanding,
   RulesetActive,
   RulesetEvaluate,
+  RulesetEnforcement,
+  RulesetTarget,
   BranchTarget,
   ThisReaderCannotBypass,
   ThisReaderCanBypassAlways,
@@ -48,7 +68,9 @@ import extdeps.github.rulesets {
   DeletionRule,
   NonFastForwardRule,
   RequiredStatusChecksRule,
+  PullRequestRule,
   RequiredStatusChecks,
+  RequiredStatusChecksParametersIncomplete,
   NoRequiredStatusChecksRule,
   MultipleRequiredStatusChecksRules,
   RequiredStatusCheckStanding,
@@ -103,10 +125,11 @@ test fn w_the_one_required_context_is_the_aggregation_job() -> Bool {
 // not a restatement of the declaration.
 test fn w_desired_rules_carry_the_history_protections_as_well_as_the_gate() -> Bool {
   let rules = desired_ruleset_rules()
-  length(rules) == 3
+  length(rules) == 4
     && any(rules, r => r.type == "deletion")
     && any(rules, r => r.type == "non_fast_forward")
     && any(rules, r => r.type == "required_status_checks")
+    && any(rules, r => r.type == "merge_queue")
 }
 
 // THE CONTEXT IS PINNED TO THE APP THAT PUBLISHES IT. Without the integration id any actor with
@@ -121,8 +144,10 @@ test fn w_the_required_context_is_pinned_to_the_actions_app() -> Bool {
   }
   && all(
        filter(desired_ruleset_rules(), r => r.type == "required_status_checks"),
-       r => all(r.parameters.required_status_checks, chk =>
-              chk.integration_id == github_actions_app_integration_id))
+       r => all(match r.parameters.required_status_checks {
+         Present { value: checks } => checks
+         Absent => []
+       }, chk => chk.integration_id == github_actions_app_integration_id))
 }
 
 // THE CONDITION TARGETS THE DEFAULT BRANCH BY ALIAS, NOT BY NAME. A literal branch name here would
@@ -138,17 +163,42 @@ fn desired_shaped_standing() -> RequiredStatusCheckStanding {
   required_status_check_standing(rules: desired_ruleset_rules())
 }
 
+fn divergences_against_desired(
+  name: String,
+  enforcement: RulesetEnforcement,
+  target: RulesetTarget,
+  bypass: ReaderBypassStanding,
+  include: List<String>,
+  exclude: List<String>,
+  rule_types: List<RulesetRuleType>,
+  standing: RequiredStatusCheckStanding,
+  merge_queue: MergeQueueStanding,
+) -> List<RulesetDivergence> {
+  observed_ruleset_divergences_for(
+    goal: desired_repo_ruleset_goal(),
+    name: name,
+    enforcement: enforcement,
+    target: target,
+    bypass: bypass,
+    include: include,
+    exclude: exclude,
+    rule_types: rule_types,
+    standing: standing,
+    merge_queue: merge_queue,
+  )
+}
+
 fn divergences_of_desired_shaped_observation() -> List<RulesetDivergence> {
-  observed_ruleset_divergences(
+  divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
     bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
-    rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
+    rule_types: desired_ruleset_rule_types(),
     standing: desired_shaped_standing(),
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
   )
 }
 
@@ -162,30 +212,30 @@ test fn w_a_desired_shaped_observation_diverges_in_nothing() -> Bool {
 // field of the observation the positive control above passes, so a green here is a claim about
 // that field rather than about the fold being non-empty.
 test fn w_RED_enforcement_below_active_is_a_divergence() -> Bool {
-  length(observed_ruleset_divergences(
+  length(divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetEvaluate,
     target: BranchTarget,
     bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
-    rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
+    rule_types: desired_ruleset_rule_types(),
     standing: desired_shaped_standing(),
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
   )) == 1
 }
 
 fn divergences_for_bypass(bypass: ReaderBypassStanding) -> List<RulesetDivergence> {
-  observed_ruleset_divergences(
+  divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
     bypass: bypass,
     include: [default_branch_ref_alias],
     exclude: [],
-    rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
+    rule_types: desired_ruleset_rule_types(),
     standing: desired_shaped_standing(),
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
   )
 }
 
@@ -235,16 +285,16 @@ test fn w_RED_an_extra_required_context_is_a_divergence() -> Bool {
       do_not_enforce_on_create: desired_do_not_enforce_on_create,
     ),
   ])
-  let ds = observed_ruleset_divergences(
+  let ds = divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
     bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
-    rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
+    rule_types: desired_ruleset_rule_types(),
     standing: extra,
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
   )
   length(ds) == 1 && string_contains(s: render_divergences(ds: ds), pattern: "some-other-context")
 }
@@ -253,25 +303,25 @@ test fn w_RED_an_extra_required_context_is_a_divergence() -> Bool {
 // empty-observation narrow: both would be [] under a projection that returned a bare roster, and
 // only one of them means "the ruleset lost the rule that gates".
 test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
-  let ds = observed_ruleset_divergences(
+  let ds = divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
     bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
-    rule_types: [DeletionRule, NonFastForwardRule],
+    rule_types: filter(desired_ruleset_rule_types(), t => ruleset_rule_type_wire_label(t: t) != "required_status_checks"),
     standing: NoRequiredStatusChecksRule,
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
   )
-  let empty_roster = observed_ruleset_divergences(
+  let empty_roster = divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
     bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
-    rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
+    rule_types: desired_ruleset_rule_types(),
     standing: required_status_check_standing(rules: [
       required_status_checks_rule(
         checks: [],
@@ -279,7 +329,7 @@ test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
         do_not_enforce_on_create: desired_do_not_enforce_on_create,
       ),
     ]),
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
   )
   string_contains(s: render_divergences(ds: ds), pattern: "no required_status_checks rule")
     && string_contains(s: render_divergences(ds: ds), pattern: "rule absent: required_status_checks")
@@ -290,16 +340,16 @@ test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
 // MORE THAN ONE STATUS-CHECK RULE IS A REFUSAL, NOT A MERGE. Two rules means the upstream shape
 // moved and this module's reading of which roster gates is no longer established.
 test fn w_RED_two_status_check_rules_refuse_rather_than_merging() -> Bool {
-  let ds = observed_ruleset_divergences(
+  let ds = divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
     bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
-    rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
+    rule_types: desired_ruleset_rule_types(),
     standing: MultipleRequiredStatusChecksRules { count: 2 },
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
   )
   length(ds) == 1
     && string_contains(s: render_divergences(ds: ds), pattern: "more than one required_status_checks rule")
@@ -310,35 +360,35 @@ test fn w_RED_two_status_check_rules_refuse_rather_than_merging() -> Bool {
 // halves of that sentence separately, because getting either wrong is the whole risk: a proposal
 // nobody can see, or a proposal a converge run quietly applies to a live repository.
 
-// THE SIGN-OFF GATE. While the desire is unsigned, the projection converge sends carries no
-// merge_queue rule -- so no converge run can enable a queue on the strength of this file.
-test fn w_the_unsigned_proposal_contributes_no_rule_to_what_converge_sends() -> Bool {
-  let unsigned = match desired_merge_queue {
-    MergeQueueUnsigned { proposal: _, awaiting: _ } => true
-    MergeQueueSignedOff { policy: _, ruling: _ } => false
+// THE SIGN-OFF GATE. Unsigned desire projects no merge_queue rule. This corpus is SignedOff,
+// so the projection converge sends carries the signed policy's rule.
+test fn w_the_signed_policy_is_projected_as_a_merge_queue_rule() -> Bool {
+  let signed = match desired_merge_queue {
+    MergeQueueUnsigned { proposal: _, awaiting: _ } => false
+    MergeQueueSignedOff { policy: _, ruling: r } => (r as String) != ""
   }
-  let no_policy = match desired_merge_queue_policy() {
-    Absent => true
-    Present { value: _ } => false
+  let has_policy = match desired_merge_queue_policy() {
+    Absent => false
+    Present { value: _ } => true
   }
-  let no_rule = !any(desired_ruleset_rule_types(), t =>
+  let has_rule = any(desired_ruleset_rule_types(), t =>
     ruleset_rule_type_wire_label(t: t) == "merge_queue")
-  unsigned && no_policy && no_rule
+  signed && has_policy && has_rule
 }
 
 // AND IT IS NOT A VACUOUS GATE: the proposal it holds back is the one the lane argued for. If this
 // goes red, the row above is gating something other than what the module's annotation describes.
 test fn w_the_held_proposal_is_the_allgreen_squash_one() -> Bool {
-  merge_queue_grouping_strategy_wire_label(g: gunbc_merge_queue_proposal.grouping_strategy) == "ALLGREEN"
-    && merge_queue_merge_method_wire_label(m: gunbc_merge_queue_proposal.merge_method) == "SQUASH"
-    && merge_queue_entry_count_value(gunbc_merge_queue_proposal.max_entries_to_merge) == 1
+  let p = merge_queue_floor_aligned_policy()
+  merge_queue_grouping_strategy_wire_label(g: p.grouping_strategy) == "ALLGREEN"
+    && merge_queue_merge_method_wire_label(m: p.merge_method) == "SQUASH"
+    && merge_queue_entry_count_value(p.max_entries_to_merge) == 1
 }
 
-// THE COMMISSIONING BOUND, ASSERTED SO IT CANNOT BE RAISED SILENTLY. One composition in flight is
-// what makes a failed commissioning run name which protocol step failed rather than which of
-// several candidates was involved. The row it guards carries the trigger that retires it.
-test fn w_the_queue_is_commissioned_building_one_entry_at_a_time() -> Bool {
-  merge_queue_entry_count_value(gunbc_merge_queue_proposal.max_entries_to_build) == 1
+// THE DECLARED BUILD CONCURRENCY IS THE OPERATOR'S 3. The commissioning bound of 1 dissolved
+// when that raise landed; this witness refuses a silent walk back to 1.
+test fn w_the_declared_build_concurrency_is_the_operators_three() -> Bool {
+  merge_queue_entry_count_value(merge_queue_floor_aligned_policy().max_entries_to_build) == 3
 }
 
 // THE TIMEOUT IS AN ORDERING, NOT A NUMBER, and this is the trap the assertion exists for. A queue
@@ -347,14 +397,31 @@ test fn w_the_queue_is_commissioned_building_one_entry_at_a_time() -> Bool {
 // ordering rather than 210 means raising the floor lane's timeout cannot silently invert it; a
 // literal here would have gone stale on that edit with nothing going red.
 test fn w_the_queue_timeout_is_never_below_the_floors_execution_envelope() -> Bool {
-  minute_count(gunbc_merge_queue_proposal.check_response_timeout) > minute_count(witness_floor_lane_timeout)
+  match desired_merge_queue_policy() {
+    Absent => false
+    Present { value: p } =>
+      minute_count(p.check_response_timeout) > minute_count(witness_floor_lane_timeout)
+        && !merge_queue_timeout_below_floor(policy: p)
+  }
+}
+
+test fn w_RED_a_timeout_at_or_below_the_floor_envelope_is_below_floor() -> Bool {
+  merge_queue_timeout_below_floor(policy: MergeQueuePolicy {
+    grouping_strategy: AllGreenGrouping,
+    merge_method: QueueSquash,
+    check_response_timeout: minute(count: 90),
+    max_entries_to_build: merge_queue_entry_count(count: 1),
+    max_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge_wait: minute(count: 1),
+  })
 }
 
 // A LIVE QUEUE NOBODY SIGNED OFF IS REPORTED. This is the web-form change the module exists to stop
 // being invisible, and it must name WHICH guarantee the live queue provides -- an undeclared
 // HEADGREEN queue and an undeclared ALLGREEN one are different facts.
 fn divergences_with_live_queue(standing: MergeQueueStanding) -> List<RulesetDivergence> {
-  observed_ruleset_divergences(
+  divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
@@ -370,21 +437,20 @@ fn divergences_with_live_queue(standing: MergeQueueStanding) -> List<RulesetDive
 fn live_queue(grouping: MergeQueueGroupingStrategy) -> MergeQueueStanding {
   MergeQueueConfigured {
     grouping_strategy: grouping,
-    merge_method: QueueSquash,
-    check_response_timeout: merge_queue_check_response_timeout(),
-    max_entries_to_build: merge_queue_entry_count(count: 1),
-    max_entries_to_merge: merge_queue_entry_count(count: 1),
-    min_entries_to_merge: merge_queue_entry_count(count: 1),
-    min_entries_to_merge_wait: minute(count: 5),
+    merge_method: merge_queue_floor_aligned_policy().merge_method,
+    check_response_timeout: merge_queue_floor_aligned_policy().check_response_timeout,
+    max_entries_to_build: merge_queue_floor_aligned_policy().max_entries_to_build,
+    max_entries_to_merge: merge_queue_floor_aligned_policy().max_entries_to_merge,
+    min_entries_to_merge: merge_queue_floor_aligned_policy().min_entries_to_merge,
+    min_entries_to_merge_wait: merge_queue_floor_aligned_policy().min_entries_to_merge_wait,
   }
 }
 
-test fn w_RED_an_undeclared_live_merge_queue_is_reported_with_its_grouping() -> Bool {
+test fn w_RED_a_headgreen_queue_drifts_from_the_signed_allgreen_policy() -> Bool {
   let allgreen = render_divergences(ds: divergences_with_live_queue(standing: live_queue(grouping: AllGreenGrouping)))
   let headgreen = render_divergences(ds: divergences_with_live_queue(standing: live_queue(grouping: HeadGreenGrouping)))
-  string_contains(s: allgreen, pattern: "no signed desire declares")
-    && string_contains(s: allgreen, pattern: "ALLGREEN")
-    && string_contains(s: headgreen, pattern: "HEADGREEN")
+  string_contains(s: headgreen, pattern: "HEADGREEN")
+    && string_contains(s: headgreen, pattern: "ALLGREEN")
     && !string_contains(s: allgreen, pattern: "HEADGREEN")
 }
 
@@ -399,9 +465,9 @@ test fn w_RED_an_incomplete_merge_queue_rule_refuses_and_names_the_missing_field
     RulesetRuleWire {
       type: ruleset_rule_type_wire_label(t: MergeQueueRule),
       parameters: RulesetRuleParametersWire {
-        strict_required_status_checks_policy: false,
-        do_not_enforce_on_create: false,
-        required_status_checks: [],
+        strict_required_status_checks_policy: none,
+        do_not_enforce_on_create: none,
+        required_status_checks: none,
         check_response_timeout_minutes: Present { value: 210 },
         grouping_strategy: none,
         max_entries_to_build: Present { value: 1 },
@@ -419,53 +485,41 @@ test fn w_RED_an_incomplete_merge_queue_rule_refuses_and_names_the_missing_field
     && !string_contains(s: rendered, pattern: "merge_method")
 }
 
-// THE CONSTRUCTOR THIS REPOSITORY ACTUALLY SENDS CARRIES NO merge_queue PARAMETERS, and reading it
-// back as a queue standing must therefore find no queue at all -- not an incomplete one. If this
-// goes red, the required_status_checks rule has started claiming to be a merge_queue rule.
+// THE required_status_checks CONSTRUCTOR CARRIES NO merge_queue PARAMETERS. Reading THAT rule
+// as a queue standing must find no queue -- not an incomplete one.
 test fn w_the_required_status_checks_rule_reads_back_as_no_queue() -> Bool {
-  match merge_queue_standing(rules: desired_ruleset_rules()) {
+  match merge_queue_standing(rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue")) {
     NoMergeQueueRule => true
     _ => false
   }
 }
 
-// A merge_queue RULE AS A FIXTURE, WHICH IS THE ONLY PLACE ONE CAN BE WRITTEN TODAY. Production
-// cannot project this rule: the wire parameters record carries two non-optional Bools that belong
-// to required_status_checks, and a merge_queue rule built through it would put keys on the wire
-// that GitHub does not accept there -- a fabricated wire value, which is the same defect the
-// required_status_checks constructor refuses in the other direction. DESIGN section 4b is explicit
-// that a state unrepresentable in the ACCEPTED CORPUS may still be representable as source handed
-// to the compiler by a fixture, and that where the refusal is authorable there, declining to
-// enroll it is specification-without-execution. So every arm of the projection wall is exercised
-// here against a rule the production projection cannot yet build.
+// A merge_queue RULE AS A FIXTURE, so a truncated or HEADGREEN projection stays authorable
+// independently of `desired_ruleset_rules`. Production projects through `merge_queue_rule`.
 fn fixture_merge_queue_rule(strategy: String, max_build: Int) -> RulesetRuleWire {
   RulesetRuleWire {
     type: ruleset_rule_type_wire_label(t: MergeQueueRule),
     parameters: RulesetRuleParametersWire {
-      strict_required_status_checks_policy: false,
-      do_not_enforce_on_create: false,
-      required_status_checks: [],
-      check_response_timeout_minutes: Present { value: minute_count(merge_queue_check_response_timeout()) },
+      strict_required_status_checks_policy: none,
+      do_not_enforce_on_create: none,
+      required_status_checks: none,
+      check_response_timeout_minutes: Present { value: minute_count(merge_queue_floor_aligned_policy().check_response_timeout) },
       grouping_strategy: Present { value: strategy },
       max_entries_to_build: Present { value: max_build },
-      max_entries_to_merge: Present { value: 1 },
+      max_entries_to_merge: Present { value: merge_queue_entry_count_value(merge_queue_floor_aligned_policy().max_entries_to_merge) },
       merge_method: Present { value: "SQUASH" },
-      min_entries_to_merge: Present { value: 1 },
-      min_entries_to_merge_wait_minutes: Present { value: 5 },
+      min_entries_to_merge: Present { value: merge_queue_entry_count_value(merge_queue_floor_aligned_policy().min_entries_to_merge) },
+      min_entries_to_merge_wait_minutes: Present { value: minute_count(merge_queue_floor_aligned_policy().min_entries_to_merge_wait) },
     },
   }
 }
 
-// SIGNING OFF WITHOUT WIRING THE PROJECTION STOPS THE LINE INSTEAD OF SILENTLY UNDER-APPLYING.
-// desired_ruleset_rules appends no merge_queue rule under either arm today, so a flip to
-// MergeQueueSignedOff with nothing else changed would PUT a ruleset without the signed queue while
-// verify reported a divergence no apply could clear. The RED is authorable only because the check
-// takes BOTH the policy and the rules as operands: the signed state does not exist in this tree, so
-// a check reading the desire row alone would be permanently green and would assert nothing.
+// SIGNING OFF WITHOUT WIRING THE PROJECTION STOPS THE LINE. The corpus is SignedOff and
+// projected; the RED is a fixture that keeps the policy and drops the merge_queue rule.
 test fn w_RED_signing_off_without_wiring_the_projection_refuses_to_actuate() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_merge_queue_proposal },
-    rules: desired_ruleset_rules(),
+    policy: Present { value: merge_queue_floor_aligned_policy() },
+    rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
   ) {
     Present { value: cause } =>
       string_contains(s: cause, pattern: "never clear")
@@ -479,8 +533,8 @@ test fn w_RED_signing_off_without_wiring_the_projection_refuses_to_actuate() -> 
 // refusal could be `always refuse when signed` and every RED above would still pass.
 test fn w_a_projection_carrying_the_signed_policy_is_admitted() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_merge_queue_proposal },
-    rules: append(desired_ruleset_rules(), items: [fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 1)]),
+    policy: Present { value: merge_queue_floor_aligned_policy() },
+    rules: desired_ruleset_rules(),
   ) {
     Absent => true
     Present { value: _ } => false
@@ -493,8 +547,8 @@ test fn w_a_projection_carrying_the_signed_policy_is_admitted() -> Bool {
 // names the field, the declared value and the projected one.
 test fn w_RED_a_projected_queue_with_the_wrong_strategy_refuses_and_names_the_field() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_merge_queue_proposal },
-    rules: append(desired_ruleset_rules(), items: [fixture_merge_queue_rule(strategy: "HEADGREEN", max_build: 1)]),
+    policy: Present { value: merge_queue_floor_aligned_policy() },
+    rules: append(filter(desired_ruleset_rules(), r => r.type != "merge_queue"), items: [fixture_merge_queue_rule(strategy: "HEADGREEN", max_build: 1)]),
   ) {
     Present { value: cause } =>
       string_contains(s: cause, pattern: "projected grouping_strategy is HEADGREEN")
@@ -503,17 +557,17 @@ test fn w_RED_a_projected_queue_with_the_wrong_strategy_refuses_and_names_the_fi
   }
 }
 
-// A NUMERIC PARAMETER DRIFTS TOO, and it is the one the operator ruled on. max_entries_to_build was
-// commissioned at 1 against a proposal of 5; a projection sending 5 under a sign-off for 1 is the
-// operator's ruling silently reversed, and it refuses with both numbers rather than a Bool.
+// A NUMERIC PARAMETER DRIFTS TOO. Declared max_entries_to_build is the operator's 3; a
+// projection sending 5 under that sign-off is the ruling silently reversed, and it refuses
+// with both numbers rather than a Bool.
 test fn w_RED_a_projected_queue_with_a_drifted_entry_count_refuses_with_both_numbers() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_merge_queue_proposal },
-    rules: append(desired_ruleset_rules(), items: [fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 5)]),
+    policy: Present { value: merge_queue_floor_aligned_policy() },
+    rules: append(filter(desired_ruleset_rules(), r => r.type != "merge_queue"), items: [fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 5)]),
   ) {
     Present { value: cause } =>
       string_contains(s: cause, pattern: "projected max_entries_to_build is 5")
-        && string_contains(s: cause, pattern: "declares 1")
+        && string_contains(s: cause, pattern: "declares 3")
     Absent => false
   }
 }
@@ -521,7 +575,7 @@ test fn w_RED_a_projected_queue_with_a_drifted_entry_count_refuses_with_both_num
 // TWO PROJECTED QUEUE RULES ARE AMBIGUOUS RATHER THAN THE FIRST ONE WINNING.
 test fn w_RED_two_projected_merge_queue_rules_refuse_as_ambiguous() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_merge_queue_proposal },
+    policy: Present { value: merge_queue_floor_aligned_policy() },
     rules: append(desired_ruleset_rules(), items: [
       fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 1),
       fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 1),
@@ -540,9 +594,19 @@ test fn w_the_desired_type_roster_is_derived_from_the_projected_rules() -> Bool 
 
 // THE POSITIVE CONTROL: an unsigned desire is not a refusal, or converge would be dead today.
 test fn w_an_unsigned_desire_does_not_trip_the_sign_off_refusal() -> Bool {
-  match signed_desire_projection_refusal_for(policy: none, rules: desired_ruleset_rules()) {
+  match signed_desire_projection_refusal_for(
+    policy: none,
+    rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
+  ) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+test fn w_RED_an_unsigned_desire_with_a_projected_queue_is_undetermined() -> Bool {
+  match signed_desire_projection_refusal_for(policy: none, rules: desired_ruleset_rules()) {
+    Present { value: cause } => string_contains(s: cause, pattern: "unsigned")
+    Absent => false
   }
 }
 
@@ -564,9 +628,9 @@ data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn w_RED_verify_reports_an_undeclared_bypass_actor() -> Bool {
   string_contains(
     s: render_divergences(ds: bypass_actor_unexpected_divergences(roster: BypassRosterObserved {
-      actors: [RulesetBypassActor { actor_type: "RepositoryRole", actor_id: 2, bypass_mode: "always" }],
+      actors: [RulesetBypassActor { actor_type: "Team", actor_id: 7, bypass_mode: "always" }],
     })),
-    pattern: "undeclared bypass actor present: RepositoryRole/2 mode=always",
+    pattern: "undeclared bypass actor present: Team/7 mode=always",
   )
 }
 
@@ -588,6 +652,162 @@ test fn w_RED_an_unobserved_bypass_roster_is_an_unknown_and_not_a_divergence() -
 
 // THE POSITIVE CONTROL: an observed empty roster contributes NO divergence, so verify does not
 // invent a finding on a ruleset that genuinely grants no bypass.
-test fn w_an_observed_empty_roster_contributes_no_divergence() -> Bool {
-  length(bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: [] })) == 0
+test fn w_the_bypass_roster_carries_a_signed_ruling() -> Bool {
+  match desired_bypass_roster {
+    BypassRosterUnsigned { awaiting: _ } => false
+    BypassRosterSignedOff { actors: as_, ruling: r, restoration: rest } =>
+      length(as_) == 1 && (r as String) != "" && (dissolution_description(condition: rest) != "")
+  }
+}
+
+test fn w_the_declared_bypass_roster_contributes_no_divergence() -> Bool {
+  length(bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: desired_bypass_actors() })) == 0
+}
+
+test fn w_RED_an_empty_observed_roster_misses_the_declared_maintain_bypass() -> Bool {
+  string_contains(
+    s: render_divergences(ds: bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: [] })),
+    pattern: "declared bypass actor missing",
+  )
+}
+
+test fn w_RED_a_declared_required_check_absent_from_the_required_lane_roster_refuses() -> Bool {
+  length(required_contexts_declaration_refusals(contexts: ["not-on-the-roster"])) == 1
+    && length(required_contexts_declaration_refusals(contexts: desired_required_contexts())) == 0
+}
+
+fn ensure_fixture(enforcement: RulesetEnforcement, roster: BypassActorRosterObservation) -> RulesetObservation {
+  RulesetObserved {
+    name: gunbc_passing_ci_ruleset_name,
+    enforcement: enforcement,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [default_branch_ref_alias],
+    exclude: [],
+    rule_types: desired_ruleset_rule_types(),
+    standing: desired_shaped_standing(),
+    merge_queue: desired_merge_queue_standing(),
+    bypass_roster: roster,
+  }
+}
+
+test fn w_RED_an_undeclared_live_rule_refuses_apply() -> Bool {
+  match repo_ruleset_ensure_decision(observed: RulesetObserved {
+    name: gunbc_passing_ci_ruleset_name,
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [default_branch_ref_alias],
+    exclude: [],
+    rule_types: append(desired_ruleset_rule_types(), items: [PullRequestRule]),
+    standing: desired_shaped_standing(),
+    merge_queue: desired_merge_queue_standing(),
+    bypass_roster: BypassRosterObserved { actors: desired_bypass_actors() },
+  }) {
+    Refuse { reason: r } => string_contains(s: r, pattern: "undeclared rule present")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn w_RED_a_live_ref_name_exclude_refuses_apply() -> Bool {
+  match repo_ruleset_ensure_decision(observed: RulesetObserved {
+    name: gunbc_passing_ci_ruleset_name,
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [default_branch_ref_alias],
+    exclude: ["refs/heads/do-not-wipe"],
+    rule_types: desired_ruleset_rule_types(),
+    standing: desired_shaped_standing(),
+    merge_queue: desired_merge_queue_standing(),
+    bypass_roster: BypassRosterObserved { actors: desired_bypass_actors() },
+  }) {
+    Refuse { reason: r } =>
+      string_contains(s: r, pattern: "undeclared live state")
+        && string_contains(s: r, pattern: "ref_name exclude")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn w_RED_unreadable_required_status_check_parameters_refuse_apply() -> Bool {
+  match repo_ruleset_ensure_decision(observed: RulesetObserved {
+    name: gunbc_passing_ci_ruleset_name,
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [default_branch_ref_alias],
+    exclude: [],
+    rule_types: desired_ruleset_rule_types(),
+    standing: RequiredStatusChecksParametersIncomplete { missing: ["strict_required_status_checks_policy"] },
+    merge_queue: desired_merge_queue_standing(),
+    bypass_roster: BypassRosterObserved { actors: desired_bypass_actors() },
+  }) {
+    Refuse { reason: r } =>
+      string_contains(s: r, pattern: "undeclared live state")
+        && string_contains(s: r, pattern: "did not carry")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn w_RED_an_undetermined_desire_refuses_apply() -> Bool {
+  match repo_ruleset_ensure_decision_for(
+    observed: ensure_fixture(
+      enforcement: RulesetEvaluate,
+      roster: BypassRosterObserved { actors: desired_bypass_actors() },
+    ),
+    policy: Present { value: merge_queue_floor_aligned_policy() },
+    rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r, pattern: "undetermined")
+        && string_contains(s: r, pattern: "WHICH ONE IS THE DESIRE")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn w_a_live_shaped_observation_is_ensure_noop() -> Bool {
+  match repo_ruleset_ensure_decision(observed: ensure_fixture(
+    enforcement: RulesetActive,
+    roster: BypassRosterObserved { actors: desired_bypass_actors() },
+  )) {
+    Noop => true
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn w_RED_an_unobservable_bypass_roster_refuses_apply_rather_than_assuming() -> Bool {
+  match repo_ruleset_ensure_decision(observed: ensure_fixture(
+    enforcement: RulesetEvaluate,
+    roster: bypass_roster_unavailable_from_get(reader: "fixture-reader" as NonEmptyStr),
+  )) {
+    Refuse { reason: r } => string_contains(s: r, pattern: "unobservable")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn w_RED_an_unreadable_readback_is_not_treated_as_satisfied() -> Bool {
+  !ruleset_observation_satisfies_goal(observed: RulesetUnreadable {
+    cause: RulesetReadTransportRefused { cause: "fixture post-apply get refused" as NonEmptyStr },
+  })
+}
+
+test fn w_RED_readback_that_still_diverges_is_not_treated_as_satisfied() -> Bool {
+  !ruleset_observation_satisfies_goal(observed: ensure_fixture(
+    enforcement: RulesetEvaluate,
+    roster: BypassRosterObserved { actors: desired_bypass_actors() },
+  ))
+    && match repo_ruleset_ensure_decision(observed: ensure_fixture(
+      enforcement: RulesetEvaluate,
+      roster: BypassRosterObserved { actors: desired_bypass_actors() },
+    )) {
+      Apply { plan: _ } => true
+      Noop => false
+      Refuse { reason: _ } => false
+    }
 }

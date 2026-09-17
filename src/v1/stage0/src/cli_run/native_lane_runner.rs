@@ -52,6 +52,17 @@ use std::process::Command;
 /// authority is now inside that closure, the binary judges its own receipt.
 const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
 
+/// THE V2-EXCLUSIVE CLI'S ENTRY, AND WHY IT IS A SECOND CONSTANT RATHER THAN A SECOND ROUTE.
+///
+/// One emitted crate has one entry point, and the emitter admits exactly one
+/// `compiler_pipeline_entry` declaration per closure, so the v2-native CLI cannot be a mode of
+/// the module above: it is a DIFFERENT closure with a different declared driver
+/// (`std.compiler_entry` `NativeCliDriver`). Everything downstream of the entry -- the emission,
+/// the crate write, the cargo invocation, the clean-build verdict -- is the same producer
+/// parameterised by it, which is why `prepare_emitted_compiler_for_entry` takes the entry rather
+/// than this file growing a second copy of that sequence.
+const V2_NATIVE_CLI_ENTRY: &str = "src/v2/cli/compile_cli.dag";
+
 /// The malformed control: deliberately unterminating bytes any honest front-end must refuse at
 /// tokenize. THE COMMITTED CARRIER IS NOT A `.dag` FILE — the bytes are not a dag program, and
 /// carrying the extension put them in the changed-witness observation's parse path, where the
@@ -132,15 +143,22 @@ fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
 /// compiler" is. The seed is used exactly once here, in-process, to emit; the receipt records
 /// the seed's identity honestly, and this job claims no native bootstrap.
 fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparation, String> {
+    prepare_emitted_compiler_for_entry(source_roots, NATIVE_COMPILE_ENTRY)
+}
+
+fn prepare_emitted_compiler_for_entry(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<EmittedPreparation, String> {
     let workspace = super::process_workspace_root();
     // The probe root follows the declared execution environment (per-job runner temp in CI,
     // host temp locally) — the selection's authority and its receipt live beside the required
     // phase's own root policy in `emitted_closure_compile_host`.
     let probe_root = super::lane_emit_compile_probe_root();
-    eprintln!("v2-native-route: emitting {NATIVE_COMPILE_ENTRY} (seed, in-process)");
+    eprintln!("v2-native-route: emitting {entry} (seed, in-process)");
     let run = super::compile_entry_emission(
         source_roots,
-        NATIVE_COMPILE_ENTRY,
+        entry,
         true,
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
@@ -160,12 +178,9 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
             ))
         }
     }
-    let (crate_dir, written) = super::emitted_closure_compile_host::write_probe_crate(
-        &run,
-        &probe_root,
-        NATIVE_COMPILE_ENTRY,
-    )
-    .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
+    let (crate_dir, written) =
+        super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
+            .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
     let closure_identity = emitted_closure_identity(&crate_dir)?;
     // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
     // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
@@ -234,7 +249,7 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
         build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
     );
     let binary_path = workspace.join("target").join("release").join(
-        super::emitted_closure_compile_host::probe_package_name(NATIVE_COMPILE_ENTRY),
+        super::emitted_closure_compile_host::probe_package_name(entry),
     );
     if !binary_path.is_file() {
         return Err(format!(
@@ -821,6 +836,126 @@ fn write_host_facts(
 
 /// The lane's one phase. Green exactly when the emitted binary's own admission admitted the
 /// receipt it minted; every earlier failure is a located refusal that stops the line.
+/// THE V1 -> V2 SELF-HOST STEP, AND ITS WHOLE POINT IS THAT WHERE IT STOPS IS THE STATUS.
+///
+/// The seed emits v2's compiler closure, assembles it as a crate, and builds it. That is the
+/// generation the repository can perform today, and it either holds or it does not -- there is no
+/// roster of which entries are known-good, because a roster is a second representation of what this
+/// process demonstrates by running (DESIGN sections 2 and 3). A regression here fails the step;
+/// progress moves the failure later. Nothing separate has to be updated for either.
+///
+/// WHY THIS IS A PREFIX OF `--v2-native-route` RATHER THAN A SECOND PATH. That route already
+/// performs exactly these boundaries in `prepare_emitted_compiler` and then spends roughly nine
+/// further minutes executing the v2.test.* universe through the emitted binary. The test fold is a
+/// different claim -- what the emitted compiler ANSWERS -- and bundling it here would price the
+/// self-host question at the cost of a question nobody asked. So this calls the same producer and
+/// returns on its verdict; the two modes cannot disagree about whether the seed can build v2,
+/// because only one of them decides it.
+///
+/// WHAT THIS DOES NOT ESTABLISH, named so the green is not read for more than it carries. It is
+/// EMISSION AND COMPILATION, not behavioural equivalence: DESIGN section 7 asks that the emitted
+/// module also behave as the seed does on a discriminating corpus, and that half
+/// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
+/// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
+/// refuses today because `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main
+/// answers `census` and `adjudicate` and has no compile mode at all. That refusal is the honest next
+/// position and belongs in this step when a driver exists that can reach it.
+/// What the self-host generation observed, as the fields a caller renders. Returned rather than
+/// printed so the instrument seam decides the termination: a producer that only printed would make
+/// every caller re-derive the verdict from stderr, which is the second representation DESIGN
+/// section 3 forbids.
+pub struct SelfHostHeld {
+    pub closure_identity: String,
+    pub binary_identity: String,
+    pub seed_identity: String,
+    pub exit_status: i64,
+    pub warning_count: i64,
+}
+
+pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
+    let started = std::time::Instant::now();
+    eprintln!(
+        "self-host: v1 -> v2 — seed emits {NATIVE_COMPILE_ENTRY}, assembles the crate, and builds it"
+    );
+    let prepared = prepare_emitted_compiler(source_roots)?;
+    let wall_s = started.elapsed().as_secs();
+    // THE BUILD'S OWN COUNTERS DECIDE, NOT THE ABSENCE OF A REFUSAL ABOVE. prepare_emitted_compiler
+    // admits only a completed zero-status run, so these are already its verdict; reading them here
+    // is what makes the step's claim ("built clean") the one the receipt carries rather than one
+    // inferred from control flow having reached this line.
+    eprintln!(
+        "self-host: v1->v2 emit and build completed — exit_status={} warning_count={} wall_s={wall_s}",
+        prepared.build.exit_status, prepared.build.warning_count,
+    );
+    // THE COUNTERS ARE CARRIED, NOT ADJUDICATED HERE. A non-clean build is an observation that DID
+    // NOT HOLD, and a refusal above is the subject never having been reached; those are different
+    // terminations with different exit statuses, and the instrument seam is the one place that
+    // knows the vocabulary. Deciding it here too would give one fact two homes.
+    Ok(SelfHostHeld {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        exit_status: prepared.build.exit_status,
+        warning_count: prepared.build.warning_count,
+    })
+}
+
+/// What the v2-native CLI generation observed, as the fields a caller renders. It is deliberately
+/// the SAME shape as `SelfHostHeld`: both instruments ask one question -- can the seed emit this
+/// entry's closure and build it clean -- about two different entries, and giving them two shapes
+/// would make the difference look semantic when it is only which closure was compiled.
+pub struct V2NativeCliHeld {
+    pub closure_identity: String,
+    pub binary_identity: String,
+    pub seed_identity: String,
+    pub exit_status: i64,
+    pub warning_count: i64,
+}
+
+/// THE V2-EXCLUSIVE CLI, EMITTED AND BUILT. This is the door the self-host step stops in front of.
+///
+/// `//gunbc/instruments:self-host` establishes that the seed can emit and build
+/// `v2.compiler.compile`; what it explicitly does NOT establish is the second generation, because
+/// that entry declares `SourceRootEvalDriver`, whose rendered main answers `census` and `adjudicate`
+/// and has no compile mode. `v2.cli.compile_cli` is the entry that does have one, and this producer
+/// is the question "does that door exist as a built binary today" asked the same way its sibling
+/// asks its own.
+///
+/// WHY IT IS A SEPARATE INSTRUMENT AND NOT A PHASE OF THE SELF-HOST ONE. They compile DIFFERENT
+/// CLOSURES, and different is the operative word rather than smaller: the two are close in size,
+/// neither contains the other's `compiler_pipeline_entry` declaration, and this one reaches modules
+/// the compiler entry's does not (`v2.extdeps.languages.rust` among them). So a green here and a
+/// green there are two facts about two compilations, and collapsing them would let one subject's
+/// regression be reported under the other's name.
+///
+/// WHAT A GREEN DOES NOT ESTABLISH. It is EMISSION AND COMPILATION of the CLI's closure. It is not
+/// the second generation either: that is this built binary emitting a closure, which is the next
+/// position and needs this binary to exist first. The `.dag` folds the CLI decides with are
+/// separately executed by `v2.test.cli.v2_native_cli`, so a green here plus those witnesses is
+/// "the decisions hold and the door compiles", not "the door has been walked through".
+pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, String> {
+    let started = std::time::Instant::now();
+    eprintln!(
+        "v2-native-cli: v1 -> v2 — seed emits {V2_NATIVE_CLI_ENTRY}, assembles the crate, and builds it"
+    );
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, V2_NATIVE_CLI_ENTRY)?;
+    let wall_s = started.elapsed().as_secs();
+    eprintln!(
+        "v2-native-cli: emit and build completed — exit_status={} warning_count={} wall_s={wall_s}",
+        prepared.build.exit_status, prepared.build.warning_count,
+    );
+    // The counters are carried and not adjudicated here, on the same rule `run_self_host` follows:
+    // a non-clean build is an observation that did not hold, a refusal above is the subject never
+    // having been reached, and the instrument seam is the one place that knows the difference.
+    Ok(V2NativeCliHeld {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        exit_status: prepared.build.exit_status,
+        warning_count: prepared.build.warning_count,
+    })
+}
+
 pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();

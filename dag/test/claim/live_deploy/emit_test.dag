@@ -6,6 +6,7 @@ import gunbc.live_deploy.member_identity {
   ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess, DirectoryRoot,
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
@@ -86,6 +87,8 @@ import gunbc.live_deploy.effect_leaf {
 }
 import gunbc.live_deploy.emit {
   emit_release_member_effects,
+  deploy_retract_frame_comments,
+  deploy_apply_receipt_steps,
   deploy_receipt_command,
   install_d_shared_mode,
   path_parent_dir,
@@ -112,6 +115,12 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_shadow_revert_script,
   deploy_memory_cap_script_author_precedes_shadow_revert,
+  deploy_memory_cap_apply_script_from_authorization,
+  derived_runner_memory_cap_members,
+  cap_converge_decision,
+  CapConvergeDecision,
+  CapConvergeAuthorized,
+  SurplusSlotsObserved,
   runner_slot_service_units_for_host,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -145,10 +154,17 @@ data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE
 // NOT reduce the claims that render a DIFFERENT spec or plan (the twin, the converged plan): those
 // have their own renders and still pay them, which is why the zero-mutation claim below is still
 // the expensive one and had to lose its second render outright.
-data witness_apply_script_text: String = live_deploy_apply_script_for(
-  spec: deployment_spec_srv1(),
-  plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()),
+// THE APPLY FIXTURE RENDERS UNDER AN AUTHORIZED DECISION, because the claims below are about what
+// the apply script CONTAINS. Rendering it withheld would emit the refusal marker instead of the cap
+// block, and every "contains" assertion would then be checking a string that is present but
+// unreachable -- the coverage trap of asserting on text after a fail-fast refusal.
+data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
+  host: operator_host_srv1,
+  required_retiring: [],
+  observation: SurplusSlotsObserved { retired: [], still_present: [] },
 )
+
+data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization)
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1())
 
@@ -295,42 +311,127 @@ test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
 }
 
+// THE TWO HALVES THIS CLAIM JOINS ARE NOW READ AT THEIR OWN PRODUCERS.
+//
+// The acknowledgement is a line in the retract fold's comment block; the sudoers install is a step in
+// the preamble. Rendering the whole retract program to find both cost 86,034 eval steps against a
+// per-claim ceiling of 72,300 (required floor run 34927164902), and the program carries nothing else
+// this claim names.
+//
+// THE PREAMBLE IS LITERALLY SHARED, which is what makes the two absence conjuncts hold at this grain
+// rather than merely cost less: `live_deploy_retract_intent` concatenates
+// `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so a bootstrap preflight or
+// a tailscale sudo probe creeping back in would appear in exactly the text read here. The retract's
+// own remaining steps are artifact teardowns, which carry neither.
 test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
-  let sh = witness_retract_script()
-  string_contains(s: sh, pattern: "first retract-after-flip may be the dropin install")
-    && !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
-    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
+  let frame = pipeline_steps_text(steps: deploy_retract_frame_comments(spec: deployment_spec_srv1()))
+  let preamble = witness_apply_preamble_text()
+  string_contains(s: frame, pattern: "first retract-after-flip may be the dropin install")
+    && !string_contains(s: preamble, pattern: "deploy-access-bootstrap-preflight")
+    && !string_contains(s: preamble, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
+    && string_contains(s: preamble, pattern: "sudo -n /usr/sbin/visudo -cf")
+}
+
+// THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
+//
+// `apply_emitted_steps_text` carries the deployment's own steps and not the program FRAME the fold
+// wraps them in. For a PRESENCE claim that costs nothing -- the string it looks for is in a step or
+// it is nowhere. For an ABSENCE claim it is the difference between a wall and a hole: the preamble
+// installs the sudoers drop-in and ensures the publication principal, which is exactly where an
+// elevation regression would land. So the one absence conjunct below that bans a shell elevation
+// reads both halves.
+//
+// THE TWO DEPENDENCY CONJUNCTS ASSERT THE COMMANDS AND NO LONGER ASSERT THE CONDITIONAL'S SPELLING.
+//
+// They read `if ! <dpkg> >/dev/null 2>&1; then <apt>; fi` as one literal, and that string is the
+// BASH GRAMMAR'S RENDERING of the step rather than anything the step carries:
+// `ensure_apt_package_step` builds an `If { cond: Not { inner: ExitZero { run: <dpkg> } }, then_:
+// [<apt>] }`, and the `if`/`then`/`fi` tokens exist only after `v2.extdeps.languages.bash` folds
+// it. The projection carries step CONTENT, so it holds both commands and none of the glue.
+//
+// WHAT IS ASSERTED NOW IS STRICTLY MORE THAN ITS NEIGHBOUR COVERS: both the guard command and the
+// PRIVILEGED install, on the real apply path. `witness_dependency_ensure_is_idempotent` above reads
+// `deployment_ensure_dependency_script`, which renders the UNELEVATED form, so the privileged
+// commands the deploy actually emits had no other witness.
+//
+// WHAT IS GIVEN UP: that the install is GUARDED by the check rather than merely beside it. No
+// witness asserts that rendering now. It is structural in the producer -- the install is the `then_`
+// arm of the `If` and cannot be emitted unguarded without rewriting `ensure_apt_package_step` -- but
+// structural-in-the-producer is not an executing check, and saying otherwise would be the rung
+// inflation DESIGN section 4b names. NEXT-RUNG TRIGGER: a witness over `ensure_apt_package_step`
+// asserting its `If` shape directly, which is cheap and needs no rendering at all.
+// WHAT REMAINS UNREAD, stated rather than left to be discovered: the generated-by comments, the
+// stage directory and its trap, the memory-cap step and the closing receipt. Each is a fixed
+// literal inside `apply_intent_from_effects` with no parameter that could carry an elevation, so
+// acquiring one there means editing that function directly.
+fn witness_apply_preamble_text() -> String {
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessReady { access: a } =>
+      pipeline_steps_text(steps: deploy_apply_preamble_steps(access: a, spec: deployment_spec_srv1()))
+    DeployAccessJobPrincipalRefused { refusal: r } =>
+      deploy_access_job_principal_refused_emit_poison(refusal: r)
+  }
 }
 
 test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
-  let sh = witness_apply_script()
+  let spec = deployment_spec_srv1()
+  let sh = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !string_contains(s: sh, pattern: "sudo bash")
+    && !string_contains(s: witness_apply_preamble_text(), pattern: "sudo bash")
     && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/gunbc"))
     && string_contains(s: sh, pattern: deploy_stage_write_expansion_command(stage_name: "gunbc-tree-sync.env", format: "GUNBC_TREE_SRC=%s\n", expansion_var: "PWD"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.env", mode: "0644", dest: "/etc/gunbc-tree-sync.env"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.service", mode: "0644", dest: "/etc/systemd/system/gunbc-tree-sync.service"))
-    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: deployment_spec_srv1().names.tree_sync_unit_name)))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)))
     && string_contains(s: sh, pattern: install_file_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, source: "target/release/gunbc", dest: "/opt/gunbc/bin/gunbc"))
     && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: gunbc_roadmap_unit_name)))
-    && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: sh, pattern: concat("if ! ", concat(deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)), concat(" >/dev/null 2>&1; then ", concat(deploy_effect_command(inv: apt_install_effect(package: package_tailscale)), "; fi")))))
-    && string_contains(s: sh, pattern: concat("if ! ", concat(deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)), concat(" >/dev/null 2>&1; then ", concat(deploy_effect_command(inv: apt_install_effect(package: package_tmux)), "; fi")))))
-    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "apply"))
+    && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: apt_install_effect(package: package_tailscale)))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: apt_install_effect(package: package_tmux)))
+    && string_contains(
+      s: pipeline_steps_text(steps: deploy_apply_receipt_steps(spec: spec)),
+      pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: spec), fold: "apply"),
+    )
 }
 
+// THE CAP WIRING IS ASSERTED AT ITS OWN SEAM, NOT BY RENDERING THE WHOLE DEPLOY.
+//
+// This claim is about one question: does the production cap step carry the authorized members, in the
+// author-before-revert order, with the allocation's own byte count? It previously answered that by
+// rendering `live_deploy_apply_script_for` -- the entire apply program, every family, through the bash
+// emitter -- and then grepping the result. That is roughly 200k eval steps to read four substrings out
+// of a program whose other ten thousand characters the claim says nothing about.
+//
+// `deploy_memory_cap_apply_steps` is the production function `apply_intent_from_effects` calls for this
+// axis, so testing it directly tests the same producer at a fraction of the cost.
+//
+// WHAT IS GIVEN UP IS NAMED RATHER THAN RE-HOMED, BECAUSE NOTHING ELSE HOLDS IT. No witness in this
+// module now proves that the cap block reaches the ASSEMBLED apply program -- the only claim that
+// ever did was this one, and `a_matching_authorization_applies_the_staged_caps` below drives the same
+// steps producer rather than the emitter, so citing it as the surviving home would be the authority
+// substitution DESIGN's failure-mode list names. The reach fact is unwitnessed, and it is unwitnessed
+// for a stated reason: the required floor's new-witness ceiling is 72,300 eval steps and one render
+// of the apply program costs ~194,000, so no planned witness in this module can assemble it at all.
+// NEXT-RUNG TRIGGER: the reach claim returns the moment one render fits under a tier this module's
+// identities are judged by -- either because the emitter's fixed cost falls below the ceiling, or
+// because these identities are measured into a tier that admits one.
 test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
   let target = deployment_srv1_target()
   let units = runner_slot_service_units_for_host(host: target.host.identity)
-  let cap_block = deploy_memory_cap_apply_script_for_host(host: target.host.identity)
-  let sh = witness_apply_script()
-  deploy_memory_cap_script_author_precedes_shadow_revert(script: cap_block, units: units)
-    && string_contains(s: sh, pattern: cap_block)
-    && string_contains(s: sh, pattern: "20-fleet-width.conf")
-    && string_contains(s: sh, pattern: deploy_memory_cap_shadow_revert_script(units: units))
-    && string_contains(s: sh, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
+  let members = derived_runner_memory_cap_members()
+  let cap_block = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
+  let steps = pipeline_steps_text(
+    steps: deploy_memory_cap_apply_steps(spec: deployment_spec_srv1(), authorization: srv1_authorization())
+  )
+  deploy_memory_cap_script_author_precedes_shadow_revert(script: cap_block, members: members, units: units)
+    && string_contains(s: steps, pattern: cap_block)
+    && string_contains(s: steps, pattern: "20-fleet-width.conf")
+    && string_contains(s: steps, pattern: deploy_memory_cap_shadow_revert_script(units: units))
+    && string_contains(s: steps, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
 }
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the roster-granted sudo -n commands (fleet_posix_ci_runner_sudo_grants). Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (carried by the annotation on gunbc.live_deploy.emit install_d_owned_command)."
@@ -637,6 +738,7 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
   deployment_owned_steps_retract_order(spec: spec) |> map(s => s.path as String)
 }
 
+
 test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
   let live = deployment_spec_srv1()
   let twin = srv1_twin_spec()
@@ -678,16 +780,16 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
   spec_owned_paths(spec: twin) == reverse(applied_paths)
 }
 
-data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the SCRIPTS. It asserts over the actual apply and retract text that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
+data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the EMITTED TEXT rather than the declared member list. It asserts over what apply and retract actually emit that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nTHE APPLY HALF READS THE STEP PROJECTION, NOT THE ASSEMBLED PROGRAM (2026-09-14). test.claim.live_deploy.apply_emission_projection apply_emitted_steps_text flat-maps `apply_step_effects` over `spec.steps` — the same function over the same population in the same order that `apply_intent_from_effects` uses — with ONE input mocked: the membership effects, which in production come from observing the host and here are an empty host. So the dispatch is production's, and the strings asserted below are the bytes production's own producers emit. What it drops is the program FRAME (the shell options line, the generated-by comments, the stage trap, the sudoers preamble, the cap step, the receipt), and no conjunct here names any of them. The reason is a cost ceiling rather than a modeling one, and it is stated at that module's header: one render of the assembled apply is ~194,000 eval steps against a per-claim ceiling of 72,300. The retract half still reads the assembled script, because retract has no such projection and no claim here needed one.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
 
 test fn production_apply_carries_its_own_handler_and_tree_sync_env() -> Bool {
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
+  let live = apply_emitted_steps_text(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
   string_contains(s: live, pattern: "--function roadmap_serve_handle ")
     && string_contains(s: live, pattern: "/etc/gunbc-tree-sync.env")
 }
 
 test fn emitted_twin_apply_touches_none_of_productions_effects() -> Bool {
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
+  let twin = apply_emitted_steps_text(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
   string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
     && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
@@ -699,7 +801,7 @@ data belt_spawn_root_witness_note: String = "THE CLAIM THE BELT-TIMER MEMBER MOS
 test fn twin_belt_unit_carries_the_twins_spawn_root_and_not_productions() -> Bool {
   let live_instance = srv1_live_dashboard_instance()
   let lab_instance = srv1_lab_dashboard_instance()
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
+  let twin = apply_emitted_steps_text(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
   let env = concat(belt_spawn_workdir_env_var as String, "=")
   string_contains(s: twin, pattern: concat(env, lab_instance.repo_root as String))
     && !string_contains(s: twin, pattern: concat(env, live_instance.repo_root as String))
@@ -708,7 +810,7 @@ test fn twin_belt_unit_carries_the_twins_spawn_root_and_not_productions() -> Boo
 
 test fn production_belt_unit_carries_productions_spawn_root() -> Bool {
   let live_instance = srv1_live_dashboard_instance()
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
+  let live = apply_emitted_steps_text(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
   string_contains(s: live, pattern: concat(concat(belt_spawn_workdir_env_var as String, "="), live_instance.repo_root as String))
 }
 
@@ -733,12 +835,12 @@ test fn shell_quote_escapes_an_embedded_apostrophe() -> Bool {
 data twin_creates_its_own_bin_dir_note: String = "THE PARENT DIRECTORY WAS THE LAST srv1 LITERAL IN THE APPLY (review 45197). serve_binary became instance-derived while the step that creates its containing directory kept production's `/opt/gunbc/bin`, and `install` does not create missing parents — so a twin apply would reach the copy with nowhere to copy to and fail on what reads as a permissions problem.\\n\\nThe claim is stated in BOTH directions because only the negative half proves it. Asserting the twin creates its own bin directory passes even if the emission ALSO still creates production's; asserting production's literal is absent from the twin script is what closes it. The production conjunct pins that the derivation did not move production — /opt/gunbc/bin/gunbc has parent /opt/gunbc/bin, so its emitted command is unchanged, which the committed golden independently confirms."
 
 test fn production_apply_creates_productions_binary_parent_directory() -> Bool {
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
+  let live = apply_emitted_steps_text(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
   string_contains(s: live, pattern: serve_binary_parent_install_command(instance: srv1_live_dashboard_instance()))
 }
 
 test fn twin_apply_creates_its_own_binary_parent_directory_and_not_productions() -> Bool {
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
+  let twin = apply_emitted_steps_text(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
   !string_contains(s: twin, pattern: serve_binary_parent_install_command(instance: srv1_live_dashboard_instance()))
     && string_contains(s: twin, pattern: serve_binary_parent_install_command(instance: srv1_lab_dashboard_instance()))
 }
@@ -783,16 +885,16 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
   mapping && binary && package
 }
 
-data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint - because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half - the twin carries its own --set-path - would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently - an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value.\\n\\nONE CLAIM BECAME FOUR, ONE PER EMITTED SCRIPT, AND NOTHING WAS DROPPED (2026-08-23). The seven conjuncts below are the seven that were here; only their grouping changed. The regrouping is lossless because NO CONJUNCT EVER COMPARED TWO EMITTED SCRIPTS: disjointness is asserted by pattern negation against a command spelling derived from the OTHER spec, which is a cheap argv join, never that spec's emitted script. A reader who assumes a disjointness claim needs both scripts by construction will re-fuse these and re-cross the line - this row said exactly that in a PR body and it was wrong, caught by two independent readers of the conjuncts.\\n\\nWHY THE GROUPING MATTERED AT ALL, stated so this is not mistaken for tidiness: emitting a script costs about 6,714 interpreter node-evals per emitted shell WORD, so a claim's cost is the number of SCRIPTS it builds. Four scripts in one claim put this row at ~5009ms against the 5000ms required_floor_claim_cpu_safety_limit_ms and it was INTERRUPTED BEFORE VERDICT - not passing, not failing, unknown - which is a strictly worse outcome than either verdict. One script per claim puts each row where the module's ordinary rows already sit, and a red now locates which script and which direction rather than which of seven conjuncts.\\n\\nTHIS IS A LOCAL UNBLOCK AND NOT THE REPAIR, AND CONFLATING THEM IS THE REAL RISK HERE. Sixteen rows in this module sit at 70-96% of the same limit; this regrouping moves the one row that crossed and leaves the population where it was. The cost is systemic - every emit consumer in the corpus pays the same per-word rate - and its measurement, its falsified hypotheses and its next-rung trigger are docs/probes/live_deploy_emit_witness_cost_attribution_2026-08-23.md. The next fleet runner-slot width increase lengthens the emitted script again and the next-highest row crosses.\\n\\nONE THING THIS REGROUPING MAKES HARDER, DECLARED RATHER THAN DISCOVERED LATER. The claim as written is LITERAL: it negates a spelling. The strictly stronger form is RELATIONAL - assert the two emitted endpoint values differ FROM EACH OTHER, which catches a drift that keeps both spellings absent from each other's script while still colliding. That form genuinely needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on anyone's appetite, and it is named here so the stronger claim is a known deferral and not an idea nobody had."
+data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint - because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half - the twin carries its own --set-path - would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently - an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value.\\n\\nONE CLAIM BECAME FOUR, ONE PER EMITTED SCRIPT, AND NOTHING WAS DROPPED (2026-08-23). The seven conjuncts below are the seven that were here; only their grouping changed. The regrouping is lossless because NO CONJUNCT EVER COMPARED TWO EMITTED SCRIPTS: disjointness is asserted by pattern negation against a command spelling derived from the OTHER spec, which is a cheap argv join, never that spec's emitted script. A reader who assumes a disjointness claim needs both scripts by construction will re-fuse these and re-cross the line - this row said exactly that in a PR body and it was wrong, caught by two independent readers of the conjuncts.\\n\\nWHY THE GROUPING MATTERED AT ALL, stated so this is not mistaken for tidiness: emitting a script costs about 6,714 interpreter node-evals per emitted shell WORD, so a claim's cost is the number of SCRIPTS it builds. Four scripts in one claim put this row at ~5009ms against the 5000ms CPU safety deadline then standing and it was INTERRUPTED BEFORE VERDICT - not passing, not failing, unknown - which is a strictly worse outcome than either verdict. One script per claim puts each row where the module's ordinary rows already sit, and a red now locates which script and which direction rather than which of seven conjuncts.\\n\\nTHIS IS A LOCAL UNBLOCK AND NOT THE REPAIR, AND CONFLATING THEM IS THE REAL RISK HERE. Sixteen rows in this module sit at 70-96% of the same limit; this regrouping moves the one row that crossed and leaves the population where it was. The cost is systemic - every emit consumer in the corpus pays the same per-word rate - and its measurement, its falsified hypotheses and its next-rung trigger are docs/probes/live_deploy_emit_witness_cost_attribution_2026-08-23.md. The next fleet runner-slot width increase lengthens the emitted script again and the next-highest row crosses.\\n\\nONE THING THIS REGROUPING MAKES HARDER, DECLARED RATHER THAN DISCOVERED LATER. The claim as written is LITERAL: it negates a spelling. The strictly stronger form is RELATIONAL - assert the two emitted endpoint values differ FROM EACH OTHER, which catches a drift that keeps both spellings absent from each other's script while still colliding. That form genuinely needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on anyone's appetite, and it is named here so the stronger claim is a known deferral and not an idea nobody had."
 
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
-  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
+  let live_apply = apply_emitted_steps_text(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
   string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && !string_contains(s: live_apply, pattern: "--set-path")
 }
 
 test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
-  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
+  let twin_apply = apply_emitted_steps_text(spec: srv1_twin_spec(), plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()))
   string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
     && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
@@ -864,7 +966,7 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
 // is emitted via fleet-converge.yml instead of a deploy-installed timer.
 test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   let spec = deployment_spec_srv1()
-  let live = live_deploy_apply_script_for(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+  let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !any(
     deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names),
     s => match s.kind { FleetConvergeTimerUnit => true  _ => false }
@@ -1090,9 +1192,22 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
 // A BINARY-ONLY PLAN INSTALLS THE EXECUTABLE AND RESTARTS, AND DOES NOT PUBLISH THE TREE: the
 // emitter honours the plan's population, so the repository-convergence oneshot is not started for a
 // change that touched no tree.
+// THE PLAN GATE IS READ AT THE PRODUCER THE PLAN GATES, NOT THROUGH THE ASSEMBLED PROGRAM.
+//
+// `emit_release_member_effects` is the function that consults the plan -- `plan_publishes_tree`,
+// `plan_installs_executable`, `plan_restarts_service` are its arms -- so folding it over the
+// deployment's roster reads exactly what this claim is about: which members a binary-only plan
+// emits for. Rendering the whole apply to ask the same question cost 148,139 eval steps against a
+// 72,300 ceiling, and every one of those steps above the fold was spent on the frame rather than
+// on the gate.
+//
+// THE NEGATIVE CONJUNCT IS WHY THE FOLD IS OVER THE WHOLE ROSTER AND NOT OVER TreePublication
+// ALONE. Asserting that the tree member emits nothing would pass if the convergence command moved
+// to a different member; asserting it is absent from what the ENTIRE roster emits under this plan
+// is the claim that was here before and is the claim that survives.
 test fn a_binary_only_plan_installs_and_restarts_without_publishing_the_tree() -> Bool {
   let spec = deployment_spec_srv1()
-  let sh = live_deploy_apply_script_for(spec: spec, plan: uniform_release_plan(
+  let plan = uniform_release_plan(
     roster: deployment_member_roster(spec: spec),
     target: deploy_witness_release_target(spec: spec),
     mutation_for: m => match m {
@@ -1100,9 +1215,100 @@ test fn a_binary_only_plan_installs_and_restarts_without_publishing_the_tree() -
       ServiceProcess => RestartService
       _ => KeepMember
     },
-  ))
+  )
+  let sh = apply_emitted_steps_text(spec: spec, plan: plan)
   string_contains(s: sh, pattern: "target/release/gunbc")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.service.unit_name)))
     && !string_contains(s: sh, pattern: "--function repository_converge_srv1_owner_wet")
 }
+
+
+// ── THE PRODUCTION WRITER, FOUR CASES ─────────────────────────────────────────────────────────
+//
+// These call `deploy_memory_cap_apply_steps` -- the route live_deploy actually emits -- rather than
+// the abstract effect producer. A nonempty membership-effect list does not exercise this branch, and
+// the earlier suite proved that: the authorized branch was DEAD (its builder used direct writes while
+// the ordering guard re-derived the staged form) while every helper-level row stayed green.
+
+
+fn srv1_authorization() -> CapConvergeDecision {
+  cap_converge_decision(
+    host: operator_host_srv1,
+    required_retiring: [],
+    observation: SurplusSlotsObserved { retired: [], still_present: [] },
+  )
+}
+
+// 1. A MATCHING AUTHORIZATION REACHES THE STAGED CAP APPLICATION. This is the row that was failing
+// before the staged-builder repair: the authorized branch produced a script the ordering guard could
+// not accept, so it emitted "ordering gate failed" for every ordinary authorization.
+//
+// THE REVERT HALF IS ASSERTED THROUGH ITS OWN RENDERER, NOT THROUGH A HAND-SPELLED SUBSTRING. This
+// witness previously looked for the literal "systemctl revert" and failed for exactly the reason the
+// guard it covers failed: `shell_command_intent` sends every argv word through `shell_literal_words`,
+// so the emitted bytes carry 'systemctl' 'revert' per-word-quoted and the two-word literal appears
+// nowhere. Asserting against `deploy_memory_cap_shadow_revert_script` compares the emission to the
+// authority that produces it, which is both correct and immune to how the serializer quotes -- the
+// same reason the sibling wiring witness below was already green while this one was red.
+test fn a_matching_authorization_applies_the_staged_caps() -> Bool {
+  let units = runner_slot_service_units_for_host(host: deployment_srv1_target().host.identity)
+  let text = pipeline_steps_text(
+    steps: deploy_memory_cap_apply_steps(spec: deployment_spec_srv1(), authorization: srv1_authorization())
+  )
+  string_contains(s: text, pattern: "20-fleet-width.conf")
+    && string_contains(s: text, pattern: "40-fleet-high.conf")
+    && string_contains(s: text, pattern: deploy_memory_cap_shadow_revert_script(units: units))
+    && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+}
+
+// 2. A WITHHELD DECISION REACHES NO CAP APPLICATION.
+test fn a_withheld_decision_applies_no_caps_at_the_production_root() -> Bool {
+  let text = pipeline_steps_text(
+    steps: deploy_memory_cap_apply_steps(
+      spec: deployment_spec_srv1(),
+      authorization: CapConvergeWithheld { cause: "no live surplus observation" },
+    )
+  )
+  string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && !string_contains(s: text, pattern: "20-fleet-width.conf")
+}
+
+// 3. AN AUTHORIZATION FOR ANOTHER HOST REACHES NO CAP APPLICATION. An srv4 decision is honest
+// evidence about srv4's retirement and cannot be spent on srv1.
+test fn an_authorization_for_another_host_applies_no_caps() -> Bool {
+  let text = pipeline_steps_text(
+    steps: deploy_memory_cap_apply_steps(
+      spec: deployment_spec_srv1(),
+      authorization: cap_converge_decision(
+        host: operator_host_srv4,
+        required_retiring: [],
+        observation: SurplusSlotsObserved { retired: [], still_present: [] },
+      ),
+    )
+  )
+  string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && !string_contains(s: text, pattern: "20-fleet-width.conf")
+}
+
+// 4. THE WRITER TARGETS THE PLAN'S UNITS, NOT THE HOST'S. This is the transition binding made
+// observable: the units reverted are the ones the AUTHORIZATION carries. A writer that re-derived
+// them from the spec's host would revert srv1's full population regardless of what was authorized,
+// and this row would see units the authorization never named.
+test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
+  let text = pipeline_steps_text(
+    steps: deploy_memory_cap_apply_steps(
+      spec: deployment_spec_srv1(),
+      authorization: CapConvergeAuthorized {
+        host: operator_host_srv1,
+        authorized_retiring: [],
+        target_units: ["actions-runner@srv1-01.service" as NonEmptyStr],
+        desired: derived_runner_memory_cap_members(),
+      },
+    )
+  )
+  string_contains(s: text, pattern: "actions-runner@srv1-01.service")
+    && !string_contains(s: text, pattern: "actions-runner@srv1-02.service")
+    && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+}
+
 

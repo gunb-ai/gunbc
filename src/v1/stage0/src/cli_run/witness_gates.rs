@@ -914,6 +914,7 @@ pub(crate) fn witness_execution_outcome_label(outcome: &ClaimOutcome) -> &'stati
     match outcome {
         ClaimOutcome::Pass => "pass",
         ClaimOutcome::Fail => "fail",
+        ClaimOutcome::ExitFailure { .. } => "exit_failure",
         ClaimOutcome::NotBool { .. } => "not_bool",
         ClaimOutcome::RuntimeError { .. } => "runtime_error",
         // SITE 4. "timed_out" over both arms is what put `outcome=timed_out` on the over-cost

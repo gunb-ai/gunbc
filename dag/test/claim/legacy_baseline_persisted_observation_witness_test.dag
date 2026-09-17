@@ -1,0 +1,229 @@
+module test.claim.legacy_baseline_persisted_observation_witness
+
+import std.types { String, Bool, List, NonEmptyStr, SourceSpan }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { structural_content_hash }
+import std.decl_ref { decl_ref }
+import extdeps.git.object_store { git_sha1_object_id }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndex,
+  OccurrenceIndexEntry,
+  OccurrenceProjection,
+  OccurrenceContainmentPath,
+  LexicalValueOccurrence,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceTransport,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  occurrence_transport_validate
+}
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  LegacyBindingObservationSubject,
+  ImportScopedPolicy
+}
+import v2.workflow.legacy_repair_observation {
+  RepairSite,
+  RepairSiteRoster,
+  LegacyRepairObservation,
+  LegacyRepairObservationRow,
+  LegacyRepairObservationSubject,
+  repair_site_roster_identity
+}
+import v2.workflow.legacy_baseline_capture {
+  materialization_receipt,
+  tree_derived_subject,
+  capture_legacy_baseline,
+  LegacyBaselineCaptured,
+  LegacyBaselineHeadMismatch,
+  LegacyBaselineWorktreeMismatch,
+  LegacyBaselineSubjectMismatch,
+  LegacyBaselineObservationIncomplete,
+  LegacyBaselineRepairRosterMalformed,
+  LegacyBaselineRepairRosterMismatch,
+  LegacyBaselineRepairSubjectDiverged,
+  LegacyBaselineRepairIncomplete,
+  LegacyBaselineExecutionRefused
+}
+import v2.workflow.legacy_baseline_persisted_observation {
+  persist_legacy_baseline,
+  PersistAdmitted,
+  PersistRefusedNotCaptured,
+  persisted_against_requested,
+  persisted_enrollment_outstanding,
+  persisted_legacy_baseline_outstanding,
+  PreCutBaseUnpinned,
+  PreCutBasePinned,
+  current_pre_cut_base_pin
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type LbpBinding
+  = LbpBound
+  | LbpUnbound
+
+type LbpRepair
+  = LbpDeclined
+  | LbpApplied
+
+fn lbp_span() -> SourceSpan {
+  SourceSpan { file: "legacy-baseline-persist-fixture.dag", start: 1, end: 2 }
+}
+
+fn lbp_path() -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: [OccurrenceId { value: 900 }], terminal: OccurrenceId { value: 10 } }
+}
+
+fn lbp_commit_a() -> String { "1007efb256a20749f77c3b1295eed144fddeb9fd" }
+fn lbp_commit_b() -> String { "531308acfd891b399709711a8c03955aa7bbafca" }
+fn lbp_tree() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+
+fn lbp_site() -> RepairSite {
+  RepairSite { module_name: "std.logic" as NonEmptyStr, name: "Bool" as NonEmptyStr }
+}
+
+fn lbp_roster() -> RepairSiteRoster {
+  RepairSiteRoster { sites: [lbp_site()] }
+}
+
+fn lbp_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+test fn persist_refuses_a_capture_that_never_minted() -> Bool {
+  match git_sha1_object_id(hex: lbp_commit_a()) {
+    Absent => false
+    Present { value: a } => match git_sha1_object_id(hex: lbp_commit_b()) {
+      Absent => false
+      Present { value: b } =>
+        match persist_legacy_baseline(
+          outcome: LegacyBaselineHeadMismatch { requested: a, materialized: b }
+        ) {
+          PersistRefusedNotCaptured => true
+          PersistAdmitted { persisted: _ } => false
+        }
+    }
+  }
+}
+
+fn lbp_minted_capture_persisted() -> Bool {
+  match git_sha1_object_id(hex: lbp_commit_a()) {
+    Absent => false
+    Present { value: a } => match git_sha1_object_id(hex: lbp_tree()) {
+      Absent => false
+      Present { value: t } =>
+        match occurrence_transport_validate(transport: OccurrenceTransport {
+          index: OccurrenceIndex { entries: [
+            OccurrenceIndexEntry {
+              projection: OccurrenceProjection {
+                occurrence: OccurrenceId { value: 900 },
+                authored_name: "root",
+                diagnostic_span: lbp_span()
+              },
+              containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } }
+            },
+            OccurrenceIndexEntry {
+              projection: OccurrenceProjection {
+                occurrence: OccurrenceId { value: 10 },
+                authored_name: "r",
+                diagnostic_span: lbp_span()
+              },
+              containment: lbp_path()
+            }
+          ] },
+          declarations: [DeclarationOccurrence {
+            occurrence: OccurrenceId { value: 900 },
+            containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } },
+            category: LexicalValueOccurrence,
+            diagnostic_span: lbp_span()
+          }],
+          references: [ReferenceOccurrence {
+            occurrence: OccurrenceId { value: 10 },
+            containment: lbp_path(),
+            category: LexicalValueOccurrence,
+            diagnostic_span: lbp_span()
+          }]
+        }) {
+          OccurrenceTransportRefused { refusal: _ } => false
+          OccurrenceTransportValidated { transport: tr } =>
+            match capture_legacy_baseline(
+              materialization: materialization_receipt(
+                requested: a, observed_head: a, observed_tree: t, commit_tree: t
+              ),
+              tree_subject: tree_derived_subject(tree: t, subject: lbp_subject()),
+              observation: LegacyBindingObservation {
+                subject: lbp_subject(),
+                rows: [LegacyBindingObservationRow { occurrence: OccurrenceId { value: 10 }, outcome: LbpBound }]
+              },
+              transport: tr,
+              repair_observation: LegacyRepairObservation {
+                subject: LegacyRepairObservationSubject {
+                  semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+                  source_set_digest: structural_content_hash(digest: "2222222222222222"),
+                  compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+                  repairer_identity: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_census"),
+                  repair_site_roster_digest: repair_site_roster_identity(roster: lbp_roster()),
+                  resolution_registry_digest: structural_content_hash(digest: "5555555555555555")
+                },
+                rows: [LegacyRepairObservationRow { site: lbp_site(), outcome: LbpDeclined }]
+              },
+              repair_roster: lbp_roster()
+            ) {
+              LegacyBaselineCaptured { capture: c } =>
+                match persist_legacy_baseline(outcome: LegacyBaselineCaptured { capture: c }) {
+                  PersistRefusedNotCaptured => false
+                  PersistAdmitted { persisted: p } =>
+                    persisted_against_requested(persisted: p, requested: a)
+                      && match git_sha1_object_id(hex: lbp_commit_b()) {
+                        Absent => false
+                        Present { value: b } =>
+                          !persisted_against_requested(persisted: p, requested: b)
+                            && (persisted_enrollment_outstanding(pin: PreCutBasePinned { base: a }, held: Present { value: p }) |> count) == 0
+                            && (persisted_enrollment_outstanding(pin: PreCutBasePinned { base: b }, held: Present { value: p }) |> count) == 1
+                      }
+                }
+              LegacyBaselineHeadMismatch { requested: _, materialized: _ } => false
+              LegacyBaselineWorktreeMismatch { commit_tree: _, observed_tree: _ } => false
+              LegacyBaselineSubjectMismatch { field: _ } => false
+              LegacyBaselineObservationIncomplete { completeness: _ } => false
+              LegacyBaselineRepairRosterMalformed { sites: _ } => false
+              LegacyBaselineRepairRosterMismatch { subject_digest: _, roster_digest: _ } => false
+              LegacyBaselineRepairSubjectDiverged { field: _ } => false
+              LegacyBaselineRepairIncomplete { completeness: _ } => false
+              LegacyBaselineExecutionRefused { phase: _, cause: _ } => false
+            }
+        }
+    }
+  }
+}
+
+test fn persist_binds_only_to_the_capture_base_commit() -> Bool {
+  lbp_minted_capture_persisted()
+}
+
+test fn live_outstanding_is_the_enrollment_fold_with_no_held_capture() -> Bool {
+  match current_pre_cut_base_pin() {
+    PreCutBasePinned { base: _ } => false
+    PreCutBaseUnpinned =>
+      let live = persisted_legacy_baseline_outstanding()
+      let via = persisted_enrollment_outstanding(
+        pin: PreCutBaseUnpinned,
+        held: none
+      )
+      (live |> count) == 1
+        && (via |> count) == 1
+        && all(live, s => any(via, t => s == t))
+  }
+}

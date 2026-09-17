@@ -5,9 +5,10 @@ import std.markdown {
   MarkdownTableCell, MarkdownTableRow,
   HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock,
   TaskListBlock, BlockquoteBlock,
-  TextInline, H2, H3, CheckboxState, Unchecked, ThematicBreak,
+  TextInline, H1, H2, H3, CheckboxState, Unchecked, ThematicBreak,
 }
 
+fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
 fn h3(text: String) -> MarkdownBlock { HeadingBlock { level: H3, inlines: [TextInline { text: text }] } }
 fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }

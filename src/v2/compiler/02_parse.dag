@@ -52,7 +52,6 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  byte_limb_hash_peano_digest,
   combine_hash,
   content_hash,
   node_synthetic,
@@ -80,7 +79,7 @@ import v2.std.provenance {
   SpanIndex,
   origin_event_from_source,
   span_index_empty,
-  span_index_merge,
+  span_index_adopt,
   span_index_record
 }
 import v2.std.collection {
@@ -102,6 +101,7 @@ import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, conta
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.realization { Materialization }
+import v2.std.integer { integer_int_content_digest }
 import v2.compiler.materialization_carriers {
   parse_table_memo_artifact_kind,
   parse_table_memo_provider_id,
@@ -142,9 +142,22 @@ import v2.std.grammar {
   grammar_to_node
 }
 
+// THE MEMO FRAME. `frame` names every occurrence id recorded since the innermost memoized
+// production started: a mint is one FrameMinted, and a memo hit or miss inside the frame is one
+// FrameNested sharing the inner frame's list (a snoc, never a copy). A memo hit replays exactly
+// its stored frame into the current index instead of merging the stored index whole. That is
+// exact for every consumer: a node the hit returns carries only ids minted or replayed inside
+// the memoized frame, so every id it can look up is in the replayed frame; entries the stored
+// index held from before the frame belong to a different parse path, no node on this path
+// references them, and the span index is read only by lookup(id).
+type ParseProvFrameItem
+  = FrameMinted { id: OccurrenceId }
+  | FrameNested { frame: List<ParseProvFrameItem> }
+
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: v2.std.provenance.SpanIndex
+  frame: List<ParseProvFrameItem>
 }
 
 type ParseArtifact {
@@ -617,21 +630,14 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
   )
 }
 
-// Route through chars(s:): the emitted realization needs the boundary conversion — emitted
-// fold_list<T, _> cannot infer T from a host-carrier lexeme (E0282) without it — and the
-// interpreted chars builtin grounds every string realization (native compact string and
-// Empty/Cons chain alike, via free_monoid_to_string) to the same Int codepoints fold_list
-// itself would read, so the digest is realization-stable on both routes.
-fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
-  fold_list(
-    xs: chars(s: lexeme),
-    empty: symbol_identity_digest(sym: ^parse_lexeme_digest_nil),
-    cons: fn(acc, ch) {
-      combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
-    }
-  )
-}
-
+// ONE DIGEST PER TOKEN FIELD, NOT ONE HASH STEP PER UNIT OF MAGNITUDE. The stream digest used to
+// send both offsets and every lexeme codepoint through the single-byte-limb digest: unary in the
+// value (a codepoint near 100 cost ~100 combine_hash calls), and one shared tag for every value
+// above 255. On the native route that made the eager fill in parse_table_for_production_analyzed
+// 28% of the process (perf --children, bounded K=16 root, 2026-09-14), and it made offsets past
+// byte 255 and every non-Latin-1 codepoint collide in the seed interpreter's cross-parse memo key
+// (v1_interpreter parse_table_memo_scope_and_key reads this field). Offsets and positions now go
+// through the Int content authority and the lexeme through its interned symbol.
 fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
   fold_list(
     xs: all_tokens,
@@ -646,10 +652,10 @@ fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
           ),
           b: combine_hash(
             a: combine_hash(
-              a: byte_limb_hash_peano_digest(limb: tok.start),
-              b: byte_limb_hash_peano_digest(limb: tok.end)
+              a: integer_int_content_digest(value: tok.start),
+              b: integer_int_content_digest(value: tok.end)
             ),
-            b: parse_lexeme_digest(lexeme: tok.lexeme)
+            b: symbol_identity_digest(sym: symbol_intern_lexeme(lexeme: tok.lexeme))
           )
         )
       )
@@ -712,7 +718,7 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
   combine_hash(
     a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
     b: combine_hash(
-      a: byte_limb_hash_peano_digest(limb: key.position),
+      a: integer_int_content_digest(value: key.position),
       b: symbol_identity_digest(sym: key.production)
     )
   )
@@ -746,10 +752,30 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
 fn parse_prov_initial() -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: occurrence_id_allocator_initial(),
-    index: span_index_empty()
+    index: span_index_empty(),
+    frame: Empty
   }
 }
 
+fn parse_prov_replay_frame(
+  base: v2.std.provenance.SpanIndex,
+  incoming: v2.std.provenance.SpanIndex,
+  frame: List<ParseProvFrameItem>
+) -> v2.std.provenance.SpanIndex {
+  fold_list(
+    xs: frame,
+    empty: base,
+    cons: fn(acc, item) {
+      match item {
+        FrameMinted { id: id } => span_index_adopt(base: acc, incoming: incoming, id: id)
+        FrameNested { frame: inner } => parse_prov_replay_frame(base: acc, incoming: incoming, frame: inner)
+      }
+    }
+  )
+}
+
+// A memo hit: `incoming` is the stored result of the memoized frame, whose `frame` is that
+// frame's own record (the miss started it empty).
 fn parse_prov_merge(
   base: ParseProvenanceState,
   incoming: ParseProvenanceState
@@ -761,7 +787,22 @@ fn parse_prov_merge(
         alloc: incoming.alloc
       )
     ),
-    index: span_index_merge(base: base.index, incoming: incoming.index)
+    index: parse_prov_replay_frame(base: base.index, incoming: incoming.index, frame: incoming.frame),
+    frame: list_snoc_item(xs: base.frame, item: FrameNested { frame: incoming.frame })
+  }
+}
+
+// A memo miss: the production parses in a fresh frame so its memo entry records only its own ids.
+fn parse_prov_enter_frame(prov: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState { alloc: prov.alloc, index: prov.index, frame: Empty }
+}
+
+// Returning from a miss: the caller's frame gains the inner frame as one nested item.
+fn parse_prov_leave_frame(outer: ParseProvenanceState, inner: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: inner.alloc,
+    index: inner.index,
+    frame: list_snoc_item(xs: outer.frame, item: FrameNested { frame: inner.frame })
   }
 }
 
@@ -780,7 +821,11 @@ fn parse_mint_from_source(
   let index = span_index_record(index: prov.index, id: minted.id, event: event)
   ParseMintSourceResult {
     id: minted.id,
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -879,7 +924,11 @@ fn parse_stamp_derived_conj(
       ],
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -896,7 +945,11 @@ fn parse_stamp_derived_repeat(
       acc_nodes: acc_nodes,
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -918,7 +971,11 @@ fn parse_wrap_production_captured(
       ],
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -1212,7 +1269,7 @@ fn parse_nonterminal_memoized_core(
             all_tokens: all_tokens,
             root: root,
             table: table_miss,
-            prov: prov
+            prov: parse_prov_enter_frame(prov: prov)
           )
           let table_after_memo = parse_table_insert(
             table: parse_expr_result_table(result: inner),
@@ -1226,7 +1283,7 @@ fn parse_nonterminal_memoized_core(
               let stamped = parse_wrap_production_captured(
                 production: production,
                 captured: captured,
-                prov: inner_prov
+                prov: parse_prov_leave_frame(outer: prov, inner: inner_prov)
               )
               ParseExprAccepted {
                 remaining: remaining,
@@ -1576,10 +1633,54 @@ type PreparedGrammarExpr
       right: PreparedGrammarExpr,
       left_first: GrammarExprFirstFold,
       right_first: GrammarExprFirstFold,
-      ambiguous: Bool
+      ambiguous: Bool,
+      routes: Map<Symbol, ChoiceTokenRoute>
     }
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
+
+// THE CHOICE ROUTE FOR A TOKEN CLASS IS A FACT ABOUT THE GRAMMAR, SO IT IS DECIDED AT PREPARE TIME.
+// parse_choice_on_present_token used to answer it at every choice node, at every token position,
+// with up to four linear scans of the two FIRST lists (symbol_list_contains, string equality per
+// element): 17% of the native route's process after C2 (perf --children, bounded K=16 root). The
+// decision reads only the two FIRST folds and the token's class, so prepare_grammar_expr folds it
+// once per choice into `routes`, keyed by class, using the same rule in the same order. A class with
+// no entry is a class the rule sends to backtracking -- including every class in neither FIRST set --
+// so absence is an answer, not a miss.
+type ChoiceTokenRoute
+  = ChoiceRouteLeft
+  | ChoiceRouteRight
+
+fn choice_token_route_for_class(
+  left_first: GrammarExprFirstFold,
+  right_first: GrammarExprFirstFold,
+  token_class: Symbol
+) -> Optional<ChoiceTokenRoute> {
+  let in_left = symbol_list_contains(xs: left_first.terminals, item: token_class)
+  let in_right = symbol_list_contains(xs: right_first.terminals, item: token_class)
+  if in_left && !in_right {
+    optional_present(value: ChoiceRouteLeft)
+  } else if in_right && !in_left {
+    optional_present(value: ChoiceRouteRight)
+  } else if left_first.nullable && in_right {
+    optional_present(value: ChoiceRouteRight)
+  } else {
+    optional_absent()
+  }
+}
+
+fn choice_token_routes(left_first: GrammarExprFirstFold, right_first: GrammarExprFirstFold) -> Map<Symbol, ChoiceTokenRoute> {
+  fold_list(
+    xs: list_append(left: left_first.terminals, right: right_first.terminals),
+    empty: empty_map(),
+    cons: fn(acc, token_class) {
+      match choice_token_route_for_class(left_first: left_first, right_first: right_first, token_class: token_class) {
+        Present { value: route } => map_insert(m: acc, key: token_class, value: route)
+        Absent => acc
+      }
+    }
+  )
+}
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -1618,7 +1719,8 @@ fn prepare_grammar_expr(
           right: right_prepared.tree,
           left_first: left_prepared.first,
           right_first: right_prepared.first,
-          ambiguous: choice_branches_ambiguous(left: left_prepared.first, right: right_prepared.first)
+          ambiguous: choice_branches_ambiguous(left: left_prepared.first, right: right_prepared.first),
+          routes: choice_token_routes(left_first: left_prepared.first, right_first: right_prepared.first)
         },
         first: expr_first_fold_choice(left: left_prepared.first, right: right_prepared.first)
       }
@@ -2381,34 +2483,28 @@ fn parse_choice_on_present_token(
   left: PreparedGrammarExpr,
   right: PreparedGrammarExpr,
   tok: Token,
+  routes: Map<Symbol, ChoiceTokenRoute>,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
   table: ParseTable,
-  prov: ParseProvenanceState,
-  left_first: GrammarExprFirstFold,
-  right_first: GrammarExprFirstFold
+  prov: ParseProvenanceState
 ) -> ParseExprResult {
-  if symbol_list_contains(xs: left_first.terminals, item: tok.class) && !symbol_list_contains(xs: right_first.terminals, item: tok.class) {
-    parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-  } else {
-    if symbol_list_contains(xs: right_first.terminals, item: tok.class) && !symbol_list_contains(xs: left_first.terminals, item: tok.class) {
+  match map_lookup(m: routes, key: tok.class) {
+    Present { value: ChoiceRouteLeft } =>
+      parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+    Present { value: ChoiceRouteRight } =>
       parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-    } else {
-      if left_first.nullable && symbol_list_contains(xs: right_first.terminals, item: tok.class) {
-        parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-      } else {
-        parse_choice_residue_backtrack(
-          left: left,
-          right: right,
-          tokens: tokens,
-          all_tokens: all_tokens,
-          root: root,
-          table: table,
-          prov: prov
-        )
-      }
-    }
+    Absent =>
+      parse_choice_residue_backtrack(
+        left: left,
+        right: right,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
   }
 }
 
@@ -2418,6 +2514,7 @@ fn parse_choice_first_dispatch(
   left_first: GrammarExprFirstFold,
   right_first: GrammarExprFirstFold,
   ambiguous: Bool,
+  routes: Map<Symbol, ChoiceTokenRoute>,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
@@ -2449,13 +2546,12 @@ fn parse_choice_first_dispatch(
           left: left,
           right: right,
           tok: tok,
+          routes: routes,
           tokens: tokens,
           all_tokens: all_tokens,
           root: root,
           table: table,
-          prov: prov,
-          left_first: left_first,
-          right_first: right_first
+          prov: prov
         )
     }
   }
@@ -2609,13 +2705,14 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    PreparedChoice { left: left, right: right, left_first: left_first, right_first: right_first, ambiguous: ambiguous } =>
+    PreparedChoice { left: left, right: right, left_first: left_first, right_first: right_first, ambiguous: ambiguous, routes: routes } =>
       parse_choice_first_dispatch(
         left: left,
         right: right,
         left_first: left_first,
         right_first: right_first,
         ambiguous: ambiguous,
+        routes: routes,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,

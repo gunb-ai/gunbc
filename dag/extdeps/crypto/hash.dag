@@ -3,6 +3,7 @@ module extdeps.crypto.hash
 import std.types { NonEmptyStr, Bool, List, Unit }
 import std.string_type { String }
 import std.algebra { trim }
+import v2.std.algebra { skip }
 import std.content_hash {
   as_content_hash_cryptographic,
   as_content_hash_sha512,
@@ -13,6 +14,7 @@ import std.content_hash {
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -85,8 +87,9 @@ fn sha512_digest_content_hash(digest: Digest) -> ContentHash? {
 
 // coreutils sha256sum over one file: `<hex>  <path>` on stdout, exit 0. The operation is the LOCAL
 // realization; sha256sum_argv is the same invocation spelled for a remote typed-argv transport, and
-// sha256sum_line_digest reads the one output line for both arms. The two spellings of the argv are
-// the extdeps op-plus-builder seam every shell-transported operation in this tree currently carries
+// sha256sum_file_command is that argv as ArgvCommand (program plus skip(1) operands), so a remote
+// digest does not mint a second word list. sha256sum_line_digest reads the one output line for both
+// arms. The File transport argv and sha256sum_argv remain the extdeps op-plus-builder seam
 // (extdeps.systemd systemd_parse_label_derivation_debt records the same debt); they fold when the
 // transport row can be read from the operation itself.
 service crypto.Sha256Sum {
@@ -109,8 +112,14 @@ service crypto.Sha256Sum {
   }
 }
 
+data sha256sum_program: NonEmptyStr = "sha256sum"
+
 fn sha256sum_argv(path: String) -> List<String> {
-  ["sha256sum", "--", path]
+  [sha256sum_program as String, "--", path]
+}
+
+fn sha256sum_file_command(path: String) -> ArgvCommand {
+  argv_command(program: sha256sum_program, arguments: skip(xs: sha256sum_argv(path: path), n: 1))
 }
 
 // The first field of the output line, admitted only at the digest's exact length.

@@ -185,7 +185,7 @@ import v1.compiler.infer_emit_info {
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields
 }
 import v1.compiler.infer_items {
-  ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
+  ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
   inferred_to_outputs, item_kind
@@ -279,6 +279,7 @@ type InferScope {
   item_registry: Map<String, ItemInfo>
   lambda_param_provenance: Map<String, SubValueRelation>
   caller_decl_name: String
+  in_flight_lambda_param_names: List<String>
 }
 
 type InferResult {
@@ -1683,8 +1684,17 @@ fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) 
     || n.params |> count > 0
 }
 
+// CALLABILITY IS THE ARROW CONNECTIVE; A NON-EMPTY PARAMETER LIST IS SUFFICIENT, NEVER NECESSARY.
+// Every callable value type is minted as an Arrow node (make_callable_type, parse_callable_type_expr),
+// and a nullary `fn() -> R` is an Arrow with an empty parameter list. This predicate used to be
+// `params |> count > 0` alone, which read "takes an argument" as "is a function type": every nullary
+// function type answered false, so the call seam discarded a found nullary local and retried its
+// name as a global ("function 'pick' not found in scope"), and the nominal brand checks below treated
+// a nullary arrow as a named type. The params disjunct is kept because a declaration-shaped node
+// carries its formals in params, and on such a node a non-empty list IS a callable fact.
+// gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
 fn type_node_is_callable(n: Node) -> Bool {
-  n.params |> count > 0
+  n.connective == Arrow || n.params |> count > 0
 }
 
 // THE v1.compiler.* ARM IS DELETED RATHER THAN REPAIRED, and the deletion preserves live behaviour
@@ -5022,22 +5032,20 @@ fn function_value_call_named_arg_diags(
       let arity_diags = match callable_type {
         Present { value: callable } =>
           let param_count = callable.params |> count
-          if param_count > 0 {
-            let supplied = typed_args |> count
-            if supplied > param_count {
-              match typed_args |> skip(param_count) |> first {
-                Present { value: overflow } =>
-                  [make_error_node(
-                    diagnostic: CallPositionalSurplus {
-                      callee: func_name,
-                      supplied: supplied,
-                      capacity: param_count,
-                      span: overflow.span
-                    },
-                    module_name: module_name)]
-                Absent => []
-              }
-            } else { [] }
+          let supplied = typed_args |> count
+          if supplied > param_count {
+            match typed_args |> skip(param_count) |> first {
+              Present { value: overflow } =>
+                [make_error_node(
+                  diagnostic: CallPositionalSurplus {
+                    callee: func_name,
+                    supplied: supplied,
+                    capacity: param_count,
+                    span: overflow.span
+                  },
+                  module_name: module_name)]
+              Absent => []
+            }
           } else { [] }
         Absent => []
       }
@@ -5636,7 +5644,8 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     caller_decl_name: scope.caller_decl_name,
-    lambda_param_provenance: empty_map()
+    lambda_param_provenance: empty_map(),
+    in_flight_lambda_param_names: scope.in_flight_lambda_param_names
   }
 }
 
@@ -5670,7 +5679,8 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     caller_decl_name: scope.caller_decl_name,
-    lambda_param_provenance: scope.lambda_param_provenance
+    lambda_param_provenance: scope.lambda_param_provenance,
+    in_flight_lambda_param_names: scope.in_flight_lambda_param_names
   }
 }
 
@@ -5685,7 +5695,8 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     caller_decl_name: scope.caller_decl_name,
-    lambda_param_provenance: scope.lambda_param_provenance
+    lambda_param_provenance: scope.lambda_param_provenance,
+    in_flight_lambda_param_names: scope.in_flight_lambda_param_names
   }
 }
 
@@ -5706,7 +5717,8 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     caller_decl_name: scope.caller_decl_name,
-    lambda_param_provenance: scope.lambda_param_provenance
+    lambda_param_provenance: scope.lambda_param_provenance,
+    in_flight_lambda_param_names: scope.in_flight_lambda_param_names
   }
 }
 
@@ -5859,7 +5871,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         service_registry: scope.service_registry,
         item_registry: scope.item_registry,
         caller_decl_name: scope.caller_decl_name,
-        lambda_param_provenance: prov_map
+        lambda_param_provenance: prov_map,
+        in_flight_lambda_param_names: scope.in_flight_lambda_param_names
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
@@ -5880,7 +5893,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           service_registry: scope.service_registry,
           item_registry: scope.item_registry,
           caller_decl_name: scope.caller_decl_name,
-          lambda_param_provenance: nf_prov_map
+          lambda_param_provenance: nf_prov_map,
+          in_flight_lambda_param_names: scope.in_flight_lambda_param_names
         }
       } else { scope }
       match arg_contract {
@@ -6579,8 +6593,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             diagnostics: concat(base_diags, resolved_base_diags)
           }
         Absent =>
-          let base_is_type_var = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
-          if base_is_type_var {
+          let defer_field_miss = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
+            && !is_never_constrained_enclosing_generic_base(n: resolved_base, base_expr: base_typed, scope: scope)
+          if defer_field_miss {
             let fa_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: field_name,
               expr_data: ExprFieldAccess { summary: Present { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
@@ -6609,7 +6624,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   diagnostics: concat(base_diags, resolved_base_diags)
                 }
               Absent =>
-                let error_message = concat("no field '", field_name, "' on type '", authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_base), "'")
+                let error_message = concat("no field '", field_name, "' on type '", type_node_label(n: resolved_base, source_indices: scope.type_env.source_indices), "'")
                 let fa_texpr = make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: error_message, span: span)
                 InferResult {
                   typed: fa_texpr,
@@ -6739,7 +6754,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let local_call_view = if sig != none { none } else { match map_get(scope.locals, func_name) {
-        Present { value: binding } => Present { value: if binding.resolved.params |> count > 0 || !map_has(scope.body_locals, func_name) {
+        Present { value: binding } => Present { value: if type_node_is_callable(n: binding.resolved) || !map_has(scope.body_locals, func_name) {
             NodeResolveResult { resolved: binding.resolved, diagnostics: [] }
           } else {
             expand_type_for_field_access(n: binding.resolved, env: scope.type_env, module_name: scope.module_name)
@@ -6754,7 +6769,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let local_call_refused = local_call_diags |> any(d => is_error_diagnostic(d: d.diagnostic))
       let callable_local = if local_call_refused { none } else {
         match local_call_view {
-          Present { value: view } => if view.resolved.params |> count > 0 { Present { value: view.resolved } } else { none }
+          Present { value: view } => if type_node_is_callable(n: view.resolved) { Present { value: view.resolved } } else { none }
           Absent => none
         }
       }
@@ -7088,12 +7103,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
             Present { value: carried } =>
-              if carried.resolved.params |> count > 0 { Present { value: carried.resolved } }
+              if type_node_is_callable(n: carried.resolved) { Present { value: carried.resolved } }
               else { none }
             Absent =>
               match map_get(scope.locals, func_name) {
                 Present { value: binding } =>
-                  if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
+                  if type_node_is_callable(n: binding.resolved) { Present { value: binding.resolved } }
                   else { none }
                 Absent => none
               }
@@ -7696,7 +7711,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         locals: lam_scope.locals, body_locals: lam_scope.body_locals,
         match_bound_names: lam_scope.match_bound_names,
         module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
-        item_registry: lam_scope.item_registry, caller_decl_name: lam_scope.caller_decl_name, lambda_param_provenance: empty_map()
+        item_registry: lam_scope.item_registry, caller_decl_name: lam_scope.caller_decl_name, lambda_param_provenance: empty_map(),
+        in_flight_lambda_param_names: concat(lam_scope.in_flight_lambda_param_names, lam_params)
       }
       let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
@@ -8016,8 +8032,68 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
   }
 }
 
+// is_deferred_field_access_base is the population whose BASE TYPE IS NOT YET KNOWN at this
+// infer_expr: a TypeVariable (including a callee generic the two-round argument fold will
+// re-infer once a non-lambda argument binds it — positive control
+// test.claim.generic_lambda_parameter_binding_witness
+// a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields) or an uninstantiated
+// generic constructor. An enclosing function's own type parameter is never bound by a later
+// pass of that function (fn asks<T>(…) { item.value } with item: T). That arm refuses with
+// the existing "no field 'F' on type 'T'" InternalError. Inference placeholders
+// (callable_param, a callee's R before substitution) stay deferred.
+//
+// Enclosing-generic membership is NOT "the TypeVariable id equals an enclosing param
+// spelling". Callee generics are stamped with the same authored names (T/K/V), so a
+// caller<T> calling apply_to<T>(f: p => p.px, v: …) would refuse the first-round lambda
+// if every enclosing-T base were treated as never-constrained. Nested lambdas accumulate
+// their parameter names (in_flight_lambda_param_names); they must not replace the outer
+// list, or p.px in apply_to(f: p => inner<U>(g: q => p.px, …), v: …) would treat p as a
+// never-constrained enclosing binder.
+//
+// Discriminate on the current binder: an in-flight lambda parameter (this lambda and
+// enclosing lambdas in the same call nest) may still be bound by a later argument fold.
+// Any other base whose type is the enclosing function's generic — value param, let-alias,
+// or a name that is not this lambda's param — is never constrained later.
+fn is_unconstrained_type_variable_base(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: inf } => is_type_variable(inferred: inf)
+    Absent => false
+  }
+}
+
+fn enclosing_fn_generic_names(scope: InferScope) -> List<String> {
+  if scope.caller_decl_name == "" {
+    []
+  } else {
+    match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: scope.caller_decl_name) {
+      FuncSigResolved { sig: s, declared: _ } =>
+        split_sig_params(params: s.params, source_indices: scope.type_env.source_indices).generic_names
+      _ => []
+    }
+  }
+}
+
+fn field_base_is_in_flight_lambda_param(base: Node, scope: InferScope) -> Bool {
+  match base.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: base, source_indices: scope.type_env.source_indices)
+      scope.in_flight_lambda_param_names |> any(p => p == name)
+    _ => false
+  }
+}
+
+fn is_never_constrained_enclosing_generic_base(n: Node, base_expr: Node, scope: InferScope) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: id } } =>
+      let names = enclosing_fn_generic_names(scope: scope)
+      let in_enclosing = names |> any(g => g == id)
+      in_enclosing && !field_base_is_in_flight_lambda_param(base: base_expr, scope: scope)
+    _ => false
+  }
+}
+
 fn is_deferred_field_access_base(n: Node, env: TypeEnv) -> Bool {
-  if n.inferred != none && is_type_variable(inferred: n.inferred.value) { true }
+  if is_unconstrained_type_variable_base(n: n) { true }
   else if n.connective == NoConnective && n.children |> count == 0 && n.inferred == none {
     let name = authored_name_at(source_indices: env.source_indices, node: n)
     match lookup_type_by_name(env: env, name: name) {
@@ -11271,7 +11347,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       diagnostics: concat(transport_diags, props_diags)
     }
   }
-  else if item.body != none && item.params |> count > 0 {
+  else if item.body != none && (item.params |> count > 0 || item.inferred != none) {
     let fn_scope = build_params_scope(scope: scope, params: item.params)
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
       extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: scope.type_env.source_indices), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
@@ -11287,7 +11363,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       service_registry: fn_scope.service_registry,
       item_registry: fn_scope.item_registry,
       caller_decl_name: fn_decl_name,
-      lambda_param_provenance: fn_scope.lambda_param_provenance
+      lambda_param_provenance: fn_scope.lambda_param_provenance,
+      in_flight_lambda_param_names: []
     }
     let fn_return_expected = if item.inferred != none { Present { value: resolved_type(n: item) } } else { none }
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: fn_return_expected)
@@ -11315,39 +11392,6 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         match_pattern: none, module_item_kind: item.module_item_kind, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, props_diags, concat(body_diags, return_conformance_diags))
-    }
-  }
-  else if item.body != none && item.params |> count == 0 && item.inferred != none {
-    let fn_decl_name = authored_name_at(source_indices: scope.type_env.source_indices, node: item)
-    let fn_scope = InferScope {
-      type_env: scope.type_env,
-      func_env: scope.func_env,
-      locals: scope.locals,
-      body_locals: scope.body_locals,
-      match_bound_names: scope.match_bound_names,
-      module_name: scope.module_name,
-      service_registry: scope.service_registry,
-      item_registry: scope.item_registry,
-      caller_decl_name: fn_decl_name,
-      lambda_param_provenance: scope.lambda_param_provenance
-    }
-    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: Present { value: resolved_type(n: item) })
-    let body_typed = body_result.typed
-    let body_diags = concat(
-      body_result.diagnostics,
-      concat(
-        declared_type_conformance_diags(declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope),
-        explicit_return_conformance_diags(declared: declared_return_type_node(item: item), body_typed: body_typed, scope: scope))
-    )
-    TypedItemResult {
-      item: Node {
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
-        inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: Present { value: body_typed },
-        connective: NoConnective, transport: typed_transport,
-               properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, expr_data: NoExprData
-      },
-      diagnostics: concat(transport_diags, props_diags, body_diags)
     }
   }
   else if item.body != none && item.params |> count == 0 {
@@ -11866,7 +11910,6 @@ fn interface_cache_from_module(cache: TypeEnvCache) -> TypeEnvCache {
 fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
   match kind {
     FnItem => Present { value: ExportFn }
-    FuncItem => Present { value: ExportFn }
     TypeItem => Present { value: ExportType }
     DataItem => Present { value: ExportData }
     ServiceItem => Present { value: ExportService }
@@ -13251,17 +13294,6 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
   let res_names = item.uses |> map(u => resource_use_name_at(n: u, source_indices: source_indices))
   let item_name_str = authored_name_at(source_indices: source_indices, node: item)
   match kind {
-    FuncItem =>
-      ItemInfo {
-        name: item_name_str,
-        module_name: module_name,
-        kind: kind,
-        service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices) },
-        resource_names: res_names,
-        params: item.params,
-        is_self_recursive: false,
-        has_non_tail_self_call: false
-      }
     FnItem =>
       ItemInfo {
         name: item_name_str,
@@ -13885,7 +13917,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     service_registry: ctx.svc_registry,
     item_registry: ctx.item_registry,
     caller_decl_name: "",
-    lambda_param_provenance: empty_map()
+    lambda_param_provenance: empty_map(),
+    in_flight_lambda_param_names: []
   }
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
