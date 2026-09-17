@@ -20,6 +20,7 @@ import gunbc.spark.credential_workflow {
 import gunbc.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host_reset_return { host_reset_return_receipt_path }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.auth.approval_request_submission { approval_publisher_token_path }
 import gunbc.auth.approval_keyring_converge {
   approval_capability_mac_access_url,
@@ -34,7 +35,6 @@ import gunbc.auth.approval_keyring_converge {
   approval_submission_mac_key_path_env,
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
-  mtcollins1_bmc_gunbc_secret_ref,
   mtcollins1_boot_sol_capture_path_env,
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }

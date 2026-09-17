@@ -10,6 +10,7 @@ import gunbc.auth.approval_request_submission {
 }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.shell
 
 data approval_keyring_config_dir: NonEmptyStr = "/etc/gunbc-roadmap"
@@ -58,6 +59,16 @@ fn sha256_prefix_compare(observed_hex: String, expected_prefix: NonEmptyStr) -> 
   }
 }
 
+fn approval_capability_digest_standing(observed_hex: String) -> ProcessExit {
+  match sha256_prefix_compare(observed_hex: observed_hex, expected_prefix: approval_mac_key_payload_sha256_prefix) {
+    Sha256PrefixMatches { prefix: _ } => ExitSuccess
+    Sha256PrefixMismatch { expected: e, observed: o } =>
+      exit_failure(reason: concat("approval keyring: capability MAC key sha256 prefix mismatch (expected ", concat(e as String, concat(", observed ", o as String)), ")"))
+    Sha256Unavailable { detail: d } =>
+      exit_failure(reason: concat("approval keyring: capability MAC key digest unusable: ", d as String))
+  }
+}
+
 fn keyring_host_must_be_srv1(host: String) -> Bool {
   host == "srv1"
 }
@@ -84,7 +95,11 @@ fn approval_keyring_converge_wet() -> ProcessExit {
       } else if !sub.success {
         exit_failure(reason: concat("approval keyring: submission MAC key unreadable at ", concat(approval_submission_mac_key_path as String, concat(": ", sub.error))))
       } else {
-        ExitSuccess
+        match sha256sum_file_digest_via_shell(path: approval_mac_key_path) {
+          Sha256FileDigestUnavailable { path: _, reason: r } =>
+            exit_failure(reason: concat("approval keyring: could not digest the installed capability MAC key: ", r))
+          Sha256FileDigest { digest: d } => approval_capability_digest_standing(observed_hex: d.hex as String)
+        }
       }
     }
     other => other

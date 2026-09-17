@@ -5,7 +5,6 @@ import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
-import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootGate,
   MtCollins1BootSubject,
@@ -37,11 +36,6 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.http.client
 import extdeps.shell
-
-data mtcollins1_bmc_gunbc_secret_ref: SecretRef = secret_ref_pin_version(
-  ref: fleet_secret_ref(secret_id: "bmc-mtcollins1-gunbc"),
-  version: "2",
-)
 
 data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
 
