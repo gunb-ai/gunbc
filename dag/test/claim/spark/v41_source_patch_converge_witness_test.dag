@@ -1,0 +1,218 @@
+module test.claim.spark.v41_source_patch_converge_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present, Absent }
+import std.upsert_decision { Noop, Apply, Refuse }
+import std.realization_reconcile { Applied, NotApplied, classify_reconciled, EffectConverged, EffectNotConverged }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.vllm.source_build { vllm_d2d649e6_revision }
+import gunbc.spark.v41_runtime_candidate { v41_engine_patch, V41EnginePatch, v41_storage_backed_patch_population, V41PatchesObserved, V41PatchesUnestablished, V41PatchesAbsentByObservation }
+import extdeps.git { git_apply_args }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command, sha256sum_argv }
+import extdeps.exec.command { argv_words }
+import gunbc.spark.v41_source_patch_converge {
+  V41PatchMemberRead, V41SourceTreeRead, V41SourcePatchPlan,
+  V41PatchedSourceConverged, V41PatchedSourceRefused,
+  v41_source_patch_decision, v41_source_patch_reconcile, v41_sha256_of_bytes,
+  v41_patch_member_read, v41_source_tree_read, v41_source_patch_plan,
+  v41_observed_source_identity_of, v41_patched_source_receipt_line, v41_patched_source_converged,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn w_sha(c: String) -> Sha256Digest {
+  Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
+}
+
+fn w_patch(path: String, c: String) -> List<V41EnginePatch> {
+  match v41_engine_patch(path: path as NonEmptyStr, applies_to: vllm_d2d649e6_revision, sha256_hex: w_sha(c: c).hex as String, purpose: "fixture" as NonEmptyStr) {
+    Present { value: p } => [p]
+    Absent => [] as List<V41EnginePatch>
+  }
+}
+
+fn w_member(path: String, c: String, reverse_applicable: Bool, forward_applicable: Bool) -> V41PatchMemberRead {
+  v41_patch_member_read(path: path as NonEmptyStr, observed_sha256: w_sha(c: c), reverse_applicable: reverse_applicable, forward_applicable: forward_applicable)
+}
+
+fn w_read(head: String, porcelain: String, members: List<V41PatchMemberRead>) -> V41SourceTreeRead {
+  v41_source_tree_read(head: head as NonEmptyStr, porcelain: porcelain, worktree_diff_sha256: w_sha(c: "d"), members: members)
+}
+
+test fn a_clean_tree_at_r_with_forward_checks_is_apply() -> Bool {
+  let ps = concat(w_patch(path: "a.patch", c: "1"), w_patch(path: "b.patch", c: "2"))
+  match v41_source_patch_decision(
+    desired_revision: vllm_d2d649e6_revision,
+    desired_patches: ps,
+    read: w_read(
+      head: vllm_d2d649e6_revision.full_revision as String,
+      porcelain: "",
+      members: [w_member(path: "a.patch", c: "1", reverse_applicable: false, forward_applicable: true), w_member(path: "b.patch", c: "2", reverse_applicable: false, forward_applicable: true)],
+    ),
+  ) {
+    Apply { plan: p } => length(p.patches) == 2
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn reverse_checks_without_forward_are_noop_by_observation() -> Bool {
+  let ps = concat(w_patch(path: "a.patch", c: "1"), w_patch(path: "b.patch", c: "2"))
+  match v41_source_patch_decision(
+    desired_revision: vllm_d2d649e6_revision,
+    desired_patches: ps,
+    read: w_read(
+      head: vllm_d2d649e6_revision.full_revision as String,
+      porcelain: " M vllm/models/deepseek_v4_1/nvidia/engram.py",
+      members: [w_member(path: "a.patch", c: "1", reverse_applicable: true, forward_applicable: false), w_member(path: "b.patch", c: "2", reverse_applicable: true, forward_applicable: false)],
+    ),
+  ) {
+    Noop => true
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn a_digest_mismatch_refuses() -> Bool {
+  let ps = w_patch(path: "a.patch", c: "1")
+  match v41_source_patch_decision(
+    desired_revision: vllm_d2d649e6_revision,
+    desired_patches: ps,
+    read: w_read(
+      head: vllm_d2d649e6_revision.full_revision as String,
+      porcelain: "",
+      members: [w_member(path: "a.patch", c: "9", reverse_applicable: false, forward_applicable: true)],
+    ),
+  ) {
+    Refuse { reason: r } => (r as String).contains("digest mismatch")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn a_wrong_revision_refuses() -> Bool {
+  match v41_source_patch_decision(
+    desired_revision: vllm_d2d649e6_revision,
+    desired_patches: [] as List<V41EnginePatch>,
+    read: w_read(head: "deadbeef", porcelain: "", members: [] as List<V41PatchMemberRead>),
+  ) {
+    Refuse { reason: r } => (r as String).contains("wrong revision")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn partial_application_refuses() -> Bool {
+  let ps = concat(w_patch(path: "a.patch", c: "1"), w_patch(path: "b.patch", c: "2"))
+  match v41_source_patch_decision(
+    desired_revision: vllm_d2d649e6_revision,
+    desired_patches: ps,
+    read: w_read(
+      head: vllm_d2d649e6_revision.full_revision as String,
+      porcelain: " M x",
+      members: [w_member(path: "a.patch", c: "1", reverse_applicable: true, forward_applicable: false), w_member(path: "b.patch", c: "2", reverse_applicable: false, forward_applicable: true)],
+    ),
+  ) {
+    Refuse { reason: r } => (r as String).contains("partial application")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn noop_readback_grounds_and_apply_without_after_read_does_not() -> Bool {
+  let ps = w_patch(path: "a.patch", c: "1")
+  let already = w_read(
+    head: vllm_d2d649e6_revision.full_revision as String,
+    porcelain: " M engram.py",
+    members: [w_member(path: "a.patch", c: "1", reverse_applicable: true, forward_applicable: false)],
+  )
+  let clean = w_read(
+    head: vllm_d2d649e6_revision.full_revision as String,
+    porcelain: "",
+    members: [w_member(path: "a.patch", c: "1", reverse_applicable: false, forward_applicable: true)],
+  )
+  match classify_reconciled(r: v41_source_patch_reconcile(
+    decision: Noop, application: NotApplied, desired_revision: vllm_d2d649e6_revision, desired_patches: ps, after: already,
+  )) {
+    EffectConverged { converged: _ } => true
+    EffectNotConverged { reason: _, attempt: _ } => false
+  }
+    && match classify_reconciled(r: v41_source_patch_reconcile(
+      decision: Apply { plan: v41_source_patch_plan(patches: ps) }, application: Applied, desired_revision: vllm_d2d649e6_revision, desired_patches: ps, after: clean,
+    )) {
+      EffectNotConverged { reason: why, attempt: _ } => (why as String).contains("still wants Apply")
+      EffectConverged { converged: _ } => false
+    }
+}
+
+test fn digestfile_inhabits_the_committed_patch_population() -> Bool {
+  match v41_storage_backed_patch_population() {
+    V41PatchesObserved { patches: ps, partition: _ } =>
+      length(ps) == 2
+        && match get(xs: ps, index: 1) {
+          Absent => false
+          Present { value: p } => (p.purpose as String).contains("not rebound")
+        }
+    V41PatchesAbsentByObservation => false
+    V41PatchesUnestablished { obligation: _ } => false
+  }
+}
+
+test fn empty_diff_has_a_real_digest() -> Bool {
+  match v41_sha256_of_bytes(content: "") {
+    Absent => false
+    Present { value: d } => (d.hex as String).length() == 64
+  }
+}
+
+test fn git_apply_updates_the_index_so_diff_head_covers_new_modules() -> Bool {
+  any(git_apply_args(repository_dir: "/tmp/vllm", patch_path: "engram_file_backed.py.patch"), a => a == "--index")
+}
+
+test fn the_placed_patch_digest_is_sha256sum_over_the_remote_path() -> Bool {
+  let path = "/tmp/declared-patches/engram_file_backed.py.patch"
+  argv_words(command: sha256sum_file_command(path: path)) == sha256sum_argv(path: path)
+}
+
+test fn a_sha256sum_line_mismatch_is_authorable_without_the_desired_hex() -> Bool {
+  match sha256sum_line_digest(line: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.patch") {
+    Absent => false
+    Present { value: a } =>
+      match sha256sum_line_digest(line: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  a.patch") {
+        Absent => false
+        Present { value: b } => (a.hex as String) != (b.hex as String)
+      }
+  }
+}
+
+test fn an_untracked_new_module_refuses_rather_than_sharing_a_diff_head_identity() -> Bool {
+  let ps = w_patch(path: "engram_file_backed.py.patch", c: "1")
+  match v41_source_patch_decision(
+    desired_revision: vllm_d2d649e6_revision,
+    desired_patches: ps,
+    read: w_read(
+      head: vllm_d2d649e6_revision.full_revision as String,
+      porcelain: "?? vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py",
+      members: [w_member(path: "engram_file_backed.py.patch", c: "1", reverse_applicable: true, forward_applicable: false)],
+    ),
+  ) {
+    Refuse { reason: r } => (r as String).contains("untracked")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn patched_source_receipt_names_the_observed_tree_not_a_clean_vanilla_checkout() -> Bool {
+  let obs = v41_observed_source_identity_of(revision_head: "deadbeef" as NonEmptyStr, worktree_diff_sha256: w_sha(c: "d"))
+  let applied = v41_patched_source_receipt_line(c: V41PatchedSourceConverged { patches_already_on_tree: false, observed: obs })
+  let refused = v41_patched_source_receipt_line(c: V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: "git apply refused" })
+  applied.contains("patched source revision=deadbeef")
+    && applied.contains("patches_already_on_tree=false")
+    && applied.contains("worktree_diff_sha256=")
+    && !applied.contains("clean=true")
+    && !applied.contains("already_present=")
+    && refused.contains("patched source REFUSED")
+    && v41_patched_source_converged(c: V41PatchedSourceConverged { patches_already_on_tree: false, observed: obs })
+    && !v41_patched_source_converged(c: V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: "git apply refused" })
+}

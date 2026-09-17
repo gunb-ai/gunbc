@@ -901,6 +901,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       DispatchWorktreeRoot => Present { value: DirectoryRoot { path: art.path } }
       AttemptStateRoot => Present { value: DirectoryRoot { path: art.path } }
       ComputeRoot => Present { value: DirectoryRoot { path: art.path } }
+      FabricEventLogRoot => Present { value: DirectoryRoot { path: art.path } }
       _ => none
     }
     Dependency { step: _ } => none
@@ -917,10 +918,10 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
 //
 // A directory root breaks the coincidence: its identity decides WHETHER it is installed, but the
 // command still comes from the step's own upsert, because the attempt-state root installs a managed
-// directory and the other two an owned one. So a root must stay IN the reconcile and still be gated.
-// Answering the exclusion question with "is it an identity member" removed all three roots from the
-// reconcile, left no effect for their steps to match, and emitted nothing for them -- caught by two
-// pre-existing witnesses, not by anything in the types.
+// directory and the other owned roots an owned one. So a root must stay IN the reconcile and still
+// be gated. Answering the exclusion question with "is it an identity member" removed the runtime
+// roots from the reconcile, left no effect for their steps to match, and emitted nothing for them
+// -- caught by two pre-existing witnesses, not by anything in the types.
 fn step_renders_its_own_member_commands(step: DeploymentStep) -> Bool {
   match identity_member_of_step(step: step) {
     Absent => false

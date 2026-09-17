@@ -271,7 +271,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
     let mut v2_native_route_mode = false;
-    let mut self_host_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -356,14 +355,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             // receipt minted here and one minted by the deleted lane cannot be two facts.
             "--v2-native-route" => {
                 v2_native_route_mode = true;
-            }
-            // THE V1 -> V2 SELF-HOST STEP. Deliberately its own flag and NOT a --required-ci phase:
-            // a phase is a standing claim on a paid runner for every push and every pull request,
-            // and that enrolment is the operator's to make once the wall time has been watched on
-            // real heads. The capability is here either way; what a workflow invokes is a separate
-            // decision from what the binary can do.
-            "--self-host" => {
-                self_host_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -825,9 +816,19 @@ fn run() -> Result<ExitCode, ExitCode> {
                     let adjudicated = v1_compiler::cli_run::namespace_wave_admission::adjudication_event_from_name(
                         event_name.as_deref(),
                     )
-                    .and_then(|event| {
+                    // THE EVENT IS VALIDATED AND DISCARDED, AND THE VALIDATION IS THE POINT --
+                    // BUT NOT FOR THE REASON THIS COMMENT FIRST GAVE (review 67027). It said the
+                    // call guards against applying the pull_request policy to an unmodelled event.
+                    // There is no event-selected policy left to mis-apply: gunbc#11481 removed the
+                    // arms that were it. What the call still does is refuse a GITHUB_EVENT_NAME
+                    // wave admission does not model, which is now a tripwire on the WORKFLOW'S
+                    // TRIGGER SET -- add a trigger nobody sized this wall against and the required
+                    // run stops instead of quietly producing a verdict for it. Its RED is authored
+                    // and executing (`adjudication_event_from_name(Some("schedule")).is_err()`), so
+                    // this is a live refusal and not a decoration. Dropping the call drops it.
+                    .and_then(|_event| {
                         v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
-                            index, event,
+                            index,
                         )
                     });
                     match adjudicated {
@@ -1298,21 +1299,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
         }
-    }
-
-    if self_host_mode {
-        let roots = if source_roots.is_empty() {
-            v1_compiler::cli_run::witness_layer_roots()
-        } else {
-            source_roots.clone()
-        };
-        return match v1_compiler::cli_run::run_self_host(&roots) {
-            Ok(()) => Ok(ExitCode::SUCCESS),
-            Err(e) => {
-                eprintln!("self-host: refused: {e}");
-                Err(ExitCode::from(1))
-            }
-        };
     }
 
     if v2_native_route_mode {
@@ -1945,7 +1931,6 @@ fn report_wave_admission_outcome(
             head,
             report,
             roster_touched: _,
-            event: _,
         } => {
             let p = &report.population;
             eprintln!(

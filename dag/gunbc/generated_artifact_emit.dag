@@ -14,13 +14,15 @@ import gunbc.generated_artifact {
   EvaluationBudgetConsequenceGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact,
   Fci1BoundedExecutionContextArtifact,
+  WholeCorpusCompileMeasuredRootDemandsArtifact,
   artifact_path,
   artifact_commit_policy,
   CommitRequired, NotCommitted,
-  GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
+  GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput,
   committed_generated_artifacts,
   heal_regenerated_after_provisional_merge_paths
 }
+import gunbc.whole_corpus_compile_demand_projection { expected_whole_corpus_compile_measured_root_demands_json }
 import gunbc.generated_workflow_provenance {
   generated_workflow_provenance_header,
   GeneratedWorkflowProvenanceHeaderProduced,
@@ -111,6 +113,7 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
       heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
     ))
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
+    WholeCorpusCompileMeasuredRootDemandsArtifact => artifact_generated(content: expected_whole_corpus_compile_measured_root_demands_json())
     CouponCadQueryProgramArtifact => match expected_coupon_cadquery_program() {
       CouponProgramGenerated { content } => artifact_generated(content: content)
       CouponProgramRefused { reason } => ArtifactGenerationRefused { reason: reason }
@@ -187,6 +190,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       CommitRequired { consumer: GitProtocol } => generated
       CommitRequired { consumer: ProjectDocumentation } => generated
       CommitRequired { consumer: HostReconciler } => generated
+      CommitRequired { consumer: CompilerRunInput } => generated
       NotCommitted => generated
     }
   }
@@ -219,6 +223,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     GeneratedArtifactMergeDriverArtifact => true
     RunnerDeployArtifact => true
     CouponCadQueryProgramArtifact => true
+    WholeCorpusCompileMeasuredRootDemandsArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
