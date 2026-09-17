@@ -48,6 +48,18 @@ type LexCharClass
 // no element type to infer). The population is every per-language `*_lex_rule` constructor across
 // `v2.extdeps`, so one of them reading right says nothing about its fourteen siblings -- gunbc#11507
 // fixed the one its closure reached and the rest were still unconverted a PR later.
+//
+// A BARE STRING LITERAL AT THE SAME FIELD IS A DIFFERENT SHAPE, AND IT IS ANSWERED. The constructor
+// sites hand a kernel `String` *value* that still needs `chars`. A literal in `LiteralPattern` /
+// `KeywordPattern` position is a kernel string literal at a qualified `v2.std.text.String` record
+// field, which `std.literal_elaboration` `UnicodeScalarSequenceUnfold` elaborates to the FreeMonoid
+// introduction before emit. Measured: `gunbc compile --source-root dag --source-root src/v2 --entry
+// <fixture constructing LiteralPattern { text: "//" }> --target rust` emitted
+// `text: Rc::new(vec![47, 47])` (Unicode scalars for `'/'` `'/'`) and not `"//".to_string()`. The
+// enrolled control for that boundary class is
+// `test.claim.self_host_structural_text_witness_test`
+// `w_string_literal_at_text_record_field_emits_scalar_sequence`. The language-module literal
+// sites are therefore not latent E0308 instances of the constructor class.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: v2.std.text.String }
