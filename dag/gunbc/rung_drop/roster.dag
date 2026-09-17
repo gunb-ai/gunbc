@@ -75,6 +75,7 @@ import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_
 import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accumulator_copy_positive_controls_off_every_lane }
 import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
 import gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost { roadmap_live_projection_new_witness_eval_step_cost }
+import gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost { live_deploy_apply_render_new_witness_eval_step_cost }
 import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_monolith_control_unmeasured_derived_root }
 
 data rung_drop_roster: List<RungDrop> = [
@@ -134,6 +135,7 @@ data rung_drop_roster: List<RungDrop> = [
   accumulator_copy_positive_controls_off_every_lane,
   seed_whole_corpus_demand_population_blind,
   roadmap_live_projection_new_witness_eval_step_cost,
+  live_deploy_apply_render_new_witness_eval_step_cost,
   seam_monolith_control_unmeasured_derived_root,
 ]
 
