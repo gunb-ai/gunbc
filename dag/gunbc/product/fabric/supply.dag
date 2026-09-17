@@ -1,6 +1,7 @@
 module product.fabric.supply
 
 import std.types { Timestamp, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 import std.measure {
   ByteSize,
   byte_size_count,
@@ -113,6 +114,17 @@ fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
   }
 }
 
+// A THIRD ARM, AND IT IS THE ONE THE OTHER TWO CANNOT STAND IN FOR: SUPPLY NOBODY HAS SEEN YET.
+// A PLANNED fleet - hardware bought and not yet booted, a rack not yet installed - has a shape, a
+// quantity and a route, and NO observation and no quote. Before this arm the only way to put such a
+// fleet in front of a fold was to choose the OBSERVED constructor and write prose into its instant
+// ("unobserved-planning-fleet"), which review 67335 caught on gunbc-private#141: the type said
+// measured, the string said otherwise, and no fold could refuse on it because the refusal had no
+// spelling. The obligation says what would make it real, at the DeclarationRef grain
+// ProviderPathUnread already uses, so the remedy is located rather than described.
+//
+// IT IS NOT SUPPLY FOR ANY DECISION. product.fabric.failure_scenario_admission refuses it by name;
+// a fold that counted it would be reserving against hardware that may never boot.
 type OfferEvidence
   = ObservedSupply { observed_at: Timestamp, receipt: ObservationReceiptRef }
   | QuotedSupply {
@@ -120,6 +132,7 @@ type OfferEvidence
       valid_until: Timestamp,
       receipt: ObservationReceiptRef,
     }
+  | UnobservedSupply { obligation: DeclarationRef }
 
 // STATED DIVERGENCE FROM THE CAPACITY-CLASS RULING (DESIGN section 3b), because that ruling is
 // about this very type and must be answered rather than stepped around.
