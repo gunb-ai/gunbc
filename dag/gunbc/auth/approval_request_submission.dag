@@ -271,10 +271,56 @@ fn submission_outcome_reason(o: SubmissionOutcome) -> String {
 }
 
 // THE FILING IS DURABLE BEFORE THE NOTIFICATION IS SENT, and a failed publish is reported beside
-// the filed escalation rather than rolling it back: the operator can be notified again for a
-// filed request, but a notification for an unfiled one is a link to nothing. The links themselves
-// never leave this fold except inside the message -- they are bearer authority and the HTTP
-// response to the filer carries only the escalation id.
+// the filed escalation rather than rolling it back. The retry path is the SAME submission again:
+// the slot is occupied, so the fold reads it back, and a pending record whose canonical bytes equal
+// the resubmission is notified again -- the links are re-derived from the stored claims under the
+// capability key, so nothing needs storing and a second publish carries the same bearer links as
+// the first. A decided slot, or a pending one holding a different request, is 409: the operator
+// is never re-notified for a request that already has an answer or that this filer did not sign.
+// The links themselves never leave this fold except inside the message -- they are bearer
+// authority and the HTTP response to the filer carries only the escalation id.
+fn notify_filed(
+  capability_keyring: ApprovalKeyringRead,
+  publisher: PublisherTokenRead,
+  request: StoredApprovalRequest,
+) -> SubmissionOutcome {
+  match capability_keyring {
+    ApprovalKeyringRefused { cause: c } => SubmissionCapabilityKeyUnavailable { cause: c }
+    ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_link_base_url(), request: request) {
+      LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
+      links => match approval_message(request: request, links: links) {
+        Absent => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: key.id }
+        Present { value: message } => match publisher {
+          PublisherTokenUnavailable { path: _, detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
+          PublisherTokenLoaded { token: t } => {
+            let sent = ntfy.Publish.PublishMessage(
+              access_token: t,
+              topic: message.topic,
+              title: message.title,
+              body: message.body,
+              priority: ntfy_priority_wire(p: message.priority),
+              click: message.click,
+              cache: ntfy_cache_wire(c: message.cache),
+            )
+            match ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id) {
+              NtfyPublished { message_id: m } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
+              other => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: other }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// AN OCCUPIED SLOT IS RE-NOTIFIABLE ONLY WHILE PENDING AND ONLY FOR THE SAME BYTES.
+fn occupied_slot_renotifiable(slot: EscalationSlot, request: StoredApprovalRequest) -> Bool {
+  match slot {
+    EscalationPending { request: stored } => stored_request_json(r: stored) == stored_request_json(r: request)
+    _ => false
+  }
+}
+
 fn file_and_notify(
   root: NonEmptyStr,
   capability_keyring: ApprovalKeyringRead,
@@ -282,35 +328,14 @@ fn file_and_notify(
   request: StoredApprovalRequest,
 ) -> SubmissionOutcome {
   match file_approval_request(root: root, request: request) {
-    StoreSlotOccupied => SubmissionAlreadyFiled { escalation_id: request.escalation_id }
-    StoreRefused { detail: d } => SubmissionStoreRefused { detail: d }
-    StoreWritten => match capability_keyring {
-      ApprovalKeyringRefused { cause: c } => SubmissionCapabilityKeyUnavailable { cause: c }
-      ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_link_base_url(), request: request) {
-        LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
-        links => match approval_message(request: request, links: links) {
-          Absent => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: key.id }
-          Present { value: message } => match publisher {
-            PublisherTokenUnavailable { path: _, detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
-            PublisherTokenLoaded { token: t } => {
-              let sent = ntfy.Publish.PublishMessage(
-                access_token: t,
-                topic: message.topic,
-                title: message.title,
-                body: message.body,
-                priority: ntfy_priority_wire(p: message.priority),
-                click: message.click,
-                cache: ntfy_cache_wire(c: message.cache),
-              )
-              match ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id) {
-                NtfyPublished { message_id: m } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
-                other => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: other }
-              }
-            }
-          }
-        }
+    StoreSlotOccupied =>
+      if occupied_slot_renotifiable(slot: observe_escalation(root: root, escalation_id: request.escalation_id), request: request) {
+        notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request)
+      } else {
+        SubmissionAlreadyFiled { escalation_id: request.escalation_id }
       }
-    }
+    StoreRefused { detail: d } => SubmissionStoreRefused { detail: d }
+    StoreWritten => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request)
   }
 }
 

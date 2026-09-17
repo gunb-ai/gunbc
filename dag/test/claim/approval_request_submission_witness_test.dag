@@ -7,13 +7,16 @@ import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex,
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, StoredApprovalRequest, stored_request_json, claims_for,
-  approval_mac_key_id, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, EscalationUnreadable,
+  approval_mac_key_id, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, EscalationUnreadable, EscalationPending, EscalationDecided, EscalationNotFiled,
 }
+import gunbc.auth.approval_ntfy_deployment { hermetic_ntfy_publish_message_id }
+import gunbc.auth.approval_broker { BrokerDenied }
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id,
   sign_submission, submission_envelope_json, parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   admit_parsed_submission, SubmissionVerdict, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
   issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status, escalation_status_of,
+  notify_filed, occupied_slot_renotifiable, PublisherTokenLoaded, SubmissionFiledAndNotified, SubmissionFiledPublisherTokenUnavailable, PublisherTokenUnavailable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -162,4 +165,40 @@ test fn status_text_reports_not_filed_for_an_absent_slot_and_unreadable_off_the_
   let unreadable = escalation_status_of(slot: EscalationUnreadable { detail: "gen1 record is not a request" })
   absent.status == 200 && absent.body == "standing=not-filed\n"
     && unreadable.status == 503 && contains(unreadable.body, "standing=unreadable")
+}
+
+// THE PUBLISH RUNS. notify_filed reaches ntfy.Publish.PublishMessage, whose hermetic arm answers
+// the fixture message id; deleting the publish call, or the token arm, fails this control. The
+// token-unavailable arm is the same fold one input earlier, so both are read from one route.
+test fn a_filed_request_with_a_publisher_token_is_published_and_without_one_is_reported() -> Bool {
+  match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, request: request()) {
+    SubmissionFiledAndNotified { escalation_id: e, message_id: m } => e == "esc-mtc1-boot-1" && (m as String) == hermetic_ntfy_publish_message_id
+    _ => false
+  }
+    && match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }, request: request()) {
+      SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: d } => d == "absent"
+      _ => false
+    }
+}
+
+// A FAILED NOTIFY IS RETRIED BY RESUBMITTING: the occupied slot is re-notifiable only while it is
+// pending and holds exactly these bytes. A decided slot and a pending slot for a different request
+// stay 409, and an absent slot is never "occupied".
+test fn an_occupied_slot_is_renotifiable_only_while_pending_with_the_same_bytes() -> Bool {
+  let same = request()
+  let other = StoredApprovalRequest {
+    escalation_id: "esc-mtc1-boot-1",
+    request_revision: "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    attempt: "mtc1-boot-attempt-2" as AttemptIdentity,
+    requester: "fleet-converge mtcollins1_boot",
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    destructive: true,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: "2026-09-17T20:00:00Z",
+    key_id: approval_mac_key_id,
+  }
+  occupied_slot_renotifiable(slot: EscalationPending { request: same }, request: request())
+    && !occupied_slot_renotifiable(slot: EscalationPending { request: other }, request: request())
+    && !occupied_slot_renotifiable(slot: EscalationNotFiled, request: request())
+    && !occupied_slot_renotifiable(slot: EscalationDecided { decision: BrokerDenied { escalation_id: "esc-mtc1-boot-1", revision: "sha256:abababababababababababababababababababababababababababababababab", decided_by: "briansrls@gmail.com", decided_at: "2026-09-16T21:00:00Z", reason: "no" } }, request: request())
 }

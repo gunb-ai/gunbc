@@ -9,7 +9,7 @@ import std.human_intervention {
 }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
-import extdeps.transports.rest { RestOutcome }
+import extdeps.transports.rest { RestOutcome, RestOk }
 import extdeps.uri { Uri, Https }
 import std.types { Secret }
 import v2.std.network { POST }
@@ -337,6 +337,14 @@ data approval_ntfy_serve_port: Port = 8443
 
 data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_intent_network.tailnet_domain)
 
+// THE HERMETIC PUBLISH IS THE DECODED-200 SHAPE AND NOTHING ELSE: mock_response publishes one
+// result, so the hermetic arm is a published message whose id is the fixture's identity -- a live
+// ntfy id is a random 12-character string and cannot be this spelling. It exists so that a claim
+// can run the filing fold THROUGH the publish call: deleting ntfy.Publish.PublishMessage from
+// approval_request_submission must fail a control, not only an annotation.
+data hermetic_ntfy_publish_message_id: String = "hermetic-mock-ntfy-message"
+data hermetic_ntfy_publish_outcome: RestOutcome = RestOk
+
 service ntfy.Publish {
   config {
     endpoint: approval_ntfy_base_url
@@ -378,6 +386,9 @@ service ntfy.Publish {
       403 => NtfyErrorShape
       429 => NtfyErrorShape
       5xx => NtfyErrorShape
+    }
+    mock_response {
+      200 => { message_id: hermetic_ntfy_publish_message_id, outcome: hermetic_ntfy_publish_outcome } "hermetic POST / decoded-200 shape; the id is the fixture identity, not a live ntfy message"
     }
   }
 }

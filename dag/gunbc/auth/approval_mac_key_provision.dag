@@ -34,10 +34,16 @@ import gunbc.auth.approval_request_submission { approval_submission_mac_key_secr
 // gunbc.auth.gcp_secret_access reconciles the accessor binding for the WIF convergence principal --
 // so the version the receipt pins is the one the store answered, not the one a shell printed.
 //
-// IDEMPOTENT BY CONSTRUCTION: a container that exists is observed, not recreated; a container with
-// an ENABLED version is reported with that version and nothing is added, so running this twice
-// cannot rotate a key out from under the links in flight (approval_capability: key_id pins what
-// is checked). Only a container with NO enabled version receives a new one.
+// RE-RUNNABLE WHILE EVERY PRIOR RUN ANSWERED: a container that exists is observed, not recreated;
+// a container with an ENABLED version at its pin is reported with that version and nothing is
+// added, so a repeated run cannot rotate a key out from under the links in flight
+// (approval_capability: key_id pins what is checked). Only a container with NO enabled version
+// receives a new one. The one run that must NOT be repeated is a run that ended
+// KeyProvisionOutcomeUnknown: a create or add-version was sent and no answer came back, and
+// gunbc.secret_provision_actuator rules that a later GetSecret 404 does not establish absence
+// after that. Such a run exits non-zero naming the key, and the operator resolves the container
+// by inspection before any further run; nothing here reads a 404 past an unknown outcome because
+// nothing here runs past one.
 //
 // THE MATERIAL IS 32 OCTETS FROM /dev/urandom RENDERED AS 64 LOWER HEX -- the spelling
 // extdeps.crypto.mac hmac_sha256_hex takes as key material -- and it never reaches argv or a log:
@@ -91,7 +97,7 @@ fn standing_line(s: KeyProvisionStanding) -> String {
     KeyAlreadyEnabled { secret_id: id, version: v } => join(["secret=", id as String, " standing=already-enabled version=", v as String], "")
     KeyVersionAdded { secret_id: id, version: v, digest_prefix: d } => join(["secret=", id as String, " standing=version-added version=", v as String, " sha256_prefix=", d], "")
     KeyProvisionRefused { secret_id: id, cause: c } => join(["secret=", id as String, " standing=REFUSED cause=", c as String], "")
-    KeyProvisionOutcomeUnknown { secret_id: id, cause: c } => join(["secret=", id as String, " standing=OUTCOME-UNKNOWN cause=", c as String], "")
+    KeyProvisionOutcomeUnknown { secret_id: id, cause: c } => join(["secret=", id as String, " standing=OUTCOME-UNKNOWN do-not-rerun=resolve the container by inspection first; a 404 after this does not establish absence cause=", c as String], "")
   }
 }
 
