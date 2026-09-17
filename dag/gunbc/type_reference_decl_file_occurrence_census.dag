@@ -524,3 +524,54 @@ data type_reference_decl_file_census_discharge: List<DeclarationRef> = [
   decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_realization"),
   decl_ref(module_path: "v1.compiler.coercion", decl_name: "declaration_realization"),
 ]
+
+// THE FALLBACK ARM, SPLIT (CARRIER-KEY-1, 2026-09-17). The roster above counts CALL occurrences of the
+// reference-site read. This record states how that read's own collapsed arm is now told apart, so
+// the fallback population it produces can be scored per occurrence rather than read as one mass.
+// It carries no count on purpose. The populations are occurrence facts about a closure, and the
+// producer that re-derives them is named here instead of transcribed (DESIGN section 6).
+//
+// THE SPLIT IS BY STRUCTURE, AND THE RESOLVED ARM IS SPLIT TOO. Running the instrument on the typed
+// tree showed the brief's premise was half right. A missing Resolved node does NOT mean inference
+// was unavailable, because v1.compiler.infer_resolve resolves a leaf reference by SUBSTITUTING the
+// declaration, span included. And a present Resolved node does NOT mean a declaration, because
+// resolve builds an applied reference's Resolved node on the reference's own span. So neither
+// "Resolved or not" nor "span present or not" separates the states. The parser's
+// ModuleItemTypeDeclaration mark and the kernel mint do.
+//
+// WHAT THE SPLIT IS NOT, measured on its first run and stated so a refusal is not read as a wrong key.
+// (1) IT OVER-REFUSES. A leaf reference substituted through an alias keeps the declaration's span
+// but carries the alias target's item kind, so a reference whose old key DID name its declaration
+// can land in Unavailable:NoResolutionBoundAtReference. Refusal means "not provable from the node",
+// never "production was wrong here". Score a refusal right-or-wrong only by joining the census's
+// environment column. (2) IT DOES NOT REFUSE THE KERNEL-MINTED ALIAS BOUNDARY. A substituted alias
+// right-hand side minted on the kernel pseudo-file (e.g. std.algebra.FreeMonoid) answers
+// ResolvedToDeclaration:KernelMinted while the environment names the corpus declaration. That
+// inherits v1.std.core declaration_provenance_of's kernel recognizer and is state_space_conflation's
+// third form, not a new defect. It shows up in the census as a ResolvedToDeclaration row whose
+// identity column is DISAGREE.
+//
+// PRODUCTION IS NOT CHANGED BY THIS, and the record says so rather than implying a wall:
+// gunbc.rung_drop type_reference_location_fallback_keys_production_realization declares the key
+// production still decides on.
+type FallbackArmSplit {
+  collapsed_read: DeclarationRef
+  split_query: DeclarationRef
+  outcome_type: DeclarationRef
+  refusal_causes: DeclarationRef
+  population_instrument: DeclarationRef
+  population_column: String
+  executing_witness: DeclarationRef
+  declared_drop: String
+}
+
+data type_reference_decl_file_fallback_split: FallbackArmSplit = FallbackArmSplit {
+  collapsed_read: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+  split_query: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_identity"),
+  outcome_type: decl_ref(module_path: "std.coercion", decl_name: "TypeReferenceIdentity"),
+  refusal_causes: decl_ref(module_path: "std.coercion", decl_name: "ReferenceIdentityUnavailableCause"),
+  population_instrument: decl_ref(module_path: "v1.tests.claim.carrier_realization_census", decl_name: "typed_census_from_sources"),
+  population_column: "split_identity, beside legacy_key: a FALLBACK or resolved legacy arm joined to IsTheDeclaration (legitimately keyed), ResolvedToDeclaration, or Unavailable:<cause> (production keyed a location), per occurrence",
+  executing_witness: decl_ref(module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_type_reference_identity_split_test"),
+  declared_drop: "gunbc.rung_drop type_reference_location_fallback_keys_production_realization",
+}

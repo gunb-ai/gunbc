@@ -32,9 +32,18 @@ use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
-pub use crate::std_coercion::TypeDeclarationProvenance;
+use crate::std_coercion::ReferenceIdentityUnavailableCause::{
+    DeclarationNodeCarriesNoSpan, NoResolutionBoundAtReference, ResolvedNodeIsNotADeclaration,
+};
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
+use crate::std_coercion::TypeReferenceIdentity::{
+    ReferenceIdentityUnavailable, ReferenceIsTheDeclaration, ReferenceIsTypeVariableBinder,
+    ReferenceResolvedToDeclaration,
+};
+pub use crate::std_coercion::{
+    ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeReferenceIdentity,
 };
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
@@ -4444,6 +4453,98 @@ pub fn type_reference_provenance(n: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => declaration_provenance_of(rt.clone()),
         _ => declaration_provenance_of(n.clone()),
+    }
+}
+
+pub fn node_is_type_declaration(n: Rc<Node>) -> bool {
+    match n.module_item_kind.clone() {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
+        _ => false,
+    }
+}
+
+pub fn declaration_node_provenance(n: Rc<Node>) -> Option<Rc<TypeDeclarationProvenance>> {
+    match (*declaration_provenance_of(n.clone())).clone() {
+        TypeDeclarationProvenance::KernelMinted {
+            minted_name: nm, ..
+        } => Some(Rc::new(TypeDeclarationProvenance::KernelMinted {
+            minted_name: nm.clone(),
+        })),
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
+            if node_is_type_declaration(n.clone()) {
+                Some(Rc::new(TypeDeclarationProvenance::CorpusDeclared {
+                    decl_file: f.clone(),
+                }))
+            } else {
+                std::option::Option::None
+            }
+        }
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => std::option::Option::None,
+    }
+}
+
+pub fn declaration_node_unavailable_cause(
+    n: Rc<Node>,
+    when_not_a_declaration: ReferenceIdentityUnavailableCause,
+) -> ReferenceIdentityUnavailableCause {
+    if node_is_type_declaration(n.clone()) {
+        ReferenceIdentityUnavailableCause::DeclarationNodeCarriesNoSpan
+    } else {
+        when_not_a_declaration
+    }
+}
+
+pub fn type_variable_binder_name(n: Rc<Node>) -> Option<String> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: tv, .. }) => Some(tv.clone()),
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn type_reference_identity(n: Rc<Node>) -> Rc<TypeReferenceIdentity> {
+    match type_variable_binder_name(n.clone()) {
+        Some(tv) => Rc::new(TypeReferenceIdentity::ReferenceIsTypeVariableBinder {
+            binder_name: tv.clone(),
+        }),
+        std::option::Option::None => type_reference_declaration_identity(n.clone()),
+    }
+}
+
+pub fn type_reference_declaration_identity(n: Rc<Node>) -> Rc<TypeReferenceIdentity> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            match type_variable_binder_name(rt.clone()) {
+                Some(tv) => Rc::new(TypeReferenceIdentity::ReferenceIsTypeVariableBinder {
+                    binder_name: tv.clone(),
+                }),
+                std::option::Option::None => match declaration_node_provenance(rt.clone()) {
+                    Some(p) => Rc::new(TypeReferenceIdentity::ReferenceResolvedToDeclaration {
+                        provenance: p.clone(),
+                    }),
+                    std::option::Option::None => {
+                        Rc::new(TypeReferenceIdentity::ReferenceIdentityUnavailable {
+                            cause: declaration_node_unavailable_cause(
+                                rt.clone(),
+                                ReferenceIdentityUnavailableCause::ResolvedNodeIsNotADeclaration,
+                            ),
+                        })
+                    }
+                },
+            }
+        }
+        _ => match declaration_node_provenance(n.clone()) {
+            Some(p) => Rc::new(TypeReferenceIdentity::ReferenceIsTheDeclaration {
+                provenance: p.clone(),
+            }),
+            std::option::Option::None => {
+                Rc::new(TypeReferenceIdentity::ReferenceIdentityUnavailable {
+                    cause: declaration_node_unavailable_cause(
+                        n.clone(),
+                        ReferenceIdentityUnavailableCause::NoResolutionBoundAtReference,
+                    ),
+                })
+            }
+        },
     }
 }
 
