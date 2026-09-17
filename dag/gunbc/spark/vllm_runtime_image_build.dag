@@ -300,8 +300,12 @@ fn vllm_image_build_key(r: VllmContainerBuildRecipe) -> ContentHash {
   artifact_realization_digest(inputs: vllm_image_build_key_inputs(r: r))
 }
 
+fn vllm_image_tag_for_key(key: ContentHash) -> NonEmptyStr {
+  join([vllm_image_repository as String, ":", serialize_content_hash(hash: key) as String], "") as NonEmptyStr
+}
+
 fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
-  join([vllm_image_repository as String, ":", serialize_content_hash(hash: vllm_image_build_key(r: r)) as String], "") as NonEmptyStr
+  vllm_image_tag_for_key(key: vllm_image_build_key(r: r))
 }
 
 // ── THE INVOCATION ────────────────────────────────────────────────────────────────────────────
@@ -335,8 +339,12 @@ fn vllm_image_dockerfile_path(r: VllmContainerBuildRecipe) -> NonEmptyStr {
 }
 
 fn vllm_image_build_spec(r: VllmContainerBuildRecipe) -> DockerBuildSpec {
+  vllm_image_build_spec_for_tag(r: r, tag: vllm_image_tag(r: r))
+}
+
+fn vllm_image_build_spec_for_tag(r: VllmContainerBuildRecipe, tag: NonEmptyStr) -> DockerBuildSpec {
   DockerBuildSpec {
-    tag: vllm_image_tag(r: r),
+    tag: tag,
     context_dir: vllm_source_dir() as FilePath,
     dockerfile: vllm_image_dockerfile_path(r: r),
     target: r.build_target,
@@ -385,6 +393,22 @@ fn vllm_image_leg(target: SshTarget, context: FleetSshExecutionContext, step: No
         ImageLegFailed { step: step, cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
       }
   }
+}
+
+type ImageUncheckedLeg
+  = ImageUncheckedRan { exit_code: Int, stdout: String, stderr: String }
+  | ImageUncheckedFailed { step: NonEmptyStr, cause: String }
+
+fn vllm_image_leg_unchecked(target: SshTarget, context: FleetSshExecutionContext, step: NonEmptyStr, command: ArgvCommand) -> ImageUncheckedLeg {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)) {
+    TypedArgvExecRefused { reason: why } => ImageUncheckedFailed { step: step, cause: why }
+    TypedArgvExecConverged { result: r } =>
+      ImageUncheckedRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
+  }
+}
+
+fn vllm_image_build_key_with_observed_tree(r: VllmContainerBuildRecipe, extras: List<ArtifactRealizationInput>) -> ContentHash {
+  artifact_realization_digest(inputs: concat(vllm_image_build_key_inputs(r: r), extras))
 }
 
 // SOURCE MATERIALIZATION IS CONVERGENT, AND THE READBACK COMES FIRST. A tree already sitting at the
@@ -452,7 +476,43 @@ fn vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) 
   }
 }
 
-fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
+// A CLEAN CHECKOUT AT r.source WHEN THE DESIRED PATCH POPULATION IS EMPTY. Nonempty P is
+// converge_vllm_source_with_patches: std.upsert_decision over DigestFile'd members plus a
+// working-tree readback. This function does not choose P and does not apply V41EnginePatch.
+//
+// WORKING-TREE CLEANLINESS IS A PARAMETER OF THIS LADDER, not a second copy of it. Vanilla image
+// builds require a clean tree so the image is not stamped with a revision it was not built from.
+// A patched desired state is dirty by construction; porcelain is judged by
+// v41_source_patch_decision, not here.
+type VllmWorkingTreeRequirement
+  = VllmWorkingTreeMustBeClean
+  | VllmWorkingTreeMayBeDirty
+
+fn vllm_source_after_revision(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  already_present: Bool,
+  working_tree: VllmWorkingTreeRequirement,
+) -> VllmSourceState
+  uses net: Network
+{
+  match working_tree {
+    VllmWorkingTreeMayBeDirty => VllmSourceAtRevision { revision: r.source.full_revision, already_present: already_present }
+    VllmWorkingTreeMustBeClean =>
+      match vllm_source_tree_clean(target: target, context: context) {
+        Present { value: refusal } => refusal
+        Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: already_present }
+      }
+  }
+}
+
+fn converge_vllm_source_to_revision(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  working_tree: VllmWorkingTreeRequirement,
+) -> VllmSourceState
   uses net: Network
 {
   match vllm_source_head(target: target, context: context) {
@@ -463,10 +523,7 @@ fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r:
           cause: join(["the source tree at ", vllm_source_dir() as String, " is checked out at ", head, " and this build wants ", r.source.full_revision as String, "; it is not moved from under a build that may be reading it"], ""),
         }
       } else {
-        match vllm_source_tree_clean(target: target, context: context) {
-          Present { value: refusal } => refusal
-          Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: true }
-        }
+        vllm_source_after_revision(target: target, context: context, r: r, already_present: true, working_tree: working_tree)
       }
     Absent =>
       match vllm_image_run_steps(target: target, context: context, step: "source-materialize" as NonEmptyStr, commands: vllm_materialize_source_steps(r: r)) {
@@ -482,14 +539,17 @@ fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r:
               if head != (r.source.full_revision as String) {
                 VllmSourceRefused { step: "source-readback" as NonEmptyStr, cause: join(["checkout reported success and HEAD reads ", head], "") }
               } else {
-                match vllm_source_tree_clean(target: target, context: context) {
-                  Present { value: refusal } => refusal
-                  Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: false }
-                }
+                vllm_source_after_revision(target: target, context: context, r: r, already_present: false, working_tree: working_tree)
               }
           }
       }
   }
+}
+
+fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
+  uses net: Network
+{
+  converge_vllm_source_to_revision(target: target, context: context, r: r, working_tree: VllmWorkingTreeMustBeClean)
 }
 
 // ── THE IMAGE ─────────────────────────────────────────────────────────────────────────────────
@@ -544,7 +604,13 @@ type VllmImageBuild
 fn converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
   uses net: Network
 {
-  let tag = vllm_image_tag(r: r)
+  converge_vllm_image_keyed(ctx: ctx, r: r, key: vllm_image_build_key(r: r))
+}
+
+fn converge_vllm_image_keyed(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe, key: ContentHash) -> VllmImageBuild
+  uses net: Network
+{
+  let tag = vllm_image_tag_for_key(key: key)
   match vllm_docker_leg(ctx: ctx, step: "image-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
     ImageLegFailed { step: st, cause: why } =>
       VllmImageBuildRefused { step: st, cause: join(["the image query did not run, so nothing is known about whether the tag exists: ", why], "") }
@@ -553,12 +619,12 @@ fn converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe
         VllmImageBuilt {
           identity: VllmImageIdentity {
             tag: tag, local_config_digest: digest as NonEmptyStr, requested_from: r.source,
-            build_key: vllm_image_build_key(r: r), provenance: AdoptedUnderExpectedTag,
+            build_key: key, provenance: AdoptedUnderExpectedTag,
           },
           already_present: true,
         }
       } else {
-        match vllm_docker_leg(ctx: ctx, step: "image-build" as NonEmptyStr, command: docker_build_spec_command(spec: vllm_image_build_spec(r: r))) {
+        match vllm_docker_leg(ctx: ctx, step: "image-build" as NonEmptyStr, command: docker_build_spec_command(spec: vllm_image_build_spec_for_tag(r: r, tag: tag))) {
           ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
           ImageLegRan { stdout: _ } =>
             match vllm_docker_leg(ctx: ctx, step: "image-readback" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
@@ -570,7 +636,7 @@ fn converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe
                   VllmImageBuilt {
                     identity: VllmImageIdentity {
                       tag: tag, local_config_digest: readback as NonEmptyStr, requested_from: r.source,
-                      build_key: vllm_image_build_key(r: r), provenance: BuiltByThisRun,
+                      build_key: key, provenance: BuiltByThisRun,
                     },
                     already_present: false,
                   }
@@ -819,7 +885,11 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
 // how every read-only fleet instrument here is reached, and both have been EXECUTED that way against
 // srv9, with their receipts in this lane's record. They take the fleet key from an in-run agent and
 // need no credential an authoring session cannot hold, which is why they are CLI entries rather than
-// dispatch modes.
+// dispatch modes. The patched apply seam is a sibling door:
+// gunbc.spark.v41_source_patch_converge_wet v41_patched_source_acquire_wet, which supplies the
+// candidate's P into converge_vllm_source_with_patches and does not replace this vanilla acquire.
+// converge_vllm_runtime_image_with_patches is a declared frontier on that module: a patched sibling
+// of vllm_runtime_image_build_ci_wet, not a silent extra call from this vanilla acquire.
 //
 // vllm_runtime_image_build_ci_wet is DIFFERENT and is a declared frontier: it needs the administrator
 // credential, so its only honest invocation is a fleet-converge mode beside spark_runtime_image_probe.

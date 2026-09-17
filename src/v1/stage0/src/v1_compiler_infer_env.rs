@@ -31,6 +31,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
 use crate::v1_std_core::Connective::*;
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::ParsedModuleItemKind;
@@ -41,8 +42,8 @@ pub use crate::v1_std_core::{
     param_node_name_at, param_node_type_expr, qualified_last_segment, source_text_at,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, InternTable, NewlineIndex,
-    Node,
+    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ExprData, InferredNode,
+    InternTable, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1528,6 +1529,7 @@ pub fn qualify_borrowed_type_names(
                             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                             match_pattern: n.match_pattern.clone(),
                             module_item_kind: n.module_item_kind.clone(),
+                            declaration_marker: n.declaration_marker.clone(),
                             expr_data: n.expr_data.clone(),
                             ident: None,
                         })
@@ -1560,6 +1562,7 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -1585,6 +1588,7 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -2179,6 +2183,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),

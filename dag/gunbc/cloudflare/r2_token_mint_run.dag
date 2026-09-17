@@ -2,6 +2,7 @@ module gunbc.cloudflare.r2_token_mint_run
 
 import std.types { String, NonEmptyStr, Secret, List, Bool }
 import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.human_intervention {
   HumanIntervention, ProvisioningHumanBurden,

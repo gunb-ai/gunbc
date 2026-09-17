@@ -557,25 +557,6 @@ test fn failed_or_refused_stage_is_visible_without_decoding_border_style() -> Bo
     && string_contains(s: js, pattern: "seg.short_label + ' · ' + seg.state")
 }
 
-test fn roadmap_workflow_progress_keystone_holds() -> Bool {
-  admitted_running_attempt_projects_ordered_evidence()
-    && provider_completion_cannot_fabricate_verification()
-    && nonzero_exit_without_terminal_event_is_failed()
-    && zero_exit_without_terminal_event_is_refused()
-    && completed_event_and_nonzero_exit_refuse_contradiction()
-    && completed_event_while_process_runs_is_not_complete()
-    && completed_event_with_absent_process_refuses()
-    && completed_event_with_unobserved_process_refuses()
-    && refused_receipt_quoting_admitted_fragments_is_not_admitted()
-    && truncated_receipt_with_admitted_prefix_is_not_admitted()
-    && forged_admission_receipt_cannot_complete_environment()
-    && persisted_staging_failure_precedes_empty_event_stream()
-    && legacy_attempt_refuses_unobserved_early_stages()
-    && readable_but_invalid_admission_receipt_refuses_progress()
-    && workflow_json_exposes_segment_and_provider_facts()
-    && failed_or_refused_stage_is_visible_without_decoding_border_style()
-}
-
 // THE VERTICAL SPECIMEN, WITH ITS NEGATIVE HALF, AND THE NEGATIVE HALF IS WHY IT EXISTS. A claim
 // that a bound receipt paints the lamp green proves the happy path and nothing else; it stays green
 // under the exact defect this lane was rewritten to remove, which is a consumer that finds a

@@ -4,9 +4,19 @@
 use self::CensusOutcome::*;
 use self::DeclarationIdentityObservation::*;
 use self::LegacyKeyObservation::*;
+use crate::std_coercion::ReferenceIdentityUnavailableCause::{
+    DeclarationNodeCarriesNoSpan, NoResolutionBoundAtReference, ResolvedNodeIsNotADeclaration,
+};
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 use crate::std_coercion::TypeRealizationDecision::{RealizationRefused, Realized, Unrealized};
-pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
+use crate::std_coercion::TypeReferenceIdentity::{
+    ReferenceIdentityUnavailable, ReferenceIsTheDeclaration, ReferenceIsTypeVariableBinder,
+    ReferenceResolvedToDeclaration,
+};
+pub use crate::std_coercion::{
+    ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeRealizationDecision,
+    TypeReferenceIdentity,
+};
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -26,7 +36,7 @@ use crate::v1_std_core::Connective::Arrow;
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, param_node_type_expr, provenance_reported_file,
-    type_reference_provenance,
+    type_reference_identity, type_reference_provenance,
 };
 pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
@@ -78,6 +88,7 @@ pub struct TypedCarrierRow {
     pub authored_name: String,
     pub identity: Rc<DeclarationIdentityObservation>,
     pub legacy: Rc<LegacyKeyObservation>,
+    pub split: Rc<TypeReferenceIdentity>,
     pub legacy_base: String,
     pub authority_base: String,
     pub outcome: CensusOutcome,
@@ -247,6 +258,7 @@ pub fn typed_decision_row(
                 (crate::v1_std_core::provenance_reported_file(inferred.clone()) != "".to_string()),
                 legacy_key.clone(),
             ),
+            split: crate::v1_std_core::type_reference_identity(n.clone()),
             legacy_base: legacy_base_label(n.clone(), si.clone()),
             authority_base: authority_base_of(name.clone(), query_provenance.clone()),
             outcome: outcome_of(
@@ -476,6 +488,41 @@ pub fn legacy_label(l: Rc<LegacyKeyObservation>) -> String {
     }
 }
 
+pub fn split_cause_label(c: ReferenceIdentityUnavailableCause) -> String {
+    match c.clone() {
+        ReferenceIdentityUnavailableCause::NoResolutionBoundAtReference => {
+            "NoResolutionBoundAtReference".to_string()
+        }
+        ReferenceIdentityUnavailableCause::ResolvedNodeIsNotADeclaration => {
+            "ResolvedNodeIsNotADeclaration".to_string()
+        }
+        ReferenceIdentityUnavailableCause::DeclarationNodeCarriesNoSpan => {
+            "DeclarationNodeCarriesNoSpan".to_string()
+        }
+    }
+}
+
+pub fn split_label(i: Rc<TypeReferenceIdentity>) -> String {
+    match (*i.clone()).clone() {
+        TypeReferenceIdentity::ReferenceResolvedToDeclaration { provenance: p, .. } => {
+            v1_rt::concat(
+                "ResolvedToDeclaration:".to_string(),
+                crate::v1_std_core::provenance_reported_file(p.clone()),
+            )
+        }
+        TypeReferenceIdentity::ReferenceIsTheDeclaration { provenance: p, .. } => v1_rt::concat(
+            "IsTheDeclaration:".to_string(),
+            crate::v1_std_core::provenance_reported_file(p.clone()),
+        ),
+        TypeReferenceIdentity::ReferenceIsTypeVariableBinder { binder_name: b, .. } => {
+            v1_rt::concat("TypeVariableBinder:".to_string(), b.clone())
+        }
+        TypeReferenceIdentity::ReferenceIdentityUnavailable { cause: c, .. } => {
+            v1_rt::concat("Unavailable:".to_string(), split_cause_label(c.clone()))
+        }
+    }
+}
+
 pub fn outcome_label(o: CensusOutcome) -> String {
     match o.clone() {
         CensusOutcome::Agrees => "Agrees".to_string(),
@@ -493,7 +540,7 @@ pub fn tsv_escape(v: String) -> String {
 }
 
 pub fn typed_census_header() -> String {
-    "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tlegacy_base\tauthority_base\toutcome".to_string()
+    "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tlegacy_base\tauthority_base\toutcome".to_string()
 }
 
 pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
@@ -505,6 +552,7 @@ pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
         identity_label(r.identity.clone()),
         tsv_escape(identity_file_label(r.identity.clone())),
         tsv_escape(legacy_label(r.legacy.clone())),
+        tsv_escape(split_label(r.split.clone())),
         tsv_escape(r.legacy_base.clone()),
         tsv_escape(r.authority_base.clone()),
         outcome_label(r.outcome.clone()),

@@ -589,12 +589,38 @@ fn rt_rc_container_ops() -> String {
 // runtime is mirrored into the partition's foundation crate, so `v1_rt::` resolves from a
 // partitioned crate as well as from the monolithic one. A crate-root definition would not: the
 // partition crates re-export only what stage0_crates names explicitly.
+// THE DIVERGING SEAM HELPER, AND WHY IT IS GENERIC RATHER THAN A BARE `panic!`.
+//
+// An unrealized host seam must refuse, and `panic!` is the refusal: a primitive whose body is a bare
+// self-call has no behaviour on this target, and emitting that shape verbatim produces a function
+// that compiles, runs and returns to no caller (DESIGN section 5 silent wrongness). What `panic!`
+// alone cannot do is stand where its RESULT IS CONSUMED. `!` coerces to any type in value position,
+// but it is not a method receiver, so `panic!("...").len()` refuses with E0599 and every argument
+// after it with `unreachable`. Measured on the v2-native CLI closure: two seams, five errors, none
+// of which named a seam.
+//
+// `unrealized_host_seam::<T>` is the same divergence with a NAME FOR ITS TYPE. The emitter renders
+// the turbofish from the call's own inferred type, so the expression is concrete, method resolution
+// works, and the program still cannot get past it. Nothing is fabricated: the function has no return
+// path.
+//
+// WHY NOT REFUSE THE WHOLE FUNCTION INSTEAD, which type-checks trivially because `!` coerces in
+// return position. That was built and withdrawn: deciding "does this body reach an unrealized seam"
+// needs a realizability predicate the emitter does not have -- `rt_functions()` is not the set of
+// realizable primitives, since collection folds, pipelines and the operators are rendered by
+// dedicated arms with no bridge row -- so a body walk refused `v1.compiler.tokenize
+// source_code_point` and `v1.compiler.infer typecheck_module`, and the rebuilt seed panicked on its
+// own first tokenize. Typing the expression needs no such predicate: the call site already knows
+// what the call was supposed to return.
 fn rt_filesystem() -> String {
   concat(
     rust_file_create_new_canonical_block(), "\n",
     "#[derive(Debug, Clone)]\n",
     "pub struct FilesystemReadResult {\n",
     "    pub content: String,\n",
+    "}\n\n",
+    "pub fn unrealized_host_seam<T>(seam: &str) -> T {\n",
+    "    panic!(\"{}\", seam);\n",
     "}\n\n",
     "pub fn filesystem_read(path: String) -> FilesystemReadResult {\n",
     "    let content = std::fs::read_to_string(&path)\n",

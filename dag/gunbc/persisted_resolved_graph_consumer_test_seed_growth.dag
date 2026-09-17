@@ -1,0 +1,44 @@
+module gunbc.persisted_resolved_graph_consumer_test_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for five hand items in
+// src/v1/tests/src/materialization_provider_resolved_graph_consumer_test.rs.
+// gunbc.rust_item_host_observation maps that prefix to v1_compiler_tests, and
+// seed_growth_unjustified_additions joins every added hand-Rust DeclarationRef.
+// Two rows: the four format-wall identities retire with the persisted-format
+// restoration; the ctx-reuse control is a different property and a different
+// lifetime. Not appended to gunbc.evaluation_store_address_census_seed_growth
+// (option A is not their trigger). Requested by fierce-seal on gunbc#11458 at
+// 0cdc3de70c8.
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). These tests are the
+// inhabitance of serve_resolved_graph_stored_disk_probe's UnqualifiedPersistedFormat
+// wall and of provider-ctx reuse on that host path. There is no .dag fixture that
+// constructs FaithfulResolvedGraphProbeParts and calls
+// serve_resolved_graph_stored_disk_probe_for_test.
+
+data persisted_resolved_graph_format_wall_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler_tests.materialization_provider_resolved_graph_consumer_test", decl_name: "fnv_probe_parts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler_tests.materialization_provider_resolved_graph_consumer_test", decl_name: "serve_fnv", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler_tests.materialization_provider_resolved_graph_consumer_test", decl_name: "stored_disk_probe_unqualified_persisted_format_refuses_complete_and_incomplete", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler_tests.materialization_provider_resolved_graph_consumer_test", decl_name: "unqualified_persisted_format_outcome_maps_to_typed_refusal_message", field: WholeDeclaration }
+  ],
+  reason: "Temporary always-refuse controls for the unqualified legacy resolved-graph disk format. fnv_probe_parts and serve_fnv mint complete and incomplete FNV stored objects; stored_disk_probe_unqualified_persisted_format_refuses_complete_and_incomplete is the discriminating RED that both doors refuse UnqualifiedPersistedFormat; unqualified_persisted_format_outcome_maps_to_typed_refusal_message is the diagnostic-text inhabitance of that arm. Rust remains because the host probe and FaithfulResolvedGraphProbeParts have no substrate constructor.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these four when the persisted resolved-graph format restoration lands as one capability: ObservedEvaluationPreimage and ResultContentIdentity are persisted and decoded from disk, PersistedProbe is consumed, prior-format objects get a typed cold-rebuild/migration disposition, and these always-refuse controls are replaced by valid->Hit, foreign request->WrongArtifact, foreign content->WrongContent, incomplete->Incomplete. That is the same capability named by gunbc.rung_drop persisted_resolved_graph_disk_probe_unqualified_format, not a contributing artifact. stored_disk_probe_reuses_provider_ctx_built_during_fixture_setup is NOT in this row and does not retire here.",
+  current_boundary: "v1_compiler.cli_run serve_resolved_graph_stored_disk_probe_for_test and provider_integrity_refusal_message_for_test; crate-internal tests only."
+}
+
+data resolved_graph_provider_ctx_reuse_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler_tests.materialization_provider_resolved_graph_consumer_test", decl_name: "stored_disk_probe_reuses_provider_ctx_built_during_fixture_setup", field: WholeDeclaration }
+  ],
+  reason: "Establishes that serve_resolved_graph_stored_disk_probe_for_test reuses the provider ctx built during fixture key derivation rather than rebuilding it per serve. Independent of the unqualified-format wall: a qualified hit must keep this reuse. Rust remains because materialization_provider_ctx_build_count_for_test is a seed observation with no .dag projection.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete this test when a .dag inhabitance claim observes the same ctx-reuse on the real serve path (fixture derivation boots ctx once; first and second serve do not increment the build count), or when serve_resolved_graph_stored_disk_probe_for_test is deleted because that host door no longer exists. Partial migration is required: the four format-wall identities may retire under persisted_resolved_graph_format_wall_seed_growth_justification while this row remains.",
+  current_boundary: "v1_compiler.cli_run serve_resolved_graph_stored_disk_probe_for_test and materialization_provider_ctx_build_count_for_test; crate-internal test only."
+}

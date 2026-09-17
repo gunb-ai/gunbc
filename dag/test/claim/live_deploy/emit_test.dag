@@ -16,7 +16,6 @@ import gunbc.live_deploy.spec {
   EnsuredPackage,
   TailscalePackage,
   TmuxPackage,
-  deployment_spec_srv1,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
   deployment_owned_steps,
@@ -48,6 +47,7 @@ import gunbc.live_deploy.spec {
   deployment_step_teardown_disposition,
   gunbc_service_user,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import gunbc.managed_directory {
@@ -55,7 +55,12 @@ import gunbc.managed_directory {
   managed_directory_permissions,
   srv1_attempt_state_directory,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  srv1_lab_dashboard_instance,
+  srv1_live_dashboard_instance,
+  dashboard_instance_event_log_root,
+}
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
   ScopedRemovalUnobserved,
@@ -455,7 +460,8 @@ test fn apply_script_stays_within_ci_runner_grants() -> Bool {
     && !string_contains(s: apply, pattern: "rsync")
     && string_contains(s: apply, pattern: "gunbc deployed-repository git-native convergence")
     && string_contains(s: apply, pattern: concat("--arg candidate=", deploy_witness_release_revision as String))
-    && string_contains(s: apply, pattern: "--function repository_converge_srv1_owner_wet")
+    && string_contains(s: apply, pattern: concat("--arg instance_id=", deployment_spec_srv1().instance_id as String))
+    && string_contains(s: apply, pattern: "--function repository_converge_owner_wet")
     && string_contains(s: apply, pattern: "repository_convergence_readback_wet")
     && string_contains(s: apply, pattern: "/opt/gunbc/receipts/repository-convergence.json")
     && !string_contains(s: apply, pattern: "--include=/HEAD")
@@ -509,7 +515,7 @@ fn three_markers_in_order(text: String, first: String, second: String, third: St
 // pair in the specimen proves this is an ordering assertion rather than two presence checks.
 test fn repository_convergence_is_ordered_after_binary_and_before_readback() -> Bool {
   let binary = "target/release/gunbc"
-  let converge = "--function repository_converge_srv1_owner_wet"
+  let converge = "--function repository_converge_owner_wet"
   let readback = "repository_convergence_readback_wet"
   let apply = witness_apply_script()
   three_markers_in_order(text: apply, first: binary, second: converge, third: readback)
@@ -727,11 +733,7 @@ test fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
 data twin_on_one_host_witness_note: String = "THE CLAIM THAT WAS UNWRITABLE BEFORE THIS CHANGE, and it is the whole point of it. deployment_owned_steps and deployment_service_config took no arguments, so there was exactly one deployment in the model and a second one on the SAME machine could not be constructed at all — not merely inconvenient, unexpressible. That is what proved host was the wrong axis: if the only thing that varies is which host, then two deployments on one host is a contradiction, and a model that makes it a contradiction has fused two independent facts.\\n\\nSo the test is the twin. Same target — one machine, one ssh host, one package manager — and a different instance, and every owned path, the unit, the tailscale mapping and the port must come out disjoint. srv1_lab is a real declared instance rather than a synthetic one, so this also states that the two dashboards already declared today CAN both be deployed, which was false an hour ago.\\n\\nThe conjunct that would survive a bad fix is the target equality. Without it the claim passes trivially if someone makes the twin differ by host, which is precisely the abstraction this replaces."
 
 fn srv1_twin_spec() -> DeploymentSpec {
-  deployment_spec_for(
-    instance: srv1_lab_dashboard_instance(),
-    target: deployment_srv1_target(),
-    names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
-  )
+  selected_deployment_spec(row: srv1_lab_desired_deployment())
 }
 
 fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
@@ -771,6 +773,7 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
   let twin = srv1_twin_spec()
   let applied = deployment_steps_apply_order(
     instance: srv1_lab_dashboard_instance(),
+    target: deployment_srv1_target(),
     names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
   )
   let applied_paths = applied |> flat_map(s => match s {
@@ -921,6 +924,7 @@ fn unmeasured_client_target() -> DeploymentHostTarget {
     tailnet_domain: t.tailnet_domain,
     os_package_manager: t.os_package_manager,
     tailscale_client: ScopedRemovalUnobserved { reason: "host never probed for a tailscale client version" },
+    ensured_directories: t.ensured_directories,
   }
 }
 
@@ -935,6 +939,7 @@ fn preserve_removal_client_target() -> DeploymentHostTarget {
     tailscale_client: tailscale_scoped_removal_capability(
       observed: SemVerVersion { major: 1, minor: 40, patch: 0, pre_release: [], build: [] },
     ),
+    ensured_directories: t.ensured_directories,
   }
 }
 
@@ -1152,7 +1157,7 @@ type StepScan {
 test fn the_publication_member_emits_convergence_and_no_rsync() -> Bool {
   let spec = deployment_spec_srv1()
   let fragment = member_fragment_text(member: TreePublication, plan: deploy_witness_full_install_plan(spec: spec))
-  string_contains(s: fragment, pattern: "--function repository_converge_srv1_owner_wet")
+  string_contains(s: fragment, pattern: "--function repository_converge_owner_wet")
     && string_contains(s: fragment, pattern: "repository_convergence_readback_wet")
     && !string_contains(s: fragment, pattern: "rsync")
 }
@@ -1189,6 +1194,15 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
     && member_fragment_text(member: ServiceProcess, plan: full) == ""
 }
 
+test fn fabric_event_log_root_joins_the_directory_member_roster() -> Bool {
+  let spec = deployment_spec_srv1()
+  let expected = dashboard_instance_event_log_root(instance: srv1_live_dashboard_instance()) as String
+  any(deployment_member_roster(spec: spec), m => match m {
+    DirectoryRoot { path } => (path as String) == expected
+    _ => false
+  })
+}
+
 // A BINARY-ONLY PLAN INSTALLS THE EXECUTABLE AND RESTARTS, AND DOES NOT PUBLISH THE TREE: the
 // emitter honours the plan's population, so the repository-convergence oneshot is not started for a
 // change that touched no tree.
@@ -1219,7 +1233,7 @@ test fn a_binary_only_plan_installs_and_restarts_without_publishing_the_tree() -
   let sh = apply_emitted_steps_text(spec: spec, plan: plan)
   string_contains(s: sh, pattern: "target/release/gunbc")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.service.unit_name)))
-    && !string_contains(s: sh, pattern: "--function repository_converge_srv1_owner_wet")
+    && !string_contains(s: sh, pattern: "--function repository_converge_owner_wet")
 }
 
 
@@ -1261,7 +1275,9 @@ test fn a_matching_authorization_applies_the_staged_caps() -> Bool {
     && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
 }
 
-// 2. A WITHHELD DECISION REACHES NO CAP APPLICATION.
+// 2. A WITHHELD DECISION REACHES NO CAP APPLICATION AND DOES NOT ABORT THE APPLY: it is reported
+// on the WITHHELD channel, the caps stay as observed, and no poison is emitted (operator ruling
+// 2026-09-17: a pending retirement is not a reason to keep every other member undeployed).
 test fn a_withheld_decision_applies_no_caps_at_the_production_root() -> Bool {
   let text = pipeline_steps_text(
     steps: deploy_memory_cap_apply_steps(
@@ -1269,8 +1285,10 @@ test fn a_withheld_decision_applies_no_caps_at_the_production_root() -> Bool {
       authorization: CapConvergeWithheld { cause: "no live surplus observation" },
     )
   )
-  string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+  string_contains(s: text, pattern: "__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: no live surplus observation")
+    && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && !string_contains(s: text, pattern: "20-fleet-width.conf")
+    && !string_contains(s: text, pattern: "systemctl")
 }
 
 // 3. AN AUTHORIZATION FOR ANOTHER HOST REACHES NO CAP APPLICATION. An srv4 decision is honest

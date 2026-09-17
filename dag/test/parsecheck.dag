@@ -7,9 +7,6 @@ import gunbc.fleet_intent { srv1_memory_population, srv3_memory_population, srv4
 import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_dimm_expectations }
 import gunbc.host_memory_qualification { srv2_failed_64gib_population_standing }
 import gunbc.ci_floor_measurement { gunbc_ci_srv3_memtotal_measured }
-import test.claim.installed_bom_reconcile_witness_test {
-  the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost,
-}
 import gunbc.runner_disk_reclaim {
   admit_reclaim_operation, reclaim_admission_proceeds, reclaim_operations,
   operation_requires_idle_slot, repack_admits_pack_count, review_ref_should_be_dropped,
@@ -35,7 +32,6 @@ fn memory_model_holds() -> Bool {
     && fleet_dimm_verdicts.length() == 4
     && fleet_dimm_expectations.length() == 4
     && srv1_memory_population.rows.length() == 1
-    && the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost()
 }
 
 // Git work refuses on a busy slot and proceeds on an idle one, while diagnostic rotation proceeds

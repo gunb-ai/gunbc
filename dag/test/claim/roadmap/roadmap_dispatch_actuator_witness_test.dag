@@ -323,10 +323,6 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
   }
 }
 
-test fn witness_actuator_automatic_selection_refuses_with_standing_reason() -> Bool {
-  witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
-}
-
 test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
   match dispatch_actuator_selection_for_provider(
     provider: ClaudeCodeProvider,
@@ -570,21 +566,6 @@ test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
       pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/projection-node-current/provider-events.jsonl",
     )
     && !string_contains(s: wire, pattern: "aggregated_output")
-}
-
-test fn codex_provider_v0_argv_keystone_holds() -> Bool {
-  witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
-    && witness_actuator_automatic_selection_refuses_with_standing_reason()
-    && witness_projection_standing_refusal_specimen_holds()
-    && witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt()
-    && witness_codex_argv_is_unattended_but_sandboxed()
-    && witness_selected_provider_shapes_codex_tmux_command()
-    && witness_lab_instance_moves_repo_tmux_and_codex_state_together()
-    && witness_tmux_attempt_panes_parse_alive_and_exit()
-    && witness_tmux_attempt_panes_malformed_row_refuses()
-    && witness_event_pipe_emits_grammar_quoted_command()
-    && witness_provider_projection_is_exact_bounded_capability()
-    && witness_host_exec_argv_shapes_bound_to_extdeps()
 }
 
 test fn witness_stop_argv_targets_session() -> Bool {

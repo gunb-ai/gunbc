@@ -14,6 +14,7 @@ fn fixture_dashboard_receipt() -> LiveDeployApplyReceipt {
       run_revision: apply_receipt_fixture_r,
     },
     target: "srv1",
+    instance_id: "srv1-live",
     expected_revision: apply_receipt_fixture_r,
     candidate_revision: apply_receipt_fixture_r,
     candidate_surface_identity: "0011223344556677",
@@ -32,6 +33,7 @@ test fn witness_dashboard_receipt_round_trips() -> Bool {
       live_deploy_apply_receipt_identity_hex(r: back) == live_deploy_apply_receipt_identity_hex(r: r)
         && back.candidate_tree_oid == apply_receipt_fixture_tree
         && back.completed_at == "2026-08-30T12:00:00Z"
+        && back.instance_id == "srv1-live"
         && (match back.readiness { LiveDeployReadinessObserved { revision: rv, surface: _ } => rv == apply_receipt_fixture_r  LiveDeployReadinessRefused { detail: _ } => false })
     LiveDeployApplyReceiptUnreadable { reason: _ } => false
   }
@@ -40,7 +42,7 @@ test fn witness_dashboard_receipt_round_trips() -> Bool {
 test fn witness_dashboard_receipt_not_converged_round_trips_its_reason() -> Bool {
   let base = fixture_dashboard_receipt()
   let r = LiveDeployApplyReceipt {
-    run: base.run, target: base.target, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
+    run: base.run, target: base.target, instance_id: base.instance_id, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
     candidate_surface_identity: base.candidate_surface_identity, candidate_tree_oid: base.candidate_tree_oid,
     apply_outcome: LiveDeployApplyNotConverged { reason: "terminal no-op: this run installed nothing" },
     readiness: LiveDeployReadinessRefused { detail: "not observed" },

@@ -3,9 +3,12 @@ module gunbc.auth.approval_capability
 import std.types { NonEmptyStr, String, Int, Timestamp }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
+import std.encoding { base64_encode, base64_decode, UrlSafe }
+import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
 import extdeps.crypto.mac {
-  MacSuite, MacKeyId, MacVerification, MacVerified, VerifiedMessage,
-  mac_verification_reason, mac_suite_name,
+  MacSuite, MacKeyId, MacKey, MacVerification, MacVerified, VerifiedMessage,
+  MacSigning, MacSigned, MacKeyMaterialNotHex,
+  mac_verification_reason, mac_suite_name, mac_sign,
 }
 
 // ── What a capability link is, and what it is not ────────────────────────────────────────────
@@ -150,6 +153,75 @@ fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr
     ],
     signing_field_separator,
   ) as NonEmptyStr
+}
+
+// ── Issuance ─────────────────────────────────────────────────────────────────────────────────
+// The broker, holding the key, mints the capability over THE SAME signing input verification
+// recomputes: approval_capability_signing_input is called here and nowhere is a second rendering of
+// the claims built. That is the whole of §3's obligation on this path -- if issuance serialized for
+// itself, the first field-order edit on one side would make every issued link unverifiable, or
+// worse, verifiable under a reading the operator did not see.
+//
+// The tag travels as base64url (RFC 4648 §5, std.encoding UrlSafe, padded as that encoder emits)
+// because it rides in a URL path; the bound implementation speaks hex. The transcoding is the
+// existing codecs composed, and capability_tag_hex below is its only inverse, so a link has one tag
+// spelling: a b64url string that does not re-encode to itself is refused rather than normalized.
+//
+// Issuance refuses rather than minting something that cannot verify:
+//   key id disagreement -- claims naming key A signed under key B is a link verify_capability
+//                          would refuse as CapabilityKeyIdDisagrees; minting it is an issuer bug,
+//                          and the place to report it is here, before it reaches an operator.
+//   non-hex key material -- no key, no tag (extdeps.crypto.mac MacKeyMaterialNotHex).
+//   a tag that is not lowercase hex -- the bound implementation broke its own contract; named as
+//                          such rather than folded into a cause that did not happen.
+type CapabilityIssuanceRefusal
+  = IssuanceKeyIdDisagrees { claimed: MacKeyId, signing_key: MacKeyId }
+  | IssuanceKeyMaterialNotHex { key_id: MacKeyId }
+  | IssuanceImplementationTagNotHex { key_id: MacKeyId }
+
+type CapabilityIssuance
+  = CapabilityIssued { capability: ApprovalCapability }
+  | CapabilityIssuanceRefused { cause: CapabilityIssuanceRefusal }
+
+fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> CapabilityIssuance {
+  if claims.key_id != key.id {
+    CapabilityIssuanceRefused {
+      cause: IssuanceKeyIdDisagrees { claimed: claims.key_id, signing_key: key.id }
+    }
+  } else {
+    match mac_sign(key: key, message: approval_capability_signing_input(c: claims)) {
+      MacKeyMaterialNotHex { key_id: k } =>
+        CapabilityIssuanceRefused { cause: IssuanceKeyMaterialNotHex { key_id: k } }
+      MacSigned { tag: t } =>
+        match base16_decode_lower(hex: t.hex as String) {
+          Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotHex { key_id: t.key_id } }
+          Present { value: octets } =>
+            CapabilityIssued {
+              capability: ApprovalCapability {
+                claims: claims,
+                tag_b64url: base64_encode(octets: octets, variant: UrlSafe) as NonEmptyStr,
+              }
+            }
+        }
+    }
+  }
+}
+
+// The redemption half of the transcoding: the hex tag mac_verify takes, or absent when the presented
+// tag is not the one canonical base64url spelling of some octet string. Absent is the verifier's
+// MacTagMismatch -- a malformed tag authenticates nothing, and saying which malformation would help
+// only a prober.
+fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
+  let presented = capability.tag_b64url as String
+  match base64_decode(s: presented, variant: UrlSafe) {
+    Absent => none
+    Present { value: octets } =>
+      if base64_encode(octets: octets, variant: UrlSafe) != presented || octets == [] {
+        none
+      } else {
+        Present { value: base16_encode_lower(octets: octets) as NonEmptyStr }
+      }
+  }
 }
 
 // ── The timestamp comparison contract ────────────────────────────────────────────────────────

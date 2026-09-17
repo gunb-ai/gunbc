@@ -216,14 +216,3 @@ test fn pcie_refusals_survive_the_candidate_join() -> Bool {
     _ => false
   }
 }
-
-fn main() -> Bool {
-  real_candidates_reach_typed_verdicts()
-    && an_unobserved_ocp_standing_survives_into_the_generation_only_receipt()
-    && matching_generation_does_not_establish_physical_variant()
-    && unknown_unit_never_borrows_mtcollins1_observation()
-    && absent_ocp_bay_cannot_admit_a_matching_card()
-    && changed_bay_generation_does_not_relabel_the_candidate()
-    && other_ocp2_physical_variants_still_refuse_wrong_generation()
-    && pcie_refusals_survive_the_candidate_join()
-}

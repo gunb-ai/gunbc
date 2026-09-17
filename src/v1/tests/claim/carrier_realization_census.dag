@@ -8,8 +8,12 @@ import v1.compiler.coercion { type_realization_decision }
 import v1.compiler.artifact { Rust }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_env { TypeEnv, lookup_type_for }
-import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file }
-import std.coercion { TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent }
+import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file, type_reference_identity }
+import std.coercion {
+  TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent,
+  TypeReferenceIdentity, ReferenceResolvedToDeclaration, ReferenceIsTheDeclaration, ReferenceIsTypeVariableBinder, ReferenceIdentityUnavailable,
+  ReferenceIdentityUnavailableCause, NoResolutionBoundAtReference, ResolvedNodeIsNotADeclaration, DeclarationNodeCarriesNoSpan
+}
 import std.types { List, String, Map, Bool }
 
 // THE STEP-1 SHADOW CENSUS. For every type-reference occurrence the v1 emitter would render,
@@ -79,6 +83,7 @@ type TypedCarrierRow {
   authored_name: String
   identity: DeclarationIdentityObservation
   legacy: LegacyKeyObservation
+  split: TypeReferenceIdentity
   legacy_base: String
   authority_base: String
   outcome: CensusOutcome
@@ -196,6 +201,7 @@ fn typed_decision_row(
     authored_name: name,
     identity: identity,
     legacy: legacy_observation(had_inference: provenance_reported_file(p: inferred) != "", key: legacy_key),
+    split: type_reference_identity(n: n),
     legacy_base: legacy_base_label(n: n, si: si),
     authority_base: authority_base_of(name: name, provenance: query_provenance),
     outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, provenance: query_provenance), query_file: query_file)
@@ -248,7 +254,7 @@ fn no_typed_rows() -> List<TypedCarrierRow> {
 // The arrow test is a match rather than `n.connective == Arrow`, because a variant name followed
 // by `{` parses as a record construction, so the equality form makes the if-block's own brace read
 // as Arrow's constructor. v1.compiler.emit_rust rust_type_node_is_arrow is named for the same
-// reason, and v1.compiler.resolve takes the same shape.
+// reason, and v1.compiler.infer_resolve takes the same shape.
 fn typed_occurrence_rows(
   module_file: String, enclosing: String, position_kind: String, n: Node, env: TypeEnv, si: Map<String, NewlineIndex>
 ) -> List<TypedCarrierRow> {
@@ -332,6 +338,29 @@ fn legacy_label(l: LegacyKeyObservation) -> String {
 }
 
 
+// THE SPLIT COLUMN (CARRIER-KEY-1). The legacy column above says WHICH ARM production took; this one
+// says which STATE the reference is in, from v1.std.core type_reference_identity. A FALLBACK row is
+// scorable only once this column exists: a ReferenceIsTheDeclaration row is legitimately keyed, and a
+// ReferenceIdentityUnavailable row is one where production keyed a location. The instrument reports
+// the arm and its cause and nothing about whether production is fixed -- production still reads
+// type_reference_provenance (gunbc.rung_drop type_reference_location_fallback_keys_production_realization).
+fn split_cause_label(c: ReferenceIdentityUnavailableCause) -> String {
+  match c {
+    NoResolutionBoundAtReference => "NoResolutionBoundAtReference"
+    ResolvedNodeIsNotADeclaration => "ResolvedNodeIsNotADeclaration"
+    DeclarationNodeCarriesNoSpan => "DeclarationNodeCarriesNoSpan"
+  }
+}
+
+fn split_label(i: TypeReferenceIdentity) -> String {
+  match i {
+    ReferenceResolvedToDeclaration { provenance: p } => concat("ResolvedToDeclaration:", provenance_reported_file(p: p))
+    ReferenceIsTheDeclaration { provenance: p } => concat("IsTheDeclaration:", provenance_reported_file(p: p))
+    ReferenceIsTypeVariableBinder { binder_name: b } => concat("TypeVariableBinder:", b)
+    ReferenceIdentityUnavailable { cause: c } => concat("Unavailable:", split_cause_label(c: c))
+  }
+}
+
 fn outcome_label(o: CensusOutcome) -> String {
   match o {
     Agrees => "Agrees"
@@ -345,7 +374,7 @@ fn tsv_escape(v: String) -> String {
 }
 
 fn typed_census_header() -> String {
-  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tlegacy_base\tauthority_base\toutcome"
+  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tlegacy_base\tauthority_base\toutcome"
 }
 
 fn typed_row_tsv(r: TypedCarrierRow) -> String {
@@ -357,6 +386,7 @@ fn typed_row_tsv(r: TypedCarrierRow) -> String {
     identity_label(o: r.identity),
     tsv_escape(v: identity_file_label(o: r.identity)),
     tsv_escape(v: legacy_label(l: r.legacy)),
+    tsv_escape(v: split_label(i: r.split)),
     tsv_escape(v: r.legacy_base),
     tsv_escape(v: r.authority_base),
     outcome_label(o: r.outcome)

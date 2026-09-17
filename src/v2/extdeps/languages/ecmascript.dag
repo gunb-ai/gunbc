@@ -967,7 +967,7 @@ fn ecmascript_target_model() -> TargetModel {
 }
 
 fn ecmascript_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
 }
 
 fn ecmascript_ident_lex_pattern() -> LexPattern {

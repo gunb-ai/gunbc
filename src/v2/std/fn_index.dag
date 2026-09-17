@@ -23,7 +23,7 @@ import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, symbol_eq }
 import v2.std.node_query { call_callee_target, node_is_call }
 import v2.std.text { String }
 
@@ -128,10 +128,6 @@ fn fn_index_string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn fn_index_symbol_eq(a: Symbol, b: Symbol) -> Bool {
-  a == b
-}
-
 fn decl_module_prefix(mod_path: String) -> String {
   concat(mod_path, ".")
 }
@@ -207,7 +203,7 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
   let from_children = fold(node.children, init: empty_fn_arrow_symbol_list, f: fn(acc, e) {
     match node_atom_identity_optional(node: e.target) {
       Present { value: sym } =>
-        if contains(xs: acc, item: sym, eq: fn_index_symbol_eq) {
+        if contains(xs: acc, item: sym, eq: symbol_eq) {
           acc
         } else {
           list_snoc_item(xs: acc, item: sym)
@@ -217,7 +213,7 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
   })
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
-      if contains(xs: from_children, item: sym, eq: fn_index_symbol_eq) {
+      if contains(xs: from_children, item: sym, eq: symbol_eq) {
         from_children
       } else {
         list_snoc_item(xs: from_children, item: sym)
@@ -236,7 +232,7 @@ fn atom_scan_init(n: Node) -> AtomScanState {
 }
 
 fn atom_scan_snoc(xs: List<Symbol>, sym: Symbol) -> List<Symbol> {
-  if contains(xs: xs, item: sym, eq: fn_index_symbol_eq) {
+  if contains(xs: xs, item: sym, eq: symbol_eq) {
     xs
   } else {
     list_snoc_item(xs: xs, item: sym)

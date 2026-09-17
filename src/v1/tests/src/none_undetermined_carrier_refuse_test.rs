@@ -42,6 +42,7 @@ fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     })

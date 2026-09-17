@@ -1,0 +1,22 @@
+diff --git a/vllm/models/deepseek_v4_1/nvidia/engram.py b/vllm/models/deepseek_v4_1/nvidia/engram.py
+index b141b6c..520a92a 100644
+--- a/vllm/models/deepseek_v4_1/nvidia/engram.py
++++ b/vllm/models/deepseek_v4_1/nvidia/engram.py
+@@ -38,6 +38,17 @@ from vllm.models.deepseek_v4_1.common.engram import (
+ from vllm.utils.platform_utils import is_uva_available
+ from vllm.utils.torch_utils import get_accelerator_view_from_cpu_tensor
+ 
++# Import only. ParallelEngramEmbedding._allocate_weights still constructs
++# DPSharedEngramStorage. Binding FileBackedEngramStorage is the wiring
++# trigger, not this member.
++from vllm.models.deepseek_v4_1.nvidia.engram_file_backed import (
++    ExpectedRowStoreIdentity,
++    FileBackedEngramStorage,
++    EngramLocalStoreMissing,
++    EngramFullTablePinned,
++    allocate_file_backed,
++)
++
+ logger = init_logger(__name__)
+ 
+ 

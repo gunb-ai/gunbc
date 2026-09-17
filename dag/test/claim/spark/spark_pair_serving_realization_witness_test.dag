@@ -7,8 +7,10 @@ import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_bak
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
-  spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
-  spark_pair_realization, spark_pair_head_unit_file, spark_pair_container_spec, spark_pair_container_env,
+  RenderedUnitDigested, RenderedUnitDigestUnavailable,
+  spark_pair_realization, spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
+  spark_pair_head_unit_unsigned, spark_pair_container_spec, spark_pair_container_env,
+  spark_pair_head_unit_name, spark_pair_rendered_unit_digest,
 }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_with, SeqCapacityMeasured,
@@ -117,7 +119,7 @@ test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -
   match w_fixture_unit() {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
-      match spark_pair_head_unit_file(
+      match spark_pair_head_unit_unsigned(
         args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
         snapshot: ModelSnapshotUnpinned {
           identity: "fixture-unpinned" as NonEmptyStr,
@@ -125,7 +127,7 @@ test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -
           cause: "fixture" as NonEmptyStr,
         },
         head: h.lane,
-        spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
+        spec: spark_pair_container_spec(lane: h.lane),
       ) {
         SparkPairUnitRendered { unit_name: _, text: _ } => false
         SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
@@ -158,11 +160,11 @@ test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout()
   match w_fixture_unit() {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
-      match spark_pair_head_unit_file(
+      match spark_pair_head_unit_unsigned(
         args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
         snapshot: w_fixture_snapshot,
         head: h.lane,
-        spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
+        spec: spark_pair_container_spec(lane: h.lane),
       ) {
         SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
         SparkPairUnitRendered { unit_name: _, text: t } =>
@@ -262,6 +264,38 @@ test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> 
   })
 }
 
+// A RENDER REFUSAL IS AN UNAVAILABLE STANDING, AND IT CARRIES THE RENDER'S OWN CAUSE. This drives
+// the real byte-level fold, spark_pair_rendered_unit_digest, and stays hermetic because the refused
+// arm is decided before sha256sum is reached: DigestStdin is only called on SparkPairUnitRendered.
+// RED if the fold ever fabricated a digest for a refused render, or replaced the render's cause
+// with a generic one.
+test fn a_render_refusal_is_an_unavailable_declared_digest() -> Bool {
+  match spark_pair_rendered_unit_digest(render: SparkPairUnitRenderRefused {
+    unit_name: spark_pair_head_unit_name,
+    cause: "fixture render refusal" as NonEmptyStr,
+  }) {
+    RenderedUnitDigestUnavailable { obligation: o } => (o as String) == "fixture render refusal"
+    RenderedUnitDigested { unit_name: _, digest: _ } => false
+  }
+}
+
+// EMPTY RENDERED BYTES ARE NOT DIGESTED. The mint refuses before DigestStdin rather than hashing
+// the empty string and presenting that as the declared unit, so this row is hermetic too.
+// WHAT THIS ROW DOES NOT COVER: the sha256sum-refused and malformed-hex arms of the same fold.
+// Both are below DigestStdin and there is no mock_response for that operation, so no hermetic
+// witness can express them; they are reached only by the wet lane's real execution, which cannot
+// make sha256sum fail on demand. Those two arms are therefore UNEXERCISED, and the fold is written
+// so each is a typed Unavailable rather than a fabricated digest (DESIGN section 5).
+test fn an_empty_render_is_an_unavailable_declared_digest() -> Bool {
+  match spark_pair_rendered_unit_digest(render: SparkPairUnitRendered {
+    unit_name: spark_pair_head_unit_name,
+    text: "",
+  }) {
+    RenderedUnitDigestUnavailable { obligation: o } => (o as String) == "rendered unit text is empty"
+    RenderedUnitDigested { unit_name: _, digest: _ } => false
+  }
+}
+
 // THE RDMA ROSTER CAN GO RED: an env covering every interface name but no GID index is refused.
 test fn an_env_that_leaves_the_gid_index_to_the_image_is_not_covering() -> Bool {
   length(sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names) == 3
@@ -273,3 +307,4 @@ test fn an_env_that_leaves_the_gid_index_to_the_image_is_not_covering() -> Bool 
       ],
     ))
 }
+
