@@ -22,7 +22,9 @@ import v1.std.core {
   arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
   UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at,
-  foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens
+  foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens,
+  DeclarationMarker, Unmarked, TestMarked, TestCodeReferenced, TestCodeReferenceAdmitted,
+  TestCodeReferenceBudgetMismatch
 }
 
 import v1.compiler.annotation_bind { admit_source_annotations }
@@ -223,6 +225,311 @@ type CompilePipelineOptions {
 // compile closure resolve against these; compiling them here instead would subject them to this
 // invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344
 // diagnostics, the Empty/Cons poisoning class).
+
+// TEST CODE IS ENTERED ONLY BY THE WITNESS RUNNER. A `test` marker (v1.std.core DeclarationMarker)
+// segregates test code from serving code, and two references cross that segregation:
+//   - any call to a TestMarked declaration, from anywhere, including another test in its module:
+//     a test that calls a test re-runs a claim that is already enrolled on its own, so its cost
+//     and its verdict are duplicated work (DESIGN section 2) and it tests more than one interface
+//     (section 3, a witness discriminates at one interface);
+//   - an import, by a module that declares no test, of a module that does: serving code depending
+//     on test code.
+// Both are decided here from the resolved call targets and the parsed marker, once per compile.
+// A reference to a test fn as a function VALUE (not a call) carries no resolved target in v1 and is
+// not decided here; that residue is named rather than implied covered.
+//
+// THE LEDGER IS A RATCHET, NOT AN EXEMPTION. The references that existed when this wall landed are
+// admitted per (module, referrer) with an exact count, following the unresolved-method frontier
+// precedent (v1.compiler.infer unresolved_method_frontier): an unrostered reference refuses, and a
+// row whose observed count differs from its declared count refuses in BOTH directions, so a new
+// reference cannot hide under an old row and paid-down debt must be deleted from the ledger.
+
+type TestReferenceOccurrence {
+  module_name: String
+  referrer: String
+  target: String
+  span: SourceSpan
+}
+
+type TestReferenceDebtRow {
+  module_name: String
+  referrer: String
+  occurrences: Int
+}
+
+fn test_reference_debt() -> List<TestReferenceDebtRow> {
+  [
+    TestReferenceDebtRow { module_name: "test.claim.claude_setup_token_enrollment_witness", referrer: "claude_setup_token_enrollment_keystone_holds", occurrences: 31 },
+    TestReferenceDebtRow { module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", occurrences: 11 },
+    TestReferenceDebtRow { module_name: "test.claim.codex_device_prompt_witness", referrer: "codex_device_prompt_keystone_holds", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "test.claim.credential_argv_exposure_witness", referrer: "credential_argv_exposure_witness", occurrences: 4 },
+    TestReferenceDebtRow { module_name: "test.claim.cursor_cli_invocation_witness_test", referrer: "cursor_cli_invocation_keystone_holds", occurrences: 5 },
+    TestReferenceDebtRow { module_name: "test.claim.cursor_sdk_argv_projection_witness_test", referrer: "cursor_sdk_argv_projection_witness_keystone_holds", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "test.claim.cursor_sdk_auth_standing_witness_test", referrer: "cursor_sdk_auth_standing_witness_keystone_holds", occurrences: 8 },
+    TestReferenceDebtRow { module_name: "test.claim.cursor_sdk_dispatch_bridge_witness_test", referrer: "cursor_sdk_dispatch_bridge_witness_keystone_holds", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "test.claim.cursor_sdk_model_witness_test", referrer: "cursor_sdk_model_witness_keystone_holds", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "test.claim.cursor_sdk_stream_witness_test", referrer: "cursor_sdk_stream_witness_keystone_holds", occurrences: 11 },
+    TestReferenceDebtRow { module_name: "test.claim.decision_completeness_witness", referrer: "decision_completeness_witness_main", occurrences: 18 },
+    TestReferenceDebtRow { module_name: "test.claim.dispatch_selection_witness", referrer: "dispatch_selection_keystone_holds", occurrences: 19 },
+    TestReferenceDebtRow { module_name: "test.claim.dispatch_stop_witness", referrer: "dashboard_instance_stop_contract_keystone_holds", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "test.claim.ensure_witness", referrer: "generic_ensure_keystone_holds", occurrences: 8 },
+    TestReferenceDebtRow { module_name: "test.claim.fleet.fleet_printer_access_witness_test", referrer: "fleet_printer_access_witnesses_hold", occurrences: 9 },
+    TestReferenceDebtRow { module_name: "test.claim.floor_discovery_exact_subject_witness", referrer: "all_floor_discovery_exact_subject_controls_hold", occurrences: 12 },
+    TestReferenceDebtRow { module_name: "test.claim.floor_preparation_witness", referrer: "all_floor_preparation_controls_hold", occurrences: 8 },
+    TestReferenceDebtRow { module_name: "test.claim.generated_projection_merge_rows_witness", referrer: "witness_holds", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "test.claim.gitattributes_emit_witness", referrer: "witness_holds", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "test.claim.host_build_cache_provision_design", referrer: "witness_red_control_widen_on_absent_rejected_by_gate", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.claim.host_convergence_protocol_witness", referrer: "host_convergence_protocol_keystone_holds", occurrences: 14 },
+    TestReferenceDebtRow { module_name: "test.claim.jwt_oidc_claims_witness_test", referrer: "jwt_oidc_claims_keystone_holds", occurrences: 15 },
+    TestReferenceDebtRow { module_name: "test.claim.jwt_oidc_claims_witness_test", referrer: "observed_presence_does_not_imply_required_shape", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.claim.machine_intake_predictive_claim_construction_witness_test", referrer: "predictive_construction_probe", occurrences: 4 },
+    TestReferenceDebtRow { module_name: "test.claim.machine_intake_predictive_claim_witness_test", referrer: "predictive_claim_contract_probe", occurrences: 21 },
+    TestReferenceDebtRow { module_name: "test.claim.markdown_markup_xss_witness", referrer: "witness_data_image_reject_discriminates_from_char_escape", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.claim.markdown_markup_xss_witness", referrer: "witness_javascript_link_reject_discriminates_from_char_escape", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "witness_model_refusal_controls_remain_distinct", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "test.claim.model.model_population_narrowing_witness_test", referrer: "w_all_population_claims_hold", occurrences: 11 },
+    TestReferenceDebtRow { module_name: "test.claim.model.release_relative_selection_witness_test", referrer: "w_all_release_relative_selection_claims_hold", occurrences: 12 },
+    TestReferenceDebtRow { module_name: "test.claim.model.serving_choice_witness_test", referrer: "w_all_answerability_claims_hold", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "test.claim.model.serving_choice_witness_test", referrer: "w_all_serving_choice_claims_hold", occurrences: 37 },
+    TestReferenceDebtRow { module_name: "test.claim.mt_collins_dimm_physical_identity_witness", referrer: "main", occurrences: 8 },
+    TestReferenceDebtRow { module_name: "test.claim.mt_collins_power_policy_witness", referrer: "mt_collins_power_policy_witness_main", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "test.claim.mtcollins1_candidate_attachment_witness_test", referrer: "main", occurrences: 8 },
+    TestReferenceDebtRow { module_name: "test.claim.native_witness_transition_receipt_witness", referrer: "cited_evidence_declaration_is_an_executing_witness", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.claim.pareto_selection_witness", referrer: "pareto_witness_main", occurrences: 19 },
+    TestReferenceDebtRow { module_name: "test.claim.pareto_selection_witness", referrer: "pareto_witness_report", occurrences: 19 },
+    TestReferenceDebtRow { module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", occurrences: 11 },
+    TestReferenceDebtRow { module_name: "test.claim.provider_lifecycle_witness", referrer: "provider_lifecycle_keystone_holds", occurrences: 5 },
+    TestReferenceDebtRow { module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", occurrences: 26 },
+    TestReferenceDebtRow { module_name: "test.claim.provider_standing_selection_witness_test", referrer: "provider_standing_selection_witness_keystone_holds", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", occurrences: 16 },
+    TestReferenceDebtRow { module_name: "test.claim.public_workload_census_witness", referrer: "all_claims_hold", occurrences: 30 },
+    TestReferenceDebtRow { module_name: "test.claim.ray_threshold_memory_monitor_witness_test", referrer: "w_all_ray_threshold_monitor_claims_hold", occurrences: 15 },
+    TestReferenceDebtRow { module_name: "test.claim.realization_selection_witness", referrer: "realization_selection_witness_main", occurrences: 18 },
+    TestReferenceDebtRow { module_name: "test.claim.repo_local_git_config_witness", referrer: "witness_holds", occurrences: 10 },
+    TestReferenceDebtRow { module_name: "test.claim.required_regen_admission_witness", referrer: "witness_holds", occurrences: 12 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_authority", referrer: "witness_revocation_frontier_disposition_discriminates", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_belt_actuate_witness", referrer: "codex_provider_v0_preflight_keystone_holds", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_belt_actuate_witness", referrer: "dashboard_instance_dispatch_contract_keystone_holds", occurrences: 27 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", occurrences: 9 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_dashboard_instance_apply_witness", referrer: "dashboard_instance_apply_model_keystone_holds", occurrences: 15 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_dashboard_instance_witness", referrer: "dashboard_instance_model_keystone_holds", occurrences: 26 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_dispatch_actuator", referrer: "codex_provider_v0_argv_keystone_holds", occurrences: 12 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_dispatch_actuator", referrer: "witness_actuator_automatic_selection_refuses_with_standing_reason", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_dispatch_environment_witness_test", referrer: "roadmap_dispatch_environment_keystone_holds", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_execution_contract_witness_test", referrer: "roadmap_execution_contract_keystone_holds", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_provider_events_witness_test", referrer: "roadmap_provider_events_keystone_holds", occurrences: 12 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_receipt_continuity_acceptance", referrer: "roadmap_receipt_continuity_acceptance_contract_holds", occurrences: 18 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_serve_witness", referrer: "roadmap_serve_instance_keystone_holds", occurrences: 8 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", occurrences: 25 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_verification_receipt_witness_test", referrer: "roadmap_verification_receipt_keystone_holds", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", occurrences: 10 },
+    TestReferenceDebtRow { module_name: "test.claim.roadmap_workflow_progress_witness_test", referrer: "roadmap_workflow_progress_keystone_holds", occurrences: 16 },
+    TestReferenceDebtRow { module_name: "test.claim.runner.runner_canary_receipt_witness_test", referrer: "main", occurrences: 16 },
+    TestReferenceDebtRow { module_name: "test.claim.runner_label_resolution_witness_test", referrer: "all_claims_hold", occurrences: 22 },
+    TestReferenceDebtRow { module_name: "test.claim.salience_witness", referrer: "salience_keystone_holds", occurrences: 12 },
+    TestReferenceDebtRow { module_name: "test.claim.scm_compatibility_shape_witness", referrer: "witness_r1_acceptance_contract_holds", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "test.claim.scm_manifest_merge_witness", referrer: "scm_manifest_merge_witnesses_hold", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", occurrences: 10 },
+    TestReferenceDebtRow { module_name: "test.claim.scm_read_command_witness", referrer: "scm_read_command_keystone_holds", occurrences: 5 },
+    TestReferenceDebtRow { module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", occurrences: 8 },
+    TestReferenceDebtRow { module_name: "test.claim.scm_repository_save_witness", referrer: "scm_repository_save_keystone_holds", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "test.claim.scm_squash_merge_witness", referrer: "scm_squash_merge_witnesses_hold", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", occurrences: 14 },
+    TestReferenceDebtRow { module_name: "test.claim.session_reservation_policy_witness_test", referrer: "session_reservation_policy_holds", occurrences: 11 },
+    TestReferenceDebtRow { module_name: "test.claim.sessions_panel_witness", referrer: "sessions_panel_keystone_holds", occurrences: 11 },
+    TestReferenceDebtRow { module_name: "test.claim.source_integration_landing_spine_witness", referrer: "witness_p0_roadmap_acceptance_contract_holds", occurrences: 21 },
+    TestReferenceDebtRow { module_name: "test.claim.spark.collective_transport_plan_witness_test", referrer: "w_all_collective_transport_plan_claims_hold", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "test.claim.spark.prefill_batch_sweep", referrer: "w_all_prefill_batch_sweep_claims_hold", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "test.claim.spark.serving_engine_witness_test", referrer: "w_all_serving_engine_claims_hold", occurrences: 15 },
+    TestReferenceDebtRow { module_name: "test.claim.spark.serving_performance_subject_witness_test", referrer: "w_all_serving_performance_subject_claims_hold", occurrences: 33 },
+    TestReferenceDebtRow { module_name: "test.claim.srv3_host_effect_apply_witness", referrer: "srv3_typed_receipt_emit_realizes_in_process_not_shell", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.claim.srv3_seeded_install_media", referrer: "install_media_remaster_scaffolds_dissolved", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.claim.vllm_kv_pool_witness_test", referrer: "w_all_vllm_kv_pool_claims_hold", occurrences: 8 },
+    TestReferenceDebtRow { module_name: "test.claim.workflow_reconcile_witness_test", referrer: "workflow_reconcile_keystone_holds", occurrences: 9 },
+    TestReferenceDebtRow { module_name: "test.claim.yaml_ingest_witness", referrer: "witness_yaml_comment_boundary_controls_hold", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "test.parsecheck", referrer: "<import>", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.parsecheck", referrer: "memory_model_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "test.probe.self_authored_map_probe", referrer: "<import>", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.claim.compiler.compile_eval_thesis_proof", referrer: "isolate_t1_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.claim.compiler.compile_eval_thesis_proof", referrer: "isolate_t2_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.claim.compiler.compile_eval_thesis_proof", referrer: "isolate_t3_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.claim.generated_conformance_floor", referrer: "generated_wishlist_dispatched_count_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.claim.generated_conformance_floor", referrer: "generated_wishlist_pending_count_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.compiler.pipeline.stage_bridge", referrer: "<import>", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.complexity_gate.budget_roster_completeness", referrer: "complexity_budget_roster_family_gate_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.discrimination_gate.discrimination_roster", referrer: "discrimination_family_gate", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "v2.test.execution.emit_ingest_python_same_language_round_trip", referrer: "emit_ingest_python_same_language_round_trip_holds", occurrences: 9 },
+    TestReferenceDebtRow { module_name: "v2.test.execution.emit_ingest_typescript_same_language_round_trip", referrer: "claim_emit_ingest_typescript_same_language_round_trip", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.execution.emit_ingest_typescript_same_language_round_trip", referrer: "emit_ingest_typescript_same_language_round_trip_holds", occurrences: 9 },
+    TestReferenceDebtRow { module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "native_selected_logic_interpreter_oracle_holds", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "native_selected_logic_planted_red_oracle_holds", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "v2.test.grounding_typescript.sg_claims", referrer: "ts_g2_sg5_absence_fail_closed_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_application.sg_claims", referrer: "lens_application_introspect_advisory_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_application.sg_claims", referrer: "lens_application_synthesis_gap_polynomial_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_cost.bounded_summation", referrer: "claim_bounded_summation", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner", referrer: "p9_registry_owner_receipt_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_cost.valuation", referrer: "claim_cost_valuation", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_cost.valuation", referrer: "every_valuation_witness_holds", occurrences: 23 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_idempotency.sg_claims", referrer: "lens_idempotency_write_effect_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_non_fold_residue.non_fold_residue_test", referrer: "witness_non_fold_residue_synthetic_unrostered_red_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_non_fold_residue.non_fold_residue_test", referrer: "witness_non_fold_residue_wildcard_red_fixture_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.lens_structural_resolution.binds_to_resolved", referrer: "binds_to_resolved_claim_passes", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.door_real_module_probe", referrer: "quad_with_peer_greens_under_namespace_only_projection", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.door_real_module_probe", referrer: "quad_with_peer_import_scoped_reds_ambiguous_export_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.inhabitant_neutralization_e2e_witness", referrer: "inhabitant_neutralization_python_to_go_holds", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "v2.test.long.no_dual_representation_test_test", referrer: "coverage_honesty_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.no_dual_representation_test_test", referrer: "no_violations_in_examined_scope", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.parse_table_memo_governed_witness", referrer: "witness_door_insert_then_lookup_refused_for_recompute_table", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "v2.test.long.parse_table_memo_governed_witness", referrer: "witness_door_lookup_then_insert_refused_for_recompute_table", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "v2.test.long.pick_ingested_probe", referrer: "pick_probe_eval_equals_holds", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "v2.test.long.pick_ingested_probe", referrer: "pick_probe_pipeline_resolves_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.pick_ingested_probe", referrer: "pick_probe_swapped_arms_structural_red_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "wave1_gate1_a1_projection_call_lowers_witness_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "wave1_gate1_a1_projection_call_normalize_accepts_witness_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "wave1_gate1_a1_projection_field_access_refuses_witness_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "wave1_gate1_d_ingested_bind_executes_witness_holds", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "wave1_gate1_d_ingested_loop_executes_witness_holds", occurrences: 2 },
+    TestReferenceDebtRow { module_name: "v2.test.long.wave1_gate1_general_body_producer_witness", referrer: "wave1_gate1_ingested_match_normalize_yields_match_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.long.wave1_gate1_general_body_producer_witness", referrer: "wave1_gate1_ingested_match_resolves_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.cross_language_add_python_to_typescript", referrer: "cross_language_add_python_to_typescript_chain_status_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.cross_language_add_python_to_typescript", referrer: "parse_tree_to_target_model_bridge_scaffold", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.field_access_emit", referrer: "field_access_emit_holds_keystone", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.field_access_emit", referrer: "field_access_grammar_inverse_holds_keystone", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.field_access_emit", referrer: "field_access_ingest_via_coerce_holds_keystone", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.ingest_bridge", referrer: "ingest_bridge_realized", occurrences: 6 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.inhabitant_neutralization", referrer: "inhabitant_neutralization_same_language_cross_language_compile_accepts_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.model_core_anchor", referrer: "model_core_payload_contract_holds", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.model_core_anchor", referrer: "model_core_primitives_contract", occurrences: 3 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_emit_holds_keystone", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_grammar_inverse_holds_keystone", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_ingest_via_coerce_holds_keystone", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_naming_discriminates", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_screaming_snake", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_snake_case", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.sg2_type_expression_projection", referrer: "witness_sg2_arrow_holds", occurrences: 7 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.sg2_typescript_type_expression_projection", referrer: "witness_ts_sg2_projected_serialize_holds", occurrences: 5 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.sg_rc_layering", referrer: "sg_rc_f1_dual_boundary_holds", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.manual.typescript_descriptor_node_run_support", referrer: "<import>", occurrences: 1 },
+    TestReferenceDebtRow { module_name: "v2.test.synthesis_gate.optimality_gap_completeness", referrer: "<import>", occurrences: 1 }
+  ]
+}
+
+fn test_reference_import_referrer() -> String {
+  "<import>"
+}
+
+fn declaration_marker_is_test(marker: DeclarationMarker) -> Bool {
+  match marker {
+    TestMarked => true
+    Unmarked => false
+  }
+}
+
+fn test_marked_declaration_keys(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  typed.modules |> fold(init: empty_map(), f: (acc, m) =>
+    m.items
+      |> filter(item => declaration_marker_is_test(marker: item.declaration_marker))
+      |> fold(init: acc, f: (inner, item) =>
+        map_insert(inner, concat(authored_name_at(source_indices: source_indices, node: m.module), ".", authored_name_at(source_indices: source_indices, node: item)), true)
+      )
+  )
+}
+
+fn module_declares_tests(m: TypedModule) -> Bool {
+  m.items |> any(item => declaration_marker_is_test(marker: item.declaration_marker))
+}
+
+fn call_semantics_source_target(semantics: CallSemantics?) -> String? {
+  match semantics {
+    Present { value: s } =>
+      match s {
+        PlainCallSemantics { target: t } => call_target_declaration_key(target: t)
+        ResolvedDirectCallSemantics { target: t, application_plan: _ } => call_target_declaration_key(target: t)
+        LookupCallSemantics { target: t } => call_target_declaration_key(target: t)
+        FunctionValueCallSemantics => none
+      }
+    Absent => none
+  }
+}
+
+fn call_target_declaration_key(target: CallTargetIdentity) -> String? {
+  match target {
+    SourceDeclarationCall { owner_module_path: owner, decl_name: decl } => Present { value: concat(owner, ".", decl) }
+    RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => none
+    LocallyBoundCall { name: _ } => none
+    CallableTargetUndetermined => none
+  }
+}
+
+fn test_calls_in_expr(module_name: String, referrer: String, texpr: Node, test_keys: Map<String, Bool>) -> List<TestReferenceOccurrence> {
+  let here = match texpr.expr_data {
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      match call_semantics_source_target(semantics: cs) {
+        Present { value: key } =>
+          if map_contains_key(test_keys, key) { [TestReferenceOccurrence { module_name: module_name, referrer: referrer, target: key, span: texpr.span }] } else { [] }
+        Absent => []
+      }
+    _ => []
+  }
+  concat(here, texpr.children |> flat_map(child => test_calls_in_expr(module_name: module_name, referrer: referrer, texpr: child, test_keys: test_keys)))
+}
+
+fn module_test_references(m: TypedModule, test_modules: Map<String, Bool>, test_keys: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<TestReferenceOccurrence> {
+  let module_name = authored_name_at(source_indices: source_indices, node: m.module)
+  let call_refs = m.items |> flat_map(item =>
+    match item.body {
+      Present { value: body } => test_calls_in_expr(module_name: module_name, referrer: authored_name_at(source_indices: source_indices, node: item), texpr: body, test_keys: test_keys)
+      Absent => []
+    }
+  )
+  let import_refs = if map_contains_key(test_modules, module_name) { [] } else {
+    module_imports(n: m.module)
+      |> filter(imp => map_contains_key(test_modules, authored_name_at(source_indices: source_indices, node: imp)))
+      |> map(imp => TestReferenceOccurrence { module_name: module_name, referrer: test_reference_import_referrer(), target: authored_name_at(source_indices: source_indices, node: imp), span: imp.span })
+  }
+  concat(call_refs, import_refs)
+}
+
+fn test_reference_row_for(row: TestReferenceDebtRow, module_name: String, referrer: String) -> Bool {
+  row.module_name == module_name && row.referrer == referrer
+}
+
+fn test_reference_occurrence_diag(o: TestReferenceOccurrence, debt: List<TestReferenceDebtRow>) -> ErrorNode {
+  let referrer = concat(o.module_name, ".", o.referrer)
+  if debt |> any(r => test_reference_row_for(row: r, module_name: o.module_name, referrer: o.referrer)) {
+    make_error_node(diagnostic: TestCodeReferenceAdmitted { referrer: referrer, target: o.target, span: o.span }, module_name: o.module_name)
+  } else {
+    make_error_node(diagnostic: TestCodeReferenced { referrer: referrer, target: o.target, span: o.span }, module_name: o.module_name)
+  }
+}
+
+fn test_reference_budget_diags(row: TestReferenceDebtRow, occurrences: List<TestReferenceOccurrence>, module_span: SourceSpan) -> List<ErrorNode> {
+  let observed = occurrences |> filter(o => o.module_name == row.module_name && o.referrer == row.referrer)
+  if (observed |> count) == row.occurrences { [] } else {
+    let span = match observed |> first {
+      Present { value: o } => o.span
+      Absent => module_span
+    }
+    [make_error_node(diagnostic: TestCodeReferenceBudgetMismatch { referrer: concat(row.module_name, ".", row.referrer), declared: row.occurrences, observed: observed |> count, span: span }, module_name: row.module_name)]
+  }
+}
+
+fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  let test_keys = test_marked_declaration_keys(typed: typed, source_indices: source_indices)
+  let test_modules = typed.modules
+    |> filter(m => module_declares_tests(m: m))
+    |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), true))
+  let occurrences = typed.modules |> flat_map(m => module_test_references(m: m, test_modules: test_modules, test_keys: test_keys, source_indices: source_indices))
+  let debt = test_reference_debt()
+  let occurrence_diags = occurrences |> map(o => test_reference_occurrence_diag(o: o, debt: debt))
+  let budget_diags = typed.modules |> flat_map(m =>
+    debt
+      |> filter(r => r.module_name == authored_name_at(source_indices: source_indices, node: m.module))
+      |> flat_map(r => test_reference_budget_diags(row: r, occurrences: occurrences, module_span: m.module.span))
+  )
+  concat(occurrence_diags, budget_diags)
+}
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
   CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
@@ -1536,10 +1843,11 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let all_diags = concat(typed_diags, complexity_diags)
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
+      let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices)
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
-        diagnostics: concat(frontend.diagnostics, fill.diagnostics, norm_diags, all_diags, ownership_diags),
+        diagnostics: concat(frontend.diagnostics, fill.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
         source_indices: source_indices,
         complexity: complexity,
         ownership: ownership,

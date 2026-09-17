@@ -84,9 +84,11 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{
-    InternalError, OccurrenceTransportViolation, OwnershipViolation,
+    InternalError, OccurrenceTransportViolation, OwnershipViolation, TestCodeReferenceAdmitted,
+    TestCodeReferenceBudgetMismatch, TestCodeReferenced,
 };
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
+use crate::v1_std_core::DeclarationMarker::{TestMarked, Unmarked};
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::ExprErrorKind::*;
 use crate::v1_std_core::FieldAccessStyle::*;
@@ -113,8 +115,8 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary,
+    FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
     ResolvedCallFormal, StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
@@ -389,6 +391,1204 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
     pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TestReferenceOccurrence {
+    pub module_name: String,
+    pub referrer: String,
+    pub target: String,
+    pub span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TestReferenceDebtRow {
+    pub module_name: String,
+    pub referrer: String,
+    pub occurrences: i64,
+}
+
+pub fn test_reference_debt() -> Rc<Vec<Rc<TestReferenceDebtRow>>> {
+    Rc::new(vec![
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.claude_setup_token_enrollment_witness".to_string(),
+            referrer: "claude_setup_token_enrollment_keystone_holds".to_string(),
+            occurrences: 31,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.climbing_hold_witness_roster".to_string(),
+            referrer: "climbing_hold_witness_outcomes".to_string(),
+            occurrences: 11,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.codex_device_prompt_witness".to_string(),
+            referrer: "codex_device_prompt_keystone_holds".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.credential_argv_exposure_witness".to_string(),
+            referrer: "credential_argv_exposure_witness".to_string(),
+            occurrences: 4,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.cursor_cli_invocation_witness_test".to_string(),
+            referrer: "cursor_cli_invocation_keystone_holds".to_string(),
+            occurrences: 5,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.cursor_sdk_argv_projection_witness_test".to_string(),
+            referrer: "cursor_sdk_argv_projection_witness_keystone_holds".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.cursor_sdk_auth_standing_witness_test".to_string(),
+            referrer: "cursor_sdk_auth_standing_witness_keystone_holds".to_string(),
+            occurrences: 8,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.cursor_sdk_dispatch_bridge_witness_test".to_string(),
+            referrer: "cursor_sdk_dispatch_bridge_witness_keystone_holds".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.cursor_sdk_model_witness_test".to_string(),
+            referrer: "cursor_sdk_model_witness_keystone_holds".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.cursor_sdk_stream_witness_test".to_string(),
+            referrer: "cursor_sdk_stream_witness_keystone_holds".to_string(),
+            occurrences: 11,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.decision_completeness_witness".to_string(),
+            referrer: "decision_completeness_witness_main".to_string(),
+            occurrences: 18,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.dispatch_selection_witness".to_string(),
+            referrer: "dispatch_selection_keystone_holds".to_string(),
+            occurrences: 19,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.dispatch_stop_witness".to_string(),
+            referrer: "dashboard_instance_stop_contract_keystone_holds".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.ensure_witness".to_string(),
+            referrer: "generic_ensure_keystone_holds".to_string(),
+            occurrences: 8,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.fleet.fleet_printer_access_witness_test".to_string(),
+            referrer: "fleet_printer_access_witnesses_hold".to_string(),
+            occurrences: 9,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.floor_discovery_exact_subject_witness".to_string(),
+            referrer: "all_floor_discovery_exact_subject_controls_hold".to_string(),
+            occurrences: 12,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.floor_preparation_witness".to_string(),
+            referrer: "all_floor_preparation_controls_hold".to_string(),
+            occurrences: 8,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.generated_projection_merge_rows_witness".to_string(),
+            referrer: "witness_holds".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.gitattributes_emit_witness".to_string(),
+            referrer: "witness_holds".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.host_build_cache_provision_design".to_string(),
+            referrer: "witness_red_control_widen_on_absent_rejected_by_gate".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.host_convergence_protocol_witness".to_string(),
+            referrer: "host_convergence_protocol_keystone_holds".to_string(),
+            occurrences: 14,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.jwt_oidc_claims_witness_test".to_string(),
+            referrer: "jwt_oidc_claims_keystone_holds".to_string(),
+            occurrences: 15,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.jwt_oidc_claims_witness_test".to_string(),
+            referrer: "observed_presence_does_not_imply_required_shape".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.machine_intake_predictive_claim_construction_witness_test"
+                .to_string(),
+            referrer: "predictive_construction_probe".to_string(),
+            occurrences: 4,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.machine_intake_predictive_claim_witness_test".to_string(),
+            referrer: "predictive_claim_contract_probe".to_string(),
+            occurrences: 21,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.markdown_markup_xss_witness".to_string(),
+            referrer: "witness_data_image_reject_discriminates_from_char_escape".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.markdown_markup_xss_witness".to_string(),
+            referrer: "witness_javascript_link_reject_discriminates_from_char_escape".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.materialization_provider_consumer_hand_rust_witness"
+                .to_string(),
+            referrer: "witness_model_refusal_controls_remain_distinct".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.model.model_population_narrowing_witness_test".to_string(),
+            referrer: "w_all_population_claims_hold".to_string(),
+            occurrences: 11,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.model.release_relative_selection_witness_test".to_string(),
+            referrer: "w_all_release_relative_selection_claims_hold".to_string(),
+            occurrences: 12,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.model.serving_choice_witness_test".to_string(),
+            referrer: "w_all_answerability_claims_hold".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.model.serving_choice_witness_test".to_string(),
+            referrer: "w_all_serving_choice_claims_hold".to_string(),
+            occurrences: 37,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.mt_collins_dimm_physical_identity_witness".to_string(),
+            referrer: "main".to_string(),
+            occurrences: 8,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.mt_collins_power_policy_witness".to_string(),
+            referrer: "mt_collins_power_policy_witness_main".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.mtcollins1_candidate_attachment_witness_test".to_string(),
+            referrer: "main".to_string(),
+            occurrences: 8,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.native_witness_transition_receipt_witness".to_string(),
+            referrer: "cited_evidence_declaration_is_an_executing_witness".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.pareto_selection_witness".to_string(),
+            referrer: "pareto_witness_main".to_string(),
+            occurrences: 19,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.pareto_selection_witness".to_string(),
+            referrer: "pareto_witness_report".to_string(),
+            occurrences: 19,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.provider_account_admission_witness_test".to_string(),
+            referrer: "provider_account_admission_keystone_holds".to_string(),
+            occurrences: 11,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.provider_lifecycle_witness".to_string(),
+            referrer: "provider_lifecycle_keystone_holds".to_string(),
+            occurrences: 5,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.provider_standing_probe_bridge_witness".to_string(),
+            referrer: "provider_standing_probe_bridge_keystone_holds".to_string(),
+            occurrences: 26,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.provider_standing_selection_witness_test".to_string(),
+            referrer: "provider_standing_selection_witness_keystone_holds".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.provider_standing_witness".to_string(),
+            referrer: "provider_standing_keystone_holds".to_string(),
+            occurrences: 16,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.public_workload_census_witness".to_string(),
+            referrer: "all_claims_hold".to_string(),
+            occurrences: 30,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.ray_threshold_memory_monitor_witness_test".to_string(),
+            referrer: "w_all_ray_threshold_monitor_claims_hold".to_string(),
+            occurrences: 15,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.realization_selection_witness".to_string(),
+            referrer: "realization_selection_witness_main".to_string(),
+            occurrences: 18,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.repo_local_git_config_witness".to_string(),
+            referrer: "witness_holds".to_string(),
+            occurrences: 10,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.required_regen_admission_witness".to_string(),
+            referrer: "witness_holds".to_string(),
+            occurrences: 12,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_authority".to_string(),
+            referrer: "witness_revocation_frontier_disposition_discriminates".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_belt_actuate_witness".to_string(),
+            referrer: "codex_provider_v0_preflight_keystone_holds".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_belt_actuate_witness".to_string(),
+            referrer: "dashboard_instance_dispatch_contract_keystone_holds".to_string(),
+            occurrences: 27,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_closing_contract_authoring_witness_test".to_string(),
+            referrer: "roadmap_closing_contract_authoring_keystone_holds".to_string(),
+            occurrences: 9,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_dashboard_instance_apply_witness".to_string(),
+            referrer: "dashboard_instance_apply_model_keystone_holds".to_string(),
+            occurrences: 15,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_dashboard_instance_witness".to_string(),
+            referrer: "dashboard_instance_model_keystone_holds".to_string(),
+            occurrences: 26,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_dispatch_actuator".to_string(),
+            referrer: "codex_provider_v0_argv_keystone_holds".to_string(),
+            occurrences: 12,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_dispatch_actuator".to_string(),
+            referrer: "witness_actuator_automatic_selection_refuses_with_standing_reason"
+                .to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_dispatch_environment_witness_test".to_string(),
+            referrer: "roadmap_dispatch_environment_keystone_holds".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_execution_contract_witness_test".to_string(),
+            referrer: "roadmap_execution_contract_keystone_holds".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_provider_events_witness_test".to_string(),
+            referrer: "roadmap_provider_events_keystone_holds".to_string(),
+            occurrences: 12,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_receipt_continuity_acceptance".to_string(),
+            referrer: "roadmap_receipt_continuity_acceptance_contract_holds".to_string(),
+            occurrences: 18,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_serve_witness".to_string(),
+            referrer: "roadmap_serve_instance_keystone_holds".to_string(),
+            occurrences: 8,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_validation_oracle_witness_test".to_string(),
+            referrer: "roadmap_validation_oracle_keystone_holds".to_string(),
+            occurrences: 25,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_verification_receipt_witness_test".to_string(),
+            referrer: "roadmap_verification_receipt_keystone_holds".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_verify_witness_test".to_string(),
+            referrer: "roadmap_verify_keystone_holds".to_string(),
+            occurrences: 10,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.roadmap_workflow_progress_witness_test".to_string(),
+            referrer: "roadmap_workflow_progress_keystone_holds".to_string(),
+            occurrences: 16,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.runner.runner_canary_receipt_witness_test".to_string(),
+            referrer: "main".to_string(),
+            occurrences: 16,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.runner_label_resolution_witness_test".to_string(),
+            referrer: "all_claims_hold".to_string(),
+            occurrences: 22,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.salience_witness".to_string(),
+            referrer: "salience_keystone_holds".to_string(),
+            occurrences: 12,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.scm_compatibility_shape_witness".to_string(),
+            referrer: "witness_r1_acceptance_contract_holds".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.scm_manifest_merge_witness".to_string(),
+            referrer: "scm_manifest_merge_witnesses_hold".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.scm_merge_base_witness".to_string(),
+            referrer: "scm_merge_base_witnesses_hold".to_string(),
+            occurrences: 10,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.scm_read_command_witness".to_string(),
+            referrer: "scm_read_command_keystone_holds".to_string(),
+            occurrences: 5,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.scm_repository_load_witness".to_string(),
+            referrer: "scm_repository_load_keystone_holds".to_string(),
+            occurrences: 8,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.scm_repository_save_witness".to_string(),
+            referrer: "scm_repository_save_keystone_holds".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.scm_squash_merge_witness".to_string(),
+            referrer: "scm_squash_merge_witnesses_hold".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.scm_staging_witness".to_string(),
+            referrer: "scm_staging_witness_suite".to_string(),
+            occurrences: 14,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.session_reservation_policy_witness_test".to_string(),
+            referrer: "session_reservation_policy_holds".to_string(),
+            occurrences: 11,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.sessions_panel_witness".to_string(),
+            referrer: "sessions_panel_keystone_holds".to_string(),
+            occurrences: 11,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.source_integration_landing_spine_witness".to_string(),
+            referrer: "witness_p0_roadmap_acceptance_contract_holds".to_string(),
+            occurrences: 21,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.spark.collective_transport_plan_witness_test".to_string(),
+            referrer: "w_all_collective_transport_plan_claims_hold".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.spark.prefill_batch_sweep".to_string(),
+            referrer: "w_all_prefill_batch_sweep_claims_hold".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.spark.serving_engine_witness_test".to_string(),
+            referrer: "w_all_serving_engine_claims_hold".to_string(),
+            occurrences: 15,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.spark.serving_performance_subject_witness_test".to_string(),
+            referrer: "w_all_serving_performance_subject_claims_hold".to_string(),
+            occurrences: 33,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            referrer: "srv3_typed_receipt_emit_realizes_in_process_not_shell".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.srv3_seeded_install_media".to_string(),
+            referrer: "install_media_remaster_scaffolds_dissolved".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.vllm_kv_pool_witness_test".to_string(),
+            referrer: "w_all_vllm_kv_pool_claims_hold".to_string(),
+            occurrences: 8,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.workflow_reconcile_witness_test".to_string(),
+            referrer: "workflow_reconcile_keystone_holds".to_string(),
+            occurrences: 9,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.claim.yaml_ingest_witness".to_string(),
+            referrer: "witness_yaml_comment_boundary_controls_hold".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.parsecheck".to_string(),
+            referrer: "<import>".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.parsecheck".to_string(),
+            referrer: "memory_model_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "test.probe.self_authored_map_probe".to_string(),
+            referrer: "<import>".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.claim.compiler.compile_eval_thesis_proof".to_string(),
+            referrer: "isolate_t1_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.claim.compiler.compile_eval_thesis_proof".to_string(),
+            referrer: "isolate_t2_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.claim.compiler.compile_eval_thesis_proof".to_string(),
+            referrer: "isolate_t3_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.claim.generated_conformance_floor".to_string(),
+            referrer: "generated_wishlist_dispatched_count_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.claim.generated_conformance_floor".to_string(),
+            referrer: "generated_wishlist_pending_count_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.compiler.pipeline.stage_bridge".to_string(),
+            referrer: "<import>".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.complexity_gate.budget_roster_completeness".to_string(),
+            referrer: "complexity_budget_roster_family_gate_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.discrimination_gate.discrimination_roster".to_string(),
+            referrer: "discrimination_family_gate".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.execution.emit_ingest_python_same_language_round_trip"
+                .to_string(),
+            referrer: "emit_ingest_python_same_language_round_trip_holds".to_string(),
+            occurrences: 9,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.execution.emit_ingest_typescript_same_language_round_trip"
+                .to_string(),
+            referrer: "claim_emit_ingest_typescript_same_language_round_trip".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.execution.emit_ingest_typescript_same_language_round_trip"
+                .to_string(),
+            referrer: "emit_ingest_typescript_same_language_round_trip_holds".to_string(),
+            occurrences: 9,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.execution.native_selected_witness_bundle_production".to_string(),
+            referrer: "<import>".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.execution.native_selected_witness_bundle_production".to_string(),
+            referrer: "native_selected_logic_interpreter_oracle_holds".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.execution.native_selected_witness_bundle_production".to_string(),
+            referrer: "native_selected_logic_planted_red_oracle_holds".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.grounding_typescript.sg_claims".to_string(),
+            referrer: "ts_g2_sg5_absence_fail_closed_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_application.sg_claims".to_string(),
+            referrer: "lens_application_introspect_advisory_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_application.sg_claims".to_string(),
+            referrer: "lens_application_synthesis_gap_polynomial_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_cost.bounded_summation".to_string(),
+            referrer: "claim_bounded_summation".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner".to_string(),
+            referrer: "p9_registry_owner_receipt_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_cost.valuation".to_string(),
+            referrer: "claim_cost_valuation".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_cost.valuation".to_string(),
+            referrer: "every_valuation_witness_holds".to_string(),
+            occurrences: 23,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_idempotency.sg_claims".to_string(),
+            referrer: "lens_idempotency_write_effect_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_non_fold_residue.non_fold_residue_test".to_string(),
+            referrer: "witness_non_fold_residue_synthetic_unrostered_red_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_non_fold_residue.non_fold_residue_test".to_string(),
+            referrer: "witness_non_fold_residue_wildcard_red_fixture_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.lens_structural_resolution.binds_to_resolved".to_string(),
+            referrer: "binds_to_resolved_claim_passes".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.door_real_module_probe".to_string(),
+            referrer: "quad_with_peer_greens_under_namespace_only_projection".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.door_real_module_probe".to_string(),
+            referrer: "quad_with_peer_import_scoped_reds_ambiguous_export_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.inhabitant_neutralization_e2e_witness".to_string(),
+            referrer: "inhabitant_neutralization_python_to_go_holds".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.no_dual_representation_test_test".to_string(),
+            referrer: "coverage_honesty_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.no_dual_representation_test_test".to_string(),
+            referrer: "no_violations_in_examined_scope".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.parse_table_memo_governed_witness".to_string(),
+            referrer: "witness_door_insert_then_lookup_refused_for_recompute_table".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.parse_table_memo_governed_witness".to_string(),
+            referrer: "witness_door_lookup_then_insert_refused_for_recompute_table".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.pick_ingested_probe".to_string(),
+            referrer: "pick_probe_eval_equals_holds".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.pick_ingested_probe".to_string(),
+            referrer: "pick_probe_pipeline_resolves_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.pick_ingested_probe".to_string(),
+            referrer: "pick_probe_swapped_arms_structural_red_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(),
+            referrer: "wave1_gate1_a1_projection_call_lowers_witness_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(),
+            referrer: "wave1_gate1_a1_projection_call_normalize_accepts_witness_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(),
+            referrer: "wave1_gate1_a1_projection_field_access_refuses_witness_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(),
+            referrer: "wave1_gate1_d_ingested_bind_executes_witness_holds".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(),
+            referrer: "wave1_gate1_d_ingested_loop_executes_witness_holds".to_string(),
+            occurrences: 2,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.wave1_gate1_general_body_producer_witness".to_string(),
+            referrer: "wave1_gate1_ingested_match_normalize_yields_match_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.long.wave1_gate1_general_body_producer_witness".to_string(),
+            referrer: "wave1_gate1_ingested_match_resolves_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.cross_language_add_python_to_typescript".to_string(),
+            referrer: "cross_language_add_python_to_typescript_chain_status_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.cross_language_add_python_to_typescript".to_string(),
+            referrer: "parse_tree_to_target_model_bridge_scaffold".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.field_access_emit".to_string(),
+            referrer: "field_access_emit_holds_keystone".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.field_access_emit".to_string(),
+            referrer: "field_access_grammar_inverse_holds_keystone".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.field_access_emit".to_string(),
+            referrer: "field_access_ingest_via_coerce_holds_keystone".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.ingest_bridge".to_string(),
+            referrer: "ingest_bridge_realized".to_string(),
+            occurrences: 6,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.inhabitant_neutralization".to_string(),
+            referrer:
+                "inhabitant_neutralization_same_language_cross_language_compile_accepts_holds"
+                    .to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.model_core_anchor".to_string(),
+            referrer: "model_core_payload_contract_holds".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.model_core_anchor".to_string(),
+            referrer: "model_core_primitives_contract".to_string(),
+            occurrences: 3,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.record_construct_emit".to_string(),
+            referrer: "record_construct_emit_holds_keystone".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.record_construct_emit".to_string(),
+            referrer: "record_construct_grammar_inverse_holds_keystone".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.record_construct_emit".to_string(),
+            referrer: "record_construct_ingest_via_coerce_holds_keystone".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.rust_wire_serde_naming_policy_test".to_string(),
+            referrer: "unified_claim_rust_wire_serde_naming_discriminates".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.rust_wire_serde_naming_policy_test".to_string(),
+            referrer: "unified_claim_rust_wire_serde_screaming_snake".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.rust_wire_serde_naming_policy_test".to_string(),
+            referrer: "unified_claim_rust_wire_serde_snake_case".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.sg2_type_expression_projection".to_string(),
+            referrer: "witness_sg2_arrow_holds".to_string(),
+            occurrences: 7,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.sg2_typescript_type_expression_projection".to_string(),
+            referrer: "witness_ts_sg2_projected_serialize_holds".to_string(),
+            occurrences: 5,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.sg_rc_layering".to_string(),
+            referrer: "sg_rc_f1_dual_boundary_holds".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.manual.typescript_descriptor_node_run_support".to_string(),
+            referrer: "<import>".to_string(),
+            occurrences: 1,
+        }),
+        Rc::new(TestReferenceDebtRow {
+            module_name: "v2.test.synthesis_gate.optimality_gap_completeness".to_string(),
+            referrer: "<import>".to_string(),
+            occurrences: 1,
+        }),
+    ])
+}
+
+pub fn test_reference_import_referrer() -> String {
+    "<import>".to_string()
+}
+
+pub fn declaration_marker_is_test(marker: DeclarationMarker) -> bool {
+    match marker.clone() {
+        DeclarationMarker::TestMarked => true,
+        DeclarationMarker::Unmarked => false,
+    }
+}
+
+pub fn test_marked_declaration_keys(
+    typed: Rc<ResolvedGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    typed.modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
+            Rc::new({
+                let mut __result = Vec::new();
+                for item in m.items.clone().iter().cloned() {
+                    if declaration_marker_is_test(item.declaration_marker.clone()) {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .fold(acc, |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
+                v1_rt::rc_map_insert(
+                    inner,
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                m.module.clone(),
+                            ),
+                            ".".to_string(),
+                        ),
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                    ),
+                    true,
+                )
+            })
+        },
+    )
+}
+
+pub fn module_declares_tests(m: Rc<TypedModule>) -> bool {
+    {
+        let mut __found = false;
+        for item in m.items.clone().iter().cloned() {
+            if declaration_marker_is_test(item.declaration_marker.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn call_semantics_source_target(semantics: Option<Rc<CallSemantics>>) -> Option<String> {
+    match semantics.clone() {
+        Some(s) => match (*s.clone()).clone() {
+            CallSemantics::PlainCallSemantics { target: t, .. } => {
+                call_target_declaration_key(t.clone())
+            }
+            CallSemantics::ResolvedDirectCallSemantics { target: t, .. } => {
+                call_target_declaration_key(t.clone())
+            }
+            CallSemantics::LookupCallSemantics { target: t, .. } => {
+                call_target_declaration_key(t.clone())
+            }
+            CallSemantics::FunctionValueCallSemantics => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn call_target_declaration_key(target: Rc<CallTargetIdentity>) -> Option<String> {
+    match (*target.clone()).clone() {
+        CallTargetIdentity::SourceDeclarationCall {
+            owner_module_path: owner,
+            decl_name: decl,
+            ..
+        } => Some(v1_rt::concat(
+            v1_rt::concat(owner.clone(), ".".to_string()),
+            decl.clone(),
+        )),
+        CallTargetIdentity::RuntimePrimitiveCall { .. } => std::option::Option::None,
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
+        CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
+    }
+}
+
+pub fn test_calls_in_expr(
+    module_name: String,
+    referrer: String,
+    texpr: Rc<Node>,
+    test_keys: Rc<HashMap<String, bool>>,
+) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprCall {
+                call_semantics: cs, ..
+            } => match call_semantics_source_target(cs.clone()) {
+                Some(key) => {
+                    if v1_rt::map_contains_key(&test_keys, key.clone()) {
+                        Rc::new(vec![Rc::new(TestReferenceOccurrence {
+                            module_name: module_name.clone(),
+                            referrer: referrer.clone(),
+                            target: key.clone(),
+                            span: texpr.span.clone(),
+                        })])
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                std::option::Option::None => Rc::new(vec![]),
+            },
+            _ => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            here.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for child in texpr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*test_calls_in_expr(
+                            module_name.clone(),
+                            referrer.clone(),
+                            child.clone(),
+                            test_keys.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn module_test_references(
+    m: Rc<TypedModule>,
+    test_modules: Rc<HashMap<String, bool>>,
+    test_keys: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
+    {
+        let module_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone());
+        let call_refs = Rc::new({
+            let mut __result = Vec::new();
+            for item in m.items.clone().iter().cloned() {
+                __result.extend(
+                    (*match item.body.clone() {
+                        Some(body) => test_calls_in_expr(
+                            module_name.clone(),
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                item.clone(),
+                            ),
+                            body.clone(),
+                            test_keys.clone(),
+                        ),
+                        std::option::Option::None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let import_refs = if v1_rt::map_contains_key(&test_modules, module_name.clone()) {
+            Rc::new(vec![])
+        } else {
+            Rc::new({
+                let mut __result = Vec::new();
+                for imp in Rc::new({
+                    let mut __result = Vec::new();
+                    for imp in crate::v1_std_core::module_imports(m.module.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        if v1_rt::map_contains_key(
+                            &test_modules,
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                imp.clone(),
+                            ),
+                        ) {
+                            __result.push(imp);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(Rc::new(TestReferenceOccurrence {
+                        module_name: module_name.clone(),
+                        referrer: test_reference_import_referrer(),
+                        target: crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            imp.clone(),
+                        ),
+                        span: imp.span.clone(),
+                    }));
+                }
+                __result
+            })
+        };
+        v1_rt::concat(call_refs.clone(), import_refs.clone())
+    }
+}
+
+pub fn test_reference_row_for(
+    row: Rc<TestReferenceDebtRow>,
+    module_name: String,
+    referrer: String,
+) -> bool {
+    ((row.module_name.clone() == module_name.clone()) && (row.referrer.clone() == referrer.clone()))
+}
+
+pub fn test_reference_occurrence_diag(
+    o: Rc<TestReferenceOccurrence>,
+    debt: Rc<Vec<Rc<TestReferenceDebtRow>>>,
+) -> Rc<ErrorNode> {
+    {
+        let referrer = v1_rt::concat(
+            v1_rt::concat(o.module_name.clone(), ".".to_string()),
+            o.referrer.clone(),
+        );
+        if {
+            let mut __found = false;
+            for r in debt.iter().cloned() {
+                if test_reference_row_for(r.clone(), o.module_name.clone(), o.referrer.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::TestCodeReferenceAdmitted {
+                    referrer: referrer.clone(),
+                    target: o.target.clone(),
+                    span: o.span.clone(),
+                }),
+                o.module_name.clone(),
+            )
+        } else {
+            crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::TestCodeReferenced {
+                    referrer: referrer.clone(),
+                    target: o.target.clone(),
+                    span: o.span.clone(),
+                }),
+                o.module_name.clone(),
+            )
+        }
+    }
+}
+
+pub fn test_reference_budget_diags(
+    row: Rc<TestReferenceDebtRow>,
+    occurrences: Rc<Vec<Rc<TestReferenceOccurrence>>>,
+    module_span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let observed = Rc::new({
+            let mut __result = Vec::new();
+            for o in occurrences.iter().cloned() {
+                if ((o.module_name.clone() == row.module_name.clone())
+                    && (o.referrer.clone() == row.referrer.clone()))
+                {
+                    __result.push(o);
+                }
+            }
+            __result
+        });
+        if ((observed.clone().len() as i64) == row.occurrences.clone()) {
+            Rc::new(vec![])
+        } else {
+            {
+                let span = match observed.clone().first().cloned() {
+                    Some(o) => o.span.clone(),
+                    std::option::Option::None => module_span.clone(),
+                };
+                Rc::new(vec![crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::TestCodeReferenceBudgetMismatch {
+                        referrer: v1_rt::concat(
+                            v1_rt::concat(row.module_name.clone(), ".".to_string()),
+                            row.referrer.clone(),
+                        ),
+                        declared: row.occurrences.clone(),
+                        observed: (observed.clone().len() as i64),
+                        span: span.clone(),
+                    }),
+                    row.module_name.clone(),
+                )])
+            }
+        }
+    }
+}
+
+pub fn test_reference_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let test_keys = test_marked_declaration_keys(typed.clone(), source_indices.clone());
+        let test_modules = Rc::new({
+            let mut __result = Vec::new();
+            for m in typed.modules.clone().iter().cloned() {
+                if module_declares_tests(m.clone()) {
+                    __result.push(m);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
+                    true,
+                )
+            },
+        );
+        let occurrences = Rc::new({
+            let mut __result = Vec::new();
+            for m in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*module_test_references(
+                        m.clone(),
+                        test_modules.clone(),
+                        test_keys.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let debt = test_reference_debt();
+        let occurrence_diags = Rc::new({
+            let mut __result = Vec::new();
+            for o in occurrences.iter().cloned() {
+                __result.push(test_reference_occurrence_diag(o.clone(), debt.clone()));
+            }
+            __result
+        });
+        let budget_diags = Rc::new({
+            let mut __result = Vec::new();
+            for m in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for r in Rc::new({
+                            let mut __result = Vec::new();
+                            for r in debt.iter().cloned() {
+                                if (r.module_name.clone()
+                                    == crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        m.module.clone(),
+                                    ))
+                                {
+                                    __result.push(r);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend(
+                                (*test_reference_budget_diags(
+                                    r.clone(),
+                                    occurrences.clone(),
+                                    m.module.clone().span.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        v1_rt::concat(occurrence_diags.clone(), budget_diags.clone())
+    }
 }
 
 pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
@@ -3246,6 +4446,8 @@ pub fn compile_to_resolved_with_options(
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
+                let test_reference_diags =
+                    test_reference_diagnostics(typed.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
@@ -3253,14 +4455,17 @@ pub fn compile_to_resolved_with_options(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    frontend.diagnostics.clone(),
-                                    fill.diagnostics.clone(),
+                                    v1_rt::concat(
+                                        frontend.diagnostics.clone(),
+                                        fill.diagnostics.clone(),
+                                    ),
+                                    norm_diags.clone(),
                                 ),
-                                norm_diags.clone(),
+                                all_diags.clone(),
                             ),
-                            all_diags.clone(),
+                            ownership_diags.clone(),
                         ),
-                        ownership_diags.clone(),
+                        test_reference_diags.clone(),
                     ),
                     source_indices: source_indices.clone(),
                     complexity: complexity.clone(),

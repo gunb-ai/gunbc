@@ -496,6 +496,73 @@ mod compiler_tests {
         }
     }
 
+    // Diagnostics carry Rc and cannot cross the thread boundary, so the compile runs inside the thread
+    // and hands back one plain tag per test-reference diagnostic.
+    fn test_reference_tags(module: &str, body: &str) -> Vec<String> {
+        let content = format!("module {}\n\n{}", module, body);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("test-reference-wall".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "test_reference_fixture.dag".to_string(), content });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| {
+                    let blocking = crate::v1_std_core::is_error_diagnostic(e.diagnostic.clone());
+                    match e.diagnostic.as_ref() {
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { .. } => Some(format!("referenced blocking={}", blocking)),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => Some(format!("admitted blocking={}", blocking)),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceBudgetMismatch { declared, observed, .. } => Some(format!("mismatch declared={} observed={} blocking={}", declared, observed, blocking)),
+                        _ => None,
+                    }
+                }).collect();
+                let _ = tx.send(tags);
+            })
+            .expect("spawn test-reference-wall");
+        rx.recv_timeout(std::time::Duration::from_secs(120))
+            .expect("compile hung")
+    }
+
+    // THE DISCRIMINATING RED: an unrostered call to a test fn refuses, from a test fn AND from an
+    // ordinary fn, and it is the blocking variant rather than the admitted one.
+    #[test]
+    fn a_call_to_a_test_fn_is_refused() {
+        let tags = test_reference_tags("wall.fixture.unrostered", "test fn leaf() -> Bool {\n  true\n}\n\ntest fn rollup() -> Bool {\n  leaf()\n}\n\nfn helper() -> Bool {\n  leaf()\n}\n");
+        assert_eq!(
+            tags,
+            vec![
+                "referenced blocking=true".to_string(),
+                "referenced blocking=true".to_string()
+            ]
+        );
+    }
+
+    // POSITIVE CONTROL: a test fn calling an ordinary fn is the intended shape and draws nothing.
+    #[test]
+    fn a_test_fn_calling_an_ordinary_fn_is_admitted() {
+        let tags = test_reference_tags(
+            "wall.fixture.clean",
+            "fn helper() -> Bool {\n  true\n}\n\ntest fn uses_helper() -> Bool {\n  helper()\n}\n",
+        );
+        assert!(tags.is_empty(), "{:?}", tags);
+    }
+
+    // THE RATCHET: a ledger row whose module compiles with a different count refuses, here in the
+    // paid-down direction (the row declares references, the module now has none).
+    #[test]
+    fn a_ledger_row_whose_count_differs_is_refused() {
+        let debt = crate::v1_compiler_compile::test_reference_debt();
+        let row = debt.get(0).cloned().expect("ledger has rows");
+        let tags = test_reference_tags(&row.module_name, "fn helper() -> Bool {\n  true\n}\n");
+        assert_eq!(
+            tags,
+            vec![format!(
+                "mismatch declared={} observed=0 blocking=true",
+                row.occurrences
+            )]
+        );
+    }
+
     fn tco_slot(name: &str) -> String {
         {
             crate::v1_compiler_emit::tco_loop_slot_name(name.to_string())
