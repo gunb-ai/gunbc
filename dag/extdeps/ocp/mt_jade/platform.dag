@@ -1,6 +1,6 @@
 module extdeps.ocp.mt_jade.platform
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
 import std.integer { Int }
 import std.measure {
   Hertz,
@@ -371,6 +371,99 @@ fn clock_tree_contains_part_number(nodes: List<ClockTreeNode>, part: NonEmptyStr
 
 fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: ReferencePartRole) -> Bool {
   fold(rows, init: false, f: fn(acc, r) { acc || r.role == wanted })
+}
+
+// FEATURE LIST AND SECTION 7.2: FAN CONNECTOR POPULATIONS ARE CHASSIS-HEIGHT SPECIFIC. The
+// motherboard carries both connector sets; a 2U chassis uses six 6056 dual-rotor fans and a 1U
+// chassis uses eight 4056 dual-rotor fans. PWM/TACH in Table 9 restates the same split.
+type MtJadeFanConnectorPopulation {
+  chassis_height_label: NonEmptyStr
+  connector_count: Int
+  fan_size_designation: NonEmptyStr
+  dual_rotor: Bool
+}
+
+data mt_jade_fan_connectors_2u: MtJadeFanConnectorPopulation = MtJadeFanConnectorPopulation {
+  chassis_height_label: "2U",
+  connector_count: 6,
+  fan_size_designation: "6056",
+  dual_rotor: true,
+}
+
+data mt_jade_fan_connectors_1u: MtJadeFanConnectorPopulation = MtJadeFanConnectorPopulation {
+  chassis_height_label: "1U",
+  connector_count: 8,
+  fan_size_designation: "4056",
+  dual_rotor: true,
+}
+
+// FEATURE LIST: DUAL CRPS, 1+1, HOT-PLUG. The specification names the PSU mechanical class and
+// redundancy and does not name IEC 60320 sheet, AC voltage range, or a wattage rating of any
+// fitted module. Inventing C14 vs C20 from "CRPS" would be a fabricated inlet.
+type MtJadeCrpsPower {
+  psu_count: Int
+  redundancy_label: NonEmptyStr
+  hot_plug: Bool
+}
+
+data mt_jade_crps_power: MtJadeCrpsPower = MtJadeCrpsPower {
+  psu_count: 2,
+  redundancy_label: "1+1",
+  hot_plug: true,
+}
+
+type MtJadeCrpsAcInletStanding
+  = InletUnstatedInCitedAuthorities { obligation: NonEmptyStr }
+
+data mt_jade_crps_ac_inlet: MtJadeCrpsAcInletStanding = InletUnstatedInCitedAuthorities {
+  obligation: "OCP Mt. Jade Rev 1.0 names two CRPS connectors and 1+1 hot-plug redundancy. It does not name an IEC 60320 inlet (C14 vs C20), a 120 V vs 200-240 V rating, or the cord the seller ships. Discriminator: a photograph or FRU of the fitted PSU face, or a PSU ordering part whose own datasheet names the inlet and AC range.",
+}
+
+// FEATURE LIST: "MGMT 1x 1GbE from BMC to Rear RJ45 Connector". Section 7.6.1 names BMC ETH at
+// 10/100/1000 and RTL8211E as the PHY (already a reference-part row). Bottom-side I/O is common
+// between 1U and 2U: BMC UART/ETH/VGA sit with the power-supply end of the board.
+type MtJadeBmcManagementNetwork {
+  phy_ordering_part_number: NonEmptyStr
+  port_count: Int
+  location_label: NonEmptyStr
+  media_label: NonEmptyStr
+}
+
+data mt_jade_bmc_management_network: MtJadeBmcManagementNetwork = MtJadeBmcManagementNetwork {
+  phy_ordering_part_number: "RTL8211E",
+  port_count: 1,
+  location_label: "rear RJ45, power-supply / bottom-side I/O",
+  media_label: "10/100/1000 Mbps BMC ETH",
+}
+
+// FEATURE LIST "BMC AMI MegaRAC, OpenBMC" IS A DISJUNCTION, NOT A DEFAULT. The specification
+// names both stacks. A unit's family is a workflow observation (gunbc.machine_intake_access),
+// never this row. megaRAC_* folds may run only after AmiMegaRac is observed.
+type MtJadeCitedBmcFirmwareOption
+  = CitedAmiMegaRac
+  | CitedOpenBmc
+
+data mt_jade_cited_bmc_firmware_options: List<MtJadeCitedBmcFirmwareOption> = [
+  CitedAmiMegaRac,
+  CitedOpenBmc,
+]
+
+fn mt_jade_cited_bmc_firmware_includes_megarac(options: List<MtJadeCitedBmcFirmwareOption>) -> Bool {
+  fold(options, init: false, f: fn(acc, o) {
+    acc || match o {
+      CitedAmiMegaRac => true
+      CitedOpenBmc => false
+    }
+  })
+}
+
+fn mt_jade_cited_bmc_firmware_includes_openbmc(options: List<MtJadeCitedBmcFirmwareOption>) -> Bool {
+  fold(options, init: false, f: fn(acc, o) {
+    acc || match o {
+      CitedAmiMegaRac => false
+      CitedOpenBmc => true
+    }
+  })
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope

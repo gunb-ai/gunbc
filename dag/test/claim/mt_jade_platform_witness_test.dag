@@ -58,7 +58,16 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_dimm_speed_at_two_dpc,
   mt_jade_platform_subject,
   mt_jade_bmc_chip_catalog,
+  mt_jade_bmc_management_network,
+  mt_jade_cited_bmc_firmware_includes_megarac,
+  mt_jade_cited_bmc_firmware_includes_openbmc,
+  mt_jade_cited_bmc_firmware_options,
+  mt_jade_crps_ac_inlet,
+  mt_jade_crps_power,
+  mt_jade_fan_connectors_1u,
+  mt_jade_fan_connectors_2u,
   mt_jade_reference_parts,
+  InletUnstatedInCitedAuthorities,
   processor_power_rail_enable_order,
   processor_power_rail_name,
   processor_socket_role_name,
@@ -272,4 +281,32 @@ test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
 test fn w_mt_jade_bmc_chip_catalog_joins_the_aspeed_ast2500_authority() -> Bool {
   (mt_jade_bmc_chip_catalog.ordering_part_number as String) == "AST2500"
     && mt_jade_bmc_chip_catalog == aspeed_ast2500_catalog
+}
+
+test fn w_2u_fan_connectors_are_six_6056_dual_rotor() -> Bool {
+  mt_jade_fan_connectors_2u.connector_count == 6
+    && (mt_jade_fan_connectors_2u.fan_size_designation as String) == "6056"
+    && mt_jade_fan_connectors_2u.dual_rotor
+    && mt_jade_fan_connectors_1u.connector_count == 8
+    && (mt_jade_fan_connectors_1u.fan_size_designation as String) == "4056"
+}
+
+test fn w_crps_is_dual_redundant_and_inlet_is_unstated() -> Bool {
+  mt_jade_crps_power.psu_count == 2
+    && mt_jade_crps_power.hot_plug
+    && (mt_jade_crps_power.redundancy_label as String) == "1+1"
+    && match mt_jade_crps_ac_inlet {
+      InletUnstatedInCitedAuthorities { obligation: _ } => true
+    }
+}
+
+test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e() -> Bool {
+  (mt_jade_bmc_management_network.phy_ordering_part_number as String) == "RTL8211E"
+    && mt_jade_bmc_management_network.port_count == 1
+    && (mt_jade_bmc_management_network.location_label as String) == "rear RJ45, power-supply / bottom-side I/O"
+}
+
+test fn w_cited_bmc_firmware_is_a_disjunction_not_a_default() -> Bool {
+  mt_jade_cited_bmc_firmware_includes_megarac(options: mt_jade_cited_bmc_firmware_options)
+    && mt_jade_cited_bmc_firmware_includes_openbmc(options: mt_jade_cited_bmc_firmware_options)
 }
