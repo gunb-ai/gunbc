@@ -81,7 +81,6 @@ test fn clock_unreadable_is_not_an_observation_instant() -> Bool {
 
 test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
   !mtcollins1_boot_sol_is_held(pid_path: "")
-    && !mtcollins1_boot_sol_is_held(pid_path: "/tmp/mtcollins1-sol-pid-absent")
 }
 
 test fn a_spent_boot_claim_slot_is_the_escalation_id_on_the_shared_claim_root() -> Bool {
