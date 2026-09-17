@@ -1034,7 +1034,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "native_routing_green_control_bound_entry_reaches_subject"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/long/no_dual_representation_test_test.dag", functions: ["no_violations_in_examined_scope", "coverage_honesty_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/long/parse_table_memo_amortization_test.dag",
     functions: [

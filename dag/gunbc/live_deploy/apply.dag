@@ -62,9 +62,10 @@ import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_ide
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
-  ServiceReadyApplyEffect,
-  ServiceReadyEvidence,
+  ServiceReadiness,
+  service_readiness_reason,
 }
+import gunbc.readiness { Ready, Pending, Refused }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -258,26 +259,32 @@ fn live_deploy_apply_readiness_gate(
   )
 }
 
+// One NotConverged, reached from both non-Ready arms. The Pending/Refused
+// distinction is NOT erased by the collapse: service_readiness_reason carries the
+// readiness value into the reason, and the retry decision that consumes the
+// distinction lives in the poll, not in this gate.
+fn readiness_gate_not_converged(
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  readiness: ServiceReadiness,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let intent = match mutation {
+    Converged { evidence: _, applied: applied_intent } => applied_intent
+    NotConverged { reason: _, applied: applied_intent } => applied_intent
+  }
+  NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
+}
+
 fn live_deploy_apply_readiness_gate_with_readiness(
   mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  readiness: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>,
+  readiness: ServiceReadiness,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   if !reconciliation_converged(r: mutation) {
     mutation
   } else {
-    if reconciliation_converged(r: readiness) {
-      mutation
-    } else {
-      match readiness {
-        NotConverged { reason: why, applied: _ } =>
-          match mutation {
-            Converged { evidence: _, applied: intent } =>
-              NotConverged { reason: why, applied: intent }
-            NotConverged { reason: _, applied: intent } =>
-              NotConverged { reason: why, applied: intent }
-          }
-        Converged { evidence: _, applied: _ } => mutation
-      }
+    match readiness {
+      Ready { evidence: _ } => mutation
+      Pending { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
+      Refused { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
     }
   }
 }

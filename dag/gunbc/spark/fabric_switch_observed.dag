@@ -125,15 +125,33 @@ type FabricLaneObserved {
   leg_rdma_device: NonEmptyStr
 }
 
+// THE NETDEV NAMES THE LEG APPEARS ON, DECLARED ONCE. Every row below carried the same two
+// spellings as literals -- eight copies of `enp1s0f1np1` and eight of `enP2p1s0f1np1` -- which is one
+// concept authored sixteen times (DESIGN §2). The names are identical across the fleet because they
+// are derived from the NIC's PCI position and function, which is the same on every Spark, so a
+// per-row literal was never carrying per-row information.
+//
+// IT IS ALSO WHAT A PRIVILEGE GRANT NEEDS TO NAME. gunbc.spark.managed_access_bootstrap authorizes
+// an EEPROM read on ONE device rather than on every interface the host has, and a Cmnd_Spec that
+// spelled the device itself would be a seventeenth copy -- one that sudo would silently fail to
+// match if the fleet's naming ever moved. The grant folds this row instead.
+//
+// THE TWIN IS A SEPARATE ROW AND NOT A DERIVATION. Both second-function netdevs come up from the one
+// leg with distinct MACs; their names differ by PCI domain prefix rather than by any rule this
+// repository could apply, so deriving one from the other would be inventing a naming law upstream
+// does not publish.
+data spark_fabric_leg_netdev: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
+data spark_fabric_leg_netdev_twin: NonEmptyStr = "enP2p1s0f1np1" as NonEmptyStr
+
 data fabric_lane_observations: List<FabricLaneObserved> = [
-  FabricLaneObserved { cage: 1, lane: 1, host: operator_host_srv5, spark_hostname: "spark-a3ee" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 3, host: operator_host_srv8, spark_hostname: "spark-ac79" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 5, host: operator_host_srv7, spark_hostname: "spark-c2b1" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 7, host: operator_host_srv6, spark_hostname: "spark-3bd5" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 2, lane: 1, host: operator_host_srv10, spark_hostname: "spark-3336" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 2, lane: 3, host: operator_host_srv12, spark_hostname: "spark-2196" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 2, lane: 5, host: operator_host_srv9, spark_hostname: "spark-0c75" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 2, lane: 7, host: operator_host_srv11, spark_hostname: "spark-b66c" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 1, host: operator_host_srv5, spark_hostname: "spark-a3ee" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 3, host: operator_host_srv8, spark_hostname: "spark-ac79" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 5, host: operator_host_srv7, spark_hostname: "spark-c2b1" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 7, host: operator_host_srv6, spark_hostname: "spark-3bd5" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 1, host: operator_host_srv10, spark_hostname: "spark-3336" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 3, host: operator_host_srv12, spark_hostname: "spark-2196" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 5, host: operator_host_srv9, spark_hostname: "spark-0c75" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 7, host: operator_host_srv11, spark_hostname: "spark-b66c" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
 ]
 
 fn fabric_lane_interface(o: FabricLaneObserved) -> NonEmptyStr {

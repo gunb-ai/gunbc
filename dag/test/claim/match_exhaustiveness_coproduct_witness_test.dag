@@ -295,3 +295,113 @@ test fn w_variant_named_in_type_position_is_judged_against_its_parent_roster() -
 test fn w_variant_type_position_covering_the_parent_roster_is_clean() -> Bool {
   non_exhaustive_blocking_count(source: variant_type_position_parent_covered_source) == 0
 }
+
+// -- ONE IDENTITY FOR THE DECLARED CONSTRUCTOR AND THE PATTERN --
+//
+// A coproduct arm may be authored with a DOTTED name -- `type T = a.b.Alpha | Beta` -- because
+// parse_type_body_after_eq takes the first arm through parse_dotted_ident, shared with the
+// type-alias lookahead. The child's authored name is then the whole dotted spelling, and two
+// separate sites compared it against a pattern name that had been reduced to its leaf while the
+// child had not: the coverage key in pattern_matches_constructor, which lost its declaration-side
+// application in the nested-pattern matrix rewrite, and the three variant-lookup sites in
+// lookup_variant_in_type, which never had one. The first reported the arm missing; the second
+// refused the bare pattern with VariantNotFound. Both are the same identity applied to one side.
+//
+// THE REDUCTION IS THE WHOLE SOURCE, and the two class-scoped controls beneath it say which site
+// closes which half -- so a repair of one alone cannot green this section and be mistaken for a
+// repair of the class. Every arm is named in both directions: the negative differs from the
+// positive by exactly the omitted `Beta`.
+
+data dotted_declared_arm_source: String = "module dotted_decl_covered\ntype T = a.b.Alpha | Beta\nfn f(t: T) -> Bool {\n  match t {\n    Alpha => true\n    Beta => false\n  }\n}\n"
+
+data dotted_declared_arm_missing_source: String = "module dotted_decl_missing\ntype T = a.b.Alpha | Beta\nfn f(t: T) -> Bool {\n  match t {\n    Alpha => true\n  }\n}\n"
+
+data dotted_later_arm_source: String = "module dotted_decl_later_arm\ntype T = Alpha | a.b.Beta\nfn f(t: T) -> Bool {\n  match t {\n    Alpha => true\n    Beta => false\n  }\n}\n"
+
+fn single_source_run(path: String, source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source(path, source)],
+    entry: path
+  })
+}
+
+fn fixture_all_blocking_count(o: MultiModuleCompileFixtureOutcome) -> Int {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      census_total_count(rows: fixture_blocking_rows(rows: rows))
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      census_total_count(rows: fixture_blocking_rows(rows: rows))
+    FixtureInstrumentRefused { cause: _ } => -1
+  }
+}
+
+test fn w_dotted_declared_arm_covered_by_bare_patterns_compiles_clean() -> Bool {
+  fixture_all_blocking_count(
+    o: single_source_run(path: "dotted/covered.dag", source: dotted_declared_arm_source)
+  ) == 0
+}
+
+test fn w_dotted_declared_arm_is_not_reported_missing() -> Bool {
+  fixture_blocking_class_count(
+    o: single_source_run(path: "dotted/covered.dag", source: dotted_declared_arm_source),
+    wanted: "NonExhaustiveMatch"
+  ) == 0
+}
+
+test fn w_bare_pattern_resolves_against_a_dotted_declared_arm() -> Bool {
+  fixture_blocking_class_count(
+    o: single_source_run(path: "dotted/covered.dag", source: dotted_declared_arm_source),
+    wanted: "VariantNotFound"
+  ) == 0
+}
+
+// THE NEGATIVE. Keying both sides must not make a real gap disappear: omitting `Beta` from the
+// same declaration still refuses, and with exactly one missing arm rather than a widened roster.
+test fn w_dotted_declaration_with_a_genuinely_missing_arm_still_refuses() -> Bool {
+  fixture_blocking_class_count(
+    o: single_source_run(path: "dotted/missing.dag", source: dotted_declared_arm_missing_source),
+    wanted: "NonExhaustiveMatch"
+  ) == 1
+}
+
+// THE REACHABILITY BOUNDARY, recorded rather than repaired. Only the FIRST arm of the
+// no-leading-pipe form reaches parse_dotted_ident; parse_more_variants_acc takes every later arm
+// through expect_ident, so a dotted arm in second position refuses at parse. That refusal is a
+// parser fact this change does not touch, and it is the reason the subject above is written with
+// the dotted arm first. It is asserted as a REFUSAL, not as an exhaustiveness count: a parse
+// refusal and a clean compile both report zero rows of any later class.
+test fn w_dotted_arm_in_later_position_refuses_at_parse() -> Bool {
+  fixture_all_blocking_count(
+    o: single_source_run(path: "dotted/later.dag", source: dotted_later_arm_source)
+  ) > 0
+}
+
+// -- A LEAF KEY THAT TWO DECLARED ARMS SHARE REFUSES, IT DOES NOT PICK ONE --
+//
+// Keying by leaf makes `a.b.Alpha | Alpha` possible, which exact-name matching could not produce:
+// one bare `Alpha` arm now keys equal to BOTH declared children. Measured against the first-match
+// revision of find_variant_child_keyed, this source compiles CLEAN -- the bare arm binds the first
+// child and the match is called exhaustive while the second declared variant is unhandled. That is
+// the failure arm widening instead of refusing, inside the very function whose annotation declares
+// the collision unresolved. find_variant_child_keyed therefore treats more-than-one as no-match,
+// which the call sites carry into the existing variant_not_found_result rather than a minted
+// ambiguity spelling.
+//
+// THE SHAPE IS CONSTRAINED BY WHAT PARSES, and the first draft of this witness got it wrong in the
+// direction that hides: `a.b.Alpha | c.d.Alpha` is green under BOTH revisions, because
+// parse_more_variants_acc takes every arm after the first through expect_ident, so the second
+// dotted arm refuses at parse and the collision is never reached. A witness over that source is
+// permanently green and would stand as coverage for an arm it never exercises. The dotted name
+// must therefore be FIRST and the colliding one bare.
+//
+// THIS IS THE DECLARED FRONTIER'S ARM, NOT ITS CLOSURE. Distinguishing the two variants needs the
+// scope-carrying identity the namespace program is converging on; until that lands the honest
+// answer is a refusal, and this witness is what keeps it a refusal.
+
+data colliding_leaf_declaration_source: String = "module colliding_leaf_decl\ntype T = a.b.Alpha | Alpha\nfn f(t: T) -> Bool {\n  match t {\n    Alpha => true\n  }\n}\n"
+
+test fn w_two_declared_arms_sharing_a_leaf_key_refuse_rather_than_bind_the_first() -> Bool {
+  fixture_all_blocking_count(
+    o: single_source_run(path: "dotted/collide.dag", source: colliding_leaf_declaration_source)
+  ) > 0
+}

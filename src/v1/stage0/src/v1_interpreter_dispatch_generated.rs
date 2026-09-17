@@ -100,6 +100,7 @@ pub enum EvalBuiltinArm {
     FreeCallFloorDiscoverySourceInventory,
     FreeCallParsedImportStatements,
     FreeCallNamespaceStructuralObservationAdmissions,
+    FreeCallEmitRustReferenceDerivedRowsBridge,
     FreeCallCompileDagRustEmitCheck,
     FreeCallCompileDagDiagnosticCensus,
     FreeCallCompileDagMultiModuleFixture,
@@ -242,6 +243,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "floor_discovery_source_inventory" => Some(EvalBuiltinArm::FreeCallFloorDiscoverySourceInventory),
         "parsed_import_statements" => Some(EvalBuiltinArm::FreeCallParsedImportStatements),
         "namespace_structural_observation_admissions" => Some(EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions),
+        "emit_rust_reference_derived_rows_bridge" => Some(EvalBuiltinArm::FreeCallEmitRustReferenceDerivedRowsBridge),
         "compile_dag_rust_emit_check" => Some(EvalBuiltinArm::FreeCallCompileDagRustEmitCheck),
         "compile_dag_diagnostic_census" => Some(EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus),
         "compile_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture),
@@ -382,6 +384,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.floor_discovery_source_inventory") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFloorDiscoverySourceInventory };
     ("free_call.parsed_import_statements") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParsedImportStatements };
     ("free_call.namespace_structural_observation_admissions") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions };
+    ("free_call.emit_rust_reference_derived_rows_bridge") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEmitRustReferenceDerivedRowsBridge };
     ("free_call.compile_dag_rust_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagRustEmitCheck };
     ("free_call.compile_dag_diagnostic_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus };
     ("free_call.compile_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture };

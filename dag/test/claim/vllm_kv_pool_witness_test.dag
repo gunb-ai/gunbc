@@ -149,14 +149,3 @@ test fn w_a_cap_pool_pair_carries_its_utilization_and_its_source_line() -> Bool 
     }
   }
 }
-
-test fn w_all_vllm_kv_pool_claims_hold() -> Bool {
-  w_block_arithmetic_is_not_the_pool()
-    && w_the_utilization_product_is_a_budget_not_a_pool()
-    && w_an_unobserved_format_is_not_an_observation()
-    && w_the_three_startup_prefixes_are_distinct()
-    && w_the_pool_is_read_from_the_kv_cache_size_line()
-    && w_the_concurrency_line_refuses_rather_than_becoming_a_pool()
-    && w_the_resolved_format_line_refuses_rather_than_becoming_a_pool()
-    && w_a_cap_pool_pair_carries_its_utilization_and_its_source_line()
-}

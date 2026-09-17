@@ -24,6 +24,7 @@ import gunbc.spark.managed_access_bootstrap {
   GrantEnumerated,
   GrantAbsent,
   GrantProbeRefused,
+  ReadFabricModuleEeprom,
 }
 
 // THE GAP BETWEEN DESIRED AND HELD PRIVILEGE, which until now nothing computed.
@@ -160,6 +161,13 @@ type SparkGrantInstallAdmission
   | GrantInstallStandingUnobserved { grant: SparkManagedGrant, cause: NonEmptyStr }
   | GrantInstallNotNeeded
 
+// A SPECIFICATION-BOUNDED DISCLOSURE ADMITS WITHOUT AN OPERATOR RISK DECISION, and that is the whole
+// point of separating it from the unestablished arm. The accepted-risk route exists for a surface
+// nobody can characterize; asking an operator to accept a risk over a surface whose layout a
+// published specification fixes would be ceremony, and worse, it would train the basis row to mean
+// "install this" rather than "proceed while blind". The residual that arm carries is a limit on the
+// classification's scope, not an outstanding obligation, so it does not travel into the receipt the
+// way an unestablished obligation does.
 fn spark_grant_install_admission(
   standing: SparkManagedGrantStanding,
   basis: SparkGrantInstallBasis,
@@ -170,6 +178,8 @@ fn spark_grant_install_admission(
     GrantNotHeld { grant: g } =>
       match spark_managed_grant_disclosure_standing(grant: g) {
         GrantReturnsNoHostData => GrantInstallAdmitted { grant: g }
+        GrantDisclosureSpecificationBounded { specification: _, residual: _ } =>
+          GrantInstallAdmitted { grant: g }
         GrantDisclosureUnestablished { obligation: o } =>
           if spark_install_basis_accepts_risk_for(basis: basis, grant: g) {
             GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: basis }
@@ -309,6 +319,7 @@ fn spark_managed_grant_dropin_name(grant: SparkManagedGrant) -> NonEmptyStr {
     EnableLingerForOwnAccount { subject: _ } => "gunbc-enable-linger" as NonEmptyStr
     RebootThisHost => "gunbc-reboot" as NonEmptyStr
     InspectServingContainer { container: _ } => "gunbc-docker-inspect" as NonEmptyStr
+    ReadFabricModuleEeprom { device: _ } => "gunbc-ethtool-module-info" as NonEmptyStr
   }
 }
 

@@ -373,18 +373,3 @@ test fn witness_clean_run_admits_and_still_carries_the_tree() -> Bool {
     _ => false
   }
 }
-
-test fn witness_holds() -> Bool {
-  witness_zero_planned_population_refuses()
-    && witness_zero_executed_population_refuses()
-    && witness_planned_executed_mismatch_refuses()
-    && witness_nonempty_matching_population_admits()
-    && witness_drifted_surface_refuses_naming_the_path()
-    && witness_three_population_states_refuse_separately()
-    && witness_new_surface_alone_still_refuses()
-    && witness_hand_unverifiable_refuses_naming_the_entry()
-    && witness_hand_drift_alone_admits()
-    && witness_new_seed_module_refuses_and_carries_the_first_mirror()
-    && witness_unproduced_run_carries_no_tree_and_names_its_cause()
-    && witness_clean_run_admits_and_still_carries_the_tree()
-}

@@ -159,6 +159,12 @@ data lambda_typing_gate_departed_sites: List<LambdaTypingGateSiteDeparture> = [
   },
 ]
 
+// Live sites plus typed departures: the intersection found three positions. A deleted caller
+// leaves the live list; it does not leave the census.
+fn lambda_typing_gate_closed_population_count() -> Int {
+  length(xs: lambda_typing_gate_sites) + length(xs: lambda_typing_gate_departed_sites)
+}
+
 // THE MECHANISM VERDICT IS A TYPED ROW, NOT PROSE, because it is the fact a later reader will act
 // on and the prior version of this row proves how a cause stated only in a comment gets planned
 // against. The measurement is carried WITH the verdict so the refutation cannot be repeated as an

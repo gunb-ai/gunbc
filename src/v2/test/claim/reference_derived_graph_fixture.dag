@@ -1,0 +1,169 @@
+module v2.test.claim.reference_derived_graph_fixture
+
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.parse { parse_module }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.module_graph {
+  LocatedModuleRoot,
+  located_roots_from_source_root_ingest,
+  no_located_roots
+}
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { List }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.node { Symbol }
+import v2.std.optional { Optional }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+// ONE INGEST, TWO CLAIM FILES. Files under dag/test/fixture/reference_derived_graph are the
+// authority (review 65417). The floor builds a fresh frame per claim, so a data row cannot share
+// parse-and-normalize. v2.workflow.floor_pure_producer_share warms xl4_fixture_trees once at
+// preparation. The seam is the ingest, not the collector: both files name the collector or the
+// edge fold, so sharing those would delete the measurement. located uses the XL-0 production
+// ingest located_roots_from_source_root_ingest; parsed is tokenize+parse of the same bytes.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data provider_path: String = "dag/test/fixture/reference_derived_graph/provider.dag"
+
+data consumer_reference_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_reference_only.dag"
+
+data consumer_import_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_import_only.dag"
+
+data consumer_both_path: String = "dag/test/fixture/reference_derived_graph/consumer_both.dag"
+
+data consumer_call_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_call_only.dag"
+
+data consumer_type_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_only.dag"
+
+data consumer_callee_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_callee_only.dag"
+
+data consumer_type_imported_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_imported.dag"
+
+data consumer_type_bare_local_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_bare_local.dag"
+
+data consumer_field_bare_local_path: String = "dag/test/fixture/reference_derived_graph/consumer_field_bare_local.dag"
+
+data consumer_body_value_path: String = "dag/test/fixture/reference_derived_graph/consumer_body_value.dag"
+
+data provider_module: String = "test.fixture.reference_derived_graph.provider"
+
+type Xl4WarmIngest {
+  parsed: Outcome<List<LocatedModuleRoot>>
+  located: Outcome<List<LocatedModuleRoot>>
+}
+
+fn fixture_read(path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+fn fixture_ingest() -> SourceRootIngest {
+  Cons {
+    head: fixture_read(path: provider_path, unit: ^provider_unit),
+    tail: Cons {
+      head: fixture_read(path: consumer_reference_only_path, unit: ^reference_only_unit),
+      tail: Cons {
+        head: fixture_read(path: consumer_import_only_path, unit: ^import_only_unit),
+        tail: Cons {
+          head: fixture_read(path: consumer_both_path, unit: ^both_unit),
+          tail: Cons {
+            head: fixture_read(path: consumer_call_only_path, unit: ^call_only_unit),
+            tail: Cons {
+              head: fixture_read(path: consumer_type_only_path, unit: ^type_only_unit),
+              tail: Cons {
+                head: fixture_read(path: consumer_callee_only_path, unit: ^callee_only_unit),
+                tail: Cons {
+                  head: fixture_read(path: consumer_type_imported_path, unit: ^type_imported_unit),
+                  tail: Cons {
+                    head: fixture_read(path: consumer_type_bare_local_path, unit: ^type_bare_local_unit),
+                    tail: Cons {
+                      head: fixture_read(path: consumer_field_bare_local_path, unit: ^field_bare_local_unit),
+                      tail: Cons {
+                        head: fixture_read(path: consumer_body_value_path, unit: ^body_value_unit),
+                        tail: Empty
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn parse_one(w: DagSourceReadWitness) -> Outcome<LocatedModuleRoot> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: w.source.carried, file: w.compilation_unit, rules: lm.lex),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse_module(tokens: token_stream, grammar: lm.grammar),
+        f: fn(artifact) {
+          outcome_accepted(value: LocatedModuleRoot { path: w.artifact.file_path, root: artifact.tree })
+        }
+      )
+    }
+  )
+}
+
+fn parse_located_from_ingest(ingest: SourceRootIngest) -> Outcome<List<LocatedModuleRoot>> {
+  fold_list(
+    xs: ingest,
+    empty: outcome_accepted(value: no_located_roots),
+    cons: fn(acc, w) {
+      bind_outcome(
+        o: acc,
+        f: fn(items) {
+          bind_outcome(
+            o: parse_one(w: w),
+            f: fn(item) {
+              outcome_accepted(value: concat(items, [item]))
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn xl4_fixture_trees() -> Xl4WarmIngest {
+  let ingest = fixture_ingest()
+  match parse_located_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: d } =>
+      Xl4WarmIngest {
+        parsed: Rejected { diagnostics: d },
+        located: Rejected { diagnostics: d }
+      }
+    Accepted { value: parsed_items, diagnostics: _ } =>
+      Xl4WarmIngest {
+        parsed: outcome_accepted(value: parsed_items),
+        located: located_roots_from_source_root_ingest(ingest: ingest)
+      }
+  }
+}
+
+fn xl4_item_at(items: List<LocatedModuleRoot>, path: String) -> Optional<LocatedModuleRoot> {
+  items |> filter(item => item.path == path) |> first
+}

@@ -8,7 +8,11 @@ import std.syntax {
   AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
-import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+import std.coercion {
+  TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
+  TypeReferenceIdentity, ReferenceResolvedToDeclaration, ReferenceIsTheDeclaration, ReferenceIsTypeVariableBinder, ReferenceIdentityUnavailable,
+  ReferenceIdentityUnavailableCause, NoResolutionBoundAtReference, ResolvedNodeIsNotADeclaration, DeclarationNodeCarriesNoSpan
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
@@ -2527,10 +2531,83 @@ fn declaration_provenance_of(item: Node) -> TypeDeclarationProvenance {
 // its own declaration` from `this reference was not resolved here`, and in the second case answers
 // about the file the REFERENCE sits in. What changes is that its answer is no longer a String a
 // consumer may re-interpret: it is a provenance, and the only thing downstream of it is a decision.
+// The two states are now told apart by type_reference_identity below. This read keeps its collapsed
+// answer on purpose until the renderer reroute is measured, and that mis-keying is declared as
+// gunbc.rung_drop type_reference_location_fallback_keys_production_realization rather than left
+// silent.
 fn type_reference_provenance(n: Node) -> TypeDeclarationProvenance {
   match n.inferred {
     Present { value: Resolved { node: rt } } => declaration_provenance_of(item: rt)
     _ => declaration_provenance_of(item: n)
+  }
+}
+
+// THE SPLIT OF THE ARM ABOVE, as a separate query so the production answer stays byte-identical
+// until the reroute is measured (std.coercion TypeReferenceIdentity says why each arm is decided
+// from structure). Kernel identity is read through declaration_provenance_of, which already owns
+// it by exact equality, so this adds no second kernel recognizer.
+// EVERY ParsedModuleItemKind ARM IS SPELLED, no wildcard. A kind that should key as a declaration
+// must be a compile-time decision here, never a silent `not a declaration` that reads as a refusal
+// (the positive-authority rule stated on ParsedModuleItemKind itself; review 67150).
+fn declaration_node_provenance(n: Node) -> TypeDeclarationProvenance? {
+  match declaration_provenance_of(item: n) {
+    KernelMinted { minted_name: nm } => Present { value: KernelMinted { minted_name: nm } }
+    CorpusDeclared { decl_file: f } =>
+      match n.module_item_kind {
+        ModuleItemTypeDeclaration => Present { value: CorpusDeclared { decl_file: f } }
+        ModuleItemFunction => none
+        ModuleItemDataValue => none
+        ModuleItemService => none
+        ModuleItemResource => none
+        ModuleItemUnrecognized => none
+        NotAModuleItem => none
+      }
+    DeclarationIdentityAbsent => none
+  }
+}
+
+fn declaration_node_unavailable_cause(n: Node, when_not_a_declaration: ReferenceIdentityUnavailableCause) -> ReferenceIdentityUnavailableCause {
+  match n.module_item_kind {
+    ModuleItemTypeDeclaration => DeclarationNodeCarriesNoSpan
+    ModuleItemFunction => when_not_a_declaration
+    ModuleItemDataValue => when_not_a_declaration
+    ModuleItemService => when_not_a_declaration
+    ModuleItemResource => when_not_a_declaration
+    ModuleItemUnrecognized => when_not_a_declaration
+    NotAModuleItem => when_not_a_declaration
+  }
+}
+
+fn type_variable_binder_name(n: Node) -> String? {
+  match n.inferred {
+    Present { value: TypeVariable { id: tv } } => Present { value: tv }
+    _ => none
+  }
+}
+
+fn type_reference_identity(n: Node) -> TypeReferenceIdentity {
+  match type_variable_binder_name(n: n) {
+    Present { value: tv } => ReferenceIsTypeVariableBinder { binder_name: tv }
+    Absent => type_reference_declaration_identity(n: n)
+  }
+}
+
+fn type_reference_declaration_identity(n: Node) -> TypeReferenceIdentity {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      match type_variable_binder_name(n: rt) {
+        Present { value: tv } => ReferenceIsTypeVariableBinder { binder_name: tv }
+        Absent =>
+      match declaration_node_provenance(n: rt) {
+        Present { value: p } => ReferenceResolvedToDeclaration { provenance: p }
+        Absent => ReferenceIdentityUnavailable { cause: declaration_node_unavailable_cause(n: rt, when_not_a_declaration: ResolvedNodeIsNotADeclaration) }
+      }
+      }
+    _ =>
+      match declaration_node_provenance(n: n) {
+        Present { value: p } => ReferenceIsTheDeclaration { provenance: p }
+        Absent => ReferenceIdentityUnavailable { cause: declaration_node_unavailable_cause(n: n, when_not_a_declaration: NoResolutionBoundAtReference) }
+      }
   }
 }
 
