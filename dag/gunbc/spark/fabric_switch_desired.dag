@@ -120,8 +120,18 @@ fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
 }
 
 // FORCED MODE IS THE CABLE CLASS'S REQUIREMENT, NOT A TUNING KNOB, so it is read from the extdeps
-// row that records the RouterOS behaviour rather than restated as a local constant. RS-FEC is
-// Clause 91, which is the FEC the 100GBASE-CR2 attestation is conditional on.
+// row that records the RouterOS behaviour rather than restated as a local constant.
+//
+// THE FEC RATIONALE HERE IS STALE, AND THE VALUE IS PROVISIONAL PENDING THE CONVERGE TEST. An earlier
+// head justified Fec91 as "the FEC the 100GBASE-CR2 attestation is conditional on". That was true of
+// the pre-recode 0x0B coding, which attests ieee_50gbase_cr2 with RequiresClause91Fec
+// (extdeps.transceiver.sff_8636). Post-recode (spark-a3ee byte 192 = 0x40 = 64), the coding attests
+// ieee_100gbase_cr2 with FecUnconditional -- so the mode is NOT conditional on Fec91, and the old
+// rationale no longer holds. What FEC 100GBASE-CR2 actually needs to TRAIN is a separate, open
+// question (gap G2: its 50G-PAM4 lanes use RS(544,514)/KP4, which the CRS812 REST surface may not
+// expose -- it offers only fec74/fec91/off/auto). The returned Fec91 is retained as the current
+// forced-DAC value but is NOT asserted as the correct 100G FEC; that is decided by the converge test
+// (fabric-switch-convergence-build-plan.md PR-3), deferred until the hardware links at 100G (§4d).
 fn crs812_desired_fec() -> Crs812FecMode {
   if crs812_passive_dac_requires_forced_mode { Fec91 } else { FecAuto }
 }
