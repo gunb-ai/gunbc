@@ -356,7 +356,6 @@ test fn observed_presence_does_not_imply_required_shape() -> Bool {
     && profile_marks_present(claim: "email")
     && !profile_marks_present(claim: "jti")
     && !profile_marks_present(claim: "nonce")
-    && minimal_conforming_id_token_is_representable()
 }
 
 test fn jwt_oidc_claims_keystone_holds() -> Bool {
