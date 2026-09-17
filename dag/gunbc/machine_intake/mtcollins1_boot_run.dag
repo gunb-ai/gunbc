@@ -3,8 +3,12 @@ module gunbc.machine_intake_mtcollins1_boot_run
 import std.types { Bool, Int, NonEmptyStr, String, Timestamp, Duration }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.scoped_authorization {
+  AttemptIdentity, AuthorizationRequest, AuthorizationGranted,
+  claim_authorization, claim_transition_claimed, claim_transition_completed, claim_transition_aborted,
+  authorization_claim_outcome, AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided,
+}
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootGate,
   MtCollins1BootSubject,
@@ -36,6 +40,14 @@ import extdeps.github.actions_environment { github_run_id_variable_name }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.http.client
+import gunbc.durable_cas_file_store {
+  OwnerOnlyCreateOnly, admit_cas_attempt, file_compare_and_set, authorization_claim_store_root,
+  CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
+}
+import std.durable_compare_and_set {
+  ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration,
+  CasCommitted, CasPreconditionFailed, CasStoreRefused,
+}
 
 data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
 
@@ -146,14 +158,115 @@ fn mtcollins1_boot_after_gate(
   if !mtcollins1_boot_controller_may_be_written(gate: gate) {
     return mtcollins1_boot_refusal(gate: gate)
   }
-  match gate {
-    BootGateAdmitted { authorization: auth } =>
-      match mtcollins1_attach_diskless_image(authorization: auth, password_raw: password_raw, attempt: attempt) {
-        ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
-        other => other
+  match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
+    Absent =>
+      exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot take the exclusive claim before a controller write")
+    Present { value: at } =>
+      match gate {
+        BootGateAdmitted { authorization: auth } =>
+          match auth {
+            AuthorizationGranted { grant: g, claim: _ } =>
+              match mtcollins1_claim_boot_authorization(escalation_id: g.escalation_id, attempt: g.attempt, at: at) {
+                ClaimLost { holder: who } =>
+                  exit_failure(reason: concat("mtcollins1 boot: operator grant already claimed: ", who as String))
+                ClaimUndecided { reason: why } =>
+                  exit_failure(reason: concat("mtcollins1 boot: ", why as String))
+                ClaimHeld { state: _, generation: held_at } =>
+                  mtcollins1_settle_boot_claim(
+                    outcome: match mtcollins1_attach_diskless_image(authorization: auth, password_raw: password_raw, attempt: attempt) {
+                      ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
+                      other => other
+                    },
+                    escalation_id: g.escalation_id,
+                    attempt: g.attempt,
+                    held_at: held_at,
+                    at: at,
+                  )
+              }
+            _ => mtcollins1_boot_refusal(gate: gate)
+          }
+        _ => mtcollins1_boot_refusal(gate: gate)
       }
-    _ => mtcollins1_boot_refusal(gate: gate)
   }
+}
+
+fn mtcollins1_claim_boot_authorization(
+  escalation_id: NonEmptyStr,
+  attempt: AttemptIdentity,
+  at: Timestamp,
+) -> AuthorizationClaimOutcome
+  uses fs: std.resources.Filesystem
+{
+  let proposed = claim_transition_claimed(attempt: attempt, at: at)
+  match admit_cas_attempt(
+    attempt: claim_authorization(
+      escalation_id: escalation_id,
+      expected: ExpectSlotAbsent,
+      proposed: proposed,
+    ),
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      authorization_claim_outcome(
+        proposed: proposed,
+        outcome: file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v),
+      )
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      ClaimUndecided { reason: "claim payload and its digest disagree" as NonEmptyStr }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      ClaimUndecided { reason: "claim digest families are incomparable" as NonEmptyStr }
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      ClaimUndecided { reason: "authorization claim key is not slot-addressable" as NonEmptyStr }
+  }
+}
+
+fn mtcollins1_settle_boot_claim(
+  outcome: ProcessExit,
+  escalation_id: NonEmptyStr,
+  attempt: AttemptIdentity,
+  held_at: CasGeneration,
+  at: Timestamp,
+) -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  let terminal = match outcome {
+    ExitSuccess => claim_transition_completed(attempt: attempt, at: at)
+    ExitFailure { code: _, reason: r } =>
+      claim_transition_aborted(attempt: attempt, at: at, cause: r as NonEmptyStr)
+  }
+  match admit_cas_attempt(
+    attempt: claim_authorization(
+      escalation_id: escalation_id,
+      expected: ExpectSlotGeneration { generation: held_at },
+      proposed: terminal,
+    ),
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      match file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v) {
+        CasCommitted { committed: _ } => outcome
+        CasPreconditionFailed { expected: _, observed: _ } =>
+          mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "claim slot moved under us")
+        CasStoreRefused { cause: _ } =>
+          mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "claim store refused the terminal write")
+      }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "terminal payload and its digest disagree")
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "terminal digest families are incomparable")
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "authorization claim key is not slot-addressable")
+  }
+}
+
+fn mtcollins1_unterminated_claim_exit(outcome: ProcessExit, detail: String) -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "mtcollins1 boot: the step finished but its authorization claim was left unterminated (",
+      concat(detail, concat("); step outcome was: ", match outcome {
+        ExitSuccess => "success"
+        ExitFailure { code: _, reason: r } => concat("failure: ", r)
+      })),
+    ),
+  )
 }
 
 fn mtcollins1_boot_poll_ticks(

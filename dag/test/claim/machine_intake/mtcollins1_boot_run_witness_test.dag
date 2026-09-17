@@ -13,6 +13,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import std.process { ExitSuccess }
+import std.scoped_authorization { authorization_claim_key }
 import gunbc.auth.approval_request_client {
   StatusUnreadable, StatusPending, parse_filed_approval_status, approval_poll_standing, PollExpired, PollUnreadable,
 }
@@ -78,6 +79,11 @@ test fn clock_unreadable_is_not_an_observation_instant() -> Bool {
 test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
   !mtcollins1_boot_sol_is_held(pid_path: "")
     && !mtcollins1_boot_sol_is_held(pid_path: "/tmp/mtcollins1-sol-pid-absent")
+}
+
+test fn a_spent_boot_claim_slot_is_the_escalation_id_on_the_shared_claim_root() -> Bool {
+  let eid = "mtcollins1-boot-1" as NonEmptyStr
+  (authorization_claim_key(escalation_id: eid) as String) == (eid as String)
 }
 
 test fn boot_loopback_filing_is_srv1_only() -> Bool {

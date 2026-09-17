@@ -395,9 +395,11 @@ fn authorize<Subject>(
 //
 // The claim slot is keyed by escalation id, so every attempt that could claim one grant addresses
 // exactly one slot. Keying it by attempt instead would give each racer its own slot and exclude
-// nothing, which is the shape of the race rather than its resolution.
+// nothing, which is the shape of the race rather than its resolution. The store root already
+// namespaces the domain, so the key is the escalation id itself -- a slash-prefixed path is not
+// slot-addressable in gunbc.durable_cas_file_store.
 fn authorization_claim_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
-  concat("scoped-authorization/", escalation_id as String) as NonEmptyStr
+  escalation_id
 }
 
 // THE SLOT HOLDS WHAT THE STORE HOLDS. std.durable_compare_and_set's realization
