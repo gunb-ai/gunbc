@@ -15,6 +15,7 @@ import extdeps.transports.rest {
 import extdeps.google.sheets
 import extdeps.google.sheets {
   ValueRange,
+  ValueRangeWrite,
   SheetsValueInputOption,
   InputRaw,
   SheetsValueRenderOption,
@@ -70,6 +71,13 @@ fn read_values(spreadsheet_id: NonEmptyStr, a1: String) -> ValuesReadOutcome use
         cause: join(["values.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
       }
   }
+}
+
+// The write shape carries the rows unwrapped, and an absent values field becomes an empty list
+// rather than a refusal: writing nothing to a range is a legitimate request, and the caller has
+// already decided a write is wanted.
+fn value_range_for_write(r: ValueRange, a1: String) -> ValueRangeWrite {
+  ValueRangeWrite { range: a1, majorDimension: "ROWS", values: value_range_rows(r: r) }
 }
 
 fn value_range_row_count(r: ValueRange) -> Int {
@@ -143,7 +151,7 @@ fn perform_values_write(
   let written = sheets.Spreadsheets.BatchUpdateValues(
     spreadsheet_id: spreadsheet_id as String,
     value_input_option: InputRaw,
-    data: [desired],
+    data: [value_range_for_write(r: desired, a1: a1)],
     include_values_in_response: false,
   )
   match classify_rest_outcome(standing: RestMutationExchange { rest: written.outcome }) {

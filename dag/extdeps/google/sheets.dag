@@ -216,6 +216,25 @@ data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> 
 
 // Proto3 JSON omits default integers, so a zero-cell batchUpdate may omit totalUpdatedCells.
 // The operation output uses the same optionality; a required Int would refuse a legal body or mint 0.
+// A REQUEST VALUE RANGE IS NOT A RESPONSE VALUE RANGE, and the first live write is what proved it.
+// ValueRange.values is Optional because a response may omit it -- values.get on an empty range
+// returns no values field at all -- but an Optional does not serialise to a bare array: it carries
+// its variant, so a request body built from ValueRange reaches Sheets as
+// {"values":{"_variant":"Present","value":[[...]]}} and is refused with "Unknown name _variant".
+//
+// The mock corpus could not catch this. PublishedMockCase fixes the RESPONSE shape, so a witness
+// over it agrees with a request encoding nobody ever sent. That is shape agreement standing in for
+// execution, and the wire is where the two part company.
+//
+// gunbc.review_sheet_sheets value_range_from_derived_write builds the Optional form and has never
+// executed -- it is the caller live_sheets_transport_frontier reserved. It needs this type before
+// its first write, and that is a defect in a landed module rather than a gap in a new one.
+type ValueRangeWrite {
+  range: String
+  majorDimension: String
+  values: List<List<String>>
+}
+
 type BatchUpdateValuesResponse {
   spreadsheetId: String
   totalUpdatedRows: Int?
@@ -263,7 +282,7 @@ service sheets.Spreadsheets {
     input {
       spreadsheet_id: String
       value_input_option: SheetsValueInputOption
-      data: List<ValueRange>
+      data: List<ValueRangeWrite>
       include_values_in_response: Bool = false
     }
     output {
