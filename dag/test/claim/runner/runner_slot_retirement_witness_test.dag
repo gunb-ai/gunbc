@@ -54,6 +54,7 @@ import gunbc.runner_slot_retirement {
   authorized_retirement_actuation,
   cgroup_occupancy_from_reads,
   control_group_property_means_cgroup_absent,
+  systemd_show_empty_stdout_is_a_blank_reading,
   transition_interruption_coverage,
   TransitionFullyPermitted,
   TransitionRetireesNotPermitted,
@@ -508,6 +509,11 @@ test fn an_empty_control_group_path_is_cgroup_absent() -> Bool {
       RetirementComplete { unit: _ } => false
       RetirementUnobserved { unit: _, cause: _ } => false
     }
+}
+
+test fn empty_systemctl_show_stdout_is_a_blank_property_reading() -> Bool {
+  systemd_show_empty_stdout_is_a_blank_reading(reason: "systemctl show returned empty stdout")
+    && !systemd_show_empty_stdout_is_a_blank_reading(reason: "systemctl show exited unsuccessfully")
 }
 
 // A UNIT MID-STOP IS STILL RUNNING. `deactivating` is the window in which the unit has been asked to
