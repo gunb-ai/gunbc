@@ -277,7 +277,7 @@ fn glm_canary_convergence_text(v: GlmCanaryConvergence) -> String {
 fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjection? {
   match serving_runtime_row(r: arm.runtime) {
     Absent => none
-    Present { value: row } => Present { value: row.reasoning_projection }
+    Present { value: row } => row.reasoning_projection
   }
 }
 
