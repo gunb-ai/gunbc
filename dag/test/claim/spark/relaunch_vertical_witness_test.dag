@@ -11,8 +11,9 @@ import extdeps.nvidia.nccl {
   nccl_realized_transport_wire, nccl_transport_verdict, nccl_log_lines,
 }
 import extdeps.vllm.log_lines {
-  VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency,
+  VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, vllm_startup_reading,
   vllm_startup_readings, vllm_readings_of_class, vllm_kv_pool_tokens_in, vllm_max_concurrency_in,
+  VllmNumberReading, VllmNumberRead, VllmNumberNotThisLineClass, VllmNumberUnreadable,
 }
 import extdeps.vllm.kv_cache {
   VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading,
@@ -419,16 +420,18 @@ test fn w_the_pool_and_concurrency_are_parsed_out_of_the_captured_line() -> Bool
     Absent => false
     Present { value: r } =>
       match vllm_kv_pool_tokens_in(reading: r) {
-        Absent => false
-        Present { value: t } => token_count_value(t: t) == 2195189
+        VllmNumberNotThisLineClass { line: _ } => false
+        VllmNumberUnreadable { captured_text: _, cause: _ } => false
+        VllmNumberRead { value: t } => token_count_value(t: t) == 2195189
       }
   }
   && match vllm_readings_of_class(readings: roce_startup_readings(), class: MaximumConcurrency) |> first {
     Absent => false
     Present { value: r } =>
       match vllm_max_concurrency_in(reading: r) {
-        Absent => false
-        Present { value: c } => concurrent_request_hundredths_count(c: c) == 837
+        VllmNumberNotThisLineClass { line: _ } => false
+        VllmNumberUnreadable { captured_text: _, cause: _ } => false
+        VllmNumberRead { value: c } => concurrent_request_hundredths_count(c: c) == 837
       }
   }
 }
@@ -443,8 +446,9 @@ test fn w_the_parsed_readings_admit_a_pool_and_a_reported_capacity() -> Bool {
     Absent => false
     Present { value: pool_reading } =>
       match vllm_kv_pool_tokens_in(reading: pool_reading) {
-        Absent => false
-        Present { value: tokens } =>
+        VllmNumberNotThisLineClass { line: _ } => false
+        VllmNumberUnreadable { captured_text: _, cause: _ } => false
+        VllmNumberRead { value: tokens } =>
           match vllm_observed_kv_pool_from_reading(tokens: tokens, reading: pool_reading) {
             KvPoolRefused { cause: _ } => false
             KvPoolAdmitted { pool: pool } =>
@@ -452,8 +456,9 @@ test fn w_the_parsed_readings_admit_a_pool_and_a_reported_capacity() -> Bool {
                 Absent => false
                 Present { value: conc_reading } =>
                   match vllm_max_concurrency_in(reading: conc_reading) {
-                    Absent => false
-                    Present { value: conc } =>
+                    VllmNumberNotThisLineClass { line: _ } => false
+                    VllmNumberUnreadable { captured_text: _, cause: _ } => false
+                    VllmNumberRead { value: conc } =>
                       match vllm_reported_capacity(pool: pool, max_concurrency: conc, reading: conc_reading) {
                         ReportedCapacityRefused { cause: _ } => false
                         ReportedCapacityAdmitted { capacity: _ } => true
@@ -463,6 +468,40 @@ test fn w_the_parsed_readings_admit_a_pool_and_a_reported_capacity() -> Bool {
           }
       }
   }
+}
+
+// ── A LINE THE ENGINE PRINTED AND THIS READER CANNOT PARSE IS NOT A LINE IT HAS NOT PRINTED ──
+//
+// THE COLLAPSE THIS CLOSES. Both cases returned `none`, and the observe receipt rendered that as "the
+// engine has not printed its KV lines" -- a true sentence for one and a false one for the other, in a
+// receipt that could exit zero. It is the same present-and-wrong versus missing distinction the JSON
+// member readers in this diff were built to keep, arriving in the reader beside them.
+test fn w_a_kv_line_whose_number_is_unparseable_is_not_an_absent_line() -> Bool {
+  captures_present()
+    && match vllm_kv_pool_tokens_in(reading: vllm_startup_reading(
+      line: GpuKvCacheSize,
+      captured_text: "INFO [kv_cache_utils.py:2312] GPU KV cache size: lots of tokens, Maximum concurrency for 262,144 tokens per request: 8.37x" as NonEmptyStr,
+      observed_at_revision: observed_revision_2026_09_16,
+    )) {
+      VllmNumberUnreadable { captured_text: _, cause: _ } => true
+      VllmNumberRead { value: _ } => false
+      VllmNumberNotThisLineClass { line: _ } => false
+    }
+}
+
+// AND THE WRONG LINE CLASS IS STILL ITS OWN ARM, so the row above cannot be satisfied by a reader
+// that refuses everything.
+test fn w_the_wrong_line_class_reports_as_the_wrong_class() -> Bool {
+  captures_present()
+    && match vllm_readings_of_class(readings: roce_startup_readings(), class: MaximumConcurrency) |> first {
+      Absent => false
+      Present { value: r } =>
+        match vllm_kv_pool_tokens_in(reading: r) {
+          VllmNumberNotThisLineClass { line: _ } => true
+          VllmNumberRead { value: _ } => false
+          VllmNumberUnreadable { captured_text: _, cause: _ } => false
+        }
+    }
 }
 
 // THE POOL CANNOT BE BUILT FROM THE WRONG LINE CLASS, and this row exercises that refusal with a

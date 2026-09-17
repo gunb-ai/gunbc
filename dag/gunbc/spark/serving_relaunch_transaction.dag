@@ -29,7 +29,7 @@ import extdeps.tools.sleep { SleepArgvRendering, SleepArgv, SleepDurationRefused
 import gunbc.spark.serving_rank_observe {
   ObservedRankSubject, observed_rank_subject, observed_rank_subject_text,
   RankObservationRefusal, rank_observation_refusal, rank_observation_refusal_text,
-  refusal_is_absent_announcement,
+  refusal_is_absent_announcement, refusal_is_a_transport_verdict,
   RankInspectReading, RankInspected, RankInspectRefused, observe_rank_container,
   ContainerPresence, ContainerPresent, ContainerAbsent, ContainerPresenceUnread, observe_container_presence,
   RankTransportObservation, RankTransportObserved, RankTransportRefused, RankTransportVerdict,
@@ -1029,11 +1029,19 @@ fn rank_plan(
   RankPlan { subject: subject, spec: spec, node_rank: node_rank, gid_selection: gid_selection, ctx: ctx }
 }
 
+// THE CAPTURE KEEPS THE DELTA'S RESIDUE, not only its verdict. The comparison's own header says it
+// names the fields it did NOT compare, because an "agrees" with no statement about the rest is the
+// rung inflation section 4b(1) forbids -- and a first cut bound those fields with `_` at the one site
+// that proceeds to stop a four-host arm, so the receipt authorizing the stop said nothing about them.
+// A successor whose image or `--gpus` differs from the incumbent was admitted, which is precisely the
+// gap the UnobservableField triggers say must not be silent.
 type ArmCapture sole_constructor {
   rank: RankPlan
   before: RankTransportVerdict
   preserved: NonEmptyStr
   moved_axes: List<RelaunchAxis>
+  unobservable: List<UnobservableField>
+  unclaimed_env: List<String>
 }
 
 // HOW FAR THIS RANK GOT, WHICH IS WHAT ITS ROLLBACK IS DERIVED FROM. A rank that was stopped and not
@@ -1053,7 +1061,13 @@ type RankState sole_constructor {
 }
 
 type ArmRelaunchOutcome
-  = ArmCommitted { verdicts: List<RankTransportVerdict>, preserved: List<NonEmptyStr>, moved_axes: List<RelaunchAxis> }
+  = ArmCommitted {
+      verdicts: List<RankTransportVerdict>
+      preserved: List<NonEmptyStr>
+      moved_axes: List<RelaunchAxis>
+      unobservable: List<UnobservableField>
+      unclaimed_env: List<String>
+    }
   | ArmRefusedBeforeActuation { step: RelaunchStep, causes: List<NonEmptyStr> }
   | ArmRolledBack { step: RelaunchStep, cause: NonEmptyStr, rollbacks: List<RollbackOutcome> }
 
@@ -1083,7 +1097,7 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
               relaunch_delta_text(d: DeltaRefused { comparisons: cs, unobservable: us, unclaimed_env: ns }),
             ], "") as NonEmptyStr],
           }
-        DeltaOnlyIntended { comparisons: admitted, unobservable: _, unclaimed_env: _ } =>
+        DeltaOnlyIntended { comparisons: admitted, unobservable: not_compared, unclaimed_env: not_asked } =>
           match observe_rank_transport(ctx: plan.ctx, subject: plan.subject, container: incumbent) {
             RankTransportRefused { refusal: r } =>
               CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
@@ -1101,6 +1115,8 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
                     before: before,
                     preserved: preserved,
                     moved_axes: delta_moved_axes(comparisons: admitted),
+                    unobservable: not_compared,
+                    unclaimed_env: not_asked,
                   }],
                   causes: [],
                 }
@@ -1479,6 +1495,21 @@ fn refusal_is_not_yet(r: RankObservationRefusal) -> Bool {
   refusal_is_absent_announcement(r: r)
 }
 
+// THE STEP IS KEYED ON WHAT THE REFUSAL SAYS, and a first cut had exactly two arms: not-yet, or
+// "read-back-successor". That labelled a log that HAD spoken -- channels disagreeing with their
+// announcement, two announcements disagreeing, a network this module cannot name -- as a failure to
+// read the successor back, which is a step naming an operation that did not fail. This module already
+// corrected that class once for its rollback legs; this is the same defect in the report.
+fn transport_refusal_step(r: RankObservationRefusal) -> RelaunchStep {
+  if refusal_is_not_yet(r: r) {
+    StepAwaitAnnouncement
+  } else if refusal_is_a_transport_verdict(r: r) {
+    StepVerifyTransport
+  } else {
+    StepReadBackSuccessor
+  }
+}
+
 fn verification_cause(c: ArmCapture, after: RankTransportVerdict, standing: SuccessorStanding) -> NonEmptyStr {
   join([
     observed_rank_subject_text(s: c.rank.subject), ": ",
@@ -1509,7 +1540,7 @@ fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
         ArmVerification {
           verdicts: acc.verdicts,
           causes: concat(acc.causes, [rank_observation_refusal_text(r: r) as NonEmptyStr]),
-          failed_step: Present { value: if refusal_is_not_yet(r: r) { StepAwaitAnnouncement } else { StepReadBackSuccessor } },
+          failed_step: Present { value: transport_refusal_step(r: r) },
         }
       RankTransportObserved { verdict: after } =>
         match successor_standing(before: c.before, after: after, moved_axes: c.moved_axes) {
@@ -1597,6 +1628,13 @@ fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
           ArmCommitted {
             verdicts: verification.verdicts,
             preserved: map(captured.captures, c => c.preserved),
+            unobservable: match captured.captures |> first {
+              Absent => []
+              Present { value: c } => c.unobservable
+            },
+            unclaimed_env: fold(captured.captures, init: [], f: (acc, c) =>
+              fold(c.unclaimed_env, init: acc, f: (inner, n) =>
+                if count(filter(inner, x => x == n)) > 0 { inner } else { concat(inner, [n]) })),
             moved_axes: fold(captured.captures, init: [], f: (acc, c) =>
               fold(c.moved_axes, init: acc, f: (inner, a) =>
                 if count(filter(inner, x => (relaunch_axis_wire(a: x) as String) == (relaunch_axis_wire(a: a) as String))) > 0 {
@@ -1653,11 +1691,16 @@ fn committed_transport_text(verdicts: List<RankTransportVerdict>) -> String {
 
 fn arm_relaunch_outcome_text(o: ArmRelaunchOutcome) -> String {
   match o {
-    ArmCommitted { verdicts: vs, preserved: ps, moved_axes: axs } =>
+    ArmCommitted { verdicts: vs, preserved: ps, moved_axes: axs, unobservable: us, unclaimed_env: ns } =>
       join([
         "COMMITTED: ", commit_headline(verdicts: vs, moved_axes: axs), "\n",
         join(map(vs, v => join(["  ", rank_transport_verdict_text(v: v)], "")), "\n"),
         "\n  preserved incumbents: ", join(map(ps, p => p as String), ", "),
+        "\n  NOT COMPARED before this arm was stopped, declared rather than omitted:\n",
+        join(map(us, u => join([
+          "    ", spec_field_wire(f: u.field) as String, ": ", u.reason as String, "\n      ", u.trigger as String,
+        ], "")), "\n"),
+        unclaimed_env_text(names: ns),
       ], "")
     ArmRefusedBeforeActuation { step: s, causes: cs } =>
       join([

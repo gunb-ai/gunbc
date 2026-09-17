@@ -10,7 +10,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import product.placement_supply { HostIdentity }
 import extdeps.docker.cli { DockerCreateSpec }
 import extdeps.docker.container_inspect { ContainerInspect }
-import extdeps.nvidia.nccl { NcclRoceGidSelection }
+import extdeps.nvidia.nccl {
+  NcclRoceGidSelection, NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
+  nccl_realized_transport_wire,
+}
+import extdeps.vllm.log_lines { VllmNumberReading, VllmNumberRead, VllmNumberNotThisLineClass, VllmNumberUnreadable }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity,
@@ -43,7 +47,7 @@ import gunbc.spark.serving_rank_observe {
   RankInspectReading, RankInspected, RankInspectRefused, observe_rank_container,
   RankTransportObservation, RankTransportObserved, RankTransportRefused,
   observe_rank_transport, rank_transport_verdict_text,
-  RankStartupObservation, RankStartupObserved, RankStartupRefused,
+  RankStartupObservation, RankStartupObserved, RankStartupRefused, RankTransportVerdict,
   RankLogCapture, RankLogCaptured, RankLogRefused, capture_rank_log,
   rank_transport_from_log, rank_startup_from_log,
   RankRevisionReading, RankRevisionRead, RankRevisionRefused, observe_rank_vllm_revision,
@@ -128,10 +132,77 @@ type RankFacet sole_constructor {
   complete: Bool
 }
 
+type RankTransportFacet sole_constructor {
+  lines: List<String>
+  standing: RankStanding
+}
+
+// THE CONTAINER SHAPE AND THE TRANSPORT ARE JOINED, NOT CONFLATED. A rank is on verbs only if BOTH
+// its container carries the verbs shape AND NCCL announced IB; either alone is the half-state this
+// fleet was found in, and a rank that could not be fully read is neither.
+fn joined_standing(shape: RankFacet, transport: RankTransportFacet) -> RankStanding {
+  if !shape.complete {
+    RankNotFullyRead { what: "the container does not carry the verbs shape, so its transport reading cannot be read as a converged one" as NonEmptyStr }
+  } else {
+    transport.standing
+  }
+}
+
+fn transport_standing(v: RankTransportVerdict) -> RankStanding {
+  match v.reading.transport {
+    NcclTransportIbVerbs { read_from: _ } => RankReadAndOnVerbs
+    NcclTransportSocket { read_from: _ } => RankReadOnAnotherTransport {
+      transport: nccl_realized_transport_wire(t: v.reading.transport),
+    }
+  }
+}
+
+// ── "READ" AND "ON VERBS" ARE TWO QUESTIONS AND THIS REPORT ANSWERS BOTH SEPARATELY ───────────
+//
+// A SINGLE `complete` FLAG ANSWERED NEITHER. It was set true for any READABLE transport verdict --
+// including Socket -- so this route exited zero for an arm running every collective over TCP, while
+// its own failure sentence said the nonzero path meant "is not on the verbs transport". That is the
+// silent fallback this entire vertical was built to make visible, in the route built to make it
+// visible, and the string that described it was true of neither branch.
+//
+// IT MISFIRED BOTH WAYS. A rank whose device, capability and memlock were all present but whose NCCL
+// announcement was Socket passed; a rank missing its device but announcing IB failed as "not on the
+// verbs transport". The two facts are independent -- the container's SHAPE and the transport NCCL
+// actually BUILT -- and the gap between them is the whole subject.
+type RankStanding
+  = RankReadAndOnVerbs
+  | RankReadOnAnotherTransport { transport: NonEmptyStr }
+  | RankNotFullyRead { what: NonEmptyStr }
+
 type RankReport sole_constructor {
   subject: ObservedRankSubject
   lines: List<String>
-  complete: Bool
+  standing: RankStanding
+}
+
+fn rank_standing_is_read(s: RankStanding) -> Bool {
+  match s {
+    RankReadAndOnVerbs => true
+    RankReadOnAnotherTransport { transport: _ } => true
+    RankNotFullyRead { what: _ } => false
+  }
+}
+
+fn rank_standing_is_on_verbs(s: RankStanding) -> Bool {
+  match s {
+    RankReadAndOnVerbs => true
+    RankReadOnAnotherTransport { transport: _ } => false
+    RankNotFullyRead { what: _ } => false
+  }
+}
+
+fn rank_standing_text(s: RankStanding) -> String {
+  match s {
+    RankReadAndOnVerbs => "read, and on the verbs transport"
+    RankReadOnAnotherTransport { transport: t } =>
+      join(["read, and running its collectives over ", t as String, " rather than verbs"], "")
+    RankNotFullyRead { what: w } => join(["NOT fully read: ", w as String], "")
+  }
 }
 
 // ONE LOG TRANSFER PER RANK, SHARED BY BOTH READERS. The transport announcement and the KV residuals
@@ -174,7 +245,11 @@ fn observe_rank_report(
   let ctx = rank_context(host: subject.host, trust: trust, path: path, administrator: administrator, credential_file: credential_file)
   match observe_rank_container(ctx: ctx, subject: subject) {
     RankInspectRefused { refusal: r } =>
-      RankReport { subject: subject, lines: [rank_observation_refusal_text(r: r)], complete: false }
+      RankReport {
+        subject: subject,
+        lines: [rank_observation_refusal_text(r: r)],
+        standing: RankNotFullyRead { what: "the container could not be inspected" as NonEmptyStr },
+      }
     RankInspected { subject: _, container: c } => {
       let shape = match observed_verbs_shape(subject: subject, container: c) {
         Absent => RankFacet { lines: ["the container's own argv does not name a rank, so this reading has nothing to bind to"], complete: false }
@@ -182,11 +257,20 @@ fn observe_rank_report(
       }
       let log = capture_rank_log(ctx: ctx, subject: subject, step: glm_group_b_log_step)
       let transport = match log {
-        RankLogRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
+        RankLogRefused { refusal: r } => RankTransportFacet {
+          lines: [rank_observation_refusal_text(r: r)],
+          standing: RankNotFullyRead { what: "the container log could not be captured" as NonEmptyStr },
+        }
         RankLogCaptured { text: t } =>
           match rank_transport_from_log(subject: subject, container: c, captured: t) {
-            RankTransportRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
-            RankTransportObserved { verdict: v } => RankFacet { lines: [rank_transport_verdict_text(v: v)], complete: true }
+            RankTransportRefused { refusal: r } => RankTransportFacet {
+              lines: [rank_observation_refusal_text(r: r)],
+              standing: RankNotFullyRead { what: "the transport verdict could not be read" as NonEmptyStr },
+            }
+            RankTransportObserved { verdict: v } => RankTransportFacet {
+              lines: [rank_transport_verdict_text(v: v)],
+              standing: transport_standing(v: v),
+            }
           }
       }
       let startup = match rank_startup_facet(ctx: ctx, subject: subject, container: c, log: log) {
@@ -196,8 +280,10 @@ fn observe_rank_report(
             "vllm revision ", sr.revision.full_revision as String,
             ", startup lines read: ", to_string(count(sr.readings)),
             ", kv pool: ", match sr.pool_tokens {
-              Absent => "unobserved -- the engine has not printed its KV lines"
-              Present { value: t } => to_string(token_count_value(t: t))
+              VllmNumberNotThisLineClass { line: _ } => "not yet printed -- the engine has emitted no KV-cache-size line"
+              VllmNumberUnreadable { captured_text: _, cause: why } =>
+                join(["PRINTED BUT UNREADABLE: ", why as String], "")
+              VllmNumberRead { value: t } => to_string(token_count_value(t: t))
             },
           ], "")],
           complete: true,
@@ -205,8 +291,8 @@ fn observe_rank_report(
       }
       RankReport {
         subject: subject,
-        lines: concat(shape.lines, concat(transport.lines, startup.lines)),
-        complete: shape.complete && transport.complete && startup.complete,
+        lines: concat(shape.lines, concat(transport.lines, concat(startup.lines, [rank_standing_text(s: joined_standing(shape: shape, transport: transport))]))),
+        standing: joined_standing(shape: shape, transport: transport),
       }
     }
   }
@@ -244,8 +330,18 @@ fn glm_group_b_observe_wet() -> ProcessExit
     let w = Filesystem.Write(path: glm_group_b_observe_receipt_path, content: body)
     if !w.success {
       exit_failure(reason: join(["glm group b observation receipt write failed: ", w.error], ""))
-    } else if count(filter(reports, r => !r.complete)) > 0 {
-      exit_failure(reason: join(["one or more ranks could not be read, or is not on the verbs transport:\n", body], ""))
+    } else if count(filter(reports, r => !rank_standing_is_read(s: r.standing))) > 0 {
+      exit_failure(reason: join([
+        to_string(count(filter(reports, r => !rank_standing_is_read(s: r.standing)))),
+        " of ", to_string(count(reports)),
+        " ranks could not be fully read, so this run establishes nothing about the arm's transport:\n", body,
+      ], ""))
+    } else if count(filter(reports, r => !rank_standing_is_on_verbs(s: r.standing))) > 0 {
+      exit_failure(reason: join([
+        "every rank was read and ", to_string(count(filter(reports, r => !rank_standing_is_on_verbs(s: r.standing)))),
+        " of ", to_string(count(reports)),
+        " is NOT on the verbs transport -- this is the state the arm was found in on 2026-09-15:\n", body,
+      ], ""))
     } else {
       ExitSuccess
     }

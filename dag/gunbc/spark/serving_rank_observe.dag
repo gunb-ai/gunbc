@@ -28,6 +28,7 @@ import extdeps.nvidia.nccl {
 import extdeps.vllm.log_lines {
   VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency,
   vllm_startup_readings, vllm_readings_of_class, vllm_kv_pool_tokens_in, vllm_max_concurrency_in,
+  VllmNumberReading, VllmNumberRead, VllmNumberNotThisLineClass, VllmNumberUnreadable,
 }
 import extdeps.vllm.engine_args {
   VllmArgvNatRead, VllmArgvNat, VllmArgvNatUnread, vllm_argv_node_rank,
@@ -113,6 +114,16 @@ fn rank_transport_observation_refusal(
 // not-yet, and both are retryable for the same reason: NCCL writes the announcement and then the
 // per-channel lines, so a log read between them has an announcement and no data path. Every other
 // refusal is a fact about a log that has finished, and waiting longer cannot change it.
+// WHETHER THE REFUSAL IS NCCL'S VERDICT AT ALL, as opposed to a leg that never produced one. A
+// consumer labelling its own step needs this to tell "the log spoke and said something wrong" from
+// "the readback did not land", and those are different operations to name.
+fn refusal_is_a_transport_verdict(r: RankObservationRefusal) -> Bool {
+  match r.transport_cause {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
 fn refusal_is_absent_announcement(r: RankObservationRefusal) -> Bool {
   match r.transport_cause {
     Absent => false
@@ -424,14 +435,18 @@ fn observe_rank_vllm_revision(ctx: SparkMaterializeContext, subject: ObservedRan
 // authored beside them. extdeps.vllm.kv_cache's own note states the residual this removes: with the
 // number authored, "a genuine KV-cache-size line paired with a wrong number is admitted, and this
 // module does not detect it".
+// THE TWO FIGURES ARE THREE-VALUED AND NOT OPTIONAL. "the engine has not printed its KV line yet"
+// and "it printed one this reader cannot understand" are different facts with different remedies --
+// wait, versus look at what upstream changed -- and an optional collapses them into the first, which
+// is the sentence a receipt would then carry as true.
 type RankStartupReading sole_constructor {
   subject: ObservedRankSubject
   incarnation: NonEmptyStr
   node_rank: Nat
   revision: VllmSourceRevision
   readings: List<VllmStartupReading>
-  pool_tokens: TokenCount?
-  max_concurrency: ConcurrentRequestHundredths?
+  pool_tokens: VllmNumberReading<TokenCount>
+  max_concurrency: VllmNumberReading<ConcurrentRequestHundredths>
 }
 
 type RankStartupObservation
@@ -471,16 +486,15 @@ fn rank_startup_reading(
     node_rank: node_rank,
     revision: revision,
     readings: readings,
-    pool_tokens: first_present(xs: map(vllm_readings_of_class(readings: readings, class: GpuKvCacheSize), r => vllm_kv_pool_tokens_in(reading: r))),
-    max_concurrency: first_present(xs: map(vllm_readings_of_class(readings: readings, class: MaximumConcurrency), r => vllm_max_concurrency_in(reading: r))),
+    pool_tokens: match vllm_readings_of_class(readings: readings, class: GpuKvCacheSize) |> first {
+      Absent => VllmNumberNotThisLineClass { line: GpuKvCacheSize }
+      Present { value: r } => vllm_kv_pool_tokens_in(reading: r)
+    },
+    max_concurrency: match vllm_readings_of_class(readings: readings, class: MaximumConcurrency) |> first {
+      Absent => VllmNumberNotThisLineClass { line: MaximumConcurrency }
+      Present { value: r } => vllm_max_concurrency_in(reading: r)
+    },
   }
-}
-
-fn first_present(xs: List<T?>) -> T? {
-  fold(xs, init: none, f: (acc, x) => match acc {
-    Present { value: _ } => acc
-    Absent => x
-  })
 }
 
 // ── THE THREE-FIELD READBACK THE INCIDENT WAS ABOUT ───────────────────────────────────────────

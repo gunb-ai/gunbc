@@ -236,24 +236,60 @@ fn vllm_text_between(text: String, opening: String, closing: String) -> String? 
   }
 }
 
-fn vllm_kv_pool_tokens_in(reading: VllmStartupReading) -> TokenCount? {
+// ── THE NUMBER IS THREE-VALUED, BECAUSE "WRONG LINE" AND "UNREADABLE LINE" ARE DIFFERENT FACTS ─
+//
+// A FIRST CUT RETURNED `none` FOR BOTH, and a consumer then rendered that absence as "the engine has
+// not printed its KV lines yet" -- a true sentence for the first and a false one for the second. A
+// GpuKvCacheSize line whose number this parser cannot read is the engine HAVING SPOKEN in a shape the
+// reader does not understand, which is the present-and-wrong case the JSON member readers in this
+// same corpus exist to keep apart from missing.
+type VllmNumberReading<T>
+  = VllmNumberRead { value: T }
+  | VllmNumberNotThisLineClass { line: VllmStartupLine }
+  | VllmNumberUnreadable { captured_text: NonEmptyStr, cause: NonEmptyStr }
+
+fn vllm_kv_pool_tokens_in(reading: VllmStartupReading) -> VllmNumberReading<TokenCount> {
   match reading.line {
-    GpuKvCacheSize =>
-      match vllm_text_between(
-        text: reading.captured_text as String,
-        opening: vllm_startup_line_prefix(line: GpuKvCacheSize) as String,
-        closing: vllm_kv_pool_tokens_suffix,
-      ) {
-        Absent => none
-        Present { value: digits } =>
-          match parse_int(s: vllm_ungrouped_digits(text: digits)) {
-            Absent => none
-            Present { value: n } => if n < 0 { none } else { Present { value: token_count(count: n) } }
-          }
+    GpuKvCacheSize => vllm_kv_pool_tokens_of(reading: reading)
+    MaximumConcurrency => VllmNumberNotThisLineClass { line: MaximumConcurrency }
+    ResolvedKvCacheFormat => VllmNumberNotThisLineClass { line: ResolvedKvCacheFormat }
+    MemoryProfileSummary => VllmNumberNotThisLineClass { line: MemoryProfileSummary }
+  }
+}
+
+// THE TEXT EXTRACTION IS ITS OWN STEP so the optional it returns is matched against the optional's
+// own variants rather than against this function's return type.
+fn vllm_kv_pool_tokens_of(reading: VllmStartupReading) -> VllmNumberReading<TokenCount> {
+  let digits = vllm_text_between(
+    text: reading.captured_text as String,
+    opening: vllm_startup_line_prefix(line: GpuKvCacheSize) as String,
+    closing: vllm_kv_pool_tokens_suffix,
+  )
+  match digits {
+    Absent => VllmNumberUnreadable {
+      captured_text: reading.captured_text,
+      cause: "the KV-cache-size marker is present but no token count follows it before ` tokens`" as NonEmptyStr,
+    }
+    Present { value: text } => vllm_token_count_of(reading: reading, text: text)
+  }
+}
+
+fn vllm_token_count_of(reading: VllmStartupReading, text: String) -> VllmNumberReading<TokenCount> {
+  let parsed = parse_int(s: vllm_ungrouped_digits(text: text))
+  match parsed {
+    Absent => VllmNumberUnreadable {
+      captured_text: reading.captured_text,
+      cause: join(["the KV-cache-size line carries `", text, "` where a token count was expected"], "") as NonEmptyStr,
+    }
+    Present { value: n } =>
+      if n < 0 {
+        VllmNumberUnreadable {
+          captured_text: reading.captured_text,
+          cause: join(["the KV-cache-size line reports ", to_string(n), " tokens"], "") as NonEmptyStr,
+        }
+      } else {
+        VllmNumberRead { value: token_count(count: n) }
       }
-    MaximumConcurrency => none
-    ResolvedKvCacheFormat => none
-    MemoryProfileSummary => none
   }
 }
 
@@ -267,20 +303,41 @@ fn vllm_kv_pool_tokens_in(reading: VllmStartupReading) -> TokenCount? {
 data vllm_max_concurrency_opening: String = "tokens per request: "
 data vllm_max_concurrency_suffix: String = "x"
 
-fn vllm_max_concurrency_in(reading: VllmStartupReading) -> ConcurrentRequestHundredths? {
+fn vllm_max_concurrency_in(reading: VllmStartupReading) -> VllmNumberReading<ConcurrentRequestHundredths> {
   match reading.line {
-    MaximumConcurrency =>
-      match vllm_text_between(
-        text: reading.captured_text as String,
-        opening: vllm_max_concurrency_opening,
-        closing: vllm_max_concurrency_suffix,
-      ) {
-        Absent => none
-        Present { value: figure } => vllm_hundredths_of_decimal(text: figure)
-      }
-    GpuKvCacheSize => none
-    ResolvedKvCacheFormat => none
-    MemoryProfileSummary => none
+    MaximumConcurrency => vllm_max_concurrency_of(reading: reading)
+    GpuKvCacheSize => VllmNumberNotThisLineClass { line: GpuKvCacheSize }
+    ResolvedKvCacheFormat => VllmNumberNotThisLineClass { line: ResolvedKvCacheFormat }
+    MemoryProfileSummary => VllmNumberNotThisLineClass { line: MemoryProfileSummary }
+  }
+}
+
+fn vllm_max_concurrency_of(reading: VllmStartupReading) -> VllmNumberReading<ConcurrentRequestHundredths> {
+  let figure = vllm_text_between(
+    text: reading.captured_text as String,
+    opening: vllm_max_concurrency_opening,
+    closing: vllm_max_concurrency_suffix,
+  )
+  match figure {
+    Absent => VllmNumberUnreadable {
+      captured_text: reading.captured_text,
+      cause: "the concurrency marker is present but no figure follows `tokens per request: ` before its `x`" as NonEmptyStr,
+    }
+    Present { value: text } => vllm_hundredths_of(reading: reading, text: text)
+  }
+}
+
+fn vllm_hundredths_of(reading: VllmStartupReading, text: String) -> VllmNumberReading<ConcurrentRequestHundredths> {
+  let parsed = vllm_hundredths_of_decimal(text: text)
+  match parsed {
+    Absent => VllmNumberUnreadable {
+      captured_text: reading.captured_text,
+      cause: join([
+        "the concurrency line carries `", text,
+        "`, which is not a figure printed to two decimal places; the scale of any other precision is not guessed",
+      ], "") as NonEmptyStr,
+    }
+    Present { value: c } => VllmNumberRead { value: c }
   }
 }
 
