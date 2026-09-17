@@ -87,7 +87,7 @@ test fn enabled_state_reads_as_enabled() -> Bool {
   match service_enablement_from_state_wire(project: w_project(), service_id: w_service(), state_wire: "ENABLED") {
     ServiceObservedEnabled { project: _, service_id: s } => (s as String) == "sheets.googleapis.com"
     ServiceObservedDisabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
     ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
   }
 }
@@ -96,7 +96,7 @@ test fn disabled_state_reads_as_disabled() -> Bool {
   match service_enablement_from_state_wire(project: w_project(), service_id: w_service(), state_wire: "DISABLED") {
     ServiceObservedDisabled { project: _, service_id: _ } => true
     ServiceObservedEnabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
     ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
   }
 }
@@ -109,7 +109,7 @@ test fn an_unmodeled_state_is_foreign_not_disabled() -> Bool {
     ServiceEnablementStateForeign { project: _, service_id: _, raw: r } => r == "STATE_UNSPECIFIED"
     ServiceObservedDisabled { project: _, service_id: _ } => false
     ServiceObservedEnabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
   }
 }
 
@@ -118,6 +118,6 @@ test fn an_empty_state_string_is_foreign_not_disabled() -> Bool {
     ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => true
     ServiceObservedDisabled { project: _, service_id: _ } => false
     ServiceObservedEnabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
   }
 }

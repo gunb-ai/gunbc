@@ -199,14 +199,42 @@ fn read_service_enablement(
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
     RestExchangeSucceeded =>
       service_enablement_from_state_wire(project: project_id, service_id: service_id, state_wire: read.state)
-    RestExchangeStatusRefused { status: _, body: _ } =>
-      ServiceEnablementUnobserved { project: project_id, service_id: service_id }
-    RestExchangeUnreached { cause: _ } =>
-      ServiceEnablementUnobserved { project: project_id, service_id: service_id }
-    RestExchangeUndecodable { status: _, cause: _ } =>
-      ServiceEnablementUnobserved { project: project_id, service_id: service_id }
-    RestExchangeCommitAmbiguous { detail: _ } =>
-      ServiceEnablementUnobserved { project: project_id, service_id: service_id }
+    RestExchangeStatusRefused { status, body } =>
+      ServiceEnablementUnobserved {
+        project: project_id,
+        service_id: service_id,
+        cause: join(
+          ["serviceusage GetService answered ", to_string(status), ": ", body],
+          "",
+        ) as NonEmptyStr,
+      }
+    RestExchangeUnreached { cause } =>
+      ServiceEnablementUnobserved {
+        project: project_id,
+        service_id: service_id,
+        cause: join(
+          ["serviceusage GetService never reached the endpoint: ", cause as String],
+          "",
+        ) as NonEmptyStr,
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ServiceEnablementUnobserved {
+        project: project_id,
+        service_id: service_id,
+        cause: join(
+          ["serviceusage GetService answered ", to_string(status), " with a body this model could not decode: ", cause as String],
+          "",
+        ) as NonEmptyStr,
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      ServiceEnablementUnobserved {
+        project: project_id,
+        service_id: service_id,
+        cause: join(
+          ["serviceusage GetService is a read and reported an ambiguous commit, which should not arise on a read exchange: ", detail as String],
+          "",
+        ) as NonEmptyStr,
+      }
   }
 }
 
@@ -234,10 +262,10 @@ fn converge_service_enablement(
           "",
         ) as NonEmptyStr
       }
-    ServiceEnablementUnobserved { project: _, service_id: s } =>
+    ServiceEnablementUnobserved { project: _, service_id: s, cause: c } =>
       ServiceEnableRefused {
         cause: join(
-          ["serviceusage GetService is unobserved for ", s as String, "; an unread state is not a disabled one"],
+          ["serviceusage GetService is unobserved for ", s as String, "; an unread state is not a disabled one. ", c as String],
           "",
         ) as NonEmptyStr
       }

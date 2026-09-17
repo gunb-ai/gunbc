@@ -1735,7 +1735,7 @@ test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
     ServiceObservedEnabled { project: p, service_id: s } =>
       (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
     ServiceObservedDisabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
     ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
   }
 }
@@ -1749,7 +1749,7 @@ test fn enablement_state_wire_disabled_is_not_unobserved() -> Bool {
     ServiceObservedDisabled { project: p, service_id: s } =>
       (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
     ServiceObservedEnabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
     ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
   }
 }
@@ -1789,11 +1789,11 @@ test fn unspecified_or_unknown_serviceusage_state_is_foreign_not_unobserved() ->
               }
           ServiceObservedEnabled { project: _, service_id: _ } => false
           ServiceObservedDisabled { project: _, service_id: _ } => false
-          ServiceEnablementUnobserved { project: _, service_id: _ } => false
+          ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
         }
     ServiceObservedEnabled { project: _, service_id: _ } => false
     ServiceObservedDisabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
   }
 }
 

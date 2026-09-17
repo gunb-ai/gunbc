@@ -491,6 +491,7 @@ fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
         enablement: ServiceEnablementUnobserved {
           project: p,
           service_id: sheets_serviceusage_api_id,
+          cause: "no serviceusage read has been performed against this project by this fleet; the home was selected from the estate, which settles where Sheets is called from and nothing about what is enabled there" as NonEmptyStr,
         },
         enablement_policy: EnsureObserveOnly,
         spreadsheet: buyer_review_spreadsheet,
