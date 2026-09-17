@@ -1,4 +1,4 @@
-module test.claim.spark.relaunch_capture_witness_test
+module test.claim.long.spark_relaunch_capture_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
@@ -48,6 +48,21 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 
 // ── THIS MODULE DOES NOT RUN ON THE MERGE PATH, AND HERE IS EXACTLY WHAT THAT COSTS ───────────
 //
+// THE HOME IS DECLARED AND NOT MERELY DESCRIBED. `test.claim.long.` puts these rows outside per-PR
+// discovery (`gunbc.ci.ci_layer_roots` carries a blanket `test/claim/long/` exclusion at dir grain),
+// which is the POINT rather than a side effect: the required floor arms an eval-step deadline per
+// identity, these rows land 5-22x over it, and no declaration arm closes that -- the cost-debt roster
+// is the cpu axis and the eval-step drop roster may only shrink. Landing them on the floor while
+// recording the gap in prose would be honesty ABOUT an armed gate rather than landing under one, and
+// DESIGN section 5 is explicit that a dissolution condition does not authorize creating the debt.
+//
+// THIS IS THE SECOND TIME THIS MODULE HAS BEEN PUT HERE, AND THE FIRST TIME WAS WRONG. That attempt
+// said the rows would "re-arm when their subject changes", which is false -- the exclusion is not a
+// reduced cadence, it is no cadence -- and it left the incident-critical wall nowhere. What makes the
+// home honest now is the two things that were missing: the accounting below, which says exactly what
+// does and does not run on the merge path, and `test.claim.spark.relaunch_hostconfig_witness_test`,
+// which puts the discriminating pair for the defect back onto the floor over real daemon output.
+//
 // A READER MUST NOT BE ABLE TO MISTAKE THESE ROWS FOR A WALL. They pass, they are real, and they are
 // the only place several folds execute at all -- but nothing on the required floor runs them, so
 // citing this module as per-PR coverage would be citing a check that did not run. That sentence is
@@ -79,6 +94,12 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // costs 405,497 and a row asserting six costs 406,072, so the cost does not move when the assertions
 // do. The narrower `.HostConfig` question was taken where it could be -- that is what the sibling
 // module is -- and the rows above genuinely need the whole document.
+//
+// THE STANDING IS A PATH DEFERRAL AND NOT AN EXACT ADMISSION, stated so nobody reads it as one: an
+// exact `gunbc.explicit_witness_admission` row naming `OfflineLocalRecipe` is REFUSED by design,
+// because a local recipe is not an executing cadence. So what stands here is the frozen path-deferral
+// class, which `gunbc.witness_deferral_freeze` tolerates and does not bless, and this block is the
+// declaration that class asks for rather than a substitute for admission.
 //
 // TRIGGER, NAMED AS A CAPABILITY RATHER THAN AN ARTIFACT: a floor cadence that can admit a
 // whole-document parse -- an executing consumer whose eval-step envelope accommodates a
