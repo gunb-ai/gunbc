@@ -407,11 +407,25 @@ fn escalation_status(root: NonEmptyStr, escalation_id: NonEmptyStr) -> Escalatio
 
 // ── the frontier ───────────────────────────────────────────────────────────────────────────────
 
+// THE AUTHORITY-PERMISSION HALF OF ADMISSION IS A CONSTANT TODAY, AND THIS ROW SAYS SO. The
+// store brokers exactly one authority (approval_capability_authority) and a stored request cannot
+// name another, so requester->authority policy has one cell and admit_submission's
+// authority_permitted parameter is wired to it as a row rather than a literal at the call site.
+// SubmissionAuthorityNotPermittedForRequester therefore has no authorable RED on the live route
+// yet (DESIGN 4b: a check whose RED cannot be written is a decoration) -- it is kept because the
+// broker's rule (approval_broker submission_is_not_approval_note) is the reason the arm exists,
+// and it becomes a wall when this frontier dissolves.
+data approval_submission_authority_permitted: Bool = true
+
+data approval_submission_authority_policy_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a requester -> authority policy roster (which enrolled filers may put which brokered authority in front of the operator) consumed by admit_parsed_submission in place of approval_submission_authority_permitted, with a witness whose unrostered requester answers SubmissionAuthorityRefused -- SUFFICIENT FOR the authority half of admission to refuse on the live route; triggered by the first second brokered authority or the first filer class other than the fleet-converge runner",
+)
+
 // THE RUN THAT FILES. This module is the server side; the client -- a fleet-converge mode that
 // materializes the submission key in-run, builds the request from a source-declared
 // AuthorizationRequest<Subject>, signs, POSTs, polls, and gates the boot on the grant -- is part D
 // (eager-owl-205's child lane, 2026-09-16). Until it lands, submit_parsed_submission has the serve
 // route and its witness as consumers and no filer; its first live receipt is D's first run.
 data approval_submission_client_frontier: DissolutionCondition = unbound_dissolution(
-  description: "every approval-gated fleet action files through POST /approvals and gates on grant_from_store; SUFFICIENT FOR that, not one host's boot; the srv3 source-declared grant dissolves into the same run.",
+  description: "a fleet-converge mode that materializes approval-submission-mac-key in-run over WIF, signs stored_request_json of a source-declared request with sign_submission, POSTs the envelope to /approvals, polls /approvals/\{escalation_id\} bounded by the request's expires_at, and gates the actuation on grant_from_store's OperatorGrant -- SUFFICIENT FOR every approval-gated fleet action, not one host's boot; the srv3 source-declared grant dissolves into the same run.",
 )

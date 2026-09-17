@@ -1991,7 +1991,7 @@ fn mtcollins1_sol_activate_ipmitool_command() -> String {
         "ipmitool -I lanplus -H ",
         concat(
           mtcollins1_endpoint.host as String,
-          concat(" -U ", concat(user as String, " -f \"$DEST_FILE\" sol activate >> \"$SOL_OUT\" 2>&1 < /dev/zero & echo $! > \"$SOL_PID_FILE\"")),
+          concat(" -U ", concat(user as String, " -f \"$HOLD_BMC\" sol activate >> \"$SOL_OUT\" 2>&1 < /dev/zero & echo $! > \"$SOL_PID_FILE\"")),
         ),
       )
   }
@@ -2012,7 +2012,8 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: concat("curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(host_reset_bmc_credential_path_env as String, "=\"$DEST_FILE\""))) },
-    Do { run: ci_retry_body_run(command: concat("HOLD_BMC=\"$DEST_FILE\"; DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), concat("\"; ", concat(gunbc_ci_sm_decode_payload_to_file(), "; DEST_FILE=\"$HOLD_BMC\""))))) },
+    Do { run: ci_retry_body_run(command: "HOLD_BMC=\"$DEST_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), concat("\"; ", concat(gunbc_ci_sm_decode_payload_to_file(), "; DEST_FILE=\"$HOLD_BMC\""))))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
     Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
