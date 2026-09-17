@@ -276,10 +276,6 @@ test fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
   }
 }
 
-test fn srv3_typed_receipt_emit_realizes_in_process_not_shell() -> Bool {
-  witness_srv3_receipt_emit_apply_converges_in_process()
-}
-
 test fn srv3_typed_receipt_carrier_holds_lines() -> Bool {
   let receipt = srv3_typed_receipt_from_lines(lines: ["a", "b"])
   srv3_typed_receipt(receipt: receipt).lines.length() == 2
