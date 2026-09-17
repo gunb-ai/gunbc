@@ -239,8 +239,10 @@ data srv10_fabric_link_observed: Bool = true
 // cannot say it: editing it moves both legs at once.
 //
 // So one row per acquisition, carrying the identity that makes it a receipt rather than a value: the
-// host it was taken from, the module's own vendor serial, and the date code. The two legs agree
-// today; that agreement is DERIVED by comparing rows, never assumed by storing one.
+// host it was taken from, the module's own vendor serial, and the date code. Whether the two legs
+// agree is DERIVED by comparing rows, never assumed by storing one -- and they now DISAGREE
+// (spark-a3ee re-read post-recode to 0x40, spark-ac79 still at its last pre-recode 0x0B), which is
+// exactly the divergence this per-row shape exists to keep representable.
 type FabricLegEepromObservation {
   host: NonEmptyStr
   vendor_serial: NonEmptyStr
