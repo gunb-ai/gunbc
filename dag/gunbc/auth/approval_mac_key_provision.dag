@@ -9,7 +9,6 @@ import std.algebra { trim }
 import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.entropy { Urandom }
 import extdeps.cloud.gcp.secret_manager
-import extdeps.cloud.gcp.secret_manager { GcpSecretVersion, sm_resolved_version_id, SmVersionIdProjected, SmVersionIdNotAVersionResource }
 import extdeps.transports.rest { classify_rest_outcome, RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable, RestReadExchange }
 import gunbc.secret_provision { SecretRef, SecretProvisionAttemptIdentity, fleet_secrets_gcp_project }
 import gunbc.secret_provision_actuator {
@@ -20,7 +19,6 @@ import gunbc.secret_provision_actuator {
   snapshot_minted_secret, CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
   verified_version, verified_snapshot_identity,
 }
-import gunbc.auth.secret_rotation { inventory_from_list_response, version_is_enabled, InventoryComplete, InventoryTruncated, ListSecretVersionsResponse }
 import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant, secret_access_ensure_for }
 import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref }
@@ -98,27 +96,35 @@ fn standing_ok(s: KeyProvisionStanding) -> Bool {
   }
 }
 
-// A TRUNCATED INVENTORY IS A REFUSAL, NEVER "NO VERSION": gunbc.auth.secret_rotation refuses to act
-// on a page it cannot establish is complete, and adding a version over an unknown inventory is
-// exactly the sprawl that refusal exists to prevent (review 67075). Only a COMPLETE inventory with
-// no enabled version admits a mint.
-type EnabledVersionStanding
-  = EnabledVersionFound { version: NonEmptyStr }
-  | NoEnabledVersionInCompleteInventory
-  | InventoryNotEstablished { seen: Int }
-  | EnabledVersionNameUnreadable { supplied: String }
+// "ALREADY PROVISIONED" IS OBSERVED THROUGH THE PIN THE CORPUS HOLDS, not through a version
+// inventory: the SecretRef row names the version every consumer reads, and AccessVersion at that
+// pin answering 200 establishes it is enabled and readable -- the same read-back the actuator
+// performs after an add. Nothing is ever added over a container the run can observe: a pinned
+// version that does not answer, or a container that exists while the ref is unpinned, is a
+// refusal naming what to reconcile, because a second version minted beside the pin would be
+// exactly the sprawl secret_rotation's inventory wall exists to prevent. (A version inventory was
+// the first design; ListVersions' state field has no realizable wire spelling for SmVersionState
+// today, and the pin is the more honest oracle anyway: it is what the links in flight were
+// issued under.)
+type PinnedVersionStanding
+  = PinnedVersionAccessible { version: NonEmptyStr }
+  | PinnedVersionNotAccessible { version: NonEmptyStr, detail: String }
+  | RefUnpinned
 
-fn enabled_version_standing(response: ListSecretVersionsResponse) -> EnabledVersionStanding {
-  match inventory_from_list_response(response: response) {
-    InventoryTruncated { seen: n } => InventoryNotEstablished { seen: n }
-    InventoryComplete { versions: vs } =>
-      match filter(vs, v => version_is_enabled(listed: v)).first() {
-        Absent => NoEnabledVersionInCompleteInventory
-        Present { value: v } => match sm_resolved_version_id(identity: v.name) {
-          SmVersionIdProjected { version: ver } => EnabledVersionFound { version: ver }
-          SmVersionIdNotAVersionResource { supplied: s } => EnabledVersionNameUnreadable { supplied: s }
-        }
-      }
+fn pinned_version_standing(ref: SecretRef, token: Secret) -> PinnedVersionStanding
+  uses net: Network
+{
+  if ref.version == "pending" || ref.version == "latest" {
+    RefUnpinned
+  } else {
+    let seen = gcp.SecretManager.AccessVersion(access_token: token, project_id: ref.project, secret: ref.secret, version: ref.version)
+    match classify_rest_outcome(standing: RestReadExchange { rest: seen.outcome }) {
+      RestExchangeSucceeded => PinnedVersionAccessible { version: ref.version }
+      RestExchangeStatusRefused { status: st, body: b } => PinnedVersionNotAccessible { version: ref.version, detail: concat(to_string(st), concat(" ", b)) }
+      RestExchangeCommitAmbiguous { detail: d } => PinnedVersionNotAccessible { version: ref.version, detail: d as String }
+      RestExchangeUnreached { cause: c } => PinnedVersionNotAccessible { version: ref.version, detail: c as String }
+      RestExchangeUndecodable { status: st, cause: c } => PinnedVersionNotAccessible { version: ref.version, detail: concat(to_string(st), concat(" ", c as String)) }
+    }
   }
 }
 
@@ -171,22 +177,14 @@ fn provision_one(ref: SecretRef, token: Secret) -> KeyProvisionStanding
       KeyProvisionRefused { secret_id: secret_id, cause: concat("the container could not be observed, so nothing is created over it: ", c as String) as NonEmptyStr }
     SecretContainerAbsent { project: _, secret_id: _ } =>
       add_first_version(secret_id: secret_id, container: none, token: token)
-    SecretContainerObserved { container: c } => {
-      let listed = gcp.SecretManager.ListVersions(access_token: token, secret_name: c.observed_resource as String)
-      match classify_rest_outcome(standing: RestReadExchange { rest: listed.outcome }) {
-        RestExchangeSucceeded =>
-          match enabled_version_standing(response: ListSecretVersionsResponse { versions: listed.versions, next_page_token: Present { value: listed.next_page_token }, total_size: none }) {
-            EnabledVersionFound { version: v } => KeyAlreadyEnabled { secret_id: secret_id, version: v }
-            NoEnabledVersionInCompleteInventory => add_first_version(secret_id: secret_id, container: Present { value: c }, token: token)
-            InventoryNotEstablished { seen: n } => KeyProvisionRefused { secret_id: secret_id, cause: concat("the version inventory is truncated after ", concat(to_string(n), " entries; refusing to add a version over an inventory that is not established")) as NonEmptyStr }
-            EnabledVersionNameUnreadable { supplied: s } => KeyProvisionRefused { secret_id: secret_id, cause: concat("an enabled version's resource name is not a version resource: ", s) as NonEmptyStr }
-          }
-        RestExchangeStatusRefused { status: _, body: b } => KeyProvisionRefused { secret_id: secret_id, cause: concat("versions could not be listed: ", b) as NonEmptyStr }
-        RestExchangeCommitAmbiguous { detail: d } => KeyProvisionRefused { secret_id: secret_id, cause: d }
-        RestExchangeUnreached { cause: c2 } => KeyProvisionRefused { secret_id: secret_id, cause: c2 }
-        RestExchangeUndecodable { status: _, cause: c2 } => KeyProvisionRefused { secret_id: secret_id, cause: c2 }
+    SecretContainerObserved { container: _ } =>
+      match pinned_version_standing(ref: ref, token: token) {
+        PinnedVersionAccessible { version: v } => KeyAlreadyEnabled { secret_id: secret_id, version: v }
+        PinnedVersionNotAccessible { version: v, detail: d } =>
+          KeyProvisionRefused { secret_id: secret_id, cause: concat("the container exists but pinned version ", concat(v as String, concat(" is not accessible; refusing to add a version beside the pin: ", d))) as NonEmptyStr }
+        RefUnpinned =>
+          KeyProvisionRefused { secret_id: secret_id, cause: "the container exists but the SecretRef is unpinned; pin the version the store holds (this run adds versions only to a container it created)" }
       }
-    }
   }
 }
 

@@ -8,7 +8,7 @@ import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, NtfyPublished, NtfyPublishRefused, NtfyPublishUnreached, NtfyPublishUndecodable, ntfy_publish_outcome_of, ntfy_priority_wire, ntfy_cache_wire }
 import gunbc.fleet_intent_network { fleet_intent_network }
-import gunbc.secret_provision { SecretRef, fleet_secret_ref }
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
@@ -51,11 +51,15 @@ import gunbc.auth.approval_decision_store {
 
 // ── the submission key ─────────────────────────────────────────────────────────────────────────
 
-// NOT YET MINTED (2026-09-16). The capability key exists (approval_decision_store); this one is the
-// operator's next mint and its version is pinned by the receipt of that mint, so the ref is
-// deliberately unpinned here rather than pinned to a guess. The key id below assumes version 1;
-// if the mint lands at another version the id row moves with the pin in the same change.
-data approval_submission_mac_key_secret_ref: SecretRef = fleet_secret_ref(secret_id: "approval-submission-mac-key")
+// MINTED 2026-09-17 THROUGH gunbc.auth.approval_mac_key_provision under the operator's token: the
+// container was created for attempt approval-mac-keys-2026-09-16, version 1 added from a
+// digested snapshot and read back (payload sha256 prefix 01f19b2e2c7a). Pinned to that version
+// for the same reason the capability key is: a keyring following `latest` would let a rotation
+// invalidate filings in flight, and the provisioning run refuses to add a version beside a pin.
+data approval_submission_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "approval-submission-mac-key"),
+  version: "1",
+)
 
 data approval_submission_mac_key_id: MacKeyId = "approval-submission-mac-key/1" as MacKeyId
 
