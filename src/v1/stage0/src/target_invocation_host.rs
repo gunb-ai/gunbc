@@ -456,7 +456,7 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
         },
         Ok(crate::v1_interpreter::Value::Bool(false)) => InvocationOutcome {
             termination: Termination::ObservationDidNotHold,
-            message: format!("evaluation-store-address-exact-head: join/coverage did not hold"),
+            message: "evaluation-store-address-exact-head: join/coverage did not hold".to_string(),
         },
         Ok(other) => InvocationOutcome {
             termination: Termination::Refused,
