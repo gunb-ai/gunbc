@@ -6,6 +6,7 @@ import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, fabric_ident
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply {
   SupplierOffer, OfferFungibility, offer_fungibility_for,
+  OfferEvidence, ObservedSupply, QuotedSupply, UnobservedSupply,
   Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
 }
 import product.fabric.route_readiness {
@@ -70,6 +71,7 @@ type FailureScenarioRefusal<P>
   | OfferFailureDomainsUndeclared { offer: FabricIdentity<P, OfferKey> }
   | OfferFailureDomainsAmbiguous { offer: FabricIdentity<P, OfferKey> }
   | OfferSharedAcrossDemands { offer: FabricIdentity<P, OfferKey> }
+  | OfferSupplyUnobserved { offer: FabricIdentity<P, OfferKey>, obligation: DeclarationRef }
   | ScenarioNotSurvived { shortfall: ScenarioShortfall<P> }
 
 type FailureScenarioAdmission<P>
@@ -78,6 +80,17 @@ type FailureScenarioAdmission<P>
 
 fn domain_rows_for<P>(roster: List<OfferFailureDomains<P>>, offer: FabricIdentity<P, OfferKey>) -> List<OfferFailureDomains<P>> {
   filter(roster, r => fabric_identity_eq(left: r.offer, right: offer))
+}
+
+// A PLANNED FLEET IS REFUSED RATHER THAN COUNTED, and by its own arm rather than by arriving at a
+// shortfall: "we reserved against twenty hosts that have never booted" and "the fleet is two nodes
+// short" are different things to go and do.
+fn evidence_refusals<P>(offer: SupplierOffer<P>) -> List<FailureScenarioRefusal<P>> {
+  match offer.evidence {
+    ObservedSupply { observed_at: _, receipt: _ } => []
+    QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => []
+    UnobservedSupply { obligation: o } => [OfferSupplyUnobserved { offer: offer.id, obligation: o }]
+  }
 }
 
 fn domain_refusals<P>(roster: List<OfferFailureDomains<P>>, offer: SupplierOffer<P>) -> List<FailureScenarioRefusal<P>> {
@@ -197,7 +210,10 @@ fn admit_failure_scenarios<P>(
   let structural = concat(
     if count(scenarios) == 0 { [NoFailureScenariosDeclared] } else { [] },
     concat(
-      flat_map(offers, o => domain_refusals(roster: domains, offer: o)),
+      concat(
+        flat_map(offers, o => domain_refusals(roster: domains, offer: o)),
+        flat_map(offers, o => evidence_refusals(offer: o)),
+      ),
       sharing_refusals(offers: offers, supplies: supplies),
     ),
   )
