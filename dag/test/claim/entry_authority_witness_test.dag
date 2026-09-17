@@ -40,16 +40,24 @@ data ea_unknown_driver_source: String = "module ea_unknown_driver\n\ntype Compil
 
 data ea_absent_entry_marker: String = "REFUSED: emitted crate declares no entry point"
 
+// THE SEED'S OWN BUILD IDENTITY IS NOT A PROPERTY OF AN EMITTED PROGRAM. `GUNBC_BUILD_IDENTITY` is
+// an environment variable of the gunbc build, and the retained-host arm is the only main that may
+// name it. A rust unit test in `src/v1/stage0/src/main.rs` used to establish this by rendering the
+// derived CLI struct for a non-gunbc program and asserting the absence; that struct is deleted, and
+// the fact is now structural -- a library emits no CLI at all -- so the case is carried here as an
+// exclusion on every library arm rather than retired with the function it was written against.
+data ea_seed_build_identity_marker: String = "GUNBC_BUILD_IDENTITY"
+
 test fn a_pure_library_emits_the_entry_point_absent_refusal() -> Bool {
-  compile_dag_rust_emit_check(ea_pure_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand"])
+  compile_dag_rust_emit_check(ea_pure_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
 }
 
 test fn a_uses_requirement_does_not_create_an_entry() -> Bool {
-  compile_dag_rust_emit_check(ea_uses_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand"])
+  compile_dag_rust_emit_check(ea_uses_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
 }
 
 test fn a_service_call_does_not_create_an_entry() -> Bool {
-  compile_dag_rust_emit_check(ea_service_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand"])
+  compile_dag_rust_emit_check(ea_service_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
 }
 
 test fn one_declared_entry_is_the_sole_root_beside_an_effect() -> Bool {
