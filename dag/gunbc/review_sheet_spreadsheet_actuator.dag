@@ -22,6 +22,7 @@ import gunbc.review_sheet_drive_converge {
   SheetAbsent,
   SheetDuplicated,
   SheetSearchIncomplete,
+  SheetPageIncomplete,
   SheetSearchUnreadable,
   SpreadsheetCreatePlan,
   spreadsheet_from_file_list,
@@ -105,6 +106,10 @@ fn verify_created_spreadsheet(
       SpreadsheetCreateUnverified {
         cause: join([create_detail as String, ", and the verifying search was incomplete, so nothing may be reported as created"], "") as NonEmptyStr
       }
+    SheetPageIncomplete { next_page_token: _ } =>
+      SpreadsheetCreateUnverified {
+        cause: join([create_detail as String, ", and the verifying search returned one page of a longer list; a page is not the list, so a second file carrying the key may sit unread on the next page"], "") as NonEmptyStr
+      }
     SheetSearchUnreadable { reason: r } =>
       SpreadsheetCreateUnverified {
         cause: join([create_detail as String, ", and the verifying read could not settle it: ", r as String], "") as NonEmptyStr
@@ -183,6 +188,10 @@ fn spreadsheet_noop_outcome(observed: ReviewSpreadsheetObservation) -> Spreadshe
     SheetSearchIncomplete =>
       SpreadsheetConvergeRefused {
         cause: "converged on an incomplete search, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
+      }
+    SheetPageIncomplete { next_page_token: _ } =>
+      SpreadsheetConvergeRefused {
+        cause: "converged on one page of a longer file list, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
       }
     SheetSearchUnreadable { reason: r } =>
       SpreadsheetConvergeRefused {

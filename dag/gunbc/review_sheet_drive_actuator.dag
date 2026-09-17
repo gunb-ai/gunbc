@@ -30,6 +30,7 @@ import gunbc.review_sheet_drive_converge {
   MembershipObserved,
   MembershipAbsent,
   MembershipUnreadable,
+  MembershipPageIncomplete,
   MembershipGrantPlan,
   membership_from_permissions,
   ensure_drive_membership,
@@ -99,6 +100,13 @@ fn verify_granted_membership(
     MembershipUnreadable { reason: r } =>
       MembershipGrantUnverified {
         cause: join([grant_detail as String, ", and the verifying read could not settle it: ", r as String], "") as NonEmptyStr
+      }
+    MembershipPageIncomplete { next_page_token: _ } =>
+      MembershipGrantUnverified {
+        cause: join(
+          [grant_detail as String, ", and the verifying read returned one page of a longer list; a page is not the list, so this establishes neither that the writer is present nor that it is absent"],
+          "",
+        ) as NonEmptyStr
       }
   }
 }
@@ -174,6 +182,10 @@ fn membership_noop_outcome(observed: DriveMembershipObservation) -> MembershipCo
     MembershipUnreadable { reason: r } =>
       MembershipConvergeRefused {
         cause: join(["converged on an unreadable membership: ", r as String], "") as NonEmptyStr
+      }
+    MembershipPageIncomplete { next_page_token: _ } =>
+      MembershipConvergeRefused {
+        cause: "converged on one page of a longer permission list, which no arm of ensure_drive_membership produces" as NonEmptyStr
       }
   }
 }

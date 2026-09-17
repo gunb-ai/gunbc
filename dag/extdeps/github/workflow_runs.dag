@@ -129,20 +129,24 @@ type WorkflowRunList {
 // ids, so (run_id, job_id) alone cannot say which attempt an observation belonged to, and a
 // duration compared across attempts is comparing a cold run to a warm one.
 //
-// A THIRD FIELD WAS DELETED HERE AND IS BACK, and the reason it is back answers the reason it went.
-// The earlier lane added runner_name because the vendor machine name is corroborating - the Biome
-// baseline job reports "depot-1mw2k81zm2" - found that nothing read it, and deleted it rather than
-// parking it behind a frontier, on the correct ground that interesting is not a consumer. That
-// judgement stands; what changed is the consumer. gunbc.actions_job_observation runner_provenance
-// reads it and is witnessed by execution, and it is the only fold that can separate a GitHub-hosted
-// runner from any other, because labels cannot: a self-hosted runner may be labelled to look exactly
-// like a hosted larger runner, so a census reading labels alone reports a paying hosted customer for
-// a machine in someone's rack.
+// A THIRD FIELD WAS DELETED HERE AND STAYS DELETED, and this annotation is the second attempt to
+// settle it. An earlier lane added runner_name because the vendor machine name is corroborating --
+// the Biome baseline job reports "depot-1mw2k81zm2" -- found nothing read it, and deleted it on the
+// ground that interesting is not a consumer. This PR put it back and claimed the consumer had
+// arrived: gunbc.actions_job_observation runner_provenance. It had not. That module imports only
+// std, v2.std.algebra and gunbc.actions_runner_label, never this one, and runner_provenance takes a
+// bare String that no fold in this tree sources from this field. So the claim was a route asserted
+// in prose while the diff carried none, which DESIGN section 4c forbids outright: an annotation is
+// never evidence that a machine claim holds. The field is deleted again on the original ground,
+// which was right both times.
 //
-// The deleted annotation also supplied the example that corrected that fold. "depot-1mw2k81zm2" is
-// neither GitHub-hosted nor self-hosted; it is a third party's fleet, and a provenance type with two
-// arms would have folded a paying Depot customer into the same arm as a team running its own
-// hardware. Those are different commercial facts and now have different arms.
+// What the deleted annotation contributed and this one keeps is the example that corrected the
+// provenance fold: "depot-1mw2k81zm2" is neither GitHub-hosted nor self-hosted but a third party's
+// fleet, so a two-armed provenance type would have folded a paying Depot customer in with a team
+// running its own hardware. RunnerProvenance carries the third arm because of it. The trigger that
+// would bring the field back is a fold that IMPORTS this module and reads the field, landing in the
+// same change as the field.
+//
 // `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object
 // (docs.github.com/en/rest/actions/workflow-jobs, X-GitHub-Api-Version 2026-03-10) publishes
 // `name` as a required string and does not publish a workflow YAML job key or a matrix object.
@@ -150,15 +154,6 @@ type WorkflowRunList {
 // rendered name. The parenthetical of combination VALUES in axis order is the rendering this
 // tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
 // GitHub's Jobs docs state that encoding.
-// runner_name IS THE ONLY FIELD THAT SEPARATES A HOSTED RUNNER FROM A SELF-HOSTED ONE, and it is
-// added here because labels cannot do it: a self-hosted runner may be labelled to look exactly like
-// a GitHub larger runner, so a census reading labels alone can report a paying hosted customer for
-// a machine in someone's rack. GitHub names its own runners "GitHub Actions <n>";
-// gunbc.actions_job_observation runner_provenance is the fold that reads it, and it answers
-// Unread on an empty name rather than guessing self-hosted.
-//
-// It is Optional because the field is absent for a job that never reached a runner, and an absent
-// name is a different fact from a self-hosted one.
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -167,7 +162,6 @@ type WorkflowJobRun {
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   labels: List<String>
-  runner_name: String?
   created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?

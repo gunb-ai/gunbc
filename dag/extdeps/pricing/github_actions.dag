@@ -3,7 +3,9 @@ module extdeps.pricing.github_actions
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.measure {
   Minute,
   minute,
@@ -243,6 +245,25 @@ fn allowance_applies(sku: GithubActionsBillingSku) -> Bool {
     RunnerClassUnread { obligation: _ } => false
   }
 }
+
+// THE ALLOWANCE ROSTER AND ITS PREDICATE ARE DANGLING TOO, and the row below was not covering
+// them. It binds one DeclarationRef, actions_usage_is_billable, while its own prose said "these
+// declarations" -- so two declarations sat outside the frontier that was supposed to account for
+// them, which is the §3c red the frontier mechanism exists to avoid rather than reproduce. They are
+// named here one row each, because a frontier that names less than it covers is a tally standing in
+// for an identity join.
+data actions_allowance_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.pricing.github_actions", decl_name: "github_actions_plan_allowances"),
+    reason: "the private-repository monthly minute allowances, read from the cited billing page. No fold in this corpus reads them: the consumer is the same prospect standing in strategy.ci_acquisition that actions_usage_is_billable waits on, which lives in gunbc-private and cannot be imported here. The roster is what turns a billable-usage verdict into a question about whether a given account has already spent its included minutes, so it lands with that consumer or not at all",
+    dissolution: unbound_dissolution(description: "a public census producer in this corpus classifies observed runner usage per account and asks whether the account's included minutes are exhausted, which is the first question that reads an allowance rather than a price"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.pricing.github_actions", decl_name: "allowance_applies"),
+    reason: "the predicate separating usage that draws on the plan allowance from usage that is charged regardless, which the cited page states for larger runners as charged even when plan quota is available. It has no consumer for the same reason the roster has none, and it is the half of the allowance model that is easy to get wrong silently: without it, a consumer would subtract larger-runner minutes from an allowance they never touch",
+    dissolution: unbound_dissolution(description: "the same census producer reads github_actions_plan_allowances; the predicate is consumed in the same fold, since an allowance cannot be applied without first deciding whether it applies"),
+  )
+]
 
 // NOTHING IN THIS REPOSITORY CONSUMES THE BILLABILITY FOLD, and that is the §3c state this row
 // exists to declare rather than leave for a reader to discover. Its consumer is the prospect
