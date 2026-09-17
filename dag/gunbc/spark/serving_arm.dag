@@ -586,6 +586,23 @@ fn runtime_registers(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> Bool
 // row still looks measured, the provenance string still reads convincingly, and the fact underneath
 // it has moved. A refusal here costs one probe; the other arm costs an engine that will not start
 // and a receipt claiming it should.
+// THIS CHECK IS NOT EQUALLY STRONG FOR EVERY ROW, AND THE WEAK CASE IS NAMED RATHER THAN LEFT TO
+// BE DISCOVERED.
+//
+// It asks whether a row's registry reading was taken inside the image the row names, and it is a real
+// join wherever the two sides come from independent places: gitcommit90 and sparkrun take their
+// reference from an extdeps image module and their reading from a separate probe, so a drift between
+// them reddens here.
+//
+// FOR THE NoPE-DERIVED ROW IT IS TAUTOLOGICAL, because that image has no extdeps authority -- it is a
+// local build, not an upstream product -- so its digest has exactly one home, the registry reading
+// itself, and the pin now reads it. Two independently editable spellings of one content id were the
+// alternative, and a fork that a later equality check might catch is worse than a check that cannot
+// fail: the fork is wrong the moment it drifts, the tautology is merely uninformative.
+//
+// WHAT WOULD MAKE IT INFORMATIVE AGAIN is an independent authority for that image's bytes -- the
+// modelled build that produces it, which is not in this change. Until then this row's currency is
+// asserted by construction and establishes nothing about the image.
 fn runtime_reading_is_current(rrow: ServingRuntimeRow) -> Bool {
   match rrow.registry_reading {
     Present { value: r } => reading_applies_to(r: r, desired_reference: runtime_artifact_wire(a: rrow.artifact))
@@ -806,7 +823,7 @@ data glm53_nope_derived_vllm_version: NonEmptyStr = "0.1.dev1+g8d09804c8" as Non
 data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcGlm53NopeDerivedGb10,
   artifact: runtime_artifact_identity(
-    pin: PinnedByDigest { reference: "sha256:41366caf73e4c430f44c44c4eeb7ecebd182e191f68a05e7c96975079fbeaf9d" as NonEmptyStr },
+    pin: PinnedByDigest { reference: glm53_nope_derived_registry_reading.image_reference },
     source_revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
     patch_set: [
       "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
