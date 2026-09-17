@@ -1985,16 +1985,20 @@ data gunbc_ci_approval_keyring_converge_shell_emit_scaffold: Disposition = Scaff
 
 data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
+fn mtcollins1_sol_ipmitool_prefix(user: NonEmptyStr) -> String {
+  concat(
+    "ipmitool -I lanplus -H ",
+    concat(mtcollins1_endpoint.host as String, concat(" -U ", concat(user as String, " -f \"$HOLD_BMC\""))),
+  )
+}
+
 fn mtcollins1_sol_activate_ipmitool_command() -> String {
   match mtcollins1_bmc_username {
     Absent => "echo MtCollins1BmcUsernameUnobserved >&2; exit 1"
     Present { value: user } =>
       concat(
-        "ipmitool -I lanplus -H ",
-        concat(
-          mtcollins1_endpoint.host as String,
-          concat(" -U ", concat(user as String, " -f \"$HOLD_BMC\" sol activate >> \"$SOL_OUT\" 2>&1 < /dev/zero & echo $! > \"$SOL_PID_FILE\"")),
-        ),
+        concat(mtcollins1_sol_ipmitool_prefix(user: user), " sol deactivate >/dev/null 2>&1 || true; "),
+        concat(mtcollins1_sol_ipmitool_prefix(user: user), " sol activate >> \"$SOL_OUT\" 2>&1 < /dev/zero & echo $! > \"$SOL_PID_FILE\""),
       )
   }
 }
