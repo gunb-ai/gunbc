@@ -129,11 +129,20 @@ type WorkflowRunList {
 // ids, so (run_id, job_id) alone cannot say which attempt an observation belonged to, and a
 // duration compared across attempts is comparing a cold run to a warm one.
 //
-// A THIRD FIELD WAS HERE AND IS NOT. runner_name was added in the same motion because the vendor's
-// machine name is corroborating - the Biome baseline job reports "depot-1mw2k81zm2" - and then
-// nothing read it, in this change or in the one that consumes the other two. Interesting is not a
-// consumer. It is deleted rather than parked behind a frontier, because a frontier admits a
-// declaration whose consumer LANDS IN A NAMED LATER CHANGE and there is no such change for it.
+// A THIRD FIELD WAS DELETED HERE AND IS BACK, and the reason it is back answers the reason it went.
+// The earlier lane added runner_name because the vendor machine name is corroborating - the Biome
+// baseline job reports "depot-1mw2k81zm2" - found that nothing read it, and deleted it rather than
+// parking it behind a frontier, on the correct ground that interesting is not a consumer. That
+// judgement stands; what changed is the consumer. gunbc.actions_job_observation runner_provenance
+// reads it and is witnessed by execution, and it is the only fold that can separate a GitHub-hosted
+// runner from any other, because labels cannot: a self-hosted runner may be labelled to look exactly
+// like a hosted larger runner, so a census reading labels alone reports a paying hosted customer for
+// a machine in someone's rack.
+//
+// The deleted annotation also supplied the example that corrected that fold. "depot-1mw2k81zm2" is
+// neither GitHub-hosted nor self-hosted; it is a third party's fleet, and a provenance type with two
+// arms would have folded a paying Depot customer into the same arm as a team running its own
+// hardware. Those are different commercial facts and now have different arms.
 // `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object
 // (docs.github.com/en/rest/actions/workflow-jobs, X-GitHub-Api-Version 2026-03-10) publishes
 // `name` as a required string and does not publish a workflow YAML job key or a matrix object.
@@ -141,6 +150,15 @@ type WorkflowRunList {
 // rendered name. The parenthetical of combination VALUES in axis order is the rendering this
 // tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
 // GitHub's Jobs docs state that encoding.
+// runner_name IS THE ONLY FIELD THAT SEPARATES A HOSTED RUNNER FROM A SELF-HOSTED ONE, and it is
+// added here because labels cannot do it: a self-hosted runner may be labelled to look exactly like
+// a GitHub larger runner, so a census reading labels alone can report a paying hosted customer for
+// a machine in someone's rack. GitHub names its own runners "GitHub Actions <n>";
+// gunbc.actions_job_observation runner_provenance is the fold that reads it, and it answers
+// Unread on an empty name rather than guessing self-hosted.
+//
+// It is Optional because the field is absent for a job that never reached a runner, and an absent
+// name is a different fact from a self-hosted one.
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -149,6 +167,7 @@ type WorkflowJobRun {
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   labels: List<String>
+  runner_name: String?
   created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?
@@ -353,6 +372,12 @@ service github.WorkflowRuns {
     }
   }
 
+  // THE FILTER IS A CALLER'S CHOICE AND WAS A LITERAL. "latest" returns only the most recent attempt
+  // of each job, which is the right answer for "what is the current state" and the wrong one for any
+  // census of consumed capacity: a re-run mutates a job's record in place, so the attempts "latest"
+  // drops are execution that really happened and really occupied a runner. A caller measuring
+  // occupancy needs "all"; a caller reading current state needs "latest"; neither is a property of
+  // this operation, so the choice moves to the input with "latest" as the compatible default.
   operation ListJobs {
     input {
       auth_token: Secret
@@ -360,15 +385,17 @@ service github.WorkflowRuns {
       repo: String
       run_id: String
       per_page: Int = max_per_page
+      attempt_filter: String = "latest"
     }
     output {
       result: WorkflowJobRunList
+      outcome: RestOutcome
     }
     readonly
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/jobs",
-      query: { per_page: per_page, filter: "latest" }
+      query: { per_page: per_page, filter: attempt_filter }
     }
     response {
       200 => WorkflowJobRunList

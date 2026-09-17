@@ -67,10 +67,17 @@ fn review_sheet_search_query(app_value: NonEmptyStr) -> String {
 
 // A role that is present but WRONG is its own arm. Observing the writer as a reader is not
 // absence -- creating a second permission would not fix it -- and it is not convergence either.
+// A PRESENT nextPageToken MEANS THIS IS PART OF A LIST, NOT THE LIST. Both Drive operations request
+// the token and both folds ignored it, so a writer absent from page one read as MembershipAbsent and
+// would have granted a permission that may already exist, and a single match on page one read as
+// SheetObservedOne and would have adopted a sheet while another carried the same key on page two.
+// That is the incompleteSearch failure one function away, arrived at by a different route: a partial
+// look folded into a complete observation.
 type DriveMembershipObservation
   = MembershipObserved { role: DrivePermissionRole }
   | MembershipAbsent
   | MembershipUnreadable { reason: NonEmptyStr }
+  | MembershipPageIncomplete { next_page_token: String }
 
 type MembershipGrantPlan {
   drive_id: NonEmptyStr
@@ -115,6 +122,16 @@ fn membership_from_permissions(
   list: DrivePermissionList,
   writer: ServiceAccountEmail,
 ) -> DriveMembershipObservation {
+  match list.nextPageToken {
+    Present { value: t } => MembershipPageIncomplete { next_page_token: t }
+    Absent => membership_from_complete_page(list: list, writer: writer)
+  }
+}
+
+fn membership_from_complete_page(
+  list: DrivePermissionList,
+  writer: ServiceAccountEmail,
+) -> DriveMembershipObservation {
   match list.permissions {
     Absent =>
       MembershipUnreadable {
@@ -147,6 +164,13 @@ fn ensure_drive_membership(
   writer: ServiceAccountEmail,
 ) -> UpsertDecision<MembershipGrantPlan> {
   match observed {
+    MembershipPageIncomplete { next_page_token: _ } =>
+      Refuse {
+        reason: join(
+          ["the permission list for ", drive_id as String, " is one page of several; absence on this page is not absence from the drive"],
+          "",
+        ) as NonEmptyStr
+      }
     MembershipUnreadable { reason: r } => Refuse { reason: r }
     MembershipObserved { role: role } =>
       if membership_role_satisfies(observed: role) {
@@ -198,6 +222,7 @@ type ReviewSpreadsheetObservation
   | SheetAbsent
   | SheetDuplicated { file_ids: List<String> }
   | SheetSearchIncomplete
+  | SheetPageIncomplete { next_page_token: String }
   | SheetSearchUnreadable { reason: NonEmptyStr }
 
 // THE PLAN DOES NOT CARRY THE PROPERTY KEY, because nothing could use it. CreateFile writes the
@@ -214,6 +239,13 @@ type SpreadsheetCreatePlan {
 // search everything" alongside an empty list is NOT an observation of absence. Folding it to
 // absent is how a converge mints a duplicate of a file it simply failed to look for.
 fn spreadsheet_from_file_list(list: DriveFileList) -> ReviewSpreadsheetObservation {
+  match list.nextPageToken {
+    Present { value: t } => SheetPageIncomplete { next_page_token: t }
+    Absent => spreadsheet_from_single_page(list: list)
+  }
+}
+
+fn spreadsheet_from_single_page(list: DriveFileList) -> ReviewSpreadsheetObservation {
   match list.incompleteSearch {
     Present { value: incomplete } =>
       if incomplete { SheetSearchIncomplete } else { spreadsheet_from_complete_list(list: list) }
@@ -261,6 +293,13 @@ fn ensure_review_spreadsheet(
   match observed {
     SheetObservedOne { file_id: _ } => Noop
     SheetSearchUnreadable { reason: r } => Refuse { reason: r }
+    SheetPageIncomplete { next_page_token: _ } =>
+      Refuse {
+        reason: join(
+          ["the file listing for ", drive_id as String, " is one page of several; exactly-one on this page does not establish exactly-one in the drive"],
+          "",
+        ) as NonEmptyStr
+      }
     SheetSearchIncomplete =>
       Refuse {
         reason: join(

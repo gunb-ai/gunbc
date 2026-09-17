@@ -82,6 +82,7 @@ test fn absent_permissions_field_is_unreadable_not_absent() -> Bool {
   ) {
     MembershipUnreadable { reason: r } => string_contains(s: r as String, pattern: "not an empty one")
     MembershipAbsent => false
+    MembershipPageIncomplete { next_page_token: _ } => false
     MembershipObserved { role: _ } => false
   }
 }
@@ -94,6 +95,7 @@ test fn empty_permission_list_is_absence() -> Bool {
     writer: w_writer(),
   ) {
     MembershipAbsent => true
+    MembershipPageIncomplete { next_page_token: _ } => false
     MembershipUnreadable { reason: _ } => false
     MembershipObserved { role: _ } => false
   }
@@ -121,6 +123,7 @@ test fn writer_present_with_unmodeled_role_is_unreadable() -> Bool {
   ) {
     MembershipUnreadable { reason: r } => string_contains(s: r as String, pattern: "unmodeled role")
     MembershipAbsent => false
+    MembershipPageIncomplete { next_page_token: _ } => false
     MembershipObserved { role: _ } => false
   }
 }
@@ -136,6 +139,7 @@ test fn a_different_principal_does_not_count_as_the_writer() -> Bool {
     writer: w_writer(),
   ) {
     MembershipAbsent => true
+    MembershipPageIncomplete { next_page_token: _ } => false
     MembershipUnreadable { reason: _ } => false
     MembershipObserved { role: _ } => false
   }
@@ -254,7 +258,7 @@ test fn complete_search_with_no_files_creates() -> Bool {
     app_value: "ci-prospect-sheet" as NonEmptyStr,
   ) {
     Apply { plan: p } =>
-      (p.app_property_key as String) == (review_sheet_app_property_key as String)
+      (p.app_property_value as String) == "ci-prospect-sheet"
         && (p.drive_id as String) == (w_drive() as String)
     Noop => false
     Refuse { reason: _ } => false
@@ -315,6 +319,7 @@ test fn absent_files_field_is_unreadable_not_absent() -> Bool {
     SheetObservedOne { file_id: _ } => false
     SheetDuplicated { file_ids: _ } => false
     SheetSearchIncomplete => false
+    SheetPageIncomplete { next_page_token: _ } => false
   }
 }
 
@@ -347,4 +352,48 @@ test fn drive_token_env_matches_the_configured_literal() -> Bool {
 // take" rather than "the create wrote a different name".
 test fn app_property_key_matches_the_created_property() -> Bool {
   (review_sheet_app_property_key as String) == "gunbcReviewSheet"
+}
+
+
+// THE PAGINATION WALL, AND ITS CONTROL. Both Drive listings are paged, and a page is not the list:
+// a writer absent from page one is not absent from the drive, and one matching file on page one is
+// not one matching file in the drive. Folding either to a complete observation is the
+// incompleteSearch failure reached by a different route, so a present token refuses.
+test fn a_partial_permission_page_refuses_rather_than_granting() -> Bool {
+  match ensure_drive_membership(
+    policy: EnsureMayApply,
+    observed: membership_from_permissions(
+      list: DrivePermissionList {
+        permissions: Present { value: [] },
+        nextPageToken: Present { value: "PAGE2" }
+      },
+      writer: w_writer(),
+    ),
+    drive_id: w_drive(),
+    writer: w_writer(),
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "one page of several")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn a_partial_file_page_refuses_rather_than_adopting() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "sheet-one")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: Present { value: "PAGE2" }
+      }
+    ),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    app_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "one page of several")
+    Noop => false
+    Apply { plan: _ } => false
+  }
 }

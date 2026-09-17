@@ -19,6 +19,7 @@ import extdeps.transports.rest {
   classify_rest_outcome,
 }
 import gunbc.gcp_service_enablement {
+  service_enablement_from_state_wire,
   ServiceEnablementObservation,
   ServiceObservedEnabled,
   ServiceObservedDisabled,
@@ -193,7 +194,8 @@ fn read_service_enablement(
     service_id: service_id as String,
   )
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded => enablement_from_state(project_id: project_id, service_id: service_id, state: read.state)
+    RestExchangeSucceeded =>
+      service_enablement_from_state_wire(project: project_id, service_id: service_id, state_wire: read.state)
     RestExchangeStatusRefused { status: _, body: _ } =>
       ServiceEnablementUnobserved { project: project_id, service_id: service_id }
     RestExchangeUnreached { cause: _ } =>
@@ -205,23 +207,11 @@ fn read_service_enablement(
   }
 }
 
-// A state string this model does not know is ServiceEnablementStateForeign and never Disabled.
-// Disabled would authorize an enable against a service whose actual state we failed to read.
-fn enablement_from_state(
-  project_id: GcpProjectId,
-  service_id: NonEmptyStr,
-  state: String,
-) -> ServiceEnablementObservation {
-  if state == "ENABLED" {
-    ServiceObservedEnabled { project: project_id, service_id: service_id }
-  } else {
-    if state == "DISABLED" {
-      ServiceObservedDisabled { project: project_id, service_id: service_id }
-    } else {
-      ServiceEnablementStateForeign { project: project_id, service_id: service_id, raw: state }
-    }
-  }
-}
+// THE WIRE DECODER ALREADY EXISTS AND THIS MODULE WAS RE-DECIDING IT. gcp_service_enablement
+// service_enablement_from_state_wire folds the serviceusage state through
+// extdeps.cloud.gcp.serviceusage's own closed sum, so spelling "ENABLED" and "DISABLED" here was a
+// second authority for one wire vocabulary -- and a narrower one, since it knew nothing of
+// STATE_UNSPECIFIED beyond falling through. Consuming the existing fold is the whole repair.
 
 // THE PERFORMING HALF OF ENABLEMENT. Reading a state and classifying it establishes nothing about
 // the API being on; until this existed the enablement step observed without ever acting, which is

@@ -1,0 +1,152 @@
+module test.claim.actions_job_observation_witness
+
+import std.types { Bool, String, Int, NonEmptyStr }
+import gunbc.actions_job_observation {
+  JobTiming,
+  JobExecuted,
+  JobNeverStarted,
+  JobTimingUnread,
+  job_timing,
+  job_occupancy_seconds,
+  total_occupancy_seconds,
+  PrestartReading,
+  prestart_reading,
+  RunnerProvenance,
+  HostedRunnerObserved,
+  ProviderRunnerObserved,
+  FleetRunnerObserved,
+  RunnerProvenanceUnread,
+  runner_provenance,
+  OccupancyFromRunWallClock,
+  OccupancyNotDerivableFromRunDuration,
+  occupancy_from_run_wall_clock,
+  CancellationReading,
+  cancellation_is_waste_evidence,
+}
+
+// THE FIXTURES ARE THE PROBE, not invented numbers. Run 35169573172 on gunb-ai/gunbc, 2026-09-17:
+// run created and started at 01:11:19; the x86 job created 01:11:19, started 01:11:23, completed
+// 01:11:50; the ARM job created 01:11:19, started 01:11:24, completed 01:11:52. Epochs below are
+// seconds-from-01:11:19 so the arithmetic is readable.
+
+fn w_x86() -> JobTiming {
+  job_timing(created_epoch: 0, started_epoch: 4, completed_epoch: 31)
+}
+
+fn w_arm() -> JobTiming {
+  job_timing(created_epoch: 0, started_epoch: 5, completed_epoch: 33)
+}
+
+// THE MEASUREMENT THAT INVALIDATED A HEADLINE NUMBER. The run's wall-clock was 34 seconds; its two
+// jobs occupied 27 + 28 = 55. Anything folding wall-clock as occupancy undercounts by 62% on a
+// two-job run, and by far more on a wide matrix.
+test fn occupancy_exceeds_run_wall_clock_when_jobs_run_in_parallel() -> Bool {
+  let occ = total_occupancy_seconds(timings: [w_x86(), w_arm()])
+  occ == 55 && occ > 34
+}
+
+test fn each_job_occupancy_is_its_own_execution_interval() -> Bool {
+  job_occupancy_seconds(t: w_x86()) == 27 && job_occupancy_seconds(t: w_arm()) == 28
+}
+
+// THE OTHER MEASUREMENT. The run reported zero admission delay in the same second while both jobs
+// waited before a runner took them. A run-level zero cannot speak for the job-level interval.
+test fn jobs_show_prestart_delay_where_the_run_showed_none() -> Bool {
+  match prestart_reading(t: w_x86()) {
+    Present { value: p } => p.seconds == 4
+    Absent => false
+  }
+}
+
+// AND THE INTERVAL REFUSES TO CLAIM A CAUSE. Approval, concurrency locks, dependencies and runner
+// scarcity all land in the same number, and the jobs response separates none of them.
+test fn a_prestart_reading_admits_its_causes_are_unseparated() -> Bool {
+  match prestart_reading(t: w_arm()) {
+    Present { value: p } => p.composed_of_unseparated_causes
+    Absent => false
+  }
+}
+
+// A JOB THAT NEVER STARTED IS NOT A ZERO. Folding it as one loses the count of work that did not
+// run, which is exactly the distinction a cancellation analysis needs.
+test fn a_job_that_never_started_is_its_own_state() -> Bool {
+  match job_timing(created_epoch: 10, started_epoch: 0, completed_epoch: 0) {
+    JobNeverStarted => true
+    JobExecuted { prestart_seconds: _, occupancy_seconds: _ } => false
+    JobTimingUnread { reason: _ } => false
+  }
+}
+
+test fn reversed_timestamps_are_unread_not_negative() -> Bool {
+  match job_timing(created_epoch: 0, started_epoch: 20, completed_epoch: 5) {
+    JobTimingUnread { reason: r } => string_contains(s: r as String, pattern: "completed precedes started")
+    JobExecuted { prestart_seconds: _, occupancy_seconds: _ } => false
+    JobNeverStarted => false
+  }
+}
+
+// RUNNER PROVENANCE FROM THE RUNNER NAME, which is the only externally readable fact that separates
+// hosted from self-hosted -- a label cannot, because a self-hosted runner may be labelled to look
+// exactly like a hosted larger runner.
+test fn a_github_runner_name_establishes_hosted_execution() -> Bool {
+  match runner_provenance(runner_name: "GitHub Actions 1000002380") {
+    HostedRunnerObserved { runner_name: _ } => true
+    ProviderRunnerObserved { runner_name: _, provider: _ } => false
+    FleetRunnerObserved { runner_name: _ } => false
+    RunnerProvenanceUnread => false
+  }
+}
+
+test fn a_fleet_runner_name_is_neither_hosted_nor_a_provider() -> Bool {
+  match runner_provenance(runner_name: "srv1-18-1789595263-2107392") {
+    FleetRunnerObserved { runner_name: _ } => true
+    ProviderRunnerObserved { runner_name: _, provider: _ } => false
+    HostedRunnerObserved { runner_name: _ } => false
+    RunnerProvenanceUnread => false
+  }
+}
+
+// THE EXAMPLE THAT CAME FROM A DELETED ANNOTATION. extdeps.github.workflow_runs recorded that a
+// Depot job reports this runner name. A two-armed provenance would have called it self-hosted,
+// putting a paying provider customer in the arm meant for teams running their own hardware.
+test fn a_provider_machine_name_is_a_provider_not_a_fleet() -> Bool {
+  match runner_provenance(runner_name: "depot-1mw2k81zm2") {
+    ProviderRunnerObserved { runner_name: _, provider: p } => (p as String) == "depot"
+    FleetRunnerObserved { runner_name: _ } => false
+    HostedRunnerObserved { runner_name: _ } => false
+    RunnerProvenanceUnread => false
+  }
+}
+
+test fn an_absent_runner_name_is_unread_not_self_hosted() -> Bool {
+  match runner_provenance(runner_name: "") {
+    RunnerProvenanceUnread => true
+    HostedRunnerObserved { runner_name: _ } => false
+    ProviderRunnerObserved { runner_name: _, provider: _ } => false
+    FleetRunnerObserved { runner_name: _ } => false
+  }
+}
+
+// THE REFUSAL IS REACHABLE AND SAYS WHY. A caller reaching for occupancy from a run's duration
+// finds a reason rather than a number, which is what stops the invalidated fold being rebuilt.
+test fn occupancy_from_run_duration_refuses_with_its_reason() -> Bool {
+  match occupancy_from_run_wall_clock() {
+    OccupancyNotDerivableFromRunDuration { reason: r } =>
+      string_contains(s: r as String, pattern: "critical path")
+        && string_contains(s: r as String, pattern: "undercounts")
+  }
+}
+
+// CANCELLATION RATE IS NOT WASTE. A run cancelled before any job started consumed nothing, and a
+// high rate may mean the team already has correct hygiene.
+test fn cancellation_without_occupancy_is_not_waste_evidence() -> Bool {
+  !cancellation_is_waste_evidence(
+    r: CancellationReading { cancelled_jobs: 31, cancelled_occupancy_seconds: 0, jobs_total: 38 }
+  )
+}
+
+test fn cancellation_with_occupancy_is_waste_evidence() -> Bool {
+  cancellation_is_waste_evidence(
+    r: CancellationReading { cancelled_jobs: 4, cancelled_occupancy_seconds: 1080, jobs_total: 38 }
+  )
+}

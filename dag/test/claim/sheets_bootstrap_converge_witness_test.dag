@@ -3,6 +3,7 @@ module test.claim.sheets_bootstrap_converge_witness
 import std.types { NonEmptyStr, String, Bool, Int }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import gunbc.gcp_service_enablement {
+  service_enablement_from_state_wire,
   ServiceEnablementObservation,
   ServiceObservedEnabled,
   ServiceObservedDisabled,
@@ -17,7 +18,6 @@ import gunbc.sheets_bootstrap_converge {
   ProjectUnreadable,
   project_observation_from_state,
   project_refusal_is_absence,
-  enablement_from_state,
 }
 
 // These claims are over the PURE folds that turn a response into an observation. The performing
@@ -84,7 +84,7 @@ test fn a_500_is_not_absence_either() -> Bool {
 }
 
 test fn enabled_state_reads_as_enabled() -> Bool {
-  match enablement_from_state(project_id: w_project(), service_id: w_service(), state: "ENABLED") {
+  match service_enablement_from_state_wire(project: w_project(), service_id: w_service(), state_wire: "ENABLED") {
     ServiceObservedEnabled { project: _, service_id: s } => (s as String) == "sheets.googleapis.com"
     ServiceObservedDisabled { project: _, service_id: _ } => false
     ServiceEnablementUnobserved { project: _, service_id: _ } => false
@@ -93,7 +93,7 @@ test fn enabled_state_reads_as_enabled() -> Bool {
 }
 
 test fn disabled_state_reads_as_disabled() -> Bool {
-  match enablement_from_state(project_id: w_project(), service_id: w_service(), state: "DISABLED") {
+  match service_enablement_from_state_wire(project: w_project(), service_id: w_service(), state_wire: "DISABLED") {
     ServiceObservedDisabled { project: _, service_id: _ } => true
     ServiceObservedEnabled { project: _, service_id: _ } => false
     ServiceEnablementUnobserved { project: _, service_id: _ } => false
@@ -105,7 +105,7 @@ test fn disabled_state_reads_as_disabled() -> Bool {
 // against a service whose actual state we failed to read -- STATE_UNSPECIFIED is exactly such a
 // value, and it is in the cited enum.
 test fn an_unmodeled_state_is_foreign_not_disabled() -> Bool {
-  match enablement_from_state(project_id: w_project(), service_id: w_service(), state: "STATE_UNSPECIFIED") {
+  match service_enablement_from_state_wire(project: w_project(), service_id: w_service(), state_wire: "STATE_UNSPECIFIED") {
     ServiceEnablementStateForeign { project: _, service_id: _, raw: r } => r == "STATE_UNSPECIFIED"
     ServiceObservedDisabled { project: _, service_id: _ } => false
     ServiceObservedEnabled { project: _, service_id: _ } => false
@@ -114,7 +114,7 @@ test fn an_unmodeled_state_is_foreign_not_disabled() -> Bool {
 }
 
 test fn an_empty_state_string_is_foreign_not_disabled() -> Bool {
-  match enablement_from_state(project_id: w_project(), service_id: w_service(), state: "") {
+  match service_enablement_from_state_wire(project: w_project(), service_id: w_service(), state_wire: "") {
     ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => true
     ServiceObservedDisabled { project: _, service_id: _ } => false
     ServiceObservedEnabled { project: _, service_id: _ } => false
