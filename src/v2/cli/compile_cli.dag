@@ -12,6 +12,9 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { fold_list, length, list_reverse }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_module }
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_assemble_located_reason_from_diagnostics
+}
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
@@ -238,6 +241,18 @@ type CliRunOutcome
 // boundary. Measured on the built binary at gunbc#11507's head -- three different entries
 // (`v2.std.text`, this module, `v2.compiler.compile`) all refused with the same nine words.
 //
+// AND THE HEAD DIAGNOSTIC IS NOT THE CAUSE, WHICH THE FIRST VERSION OF THIS ARM GOT WRONG AND THE
+// BINARY SAID SO. Printing `d.head.reason` answered `parse_grammar_choice_overlap_residue` for all
+// three entries measured -- which is a RESIDUE the parse stage accumulates, not the refusal that
+// stopped the emission, and `v2.test.v2_native_route` already pairs that head against a different
+// `fatal:` symbol on every row it carries. The corpus models this exactly:
+// `v2.compiler.self_host.frontier_probe_assemble_detail` exists because an overlap residue MASKS
+// the cause behind it, and `frontier_probe_assemble_located_reason_from_diagnostics` is its fold --
+// the first non-residue reason, falling back to the head when the chain is residue all the way
+// down. Asking that authority is inhabiting the model (DESIGN section 3b); re-deriving "which
+// diagnostic names the cause" here would have been a second reading of one question, and the first
+// version of this arm demonstrated it would have been the WRONG reading.
+//
 // THE LOCUS PROJECTION IS BORROWED RATHER THAN RECOPIED. `v2.std.lens_verdict`
 // `lens_verdict_diagnostic_locus_module` is already the Locus -> module-name fold over all four
 // arms; its name says lens because that is where it was first needed, not because the projection is
@@ -278,9 +293,12 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                 }
               Rejected { diagnostics: d } =>
                 CliRunRefused {
-                  reason: d.head.reason,
+                  reason: frontier_probe_assemble_located_reason_from_diagnostics(d: d),
                   detail: concat(
-                    concat("the closure did not emit: ", symbol_lexeme(sym: d.head.reason)),
+                    concat(
+                      "the closure did not emit: ",
+                      symbol_lexeme(sym: frontier_probe_assemble_located_reason_from_diagnostics(d: d))
+                    ),
                     concat(" at ", lens_verdict_diagnostic_locus_module(d: d.head))
                   )
                 }
