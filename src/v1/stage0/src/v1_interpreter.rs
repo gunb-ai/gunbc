@@ -13619,6 +13619,99 @@ fn reference_occurrence_binding_census_row_value(
     }
 }
 
+fn resolved_call_edge_census_value(
+    census: crate::cli_run::ResolvedCallEdgeCensus,
+    ctx: &InterpContext,
+) -> Value {
+    match census {
+        crate::cli_run::ResolvedCallEdgeCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ResolvedCallEdgeCensus"),
+            variant_name: ctx.sym("ResolvedCallEdgeCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ResolvedCallEdgeCensus::Observed { edges } => Value::Variant {
+            type_name: ctx.sym("ResolvedCallEdgeCensus"),
+            variant_name: ctx.sym("ResolvedCallEdgeCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("edges"),
+                list_value(
+                    edges
+                        .into_iter()
+                        .map(|edge| Value::Record {
+                            type_name: ctx.sym("ResolvedCallEdge"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (ctx.sym("caller_module"), str_value(edge.caller_module)),
+                                (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
+                                (ctx.sym("callee_module"), str_value(edge.callee_module)),
+                                (ctx.sym("callee_decl"), str_value(edge.callee_decl)),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+    }
+}
+
+fn evaluation_store_address_production_coverage_value(
+    coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
+    ctx: &InterpContext,
+) -> Value {
+    match coverage {
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::Qualified {
+            exact_resolved_roots,
+            zero_candidate_roots,
+        } => Value::Variant {
+            type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+            variant_name: ctx.sym("ProductionCoverageQualified"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("exact_resolved_roots"),
+                    list_value(
+                        exact_resolved_roots
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("zero_candidate_roots"),
+                    list_value(
+                        zero_candidate_roots
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::Refused { root, path, cause } => {
+            Value::Variant {
+                type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+                variant_name: ctx.sym("ProductionCoverageRefused"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("root"), str_value(root)),
+                    (ctx.sym("path"), str_value(path)),
+                    (ctx.sym("cause"), str_value(cause)),
+                ])),
+            }
+        }
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::CandidateOutsideExactResolution {
+            root,
+            path,
+            target_leaf,
+        } => Value::Variant {
+            type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+            variant_name: ctx.sym("CandidateOutsideExactResolution"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("root"), str_value(root)),
+                (ctx.sym("path"), str_value(path)),
+                (ctx.sym("target_leaf"), str_value(target_leaf)),
+            ])),
+        },
+    }
+}
+
 fn reference_occurrence_binding_census_value(
     census: crate::cli_run::ReferenceOccurrenceBindingCensus,
     ctx: &InterpContext,
@@ -20632,6 +20725,54 @@ macro_rules! v1_builtin_arms {
                 let entry = expect_str($positional.get(2).copied(), $name)?;
                 Ok(Some(reference_occurrence_binding_census_value(
                     crate::cli_run::compile_dag_reference_occurrence_binding_census(&paths, &contents, &entry), $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_importer_resolved_call_edges" { "compile_dag_importer_resolved_call_edges" } => {
+                let import_modules = expect_str_list($positional.first().copied(), $name)?;
+                let exclude_substrings = expect_str_list($positional.get(1).copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(2).copied(), $name)?;
+                let target_leaves = expect_str_list($positional.get(3).copied(), $name)?;
+                Ok(Some(resolved_call_edge_census_value(
+                    crate::cli_run::compile_dag_importer_resolved_call_edges(
+                        &import_modules,
+                        &exclude_substrings,
+                        &pool_roots,
+                        &target_leaves,
+                    ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_callsite_resolved_call_edges" { "compile_dag_callsite_resolved_call_edges" } => {
+                let import_modules = expect_str_list($positional.first().copied(), $name)?;
+                let exclude_substrings = expect_str_list($positional.get(1).copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(2).copied(), $name)?;
+                let target_leaves = expect_str_list($positional.get(3).copied(), $name)?;
+                Ok(Some(resolved_call_edge_census_value(
+                    crate::cli_run::compile_dag_callsite_resolved_call_edges(
+                        &import_modules,
+                        &exclude_substrings,
+                        &pool_roots,
+                        &target_leaves,
+                    ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_call_form_leaf_guard" { "compile_dag_call_form_leaf_guard" } => {
+                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
+                let target_leaves = expect_str_list($positional.get(2).copied(), $name)?;
+                let exact_resolved_roots = expect_str_list($positional.get(3).copied(), $name)?;
+                Ok(Some(evaluation_store_address_production_coverage_value(
+                    crate::cli_run::compile_dag_call_form_leaf_guard(
+                        &exclude_substrings,
+                        &pool_roots,
+                        &target_leaves,
+                        &exact_resolved_roots,
+                    ),
+                    $ctx,
                 )))
             },
 
