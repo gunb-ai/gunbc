@@ -17,14 +17,13 @@ import product.data_class {
   PostureRevisionStale,
   DataErasureStanding, ErasureApplied, Redacted,
   admit_data_effect, durable_origin_sink, log_channel_sink, build_output_category, personal_identity_category,
-  classified_map, classified_category, redact, public_fabric_map, public_fabric_posture,
+  classified_map, classified_category, redact, public_fabric_map, public_fabric_posture, data_handling_map,
 }
 import gunbc.fabric_m0_origin_commit {
   job_output_bytes, fabric_durable_origin_route, origin_write_permit_standing,
   PermitAuthorisesThisOrigin, PermitNamesAnotherSink, PermitNamesAnotherOperation,
 }
 import gunbc.principal_projection { oidc_projection }
-import test.fixture.data_handling_map_fixture { fx_map }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -86,6 +85,17 @@ fn fx_row_admitting(category: DeclarationRef, sink: SinkKind, operations: List<D
 fn fx_row(category: DeclarationRef, sink: SinkKind, posture: CompliancePostureRevision) -> DataHandlingRow {
   fx_row_admitting(category: category, sink: sink, operations: [StoreDurably], posture: posture)
 }
+
+fn fx_map(rows: List<DataHandlingRow>) -> DataHandlingMap
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "fx_admitting_map"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_category_with_rows_for_another_sink_only_is_refused_at_the_sink"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_durable_row_on_another_route_is_refused_at_the_route"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_map_is_read"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "admitted_permit_for"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "the_standard_claims_survive_classification_intact"),
+  ]
+  = data_handling_map(authority: fx_ref(name: "fixture_map"), rows: rows)
 
 fn fx_admitting_map() -> DataHandlingMap
   admit_callers: [
