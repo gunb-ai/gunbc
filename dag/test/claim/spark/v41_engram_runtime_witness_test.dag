@@ -4,6 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash, content_hash_of_value }
 import std.measure { byte_size, byte_size_count }
 import std.realization { LocalFilesystem, RemoteNetwork }
@@ -20,7 +21,7 @@ import gunbc.spark.v41_runtime_candidate {
   V41EngramResidencyPartition,
   V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_partition, v41_candidate_recipe,
-  v41_storage_backed_patch_population,
+  v41_storage_backed_patch_population, v41_engram_file_backed_overlay_path,
 }
 import extdeps.toolchain.architecture_profile { BigEndian }
 import extdeps.safetensors.format {
@@ -33,16 +34,18 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingSpec, V41SourceRow, V41FixtureRows, V41PublishedEngramShards, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
-  v41_tensor_slice, v41_source_row, v41_encoding_spec_with_slices, v41_encoding_spec_with_geometry, v41_encoding_spec_override_endianness, v41_encoding_spec_override_rank_map, v41_encoding_spec_override_row_order, v41_encoding_spec_key,
+  v41_tensor_slice, v41_source_row, v41_encoding_spec_with_slices, v41_encoding_spec_with_geometry, v41_encoding_spec_override_endianness, v41_encoding_spec_override_rank_map, v41_encoding_spec_override_row_order, v41_encoding_spec_key, v41_encoding_spec_inputs, v41_row_store_magic,
   v41_row_geometry_of, v41_row_store_spec, v41_layer_index_from_tensor_name,
   v41_transform_fixture, v41_published_transform_standing, v41_identify_row_store,
   v41_tampered_payload_is_unfaithful, v41_dropped_source_row_is_unfaithful, v41_sample_agrees, v41_rank_digest_of,
   v41_encoding_spec_of, v41_encoding_spec_key_of, v41_encoding_digest_of, v41_rank_stores_of, v41_fixture_encoding,
+  v41_place_row, v41_row_store_magic_size,
   V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
   RankMapReservedUninhabited, RowOrderReservedUninhabited, V41RankStoreIdentity,
 }
+import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity, v41_observed_source_identity_of }
 import gunbc.spark.v41_runtime_realized {
-  V41OciImageDigest, V41PatchesConsumedByImage,
+  V41OciImageDigest, V41PatchesConsumedByImage, V41PatchConsumptionEvidence,
   v41_oci_image_digest, v41_residency_limits,
   v41_realized_runtime, V41RuntimeRealized, V41RuntimeRealizationRefused, V41RuntimeRealizationUnestablished,
   v41_realized_candidate, v41_selectable, V41Selectable, V41NotSelectable, v41_specification_is_not_selectable,
@@ -55,11 +58,12 @@ import gunbc.spark.v41_runtime_realized {
 import gunbc.spark.vllm_runtime_image_build { BuiltByThisRun, AdoptedUnderExpectedTag }
 import extdeps.container.oci.digest { oci_content_digest_from_validated_sha256 }
 import gunbc.spark.v41_engram_staging {
-  v41_staging_request, v41_stage, V41StagingVerified, V41StagingRefused, V41StagingUnestablished,
+  v41_staging_request, v41_stage, v41_stage_rank_stores, V41StagingVerified, V41RankStoresVerified, V41StagingRefused, V41StagingUnestablished,
   v41_group_a_staging_standing, v41_staged_matching, v41_staged_with_readback,
-  v41_engram_disk_justification_standing,
+  v41_engram_goes_to_disk_because,
 }
-import extdeps.external_authority { CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
+import gunbc.spark.serving_deployment_selection { id_component_budget_authority }
+import std.decl_ref { declaration_ref_eq }
 
 data w_closed_population: SafetensorsPopulationStanding = safetensors_population_standing(
   members: deepseek_v4_1_flash_engram_index_members,
@@ -73,6 +77,15 @@ data w_closed_population: SafetensorsPopulationStanding = safetensors_population
 
 fn w_sha(c: String) -> Sha256Digest {
   Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
+}
+
+fn w_consumed() -> V41PatchConsumptionEvidence {
+  V41PatchesConsumedByImage {
+    observed: v41_observed_source_identity_of(
+      revision_head: "d2d649e674c75425d2d6975c87eb89fd4d55fff8" as NonEmptyStr,
+      worktree_diff_sha256: w_sha(c: "a"),
+    ),
+  }
 }
 
 type WPatchSpec {
@@ -262,7 +275,9 @@ test fn fixture_correspondence_does_not_establish_the_published_shards() -> Bool
                     Absent => false
                     Present { value: spec } => (spec.component.decl_name as String) == "deepseek_v4_1_engram_component"
                       && match v41_published_transform_standing() {
-                        V41PublishedTransformUnestablished { obligation: o } => (o as String).contains("published Engram shards")
+                        V41PublishedTransformUnestablished { obligation: o } =>
+                          (o as String).contains("published Engram shards")
+                            && (o as String).contains("have not been acquired")
                         V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
                         V41TransformUnfaithful { defects: _ } => false
                       }
@@ -338,7 +353,7 @@ test fn realized_identity_requires_produced_image_digest_and_consumed_patches() 
   let spec = v41_candidate_standing(c: w_default(patches: w_two_patches()))
   match spec.standing {
     V41CandidateKeyed { runtime_artifact: rk, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } =>
-      match v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: AdoptedUnderExpectedTag, consumed: V41PatchesConsumedByImage { patch_digests: [w_sha(c: "p")] }) {
+      match v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: AdoptedUnderExpectedTag, consumed: w_consumed()) {
         V41RuntimeRealizationRefused { defects: d } => any(d, x => (x as String).contains("tag"))
         V41RuntimeRealized { specification_runtime_key: _, image: _, consumed_patches: _, realized_runtime_key: _ } => false
         V41RuntimeRealizationUnestablished { obligations: _ } => false
@@ -355,7 +370,7 @@ test fn only_the_realized_candidate_is_selectable() -> Bool {
       match w_identified() {
         Absent => false
         Present { value: enc } => match v41_selectable(realized: v41_realized_candidate(
-          runtime: v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: BuiltByThisRun, consumed: V41PatchesConsumedByImage { patch_digests: [w_sha(c: "p")] }),
+          runtime: v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: BuiltByThisRun, consumed: w_consumed()),
           row_store: enc,
           spec: spec,
         )) {
@@ -408,28 +423,38 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
         let bad = v41_staged_with_readback(encoding: enc, readback: content_hash_of_value(value: "nope" as NonEmptyStr))
         (match v41_stage(request: req, image_readback: w_image().manifest, rank_readbacks: good, provenance: BuiltByThisRun) {
           V41StagingVerified { request_key: _, image_readback: _, ranks: rs } => length(rs) == 4
+          V41RankStoresVerified { ranks: _ } => false
           V41StagingRefused { defects: _ } => false
           V41StagingUnestablished { obligation: _ } => false
         })
           && (match v41_stage(request: req, image_readback: w_image().manifest, rank_readbacks: bad, provenance: BuiltByThisRun) {
             V41StagingRefused { defects: d } => any(d, x => (x as String).contains("readback"))
             V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
+            V41RankStoresVerified { ranks: _ } => false
+            V41StagingUnestablished { obligation: _ } => false
+          })
+          && (match v41_stage_rank_stores(encoding: enc, rank_readbacks: good) {
+            V41RankStoresVerified { ranks: rs } => length(rs) == 4
+            V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
+            V41StagingRefused { defects: _ } => false
+            V41StagingUnestablished { obligation: _ } => false
+          })
+          && (match v41_stage_rank_stores(encoding: enc, rank_readbacks: bad) {
+            V41StagingRefused { defects: d } => any(d, x => (x as String).contains("readback"))
+            V41RankStoresVerified { ranks: _ } => false
+            V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
             V41StagingUnestablished { obligation: _ } => false
           })
           && (match v41_group_a_staging_standing {
             V41StagingUnestablished { obligation: o } =>
-              (o as String).contains("proud-deer-538")
-                && (o as String).contains("stages around")
-                && (o as String).contains("Fill is Unestablished")
-                && (o as String).contains("v41_engram_disk_justification_standing")
-                && (match v41_engram_disk_justification_standing {
-                  TranscribedUncited { read_obligation: _ } => match cited_figure_read_obligation(standing: v41_engram_disk_justification_standing) {
-                    Present { value: _ } => true
-                    Absent => false
-                  }
-                  CitedToAuthority { authority: _ } => false
-                })
+              (o as String).contains("do not launch")
+                && (o as String).contains("v41_stage_rank_stores")
+                && (o as String).contains("acquisition")
+                && (o as String).contains("candidate_component_budget")
+                && (o as String).contains("engram_pool_relief")
+                && declaration_ref_eq(a: v41_engram_goes_to_disk_because(), b: id_component_budget_authority)
             V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
+            V41RankStoresVerified { ranks: _ } => false
             V41StagingRefused { defects: _ } => false
           })
       }
@@ -473,12 +498,13 @@ test fn an_empty_source_does_not_mint_identified_rank_stores() -> Bool {
     }
 }
 
-test fn the_live_storage_backed_patches_are_not_minted_from_transcribed_hex() -> Bool {
+test fn the_live_storage_backed_patches_are_digestfile_of_committed_bytes() -> Bool {
   match v41_storage_backed_patch_population() {
-    V41PatchesObserved { patches: _, partition: _ } => false
+    V41PatchesObserved { patches: ps, partition: _ } =>
+      length(ps) == 2
+        && all(ps, p => (p.path as String).contains("d2d649e6"))
     V41PatchesAbsentByObservation => false
-    V41PatchesUnestablished { obligation: o } =>
-      (o as String).contains("DigestFile") && (o as String).contains("upsert_decision")
+    V41PatchesUnestablished { obligation: _ } => false
   }
 }
 
@@ -570,4 +596,25 @@ test fn the_encoding_spec_key_moves_with_endianness() -> Bool {
   let a = v41_encoding_spec_key(spec: base)
   let b = v41_encoding_spec_key(spec: v41_encoding_spec_override_endianness(spec: base, endianness: BigEndian))
   serialize_content_hash(hash: a) as String != serialize_content_hash(hash: b) as String
+}
+
+test fn encoding_identity_includes_the_row_store_magic_open_checks() -> Bool {
+  let spec = v41_encoding_spec_with_slices(partition: v41_candidate_partition, slices: [v41_tensor_slice(name: "layers.1.engram.embed.weight" as NonEmptyStr, global_rows: 8, layer: 1)])
+  any(v41_encoding_spec_inputs(spec: spec), i => (i.identity as String) == "magic")
+    && (v41_row_store_magic as String).starts_with(prefix: "ENGR1")
+}
+
+test fn overlay_magic_cites_the_row_store_authority() -> Bool {
+  let local = Filesystem.Read(path: v41_engram_file_backed_overlay_path as String)
+  local.success
+    && (local.content as String).contains("v41_row_store_magic")
+    && (local.content as String).contains("expected.magic")
+    && !(local.content as String).contains("MAGIC = b")
+}
+
+test fn placed_offsets_start_after_row_store_magic() -> Bool {
+  match v41_place_row(row: w_row(i: 0), spec: w_tiny_spec(), prior_on_rank: 0) {
+    Absent => false
+    Present { value: p } => byte_size_count(b: p.offset) == byte_size_count(b: v41_row_store_magic_size())
+  }
 }

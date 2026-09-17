@@ -55,7 +55,12 @@ import gunbc.managed_directory {
   managed_directory_permissions,
   srv1_attempt_state_directory,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  srv1_lab_dashboard_instance,
+  srv1_live_dashboard_instance,
+  dashboard_instance_event_log_root,
+}
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
   ScopedRemovalUnobserved,
@@ -1187,6 +1192,15 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
     && owned_step_index(steps: steps, kind: GunbcSourceTree) < owned_step_index(steps: steps, kind: AttemptStateRoot)
     && owned_step_index(steps: steps, kind: AttemptStateRoot) < owned_step_index(steps: steps, kind: SystemdUnit)
     && member_fragment_text(member: ServiceProcess, plan: full) == ""
+}
+
+test fn fabric_event_log_root_joins_the_directory_member_roster() -> Bool {
+  let spec = deployment_spec_srv1()
+  let expected = dashboard_instance_event_log_root(instance: srv1_live_dashboard_instance()) as String
+  any(deployment_member_roster(spec: spec), m => match m {
+    DirectoryRoot { path } => (path as String) == expected
+    _ => false
+  })
 }
 
 // A BINARY-ONLY PLAN INSTALLS THE EXECUTABLE AND RESTARTS, AND DOES NOT PUBLISH THE TREE: the

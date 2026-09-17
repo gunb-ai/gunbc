@@ -139,8 +139,7 @@ fn w_refused_with(s: V41CandidateVerdict, fragment: String) -> Bool {
 test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bool {
   match v41_candidate().standing {
     V41CandidateUnestablished { obligations: o } =>
-      any(o, x => (x as String).contains("DigestFile") && (x as String).contains("upsert_decision"))
-        && any(o, x => (x as String).contains("weight manifest"))
+      any(o, x => (x as String).contains("weight manifest"))
         && any(o, x => (x as String).contains("tokenizer"))
         && any(o, x => (x as String).contains("published-shard row-store"))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
@@ -510,7 +509,7 @@ test fn observed_patches_do_not_mint_a_patched_source_tree() -> Bool {
     V41PatchApplicationRefused { defects: _ } => false
   })
     && (match v41_patch_application_standing(source: vllm_d2d649e6_revision, patches: w_two_patches()) {
-      V41PatchApplicationUnestablished { obligation: o } => (o as String).contains("no apply step")
+      V41PatchApplicationUnestablished { obligation: o } => (o as String).contains("upsert_decision")
       V41VanillaSourceAtRevision { revision: _ } => false
       V41PatchApplicationRefused { defects: _ } => false
     })
@@ -520,7 +519,7 @@ test fn observed_patches_do_not_mint_a_patched_source_tree() -> Bool {
       V41PatchApplicationUnestablished { obligation: _ } => false
     })
     && (match v41_storage_patch_application_standing() {
-      V41PatchApplicationUnestablished { obligation: o } => (o as String).contains("DigestFile")
+      V41PatchApplicationUnestablished { obligation: o } => (o as String).contains("upsert_decision")
       V41VanillaSourceAtRevision { revision: _ } => false
       V41PatchApplicationRefused { defects: _ } => false
     })

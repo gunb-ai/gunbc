@@ -601,7 +601,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           long: "scope",
           value: CliTextValue { text_default: Present { value: "scope:full-host" } },
           arity: CliRequired,
-          doc: ["Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:spark-serving"],
+          doc: ["Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:live-deploy | scope:spark-serving"],
           emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {

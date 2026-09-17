@@ -1,0 +1,45 @@
+module gunbc.rung_drop.owner_deletion_follow_up_charge_removed
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 2026-09-16 beside gunbc#11481, which removed BOTH merge_group follow-up arms of
+// wave_admission_refusal on an operator ruling that mandating a deletion follow-up pull request is
+// not worth its cost. The sibling row consumed_row_owner_charge_unenforced covers the removal of
+// ConsumedRowOwnerChargeBypassed. THIS ROW COVERS THE OTHER ONE, OwnerFollowUpAbsent, WHICH AN
+// EARLIER REVISION OF THAT CHANGE MISCLASSIFIED AS A DECORATION AND THEREFORE DID NOT DECLARE.
+//
+// WHY THAT CLASSIFICATION WAS WRONG (review 67014). DESIGN section 4b defines a decoration as a
+// check whose forbidden state cannot be expressed anywhere the check could run -- permanently green
+// BY CONSTRUCTION. OwnerFollowUpAbsent was not that. Its forbidden state was expressible and was
+// refused, by a test in src/v1/stage0/tests/namespace_wave_admission.rs that is still enrolled on
+// this branch, inverted to assert the arm is gone. That its GREEN
+// established only the weaker property -- that digits were typed, never that they name an open or
+// deleting pull request -- LOWERS THE CLASS THE CHECK COVERED. It does not make the check
+// permanently green, and a weak wall is still a wall: removing it drops the narrow class -- an
+// owner lands a used row carrying no follow-up number at all -- from mechanically preventable.
+//
+// SO TWO CLASSES FELL, AND THEY GET TWO ROWS RATHER THAN ONE WIDENED POPULATION, BECAUSE THEIR
+// RESTORATION TRIGGERS DIFFER. The sibling's coverage returns when a required run can adjudicate a
+// consumed row at all; this one's returns only when the charge is worth making -- see the trigger.
+
+data owner_deletion_follow_up_charge_removed: RungDrop = RungDrop {
+  identity: "owner_deletion_follow_up_charge_removed" as NonEmptyStr,
+
+  subject: "a used transition-admission row carrying no deletion_follow_up is refused on the required run of the very change that uses it",
+
+  declared: "2026-09-16",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "used transition-admission rows whose owning change authored no deletion_follow_up, on that owning change's own merge_group composition"
+    ],
+    restoration_trigger: "THE CAPABILITY: a required run that adjudicates a deletion_follow_up against WHAT IT NAMES -- resolving the authored number to a pull request that exists and is open or deleting the row -- rather than against the fact that digits were typed. Nothing smaller retires this row, AND IN PARTICULAR RE-ADDING THE REMOVED ARM DOES NOT. That arm's admitting side was satisfied by any digits, so restoring it would restore an advance commitment nobody can check while charging every owner for it, which is the cost the operator ruling priced out; the coverage that is missing is not the refusal but the referent behind it. Nor does authoring follow-up numbers on the rows standing today, which changes the population and not the coverage. What remains meanwhile is a RECORD and not a refusal: deletion_follow_up is still carried on every row and used_without_follow_up is still counted in the refusal message when some other arm produces one.",
+  }
+}
