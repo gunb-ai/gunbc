@@ -35,23 +35,44 @@ shape is a composition, not a redefinition:
 
     ConfigurationStanding = ConfigurationConverged | ConfigurationDiverged | ConfigurationIndeterminate
     ThroughputAssessment  = GoalSatisfied | GoalDiverged | GoalIndeterminate | GoalAssessmentRefused
-    OperationalQualification
-      = RealizationQualified { configuration_receipt, throughput_assessment }
-      | RealizationUnqualified { configuration: ConfigurationStanding, throughput: ThroughputAssessment }
+    ConfigurationConvergedReceipt   -- mintable ONLY by matching ConfigurationConverged
+    ThroughputGoalSatisfiedReceipt  -- mintable ONLY by matching GoalSatisfied
 
-The negative arm CARRIES BOTH STANDINGS rather than naming one, and an earlier revision got this
-wrong by offering `ConfigurationNotConverged | ThroughputNotQualified` as alternatives. The two
-standings are independent: a realization can be configuration-diverged AND throughput-diverged at the
-same time, and a sum that makes the reader pick one discards half of what was observed -- the same
-collapse this document objects to everywhere else, committed in its own carrier. `RealizationQualified`
-is the conjunction and is mintable only when both sides are positive; everything else reports both.
+    type OperationalQualification sole_constructor
+      = RealizationQualified {
+          configuration: ConfigurationConvergedReceipt
+          throughput:    ThroughputGoalSatisfiedReceipt
+        }
+      | RealizationNotQualified {
+          configuration: ConfigurationStanding
+          throughput:    ThroughputAssessment
+        }
+
+**Two revisions of this carrier were wrong, in opposite directions, and both are worth keeping.** The
+first offered `ConfigurationNotConverged | ThroughputNotQualified` as alternative negative arms, which
+forces a reader to pick one when a realization can be configuration-diverged AND throughput-diverged
+at once -- so the negative arm now carries both complete standings, and no priority fold can lose
+evidence when both are non-positive.
+
+The second declared `RealizationQualified { configuration_receipt, throughput_assessment }` with the
+assessment typed as the whole coproduct. That field proves only that SOME assessment is present, so
+`RealizationQualified { throughput_assessment: GoalDiverged { .. } }` is constructible and the carrier
+certifies nothing. `sole_constructor` confines construction to one module; it does not refine which arm
+of a supplied coproduct is present. The refinement has to be in the TYPE: a receipt mintable only by
+matching the satisfied arm. That error is precisely the one §4b names -- *a brand, wrapper or
+`Validated<T>` is cosmetic until construction and acceptance enforce the distinction* -- committed in
+the paragraph that cites it.
+
+The structural rung is earned only when this implication holds by construction, and not before:
+
+    RealizationQualified  =>  ConfigurationConverged  AND  GoalSatisfied
 
 This also repairs the rung argument. A configuration convergence with no throughput result is a
-legitimate value, not a defect. The invalid state to remove is the positive carrier
-`RealizationQualified` minted with an absent assessment — and THAT can be made **structurally
-impossible**, because a sole-constructor carrier cannot be built without its assessment. Enrolling
-every production route remains mechanically preventable. Two different rungs for two different
-claims, which is what §4b(1) asks for.
+legitimate value, not a defect. The invalid state to remove is a `RealizationQualified` that does not
+imply both positives — and THAT is structurally impossible once the two receipts are refinement types,
+because no unsatisfied assessment can be carried into the positive arm. Enrolling every production
+route remains mechanically preventable. Two different rungs for two different claims, which is what
+§4b(1) asks for.
 
 ## Why this is one interface (DESIGN §2, horizontal)
 
