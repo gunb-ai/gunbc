@@ -20,17 +20,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // dual-socket profile against a vendor-grounded row rather than against prose. An arm with no
 // instantiation carries a dissolution trigger: if no asset cites it once the procurement gate
 // closes either way, delete the arm.
-// AmpereMtJade is the OCP/Ampere dual-socket Altra motherboard identity. Wiwynn chassis
-// manufacture is a separate product (extdeps.wiwynn.sv328r). Fitted PSU wattage, NIC occupancy,
-// and BMC firmware family are unit observations, not this coproduct. No BaseboardCatalogRow is
-// authored here because that row currently requires a BmcFirmwareFamily and Mt. Jade's cited
-// options are AMI MegaRAC OR OpenBMC. Named consumer after this lands on public main:
-// strategy.mt_jade_held_specimen / strategy.mt_jade_class in gunbc-private.
 type BaseboardModel
   = AsrockRackAltrad8ud1l2t
   | GigabyteMp72Hb0
   | AmpereMtCollins
-  | AmpereMtJade
 
 type BaseboardCatalogRow {
   model: BaseboardModel
