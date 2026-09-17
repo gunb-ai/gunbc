@@ -642,8 +642,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "ingest_then_emit_typescript_selector_identity_holds",
       "emit_ingest_typescript_perturbed_frontier_fails_closed",
       "ingest_typescript_forward_fails_closed_off_frontier_holds",
-      "emit_typescript_backward_fails_closed_on_foreign_emitted_holds",
-      "typescript_same_language_parse_bridge_holds"
+      "emit_typescript_backward_fails_closed_on_foreign_emitted_holds"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/execution/eval_bind_non_bind_interpreter_rejects_test.dag", functions: ["eval_bind_node_eval_rejects_value_interpreter_holds"] },
