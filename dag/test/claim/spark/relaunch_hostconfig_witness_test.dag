@@ -4,6 +4,13 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import test.fixture.glm_group_b_captures {
+  glm_group_b_capture_path, glm_group_b_narrow_path,
+  glm_group_b_inspect_roce_rank0, glm_group_b_inspect_roce_rank1,
+  glm_group_b_narrow_socket_rank0_hostconfig, glm_group_b_narrow_socket_rank1_hostconfig,
+  glm_group_b_narrow_roce_rank0_hostconfig, glm_group_b_narrow_roce_rank1_hostconfig,
+}
+
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.docker.container_inspect {
@@ -26,7 +33,6 @@ import extdeps.docker.container_inspect {
 // daemon answering a narrower question, which is a different thing from a file cut down until it
 // parses cheaply -- and the difference is the whole reason the provenance below is modelled rather
 // than assumed.
-data narrow_root: String = "artifacts/spark/glm-group-b-2026-09-16/narrow/"
 
 // ── PROVENANCE IS A FIELD, BECAUSE THESE TWO HALVES ARE NOT ONE KIND OF EVIDENCE ──────────────
 //
@@ -52,7 +58,7 @@ type NarrowCapture sole_constructor {
 }
 
 data socket_rank0_hostconfig: NarrowCapture = NarrowCapture {
-  file: "socket-rank0-hostconfig.json",
+  file: glm_group_b_narrow_socket_rank0_hostconfig,
   provenance: DaemonStdout {
     command: "docker inspect glm-native-tp4-socket --format (json .HostConfig as a Go template)" as NonEmptyStr,
     observed_on: "192.168.1.236, 2026-09-17" as NonEmptyStr,
@@ -60,7 +66,7 @@ data socket_rank0_hostconfig: NarrowCapture = NarrowCapture {
 }
 
 data socket_rank1_hostconfig: NarrowCapture = NarrowCapture {
-  file: "socket-rank1-hostconfig.json",
+  file: glm_group_b_narrow_socket_rank1_hostconfig,
   provenance: DaemonStdout {
     command: "docker inspect glm-native-tp4-socket --format (json .HostConfig as a Go template)" as NonEmptyStr,
     observed_on: "192.168.1.237, 2026-09-17" as NonEmptyStr,
@@ -68,17 +74,17 @@ data socket_rank1_hostconfig: NarrowCapture = NarrowCapture {
 }
 
 data roce_rank0_hostconfig: NarrowCapture = NarrowCapture {
-  file: "roce-rank0-hostconfig.json",
+  file: glm_group_b_narrow_roce_rank0_hostconfig,
   provenance: SelectedFromArchivedCapture {
-    source_capture: "artifacts/spark/glm-group-b-2026-09-16/inspect-roce-rank0.json" as NonEmptyStr,
+    source_capture: glm_group_b_capture_path(name: glm_group_b_inspect_roce_rank0) as NonEmptyStr,
     selected_subtree: "HostConfig" as NonEmptyStr,
   },
 }
 
 data roce_rank1_hostconfig: NarrowCapture = NarrowCapture {
-  file: "roce-rank1-hostconfig.json",
+  file: glm_group_b_narrow_roce_rank1_hostconfig,
   provenance: SelectedFromArchivedCapture {
-    source_capture: "artifacts/spark/glm-group-b-2026-09-16/inspect-roce-rank1.json" as NonEmptyStr,
+    source_capture: glm_group_b_capture_path(name: glm_group_b_inspect_roce_rank1) as NonEmptyStr,
     selected_subtree: "HostConfig" as NonEmptyStr,
   },
 }
@@ -92,7 +98,7 @@ type CaptureRead
   | CaptureUnread { path: String }
 
 fn read_capture(c: NarrowCapture) -> CaptureRead {
-  let path = join([narrow_root, c.file], "")
+  let path = glm_group_b_narrow_path(name: c.file)
   let read = Filesystem.Read(path: path)
   if read.success { CaptureBytes { text: read.content } } else { CaptureUnread { path: path } }
 }

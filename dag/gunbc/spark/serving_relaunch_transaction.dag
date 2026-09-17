@@ -1507,11 +1507,30 @@ fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
 }
 
 // ── THE WHOLE TRANSACTION ─────────────────────────────────────────────────────────────────────
+//
+// AN EMPTY ROSTER IS NOT A RELAUNCH THAT SUCCEEDED, and it is the first thing this fold asks. Every
+// other guard compares the captured population against the planned one, and at zero every one of
+// those comparisons is vacuously satisfied: no cause is raised, the actuation folds are no-ops, the
+// verification folds over nothing and produces no causes, and the function falls through to
+// ArmCommitted -- printing "COMMITTED: all 0 ranks flipped transport" and exiting successfully. That
+// is a convergence minted from ZERO observations by a module whose entire thesis is that a commit
+// comes from an independent reading, and DESIGN section 3d names it exactly: a successful actuation
+// return cannot mint convergence.
+//
+// IT IS REACHABLE WITHOUT ANYONE WRITING `[]`. The roster is built by FILTERING the observed fabric
+// rows, so a group whose hosts stop being observed produces an empty list the first time that
+// happens -- which is the same "I could not tell" that the launch planner already refuses to read as
+// "TCP is fine", arriving one layer down and wearing a success.
 fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
   uses net: Network
 {
   let captured = capture_arm(ranks: ranks)
-  if count(captured.causes) > 0 {
+  if count(ranks) == 0 {
+    ArmRefusedBeforeActuation {
+      step: StepCaptureIncumbent,
+      causes: ["this arm has no ranks to relaunch; an empty roster is a group whose members are not observed, not a relaunch with nothing left to do" as NonEmptyStr],
+    }
+  } else if count(captured.causes) > 0 {
     ArmRefusedBeforeActuation { step: StepProveDelta, causes: captured.causes }
   } else if count(captured.captures) != count(ranks) {
     ArmRefusedBeforeActuation {

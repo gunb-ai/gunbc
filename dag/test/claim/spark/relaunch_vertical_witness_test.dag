@@ -27,6 +27,11 @@ import extdeps.vllm.engine_args {
 }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import test.fixture.glm_group_b_captures {
+  glm_group_b_capture_path, glm_group_b_narrow_path,
+  glm_group_b_nccl_socket_rank0, glm_group_b_nccl_roce_rank0, glm_group_b_kv_roce_rank0,
+}
+
 
 // ── THIS MODULE HOLDS THE ROWS WHOSE SUBJECT IS TEXT, AND ITS SIBLING HOLDS THE REST ──────────
 //
@@ -50,7 +55,6 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // answers: `Devices=[] CapAdd=null Ulimits=[]` against a mapped device, a canonicalized capability
 // and an unlimited memlock; `Using network Socket` against `Using network IB`. A fold that answered
 // the same for both would pass a single-sided check and establish nothing.
-data capture_root: String = "artifacts/spark/glm-group-b-2026-09-16/"
 
 // THE HELPER IS SHARED PROSE AND IS COPIED DELIBERATELY, because two modules that each read the same
 // captures must each say what they do when a capture is not there -- and what they do is REFUSE.
@@ -65,7 +69,7 @@ type CaptureRead
   | CaptureUnread { path: String }
 
 fn capture(name: String) -> CaptureRead {
-  let path = join([capture_root, name], "")
+  let path = glm_group_b_capture_path(name: name)
   let read = Filesystem.Read(path: path)
   if read.success { CaptureBytes { text: read.content } } else { CaptureUnread { path: path } }
 }
@@ -80,9 +84,9 @@ fn with_capture(name: String, f: fn(String) -> Bool) -> Bool {
 }
 
 data capture_names_read_here: List<String> = [
-  "nccl-socket-rank0.txt",
-  "nccl-roce-rank0.txt",
-  "kv-roce-rank0.txt",
+  glm_group_b_nccl_socket_rank0,
+  glm_group_b_nccl_roce_rank0,
+  glm_group_b_kv_roce_rank0,
 ]
 
 // ── NO ROW MAY BE GREEN WHILE A CAPTURE IS MISSING ────────────────────────────────────────────
@@ -110,9 +114,9 @@ fn capture_text(name: String) -> String {
   }
 }
 
-fn nccl_socket_rank0() -> String { capture_text(name: "nccl-socket-rank0.txt") }
-fn nccl_roce_rank0() -> String { capture_text(name: "nccl-roce-rank0.txt") }
-fn kv_roce_rank0() -> String { capture_text(name: "kv-roce-rank0.txt") }
+fn nccl_socket_rank0() -> String { capture_text(name: glm_group_b_nccl_socket_rank0) }
+fn nccl_roce_rank0() -> String { capture_text(name: glm_group_b_nccl_roce_rank0) }
+fn kv_roce_rank0() -> String { capture_text(name: glm_group_b_kv_roce_rank0) }
 
 // ── NCCL: THE VERDICT THAT HAD NO PRODUCER ────────────────────────────────────────────────────
 //

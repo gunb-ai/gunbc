@@ -45,6 +45,14 @@ import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import extdeps.docker.cli { DockerCreateSpec }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import test.fixture.glm_group_b_captures {
+  glm_group_b_capture_path, glm_group_b_narrow_path,
+  glm_group_b_inspect_socket_rank0, glm_group_b_inspect_socket_rank1,
+  glm_group_b_inspect_roce_rank0, glm_group_b_inspect_roce_rank1,
+  glm_group_b_nccl_socket_rank0, glm_group_b_nccl_roce_rank0,
+  glm_group_b_narrow_roce_rank0_hostconfig,
+}
+
 
 // ── THIS MODULE DOES NOT RUN ON THE MERGE PATH, AND HERE IS EXACTLY WHAT THAT COSTS ───────────
 //
@@ -133,7 +141,6 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // answers: `Devices=[] CapAdd=null Ulimits=[]` against a mapped device, a canonicalized capability
 // and an unlimited memlock; `Using network Socket` against `Using network IB`. A fold that answered
 // the same for both would pass a single-sided check and establish nothing.
-data capture_root: String = "artifacts/spark/glm-group-b-2026-09-16/"
 
 // THE HELPER IS SHARED PROSE AND IS COPIED DELIBERATELY, because two modules that each read the same
 // captures must each say what they do when a capture is not there -- and what they do is REFUSE.
@@ -148,7 +155,7 @@ type CaptureRead
   | CaptureUnread { path: String }
 
 fn capture(name: String) -> CaptureRead {
-  let path = join([capture_root, name], "")
+  let path = glm_group_b_capture_path(name: name)
   let read = Filesystem.Read(path: path)
   if read.success { CaptureBytes { text: read.content } } else { CaptureUnread { path: path } }
 }
@@ -163,12 +170,12 @@ fn with_capture(name: String, f: fn(String) -> Bool) -> Bool {
 }
 
 data capture_names_read_here: List<String> = [
-  "inspect-socket-rank0.json",
-  "inspect-socket-rank1.json",
-  "inspect-roce-rank0.json",
-  "inspect-roce-rank1.json",
-  "nccl-socket-rank0.txt",
-  "nccl-roce-rank0.txt",
+  glm_group_b_inspect_socket_rank0,
+  glm_group_b_inspect_socket_rank1,
+  glm_group_b_inspect_roce_rank0,
+  glm_group_b_inspect_roce_rank1,
+  glm_group_b_nccl_socket_rank0,
+  glm_group_b_nccl_roce_rank0,
 ]
 
 // ── NO ROW MAY BE GREEN WHILE A CAPTURE IS MISSING ────────────────────────────────────────────
@@ -196,12 +203,12 @@ fn capture_text(name: String) -> String {
   }
 }
 
-fn inspect_socket_rank0() -> String { capture_text(name: "inspect-socket-rank0.json") }
-fn inspect_socket_rank1() -> String { capture_text(name: "inspect-socket-rank1.json") }
-fn inspect_roce_rank0() -> String { capture_text(name: "inspect-roce-rank0.json") }
-fn inspect_roce_rank1() -> String { capture_text(name: "inspect-roce-rank1.json") }
-fn nccl_socket_rank0() -> String { capture_text(name: "nccl-socket-rank0.txt") }
-fn nccl_roce_rank0() -> String { capture_text(name: "nccl-roce-rank0.txt") }
+fn inspect_socket_rank0() -> String { capture_text(name: glm_group_b_inspect_socket_rank0) }
+fn inspect_socket_rank1() -> String { capture_text(name: glm_group_b_inspect_socket_rank1) }
+fn inspect_roce_rank0() -> String { capture_text(name: glm_group_b_inspect_roce_rank0) }
+fn inspect_roce_rank1() -> String { capture_text(name: glm_group_b_inspect_roce_rank1) }
+fn nccl_socket_rank0() -> String { capture_text(name: glm_group_b_nccl_socket_rank0) }
+fn nccl_roce_rank0() -> String { capture_text(name: glm_group_b_nccl_roce_rank0) }
 
 fn decoded(text: String) -> ContainerInspect? {
   match container_inspect_from_stdout(stdout: text) {
@@ -689,7 +696,7 @@ test fn w_the_narrow_roce_selection_agrees_with_the_archived_document() -> Bool 
     && with_decoded(text: inspect_roce_rank0(), f: full =>
       match full.host_config {
         Absent => false
-        Present { value: archived } => host_config_agrees(archived: archived, narrow: "roce-rank0-hostconfig.json")
+        Present { value: archived } => host_config_agrees(archived: archived, narrow: glm_group_b_narrow_roce_rank0_hostconfig)
       })
 }
 
@@ -707,7 +714,7 @@ fn host_config_agrees(archived: HostConfig, narrow: String) -> Bool {
 }
 
 fn narrow_host_config(file: String) -> HostConfig? {
-  let read = Filesystem.Read(path: join(["artifacts/spark/glm-group-b-2026-09-16/narrow/", file], ""))
+  let read = Filesystem.Read(path: glm_group_b_narrow_path(name: file))
   if !read.success {
     none
   } else {

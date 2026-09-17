@@ -1,0 +1,43 @@
+module test.fixture.glm_group_b_captures
+
+import std.types { List, NonEmptyStr, String }
+
+// ── ONE AUTHORITY FOR WHERE THE GROUP B CAPTURES LIVE ─────────────────────────────────────────
+//
+// THREE MODULES READ THESE FILES and each had spelled the directory itself, which is one fact with
+// three independently editable homes -- the nicknaming DESIGN section 3 opens with. A move like the
+// one that produced this module (`test/claim/spark/` to `test/claim/long/`) is exactly the event that
+// leaves two of three spellings behind, and this corpus spends a standing rule on citations that stop
+// resolving for precisely that reason.
+//
+// THE FILE NAMES ARE HERE TOO, not only the roots, because a name is the same kind of fact: a reader
+// asking which captures exist should find the answer in one place rather than by grepping three
+// witness modules and hoping the lists agree.
+data glm_group_b_capture_root: String = "artifacts/spark/glm-group-b-2026-09-16/"
+data glm_group_b_narrow_root: String = "artifacts/spark/glm-group-b-2026-09-16/narrow/"
+
+fn glm_group_b_capture_path(name: String) -> String {
+  join([glm_group_b_capture_root, name], "")
+}
+
+fn glm_group_b_narrow_path(name: String) -> String {
+  join([glm_group_b_narrow_root, name], "")
+}
+
+// THE WHOLE-DOCUMENT CAPTURES, verbatim `docker inspect` stdout per incarnation and rank.
+data glm_group_b_inspect_socket_rank0: String = "inspect-socket-rank0.json"
+data glm_group_b_inspect_socket_rank1: String = "inspect-socket-rank1.json"
+data glm_group_b_inspect_roce_rank0: String = "inspect-roce-rank0.json"
+data glm_group_b_inspect_roce_rank1: String = "inspect-roce-rank1.json"
+
+// THE NCCL AND ENGINE TEXT CAPTURES. The NCCL files are FILTERED output -- the grep is recorded in
+// the directory's README -- so a consumer must not read them as the complete output of the command.
+data glm_group_b_nccl_socket_rank0: String = "nccl-socket-rank0.txt"
+data glm_group_b_nccl_roce_rank0: String = "nccl-roce-rank0.txt"
+data glm_group_b_kv_roce_rank0: String = "kv-roce-rank0.txt"
+
+// THE NARROW CAPTURES, the daemon answering for one subtree rather than the whole object.
+data glm_group_b_narrow_socket_rank0_hostconfig: String = "socket-rank0-hostconfig.json"
+data glm_group_b_narrow_socket_rank1_hostconfig: String = "socket-rank1-hostconfig.json"
+data glm_group_b_narrow_roce_rank0_hostconfig: String = "roce-rank0-hostconfig.json"
+data glm_group_b_narrow_roce_rank1_hostconfig: String = "roce-rank1-hostconfig.json"
