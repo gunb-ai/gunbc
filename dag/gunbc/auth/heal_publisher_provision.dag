@@ -7,7 +7,7 @@ import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
-  reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in
+  reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in, gcp_policy_of
 }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -36,8 +36,6 @@ import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
 // case the shape below is built for: a 409 is carried as an unverified presence, the reconcilable
 // step still runs, and the run refuses at the end naming what nobody read -- rather than aborting at
 // the first create and leaving the rest to be done by hand.
-
-data no_gcp_bindings: List<GcpBinding> = []
 
 fn rest_refusal_text(o: RestOutcome) -> String {
   match o {
@@ -89,17 +87,7 @@ fn bind_publisher_impersonation(token: Secret) -> ProcessExit
   if !rest_ok(o: observed.outcome) {
     exit_failure(reason: concat("heal publisher provision: the service account's policy could not be read: ", rest_refusal_text(o: observed.outcome)))
   } else {
-    // ABSENT IS EMPTY, AND THE DECISION IS MADE HERE BECAUSE IT IS OURS TO MAKE. A service account
-    // created moments ago has no policy: the API omits both fields rather than sending an empty
-    // array, and extdeps models that omission faithfully instead of guessing. Reading absence as
-    // "no bindings" is correct for THIS caller -- we are about to add the first one -- and reading
-    // an absent version as 1 matches the API's own default. A caller auditing an existing policy
-    // would be entitled to treat the same absence as a reason to stop instead.
-    let observed_policy = GcpPolicy {
-      bindings: match observed.bindings { Absent => no_gcp_bindings  Present { value: b } => b },
-      etag: observed.etag,
-      version: match observed.version { Absent => 1  Present { value: v } => v }
-    }
+    let observed_policy = gcp_policy_of(bindings: observed.bindings, etag: observed.etag, version: observed.version)
     match reconcile_gcp_policy(
       observed: observed_policy,
       desired_owned: [heal_publisher_impersonation_cell()],
@@ -122,7 +110,7 @@ fn bind_publisher_impersonation(token: Secret) -> ProcessExit
         )
         if !rest_ok(o: written.outcome) {
           exit_failure(reason: concat("heal publisher provision: the service account's policy could not be written: ", rest_refusal_text(o: written.outcome)))
-        } else if impersonation_binding_present(policy: GcpPolicy { bindings: written.bindings, etag: written.etag, version: written.version }) {
+        } else if impersonation_binding_present(policy: gcp_policy_of(bindings: written.bindings, etag: written.etag, version: written.version)) {
           ExitSuccess
         } else {
           exit_failure(reason: "heal publisher provision: setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell")

@@ -71,7 +71,7 @@ pattern bmc_bootstrap_provision_srv3() -> {
     project_id: bmc_secrets_project_id,
     secret: bmc_srv3_secret_name,
     policy: bmc_secret_iam_bindings_reconciled_policy(
-      observed: GcpPolicy { bindings: observed_policy.bindings, etag: observed_policy.etag, version: observed_policy.version }
+      observed: gcp_policy_of(bindings: observed_policy.bindings, etag: observed_policy.etag, version: observed_policy.version)
     )
   )
 

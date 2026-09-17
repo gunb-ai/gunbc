@@ -46,12 +46,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // gunbc.recurring_failure_mode upstream_input_constraint_held_only_by_prose, whose ceiling is a
 // length-refined carrier on this input, after which an over-long literal has no constructor.
 //
-// GetServiceAccountIamPolicy's bindings and version are OPTIONAL because an empty policy omits them:
+// BOTH POLICY OPERATIONS declare bindings and version OPTIONAL because an empty policy omits them:
 // an account created seconds earlier answers 200 with an etag alone. Declaring them required made
 // that ordinary state undecodable. They are optional because the WIRE is; what an absent array MEANS
-// is the caller's decision, not this module's. Rostered as gunbc.recurring_failure_mode
-// required_output_field_absent_for_an_empty_upstream_resource, which also names the latent sibling in
-// gcp.SecretManager GetSecretIamPolicy.
+// is answered once by extdeps.cloud.gcp.iam gcp_policy_of, which every reader of a policy response
+// goes through. The WRITE carries the same optionality for the same reason and one nobody had hit:
+// setIamPolicy returns the policy it stored, so revoking the LAST binding answers with an etag alone.
+// Rostered as gunbc.recurring_failure_mode required_output_field_absent_for_an_empty_upstream_resource.
 service gcp.IamAdmin {
   config {
     endpoint: "https://iam.googleapis.com"
@@ -120,7 +121,7 @@ service gcp.IamAdmin {
       service_account: ServiceAccountEmail
       policy: GcpPolicy
     }
-    output { bindings: List<GcpBinding>, etag: String, version: Int, outcome: RestOutcome }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
 
     transport rest {
       method: POST,

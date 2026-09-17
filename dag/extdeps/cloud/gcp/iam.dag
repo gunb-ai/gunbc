@@ -7,7 +7,7 @@ import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import v2.std.algebra { filter, fold_list }
 import v2.std.network { GET, POST }
-import v2.std.optional { Present }
+import v2.std.optional { Present, Absent }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -64,6 +64,27 @@ type GcpPolicy {
   etag: String
   version: Int
 }
+
+// THE ONE PLACE A POLICY RESPONSE BECOMES A GcpPolicy, because three readers were spelling it and a
+// fourth was about to. getIamPolicy OMITS bindings and version entirely for a resource whose policy
+// is empty -- a service account created seconds ago, a secret nobody has granted on -- and answers
+// 200 with an etag alone. Every reader therefore has to decide what an absent array means, and they
+// must not decide differently: an omitted bindings array IS an empty binding set, and an omitted
+// version IS 1, because that is what the API documents its defaults to be. This is not a caller's
+// policy judgement dressed as a default; it is the wire's own semantics, stated once.
+//
+// WHAT THIS DOES NOT DECIDE, and the distinction matters: whether reading an EMPTY policy is
+// ACCEPTABLE is still the caller's. A reader adding the first binding proceeds; a reader auditing an
+// existing grant may treat emptiness as a reason to stop. That verdict belongs at the call site. This
+// function answers only how the bytes map to the carrier.
+fn gcp_policy_of(bindings: List<GcpBinding>?, etag: String, version: Int?) -> GcpPolicy {
+  GcpPolicy {
+    bindings: match bindings { Absent => no_gcp_bindings  Present { value: b } => b },
+    etag: etag,
+    version: match version { Absent => 1  Present { value: v } => v }
+  }
+}
+
 
 // A GcpBinding is the WIRE shape: one role carrying a LIST of members. It is the
 // wrong grain to reconcile at, because a diff over bindings answers "did this

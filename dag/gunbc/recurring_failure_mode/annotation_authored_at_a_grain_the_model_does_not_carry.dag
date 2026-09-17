@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.annotation_authored_at_a_grain_the_model_does_not_carry
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data annotation_authored_at_a_grain_the_model_does_not_carry: RecurringFailureMode = RecurringFailureMode {
+  identity: "annotation_authored_at_a_grain_the_model_does_not_carry" as NonEmptyStr,
+
+  receipts: [
+    "annotation authored at a grain the model does not carry: an author writes a source annotation BESIDE the thing it explains -- above an operation inside a service, above a field inside an output, above a let inside a function body -- and the parser refuses it, because DESIGN section 4c models annotations at MODULE-ITEM grain only. The refusal is correct. What makes it recur is that the refused position is the one authoring instinct reaches for first, and nothing objects until a compile that may be minutes away.",
+
+    "FOUR INSTANCES IN ONE DAY BY ONE AUTHOR, 2026-09-17, which is why this is a row and not a note. (1) extdeps.cloud.gcp.iam_admin: a block explaining the two service-account policy operations, written inside the service body. (2) the same file again, a block above operation CreateWorkloadIdentityPool stating the 32-character display-name cap, still inside the service. (3) the same file a third time, a block above the output field of GetServiceAccountIamPolicy explaining why bindings and version are optional. (4) gunbc.auth.heal_publisher_provision, a block above a `let` inside bind_publisher_impersonation explaining what an absent bindings array means.",
+
+    "THE FOURTH ONE REACHED CI, AND THE REASON IS THE TRANSFERABLE PART. The first three were caught by local compile sweeps. The fourth was added AFTER the last local compile of that file and the file was never recompiled before commit, so the refusal first appeared in the required-witnesses-floor lane -- where it did not present as an annotation defect at all. It presented as `ArmSetConsumerPlanningUnavailable: no parse-phase declaration index was lent to the floor`, because a parse refusal denies the floor its index and the floor reports the CONSEQUENCE. Six parse-FAIL lines were in the same log, above the refusal, and a reader watching for the floor's own vocabulary would scroll past them.",
+
+    "WHY HOISTING IS A REAL LOSS AND NOT JUST A CHORE: the annotation exists to sit beside its subject. Moved to module-item grain it becomes a paragraph naming the operation or field it used to be adjacent to -- which is a positional citation in prose, the thing DESIGN section 3's standing rule says decays. The corpus accepts that cost today because the alternative is annotations the compiler cannot see at all; it is not a cost-free relocation and should not be written up as one.",
+
+    "ATTAINABLE CEILING: structurally impossible at the point of authoring, by carrying annotation grain the model admits where authors actually write -- operation, field, arm -- so the natural position parses and the hoist is unnecessary. That is a language change, not a corpus change. NEXT-RUNG TRIGGER: annotation capture at declaration-member grain in the .dag realization, with occurrence identity still disjoint from semantic identity (adding, deleting or moving one may not alter any semantic hash), and a discriminating red showing a member-grain annotation parsed and erased rather than refused.",
+
+    "UNTIL THEN, THE CHEAP MITIGATION IS A HABIT WITH A MECHANICAL TRIGGER, not vigilance: any edit that ADDS a `//` line must be followed by a compile of that file before commit, because this class is invisible to every other check and its CI presentation names a different subsystem. The review tell is a diff that adds comment lines inside a `service`, `operation`, `type` or `fn` body; the grep is a `//` at an indentation greater than zero.",
+  ],
+
+  evidence: [],
+}
