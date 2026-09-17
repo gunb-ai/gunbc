@@ -269,12 +269,12 @@ fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeploymentL
 // apply.dag still defines ten live_deploy_{apply,retract}_srv1* wrappers. A singular
 // retirement trigger would fire (or look discharged) while nine production callers remained.
 data srv1_production_wrapper_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: the production wrappers retire when gunbc.live_deploy.desired deployment_spec_srv1 has no remaining production caller. The capability is that absence across the wrapper population (apply, retract, with-access, wet, operator, operator-local, transaction), not the deletion of any one wrapper name. A DeclarationRetires on live_deploy_apply_srv1_wet alone is not this trigger. SUFFICIENT FOR: every live_deploy_{apply,retract}_srv1* production wrapper gone, and no remaining production caller of deployment_spec_srv1." as NonEmptyStr
+  description: "TRIGGER: the production wrappers retire when gunbc.live_deploy.desired deployment_spec_srv1 has no remaining production caller. The capability is that absence across the wrapper population (apply, retract, with-access, wet, operator, operator-local, transaction), not the deletion of any one wrapper name. A DeclarationRetires on live_deploy_apply_srv1_wet alone is not this trigger. SUFFICIENT FOR: every live_deploy_\{apply,retract\}_srv1* production wrapper gone, and no remaining production caller of deployment_spec_srv1." as NonEmptyStr
 )
 
 data srv1_production_wrapper_frontier: FrontierRow = frontier_row_path(
   path: "gunbc.live_deploy.apply srv1 production wrappers",
-  reason: "production live_deploy_{apply,retract}_srv1* wrappers are typed scaffolds until C8 selects a DesiredDeployment; they retire together when deployment_spec_srv1 has no remaining production caller",
+  reason: "production live_deploy_\{apply,retract\}_srv1* wrappers are typed scaffolds until C8 selects a DesiredDeployment; they retire together when deployment_spec_srv1 has no remaining production caller",
   dissolution: srv1_production_wrapper_dissolution,
 )
 
