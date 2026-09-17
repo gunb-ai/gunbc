@@ -152,6 +152,14 @@ fn retirement_is_complete(s: RunnerRetirementStanding) -> Bool {
   }
 }
 
+fn retirement_is_unobserved(s: RunnerRetirementStanding) -> Bool {
+  match s {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
+  }
+}
+
 fn retirement_unit(s: RunnerRetirementStanding) -> String {
   match s {
     RetirementComplete { unit: u } => u
@@ -667,8 +675,13 @@ fn observe_retirement_standings(
 //   RemovalActuationRequired    -- permitted and not yet retired. Emits the mask on THIS pass and no
 //                                 deletion, because the postcondition cannot be established in the
 //                                 same breath as the action that is supposed to bring it about.
-//   RemovalRetirementPending    -- permitted, actuated, and the readback says pending or unreadable.
-//                                 No deletion. This is where an orphaned cgroup lands.
+//                                 THE PRODUCTION OBSERVER ALWAYS SUPPLIES STANDINGS, so "no standing"
+//                                 is a fixture shape, not a live one: a live first pass reads
+//                                 RetirementPendingDrain (replacement not inhibited) and must still
+//                                 actuate, or mask --now is unreachable on the fleet route.
+//   RemovalRetirementPending    -- permitted, and the readback is UNOBSERVED (ambiguous). No mask,
+//                                 no deletion. A slot whose cgroup or properties could not be read
+//                                 stays withheld.
 //   RemovalTeardownAuthorized   -- an exact `RetirementComplete` for THIS unit. Only here does a tree
 //                                 get deleted.
 //
@@ -720,11 +733,13 @@ fn slot_removal_realization(
         let mine = standing_for_unit(standings: ss, unit: unit)
         if list_length(items: mine) == 0 {
           RemovalActuationRequired { unit: unit }
-        } else if any(mine, s => !retirement_is_complete(s: s)) {
+        } else if any(mine, s => retirement_is_unobserved(s: s)) {
           RemovalRetirementPending {
             unit: unit,
-            cause: "the retirement readback for this unit is pending or unobserved, so its tree stays and its capacity stays charged",
+            cause: "the retirement readback for this unit is unobserved, so neither mask nor deletion is authorized",
           }
+        } else if any(mine, s => !retirement_is_complete(s: s)) {
+          RemovalActuationRequired { unit: unit }
         } else {
           RemovalTeardownAuthorized { unit: unit }
         }

@@ -746,6 +746,26 @@ test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -
   emits_mask(lines: lines) && emits_no_tree_removal(lines: lines)
 }
 
+// THE LIVE FIRST PASS SUPPLIES STANDINGS, NOT AN EMPTY LIST. The fleet observer always reads the
+// host, so `ReplacementPendingDrain` (unmasked) is what production sees. Treating any incomplete
+// standing as "wait, do not actuate" made mask --now unreachable on that route (plan 35232162113).
+test fn a_pending_unmasked_standing_still_emits_the_inhibitor() -> Bool {
+  let lines = srv1_plan(
+    observed: [srv1_surplus_member(name: "srv1-22", active: false, enabled: false)],
+    evidence: srv1_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv1-22.service" as NonEmptyStr,
+          unit_file_state: "disabled",
+          active_state: "inactive",
+          occupancy: CgroupAbsent,
+        ),
+      ),
+    ]),
+  )
+  emits_mask(lines: lines) && emits_no_tree_removal(lines: lines)
+}
+
 // 4. THE POSITIVE CONTROL, AND WITHOUT IT EVERY ROW ABOVE IS SATISFIED BY A GATE THAT DELETES
 // NOTHING EVER. Second pass: the independently reobserved standing is complete, so this exact tree
 // is removed -- and the mask is NOT re-emitted, because the unit is already retired.
@@ -805,6 +825,7 @@ test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
   )
   emits_no_tree_removal(lines: lines)
     && any(lines, l => string_contains(s: l, pattern: "actions-runner@srv4-13.service"))
+    && !emits_mask(lines: lines)
 }
 
 // 6. A COMPLETED RECEIPT FOR A DIFFERENT SLOT CANNOT AUTHORIZE THIS ONE. The join is by exact
