@@ -22,7 +22,7 @@ import gunbc.auth.approval_request_client {
   FiledApprovalStatus, StatusUnreadable, PollStillPending,
 }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
-import gunbc.auth.approval_keyring_converge { approval_submission_mac_key_path_env }
+import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
