@@ -30,22 +30,12 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 
 // ── THIS MODULE HOLDS THE ROWS WHOSE SUBJECT IS TEXT, AND ITS SIBLING HOLDS THE REST ──────────
 //
-// THE SPLIT IS A COST FACT, MEASURED RATHER THAN GUESSED, and it is drawn at the one place the
-// measurement puts it. `required-floor-claim-cost` on run 35150370426 reports every row that decodes
-// one 18 KB `docker inspect` document at 523-554 ms CPU and every row that decodes four at
-// 2.1-2.2 s, while every row in THIS module -- which reads the same captures as TEXT -- lands at
-// 0-33 ms. The enrolment margin is 302 ms (`v2.workflow.floor_enrolment_margin`
-// floor_enrolment_margin_budget_ms, derived from the 500 ms per-subject line), so a single JSON
-// decode of a real captured document cannot fit under it and no restructuring of the assertions
-// changes that: the cost does not move when the assertions do, because the assertions were never
-// the expense.
-//
-// SO THE EXPENSIVE ROWS DECLARE THE LONG HOME rather than being trimmed to fit, and they are in a
-// SEPARATE MODULE because the long-home declaration is per module: keeping them here would take
-// every cheap row in this file out of the required floor with them, which is the exact defect
-// `v2.workflow.required_floor` moved the grain from file to module name to end. Nothing is deleted
-// and no capture is trimmed -- trimming a verbatim capture to fit a budget would make it an authored
-// fixture, which is the one thing these files exist not to be.
+// THE SPLIT IS A COST FACT, MEASURED RATHER THAN GUESSED. `required-floor-claim-cost` on run
+// 35150370426 reports every row that decodes one 18 KB `docker inspect` document at 523-554 ms CPU
+// and every row that decodes four at 2.1-2.2 s, while every row in THIS module -- which reads the
+// same captures as TEXT -- lands at 0-33 ms. Both modules stay on the executing floor; they are
+// separate so the sibling's declared cost is scoped to the rows that actually incur it rather than
+// covering these, which need no declaration at all.
 
 // ── THE SUBJECT IS NINE FILES OF VERBATIM COMMAND OUTPUT, NOT TEXT AN AUTHOR WROTE ────────────
 //
@@ -158,6 +148,7 @@ fn refuses_as_no_announcement(text: String) -> Bool {
         NcclAnnouncementsDisagree { names: _ } => false
         NcclUnknownNetworkName { names: _ } => false
         NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+        NcclChannelUnreadableLines { lines: _, causes: _ } => false
       }
   }
 }
@@ -174,6 +165,7 @@ test fn w_disagreeing_announcements_refuse_rather_than_picking_one() -> Bool {
         NcclNoAnnouncement => false
         NcclUnknownNetworkName { names: _ } => false
         NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+        NcclChannelUnreadableLines { lines: _, causes: _ } => false
       }
   }
 }
@@ -190,6 +182,7 @@ test fn w_an_unmodelled_network_name_refuses() -> Bool {
         NcclNoAnnouncement => false
         NcclAnnouncementsDisagree { names: _ } => false
         NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+        NcclChannelUnreadableLines { lines: _, causes: _ } => false
       }
   }
 }
@@ -210,7 +203,46 @@ test fn w_a_channel_wired_over_another_network_refuses() -> Bool {
         NcclNoAnnouncement => false
         NcclAnnouncementsDisagree { names: _ } => false
         NcclUnknownNetworkName { names: _ } => false
+        NcclChannelUnreadableLines { lines: _, causes: _ } => false
       }
+  }
+}
+
+// ── A CHANNEL THIS MODULE CANNOT NAME REFUSES, AND IT USED TO PASS ────────────────────────────
+//
+// THE ARM THIS ROW EXISTS FOR WAS VACUOUS AGREEMENT. A channel line whose network is neither IB nor
+// Socket used to be classified as "not a channel line", so the disagreeing set came back EMPTY, the
+// fold reported a clean read, and `relaunch_arm` would have COMMITTED a four-host relaunch on a data
+// path it could not name -- while the announcement's own unknown-name refusal sat three functions
+// away. This is its discriminating input.
+test fn w_a_channel_over_an_unnameable_network_refuses() -> Bool {
+  match nccl_transport_verdict(captured_text: join([
+    "spark-0c75:346:346 [0] NCCL INFO Using network IB\n",
+    "spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 2[0] -> 0[0] [receive] via NET/NVLS/0",
+  ], "")) {
+    NcclTransportRead { reading: _ } => false
+    NcclTransportRefused { cause: c } =>
+      match c {
+        NcclChannelUnreadableLines { lines: ls, causes: _ } => count(ls) == 1
+        NcclNoAnnouncement => false
+        NcclAnnouncementsDisagree { names: _ } => false
+        NcclUnknownNetworkName { names: _ } => false
+        NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+      }
+  }
+}
+
+// AND A `Channel` LINE WITH NO `via NET/` CLAUSE IS STILL NOT A REFUSAL, because NCCL uses it for
+// intra-node paths that carry no network name at all. Without this row the arm above would be
+// satisfiable by refusing every channel line, which reports a defect on every healthy rank.
+test fn w_a_channel_with_no_network_clause_is_classified_not_refused() -> Bool {
+  match nccl_transport_verdict(captured_text: join([
+    "spark-0c75:346:346 [0] NCCL INFO Using network IB\n",
+    "spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 1[0] -> 0[0] via P2P/CUMEM\n",
+    "spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 2[0] -> 0[0] [receive] via NET/IB/0",
+  ], "")) {
+    NcclTransportRefused { cause: _ } => false
+    NcclTransportRead { reading: r } => count(r.channels) == 1
   }
 }
 

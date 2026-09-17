@@ -344,57 +344,87 @@ data nccl_channel_via_marker: String = " via NET/"
 data nccl_channel_send_marker: String = "[send]"
 data nccl_channel_receive_marker: String = "[receive]"
 
-fn nccl_channel_transport(line: NcclLogLine) -> NcclChannelTransport? {
+// A CHANNEL LINE THIS MODULE CANNOT READ IS NOT "NOT A CHANNEL LINE", and collapsing the two is the
+// arm that made the cross-check vacuous. `Channel 00/0 : 2[0] -> 0[0] [receive] via NET/NVLS/0` beside
+// an announcement of `Using network IB` used to return "no channel here", so the disagreeing set came
+// back EMPTY and the fold reported agreement -- the announcement's own `NcclUnknownNetworkName`
+// refusal existing three functions away while the channel arm dropped the identical fact. A verdict
+// that commits a relaunch on a channel it could not name is the fabricated output DESIGN section 5
+// forbids, and it is the silent path this whole vertical was written to close, reproduced inside it.
+// A `Channel ...` LINE WITH NO `via NET/` CLAUSE IS NOT UNREADABLE EITHER. It is NCCL describing a
+// channel it did not build over the network layer at all -- an intra-node peer-to-peer or
+// shared-memory path -- so it carries no network name, is not this fold's subject, and is classified
+// rather than refused.
+type NcclChannelRead
+  = NcclChannelNotAChannelLine
+  | NcclChannelReadTransport { channel: NcclChannelTransport }
+  | NcclChannelUnreadable { line: NonEmptyStr, cause: NonEmptyStr }
+
+fn nccl_channel_transport(line: NcclLogLine) -> NcclChannelRead {
   let body = line.body as String
   if !starts_with(s: body, prefix: nccl_channel_marker) {
-    none
+    NcclChannelNotAChannelLine
+  } else if !string_contains(s: body, pattern: nccl_channel_via_marker) {
+    NcclChannelNotAChannelLine
   } else {
-    let halves = split(s: body, delimiter: nccl_channel_via_marker)
-    if count(halves) != 2 {
-      none
-    } else {
-      match halves |> skip(1) |> first {
-        Absent => none
-        Present { value: tail } => {
-          let net_parts = split(s: tail, delimiter: "/")
-          if count(net_parts) != 2 {
-            none
-          } else {
-            match net_parts.first() {
-              Absent => none
-              Present { value: net_name } =>
-                match net_parts |> skip(1) |> first {
-                  Absent => none
-                  Present { value: device_text } =>
-                    match parse_int(s: trim(s: device_text)) {
-                      Absent => none
-                      Present { value: device } =>
-                        if device < 0 {
-                          none
-                        } else {
-                          match nccl_network_name_read(name: net_name, read_from: line.raw) {
-                            NcclNetworkNameUnknown { name: _ } => none
-                            NcclNetworkNamed { transport: t } =>
-                              match nccl_channel_number(body: body) {
-                                Absent => none
-                                Present { value: channel } =>
-                                  match nccl_channel_direction(body: body) {
-                                    Absent => none
-                                    Present { value: dir } =>
-                                      Present { value: NcclChannelTransport {
-                                        emitter: line.emitter,
-                                        channel: channel,
-                                        direction: dir,
-                                        net_device: device,
-                                        transport: t,
-                                      } }
-                                  }
-                              }
-                          }
+    nccl_channel_after_marker(line: line, body: body)
+  }
+}
+
+fn nccl_channel_unreadable(line: NcclLogLine, cause: String) -> NcclChannelRead {
+  NcclChannelUnreadable { line: line.raw, cause: cause as NonEmptyStr }
+}
+
+fn nccl_channel_after_marker(line: NcclLogLine, body: String) -> NcclChannelRead {
+  let halves = split(s: body, delimiter: nccl_channel_via_marker)
+  if count(halves) != 2 {
+    nccl_channel_unreadable(line: line, cause: "the line names `via NET/` more than once, so which network it was wired over is ambiguous")
+  } else {
+    match halves |> skip(1) |> first {
+      Absent => nccl_channel_unreadable(line: line, cause: "the line ends at `via NET/` with no network after it")
+      Present { value: tail } => {
+        let net_parts = split(s: tail, delimiter: "/")
+        if count(net_parts) != 2 {
+          nccl_channel_unreadable(line: line, cause: "the text after `via NET/` is not `<network>/<device>`")
+        } else {
+          match net_parts.first() {
+            Absent => nccl_channel_unreadable(line: line, cause: "the text after `via NET/` names no network")
+            Present { value: net_name } =>
+              match net_parts |> skip(1) |> first {
+                Absent => nccl_channel_unreadable(line: line, cause: "the text after `via NET/` names no device index")
+                Present { value: device_text } =>
+                  match parse_int(s: trim(s: device_text)) {
+                    Absent => nccl_channel_unreadable(line: line, cause: join(["the device index `", trim(s: device_text), "` is not an integer"], ""))
+                    Present { value: device } =>
+                      if device < 0 {
+                        nccl_channel_unreadable(line: line, cause: "the device index is negative")
+                      } else {
+                        match nccl_network_name_read(name: net_name, read_from: line.raw) {
+                          NcclNetworkNameUnknown { name: n } =>
+                            nccl_channel_unreadable(line: line, cause: join([
+                              "this channel was wired over the network `", n,
+                              "`, which extdeps.nvidia.nccl does not model; a channel whose network cannot be named cannot be compared with the announcement",
+                            ], ""))
+                          NcclNetworkNamed { transport: t } =>
+                            match nccl_channel_number(body: body) {
+                              Absent => nccl_channel_unreadable(line: line, cause: "the channel number is not an integer")
+                              Present { value: channel } =>
+                                match nccl_channel_direction(body: body) {
+                                  Absent => nccl_channel_unreadable(line: line, cause: "the line names neither [send] nor [receive]")
+                                  Present { value: dir } =>
+                                    NcclChannelReadTransport { channel: NcclChannelTransport {
+                                      emitter: line.emitter,
+                                      channel: channel,
+                                      direction: dir,
+                                      net_device: device,
+                                      transport: t,
+                                    } }
+                                }
+                            }
                         }
-                    }
-                }
-            }
+                      }
+                  }
+              }
           }
         }
       }
@@ -432,6 +462,26 @@ fn nccl_channel_direction(body: String) -> NcclChannelDirection? {
 // module cannot name is not Socket; a channel wired over a network the announcement did not name is
 // not agreement. Collapsing any of them into "socket" would answer the incident's own question with
 // the incident's own answer, which is the substitution the type above exists to refuse.
+type NcclChannelAcc {
+  channels: List<NcclChannelTransport>
+  unreadable: List<NonEmptyStr>
+  causes: List<NonEmptyStr>
+}
+
+fn nccl_channel_step(acc: NcclChannelAcc, line: NcclLogLine) -> NcclChannelAcc {
+  match nccl_channel_transport(line: line) {
+    NcclChannelNotAChannelLine => acc
+    NcclChannelReadTransport { channel: c } =>
+      NcclChannelAcc { channels: concat(acc.channels, [c]), unreadable: acc.unreadable, causes: acc.causes }
+    NcclChannelUnreadable { line: raw, cause: why } =>
+      NcclChannelAcc {
+        channels: acc.channels,
+        unreadable: concat(acc.unreadable, [raw]),
+        causes: concat(acc.causes, [why]),
+      }
+  }
+}
+
 type NcclAnnouncementAcc {
   announcements: List<NcclNetworkAnnouncement>
   unknown_names: List<String>
@@ -467,6 +517,7 @@ type NcclTransportRefusal
   | NcclAnnouncementsDisagree { names: List<String> }
   | NcclUnknownNetworkName { names: List<String> }
   | NcclChannelDisagreesWithAnnouncement { announced: NonEmptyStr, channel_lines: List<NonEmptyStr> }
+  | NcclChannelUnreadableLines { lines: List<NonEmptyStr>, causes: List<NonEmptyStr> }
 
 // THE READING BINDS EVERY ANNOUNCEMENT IT SAW, NOT JUST THE ONE IT ANSWERS WITH. A capture that
 // announced the same network four times is a stronger reading than one that announced it once, and
@@ -501,13 +552,13 @@ fn nccl_transport_verdict(captured_text: String) -> NcclTransportVerdict {
             names: map(acc.announcements, a => nccl_realized_transport_wire(t: a.transport) as String),
           } }
         } else {
-          let channels = fold(lines, init: [], f: (cs, l) =>
-            match nccl_channel_transport(line: l) {
-              Absent => cs
-              Present { value: c } => concat(cs, [c])
-            })
+          let scan = fold(lines, init: NcclChannelAcc { channels: [], unreadable: [], causes: [] },
+            f: (acc, l) => nccl_channel_step(acc: acc, line: l))
+          let channels = scan.channels
           let wrong = filter(channels, c => !nccl_transports_agree(a: c.transport, b: head.transport))
-          if count(wrong) > 0 {
+          if count(scan.unreadable) > 0 {
+            NcclTransportRefused { cause: NcclChannelUnreadableLines { lines: scan.unreadable, causes: scan.causes } }
+          } else if count(wrong) > 0 {
             NcclTransportRefused { cause: NcclChannelDisagreesWithAnnouncement {
               announced: nccl_realized_transport_wire(t: head.transport),
               channel_lines: map(wrong, c => nccl_channel_line_text(c: c)),
@@ -550,5 +601,10 @@ fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
       join(["NCCL announced the network(s) ", join(ns, ", "), ", which extdeps.nvidia.nccl does not model; a name this module cannot read is refused rather than defaulted"], "") as NonEmptyStr
     NcclChannelDisagreesWithAnnouncement { announced: a, channel_lines: ls } =>
       join(["the communicator announced ", a as String, " and ", to_string(count(ls)), " channel(s) were wired over a different network: ", join(map(ls, l => l as String), "; ")], "") as NonEmptyStr
+    NcclChannelUnreadableLines { lines: ls, causes: cs } =>
+      join([
+        to_string(count(ls)), " channel line(s) could not be read, so the cross-check between the announcement and the data path was not made: ",
+        join(map(cs, c => c as String), "; "), " -- on: ", join(map(ls, l => l as String), " | "),
+      ], "") as NonEmptyStr
   }
 }

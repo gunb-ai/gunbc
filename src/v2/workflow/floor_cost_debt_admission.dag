@@ -5,7 +5,7 @@ import v2.std.logic { Bool }
 import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
 }
-import std.measure { Millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count }
 
 // ROSTER ADMISSION BY CONSTRUCTION FOR `v2.workflow.floor_cost_debt`.
 //
@@ -40,8 +40,140 @@ import std.measure { Millisecond, millisecond_count }
 // be appended as a string after this PR is authored here as a `FloorCostDebtReadingAttempt`
 // and nowhere else. Until then this list is Empty, which is the honest population.
 
+// ── THE FIRST INHABITANTS, AND WHY THEY ARE THESE ────────────────────────────────────────────
+//
+// THE HEADER ABOVE RESERVED THIS LIST for "the first identity that would otherwise be appended as a
+// string after this PR", and `v2.workflow.floor_enrolment_margin` states that its own end-to-end
+// execution waits on the first attempt appearing here -- "emptiness of today's list is not coverage".
+// These seventeen are that first population.
+//
+// WHAT THEY ARE. Every row of `test.claim.spark.relaunch_capture_witness_test` decodes at least one
+// 18 KB `docker inspect` document captured verbatim off the Group B serving arm on 2026-09-16. Those
+// captures are the only place the container decoder, `relaunch_delta` and `transport_flipped` execute
+// over bytes a daemon actually produced, and the socket/RoCE pair is what makes them discriminating
+// rather than decorative -- so the cost buys the one thing a designed fixture cannot.
+//
+// WHY THE COST IS NOT REDUCIBLE, established before it was declared. The figure is the JSON parse of a
+// real document and it does not move when the assertions move: a row asserting one field of one
+// decoded container costs 533 ms and a row asserting six costs 557 ms, while a row decoding four
+// documents costs 2126 ms. Two reductions were made first -- a `witness_holds` conjunction that re-ran
+// every row a second time was deleted, and the rows that decoded one document twice now decode it once
+// -- and what remains is one decode per document per claim.
+//
+// WHY NOT THE LONG HOME, which is the other non-blocking ground and looks like the natural answer:
+// `gunbc.ci.ci_layer_roots` carries a blanket `test/claim/long/` exclusion at dir grain that removes
+// those entries from per-PR discovery, so relocating would have bought a green floor by making the
+// wall execute nowhere. That is DESIGN section 6's inert lens, on the rows that discriminate the
+// actuation path of a four-host serving arm.
+//
+// EVERY FIGURE IS MEASURED, NOT ESTIMATED, and named by its producer rather than only transcribed:
+// `claim_batch --source-root dag --source-root src/v2 --entry
+// dag/test/claim/spark/relaunch_capture_witness_test.dag --functions <the seventeen>` prints
+// `[witness] <name>: cpu=<n>ms ... eval_steps=<k>` per row, which is the same reading
+// `required-floor-claim-cost` publishes -- cross-checked against run 35150370426, where the four rows
+// that survived unrenamed read 2183/2166/529/554 ms there against 2141/2126/533/571 ms here.
 fn floor_cost_debt_typed_admission_attempts() -> List<FloorCostDebtReadingAttempt> {
-  []
+  [
+    relaunch_capture_reading(
+      name: "w_every_captured_inspect_document_decodes",
+      cpu_ms: 2141,
+      eval_steps: 1591601,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_socket_incarnation_reads_as_missing_the_verbs_shape",
+      cpu_ms: 533,
+      eval_steps: 394269,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_roce_incarnation_reads_as_carrying_the_verbs_shape",
+      cpu_ms: 1099,
+      eval_steps: 814184,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_daemon_reads_the_capability_back_with_its_cap_prefix",
+      cpu_ms: 571,
+      eval_steps: 410829,
+    ),
+    relaunch_capture_reading(
+      name: "w_a_null_member_reads_absent_and_an_empty_array_reads_empty",
+      cpu_ms: 535,
+      eval_steps: 394231,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_node_rank_is_read_from_the_containers_own_argv",
+      cpu_ms: 2126,
+      eval_steps: 1593069,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_two_incarnations_differ_in_batching_and_utilization_as_read_back",
+      cpu_ms: 1098,
+      eval_steps: 802862,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_successor_spec_differs_from_the_roce_incarnation_only_on_declared_axes",
+      cpu_ms: 576,
+      eval_steps: 423872,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_socket_incarnation_is_refused_against_the_successor_spec",
+      cpu_ms: 555,
+      eval_steps: 405452,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_three_incident_fields_differ_on_the_transport_axis",
+      cpu_ms: 557,
+      eval_steps: 406072,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_engine_argv_names_both_axes_it_moved_on",
+      cpu_ms: 555,
+      eval_steps: 405770,
+    ),
+    relaunch_capture_reading(
+      name: "w_a_field_no_axis_explains_refuses_the_whole_delta",
+      cpu_ms: 555,
+      eval_steps: 405497,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_shm_size_agrees_with_every_captured_incarnation",
+      cpu_ms: 1104,
+      eval_steps: 817173,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_two_captured_incarnations_are_a_transport_flip",
+      cpu_ms: 1100,
+      eval_steps: 807977,
+    ),
+    relaunch_capture_reading(
+      name: "w_one_incarnation_read_twice_is_not_a_flip",
+      cpu_ms: 1106,
+      eval_steps: 807985,
+    ),
+    relaunch_capture_reading(
+      name: "w_a_new_incarnation_on_the_same_transport_is_not_a_flip",
+      cpu_ms: 1105,
+      eval_steps: 804986,
+    ),
+    relaunch_capture_reading(
+      name: "w_two_incarnations_preserve_under_two_distinct_names",
+      cpu_ms: 1115,
+      eval_steps: 808012,
+    )
+  ]
+}
+
+// THE MODULE PREFIX IS WRITTEN ONCE. A floor identity is `<module>.<witness>`, and seventeen rows each
+// carrying their own copy of the module path is seventeen chances for one of them to name a module
+// that does not exist -- an identity that matches nothing, which withholds nothing and reads as a
+// declaration that was made.
+data relaunch_capture_witness_module: String = "test.claim.spark.relaunch_capture_witness_test"
+
+fn relaunch_capture_reading(name: String, cpu_ms: Int, eval_steps: Int) -> FloorCostDebtReadingAttempt {
+  FloorCostDebtReadingAttempt {
+    identity: concat(concat(relaunch_capture_witness_module, "."), name),
+    reading: ObservedCpuReading { cpu_ms: millisecond(count: cpu_ms), eval_steps: eval_step_count(count: eval_steps) },
+    verdict: FloorCostDebtReachedAVerdict,
+  }
 }
 
 fn floor_cost_debt_typed_admitted_identities(ceiling_ms: Millisecond) -> List<String> {

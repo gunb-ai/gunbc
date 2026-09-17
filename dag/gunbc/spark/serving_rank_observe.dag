@@ -76,6 +76,15 @@ type RankObservationRefusal sole_constructor {
   cause: NonEmptyStr
 }
 
+// THE CONSTRUCTOR IS EXPORTED BECAUSE A CALLER OUTSIDE THIS MODULE HAS REFUSALS OF ITS OWN TO NAME.
+// gunbc.spark.serving_relaunch_transaction's bounded wait for a communicator announcement fails on
+// its own step, about its own subject, and a refusal it could not construct would have to borrow one
+// of this module's steps -- which is the mislabelled diagnostic the same transaction was already
+// corrected for once.
+fn rank_observation_refusal(subject: ObservedRankSubject, step: NonEmptyStr, cause: NonEmptyStr) -> RankObservationRefusal {
+  RankObservationRefusal { subject: subject, step: step, cause: cause }
+}
+
 fn rank_observation_refusal_text(r: RankObservationRefusal) -> String {
   join([r.step as String, " on ", observed_rank_subject_text(s: r.subject), ": ", r.cause as String], "")
 }

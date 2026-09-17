@@ -1,4 +1,4 @@
-module test.claim.long.spark_relaunch_capture_witness_test
+module test.claim.spark.relaunch_capture_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
@@ -40,26 +40,33 @@ import extdeps.docker.cli { DockerCreateSpec }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
-// ── THE LONG HOME IS DECLARED BECAUSE THE COST IS REAL, NOT BECAUSE THE ROWS ARE SLOPPY ───────
+// ── THIS MODULE IS EXPENSIVE, AND IT STAYS ON THE EXECUTING FLOOR ANYWAY ──────────────────────
 //
-// EVERY ROW HERE DECODES AT LEAST ONE 18 KB `docker inspect` DOCUMENT, and `required-floor-claim-cost`
-// on run 35150370426 measures that at 523-554 ms CPU for one document and 2.1-2.2 s for four, against
-// an enrolment margin of 302 ms. The cost is the JSON parse of a real captured document and it does
-// not move when the assertions move -- which is `v2.workflow.floor_enrolment_margin` reading exactly
-// what it is built to read.
+// EVERY ROW HERE DECODES AT LEAST ONE 18 KB `docker inspect` DOCUMENT. `required-floor-claim-cost` on
+// run 35150370426 measured that at 523-554 ms CPU for one document and 2.1-2.2 s for four, against an
+// enrolment margin of 302 ms (`v2.workflow.floor_enrolment_margin` floor_enrolment_margin_budget_ms,
+// derived from the 500 ms per-subject line). The cost is the JSON parse of a real captured document
+// and it does not move when the assertions move.
 //
-// WHAT WAS REMOVED FIRST, BEFORE REACHING FOR THE HOME. A `witness_holds` conjunction re-ran every
-// row a second time and is deleted (`test.claim.spark.serving_arm_launch_witness_test` carries none
-// either), and the rows that decoded one document more than once now decode it once. What remains is
-// one decode per document per claim, which is the floor of this subject rather than an artefact of
-// how it is written.
+// THE LONG HOME WAS TRIED AND IS THE WRONG INSTRUMENT, which is worth recording because it looks
+// right. `test.claim.long.` buys the margin exemption -- but `gunbc.ci.ci_layer_roots` also carries a
+// blanket `test/claim/long/` exclusion at dir grain that REMOVES those entries from per-PR discovery.
+// Moving the discriminating rows there would have bought a green floor by making the wall execute
+// nowhere, which is DESIGN section 6's inert lens: the machinery exists and nothing gates on it. These
+// rows are the only place `relaunch_delta`, `transport_flipped` and the container decoder run at all,
+// and they are the pairing obligation of section 3 being discharged over real captured bytes.
 //
-// WHAT IS NOT DONE, STATED SO THE HOME IS NOT READ AS A LICENCE: the captures are not trimmed to fit
-// a budget. A verbatim capture cut down to parse faster is an authored fixture wearing a receipt's
-// name, and DESIGN section 3's pairing obligation is explicit that supplying inputs may never remove
-// the last execution of the real path -- so the real decode runs here, over the real bytes, and the
-// text-subject rows that need no decode live in
-// `test.claim.spark.relaunch_vertical_witness_test` so they keep running on main.
+// SO THE COST IS DECLARED RATHER THAN HIDDEN. `v2.workflow.floor_cost_debt_admission`
+// floor_cost_debt_typed_admission_attempts is the instrument the corpus reserves for exactly this --
+// its own note says the first identity that would otherwise be appended as a string is authored there
+// and nowhere else -- and it takes a MEASURED reading per identity. See this module's rows in that
+// list; a reading authored from an estimate rather than from an execution would be the fabricated
+// figure this whole change exists to make impossible.
+//
+// WHAT IS NOT DONE: the captures are not trimmed. A verbatim capture cut down to parse under a budget
+// is an authored fixture wearing a receipt's name. The rows whose subject is the same captures read as
+// TEXT cost 0-33 ms and live in `test.claim.spark.relaunch_vertical_witness_test`; they are a separate
+// module so this one's declared cost is scoped to the rows that actually incur it.
 
 // ── THE SUBJECT IS NINE FILES OF VERBATIM COMMAND OUTPUT, NOT TEXT AN AUTHOR WROTE ────────────
 //
