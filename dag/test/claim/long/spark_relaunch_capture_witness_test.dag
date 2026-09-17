@@ -113,9 +113,9 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // per-row `cpu`/`eval_steps` reading `required-floor-claim-cost` publishes:
 //
 //   ROWS=$(grep -oP '^test fn \K[a-z0-9_]+(?=\(\))' \
-//     dag/test/claim/spark/relaunch_capture_witness_test.dag | paste -sd,)
+//     dag/test/claim/long/spark_relaunch_capture_witness_test.dag | paste -sd,)
 //   claim_batch --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/spark/relaunch_capture_witness_test.dag --functions "$ROWS"
+//     --entry dag/test/claim/long/spark_relaunch_capture_witness_test.dag --functions "$ROWS"
 //
 // That is a cadence a person runs, not one the merge path runs, and the difference is the whole
 // content of this declaration.
