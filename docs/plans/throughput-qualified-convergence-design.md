@@ -1,206 +1,220 @@
-# Throughput-qualified convergence — one shape, two subjects
+# Throughput-qualified convergence — one interface, one bound subject, one frontier
 
-Home: DESIGN §3d (selection precedes convergence; a convergence primitive assesses a caller-supplied
-goal against an independent observation) and §4b (rung honesty: the reported rung must equal the rung
-established by executed evidence). This plan is a design, not a landed capability; each stage names
-what it would make executable.
+Standing: a design under revision, not a landed capability and not yet enrolled in DESIGN. It has been
+through three review rounds (side-chat, 2026-09-17); the corrections are recorded in place rather than
+absorbed, because several of them are the kind of error this document exists to make harder.
 
 ## The defect this exists to close
 
-**A convergence today verifies its CONFIGURATION and calls that success. Neither subject verifies the
-RATE the configuration was chosen to deliver.** The configuration is a proxy for the goal, and
-asserting the goal from the proxy is the gap.
+**A convergence today verifies its CONFIGURATION and stops. Neither subject verifies the RATE the
+configuration was chosen to deliver.** The configuration is a proxy for the goal, and reading the goal
+off the proxy is the gap.
 
-Two live instances, each found by looking rather than assumed:
+Two live instances, each found by looking:
 
-- **Serving, Group B, 2026-09-17.** A converge reported success and was independently verified on all
-  four hosts: image derived, pin correct, checkpoint shards loading, fp8 admission holding, KV law
-  single-sourced. Every one of those is true and none of them is about the collective transport. The
-  arm was in fact running every channel over `NET/Socket/0` with no IB device present, which the
-  converge could report full agreement through because transport was not in its comparison. Aggregate
-  decode measured 51.19 tok/s at 16 streams on that transport.
-- **CI, srv1/srv2 (and Mt Collins next).** `docs/plans/ci-humming.md` is the CI-operations authority
-  and its throughput section T0-T6 reasons entirely about DERIVING a runner-slot count from a memory
-  budget. T1 already carries the right instinct one level down — a cap is not effective until the live
-  cgroup is read back (`MemoryMax != infinity`), and T5's converge is set-property → read-effective →
-  verdict. The discipline stops at configuration. Nothing measures jobs per hour after the converge,
-  so a slot count derived from a budget is believed rather than established.
+- **Serving, Group B, 2026-09-17.** A converge reported success and was independently verified on four
+  hosts: image derived, pin correct, checkpoint loading, fp8 admission holding, KV law single-sourced.
+  Every one of those is true and none is about collective transport. The arm was running every NCCL
+  channel over `NET/Socket/0` with no IB device present, which the converge could report full
+  agreement through because transport was not in its comparison.
+- **CI.** `docs/plans/ci-humming.md` derives a runner-slot count from a memory budget across T0-T6 and
+  never measures jobs per hour afterwards. T1 carries the right instinct one level down — a cap is not
+  effective until the live cgroup is read back — and stops at configuration.
 
-The shape is identical in both: **a system is converged toward a configuration chosen for a rate, and
-the rate is never put to it.**
+## Convergence and qualification are two facts, not one (corrected)
 
-## Why this is one concept and not two (DESIGN §2, horizontal)
+An earlier draft said "converged" should mean configuration agreed AND the rate was met. That is
+wrong, and the error is worth keeping: a realization can match its desired image, checkpoint, argv,
+transport plan, capabilities, devices and rank population exactly while missing a throughput floor.
+That is not configuration drift, and redefining convergence to cover it destroys a distinction the
+operator needs — *state agreement* and *service qualification* have different remedies.
 
-At the right layer there is nothing fundamentally different between "16 decode streams against a
-serving arm" and "N concurrent builds against a runner pool". Both are: *within a reserved window,
-apply a declared offered load to a subject, derive an aggregate rate from a counter the system itself
-keeps, and assess it against a floor that is not a copy of the last reading.* Modelling it twice is
-the fork §3 forbids; the parts that genuinely differ are realization handlers, not separate concepts.
+`std.goal_assessment` already owns the remedy-free relation between a caller-supplied goal and an
+independent observation, and deliberately keeps observation, assessment and remedy apart. So the
+shape is a composition, not a redefinition:
 
-**Shared (the interface).** The reserved window; the declared offered load; saturation standing;
-completion accounting; rate derivation; subject-bound comparability; the floor and its verdict; the
-receipt.
+    ConfigurationStanding = ConfigurationConverged | ConfigurationDiverged | ConfigurationIndeterminate
+    ThroughputAssessment  = GoalSatisfied | GoalDiverged | GoalIndeterminate | GoalAssessmentRefused
+    OperationalQualification
+      = RealizationQualified { configuration_receipt, throughput_assessment }
+      | ConfigurationNotConverged { .. }
+      | ThroughputNotQualified { .. }
 
-**Per-subject (bound handlers, one per subject, never a fork of the fold).** What a unit of work is
-(a decoded token / a completed job); how load is applied (HTTP completions / dispatched builds); which
-counter is read (`vllm:generation_tokens_total` / job completion events); what the comparability axes
-are.
+This also repairs the rung argument. A configuration convergence with no throughput result is a
+legitimate value, not a defect. The invalid state to remove is the positive carrier
+`RealizationQualified` minted with an absent assessment — and THAT can be made **structurally
+impossible**, because a sole-constructor carrier cannot be built without its assessment. Enrolling
+every production route remains mechanically preventable. Two different rungs for two different
+claims, which is what §4b(1) asks for.
 
-## The seven parts, each with the failure it prevents
-### 1. The window is a TERMED lease, and the first draft cited the wrong one
-A throughput probe puts real load on a shared resource, so "we reserve a period" is a lease -- and the
-term is the whole point, because a prober that dies must not hold the subject out of service forever.
-This design first cited `std.temporal_effect::HeldLease`, which was wrong and is recorded rather than
-quietly corrected: `HeldLease` carries an epoch (lease key, resource and owner fingerprints,
-generation) and an observed state, and **no deadline anywhere**. It fences a running holder by
-identity; it does not bound one by time.
+## Why this is one interface (DESIGN §2, horizontal)
 
-The termed home is `gunbc.product.capacity.lease::LeaseGrant`, which carries `granted_at`,
-`maximum_duration_seconds`, `expires_at` and a fence. DESIGN §3b already draws exactly this
-distinction under fabric/compute -- serving settles a **termed** `LeaseGrant`, compute a **timeless**
-`LeaseIdentity` -- so the error was failing to read a distinction the roster already states.
-`std.durable_compare_and_set::CasExpectation` remains the linearizer where two probes could collide.
-Admission refuses when the subject carries foreign in-flight work (`vllm:num_requests_running > 0`;
-a runner pool with queued PR jobs). *Prevents:* a probe that measures someone else's contention and
-reports it as the subject's capacity, two probes measuring each other, and a crashed prober holding a
-serving arm reserved indefinitely. (Correction raised by the side-chat review, 2026-09-17.)
-reports it as the subject's capacity, and two probes measuring each other.
+"16 decode streams against a serving arm" and "N concurrent builds against a runner pool" share an
+interface: within a declared window, apply a declared workload to a subject, derive a rate from a
+counter the system itself keeps, and assess it against a floor that is not a copy of the last reading.
 
-### 2. Offered load is declared, never inferred
-Concurrency, unit size, and stopping rule are inputs carried in the type. *Prevents:* the defect in
-my own hand measurement today — I picked concurrency 8 with no reason when the modelled profile
-carries `max_num_seqs: 16`, so the first reading understated aggregate by half. An undeclared load is
-a number whose denominator nobody can reconstruct.
+The partition matters more than the sharing, and DESIGN §3b's fabric row already states it for
+capacity: **selection is shared; occupancy is not.**
 
-### 2b. The offered load itself needs an authority, not a preference
-Declaring the load is necessary and not sufficient: the FIGURE must be grounded. `max_num_seqs: 16`
-is carried in `glm_native_concurrent_profile` as a chosen number, so a probe at 16 streams inherits
-whatever justified it. The probe's concurrency is derived from the subject's admitted concurrency
-policy, and that policy owes an observed capacity receipt from the real startup readings rather than
-a figure someone liked. *Prevents:* the shape one level up from my concurrency-8 error — not picking
-the wrong number, but picking any number without an authority behind it, which makes every rate
-measured at it unattributable. (Raised by the side-chat review, 2026-09-17.)
+    shared:           observation and assessment interface, rate derivation, goal assessment
+    subject-specific: isolation acquisition, workload realization, counter producer,
+                      subject identity, occupancy and release mechanism
 
-### 3. Saturation standing is part of the reading, and this is the subtle one
-If nothing queued, the probe measured the LOAD IT OFFERED, not the subject's capacity. Those are
-different facts and collapsing them is the §5 absorbing-fallback shape: a comfortable number that
-silently answers a question nobody asked.
+So serving's termed `product.capacity.lease::LeaseGrant` is NOT the CI window's carrier. Compute
+occupancy is a timeless `LeaseIdentity` settled by `file_compare_and_set`. An earlier draft of this
+document cited `std.temporal_effect::HeldLease` for both, which carries an epoch and an observed state
+and **no deadline at all**; a later draft then cited `LeaseGrant` for both, which crosses the very
+boundary the roster draws. Each subject brings its own occupancy carrier.
 
-**Saturation is not decidable from one run, and an earlier draft of this section pretended it was.**
-Queue presence is neither necessary nor sufficient: a queue can be briefly non-empty while the subject
-is nowhere near capacity, and a subject exactly matched by its offered load can saturate with an empty
-queue. A single point cannot separate them. What establishes saturation is a **sweep** -- two or more
-offered-load levels where aggregate rate stops rising while per-unit rate degrades. So the standing is
-`SaturatedByPlateau { levels }` | `UnsaturatedAtOfferedLoad` (rate still rising at the highest level
-offered, which is a LOWER BOUND on capacity and never a measurement of it) | `SaturationUndetermined`
-(one level only, or levels that do not separate). A single-point probe reports the third and is
-honest; it does not get to infer the first from a queue reading.
-*Applies to today's figures:* aggregate nearly doubled from 8 to 16 streams (27.31 to 51.19) while
-per-stream barely moved (3.41 to 3.20), which is a rate still rising -- `UnsaturatedAtOfferedLoad`.
-51.19 tok/s is a lower bound on what that arm does on sockets and is not its capacity.
-(Correction raised by the side-chat review, 2026-09-17.)
+## The parts, each with the failure it prevents
 
-### 4. Completion accounting is fail-closed
-A unit that errors consumes wall clock and contributes nothing. My hand harness divided a counter
-delta by wall time, so a failed request would have silently lowered the rate and looked like a slow
-system. The reading carries units attempted, completed, and refused; a probe with any refused unit
-reports `RateUnderIncompleteRun` rather than a rate. *Prevents:* a broken subject reading as a slow
-one — the diagnosis that sends someone tuning a system that is actually erroring.
+### 1. A quiet read is not a reserved window
+A CAS stops two probes believing they hold one claim. It does not stop a production request arriving
+after `num_requests_running == 0`, GitHub dispatching ordinary work after a queue check, or an
+already-admitted operation becoming active mid-measurement. Isolation is therefore a standing the
+subject-specific handler PRODUCES, not something the generic fold assumes:
+
+    ProbeWindowStanding
+      = WindowIsolated { grant, deadline, drain_receipt, exclusion_receipt }
+      | WindowSharedWithDeclaredTraffic { traffic_receipt }
+      | WindowIsolationUnread { cause }
+
+Serving realizes it by route withdrawal or a dedicated endpoint, a drain, and a fence against
+non-probe requests; CI by a dedicated runner population withdrawn from ordinary labels, drained, with
+probe-only dispatch. Without an exclusion receipt the reading is still useful production telemetry —
+it is simply not a controlled qualification, and must not be recorded as one.
+
+### 2. The offered load is a policy, and the receipt constrains it rather than manufacturing it
+Declaring the load is necessary; grounding the FIGURE is the rest. But an earlier correction here
+introduced circularity — "concurrency derived from the admitted policy, and the policy owes a capacity
+receipt" — which has the receipt manufacture the workload that then verifies it. The clean relation:
+
+    QualificationProtocol        declares the offered load (e.g. 16 concurrent)
+    ObservedCapacityReceipt      may admit or refuse that policy as safe or plausible
+    ThroughputObservation        establishes the delivered rate AT that load
+
+A contract may legitimately require 16 concurrent before anyone has found maximum capacity. And
+`max_num_seqs` is a **scheduler ceiling, not a workload authority**: a launch configured for 16 may be
+qualified at 8, 16 or another declared load depending on the contract being tested.
+
+### 3. Backlog is what is observed; saturation is an inference, and capacity a further one
+Two drafts got this wrong in opposite directions — first "queue depth > 0 means saturated", then "a
+sweep establishes it". vLLM's own metric definitions treat running as current execution and waiting as
+backpressure; neither defines a physical-saturation verdict. `16 running / 0 waiting` can be fully
+occupied, and `16 running / 5 waiting` can be waiting on `max_num_seqs` or KV admission with no
+hardware bottleneck identified. So:
+
+    queue > 0  does NOT establish saturation
+    queue == 0 does NOT establish unsaturation
+
+The reading names only what was observed — `BacklogObserved` | `NoBacklogObserved` | `BacklogUnread` —
+and a capacity inference is a separate operation with its own declared load progression and plateau
+criterion. **For an operating floor, capacity need not be inferred at all:** *under protocol P at
+offered load L, did the subject deliver at least floor F?* is answerable whether or not L saturated
+anything.
+
+*Correcting this document's own figures:* the 2026-09-17 socket readings retained no queue trace, so
+they are `BacklogUnread` and `CapacityUnestablished`. The 8-to-16 scaling argument (aggregate 27.31 to
+51.19 while per-stream moved 3.41 to 3.20) is useful causal reasoning and is **not** a queue
+observation; assigning `UnsaturatedAtOfferedLoad` from it, as an earlier draft did, was an inference
+reported as a reading.
+
+### 4. Subject equality alone does not make two rates comparable
+`serving_performance_subject` is a configuration fence, and its own source says launch identity is a
+separate boundary — several launches may share one subject. The observation therefore carries more
+than the subject:
+
+    ThroughputObservation<Subject, Protocol, Realization, RateUnit> {
+      subject            the effective configuration
+      protocol           concurrency, work identity, sizes, stopping rule, warmup and cache rules
+      realization        the exact serving incarnation or runner population
+      window_standing    isolated, shared under declared traffic, or unread
+      counter_producer   who kept the count
+      counter_span       before, after, and continuity across the interval
+      operation_ledger   every offered operation reached an admissible terminal outcome
+      raw_carrier        the bytes the reading was taken from
+      observed_at
+    }
+
+**Counter continuity** is its own field because a counter that reset, rebound or switched incarnation
+mid-window yields a delta that is arithmetic rather than a measurement.
+
+**Operations and rate units are different grains**, which an earlier draft conflated by counting
+"attempted, completed and refused tokens". For serving the operation is a request and the unit is a
+generated token — and a request can emit tokens and *then* fail, so the ledger cannot be denominated
+in tokens. For CI the operation is an exact Work/job and the unit a completed work occurrence; "jobs
+per hour" means something only over homogeneous work or a declared normalization, because a one-minute
+no-op and a fifteen-minute clean build are not interchangeable units.
 
 ### 5. The rate is derived, never stored
-`gunbc.harness.harness_throughput` already states this law for its own stream: tokens, interval and
-count are carried; tokens-per-second is a function of them, and storing it alongside would be a second
-representation free to disagree with its inputs. The same law here, cited rather than re-coined.
+`gunbc.harness.harness_throughput` already states this law for its own stream — counts and interval
+are carried, the rate is a function of them, and storing it alongside would be a second representation
+free to disagree with its inputs. Cited, not re-coined.
 
-### 6. The subject is what makes two readings comparable
-`gunbc.spark.serving_performance_subject` is this, already landed and already carrying twelve axes
-including `AxisCollectiveTransport`, with a join that refuses on a differing axis and keeps `<unread>`
-distinct from a value. **The CI subject does not exist yet and is the larger modelling job.** Its axes
-are not the serving ones and must be derived from what invalidates a prior number — at minimum: host
-class (Mt Collins vs srv1/srv2), runner slot count, per-slot memory cap, jobserver tokens, cpu.weight
-class, toolchain revision, and **cache state**, which is the one most likely to be forgotten and the
-one most able to produce a meaningless comparison: a cold-sccache run and a warm one are different
-subjects, not a regression. Per DESIGN §3's external-decomposition rule these are two subject
-authorities inhabiting one shape, not one enum with a product column.
+### 6. The floor is not a copy of the last reading
+DESIGN §5: a merge-blocking literal needs a controlled fixture, an external or versioned authority, an
+explicit policy budget, or a monotone debt contract. A floor pasted from this morning's run collapses
+to `measure() == measure()`. So the floor is a declared operating budget someone owns, or a monotone
+contract raised deliberately, with provenance either way. The verdict is `std.goal_assessment`.
 
-### 6b. The engine subject is not the whole comparability key
-`serving_performance_subject`'s twelve axes describe the ENGINE. They say nothing about the request
-shape the rate was measured with, and two readings at one configuration are not comparable if one
-decoded 128 tokens from a short prompt and the other 4,096 from a long one -- prefill share, batch
-occupancy and cache behaviour all move. Today's figures are the case in point: 128-token decodes with
-`min_tokens` pinned, one fixed prompt, non-streaming, over the OpenAI-compatible completions route.
-None of that is in the twelve axes.
+## Conformance (DESIGN §3b)
 
-So a reading is comparable only when **both** the subject axes and a declared **load identity** agree:
-unit size and stopping rule, prompt shape, protocol and route, streaming or not, and the concurrency
-level. The CI side has the same requirement wearing different clothes -- target set, clean versus
-incremental tree, cache state -- which is why the CI work in stage 3 derives its load identity
-alongside its axes rather than after them. A rate carried without its load identity is a number whose
-experiment cannot be repeated. (Raised by the side-chat review, 2026-09-17.)
+Rows touched, with module names as the modules declare them (an earlier draft prefixed two of these
+with `gunbc.`, which is the file path and not the module):
 
+- **fabric / compute** — `product.capacity.lease::LeaseGrant`, `product.fabric.selection::select_supply`.
+  The row already states the partial sharing this design inherits: shared selection, separate
+  occupancy producers and linearizations.
+- **leasing / locking / grants** — the serving window as a termed grant; the CI window through
+  compute's own timeless identity. `std.durable_compare_and_set::CasExpectation` is the linearizer and
+  is not by itself an exclusion receipt.
+- **process observability / reporting** — `std.observation::ObservationEvent`,
+  `std.observation::RecordedObservation`.
+- **decision / selection** — deliberately NOT touched while the probe only assesses. The moment it
+  ranks configurations, `std.decision` is the home and §3d binds.
 
-### 7. The floor is not a copy of the last reading
-DESIGN §5 is explicit: a merge-blocking test may compare to a numeric literal only when that literal
-is grounded in a controlled fixture, an external or versioned authority, an explicit policy budget, or
-a monotone debt contract. A floor pasted from this morning's run collapses to `measure() == measure()`
-— a change detector whose entire content is the manual update. So the floor is either **a declared
-operating budget someone owns** ("Group B on verbs sustains ≥ X aggregate at 16 streams", "srv1
-sustains ≥ Y jobs/hour at N slots"), or **a monotone contract** that may only be raised deliberately,
-with provenance on the row either way. The verdict itself is `std.goal_assessment` — a caller-supplied
-goal assessed against an independent observation, which is exactly this and must not be re-coined.
+## Evidence standing for readings already taken
 
-## Provenance of the converged state is part of the subject
+An earlier draft argued the socket readings qualify as a receipt BECAUSE the arm is gone and the
+question cannot be put again. That is wrong: irreproducibility establishes urgency to preserve
+evidence, never provenance for it. The honest standing follows what was retained:
 
-A rate measured against an arm someone converged by hand is not a reading about a gunbc convergence,
-and recording it as one would claim an evidence chain that does not exist. The Group B arm serving on
-2026-09-17 was converged by a lane outside the modelled transaction, so its standing is
-`AdoptedOutOfBandRealization` — observed, admitted as the incumbent, and explicitly NOT
-converged-by-gunbc. The distinction matters the moment a floor is set from such a reading: a number
-taken from an adopted realization grounds a floor for the SUBJECT, never a claim about the
-transaction that did not run. (Raised by the side-chat review, 2026-09-17.)
+| retained | standing |
+|---|---|
+| exact subject, protocol, incarnation, raw counter and request traces, interval | subject-bound historical observation |
+| summarized numbers with no raw producer carrier | historical reported reading |
+| no queue trace | `BacklogUnread` |
+| successor moved transport AND other axes | no transport-only attribution |
+| no exact workload identity | protocol-unbound historical claim |
 
-## Conformance (DESIGN §3b) — the answer is yes, and here are the rows it touches
-
-This is a conformance question, and naming the homes before any worker runs is the printing-press
-direction §3b asks for:
-
-- **fabric / compute** — runner slots and serving seats are both capacity. Homes:
-  `gunbc.product.capacity.lease::LeaseGrant`, `gunbc.product.fabric.selection::select_supply`. The §3b
-  row already covers both compute cells and inference serving and already states the sharing is
-  partial, which is the same partial sharing this design has.
-- **leasing / locking / grants** — the reserved window, as a TERMED grant. Homes:
-  `gunbc.product.capacity.lease::LeaseGrant` (carries the term),
-  `std.durable_compare_and_set::CasExpectation` (the linearizer). `std.temporal_effect::HeldLease` is
-  the timeless fenced form and is NOT this row's home, which the first draft of this design got wrong.
-- **process observability / reporting** — the receipt, at occurrence grain. Homes:
-  `std.observation::ObservationEvent`, `std.observation::RecordedObservation`.
-- **decision / selection** — NOT touched in the first stages, and saying so is part of the design. A
-  probe that merely assesses is not choosing a configuration. The moment it ranks candidates (which
-  slot count is best, which transport to run), `std.decision` is the home and §3d's laws apply.
-
-## What this does NOT establish (DESIGN §4b, ceiling honesty)
-
-A green probe says the subject delivered a rate under a declared load in a reserved window. It does
-not establish behaviour under production traffic shape, and it does not make the configuration
-correct — configuration agreement and rate agreement are two readings and a qualified convergence
-needs both. The attainable ceiling here is **mechanically preventable**, not structural: the invalid
-state (a convergence declared without its rate) stays writable, and safety depends on the probe being
-enrolled and executed. Claiming higher would be the rung inflation §4b(1) names.
+The 2026-09-17 socket figures are a **historical reported reading**: summarized aggregate and
+per-stream rates, no retained raw carrier, no queue trace. They are worth recording as that, and they
+are not a `RecordedObservation`. The arm they were taken against is additionally
+`AdoptedOutOfBandRealization` — converged by a lane outside the modelled transaction — so a floor set
+from them grounds a claim about the SUBJECT and never about a transaction that did not run.
 
 ## Staging
 
-1. **Record the socket baseline as subject-bound rows.** The Group B readings taken 2026-09-17 with
-   their twelve axes and their `UnsaturatedAtOfferedLoad` standing. Justified as a receipt rather than
-   a transcription (§6) for the same reason the RoCE captures were: once the passthrough is fixed the
-   socket arm is gone and that question cannot be put to it again.
-2. **The serving probe as a modelled instrument.** extdeps rows for the completions API and the metrics
-   counters; the window, load, saturation, completion and rate folds; witness rows per layer on
-   supplied inputs, with one inhabitance claim that runs the real endpoint.
-3. **The CI subject.** The axis roster above, derived with the same test — does a change to this
-   property invalidate a prior number.
-4. **The CI probe**, binding the same interface to dispatched builds on Mt Collins.
-5. **Qualification.** A converge consumes the assessment, so "converged" means configuration agreed
-   AND the declared rate was met in a reserved window — with the drop declared if a subject cannot yet
-   be probed, rather than silently qualifying on configuration alone.
+1. **Record the socket figures at their honest standing** — historical reported reading, `BacklogUnread`,
+   `CapacityUnestablished`, `AdoptedOutOfBandRealization`.
+2. **The serving probe** — extdeps rows for the completions route and the metrics counters; window,
+   protocol, ledger, counter-span and rate folds; per-layer witnesses on supplied inputs with one
+   inhabitance claim that runs the real endpoint.
+3. **The CI subject is a FRONTIER, not a bound subject** — which is why this document's title says one
+   bound subject and one frontier. `ci-humming.md` is the June slot/cgroup program and carries the
+   older control/apply architecture; current main has a Firecracker/JIT runner-attempt planner working
+   through fabric identities and execution grants. Stage 3 therefore begins with a producer-and-consumer
+   census of the CURRENT tree, not the historical plan, covering at least: exact Work and source-tree
+   identity, runner image/kernel/rootfs, microVM shape, host class, slot count and memory envelope,
+   jobserver and resource controls, runner/JIT revision, toolchain revision, cache topology and cache
+   state, and dispatch policy. Which of those invalidate a prior rate is decided by that census.
+4. **The CI probe**, binding the same interface to dispatched builds.
+5. **Qualification** — `OperationalQualification` composed from the two standings, with
+   `RealizationQualified` unmintable without its assessment.
 
-Stages 3 and 4 are the ones with real unknowns; 1 and 2 are bounded by what landed today.
+## Not yet done, stated plainly
+
+This plan is **not enrolled in DESIGN**. DESIGN.md is generated from `gunbc.design_document` and is
+never hand-edited; a plan is linked from the section that governs it. A file existing under
+`docs/plans/` is not that linkage. Enrolment lands when the design settles, and until then this
+document governs nothing.
