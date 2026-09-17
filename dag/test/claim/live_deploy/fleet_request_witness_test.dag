@@ -1,8 +1,10 @@
 module test.claim.live_deploy.fleet_request_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
+import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
 import extdeps.crypto.hash { Digest, sha256_digest }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, serialize_content_hash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.candidate { CandidateRelease }
 import gunbc.live_deploy.member_identity {
   ConvergedMember,
@@ -20,8 +22,16 @@ import gunbc.live_deploy.member_identity {
   ReleaseTarget,
   converged_member_eq,
 }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  srv1_production_desired_deployment,
+  srv1_lab_desired_deployment,
+  srv1_production_selected_identity,
+  srv1_lab_selected_identity,
+}
 import gunbc.live_deploy.fleet_request {
   admit_live_deploy_member_basis,
+  admit_live_deploy_fleet_request,
   LiveDeployBasisAdmitted,
   LiveDeployBasisRefused,
   LiveDeployIncompletePopulation,
@@ -29,11 +39,29 @@ import gunbc.live_deploy.fleet_request {
   LiveDeployForeignReplacement,
   LiveDeployEffectsRefused,
   live_deploy_admission_refusal_text,
+  LiveDeployFleetRequestAdmission,
+  LiveDeployFleetRequestAdmitted,
+  LiveDeployFleetRequestIdentityMismatch,
+  LiveDeployFleetRequestUnknownInstance,
+  LiveDeployFleetRequestRosterRefused,
+  LiveDeployFleetRequestBasisRefused,
+  live_deploy_host_only_request_refusal_reason,
 }
 import gunbc.fleet_converge_plan {
   fleet_converge_scope_of_wire,
   fleet_converge_scope_wire,
+  fleet_converge_request_scope,
+  fleet_converge_plan_subject,
+  observed_baseline_text,
+  fleet_converge_apply_artifact_admits,
+  fleet_converge_apply_shell,
+  fleet_converge_apply_terminal,
+  fleet_converge_plan_artifact_of_request,
+  live_deploy_converge_request,
   LiveDeploy,
+  ApplyAdmitted,
+  ApplyMemberSetMismatch,
+  FullyApplied,
   ScopeDecoded,
   ScopeUndecodable,
 }
@@ -60,6 +88,8 @@ fn target() -> ReleaseTarget {
     unit: unit_name(),
   }
 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn desired_tree() -> MemberIdentity { TreeIdentity { tree: TreePublicationIdentity { revision: rev_a(), tracked_projection_clean: true } } }
 fn desired_bin() -> MemberIdentity { ExecutableIdentity { digest: bin_a() } }
@@ -196,5 +226,130 @@ test fn live_deploy_is_a_decodable_fleet_converge_scope() -> Bool {
     ScopeUndecodable { cause: _ } => false
     ScopeDecoded { scope: LiveDeploy } => true
     ScopeDecoded { scope: _ } => false
+  }
+}
+
+fn admit_production_live_deploy_request() -> LiveDeployFleetRequestAdmission {
+  admit_live_deploy_fleet_request(
+    desired: srv1_production_desired_deployment(),
+    candidate: candidate(),
+    target: target(),
+    observed: matching_obs(),
+    desired_member: m => desired_for(m: m),
+  )
+}
+
+test fn a_host_only_live_deploy_request_has_no_spelling() -> Bool {
+  string_contains(s: live_deploy_host_only_request_refusal_reason(), pattern: "hostname")
+    && string_contains(s: live_deploy_host_only_request_refusal_reason(), pattern: "selected_identity")
+}
+
+test fn admit_binds_the_request_to_the_roster_selected_identity() -> Bool {
+  match admit_production_live_deploy_request() {
+    LiveDeployFleetRequestAdmitted { desired, basis: _ } =>
+      declaration_ref_eq(a: desired.selected_identity, b: srv1_production_selected_identity())
+    LiveDeployFleetRequestIdentityMismatch { carried: _, rostered: _ } => false
+    LiveDeployFleetRequestUnknownInstance { instance_id: _ } => false
+    LiveDeployFleetRequestRosterRefused { refusal: _ } => false
+    LiveDeployFleetRequestBasisRefused { cause: _ } => false
+  }
+}
+
+test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool {
+  let live = srv1_production_desired_deployment()
+  match admit_live_deploy_fleet_request(
+    desired: DesiredDeployment {
+      instance: live.instance,
+      target: live.target,
+      names: live.names,
+      selected_identity: srv1_lab_selected_identity(),
+    },
+    candidate: candidate(),
+    target: target(),
+    observed: matching_obs(),
+    desired_member: m => desired_for(m: m),
+  ) {
+    LiveDeployFleetRequestIdentityMismatch { carried, rostered } =>
+      declaration_ref_eq(a: carried, b: srv1_lab_selected_identity())
+        && declaration_ref_eq(a: rostered, b: srv1_production_selected_identity())
+    LiveDeployFleetRequestAdmitted { desired: _, basis: _ } => false
+    LiveDeployFleetRequestUnknownInstance { instance_id: _ } => false
+    LiveDeployFleetRequestRosterRefused { refusal: _ } => false
+    LiveDeployFleetRequestBasisRefused { cause: _ } => false
+  }
+}
+
+test fn live_deploy_converge_is_the_live_deploy_scope_and_names_the_selected_identity() -> Bool {
+  match admit_production_live_deploy_request() {
+    LiveDeployFleetRequestAdmitted { desired, basis } => {
+      let req = live_deploy_converge_request(desired: desired, basis: basis)
+      let baseline = observed_baseline_text(request: req)
+      let key = declaration_ref_display_key(ref: srv1_production_selected_identity())
+      match fleet_converge_request_scope(request: req) {
+        LiveDeploy =>
+          string_contains(s: baseline, pattern: "scope:live-deploy")
+            && string_contains(s: baseline, pattern: key)
+            && string_contains(s: baseline, pattern: "member-observed:")
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+test fn production_and_lab_live_deploy_requests_on_the_same_host_fingerprint_differently() -> Bool {
+  match admit_production_live_deploy_request() {
+    LiveDeployFleetRequestAdmitted { desired: prod, basis: prod_basis } =>
+      match admit_live_deploy_fleet_request(
+        desired: srv1_lab_desired_deployment(),
+        candidate: candidate(),
+        target: target(),
+        observed: matching_obs(),
+        desired_member: m => desired_for(m: m),
+      ) {
+        LiveDeployFleetRequestAdmitted { desired: lab, basis: lab_basis } => {
+          let prod_req = live_deploy_converge_request(desired: prod, basis: prod_basis)
+          let lab_req = live_deploy_converge_request(desired: lab, basis: lab_basis)
+          let prod_fp = serialize_content_hash(hash: fleet_converge_plan_subject(request: prod_req).member_set_fingerprint) as String
+          let lab_fp = serialize_content_hash(hash: fleet_converge_plan_subject(request: lab_req).member_set_fingerprint) as String
+          !(prod_fp == lab_fp)
+            && fleet_converge_plan_subject(request: prod_req).host == fleet_converge_plan_subject(request: lab_req).host
+        }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn the_plan_fold_consumes_live_deploy_converge_without_emitting_host_effects() -> Bool {
+  match admit_production_live_deploy_request() {
+    LiveDeployFleetRequestAdmitted { desired, basis } => {
+      let req = live_deploy_converge_request(desired: desired, basis: basis)
+      let subject = fleet_converge_plan_subject(request: req)
+      let artifact = fleet_converge_plan_artifact_of_request(request: req, prior_generation: 0)
+      let shell = fleet_converge_apply_shell(
+        request: req,
+        terminal: fleet_converge_apply_terminal(request: req),
+      )
+      match fleet_converge_apply_terminal(request: req) {
+        FullyApplied =>
+          match fleet_converge_apply_artifact_admits(
+            planned_host_text: subject.host as String,
+            planned_scope_wire: fleet_converge_scope_wire(scope: LiveDeploy),
+            planned_fingerprint_text: serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+            observed: req,
+          ) {
+            ApplyAdmitted =>
+              string_contains(s: artifact.plan_body, pattern: "scope:live-deploy")
+                && string_contains(s: artifact.plan_body, pattern: declaration_ref_display_key(ref: srv1_production_selected_identity()))
+                && string_contains(s: shell, pattern: "emits no host effects")
+                && !string_contains(s: shell, pattern: "systemctl")
+            ApplyMemberSetMismatch => false
+            _ => false
+          }
+        _ => false
+      }
+    }
+    _ => false
   }
 }
