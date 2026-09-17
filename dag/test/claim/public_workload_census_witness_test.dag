@@ -2,7 +2,6 @@ module test.claim.public_workload_census_witness
 
 import std.types { Bool, List, String, NonEmptyStr }
 import std.measure { hardware_thread_count }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.github.workflow_runs {

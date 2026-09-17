@@ -1,7 +1,6 @@
 module test.claim.runner_label_resolution_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelRow }
