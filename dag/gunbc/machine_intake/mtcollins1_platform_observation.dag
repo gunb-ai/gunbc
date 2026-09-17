@@ -10,7 +10,7 @@ import gunbc.machine_intake_ethernet {
   BmcDedicated,
   EthernetFunctionBinding,
   PhysicalEthernetPort,
-  ethernet_port_may_carry_multiple_functions,
+  ethernet_ports_are_distinct,
 }
 
 // PLATFORM FACTS OBSERVED WHILE DOING SOMETHING ELSE, which is why they are recorded here rather
@@ -131,11 +131,10 @@ data mtcollins1_second_bmc_address: NonEmptyStr = "192.168.1.231"
 data mtcollins1_second_bmc_mac: NonEmptyStr = "28:c1:3c:8a:d6:4d"
 
 fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
-  ethernet_port_may_carry_multiple_functions(
-    a: mtcollins1_dedicated_bmc_binding,
-    b: mtcollins1_second_bmc_binding,
-  ) == false
-    && (mtcollins1_dedicated_bmc_address as String) != (mtcollins1_second_bmc_address as String)
+  ethernet_ports_are_distinct(
+    a: mtcollins1_dedicated_mgmt_port,
+    b: mtcollins1_second_bmc_port,
+  )
 }
 
 // THE FOLD IS EXERCISED AGAINST THE MEASURED ROWS AND AGAINST A CORRECTED PAIR. The second is what

@@ -3,16 +3,23 @@ module extdeps.ocp.mt_jade.platform
 import std.types { String, NonEmptyStr, List, Bool }
 import std.integer { Int }
 import std.measure {
+  Bandwidth,
   Hertz,
   MegatransfersPerSecond,
   Microsecond,
   Micrometer,
+  Millimeter,
+  RackUnit,
+  bandwidth,
   hertz,
   megatransfers_per_second,
   microsecond,
   micrometer,
   micrometer_count,
+  millimeter,
+  rack_unit,
 }
+import extdeps.standards.nic_attachment { OnboardNetworkController }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.ocp.mt_jade.subject {
@@ -377,23 +384,26 @@ fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: Refe
 // motherboard carries both connector sets; a 2U chassis uses six 6056 dual-rotor fans and a 1U
 // chassis uses eight 4056 dual-rotor fans. PWM/TACH in Table 9 restates the same split.
 type MtJadeFanConnectorPopulation {
-  chassis_height_label: NonEmptyStr
+  chassis_height: RackUnit
   connector_count: Int
-  fan_size_designation: NonEmptyStr
+  frame_width: Millimeter
+  frame_thickness: Millimeter
   dual_rotor: Bool
 }
 
 data mt_jade_fan_connectors_2u: MtJadeFanConnectorPopulation = MtJadeFanConnectorPopulation {
-  chassis_height_label: "2U",
+  chassis_height: rack_unit(count: 2),
   connector_count: 6,
-  fan_size_designation: "6056",
+  frame_width: millimeter(count: 60),
+  frame_thickness: millimeter(count: 56),
   dual_rotor: true,
 }
 
 data mt_jade_fan_connectors_1u: MtJadeFanConnectorPopulation = MtJadeFanConnectorPopulation {
-  chassis_height_label: "1U",
+  chassis_height: rack_unit(count: 1),
   connector_count: 8,
-  fan_size_designation: "4056",
+  frame_width: millimeter(count: 40),
+  frame_thickness: millimeter(count: 56),
   dual_rotor: true,
 }
 
@@ -423,17 +433,18 @@ data mt_jade_crps_ac_inlet: MtJadeCrpsAcInletStanding = InletUnstatedInCitedAuth
 // 10/100/1000 and RTL8211E as the PHY (already a reference-part row). Bottom-side I/O is common
 // between 1U and 2U: BMC UART/ETH/VGA sit with the power-supply end of the board.
 type MtJadeBmcManagementNetwork {
-  phy_ordering_part_number: NonEmptyStr
-  port_count: Int
+  network: OnboardNetworkController
   location_label: NonEmptyStr
-  media_label: NonEmptyStr
 }
 
 data mt_jade_bmc_management_network: MtJadeBmcManagementNetwork = MtJadeBmcManagementNetwork {
-  phy_ordering_part_number: "RTL8211E",
-  port_count: 1,
+  network: OnboardNetworkController {
+    controller: "RTL8211E",
+    port_count: 1,
+    per_port_bandwidth: bandwidth(count: 1000000000),
+    purpose: "BMC manageability",
+  },
   location_label: "rear RJ45, power-supply / bottom-side I/O",
-  media_label: "10/100/1000 Mbps BMC ETH",
 }
 
 // FEATURE LIST "BMC AMI MegaRAC, OpenBMC" IS A DISJUNCTION, NOT A DEFAULT. The specification

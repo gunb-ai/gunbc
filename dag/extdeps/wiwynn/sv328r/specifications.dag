@@ -9,6 +9,7 @@ import std.measure {
   millimeter, rack_unit,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.standards.nic_attachment { OnboardNetworkController }
 import extdeps.wiwynn.sv328r.subject {
   WiwynnSv328rProduct, sv328r_datasheet_authority, wiwynn_sv328r_product,
 }
@@ -38,12 +39,14 @@ data sv328r_stated_weight: Gram = gram(count: 14470)
 
 type Sv328rCooling {
   fan_count: Nat
-  fan_size_designation: NonEmptyStr
+  frame_width: Millimeter
+  frame_thickness: Millimeter
 }
 
 data sv328r_cooling: Sv328rCooling = Sv328rCooling {
   fan_count: 6,
-  fan_size_designation: "6056",
+  frame_width: millimeter(count: 60),
+  frame_thickness: millimeter(count: 56),
 }
 
 type Sv328rPowerSupply {
@@ -63,13 +66,6 @@ type Sv328rCrpsAcInletStanding
 
 data sv328r_crps_ac_inlet: Sv328rCrpsAcInletStanding = InletUnstatedInCitedAuthorities {
   obligation: "The SV328R datasheet names 2x CRPS form factor, redundant, and does not name IEC 60320 C14 vs C20, a 120 V vs 200-240 V rating, or a shipped cord. Discriminator: a photograph of the fitted PSU inlet on a unit of this class, or a PSU OPN whose vendor sheet names the inlet.",
-}
-
-type OnboardNetworkController {
-  controller: NonEmptyStr
-  port_count: Nat
-  per_port_bandwidth: Bandwidth
-  purpose: NonEmptyStr
 }
 
 data sv328r_bmc_manageability_network: OnboardNetworkController = OnboardNetworkController {

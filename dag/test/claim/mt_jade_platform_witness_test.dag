@@ -2,7 +2,10 @@ module test.claim.mt_jade_platform_witness
 
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
-import std.measure { hertz_count, microsecond_count, micrometer_count, megatransfers_per_second_count }
+import std.measure {
+  hertz_count, microsecond_count, micrometer_count, megatransfers_per_second_count,
+  millimeter_count, rack_unit_count, bandwidth_count,
+}
 import gunbc.specification_citation_read_provenance {
   DocumentMirrorLocatorFetchedAndTextIngested,
   DocumentLocatorFetchRefused,
@@ -284,26 +287,32 @@ test fn w_mt_jade_bmc_chip_catalog_joins_the_aspeed_ast2500_authority() -> Bool 
     && mt_jade_bmc_chip_catalog == aspeed_ast2500_catalog
 }
 
-test fn w_2u_fan_connectors_are_six_6056_dual_rotor() -> Bool {
-  mt_jade_fan_connectors_2u.connector_count == 6
-    && (mt_jade_fan_connectors_2u.fan_size_designation as String) == "6056"
+test fn w_2u_fan_connectors_are_six_60_by_56_dual_rotor() -> Bool {
+  rack_unit_count(u: mt_jade_fan_connectors_2u.chassis_height) == 2
+    && mt_jade_fan_connectors_2u.connector_count == 6
+    && millimeter_count(m: mt_jade_fan_connectors_2u.frame_width) == 60
+    && millimeter_count(m: mt_jade_fan_connectors_2u.frame_thickness) == 56
     && mt_jade_fan_connectors_2u.dual_rotor
+    && rack_unit_count(u: mt_jade_fan_connectors_1u.chassis_height) == 1
     && mt_jade_fan_connectors_1u.connector_count == 8
-    && (mt_jade_fan_connectors_1u.fan_size_designation as String) == "4056"
+    && millimeter_count(m: mt_jade_fan_connectors_1u.frame_width) == 40
+    && millimeter_count(m: mt_jade_fan_connectors_1u.frame_thickness) == 56
 }
 
-test fn w_crps_is_dual_redundant_and_inlet_is_unstated() -> Bool {
+test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Bool {
   mt_jade_crps_power.psu_count == 2
     && mt_jade_crps_power.hot_plug
     && (mt_jade_crps_power.redundancy_label as String) == "1+1"
     && match mt_jade_crps_ac_inlet {
-      InletUnstatedInCitedAuthorities { obligation: _ } => true
+      InletUnstatedInCitedAuthorities { obligation } =>
+        string_contains(s: obligation as String, pattern: "C14 vs C20")
     }
 }
 
 test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e() -> Bool {
-  (mt_jade_bmc_management_network.phy_ordering_part_number as String) == "RTL8211E"
-    && mt_jade_bmc_management_network.port_count == 1
+  (mt_jade_bmc_management_network.network.controller as String) == "RTL8211E"
+    && mt_jade_bmc_management_network.network.port_count == 1
+    && bandwidth_count(b: mt_jade_bmc_management_network.network.per_port_bandwidth) == 1000000000
     && (mt_jade_bmc_management_network.location_label as String) == "rear RJ45, power-supply / bottom-side I/O"
 }
 

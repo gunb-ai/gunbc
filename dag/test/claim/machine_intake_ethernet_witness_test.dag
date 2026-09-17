@@ -1,8 +1,7 @@
 module test.claim.machine_intake_ethernet_witness
 
-import std.types { Bool, String }
+import std.types { Bool }
 import std.measure { rpm, watt }
-import extdeps.boards.types { AmpereMtCollins, AmpereMtJade }
 import gunbc.machine_intake_ethernet {
   AttachmentUnobserved,
   BmcNcsi,
@@ -10,6 +9,7 @@ import gunbc.machine_intake_ethernet {
   HostData,
   PhysicalEthernetPort,
   ethernet_port_may_carry_multiple_functions,
+  ethernet_ports_are_distinct,
 }
 import gunbc.machine_intake_power_supply {
   PowerSupplyStanding,
@@ -38,19 +38,20 @@ data jade_upper_left: PhysicalEthernetPort = PhysicalEthernetPort {
   },
 }
 
-test fn w_ampere_mt_jade_is_a_distinct_baseboard_arm() -> Bool {
-  AmpereMtJade != AmpereMtCollins
-}
-
 test fn w_one_port_can_bind_host_data_and_bmc_ncsi() -> Bool {
   ethernet_port_may_carry_multiple_functions(
     a: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
     b: EthernetFunctionBinding { port: jade_upper_left, function: BmcNcsi },
   )
+    && ethernet_port_may_carry_multiple_functions(
+      a: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
+      b: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
+    ) == false
+    && ethernet_ports_are_distinct(a: jade_upper_left, b: jade_upper_left) == false
 }
 
 test fn w_dedicated_bmc_jack_is_not_the_upper_host_module() -> Bool {
-  (jade_lower_bmc.panel_label as String) != (jade_upper_left.panel_label as String)
+  ethernet_ports_are_distinct(a: jade_lower_bmc, b: jade_upper_left)
 }
 
 test fn w_collins_bmc_lans_are_distinct_ports() -> Bool {

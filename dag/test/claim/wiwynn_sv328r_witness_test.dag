@@ -43,14 +43,16 @@ test fn w_stated_weight_is_14470_grams() -> Bool {
     && sv328r_weight_grams() == 14470
 }
 
-test fn w_cooling_is_six_6056_and_power_is_dual_crps_with_unstated_inlet() -> Bool {
+test fn w_cooling_is_six_60_by_56_and_power_is_dual_crps_with_owed_inlet() -> Bool {
   sv328r_cooling.fan_count == 6
-    && (sv328r_cooling.fan_size_designation as String) == "6056"
+    && millimeter_count(m: sv328r_cooling.frame_width) == 60
+    && millimeter_count(m: sv328r_cooling.frame_thickness) == 56
     && sv328r_power.psu_count == 2
     && sv328r_power.redundant
     && (sv328r_power.form_factor_label as String) == "CRPS"
     && match sv328r_crps_ac_inlet {
-      InletUnstatedInCitedAuthorities { obligation: _ } => true
+      InletUnstatedInCitedAuthorities { obligation } =>
+        string_contains(s: obligation as String, pattern: "C14 vs C20")
     }
 }
 

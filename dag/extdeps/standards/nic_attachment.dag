@@ -1,7 +1,9 @@
 module extdeps.standards.nic_attachment
 
 import std.types { NonEmptyStr }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Bandwidth }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.ocp_nic_2_0 { OcpNic2PhysicalVariant }
@@ -22,6 +24,13 @@ type NicAttachmentClass
   | OcpNic3 { physical_variant: OcpNic3PhysicalVariant }
   | PcieCem
   | VendorDaughterCard { form_authority: ExternalAuthority, form_name: NonEmptyStr }
+
+type OnboardNetworkController {
+  controller: NonEmptyStr
+  port_count: Nat
+  per_port_bandwidth: Bandwidth
+  purpose: NonEmptyStr
+}
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef { declaration: DeclarationRef {

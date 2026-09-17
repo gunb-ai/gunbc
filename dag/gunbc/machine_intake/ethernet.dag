@@ -31,6 +31,10 @@ type EthernetFunctionBinding {
   function: EthernetFunction
 }
 
+fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {
+  (a.panel_label as String) != (b.panel_label as String)
+}
+
 fn ethernet_port_may_carry_multiple_functions(
   a: EthernetFunctionBinding,
   b: EthernetFunctionBinding,
