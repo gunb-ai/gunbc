@@ -1,6 +1,8 @@
 module gunbc.actions_job_observation
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.nat { Nat }
+import std.measure { Second, second, second_count, measure_add }
 import v2.std.algebra { fold_list, filter }
 import gunbc.actions_runner_label { third_party_runner_machine_prefixes }
 
@@ -94,16 +96,26 @@ fn provenance_from_provider_roster(runner_name: String) -> RunnerProvenance {
   }
 }
 
+// THE EPOCHS ARE Nat AND THE DURATIONS ARE std.measure Second. Both halves are deliberate. A unix
+// timestamp is not signed, so taking Int and casting would defer a type error past every targeted
+// compile to claim execution -- the receipt is
+// test.claim.runner.runner_microvm_network_witness, where `i as Nat` compiled and then errored
+// with "cannot cast Int to Nat" on the required floor. And the durations are Second because
+// std.measure already owns the time axis: a bare Int here would be a second authority for the
+// unit that extdeps.pricing.github_actions prices against MoneyPerMinute, which is the failed
+// decomposition DESIGN section 2 names. The two guards below establish non-negativity before any
+// subtraction, so each difference inhabits Nat by construction rather than by check.
+//
 // A JOB THAT NEVER STARTED HAS NO OCCUPANCY AND NO DELAY, and that is a third state rather than a
 // zero. A skipped job and a job that occupied a runner for zero measurable seconds are different
 // facts, and summing them as zeroes loses the count of work that never ran.
 type JobTiming
-  = JobExecuted { prestart_seconds: Int, occupancy_seconds: Int }
+  = JobExecuted { prestart: Second, occupancy: Second }
   | JobNeverStarted
   | JobTimingUnread { reason: NonEmptyStr }
 
-fn job_timing(created_epoch: Int, started_epoch: Int, completed_epoch: Int) -> JobTiming {
-  if started_epoch <= 0 {
+fn job_timing(created_epoch: Nat, started_epoch: Nat, completed_epoch: Nat) -> JobTiming {
+  if started_epoch == 0 {
     JobNeverStarted
   } else {
     if completed_epoch < started_epoch {
@@ -117,8 +129,8 @@ fn job_timing(created_epoch: Int, started_epoch: Int, completed_epoch: Int) -> J
         }
       } else {
         JobExecuted {
-          prestart_seconds: started_epoch - created_epoch,
-          occupancy_seconds: completed_epoch - started_epoch,
+          prestart: second(started_epoch - created_epoch),
+          occupancy: second(completed_epoch - started_epoch),
         }
       }
     }
@@ -130,14 +142,14 @@ fn job_timing(created_epoch: Int, started_epoch: Int, completed_epoch: Int) -> J
 // response separates them. Naming it RunnerQueueDelay would assert a cause the observation cannot
 // carry, which is the error that produced a confident zero from the wrong boundary.
 type PrestartReading {
-  seconds: Int
+  waited: Second
   composed_of_unseparated_causes: Bool
 }
 
 fn prestart_reading(t: JobTiming) -> PrestartReading? {
   match t {
-    JobExecuted { prestart_seconds: p, occupancy_seconds: _ } =>
-      Present { value: PrestartReading { seconds: p, composed_of_unseparated_causes: true } }
+    JobExecuted { prestart: p, occupancy: _ } =>
+      Present { value: PrestartReading { waited: p, composed_of_unseparated_causes: true } }
     JobNeverStarted => none
     JobTimingUnread { reason: _ } => none
   }
@@ -146,16 +158,16 @@ fn prestart_reading(t: JobTiming) -> PrestartReading? {
 // OCCUPANCY IS A SUM OVER JOBS AND NEVER A RUN'S DURATION. This is the whole repair: a consumer
 // wanting runner-minutes folds executed jobs, and a consumer holding only run records cannot
 // answer at all rather than answering with wall-clock.
-fn job_occupancy_seconds(t: JobTiming) -> Int {
+fn job_occupancy(t: JobTiming) -> Second {
   match t {
-    JobExecuted { prestart_seconds: _, occupancy_seconds: o } => o
-    JobNeverStarted => 0
-    JobTimingUnread { reason: _ } => 0
+    JobExecuted { prestart: _, occupancy: o } => o
+    JobNeverStarted => second(0)
+    JobTimingUnread { reason: _ } => second(0)
   }
 }
 
-fn total_occupancy_seconds(timings: List<JobTiming>) -> Int {
-  fold_list(timings, 0, (acc, t) => acc + job_occupancy_seconds(t: t))
+fn total_occupancy(timings: List<JobTiming>) -> Second {
+  fold_list(timings, second(0), (acc, t) => measure_add(a: acc, b: job_occupancy(t: t)))
 }
 
 // A run's wall-clock is deliberately NOT offered as an occupancy fold anywhere in this module. The
@@ -176,10 +188,10 @@ fn occupancy_from_run_wall_clock() -> OccupancyFromRunWallClock {
 // both and a consumer asking about waste must read the seconds.
 type CancellationReading {
   cancelled_jobs: Int
-  cancelled_occupancy_seconds: Int
+  cancelled_occupancy: Second
   jobs_total: Int
 }
 
 fn cancellation_is_waste_evidence(r: CancellationReading) -> Bool {
-  r.cancelled_occupancy_seconds > 0
+  second_count(r.cancelled_occupancy) > 0
 }

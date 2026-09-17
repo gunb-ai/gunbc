@@ -75,10 +75,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     sheets_values_batch_update_citation,
     sheets_value_render_option_citation,
     sheets_quota_citation,
-    sheets_oauth_scope_citation,
-    sheets_batch_update_citation,
-    sheets_cell_format_citation,
-    sheets_color_citation
+    sheets_oauth_scope_citation
   ]
 }
 
@@ -238,10 +235,6 @@ type ValueRangeWrite {
   values: List<List<String>>
 }
 
-type BatchUpdateSpreadsheetResponse {
-  spreadsheetId: String
-}
-
 type BatchUpdateValuesResponse {
   spreadsheetId: String
   totalUpdatedRows: Int?
@@ -250,32 +243,6 @@ type BatchUpdateValuesResponse {
   totalUpdatedSheets: Int?
   responses: List<ValueRange>?
 }
-
-data sheets_batch_update_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/batchUpdate" }
-}
-
-data sheets_cell_format_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/cells#cellformat" }
-}
-
-data sheets_color_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/other#Color" }
-}
-
-// A SHEETS COLOR CHANNEL IS A FLOAT IN [0,1] AND A SWATCH IS AN 8-BIT INTEGER, and this repository
-// cannot currently convert between them: there is no Int-to-Float conversion in the corpus, so
-// 230/255 is not expressible and the channel values reaching this API are transcribed decimals
-// rather than derived ones. That is a real gap and it is named rather than hidden -- the consuming
-// module carries each triple beside the gunbc.design swatch it transcribes, so a reader can check
-// the arithmetic by hand, and the dissolution is an Int-to-Float conversion landing in std.
-type SheetsColor {
-  red: Float
-  green: Float
-  blue: Float
-}
-
-data spreadsheet_first_sheet_id: Int = 0
 
 service sheets.Spreadsheets {
   config {
@@ -302,134 +269,6 @@ service sheets.Spreadsheets {
     }
     response {
       200 => ValueRange
-      400 => SheetsError
-      401 => SheetsError
-      403 => SheetsError
-      404 => SheetsError
-      429 => SheetsError
-      5xx => SheetsError
-    }
-  }
-
-  operation SetFrozenRows {
-    input { spreadsheet_id: String, sheet_id: Int, frozen_row_count: Int }
-    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
-    transport rest {
-      method: POST,
-      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
-      body: {
-        requests: [
-          {
-            updateSheetProperties: {
-              properties: { sheetId: sheet_id, gridProperties: { frozenRowCount: frozen_row_count } },
-              fields: "gridProperties.frozenRowCount"
-            }
-          }
-        ]
-      }
-    }
-    response {
-      200 => BatchUpdateSpreadsheetResponse
-      400 => SheetsError
-      401 => SheetsError
-      403 => SheetsError
-      404 => SheetsError
-      429 => SheetsError
-      5xx => SheetsError
-    }
-  }
-
-  operation FormatCellRange {
-    input {
-      spreadsheet_id: String
-      sheet_id: Int
-      start_row: Int
-      end_row: Int
-      start_col: Int
-      end_col: Int
-      background: SheetsColor
-      foreground: SheetsColor
-      bold: Bool
-    }
-    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
-    transport rest {
-      method: POST,
-      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
-      body: {
-        requests: [
-          {
-            repeatCell: {
-              range: {
-                sheetId: sheet_id,
-                startRowIndex: start_row,
-                endRowIndex: end_row,
-                startColumnIndex: start_col,
-                endColumnIndex: end_col
-              },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: background,
-                  textFormat: { bold: bold, foregroundColor: foreground }
-                }
-              },
-              fields: "userEnteredFormat(backgroundColor,textFormat)"
-            }
-          }
-        ]
-      }
-    }
-    response {
-      200 => BatchUpdateSpreadsheetResponse
-      400 => SheetsError
-      401 => SheetsError
-      403 => SheetsError
-      404 => SheetsError
-      429 => SheetsError
-      5xx => SheetsError
-    }
-  }
-
-  operation AddTextColorRule {
-    input {
-      spreadsheet_id: String
-      sheet_id: Int
-      start_row: Int
-      start_col: Int
-      end_col: Int
-      match_text: String
-      foreground: SheetsColor
-      rule_index: Int
-    }
-    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
-    transport rest {
-      method: POST,
-      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
-      body: {
-        requests: [
-          {
-            addConditionalFormatRule: {
-              rule: {
-                ranges: [
-                  {
-                    sheetId: sheet_id,
-                    startRowIndex: start_row,
-                    startColumnIndex: start_col,
-                    endColumnIndex: end_col
-                  }
-                ],
-                booleanRule: {
-                  condition: { type: "TEXT_CONTAINS", values: [{ userEnteredValue: match_text }] },
-                  format: { textFormat: { bold: true, foregroundColor: foreground } }
-                }
-              },
-              index: rule_index
-            }
-          }
-        ]
-      }
-    }
-    response {
-      200 => BatchUpdateSpreadsheetResponse
       400 => SheetsError
       401 => SheetsError
       403 => SheetsError

@@ -1,14 +1,15 @@
 module test.claim.actions_job_observation_witness
 
 import std.types { Bool, String, Int, NonEmptyStr }
+import std.measure { Second, second, second_count }
 import gunbc.actions_job_observation {
   JobTiming,
   JobExecuted,
   JobNeverStarted,
   JobTimingUnread,
   job_timing,
-  job_occupancy_seconds,
-  total_occupancy_seconds,
+  job_occupancy,
+  total_occupancy,
   PrestartReading,
   prestart_reading,
   RunnerProvenance,
@@ -41,19 +42,19 @@ fn w_arm() -> JobTiming {
 // jobs occupied 27 + 28 = 55. Anything folding wall-clock as occupancy undercounts by 62% on a
 // two-job run, and by far more on a wide matrix.
 test fn occupancy_exceeds_run_wall_clock_when_jobs_run_in_parallel() -> Bool {
-  let occ = total_occupancy_seconds(timings: [w_x86(), w_arm()])
+  let occ = second_count(total_occupancy(timings: [w_x86(), w_arm()]))
   occ == 55 && occ > 34
 }
 
 test fn each_job_occupancy_is_its_own_execution_interval() -> Bool {
-  job_occupancy_seconds(t: w_x86()) == 27 && job_occupancy_seconds(t: w_arm()) == 28
+  second_count(job_occupancy(t: w_x86())) == 27 && second_count(job_occupancy(t: w_arm())) == 28
 }
 
 // THE OTHER MEASUREMENT. The run reported zero admission delay in the same second while both jobs
 // waited before a runner took them. A run-level zero cannot speak for the job-level interval.
 test fn jobs_show_prestart_delay_where_the_run_showed_none() -> Bool {
   match prestart_reading(t: w_x86()) {
-    Present { value: p } => p.seconds == 4
+    Present { value: p } => second_count(p.waited) == 4
     Absent => false
   }
 }
@@ -72,7 +73,7 @@ test fn a_prestart_reading_admits_its_causes_are_unseparated() -> Bool {
 test fn a_job_that_never_started_is_its_own_state() -> Bool {
   match job_timing(created_epoch: 10, started_epoch: 0, completed_epoch: 0) {
     JobNeverStarted => true
-    JobExecuted { prestart_seconds: _, occupancy_seconds: _ } => false
+    JobExecuted { prestart: _, occupancy: _ } => false
     JobTimingUnread { reason: _ } => false
   }
 }
@@ -80,7 +81,7 @@ test fn a_job_that_never_started_is_its_own_state() -> Bool {
 test fn reversed_timestamps_are_unread_not_negative() -> Bool {
   match job_timing(created_epoch: 0, started_epoch: 20, completed_epoch: 5) {
     JobTimingUnread { reason: r } => string_contains(s: r as String, pattern: "completed precedes started")
-    JobExecuted { prestart_seconds: _, occupancy_seconds: _ } => false
+    JobExecuted { prestart: _, occupancy: _ } => false
     JobNeverStarted => false
   }
 }
@@ -141,12 +142,12 @@ test fn occupancy_from_run_duration_refuses_with_its_reason() -> Bool {
 // high rate may mean the team already has correct hygiene.
 test fn cancellation_without_occupancy_is_not_waste_evidence() -> Bool {
   !cancellation_is_waste_evidence(
-    r: CancellationReading { cancelled_jobs: 31, cancelled_occupancy_seconds: 0, jobs_total: 38 }
+    r: CancellationReading { cancelled_jobs: 31, cancelled_occupancy: second(0), jobs_total: 38 }
   )
 }
 
 test fn cancellation_with_occupancy_is_waste_evidence() -> Bool {
   cancellation_is_waste_evidence(
-    r: CancellationReading { cancelled_jobs: 4, cancelled_occupancy_seconds: 1080, jobs_total: 38 }
+    r: CancellationReading { cancelled_jobs: 4, cancelled_occupancy: second(1080), jobs_total: 38 }
   )
 }

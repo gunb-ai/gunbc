@@ -252,6 +252,13 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
 // this declaration's body, and section 4c admits annotations only at module-item grain. An
 // operation is not a module item, so per-operation rationale is not expressible; it belongs here
 // or nowhere.
+//
+// THE FILTER IS A CALLER'S CHOICE AND WAS A LITERAL. "latest" returns only the most recent attempt
+// of each job, which is the right answer for "what is the current state" and the wrong one for any
+// census of consumed capacity: a re-run mutates a job's record in place, so the attempts "latest"
+// drops are execution that really happened and really occupied a runner. A caller measuring
+// occupancy needs "all"; a caller reading current state needs "latest"; neither is a property of
+// this operation, so the choice moves to the input with "latest" as the compatible default.
 service github.WorkflowRuns {
   config {
     endpoint: default_api_base
@@ -371,13 +378,6 @@ service github.WorkflowRuns {
       500 => GitHubErrorShape
     }
   }
-
-  // THE FILTER IS A CALLER'S CHOICE AND WAS A LITERAL. "latest" returns only the most recent attempt
-  // of each job, which is the right answer for "what is the current state" and the wrong one for any
-  // census of consumed capacity: a re-run mutates a job's record in place, so the attempts "latest"
-  // drops are execution that really happened and really occupied a runner. A caller measuring
-  // occupancy needs "all"; a caller reading current state needs "latest"; neither is a property of
-  // this operation, so the choice moves to the input with "latest" as the compatible default.
   operation ListJobs {
     input {
       auth_token: Secret
