@@ -8,6 +8,8 @@ import gunbc.machine_intake_ethernet {
   AttachmentUnobserved,
   BaseboardOnboard,
   BmcDedicated,
+  FunctionUnobserved,
+  ObservedEthernetLan,
   EthernetFunctionBinding,
   PhysicalEthernetPort,
   ethernet_ports_are_distinct,
@@ -112,29 +114,38 @@ data mtcollins1_second_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
   },
 }
 
-data mtcollins1_dedicated_bmc_binding: EthernetFunctionBinding = EthernetFunctionBinding {
-  port: mtcollins1_dedicated_mgmt_port,
-  function: BmcDedicated,
+data mtcollins1_dedicated_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
+  binding: EthernetFunctionBinding {
+    port: mtcollins1_dedicated_mgmt_port,
+    function: BmcDedicated,
+  },
+  address: "192.168.1.228",
+  mac: "28:c1:3c:8a:d6:4c",
 }
 
-data mtcollins1_second_bmc_binding: EthernetFunctionBinding = EthernetFunctionBinding {
-  port: mtcollins1_second_bmc_port,
-  function: BmcDedicated,
+data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
+  binding: EthernetFunctionBinding {
+    port: mtcollins1_second_bmc_port,
+    function: FunctionUnobserved {
+      discriminator: "Second BMC IP on the same controller. Not classified as dedicated management. NCSI versus a second PHY is unobserved.",
+    },
+  },
+  address: "192.168.1.231",
+  mac: "28:c1:3c:8a:d6:4d",
 }
-
-data mtcollins1_dedicated_bmc_address: NonEmptyStr = "192.168.1.228"
-
-data mtcollins1_dedicated_bmc_mac: NonEmptyStr = "28:c1:3c:8a:d6:4c"
-
-data mtcollins1_second_bmc_address: NonEmptyStr = "192.168.1.231"
-
-data mtcollins1_second_bmc_mac: NonEmptyStr = "28:c1:3c:8a:d6:4d"
 
 fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
   ethernet_ports_are_distinct(
-    a: mtcollins1_dedicated_mgmt_port,
-    b: mtcollins1_second_bmc_port,
+    a: mtcollins1_dedicated_bmc_lan.binding.port,
+    b: mtcollins1_second_bmc_lan.binding.port,
   )
+    && (mtcollins1_dedicated_bmc_lan.address as String) != (mtcollins1_second_bmc_lan.address as String)
+    && (mtcollins1_dedicated_bmc_lan.mac as String) != (mtcollins1_second_bmc_lan.mac as String)
+    && mtcollins1_dedicated_bmc_lan.binding.function == BmcDedicated
+    && match mtcollins1_second_bmc_lan.binding.function {
+      FunctionUnobserved { discriminator: _ } => true
+      _ => false
+    }
 }
 
 // THE FOLD IS EXERCISED AGAINST THE MEASURED ROWS AND AGAINST A CORRECTED PAIR. The second is what

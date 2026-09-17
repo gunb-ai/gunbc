@@ -8,7 +8,7 @@ import std.measure {
   bandwidth, gram, gram_count, hertz, megatransfers_per_second, micrometer, micrometer_count,
   millimeter, rack_unit,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.standards.nic_attachment { OnboardNetworkController }
 import extdeps.wiwynn.sv328r.subject {
   WiwynnSv328rProduct, sv328r_datasheet_authority, wiwynn_sv328r_product,
@@ -61,11 +61,8 @@ data sv328r_power: Sv328rPowerSupply = Sv328rPowerSupply {
   redundant: true,
 }
 
-type Sv328rCrpsAcInletStanding
-  = InletUnstatedInCitedAuthorities { obligation: NonEmptyStr }
-
-data sv328r_crps_ac_inlet: Sv328rCrpsAcInletStanding = InletUnstatedInCitedAuthorities {
-  obligation: "The SV328R datasheet names 2x CRPS form factor, redundant, and does not name IEC 60320 C14 vs C20, a 120 V vs 200-240 V rating, or a shipped cord. Discriminator: a photograph of the fitted PSU inlet on a unit of this class, or a PSU OPN whose vendor sheet names the inlet.",
+data sv328r_crps_ac_inlet: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "The SV328R datasheet names 2x CRPS form factor, redundant, and does not name IEC 60320 C14 vs C20, a 120 V vs 200-240 V rating, or a shipped cord. Discriminator: a photograph of the fitted PSU inlet on a unit of this class, or a PSU OPN whose vendor sheet names the inlet.",
 }
 
 data sv328r_bmc_manageability_network: OnboardNetworkController = OnboardNetworkController {

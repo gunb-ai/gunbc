@@ -20,7 +20,7 @@ import std.measure {
   rack_unit,
 }
 import extdeps.standards.nic_attachment { OnboardNetworkController }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, CitedFigureStanding, TranscribedUncited }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.ocp.mt_jade.subject {
   mt_jade_subject_authority_anchor,
@@ -422,11 +422,8 @@ data mt_jade_crps_power: MtJadeCrpsPower = MtJadeCrpsPower {
   hot_plug: true,
 }
 
-type MtJadeCrpsAcInletStanding
-  = InletUnstatedInCitedAuthorities { obligation: NonEmptyStr }
-
-data mt_jade_crps_ac_inlet: MtJadeCrpsAcInletStanding = InletUnstatedInCitedAuthorities {
-  obligation: "OCP Mt. Jade Rev 1.0 names two CRPS connectors and 1+1 hot-plug redundancy. It does not name an IEC 60320 inlet (C14 vs C20), a 120 V vs 200-240 V rating, or the cord the seller ships. Discriminator: a photograph or FRU of the fitted PSU face, or a PSU ordering part whose own datasheet names the inlet and AC range.",
+data mt_jade_crps_ac_inlet: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "OCP Mt. Jade Rev 1.0 names two CRPS connectors and 1+1 hot-plug redundancy. It does not name an IEC 60320 inlet (C14 vs C20), a 120 V vs 200-240 V rating, or the cord the seller ships. Discriminator: a photograph or FRU of the fitted PSU face, or a PSU ordering part whose own datasheet names the inlet and AC range.",
 }
 
 // FEATURE LIST: "MGMT 1x 1GbE from BMC to Rear RJ45 Connector". Section 7.6.1 names BMC ETH at

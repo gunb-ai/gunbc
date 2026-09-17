@@ -71,7 +71,6 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_fan_connectors_1u,
   mt_jade_fan_connectors_2u,
   mt_jade_reference_parts,
-  InletUnstatedInCitedAuthorities,
   processor_power_rail_enable_order,
   processor_power_rail_name,
   processor_socket_role_name,
@@ -80,7 +79,7 @@ import extdeps.ocp.mt_jade.platform {
   soc_pwrgd_minimum_system_clock_cycles,
   platform_sequencing_handshake_chain,
 }
-import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef }
+import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef, CitedToAuthority, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -304,8 +303,9 @@ test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Boo
     && mt_jade_crps_power.hot_plug
     && (mt_jade_crps_power.redundancy_label as String) == "1+1"
     && match mt_jade_crps_ac_inlet {
-      InletUnstatedInCitedAuthorities { obligation } =>
-        string_contains(s: obligation as String, pattern: "C14 vs C20")
+      TranscribedUncited { read_obligation } =>
+        string_contains(s: read_obligation as String, pattern: "C14 vs C20")
+      CitedToAuthority { authority: _ } => false
     }
 }
 

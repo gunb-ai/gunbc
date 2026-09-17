@@ -25,10 +25,17 @@ type EthernetFunction
   | BmcNcsi
   | HostData
   | PrebootNetwork
+  | FunctionUnobserved { discriminator: NonEmptyStr }
 
 type EthernetFunctionBinding {
   port: PhysicalEthernetPort
   function: EthernetFunction
+}
+
+type ObservedEthernetLan {
+  binding: EthernetFunctionBinding
+  address: NonEmptyStr
+  mac: NonEmptyStr
 }
 
 fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {

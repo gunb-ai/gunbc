@@ -7,7 +7,6 @@ import std.measure {
 }
 import extdeps.wiwynn.sv328r.subject { wiwynn_sv328r_product }
 import extdeps.wiwynn.sv328r.specifications {
-  InletUnstatedInCitedAuthorities,
   OcpNic30SffSlotPresent,
   sv328r_bmc_manageability_network,
   sv328r_cooling,
@@ -22,6 +21,7 @@ import extdeps.wiwynn.sv328r.specifications {
   sv328r_storage,
   sv328r_weight_grams,
 }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -51,8 +51,9 @@ test fn w_cooling_is_six_60_by_56_and_power_is_dual_crps_with_owed_inlet() -> Bo
     && sv328r_power.redundant
     && (sv328r_power.form_factor_label as String) == "CRPS"
     && match sv328r_crps_ac_inlet {
-      InletUnstatedInCitedAuthorities { obligation } =>
-        string_contains(s: obligation as String, pattern: "C14 vs C20")
+      TranscribedUncited { read_obligation } =>
+        string_contains(s: read_obligation as String, pattern: "C14 vs C20")
+      CitedToAuthority { authority: _ } => false
     }
 }
 
