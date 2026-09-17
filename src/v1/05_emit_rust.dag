@@ -28,7 +28,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 
 import std.algebra { trim, AlgebraFieldTemplate, is_collection_filter_template }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
-import v1.std.core {
+import v1.std.core { Unmarked,
   call_semantics_target,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -1955,7 +1955,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -11246,6 +11246,15 @@ fn call_target_unrealized_primitive_name(target: CallTargetIdentity) -> String {
   }
 }
 
+// THE REFUSAL STAYS AT THE CALL ARM RATHER THAN CLIMBING TO A PRE-EMISSION COLLECTOR. Refusing
+// the MODULE (the EmissionConstructUnprojectable route) would be the higher rung if the question
+// were decidable at body grain, and it is not: a body walk sees a call, not a realization, so it
+// cannot tell an unrealized primitive from one the emitter renders through a dedicated arm. The
+// collector that was built called `v1.compiler.tokenize source_code_point` unrealized and panicked
+// the rebuilt seed on its own first tokenize. The climb this class is waiting on is a realizability
+// roster -- `extdeps.languages.rust.emit` `rt_functions` is NOT that roster, since the collection
+// folds, the pipelines and the operators are realized with no bridge row -- and not a second
+// consumer of this predicate placed earlier.
 fn call_target_is_unrealized_primitive(target: CallTargetIdentity) -> Bool {
   match call_target_runtime_primitive_name(target: target) {
     Absent => false
@@ -11839,6 +11848,18 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // because a BARE leaf can name two modules, which is precisely the state a resolved owner rules
 // out. An undetermined target has no identifier to emit and gets a located refusal rather than
 // a fall back to the authored spelling, which is the re-lookup this carrier exists to remove.
+//
+// ONE SHAPE, NOT TWO: THE SEAM RENDERS THE SAME CALL WHETHER OR NOT THE SITE'S TYPE IS RESOLVED.
+// The typed arm takes its turbofish from the call's own `inferred`; an unresolved site renders
+// `::<_>` and asks rustc for the same answer from the consuming context. That is deliberately NOT a
+// second arm falling back to the authored spelling: `unrealized_host_seam` diverges either way, so
+// the refusal is the same refusal, and where the context cannot determine T the target answers
+// E0282 -- loud, at the site, naming the type it could not infer. The alternative the earlier shape
+// carried was `func_ident`, which at this arm is `emit_error_expr` (`panic!`) by construction --
+// already a refusal rather than a silent widen, but one that cannot stand in receiver position
+// (E0599, and every argument after it `unreachable`), which is the whole defect the typed seam was
+// built to remove. Keeping it for the unresolved case would have kept that defect for exactly the
+// population the emitter knows least about.
 fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -11993,20 +12014,21 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     } }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if unrealized_primitive_call {
-    match inferred {
+    let seam_type = match inferred {
       Present { value: Resolved { node: ret_type } } =>
-        concat(
-          "v1_rt::unrealized_host_seam::<",
-          render_rust_type(n: ret_type, shared_types: shared_types, source_indices: si, emit_info: emit_info),
-          ">(\"",
-          escape_string_literal_body(s: concat(
-            concat("primitive ", call_target_unrealized_primitive_name(target: call_target)),
-            " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers"
-          )),
-          "\")"
-        )
-      _ => func_ident
+        render_rust_type(n: ret_type, shared_types: shared_types, source_indices: si, emit_info: emit_info)
+      _ => "_"
     }
+    concat(
+      "v1_rt::unrealized_host_seam::<",
+      seam_type,
+      ">(\"",
+      escape_string_literal_body(s: concat(
+        concat("primitive ", call_target_unrealized_primitive_name(target: call_target)),
+        " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers"
+      )),
+      "\")"
+    )
   } else {
     if is_rt && func == "concat" && all_args |> count > 2 {
       emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
@@ -17557,9 +17579,17 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_lane_module_resolution,", "\n",
       "    native_lane_closure_ingest, native_lane_closure_modules, native_lane_closure_round_budget,", "\n",
       "    native_lane_ingest_matches_closure, native_lane_ingest_receipt, native_lane_receipt,", "\n",
-      "    native_lane_source_facts, native_lane_universe, native_test_context_from_ingest,", "\n",
+      "    native_lane_source_facts, native_lane_universe, native_test_context_absorb,", "\n",
+      "    native_test_context_finish, native_test_context_from_ingest, native_test_context_state_empty,", "\n",
+      "    native_test_front_end_prepare,", "\n",
       "    NativeLaneHostFacts, NativeLaneModulePreparation, NativeLaneModuleResolution,", "\n",
       "    NativeRouteMemberRow,", "\n",
+      "\};", "\n",
+      "use ", crate_name, "::v2_compiler_program_assembly::\{", "\n",
+      "    program_assembly_measured_outcome, program_assembly_memo_hits,", "\n",
+      "    program_assembly_memo_lookup_calls, program_assembly_memo_misses,", "\n",
+      "    program_assembly_phase_normalize, program_assembly_phase_parse_measured,", "\n",
+      "    program_assembly_phase_token_count, program_assembly_phase_tokenize,", "\n",
       "\};", "\n",
       "use ", crate_name, "::gunbc_witness_v2_native_route::\{", "\n",
       "    native_route_admission, native_route_admission_summary, native_route_admitted,", "\n",
@@ -17856,16 +17886,145 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "    let universe_nanos = span_nanos(universe_started);", "\n",
       "", "\n",
-      "    // the context row: the front-end fold -- tokenize, parse, normalize -- over the CLOSURE only.", "\n",
+      "    // the context row: the front-end fold over the CLOSURE only, entered ONE PHASE AT A TIME.", "\n",
+      "    // The driver owns the clock, so it is the only place a phase span can be read; the phases", "\n",
+      "    // themselves are v2.compiler.program_assembly declarations and each binds the previous", "\n",
+      "    // phase's Outcome, so each phase BODY is single-authored and only the ORDER and the", "\n",
+      "    // inter-phase diagnostic merge exist twice -- here and in the modeled composition", "\n",
+      "    // program_assembly_read_to_normalized_root_prepared.", "\n",
+      "    //", "\n",
+      "    // THAT SECOND SPELLING IS ADMITTED DEBT AND IS FILED, NOT ASSERTED AWAY (review 65068):", "\n",
+      "    // gunbc.recurring_failure_mode.realization_respells_a_modeled_folds_sequencing_to_instrument_it.", "\n",
+      "    // An earlier revision of this comment claimed the two are the same computation. Nothing", "\n",
+      "    // executes that claim, and a .dag witness comparing the composition against its own phases", "\n",
+      "    // CANNOT go red -- the composition is defined as the phase chain -- so the honest answer is", "\n",
+      "    // the row and its trigger (a realization seam that yields per-phase spans FROM a modeled", "\n",
+      "    // fold), not a green check. Reordering these calls or dropping the merge that", "\n",
+      "    // program_assembly_phase_parse_measured performs would change the context with nothing red.", "\n",
       "    let context_started = Instant::now();", "\n",
-      "    let context = match &*native_test_context_from_ingest(closure_ingest) \{", "\n",
+      "    // THE ONCE-PER-FOLD INVARIANT IS PAID ONCE, HERE, AND CARRIED INTO EVERY FILE. A second", "\n",
+      "    // dag_language_model() or prepare_grammar() call inside the loop would re-introduce at the", "\n",
+      "    // realization layer exactly the per-file recompute the fold hoisted out.", "\n",
+      "    let front_end = match &*native_test_front_end_prepare() \{", "\n",
       "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
       "        Outcome::Rejected \{ diagnostics \} => \{", "\n",
       "            eprintln!(\"CONTEXT-REFUSED: \{diagnostics:#?\}\");", "\n",
       "            std::process::exit(1);", "\n",
       "        \}", "\n",
       "    \};", "\n",
+      "    let front_end_nanos = span_nanos(context_started);", "\n",
+      "    let mut context_state = native_test_context_state_empty();", "\n",
+      "    let mut tokenize_nanos: u128 = 0;", "\n",
+      "    let mut parse_nanos: u128 = 0;", "\n",
+      "    let mut normalize_nanos: u128 = 0;", "\n",
+      "    let mut absorb_nanos: u128 = 0;", "\n",
+      "    let mut phase_calls: u64 = 0;", "\n",
+      "    let mut token_total: u64 = 0;", "\n",
+      "    let mut memo_hits_total: u64 = 0;", "\n",
+      "    let mut memo_misses_total: u64 = 0;", "\n",
+      "    let mut memo_lookups_total: u64 = 0;", "\n",
+      "    let mut byte_total: u64 = 0;", "\n",
+      "    let mut context_file_samples: Vec<u128> = Vec::new();", "\n",
+      "    for read in closure_ingest.iter() \{", "\n",
+      "        let file_started = Instant::now();", "\n",
+      "        let tokenize_started = Instant::now();", "\n",
+      "        let tokens = program_assembly_phase_tokenize(read.clone(), front_end.lm.clone());", "\n",
+      "        let file_tokenize_nanos = span_nanos(tokenize_started);", "\n",
+      "        // The COUNT the time is read against: a span alone cannot separate a large file from a", "\n",
+      "        // per-file constant. Counted outside every phase span so it prices none of them.", "\n",
+      "        let file_tokens = program_assembly_phase_token_count(tokens.clone());", "\n",
+      "        let parse_started = Instant::now();", "\n",
+      "        let measured = program_assembly_phase_parse_measured(", "\n",
+      "            tokens.clone(),", "\n",
+      "            front_end.prepared.clone(),", "\n",
+      "            // The residue field is an Optional whose inner type rides a recursion cycle, so the", "\n",
+      "            // emitted record BOXES it while the phase takes the option by value. Deref the box", "\n",
+      "            // rather than clone it; the sibling fields above are Rc and clone correctly.", "\n",
+      "            (*front_end.residue).clone(),", "\n",
+      "        );", "\n",
+      "        let file_parse_nanos = span_nanos(parse_started);", "\n",
+      "        // The memo accounting rides BESIDE the outcome, so it reports on a refusal too --", "\n",
+      "        // which is the expensive case this instrument exists to read. Counted outside every", "\n",
+      "        // phase span so it prices none of them.", "\n",
+      "        let file_memo_hits = program_assembly_memo_hits(measured.clone());", "\n",
+      "        let file_memo_misses = program_assembly_memo_misses(measured.clone());", "\n",
+      "        let file_memo_lookups = program_assembly_memo_lookup_calls(measured.clone());", "\n",
+      "        let parsed = program_assembly_measured_outcome(measured);", "\n",
+      "        let normalize_started = Instant::now();", "\n",
+      "        let root = program_assembly_phase_normalize(parsed.clone());", "\n",
+      "        let file_normalize_nanos = span_nanos(normalize_started);", "\n",
+      "        // qualified-name read plus source-root index insertion: the half of the per-file step", "\n",
+      "        // that is not the front end, timed separately because a quadratic accumulator would", "\n",
+      "        // live here and nowhere else in this loop.", "\n",
+      "        let absorb_started = Instant::now();", "\n",
+      "        context_state = native_test_context_absorb(context_state.clone(), read.clone(), root.clone());", "\n",
+      "        let file_absorb_nanos = span_nanos(absorb_started);", "\n",
+      "        let file_nanos = span_nanos(file_started);", "\n",
+      "        tokenize_nanos += file_tokenize_nanos;", "\n",
+      "        parse_nanos += file_parse_nanos;", "\n",
+      "        normalize_nanos += file_normalize_nanos;", "\n",
+      "        absorb_nanos += file_absorb_nanos;", "\n",
+      "        phase_calls += 1;", "\n",
+      "        token_total += file_tokens.max(0) as u64;", "\n",
+      "        memo_hits_total += file_memo_hits.max(0) as u64;", "\n",
+      "        memo_misses_total += file_memo_misses.max(0) as u64;", "\n",
+      "        memo_lookups_total += file_memo_lookups.max(0) as u64;", "\n",
+      "        let file_bytes = read.source.carried.len() as u64;", "\n",
+      "        byte_total += file_bytes;", "\n",
+      "        context_file_samples.push(file_nanos);", "\n",
+      "        eprintln!(", "\n",
+      "            \"[native-context-split] {}\",", "\n",
+      "            serde_json::json!(\{", "\n",
+      "                \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",", "\n",
+      "                \"path\": read.compilation_unit.clone(),", "\n",
+      "                \"bytes\": file_bytes,", "\n",
+      "                \"tokens\": file_tokens,", "\n",
+      "                \"tokenize_nanos\": file_tokenize_nanos,", "\n",
+      "                \"parse_nanos\": file_parse_nanos,", "\n",
+      "                \"normalize_nanos\": file_normalize_nanos,", "\n",
+      "                \"absorb_nanos\": file_absorb_nanos,", "\n",
+      "                \"file_nanos\": file_nanos,", "\n",
+      "                \"memo_hits\": file_memo_hits,", "\n",
+      "                \"memo_misses\": file_memo_misses,", "\n",
+      "                \"memo_lookup_calls\": file_memo_lookups,", "\n",
+      "            \}),", "\n",
+      "        );", "\n",
+      "    \}", "\n",
+      "    let context = native_test_context_finish(context_state, front_end.clone(), closure_ingest.clone());", "\n",
       "    let context_nanos = span_nanos(context_started);", "\n",
+      "    context_file_samples.sort_unstable();", "\n",
+      "    let context_phase_sum = front_end_nanos + tokenize_nanos + parse_nanos + normalize_nanos + absorb_nanos;", "\n",
+      "    eprintln!(", "\n",
+      "        \"[native-context-partition] {}\",", "\n",
+      "        serde_json::json!(\{", "\n",
+      "            \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",", "\n",
+      "            \"basis\": \"context_span\",", "\n",
+      "            \"basis_note\": \"exclusive phase rows partition context_nanos; residual is loop overhead and the eprintln per file\",", "\n",
+      "            \"context_nanos\": context_nanos,", "\n",
+      "            \"front_end_prepare_nanos\": front_end_nanos,", "\n",
+      "            \"tokenize_nanos\": tokenize_nanos,", "\n",
+      "            \"parse_nanos\": parse_nanos,", "\n",
+      "            \"normalize_nanos\": normalize_nanos,", "\n",
+      "            \"absorb_nanos\": absorb_nanos,", "\n",
+      "            \"sum_phase_nanos\": context_phase_sum,", "\n",
+      "            \"residual_nanos\": context_nanos.saturating_sub(context_phase_sum),", "\n",
+      "            \"files\": phase_calls,", "\n",
+      "            \"tokenize_calls\": phase_calls,", "\n",
+      "            \"parse_calls\": phase_calls,", "\n",
+      "            \"normalize_calls\": phase_calls,", "\n",
+      "            \"absorb_calls\": phase_calls,", "\n",
+      "            \"front_end_prepare_calls\": 1,", "\n",
+      "            \"tokens\": token_total,", "\n",
+      "            \"memo_hits\": memo_hits_total,", "\n",
+      "            \"memo_misses\": memo_misses_total,", "\n",
+      "            \"memo_lookup_calls\": memo_lookups_total,", "\n",
+      "            \"bytes\": byte_total,", "\n",
+      "            \"file_refusals\": context.file_refusals.len(),", "\n",
+      "            \"file_p50_nanos\": native_cost_quantile_nanos(&context_file_samples, 1, 2),", "\n",
+      "            \"file_p95_nanos\": native_cost_quantile_nanos(&context_file_samples, 19, 20),", "\n",
+      "            \"file_max_nanos\": context_file_samples.last().copied().unwrap_or(0),", "\n",
+      "        \}),", "\n",
+      "    );", "\n",
       "", "\n",
       "    // the prepare and eval rows, entered separately per module so the number the profile", "\n",
       "    // lane prices -- the eval row -- is the sum of native_lane_identity_row", "\n",

@@ -20,6 +20,7 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{
     ExprCall, ExprFieldAccess, ExprMethodCall, ExprVar, NoExprData,
 };
@@ -32,8 +33,8 @@ pub use crate::v1_std_core::{
     param_node_type_expr, unit_type,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ExprData,
-    InferredNode, NewlineIndex, Node,
+    CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclarationMarker,
+    DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex, Node,
 };
 pub use crate::v1_std_core::{ParsedModuleItemKind, VarBindingKind};
 use crate::NonEmptyBTreeSet;
@@ -845,6 +846,7 @@ pub fn check_service_method_call_node(
                                                 match_pattern: std::option::Option::None,
                                                 module_item_kind:
                                                     ParsedModuleItemKind::NotAModuleItem,
+                                                declaration_marker: DeclarationMarker::Unmarked,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }));
@@ -864,6 +866,7 @@ pub fn check_service_method_call_node(
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                    declaration_marker: DeclarationMarker::Unmarked,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),

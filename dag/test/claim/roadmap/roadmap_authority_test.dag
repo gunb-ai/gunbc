@@ -435,11 +435,6 @@ test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
     |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
 }
 
-test fn witness_revocation_frontier_disposition_discriminates() -> Bool {
-  witness_superseded_revocation_does_not_reopen_active_frontier()
-    && witness_reopen_revocation_returns_node_to_active_frontier()
-}
-
 test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> Bool {
   match remains_superseded_revocations_join(
     history: live_acceptance_event_history(),

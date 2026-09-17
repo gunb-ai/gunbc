@@ -35,7 +35,7 @@ import gunbc.fleet_converge_receipt {
 }
 import gunbc.fleet_converge_plan_cli { observe_host_short_wet }
 import gunbc.live_deploy.apply_receipt {
-  live_deploy_apply_receipt_artifact_path,
+  live_deploy_apply_receipt_artifact_path_for,
   read_live_deploy_apply_receipt_at, LiveDeployApplyReceiptDecoded, LiveDeployApplyReceiptUnreadable,
   rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
@@ -54,7 +54,8 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.emit {
   RevisionBoundAtEmission, live_deploy_serve_unit_file, live_deploy_belt_service_unit_file, live_deploy_belt_timer_unit_file,
 }
@@ -521,7 +522,7 @@ fn rlm_launch_deployment_receipt_bound(
     FleetConvergeApplyReceiptDecoded { receipt: a } => ApplyReceiptRead { receipt: a }
     FleetConvergeApplyReceiptUnreadable { reason: why } => ApplyReceiptUnreadable { reason: why }
   }
-  let dashboard = match read_live_deploy_apply_receipt_at(path: live_deploy_apply_receipt_artifact_path) {
+  let dashboard = match read_live_deploy_apply_receipt_at(path: live_deploy_apply_receipt_artifact_path_for(instance_id: instance.instance_id as String)) {
     LiveDeployApplyReceiptDecoded { receipt: d } => DashboardReceiptRead { receipt: d }
     LiveDeployApplyReceiptUnreadable { reason: why } => DashboardReceiptUnreadable { reason: why }
   }

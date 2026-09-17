@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.realization_respells_a_modeled_folds_sequencing_to_instrument_it
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data realization_respells_a_modeled_folds_sequencing_to_instrument_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "realization_respells_a_modeled_folds_sequencing_to_instrument_it" as NonEmptyStr,
+
+  receipts: [
+    "**a realization re-spells a modeled fold's sequencing because the fold cannot be instrumented in place** INVALID STATE: a driver that owns a clock needs per-phase cost from a fold whose phases are modeled in `.dag`; `.dag` is pure and cannot read a clock, so the driver enters the phases one at a time and the ORDER and the DIAGNOSTIC PROPAGATION between them exist a second time, in the target language, equivalent to the modeled composition only by assertion.",
+
+    "HARM: section 5 silent wrongness. Reordering the driver's phases, or dropping a diagnostic merge the modeled composition performs, produces a different result with nothing red -- the modeled fold still type-checks, the emitted crate still builds, and the receipt the driver prints is about cost rather than about agreement.",
+
+    "THIS IS NOT `parallel_representation_debt`, and the difference decides the remedy. There the canonical route was USABLE and the duplicate was deletable -- a hand-authored `*_eq` beside the substrate's own `==`, removed once a probe showed `==` answers. Here the modeled route CANNOT answer the question asked of it: it yields one span for the whole fold, and the question is what each phase costs. Deleting the re-spelling deletes the measurement. The duplication is FORCED by a missing capability, which is why this row names that capability rather than prescribing a deletion.",
+
+    "THE REMEDY THAT LOOKS OBVIOUS IS VACUOUS, AND THAT IS THE POINT OF FILING THIS. A witness comparing the modeled composition against the modeled phases cannot go red: the composition is DEFINED as the phase chain, so such a witness compares a definition with itself. DESIGN section 4b says to ask whether the check's RED is AUTHORABLE before writing the check, and here it is not -- the state that must be caught is a REORDERED TARGET-LANGUAGE TEMPLATE, which is not representable in `.dag` at all and so is unreachable by any `.dag` fixture. A green equivalence witness would therefore be a decoration that gets cited as coverage, which section 4b calls worse than absent.",
+
+    "WHAT IS ALREADY SINGLE-AUTHORED, so the row is not read as wider than it is. Only the ordering and the inter-phase diagnostic merge are re-spelled. The absorbing half of the step -- the qualified-name read and the source-root index insertion -- stays one declaration that the driver calls (`v2.compiler.compile` `native_test_context_absorb`), the per-phase bodies are each one modeled declaration, and the unmeasured composition remains live and is executed by the SAME BINARY in its census mode, so the two spellings ship together rather than one replacing the other.",
+
+    "SPECIMEN, gunbc PR 11219 (perf item C instrument), 2026-09-13, found by review 65068 rather than by a mechanism. `v2.compiler.program_assembly` `program_assembly_read_to_normalized_root_prepared` composes tokenize, parse and normalize in one declaration, each phase binding the previous phase's `Outcome`. The emitted `std.compiler_entry.SourceRootEvalDriver` opens that sequence as a Rust `for` loop over the ingest -- `program_assembly_phase_tokenize`, then `program_assembly_phase_parse_measured`, then `program_assembly_measured_outcome`, then `program_assembly_phase_normalize`, then `native_test_context_absorb` -- so that each call can be bracketed by `Instant::now()`. The diff's own comment asserted the equivalence in prose; nothing executed it.",
+
+    "IT IS THE MODULE THAT OWNS THE ORDER THAT IS FORKED, AND AN EARLIER REVISION OF THIS ROW DID NOT REACH IT (review 65114). The row first argued only against `v2.compiler.program_assembly` `program_assembly_read_to_normalized_root_prepared`, the composition sitting beside the phases. The declared authority for the .dag front-end ORDER is `v2.compiler.staged_front_end`, whose own header names re-inlining its calls as the section-3 nickname class; a per-phase decomposition authored anywhere else is a second copy of THAT order, and saying so against the local composition understated the fork.",
+
+    "WHY THE AUTHORITY CANNOT BE CONSUMED AS IT STANDS, measured rather than asserted: `run_front_end_to` calls `dag_language_model()` per call, and `front_end_parse_step` calls `parse_module` with a RAW grammar, so a fold routed through it re-derives the language model and re-runs `prepare_grammar` ONCE PER FILE -- the two per-file recomputes the context fold already hoisted, priced by the instrument that found this class at ONE call and 0.13 s for a 2243-file closure. It also runs a fourth stage (resolve) the context fold does not perform, and returns a whole FrontEndRun rather than stages a clock can sit between. So the fork is forced by the same missing capability this row names, one layer up.",
+
+    "RUNG FOUND AT: mitigatable. What contains the class today is that every phase BODY is a single modeled declaration and the absorbed half is single-authored, so a drift can only be an ordering or a merge, not a divergent computation; and the composition stays live beside the re-spelling. Nothing is typed, located or countable about the agreement itself, and no mechanism would report a reordering.",
+
+    "ATTAINABLE CEILING: structurally guaranteed, and deliberately NOT structural impossibility. With a realization seam that yields per-phase spans FROM a modeled fold, a driver needing per-phase cost names the fold and receives the spans, so an accepted program contains one sequencing and the second cannot be derived from it. It stops short of impossibility because the source could still describe a hand-rolled sequence in a target template -- the seam removes the REASON to re-spell, not the ability -- and claiming rung 4 for a state that stays authorable would be the rung inflation section 4b(1) names.",
+
+    "NEXT-RUNG TRIGGER, naming the CAPABILITY: a realization seam that produces per-phase spans and counts from a modeled fold WITHOUT re-authoring its sequencing -- sufficient that a driver wanting the split calls the fold and receives the spans. FOR THE SPECIMEN THAT MEANS a prepared-grammar, resolve-free, per-stage entry on `v2.compiler.staged_front_end`, after which the phases in `v2.compiler.program_assembly` are projections of that authority and the divergence note beside them is deleted. Explicitly NOT discharged by: a witness comparing the modeled composition against its own phases (vacuous, see above); a comment asserting the two agree; a lint over template text; or repairing this one driver. The population is every clock-owning realization that wants a split of a modeled fold, not this instrument.",
+
+    "UNCERTAINTY CARRIED RATHER THAN ROUNDED OFF: one specimen, one driver, one fold. Whether other emitted drivers already re-spell a modeled fold's sequencing to instrument it has NOT been counted, so this row claims no frequency.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.program_assembly", decl_name: "program_assembly_read_to_normalized_root_prepared", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.staged_front_end", decl_name: "run_front_end_to", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.compile", decl_name: "native_test_context_absorb", field: WholeDeclaration },
+  ],
+}

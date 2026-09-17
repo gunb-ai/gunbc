@@ -1,5 +1,7 @@
 module test.claim.deploy_access_privilege_witness
 
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+
 // Denial subjects are real deployment mutations. The permit pole uses receipt
 // data so exercising authorization never tears down a live deployment.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

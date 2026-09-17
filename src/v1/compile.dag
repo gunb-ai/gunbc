@@ -1195,7 +1195,7 @@ fn census_heads_node(node: Node, children: List<Node>, body: Node?) -> Node {
     is_self_recursive: node.is_self_recursive,
     has_non_tail_self_call: node.has_non_tail_self_call,
     match_pattern: none,
-    module_item_kind: node.module_item_kind,
+    module_item_kind: node.module_item_kind, declaration_marker: node.declaration_marker,
     expr_data: NoExprData,
   }
 }

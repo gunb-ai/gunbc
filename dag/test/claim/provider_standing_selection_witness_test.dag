@@ -80,12 +80,3 @@ test fn claude_profile_present_token_absent_is_ineligible() -> Bool {
     draw: LimitDispatchDrawAutomatic,
   )
 }
-
-test fn provider_standing_selection_witness_keystone_holds() -> Bool {
-  model_rejection_does_not_erase_account_eligibility()
-    && model_rejection_blocks_dispatch_under_unspecified_draw()
-    && authenticated_available_bundle_is_selection_eligible()
-    && weekly_cap_blocks_automatic_draw()
-    && cursor_capability_gap_does_not_block_selection()
-    && claude_profile_present_token_absent_is_ineligible()
-}

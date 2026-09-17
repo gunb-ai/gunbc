@@ -1,0 +1,360 @@
+module test.claim.spark.container_inspect_decode_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, JsonKeyValue, json_kv }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_member_presence, JsonMemberMissing, JsonMemberNull, JsonMemberValue, JsonMemberUnreadable,
+  json_field_string, json_field_bool, json_field_int, json_field_nat, json_field_string_list,
+  FieldAbsent, FieldRead, FieldMalformed,
+}
+import extdeps.docker.container_inspect {
+  container_inspect_from_stdout, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
+  json_field_byte_size,
+  docker_inspect_device_entry, DeviceEntryRead, DeviceEntryMalformed,
+  docker_inspect_ulimit_entry, UlimitEntryRead, UlimitEntryMalformed,
+  docker_capability_canonical,
+}
+
+// ── THE DECODE CHAIN, ONE LAYER AT A TIME, ON INPUTS SIZED TO THE QUESTION ────────────────────
+//
+// WHY THIS MODULE EXISTS AND WHAT IT REPLACES. The whole-document rows that used to carry these
+// facts each decoded an 18 KB `docker inspect` capture, which costs several hundred thousand eval
+// steps against a new-witness envelope of roughly 72,300 -- so they could not run on the merge path
+// at all, and a population that never executes establishes nothing (DESIGN section 5,
+// specification-without-execution). The response is not a cheaper capture: it is to ask each LAYER
+// its own question on an input sized to that question.
+//
+// THE LAYERS, IN THE ORDER A DOCUMENT CROSSES THEM, and each one's rows below assert only what its
+// own interface decides:
+//   1. text        -> is this a complete JSON document, or a gap
+//   2. envelope    -> is the document the one-element array `docker inspect` answers
+//   3. presence    -> did the object mention this member, say null, or carry a value
+//   4. scalars     -> does a member read as the type this field means, or refuse
+//   5. lists       -> does a homogeneous string array read, and a heterogeneous one refuse
+//   6. entries     -> do the Devices and Ulimits entry decoders accept and refuse per field
+//   7. vocabulary  -> is a capability name canonicalised the way the daemon reads it back
+//
+// A LAYER'S INPUT IS SUPPLIED HERE AND THAT IS THE POINT, not a shortcut (DESIGN section 3, a
+// witness discriminates at one interface). The pairing obligation it comes with is discharged
+// elsewhere and stays discharged: `test.claim.spark.relaunch_hostconfig_witness_test` runs
+// `container_inspect_from_stdout` and `docker_inspect_host_config` over VERBATIM daemon output --
+// the socket pair fresh, the RoCE pair archived -- so deleting the decoder still reddens the floor,
+// and no row here is the last execution of any real path.
+//
+// WHAT REMAINS DEFERRED, so the gap is countable rather than quietly closed: that the decoder
+// accepts a real 18 KB WHOLE document (as opposed to the subtree the cheap module reads), and that
+// the archived narrow RoCE selection agrees with the document it was selected from. Both are facts
+// about a whole capture and neither can be made small without becoming a different claim. They
+// travel with the capability their own trigger names.
+
+// ── 1. TEXT TO DOCUMENT ───────────────────────────────────────────────────────────────────────
+//
+// A DOCUMENT IS THE WHOLE TEXT, NOT A PREFIX OF IT. The refusal that matters here is trailing
+// content: a parser that stopped at the first complete value would accept a truncated-and-retried
+// capture as if it were one document.
+fn parses(text: String) -> Bool {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: _ } => true
+    JsonDocumentUnreadable { gap: _ } => false
+  }
+}
+
+test fn w_a_minimal_object_is_a_complete_document() -> Bool {
+  parses(text: "{\"Id\":\"c0\"}")
+}
+
+test fn w_trailing_content_after_a_complete_value_refuses() -> Bool {
+  !parses(text: "{\"Id\":\"c0\"} {\"Id\":\"c1\"}")
+}
+
+test fn w_an_unterminated_object_refuses_rather_than_reading_a_prefix() -> Bool {
+  !parses(text: "{\"Id\":\"c0\"")
+}
+
+// ── 2. THE ENVELOPE docker inspect ANSWERS ────────────────────────────────────────────────────
+//
+// `docker inspect NAME` answers a ONE-ELEMENT ARRAY. Two elements means the name matched more than
+// one container, and taking the first would answer confidently about the wrong one.
+fn decodes(stdout: String) -> Bool {
+  match container_inspect_from_stdout(stdout: stdout) {
+    ContainerInspectDecoded { container: _ } => true
+    ContainerInspectUnreadable { cause: _ } => false
+  }
+}
+
+// THE SMALLEST DOCUMENT THE DECODER ACCEPTS, and it is not as small as one might guess -- which is
+// itself the reading. `Running`, `Paused`, `Restarting`, `OOMKilled` and `Dead` are REQUIRED bools
+// on State: a container whose state the reader cannot name is refused rather than assumed running.
+// Writing this row is how that requirement became visible; a whole 18 KB capture carries all of it
+// silently and never says which fields were load-bearing.
+data minimal_container: String = join([
+  "[{\"Id\":\"c0\",\"Created\":\"2026-09-16T00:00:00Z\",\"Image\":\"sha256:ab\",",
+  "\"State\":{\"Status\":\"running\",\"Running\":true,\"Paused\":false,",
+  "\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false}}]",
+], "")
+
+test fn w_a_one_element_array_decodes() -> Bool {
+  decodes(stdout: minimal_container)
+}
+
+test fn w_a_two_element_array_refuses_rather_than_taking_the_first() -> Bool {
+  !decodes(stdout: "[{\"Id\":\"c0\"},{\"Id\":\"c1\"}]")
+}
+
+test fn w_a_bare_object_refuses_because_it_is_not_the_array_the_daemon_answers() -> Bool {
+  !decodes(stdout: "{\"Id\":\"c0\"}")
+}
+
+test fn w_an_empty_array_refuses() -> Bool {
+  !decodes(stdout: "[]")
+}
+
+// THE STATE BOOLS ARE REQUIRED, AND THIS IS THE ROW THAT SAYS SO. Dropping `Running` from an
+// otherwise complete document refuses, rather than reading a container whose state nobody reported
+// as one that is not running -- the fabricated default DESIGN section 5 forbids, on the field a
+// relaunch reads to decide whether its rank came back.
+test fn w_a_state_missing_a_required_bool_refuses() -> Bool {
+  !decodes(stdout: join([
+    "[{\"Id\":\"c0\",\"Created\":\"2026-09-16T00:00:00Z\",\"Image\":\"sha256:ab\",",
+    "\"State\":{\"Status\":\"running\",\"Paused\":false,",
+    "\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false}}]",
+  ], ""))
+}
+
+// AND AN UNMODELLED STATUS REFUSES rather than being carried through as text, because the five
+// states this reader names are the ones its consumers branch on.
+test fn w_an_unmodelled_status_refuses_rather_than_passing_the_text_through() -> Bool {
+  !decodes(stdout: join([
+    "[{\"Id\":\"c0\",\"Created\":\"2026-09-16T00:00:00Z\",\"Image\":\"sha256:ab\",",
+    "\"State\":{\"Status\":\"levitating\",\"Running\":true,\"Paused\":false,",
+    "\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false}}]",
+  ], ""))
+}
+
+// ── 3. PRESENCE: MISSING, NULL AND A VALUE ARE THREE ANSWERS ──────────────────────────────────
+//
+// THIS SEAM IS WHERE THE INCIDENT HID. A HostConfig that never mentions CapAdd and one that says
+// `null` are different facts -- the first is unread, the second is the daemon reporting none -- and
+// collapsing them turns a field nobody looked at into an observed emptiness.
+data one_member: JsonValue = JsonObject { members: [json_kv(key: "CapAdd", value: JsonNull)] }
+data empty_object: JsonValue = JsonObject { members: [] }
+
+test fn w_a_member_the_object_never_mentions_reads_as_missing() -> Bool {
+  match json_member_presence(obj: empty_object, key: "CapAdd") {
+    JsonMemberMissing => true
+    JsonMemberNull => false
+    JsonMemberValue { value: _ } => false
+    JsonMemberUnreadable { cause: _ } => false
+  }
+}
+
+test fn w_an_explicit_null_reads_as_null_and_not_as_missing() -> Bool {
+  match json_member_presence(obj: one_member, key: "CapAdd") {
+    JsonMemberNull => true
+    JsonMemberMissing => false
+    JsonMemberValue { value: _ } => false
+    JsonMemberUnreadable { cause: _ } => false
+  }
+}
+
+test fn w_a_member_named_twice_is_unreadable_rather_than_resolved() -> Bool {
+  match json_member_presence(
+    obj: JsonObject { members: [
+      json_kv(key: "ShmSize", value: JsonNumber { lexeme: "1" }),
+      json_kv(key: "ShmSize", value: JsonNumber { lexeme: "2" }),
+    ] },
+    key: "ShmSize",
+  ) {
+    JsonMemberUnreadable { cause: _ } => true
+    JsonMemberMissing => false
+    JsonMemberNull => false
+    JsonMemberValue { value: _ } => false
+  }
+}
+
+test fn w_asking_a_non_object_for_a_member_is_unreadable() -> Bool {
+  match json_member_presence(obj: JsonString { value: "HostConfig" }, key: "ShmSize") {
+    JsonMemberUnreadable { cause: _ } => true
+    JsonMemberMissing => false
+    JsonMemberNull => false
+    JsonMemberValue { value: _ } => false
+  }
+}
+
+// ── 4. SCALARS: THE TYPE THE FIELD MEANS, OR A REFUSAL ────────────────────────────────────────
+//
+// A WRONG-TYPED MEMBER IS MALFORMED, NEVER A DEFAULT. The arm that matters is the negative read as
+// a Nat: clamping it to zero would turn a daemon reporting something impossible into a container
+// with no shared memory.
+data scalars: JsonValue = JsonObject { members: [
+  json_kv(key: "Name", value: JsonString { value: "/glm" }),
+  json_kv(key: "Privileged", value: JsonBool { value: false }),
+  json_kv(key: "ShmSize", value: JsonNumber { lexeme: "67108864" }),
+  json_kv(key: "Soft", value: JsonNumber { lexeme: "-1" }),
+] }
+
+test fn w_a_string_member_reads_as_its_string() -> Bool {
+  match json_field_string(obj: scalars, key: "Name") {
+    FieldRead { value: v } => v == "/glm"
+    FieldAbsent => false
+    FieldMalformed { cause: _ } => false
+  }
+}
+
+test fn w_a_bool_member_reads_as_its_bool() -> Bool {
+  match json_field_bool(obj: scalars, key: "Privileged") {
+    FieldRead { value: v } => !v
+    FieldAbsent => false
+    FieldMalformed { cause: _ } => false
+  }
+}
+
+test fn w_a_negative_number_refuses_as_a_nat_rather_than_clamping() -> Bool {
+  match json_field_nat(obj: scalars, key: "Soft") {
+    FieldMalformed { cause: _ } => true
+    FieldRead { value: _ } => false
+    FieldAbsent => false
+  }
+}
+
+test fn w_the_same_negative_number_reads_as_an_int() -> Bool {
+  match json_field_int(obj: scalars, key: "Soft") {
+    FieldRead { value: v } => v == -1
+    FieldMalformed { cause: _ } => false
+    FieldAbsent => false
+  }
+}
+
+test fn w_a_number_asked_for_as_a_string_is_malformed_not_absent() -> Bool {
+  match json_field_string(obj: scalars, key: "ShmSize") {
+    FieldMalformed { cause: _ } => true
+    FieldRead { value: _ } => false
+    FieldAbsent => false
+  }
+}
+
+// THE MEASURE BOUNDARY. Reading a wire number as a ByteSize is a statement about what the docker API
+// means by ShmSize, so it lives with the docker reader rather than the language one -- and the row
+// asserts the COUNT comes through, because a carrier that arrives with the wrong magnitude is worse
+// than one that refuses.
+test fn w_a_byte_field_carries_its_count_into_the_measure() -> Bool {
+  match json_field_byte_size(obj: scalars, key: "ShmSize") {
+    FieldRead { value: b } => byte_size_count(b: b) == 67108864
+    FieldMalformed { cause: _ } => false
+    FieldAbsent => false
+  }
+}
+
+// ── 5. LISTS: HOMOGENEOUS READS, HETEROGENEOUS REFUSES ────────────────────────────────────────
+test fn w_a_string_array_reads_as_its_strings() -> Bool {
+  match json_field_string_list(
+    obj: JsonObject { members: [json_kv(key: "CapAdd", value: JsonArray { elements: [
+      JsonString { value: "CAP_IPC_LOCK" },
+      JsonString { value: "CAP_SYS_PTRACE" },
+    ] })] },
+    key: "CapAdd",
+  ) {
+    FieldRead { value: vs } => count(vs) == 2
+    FieldMalformed { cause: _ } => false
+    FieldAbsent => false
+  }
+}
+
+test fn w_an_array_carrying_a_non_string_refuses_the_whole_list() -> Bool {
+  match json_field_string_list(
+    obj: JsonObject { members: [json_kv(key: "CapAdd", value: JsonArray { elements: [
+      JsonString { value: "CAP_IPC_LOCK" },
+      JsonNumber { lexeme: "7" },
+    ] })] },
+    key: "CapAdd",
+  ) {
+    FieldMalformed { cause: _ } => true
+    FieldRead { value: _ } => false
+    FieldAbsent => false
+  }
+}
+
+// ── 6. ENTRY DECODERS: EVERY FIELD THE ENTRY OWES ─────────────────────────────────────────────
+//
+// THE DEVICE ENTRY IS THE FIELD WHOSE ABSENCE WAS THE INCIDENT, so its decoder is asked for each
+// field it requires rather than only for the happy path.
+fn device_object(host: String, inside: String, perms: String) -> JsonValue {
+  JsonObject { members: [
+    json_kv(key: "PathOnHost", value: JsonString { value: host }),
+    json_kv(key: "PathInContainer", value: JsonString { value: inside }),
+    json_kv(key: "CgroupPermissions", value: JsonString { value: perms }),
+  ] }
+}
+
+test fn w_a_complete_device_entry_reads() -> Bool {
+  match docker_inspect_device_entry(v: device_object(host: "/dev/infiniband", inside: "/dev/infiniband", perms: "rwm")) {
+    DeviceEntryRead { device: d } => (d.path_on_host as String) == "/dev/infiniband"
+    DeviceEntryMalformed { cause: _ } => false
+  }
+}
+
+test fn w_a_device_entry_missing_its_container_path_refuses() -> Bool {
+  match docker_inspect_device_entry(v: JsonObject { members: [
+    json_kv(key: "PathOnHost", value: JsonString { value: "/dev/infiniband" }),
+    json_kv(key: "CgroupPermissions", value: JsonString { value: "rwm" }),
+  ] }) {
+    DeviceEntryMalformed { cause: _ } => true
+    DeviceEntryRead { device: _ } => false
+  }
+}
+
+test fn w_a_device_entry_with_empty_permissions_refuses_rather_than_reading_none() -> Bool {
+  match docker_inspect_device_entry(v: device_object(host: "/dev/infiniband", inside: "/dev/infiniband", perms: "")) {
+    DeviceEntryMalformed { cause: _ } => true
+    DeviceEntryRead { device: _ } => false
+  }
+}
+
+fn ulimit_object(name: String, soft: String, hard: String) -> JsonValue {
+  JsonObject { members: [
+    json_kv(key: "Name", value: JsonString { value: name }),
+    json_kv(key: "Soft", value: JsonNumber { lexeme: soft }),
+    json_kv(key: "Hard", value: JsonNumber { lexeme: hard }),
+  ] }
+}
+
+test fn w_a_complete_ulimit_entry_reads_both_bounds() -> Bool {
+  match docker_inspect_ulimit_entry(v: ulimit_object(name: "memlock", soft: "-1", hard: "-1")) {
+    UlimitEntryRead { ulimit: u } => u.soft == -1 && u.hard == -1
+    UlimitEntryMalformed { cause: _ } => false
+  }
+}
+
+test fn w_a_ulimit_entry_with_an_empty_name_refuses() -> Bool {
+  match docker_inspect_ulimit_entry(v: ulimit_object(name: "", soft: "-1", hard: "-1")) {
+    UlimitEntryMalformed { cause: _ } => true
+    UlimitEntryRead { ulimit: _ } => false
+  }
+}
+
+test fn w_a_ulimit_entry_whose_soft_bound_is_a_string_refuses() -> Bool {
+  match docker_inspect_ulimit_entry(v: JsonObject { members: [
+    json_kv(key: "Name", value: JsonString { value: "memlock" }),
+    json_kv(key: "Soft", value: JsonString { value: "unlimited" }),
+    json_kv(key: "Hard", value: JsonNumber { lexeme: "-1" }),
+  ] }) {
+    UlimitEntryMalformed { cause: _ } => true
+    UlimitEntryRead { ulimit: _ } => false
+  }
+}
+
+// ── 7. VOCABULARY: WHAT THE DAEMON READS BACK ─────────────────────────────────────────────────
+//
+// THE DAEMON CANONICALISES A CAPABILITY NAME, so a spec that asked for `IPC_LOCK` and a readback
+// saying `CAP_IPC_LOCK` are the same capability. A comparison that missed this would report a
+// relaunch as having lost a capability it still has.
+test fn w_an_unprefixed_capability_canonicalises_to_the_prefixed_form() -> Bool {
+  docker_capability_canonical(name: "IPC_LOCK") == docker_capability_canonical(name: "CAP_IPC_LOCK")
+}
+
+test fn w_canonicalisation_does_not_merge_two_different_capabilities() -> Bool {
+  docker_capability_canonical(name: "IPC_LOCK") != docker_capability_canonical(name: "SYS_PTRACE")
+}

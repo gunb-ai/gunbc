@@ -562,12 +562,3 @@ test fn scm_sm_the_same_merge_succeeds_once_the_source_is_present() -> Bool {
       }
   }
 }
-
-test fn scm_squash_merge_witnesses_hold() -> Bool {
-  scm_sm_a_merge_carries_both_sides_paths()
-    && scm_sm_the_result_parents_the_target_and_records_the_source_consumed()
-    && scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt()
-    && scm_sm_a_conflicting_path_mints_no_commit()
-    && scm_sm_a_conflict_free_merge_over_an_absent_source_refuses_naming_the_path()
-    && scm_sm_the_same_merge_succeeds_once_the_source_is_present()
-}

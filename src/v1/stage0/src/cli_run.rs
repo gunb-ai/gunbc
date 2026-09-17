@@ -157,11 +157,13 @@ pub(crate) use complexity_gates::*;
 mod emit_host;
 pub(crate) use emit_host::*;
 pub use emit_host::{
-    compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
+    compile_dag_call_form_leaf_guard, compile_dag_callsite_resolved_call_edges,
+    compile_dag_importer_resolved_call_edges, compile_dag_multi_module_fixture,
+    compile_dag_reference_occurrence_binding_census, emit_module_storage_binding_manifest,
+    emit_source_root_ingest_manifest,
 };
 pub use emit_host::{
-    compile_dag_multi_module_fixture, compile_dag_reference_occurrence_binding_census,
-    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
+    compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -3233,6 +3235,38 @@ pub enum ReferenceOccurrenceBindingCensus {
         compiler_digest: String,
         denominator: Vec<ReferenceOccurrenceDenominatorRow>,
         observations: Vec<ReferenceOccurrenceBindingRow>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedCallEdgeRow {
+    pub caller_module: String,
+    pub caller_decl: String,
+    pub callee_module: String,
+    pub callee_decl: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedCallEdgeCensus {
+    Refused { cause: String },
+    Observed { edges: Vec<ResolvedCallEdgeRow> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvaluationStoreAddressProductionCoverage {
+    Qualified {
+        exact_resolved_roots: Vec<String>,
+        zero_candidate_roots: Vec<String>,
+    },
+    Refused {
+        root: String,
+        path: String,
+        cause: String,
+    },
+    CandidateOutsideExactResolution {
+        root: String,
+        path: String,
+        target_leaf: String,
     },
 }
 
@@ -15404,6 +15438,12 @@ fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> 
                     .to_string(),
             )
         }
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat => {
+            Some(
+                "resolved-graph-cache provider refused disk hit: unqualified persisted format"
+                    .to_string(),
+            )
+        }
         ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
@@ -21368,6 +21408,7 @@ mod closure_bare_disposition_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         });
         Rc::new(GlobalBareCandidate {

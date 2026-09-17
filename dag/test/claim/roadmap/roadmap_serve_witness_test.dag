@@ -324,17 +324,6 @@ test fn witness_known_methods_parse() -> Bool {
   }
 }
 
-test fn roadmap_serve_instance_keystone_holds() -> Bool {
-  witness_serve_table_selection()
-    && witness_asset_route_serves_modeled_js()
-    && witness_dispatch_status_total()
-    && witness_preview_dispatch_refuses_before_effects()
-    && witness_instance_route_names_posture_and_paths()
-    && witness_live_table_builds_ready_routes()
-    && witness_malformed_route_literal_refuses_table()
-    && witness_unknown_method_folds_501_response()
-}
-
 // ── The approval routes: opening the link is not deciding ────────────────────────────────────
 // THE PAIR EXISTS SO THESE TWO ARE DISTINGUISHABLE. A GET at the approval URL must render and
 // stop; everything that fetches a URL without a person behind it -- link previews, mail scanners,

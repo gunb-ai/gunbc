@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_devboot_subject_identity_witness_no_retract_can_remove_the_devboot_store_root_deployment_spec_srv1
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data test_claim_devboot_subject_identity_witness_no_retract_can_remove_the_devboot_store_root_deployment_spec_srv1: TransitionAdmission = TransitionAdmission {
+  label: "CONVERGENCE-ONE C2 deployment_spec_srv1 home gunbc.live_deploy.desired" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.devboot_subject_identity_witness", "no_retract_can_remove_the_devboot_store_root"),
+    spelling: "deployment_spec_srv1" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.live_deploy.desired", "deployment_spec_srv1")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11425 as UInt32,
+}

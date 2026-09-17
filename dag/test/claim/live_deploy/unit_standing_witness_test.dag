@@ -1,5 +1,7 @@
 module test.claim.live_deploy.unit_standing_witness
 
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data unit_fixture_exec: String = "/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli"

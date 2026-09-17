@@ -1389,14 +1389,14 @@ fn kotlin_target_model() -> TargetModel {
 fn kotlin_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 
 fn kotlin_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: KeywordPattern { text: text }
+    pattern: KeywordPattern { text: chars(s: text) }
   }
 }
 
