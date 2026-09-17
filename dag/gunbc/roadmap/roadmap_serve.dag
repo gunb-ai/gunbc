@@ -3,7 +3,7 @@ module gunbc.roadmap_serve
 import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_request_submission {
-  submit_parsed_submission, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status,
+  admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status,
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
   SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionFiledCapabilityKeyUnavailable,
@@ -14,7 +14,7 @@ import gunbc.auth.approval_decision_store {
   RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionSegmentMalformed, RedemptionEscalationNotFiled,
   RedemptionBrokerRefused, RedemptionLostTheRace, RedemptionStoreUnreadable, RedemptionKeyringUnavailable,
   RedemptionIdentityUntrusted, RedemptionCommitRefused,
-  IdentityHeaderTrustEstablished, IdentityHeaderTrustByDeclaredDrop, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
+  IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
   parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
 }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
@@ -603,12 +603,12 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-    IdentityHeaderTrustByDeclaredDrop { drop: _, residual: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+    IdentityHeaderUnattributed { residual: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
   }
   let keyring = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_mac_key_path } }
     IdentityHeaderTrustEstablished { evidence: _ } => read_approval_keyring()
-    IdentityHeaderTrustByDeclaredDrop { drop: _, residual: _ } => read_approval_keyring()
+    IdentityHeaderUnattributed { residual: _ } => read_approval_keyring()
   }
   let outcome = redeem_over_store(
     root: approval_decision_store_root,
@@ -652,14 +652,17 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -
 fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
   let outcome = match parse_submission_envelope(text: request.body) {
     SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
-    SubmissionEnvelopeParsed { tag_hex: tag, request: r } => submit_parsed_submission(
-      root: approval_decision_store_root,
-      submission_keyring: read_submission_keyring(),
-      capability_keyring: read_approval_keyring(),
-      publisher: read_publisher_token(),
-      tag_hex: tag,
-      request: r,
-    )
+    SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
+      match admit_parsed_submission(tag_hex: tag, request: r, keyring: read_submission_keyring()) {
+        SubmissionNotAdmitted { refusal: refused } => SubmissionRefused { refusal: refused }
+        SubmissionVerified { request: admitted } =>
+          file_and_notify(
+            root: approval_decision_store_root,
+            capability_keyring: read_approval_keyring(),
+            publisher: read_publisher_token(),
+            request: admitted,
+          )
+      }
   }
   let status = match outcome {
     SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => 201

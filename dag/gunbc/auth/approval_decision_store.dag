@@ -18,8 +18,6 @@ import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import gunbc.rung_drop { RungDrop }
-import gunbc.rung_drop.approval_identity_header_on_host_client { approval_identity_header_on_host_client_drop }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
@@ -50,7 +48,7 @@ import gunbc.auth.approval_capability {
   proposed_decision_name,
 }
 import gunbc.auth.approval_broker {
-  BrokerDecision,
+  BrokerDecision, IdentityAttribution, HeaderAttributedToProxy, HeaderUnattributed,
   BrokerApproved,
   BrokerDenied,
   ExecutionObligation,
@@ -208,27 +206,28 @@ data approval_operator_login: NonEmptyStr = fleet_operator_email
 // from (approval_identity_trust_for) -- not a flag a handler defaults and not a second row.
 type IdentityTrustStanding
   = IdentityHeaderTrustEstablished { evidence: NonEmptyStr }
-  | IdentityHeaderTrustByDeclaredDrop { drop: RungDrop, residual: NonEmptyStr }
+  | IdentityHeaderUnattributed { residual: NonEmptyStr }
   | IdentityHeaderTrustNotEstablished { blocker: NonEmptyStr }
 
 // THE TRUST STANDING IS DERIVED FROM THE ROW THE UNIT IS EMITTED FROM, never asserted beside it
-// (review 67264), AND A LOOPBACK BIND IS A BET, NOT A PROOF (review 67306):
+// (review 67264), AND A LOOPBACK BIND ATTRIBUTES NOTHING (reviews 67306, 67348):
 // gunbc.roadmap_dashboard_instance srv1_live_dashboard_instance.listen_host is the one fact
 // live_deploy turns into the unit's --host, so the standing reads that field. Any bind other than
 // loopback keeps the gate closed: the header is self-assertable by whoever reaches the port. A
 // loopback bind rules out off-host callers only; an on-host process under another POSIX user can
-// still present a forged header, and nothing at the serve boundary attributes the peer yet. So the
-// loopback arm is IdentityHeaderTrustByDeclaredDrop, carrying the rostered drop
-// (gunbc.rung_drop.approval_identity_header_on_host_client) whose trigger is peer attribution;
-// IdentityHeaderTrustEstablished is minted by nothing until that trigger fires. A later edit of
-// the row back to 0.0.0.0 closes the gate in the same commit, with no second row to forget.
+// still present any header, and nothing at the serve boundary attributes the peer yet. So the
+// loopback arm is IdentityHeaderUnattributed: redemption is admitted on the CAPABILITY alone (the
+// bearer authority the server minted and ntfy delivered to the operator's phone), and the consent
+// record names the bearer, never a login (approval_broker HeaderUnattributed). A forged header on
+// that deployment therefore changes nothing the record says. IdentityHeaderTrustEstablished is
+// minted by nothing until peer attribution lands (approval_identity_attribution_frontier). A later
+// edit of the row back to 0.0.0.0 closes the gate in the same commit, with no second row to forget.
 fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStanding {
   match parse_ipv4_address(text: listen_host as String) {
     Ipv4Parsed { address: a } =>
       if ip_address_is_loopback(addr: IpV4 { v4: a }) {
-        IdentityHeaderTrustByDeclaredDrop {
-          drop: approval_identity_header_on_host_client_drop,
-          residual: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host) behind tailscale serve https://srv1.tailecbe08.ts.net/, so off-host callers cannot reach it; an on-host process under another POSIX user still can, and its header is not attributed"], "") as NonEmptyStr,
+        IdentityHeaderUnattributed {
+          residual: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host) behind tailscale serve https://srv1.tailecbe08.ts.net/, so off-host callers cannot reach it; an on-host process under another POSIX user still can, so the header is not attributed and the record names the capability's bearer"], "") as NonEmptyStr,
         }
       } else {
         IdentityHeaderTrustNotEstablished {
@@ -614,8 +613,8 @@ fn redeem_over_store(
 ) -> StoreRedemption {
   match trust {
     IdentityHeaderTrustNotEstablished { blocker: b } => RedemptionIdentityUntrusted { blocker: b }
-    IdentityHeaderTrustByDeclaredDrop { drop: _, residual: _ } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, presented_identity: presented_identity, observed_at: observed_at)
-    IdentityHeaderTrustEstablished { evidence: _ } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, presented_identity: presented_identity, observed_at: observed_at)
+    IdentityHeaderUnattributed { residual: r } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, attribution: HeaderUnattributed { residual: r }, observed_at: observed_at)
+    IdentityHeaderTrustEstablished { evidence: _ } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, attribution: HeaderAttributedToProxy { presented: presented_identity }, observed_at: observed_at)
   }
 }
 
@@ -625,7 +624,7 @@ fn redeem_trusted_over_store(
   keyring: ApprovalKeyringRead,
   method: HttpMethod,
   segment: String,
-  presented_identity: TailnetIdentity,
+  attribution: IdentityAttribution,
   observed_at: Timestamp,
 ) -> StoreRedemption {
   match parse_capability_segment(segment: segment) {
@@ -645,7 +644,7 @@ fn redeem_trusted_over_store(
                 capability: ApprovalCapability { claims: claims, tag_b64url: tag },
                 expectation: approval_capability_expectation,
                 mac_result: mac_result,
-                presented_identity: presented_identity,
+                attribution: attribution,
                 expected_operator: approval_operator_login,
                 observed_at: observed_at,
               ) {
@@ -734,6 +733,16 @@ fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Su
     }
   }
 }
+
+// ATTRIBUTION: the consent record names a login only when the serve boundary can attribute the
+// header to the tailscale proxy; on the loopback bind it names the capability's bearer. The
+// capability that restores the login is peer attribution -- the loopback client's socket owner
+// (the kernel's /proc/net/tcp uid for the peer port) joined at the serve boundary and required to
+// be tailscaled's -- at which point approval_identity_trust_for answers
+// IdentityHeaderTrustEstablished from that attribution and the Unattributed arm is deleted.
+data approval_identity_attribution_frontier: DissolutionCondition = unbound_dissolution(
+  description: "the serve runtime exposes the connecting peer's address and the approve handler joins it to the socket owner's uid, refusing every peer that is not the tailscale proxy -- SUFFICIENT FOR the Tailscale-User-Login header to be evidence of the tailnet login on every request the route admits, so decided_by can name the login rather than the bearer",
+)
 
 // ── the frontiers ──────────────────────────────────────────────────────────────────────────────
 

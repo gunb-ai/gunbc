@@ -75,7 +75,6 @@ import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_
 import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accumulator_copy_positive_controls_off_every_lane }
 import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
 import gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost { roadmap_live_projection_new_witness_eval_step_cost }
-import gunbc.rung_drop.approval_identity_header_on_host_client { approval_identity_header_on_host_client_drop }
 import gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost { live_deploy_apply_render_new_witness_eval_step_cost }
 import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_monolith_control_unmeasured_derived_root }
 import gunbc.rung_drop.type_reference_location_fallback_keys_production_realization { type_reference_location_fallback_keys_production_realization }
@@ -138,7 +137,6 @@ data rung_drop_roster: List<RungDrop> = [
   accumulator_copy_positive_controls_off_every_lane,
   seed_whole_corpus_demand_population_blind,
   roadmap_live_projection_new_witness_eval_step_cost,
-  approval_identity_header_on_host_client_drop,
   live_deploy_apply_render_new_witness_eval_step_cost,
   seam_monolith_control_unmeasured_derived_root,
   type_reference_location_fallback_keys_production_realization,

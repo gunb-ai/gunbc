@@ -15,7 +15,7 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed,
   StoredDecisionParsed, StoredRecordUnreadable,
   claims_for, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
-  IdentityHeaderTrustEstablished, IdentityHeaderTrustByDeclaredDrop, IdentityHeaderTrustNotEstablished, approval_identity_trust, approval_identity_trust_for,
+  IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished, approval_identity_trust, approval_identity_trust_for,
   redeem_over_store, RedemptionIdentityUntrusted,
 }
 
@@ -114,12 +114,12 @@ test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() ->
 // ── the deployment property gates everything ───────────────────────────────────────────────────
 
 // THE TRUST STANDING FOLLOWS THE INSTANCE ROW AND NOTHING ELSE: loopback opens the gate ONLY as
-// the rostered declared drop (never as Established -- a loopback bind does not attribute the
-// on-host peer), any other bind or an unparseable host keeps it closed, and the production row is
+// Unattributed (never as Established -- a loopback bind does not attribute the on-host peer, so
+// the record names the bearer), any other bind or an unparseable host keeps it closed, and the production row is
 // exactly the derivation over srv1_live_dashboard_instance.listen_host -- so the gate cannot be
 // opened by editing a row beside the one the unit is emitted from.
 test fn identity_trust_is_derived_from_the_instance_bind() -> Bool {
-  match approval_identity_trust_for(listen_host: "127.0.0.1") { IdentityHeaderTrustByDeclaredDrop { drop: d, residual: _ } => (d.identity as String) == "approval_identity_header_on_host_client"  _ => false }
+  match approval_identity_trust_for(listen_host: "127.0.0.1") { IdentityHeaderUnattributed { residual: _ } => true  _ => false }
     && match approval_identity_trust_for(listen_host: "127.0.0.1") { IdentityHeaderTrustEstablished { evidence: _ } => false  _ => true }
     && match approval_identity_trust_for(listen_host: "0.0.0.0") { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
     && match approval_identity_trust_for(listen_host: "srv1.internal") { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }

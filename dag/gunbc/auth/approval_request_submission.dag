@@ -339,10 +339,13 @@ fn file_and_notify(
   }
 }
 
-// THE ONE FOLD BEHIND POST /approvals, past the parse: admit, then file and notify. The handler
-// parses the envelope BEFORE it reads any key or token off the host, so an unreadable body costs
-// no effect and the hermetic witness can reach the route; effects (the key reads, the store
-// write, the publish) are reached only past a parsed envelope and then only past admission.
+// THE ORDER BEHIND POST /approvals, held by the handler (gunbc.roadmap_serve
+// approval_submit_response): parse the envelope, then read the submission key and admit, and only
+// past admission read the capability key and the publisher token, write, and publish -- so an
+// unreadable body costs no host read, a refused filer costs one key read and no write, and the
+// hermetic witness can reach the route. This fold is the same order for callers that already hold
+// the three reads (the live probe supplies fixtures for all three); it is not what the handler
+// runs, because a caller with the reads in hand has already spent them.
 fn submit_parsed_submission(
   root: NonEmptyStr,
   submission_keyring: ApprovalKeyringRead,
