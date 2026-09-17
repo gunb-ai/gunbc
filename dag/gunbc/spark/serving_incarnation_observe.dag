@@ -42,7 +42,7 @@ import extdeps.prometheus.client {
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
 import extdeps.systemd { SystemdUnitProperty, InvocationIDProperty, FragmentPathProperty, systemd_unit_property_wire }
-import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyCaptureRefused, systemctl_show_property_read }
+import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_read }
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host_operation_exec {
   HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
@@ -183,6 +183,7 @@ type UnitTextRead
 fn read_unit_property(transport: HostEffectTransport, unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitTextRead {
   match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
     SystemdPropertyCaptured { value: v } => UnitTextObserved { value: trim(s: v) }
+    SystemdPropertyBlank => UnitTextRefused { cause: "the unit property was blank" }
     SystemdPropertyCaptureRefused { reason: why } => UnitTextRefused { cause: why }
   }
 }

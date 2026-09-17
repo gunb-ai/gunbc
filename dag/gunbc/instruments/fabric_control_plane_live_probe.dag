@@ -132,7 +132,7 @@ import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.systemctl_show_read {
-  systemctl_show_property_read, SystemdPropertyCaptured, SystemdPropertyCaptureRefused,
+  systemctl_show_property_read, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused,
 }
 import extdeps.systemd { ControlGroup }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
@@ -1627,6 +1627,7 @@ fn fci1_zero_work_observation() -> Fci1ZeroWorkObservation {
   let unit = "fabric-cell-srv3-06.slice" as NonEmptyStr
   match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ControlGroup) {
     SystemdPropertyCaptureRefused { reason: why } => Fci1ZeroWorkRefused { cause: join(["ControlGroup observation refused: ", why], "") }
+    SystemdPropertyBlank => Fci1ZeroWorkRefused { cause: "ControlGroup observation empty" }
     SystemdPropertyCaptured { value: cg } => if cg == "" {
       Fci1ZeroWorkRefused { cause: "ControlGroup observation empty" }
     } else {

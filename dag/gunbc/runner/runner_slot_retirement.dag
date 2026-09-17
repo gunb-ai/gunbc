@@ -25,6 +25,7 @@ import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, Contro
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
   systemctl_show_property_read,
 }
@@ -512,12 +513,16 @@ fn observe_runner_retirement(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
 ) -> RunnerRetirementObservation {
-  match retirement_unit_property_reading(transport: transport, unit: unit, property: UnitFileState) {
-    SystemdPropertyCaptureRefused { reason: r } => retirement_observation_unreadable(unit: unit, cause: r)
-    SystemdPropertyCaptured { value: file_state } =>
-      match retirement_unit_property_reading(transport: transport, unit: unit, property: ActiveState) {
-        SystemdPropertyCaptureRefused { reason: r } => retirement_observation_unreadable(unit: unit, cause: r)
-        SystemdPropertyCaptured { value: active_state } =>
+  match retirement_property_text(
+    capture: systemctl_show_property_read(transport: transport, unit: unit, property: UnitFileState),
+  ) {
+    RetirementPropertyUnreadable { cause: r } => retirement_observation_unreadable(unit: unit, cause: r)
+    RetirementPropertyRead { value: file_state } =>
+      match retirement_property_text(
+        capture: systemctl_show_property_read(transport: transport, unit: unit, property: ActiveState),
+      ) {
+        RetirementPropertyUnreadable { cause: r } => retirement_observation_unreadable(unit: unit, cause: r)
+        RetirementPropertyRead { value: active_state } =>
           retirement_observation_from_readings(
             unit: unit,
             unit_file_state: file_state,
@@ -528,28 +533,18 @@ fn observe_runner_retirement(
   }
 }
 
-// `systemctl show` OF A NOT-FOUND UNIT RETURNS EMPTY STDOUT FOR THE PROPERTY, which the generic
-// reader refuses as "did not answer". For retirement that blank IS the answer: UnitFileState is not
-// `masked`, ActiveState is not running, ControlGroup has no path. Plan 35235743261 still classified
-// srv1-22..50 unobserved after empty ControlGroup was mapped to Absent, because the reader never
-// delivered the blank -- it refused first. A non-empty unsuccessful show stays refused.
-fn systemd_show_empty_stdout_is_a_blank_reading(reason: String) -> Bool {
-  reason == "systemctl show returned empty stdout"
-}
+// `systemctl show` OF A NOT-FOUND OR STOPPED UNIT RETURNS EMPTY STDOUT FOR THE PROPERTY. That is
+// `SystemdPropertyBlank` at the reader, not a refused capture: UnitFileState is not `masked`,
+// ActiveState is not running, ControlGroup has no path. A refused show stays unreadable.
+type RetirementPropertyReading
+  = RetirementPropertyRead { value: String }
+  | RetirementPropertyUnreadable { cause: String }
 
-fn retirement_unit_property_reading(
-  transport: HostEffectTransport,
-  unit: NonEmptyStr,
-  property: SystemdUnitProperty,
-) -> SystemdPropertyCapture {
-  match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
-    SystemdPropertyCaptured { value: v } => SystemdPropertyCaptured { value: v }
-    SystemdPropertyCaptureRefused { reason: r } =>
-      if systemd_show_empty_stdout_is_a_blank_reading(reason: r) {
-        SystemdPropertyCaptured { value: "" }
-      } else {
-        SystemdPropertyCaptureRefused { reason: r }
-      }
+fn retirement_property_text(capture: SystemdPropertyCapture) -> RetirementPropertyReading {
+  match capture {
+    SystemdPropertyCaptured { value: v } => RetirementPropertyRead { value: v }
+    SystemdPropertyBlank => RetirementPropertyRead { value: "" }
+    SystemdPropertyCaptureRefused { reason: r } => RetirementPropertyUnreadable { cause: r }
   }
 }
 
@@ -634,10 +629,12 @@ fn observe_slot_cgroup_occupancy(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
 ) -> CgroupOccupancy {
-  match retirement_unit_property_reading(transport: transport, unit: unit, property: ControlGroup) {
-    SystemdPropertyCaptureRefused { reason: r } =>
+  match retirement_property_text(
+    capture: systemctl_show_property_read(transport: transport, unit: unit, property: ControlGroup),
+  ) {
+    RetirementPropertyUnreadable { cause: r } =>
       CgroupUnobserved { cause: join(["the unit's ControlGroup property could not be read: ", r], "") }
-    SystemdPropertyCaptured { value: rel } => {
+    RetirementPropertyRead { value: rel } => {
       let relative = trim(s: rel)
       if control_group_property_means_cgroup_absent(value: relative) {
         CgroupAbsent

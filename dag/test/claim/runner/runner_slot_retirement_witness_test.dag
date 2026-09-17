@@ -3,6 +3,12 @@ module test.claim.runner.runner_slot_retirement_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.types { NonEmptyStr, String }
+import gunbc.systemctl_show_read {
+  systemctl_show_property_value_from_stdout,
+  SystemdPropertyCaptured,
+  SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused,
+}
 import gunbc.host_axis_caps {
   CapRaiseAdmitted,
   CapRaiseBlockedIncompleteEvidence,
@@ -54,7 +60,9 @@ import gunbc.runner_slot_retirement {
   authorized_retirement_actuation,
   cgroup_occupancy_from_reads,
   control_group_property_means_cgroup_absent,
-  systemd_show_empty_stdout_is_a_blank_reading,
+  retirement_property_text,
+  RetirementPropertyRead,
+  RetirementPropertyUnreadable,
   transition_interruption_coverage,
   TransitionFullyPermitted,
   TransitionRetireesNotPermitted,
@@ -512,8 +520,25 @@ test fn an_empty_control_group_path_is_cgroup_absent() -> Bool {
 }
 
 test fn empty_systemctl_show_stdout_is_a_blank_property_reading() -> Bool {
-  systemd_show_empty_stdout_is_a_blank_reading(reason: "systemctl show returned empty stdout")
-    && !systemd_show_empty_stdout_is_a_blank_reading(reason: "systemctl show exited unsuccessfully")
+  match systemctl_show_property_value_from_stdout(success: true, stdout: "") {
+    SystemdPropertyBlank =>
+      match systemctl_show_property_value_from_stdout(success: true, stdout: "   ") {
+        SystemdPropertyBlank =>
+          match systemctl_show_property_value_from_stdout(success: false, stdout: "") {
+            SystemdPropertyCaptureRefused { reason: _ } =>
+              match retirement_property_text(capture: SystemdPropertyBlank) {
+                RetirementPropertyRead { value: v } => v == ""
+                RetirementPropertyUnreadable { cause: _ } => false
+              }
+            SystemdPropertyCaptured { value: _ } => false
+            SystemdPropertyBlank => false
+          }
+        SystemdPropertyCaptured { value: _ } => false
+        SystemdPropertyCaptureRefused { reason: _ } => false
+      }
+    SystemdPropertyCaptured { value: _ } => false
+    SystemdPropertyCaptureRefused { reason: _ } => false
+  }
 }
 
 // A UNIT MID-STOP IS STILL RUNNING. `deactivating` is the window in which the unit has been asked to
