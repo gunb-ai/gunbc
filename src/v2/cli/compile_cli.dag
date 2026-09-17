@@ -11,6 +11,8 @@ import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { fold_list, length, list_reverse }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_module }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -227,6 +229,20 @@ type CliRunOutcome
   = CliEmitted { text: String, closure_size: Int, layer_count: Int, ready_size: Int }
   | CliRunRefused { reason: Symbol, detail: String }
 
+// THE REFUSAL PRINTS ITS CAUSE, AND FOR ONE GENERATION IT DID NOT. The rejected arm already
+// CARRIED `d.head.reason`, and the detail beside it said "the located cause is this refusal's
+// reason" -- true of the value and false of the artifact, because the rendered main prints only the
+// `ProcessExit` reason string that `detail` becomes. So generation two refused with a sentence
+// pointing at a symbol nobody could read, which is DESIGN section 5's located-where-the-author-can-
+// act failure in its quietest form: the cause was computed, carried, and then dropped at the last
+// boundary. Measured on the built binary at gunbc#11507's head -- three different entries
+// (`v2.std.text`, this module, `v2.compiler.compile`) all refused with the same nine words.
+//
+// THE LOCUS PROJECTION IS BORROWED RATHER THAN RECOPIED. `v2.std.lens_verdict`
+// `lens_verdict_diagnostic_locus_module` is already the Locus -> module-name fold over all four
+// arms; its name says lens because that is where it was first needed, not because the projection is
+// lens-specific, and authoring a second `match d.at` here would be the fork (DESIGN section 3)
+// rather than the reuse.
 // THE EMPTY INGEST IS A REFUSAL AND NOT AN EMPTY PROGRAM, and this arm is the whole reason
 // `v2_cli_run` does not call the emitter first and ask questions after.
 // `emit_compiler_import_closure_from_ingest` is TOTAL over whatever ingest it is handed -- its
@@ -263,7 +279,10 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
               Rejected { diagnostics: d } =>
                 CliRunRefused {
                   reason: d.head.reason,
-                  detail: "the closure did not emit; the located cause is this refusal's reason"
+                  detail: concat(
+                    concat("the closure did not emit: ", symbol_lexeme(sym: d.head.reason)),
+                    concat(" at ", lens_verdict_diagnostic_locus_module(d: d.head))
+                  )
                 }
             }
           }
