@@ -1,0 +1,92 @@
+module gunbc.cargo_config_emit
+
+import std.types { String, List }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial }
+
+// THE COMMITTED BYTE PROJECTION OF THE REPOSITORY'S OWN CARGO CONFIGURATION, which exists so the
+// warning denial reaches the one channel the other two cannot: an ORDINARY `cargo build` or
+// `cargo test` run from a clone. `gunbc.repo_self_build` `repo_self_clippy_command` spells the
+// lint arguments for clippy alone, and the workflows' toolchain step sets RUSTFLAGS for a runner
+// job; neither is in the path of a contributor typing `cargo test` locally.
+//
+// WHY IT IS EMITTED RATHER THAN HAND-AUTHORED, which is what it was until this module landed.
+// The denial is ONE fact (`gunbc.repo_self_warning_policy` `repo_self_warning_denial`). Written
+// here as a literal it became a SECOND spelling of that fact with only a comment pointing at the
+// authority -- the nicknaming DESIGN section 3 forbids, and the most drift-prone instance of it in
+// this repository: a future edit to the policy row regenerates the workflow YAMLs, whose steps
+// derive, and would silently leave a hand-authored file behind carrying the old value. Deriving it
+// makes that state unwritable rather than merely discouraged (DESIGN section 5, construction over
+// validation), and the drift gate now adjudicates this path like every other committed projection.
+//
+// THE OTHER TWO SETTINGS ARE CARRIED, NOT INVENTED. `jobs` and the `[env]` rows predate this
+// module and are transcribed from the file they replace, with their notes, because emitting a file
+// means emitting ALL of it: a projection that dropped them would have deleted live policy on its
+// first regeneration. They have no separate authority to derive from today, which is an honest
+// modeling gap and not a reason to leave the denial forked -- the value this module exists to
+// derive is the one that had two homes.
+
+data cargo_config_header_note: String = concat(
+  "# Memory safety: v1_compiler tests use 5-11 GB each.\n",
+  "# On 16 GB machines, parallel cargo runs cause OOM \u{2192} system watchdog restart.\n"
+)
+
+data cargo_config_build_jobs: Int = 2
+
+data cargo_config_jobs_line_note: String = "                          # max parallel rustc/linker invocations per cargo run"
+
+data cargo_config_rustflags_note: String = concat(
+  concat(
+    "# A warning is an error in this repository. The policy row is\n",
+    "# `gunbc.repo_self_warning_policy` `repo_self_warning_denial`; this is the channel that\n"
+  ),
+  concat(
+    "# reaches an ORDINARY `cargo build`/`cargo test` run from a clone, which the clippy command\n",
+    concat(
+      "# and the workflow's toolchain step do not. An ambient RUSTFLAGS overrides this file rather\n",
+      "# than composing with it, and CI sets the same value, so the two channels agree by value.\n"
+    )
+  )
+)
+
+data cargo_config_env_note: String = concat(
+  "# v1/v2 tests build large `Dag` fixtures; the default thread stack overflows (WSL / ctrl-build).\n",
+  "# Committed here so local + CI runners stay aligned (CI inherits this config; ci.yml does not re-set it).\n"
+)
+
+data cargo_config_env_rows: String = concat(
+  "RUST_MIN_STACK = { value = \"16777216\", force = false }\n",
+  "RUST_TEST_THREADS = { value = \"1\", force = false }  # max parallel test threads per binary\n"
+)
+
+// The denial rendered as cargo's TOML array of rustc arguments, element by element from the policy
+// row's own list. The rendering is the array form rather than the space-joined RUSTFLAGS string
+// because `[build] rustflags` is a list in cargo's schema; the VALUE is the same row either way,
+// which is the whole point of deriving it.
+fn cargo_config_rustflags_array(flags: List<String>) -> String {
+  concat(
+    concat("[", flags |> map(f => concat("\"", concat(f, "\""))) |> join(separator: ", ")),
+    "]"
+  )
+}
+
+fn expected_cargo_config_toml() -> String {
+  concat(
+    cargo_config_header_note,
+    concat(
+      "\n[build]\n",
+      concat(
+        concat("jobs = ", concat(cargo_config_build_jobs as String, cargo_config_jobs_line_note)),
+        concat(
+          "\n",
+          concat(
+            cargo_config_rustflags_note,
+            concat(
+              concat("rustflags = ", cargo_config_rustflags_array(flags: repo_self_warning_denial)),
+              concat("\n\n[env]\n", concat(cargo_config_env_note, cargo_config_env_rows))
+            )
+          )
+        )
+      )
+    )
+  )
+}
