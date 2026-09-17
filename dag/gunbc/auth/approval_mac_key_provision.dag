@@ -21,7 +21,9 @@ import gunbc.secret_provision_actuator {
 }
 import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant, secret_access_ensure_for }
-import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref }
+import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref, approval_mac_key_suite }
+import extdeps.crypto.mac { mac_suite_key_size }
+import std.measure { byte_size_count }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 
 // PROVISION THE TWO APPROVAL-LOOP MAC KEYS THROUGH THE MODELED ACTUATOR, IDEMPOTENTLY. The
@@ -51,7 +53,6 @@ import gunbc.auth.approval_request_submission { approval_submission_mac_key_secr
 //   GUNBC_GCP_ACCESS_TOKEN_FILE=<0600 file> gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/auth/approval_mac_key_provision.dag --function provision_approval_mac_keys
 
-data approval_mac_key_octets: Int = 32
 
 data approval_mac_key_provision_attempt: SecretProvisionAttemptIdentity = "approval-mac-keys-2026-09-16" as SecretProvisionAttemptIdentity
 
@@ -63,10 +64,10 @@ type MintedKeyMaterial
 // /dev/urandom or base64 fails, and the octet count is checked again here after decoding, so a
 // key of the wrong length has no constructor.
 fn mint_key_material() -> MintedKeyMaterial {
-  match base64_decode(s: trim(Urandom.ReadBytes(count: approval_mac_key_octets).octets_b64), variant: Standard) {
+  match base64_decode(s: trim(Urandom.ReadBytes(count: byte_size_count(b: mac_suite_key_size(s: approval_mac_key_suite))).octets_b64), variant: Standard) {
     Absent => KeyMaterialRefused { cause: "the entropy read did not decode as base64" }
     Present { value: octets } =>
-      if count(octets) != approval_mac_key_octets {
+      if count(octets) != byte_size_count(b: mac_suite_key_size(s: approval_mac_key_suite)) {
         KeyMaterialRefused { cause: concat("the entropy read returned the wrong octet count: ", to_string(count(octets))) as NonEmptyStr }
       } else {
         KeyMaterialMinted { hex: base16_encode_lower(octets: octets) as Secret }

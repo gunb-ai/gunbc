@@ -15,7 +15,7 @@ import std.scoped_authorization {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
 import extdeps.tailscale.identity { TailnetIdentity }
-import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify }
+import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
@@ -140,7 +140,7 @@ fn is_lower_hex(s: String) -> Bool {
 // worse than one that refuses everywhere. An empty file is malformed, not absent: absence is the
 // filesystem's answer, established by the exact read below, never inferred from empty content.
 fn approval_keyring_from_content(path: NonEmptyStr, key_id: MacKeyId, content: String) -> ApprovalKeyringRead {
-  if content.length() != 64 || !is_lower_hex(s: content) {
+  if content.length() != mac_key_material_hex_length(s: approval_mac_key_suite) || !is_lower_hex(s: content) {
     ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: path, length: content.length() } }
   } else {
     ApprovalKeyLoaded { key: MacKey { id: key_id, suite: approval_mac_key_suite, material: content as Secret } }

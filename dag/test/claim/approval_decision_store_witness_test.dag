@@ -3,7 +3,8 @@ module test.claim.approval_decision_store_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String, Timestamp, POST, GET, Secret }
 import std.scoped_authorization { AttemptIdentity }
-import extdeps.crypto.mac { MacKey, HmacSha256, mac_verify, MacVerified, MacTagMismatch }
+import extdeps.crypto.mac { MacKey, HmacSha256, mac_verify, MacVerified, MacTagMismatch, mac_key_material_hex_length, mac_suite_key_size }
+import std.measure { byte_size_count }
 import extdeps.tailscale.identity { tailnet_identity_of }
 import extdeps.filesystem.filesystem_io { filesystem_exact_read }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
@@ -50,7 +51,9 @@ fn fixture_request() -> StoredApprovalRequest {
 // ── keyring ────────────────────────────────────────────────────────────────────────────────────
 
 test fn keyring_loads_sixty_four_lower_hex_and_refuses_the_rest() -> Bool {
-  match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: fixture_key_hex) { ApprovalKeyLoaded { key: k } => k.suite == approval_mac_key_suite  _ => false }
+  mac_key_material_hex_length(s: approval_mac_key_suite) == 2 * byte_size_count(b: mac_suite_key_size(s: approval_mac_key_suite))
+    && mac_key_material_hex_length(s: approval_mac_key_suite) == fixture_key_hex.length()
+    &&   match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: fixture_key_hex) { ApprovalKeyLoaded { key: k } => k.suite == approval_mac_key_suite  _ => false }
     && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: "") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: 0 } } => true  _ => false }
     && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: concat(fixture_key_hex, "\n")) { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: n } } => n == 65  _ => false }
     && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: _ } } => true  _ => false }
