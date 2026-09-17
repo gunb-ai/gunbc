@@ -173,6 +173,21 @@ data glm_5_3_flash_full_attention_mechanism: GlmAttentionMechanism = GlmMultiHea
 data glm_5_3_flash_non_full_attention_mechanism: GlmAttentionMechanism = GlmLinearAttention
 data glm_5_3_flash_attention_is_hybrid: Bool = true
 
+// THE POSITIONAL-EMBEDDING DIMENSION, SURFACED IN THE KERNEL'S VOCABULARY. The vLLM fp8_ds_mla
+// kernel calls this pe_dim and requires it to be 64 (extdeps.vllm.kv_cache
+// vllm_fp8_ds_mla_required_pe_dim); in the checkpoint's config.json it is qk_rope_head_dim, and on
+// this model it is 0. The accessor keeps the two vocabularies joined to the one authority row
+// above rather than restating the number -- and the consequence is not drawn here: whether a given
+// engine build can serve this model under an fp8 KV cache is the JOIN of this fact with that
+// kernel law, and it is refused where the serving profile is decided
+// (gunbc.spark.serving_arm glm_native_kv_cache_dtype_admission).
+fn glm_5_3_flash_mla_pe_dim() -> Nat {
+  match glm_5_3_flash_full_attention_mechanism {
+    GlmMultiHeadLatentAttention { kv_lora_rank: _, qk_nope_head_dim: _, qk_rope_head_dim: rope, v_head_dim: _ } => rope
+    GlmLinearAttention => 0
+  }
+}
+
 // THE RECIPE'S OWN OMISSIONS, stated because an absence read as a zero is how a default gets
 // invented. The recipe's serve line carries NO --max-model-len and NO --gpu-memory-utilization; it
 // relies on the model's declared window and vLLM's own default utilization. So there is no upstream

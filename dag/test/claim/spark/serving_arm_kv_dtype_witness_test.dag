@@ -1,0 +1,78 @@
+module test.claim.spark.serving_arm_kv_dtype_witness
+
+import std.types { String, Bool, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.vllm.kv_cache {
+  vllm_fp8_ds_mla_required_pe_dim, vllm_fp8_ds_mla_kernel_admits_pe_dim,
+}
+import extdeps.vllm.engine_args {
+  VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
+}
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_mla_pe_dim }
+import gunbc.spark.serving_arm {
+  GlmNativeKvCacheDtypeAdmission, GlmNativeKvCacheDtypeAdmitted, GlmNativeKvCacheDtypeRefused,
+  glm_native_kv_cache_dtype_admission, glm_native_initial_profile,
+}
+
+// THE CLASS UNDER TEST IS `A SERVING PROFILE CARRYING A KV DTYPE ITS (MODEL, ENGINE BUILD) PAIR
+// CANNOT RUN`. The arm crash-looped on exactly this on 2026-09-17, twice in one day: first the
+// fp8_ds_mla pe_dim law (every fp8 spelling resolves there on this MLA checkpoint, and the kernel
+// requires pe_dim == 64 while this model's is 0), then a bare-string wire spelling no vLLM build
+// accepts ("bf16" for "bfloat16"). Every assertion below is authorable red: the admission fold
+// could have admitted an fp8 variant, refused KvBf16, or admitted KvFp16 unobserved; the wire map
+// could spell a variant the engine refuses at argument parse; and the profile row could carry a
+// refused dtype -- the last two were the corpus's actual state at two points today.
+
+fn admitted(dtype: VllmKvCacheDtypeRequest) -> Bool {
+  match glm_native_kv_cache_dtype_admission(dtype: dtype) {
+    GlmNativeKvCacheDtypeAdmitted { dtype: _ } => true
+    GlmNativeKvCacheDtypeRefused { dtype: _, cause: _ } => false
+  }
+}
+
+// THE KERNEL LAW ITSELF, asserted at its two discriminating points so the requirement cannot drift
+// to a different number or to an always-true fold without a red here.
+test fn the_fp8_ds_mla_kernel_requires_pe_dim_64() -> Bool {
+  vllm_fp8_ds_mla_required_pe_dim == 64
+    && vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: 64)
+    && !vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: 0)
+}
+
+// THE MODEL'S pe_dim IS 0, joined to the checkpoint authority row rather than restated -- a red
+// here means the mechanism row was edited and this model's fp8 admissibility must be re-derived.
+test fn glm_5_3_flash_pe_dim_is_zero() -> Bool {
+  glm_5_3_flash_mla_pe_dim() == 0
+}
+
+// EVERY FP8 VARIANT IS REFUSED, INCLUDING KvAuto, which inherits this fp8-quantized checkpoint's
+// dtype and resolved to fp8_ds_mla on the observed crash -- a spelling-based escape would be the
+// failure this row exists against.
+test fn fp8_variants_are_refused_for_the_native_arm() -> Bool {
+  !admitted(dtype: KvAuto)
+    && !admitted(dtype: KvFp8)
+    && !admitted(dtype: KvFp8DsMla)
+}
+
+// KvBf16 IS ADMITTED, AND KvFp16 IS REFUSED AS UNOBSERVED rather than admitted by silence.
+test fn bf16_is_admitted_and_fp16_is_refused_unobserved() -> Bool {
+  admitted(dtype: KvBf16) && !admitted(dtype: KvFp16)
+}
+
+// THE WIRE MAP SPELLS WHAT THE ENGINE'S OWN CHOICE LIST ADMITS. vLLM v0.28.1rc1 refused 'bf16' at
+// argument parse with a choice list carrying 'bfloat16' and 'float16' (observed 2026-09-17 on the
+// srv9 head); the map's two non-fp8 concrete spellings are asserted against that list so the map
+// cannot drift back to spellings no build accepts.
+test fn the_wire_map_spells_the_engines_own_choices() -> Bool {
+  (vllm_kv_cache_dtype_wire(request: KvBf16) as String) == "bfloat16"
+    && (vllm_kv_cache_dtype_wire(request: KvFp16) as String) == "float16"
+    && (vllm_kv_cache_dtype_wire(request: KvAuto) as String) == "auto"
+    && (vllm_kv_cache_dtype_wire(request: KvFp8) as String) == "fp8"
+    && (vllm_kv_cache_dtype_wire(request: KvFp8DsMla) as String) == "fp8_ds_mla"
+}
+
+// THE PROFILE ITSELF CARRIES AN ADMITTED DTYPE -- the gate that goes red if a future edit sets the
+// profile back to an fp8 variant. Mechanically preventable, as stated on the admission type; the
+// structural rung waits on a profile constructor taking the admission as an argument.
+test fn the_native_arm_profile_carries_an_admitted_dtype() -> Bool {
+  admitted(dtype: glm_native_initial_profile.kv_cache_dtype)
+}

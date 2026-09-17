@@ -151,6 +151,47 @@ fn vllm_resolved_kv_format_is_observed(f: VllmResolvedKvFormat) -> Bool {
   }
 }
 
+// ── THE fp8_ds_mla KERNEL'S pe_dim LAW ─────────────────────────────────────────────────────────
+//
+// `concat_and_cache_mla` REQUIRES the positional-embedding dimension to be exactly 64, asserted at
+// `csrc/libtorch_stable/cache_kernels.cu:928` ("pe_dim must be 64 for fp8_ds_mla"). Observed by
+// execution 2026-09-17 on the GLM native arm's engine build (image
+// vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374,
+// self-reporting v0.28.1rc1.dev580+g385dce36b): the head crashed in CUDA-graph capture under BOTH
+// `--kv-cache-dtype auto` and `--kv-cache-dtype fp8`, because on that build every fp8 spelling for
+// an MLA checkpoint resolves to the fp8_ds_mla layout, and GLM-5.3-Flash's pe_dim is 0
+// (extdeps.zhipu.glm_5_3_flash qk_rope_head_dim), not 64.
+//
+// THE LAW IS A PROPERTY OF THE (KERNEL, BUILD) PAIR, NOT OF "vLLM". The same model on the older
+// canary build (vllm_source_revision_read, 0.21.1rc1) runs fp8_ds_mla to serving on
+// FLASHINFER_MLA_SPARSE_SM120 -- measured 2026-09-08 -- so a blanket "this model cannot do fp8"
+// row would contradict an observed fact. What is established is the requirement THIS kernel
+// asserts on THIS build; which builds enforce it is a per-build observation, and a build with no
+// observation is unanswered, not admitted.
+data vllm_fp8_ds_mla_required_pe_dim: Nat = 64
+
+fn vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: Nat) -> Bool {
+  pe_dim == vllm_fp8_ds_mla_required_pe_dim
+}
+
+// THE RESOLUTION THAT MAKES THE LAW BIND: on an MLA checkpoint the fp8 spellings are not
+// alternatives to fp8_ds_mla, they are NAMES for it -- the engine derives the MLA storage format
+// from the architecture and the wire value never named it. So a pe_dim-incompatible model cannot
+// escape the law by spelling the request differently; the only admitted arms are a non-fp8 dtype
+// or a different (backend, build) whose kernel does not assert it.
+type VllmFp8MlaResolution
+  = Fp8SpellingResolvesToFp8DsMla
+  | Fp8ResolutionUnobserved
+
+fn vllm_fp8_mla_resolution(r: VllmFp8MlaResolution) -> NonEmptyStr {
+  match r {
+    Fp8SpellingResolvesToFp8DsMla =>
+      "auto and fp8 both resolve to fp8_ds_mla on an MLA checkpoint; the pe_dim law binds every fp8 spelling" as NonEmptyStr
+    Fp8ResolutionUnobserved =>
+      "no resolution observed; do not assume a spelling escapes the fp8_ds_mla kernel" as NonEmptyStr
+  }
+}
+
 // ── CONTEXT CAP AND POOL ARE MEASURED PAIRS, NOT A CURVE ───────────────────────────────────────
 //
 // A LARGER CAP GAVE A LARGER POOL on this checkpoint, reproduced at two utilizations. That is the
