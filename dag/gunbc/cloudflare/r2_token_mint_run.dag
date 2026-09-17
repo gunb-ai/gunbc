@@ -80,7 +80,7 @@ import gunbc.secret_provision_actuator {
   snapshot_minted_secret,
   CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
   OwnedCredentialSnapshot,
-  observe_secret_container, SecretContainerObserved, SecretObservationRefused,
+  observe_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused,
   ObservedSecretContainer, version_add_capability_for_observed_container,
   add_initial_version, VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown,
   VersionAddedButUnverified,
@@ -299,6 +299,10 @@ fn observe_r2_mint_custody_container(
     SecretObservationRefused { cause: cause } =>
       R2MintCustodyContainerUnobserved {
         intervention: r2_mint_custody_container_intervention(secret_id: secret_id, cause: cause),
+      }
+    SecretContainerAbsent { project: _, secret_id: absent_id } =>
+      R2MintCustodyContainerUnobserved {
+        intervention: r2_mint_custody_container_intervention(secret_id: secret_id, cause: concat("no custody container named ", concat(absent_id as String, " exists in the project; this run does not create it")) as NonEmptyStr),
       }
     SecretContainerObserved { container: container } =>
       R2MintCustodyContainerPresent { container: container }

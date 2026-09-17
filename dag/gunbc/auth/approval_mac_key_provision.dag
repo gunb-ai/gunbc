@@ -13,7 +13,7 @@ import extdeps.cloud.gcp.secret_manager { GcpSecretVersion, sm_resolved_version_
 import extdeps.transports.rest { classify_rest_outcome, RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable, RestReadExchange }
 import gunbc.secret_provision { SecretRef, SecretProvisionAttemptIdentity, fleet_secrets_gcp_project }
 import gunbc.secret_provision_actuator {
-  observe_secret_container, SecretContainerObserved, SecretObservationRefused,
+  observe_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused,
   create_secret_for_attempt, SecretCreatedForAttempt, SecretCreationRefused, SecretCreationOutcomeUnknown,
   ObservedSecretContainer, version_add_capability_for_observed_container, add_initial_version,
   VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown, VersionAddedButUnverified,
@@ -167,7 +167,9 @@ fn provision_one(ref: SecretRef, token: Secret) -> KeyProvisionStanding
 {
   let secret_id = ref.secret
   match observe_secret_container(project: fleet_secrets_gcp_project, secret_id: secret_id, token: token) {
-    SecretObservationRefused { cause: _ } =>
+    SecretObservationRefused { cause: c } =>
+      KeyProvisionRefused { secret_id: secret_id, cause: concat("the container could not be observed, so nothing is created over it: ", c as String) as NonEmptyStr }
+    SecretContainerAbsent { project: _, secret_id: _ } =>
       add_first_version(secret_id: secret_id, container: none, token: token)
     SecretContainerObserved { container: c } => {
       let listed = gcp.SecretManager.ListVersions(access_token: token, secret_name: c.observed_resource as String)
@@ -188,15 +190,35 @@ fn provision_one(ref: SecretRef, token: Secret) -> KeyProvisionStanding
   }
 }
 
-fn grant_line(ref: SecretRef, token: Secret) -> String
+type GrantStanding
+  = GrantConverged { secret_id: NonEmptyStr }
+  | GrantRefused { secret_id: NonEmptyStr, reason: String }
+
+fn ensure_grant(ref: SecretRef, token: Secret) -> GrantStanding
   uses net: Network
 {
   match secret_access_ensure_for(grant: secret_accessor_grant(target: ref), token_source: OperatorSuppliedToken { token: token }) {
-    ExitSuccess => join(["grant secret=", ref.secret as String, " accessor=fleet-cloud-convergence standing=converged"], "")
-    ExitFailure { code: _, reason: r } => join(["grant secret=", ref.secret as String, " standing=REFUSED cause=", r], "")
+    ExitSuccess => GrantConverged { secret_id: ref.secret }
+    ExitFailure { code: _, reason: r } => GrantRefused { secret_id: ref.secret, reason: r }
   }
 }
 
+fn grant_line(g: GrantStanding) -> String {
+  match g {
+    GrantConverged { secret_id: id } => join(["grant secret=", id as String, " accessor=fleet-cloud-convergence standing=converged"], "")
+    GrantRefused { secret_id: id, reason: r } => join(["grant secret=", id as String, " standing=refused cause=", r], "")
+  }
+}
+
+fn grant_ok(g: GrantStanding) -> Bool {
+  match g {
+    GrantConverged { secret_id: _ } => true
+    GrantRefused { secret_id: _, reason: _ } => false
+  }
+}
+
+// THE VERDICT IS FOLDED FROM THE TYPED STANDINGS, and the report is one rendering of them; the
+// exit code never re-reads the report (review 67090).
 fn provision_approval_mac_keys() -> CliWireResponse
   uses net: Network
 {
@@ -206,13 +228,17 @@ fn provision_approval_mac_keys() -> CliWireResponse
       let capability = provision_one(ref: approval_mac_key_secret_ref, token: token)
       let submission = provision_one(ref: approval_submission_mac_key_secret_ref, token: token)
       let keys_ok = standing_ok(s: capability) && standing_ok(s: submission)
-      let grants = if keys_ok {
-        join([grant_line(ref: approval_mac_key_secret_ref, token: token), "\n", grant_line(ref: approval_submission_mac_key_secret_ref, token: token)], "")
+      let grants: List<GrantStanding> = if keys_ok {
+        [ensure_grant(ref: approval_mac_key_secret_ref, token: token), ensure_grant(ref: approval_submission_mac_key_secret_ref, token: token)]
       } else {
-        "grants: skipped, a key refused"
+        []
       }
-      let report = join([standing_line(s: capability), "\n", standing_line(s: submission), "\n", grants, "\n"], "")
-      if keys_ok && !contains(grants, "REFUSED") {
+      let grants_ok = keys_ok && all(grants, g => grant_ok(g: g))
+      let report = join([
+        standing_line(s: capability), "\n", standing_line(s: submission), "\n",
+        if keys_ok { join(map(grants, g => grant_line(g: g)), "\n") } else { "grants: skipped, a key refused" }, "\n",
+      ], "")
+      if grants_ok {
         CliWirePrintable { bytes: report, exit: ExitSuccess }
       } else {
         CliWirePrintable { bytes: report, exit: exit_failure(reason: "approval MAC key provisioning did not converge") }

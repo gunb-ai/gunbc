@@ -156,17 +156,40 @@ fn probe_submission_key() -> MacKey {
   MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: probe_submission_key_hex as Secret }
 }
 
-fn probe_submit(root: NonEmptyStr, signer: MacKey) -> String {
+type ProbeSubmitStanding
+  = ProbeNotEnrolled
+  | ProbeFiledTokenUnavailable
+  | ProbeAlreadyFiled
+  | ProbeOther { reason: String }
+
+fn probe_submit(root: NonEmptyStr, signer: MacKey) -> ProbeSubmitStanding {
   match sign_submission(key: signer, request: probe_request()) {
-    MacKeyMaterialNotHex { key_id: _ } => "unsigned"
-    MacSigned { tag: t } => submission_outcome_reason(o: submit_parsed_submission(
-      root: root,
-      submission_keyring: ApprovalKeyLoaded { key: probe_submission_key() },
-      capability_keyring: ApprovalKeyLoaded { key: probe_key() },
-      publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "probe fixture: no message leaves this probe" },
-      tag_hex: t.hex,
-      request: probe_request(),
-    ))
+    MacKeyMaterialNotHex { key_id: _ } => ProbeOther { reason: "unsigned" }
+    MacSigned { tag: t } => {
+      let outcome = submit_parsed_submission(
+        root: root,
+        submission_keyring: ApprovalKeyLoaded { key: probe_submission_key() },
+        capability_keyring: ApprovalKeyLoaded { key: probe_key() },
+        publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "probe fixture: no message leaves this probe" },
+        tag_hex: t.hex,
+        request: probe_request(),
+      )
+      match outcome {
+        SubmissionRefused { verdict: SubmissionNotEnrolled { detail: _ } } => ProbeNotEnrolled
+        SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => ProbeFiledTokenUnavailable
+        SubmissionAlreadyFiled { escalation_id: _ } => ProbeAlreadyFiled
+        other => ProbeOther { reason: submission_outcome_reason(o: other) }
+      }
+    }
+  }
+}
+
+fn probe_submit_word(s: ProbeSubmitStanding) -> String {
+  match s {
+    ProbeNotEnrolled => "not-enrolled"
+    ProbeFiledTokenUnavailable => "filed-publisher-token-unavailable"
+    ProbeAlreadyFiled => "already-filed"
+    ProbeOther { reason: r } => concat("other: ", r)
   }
 }
 
@@ -178,8 +201,11 @@ fn approval_submission_live_probe(root: String) -> ProcessExit {
     let wrong_key = probe_submit(root: r, signer: probe_key())
     let filed = probe_submit(root: r, signer: probe_submission_key())
     let refiled = probe_submit(root: r, signer: probe_submission_key())
-    let report = join(["wrong-key=", wrong_key, "\nfiled=", filed, "\nrefiled=", refiled], "")
-    if contains(wrong_key, "not enrolled") && contains(filed, "publisher token is unavailable") && contains(refiled, "already filed") {
+    let report = join(["wrong-key=", probe_submit_word(s: wrong_key), "\nfiled=", probe_submit_word(s: filed), "\nrefiled=", probe_submit_word(s: refiled)], "")
+    let ok = match wrong_key { ProbeNotEnrolled => true  _ => false }
+      && match filed { ProbeFiledTokenUnavailable => true  _ => false }
+      && match refiled { ProbeAlreadyFiled => true  _ => false }
+    if ok {
       ExitSuccess
     } else {
       exit_failure(reason: concat("approval submission live probe: a stage did not answer as the filing law requires\n", report))
