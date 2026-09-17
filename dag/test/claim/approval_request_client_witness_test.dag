@@ -3,11 +3,12 @@ module test.claim.approval_request_client_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.auth.approval_request_client {
-  approval_submit_url, approval_status_url,
+  approval_submit_url, approval_status_url, approval_loopback_origin, approval_request_submit_path,
   parse_filed_approval_status, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
   approval_poll_standing, approval_post_admits_poll, PollStillPending, PollApproved, PollExpired, PollUnreadable,
   StoredApprovalRequest,
 }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_decision_store { approval_mac_key_id }
 import std.scoped_authorization { AttemptIdentity }
@@ -28,9 +29,12 @@ fn fixture_stored() -> StoredApprovalRequest {
   }
 }
 
-test fn submit_and_status_urls_are_loopback() -> Bool {
-  approval_submit_url() as String == "http://127.0.0.1:8080/approvals"
-    && approval_status_url(escalation_id: "esc-1") as String == "http://127.0.0.1:8080/approvals/esc-1"
+test fn submit_and_status_urls_follow_the_srv1_instance_listen_bind() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let origin = approval_loopback_origin() as String
+  origin == concat(concat("http://", instance.listen_host as String), concat(":", to_string(instance.listen_port)))
+    && approval_submit_url() as String == concat(origin, approval_request_submit_path as String)
+    && approval_status_url(escalation_id: "esc-1") as String == concat(concat(origin, concat(approval_request_submit_path as String, "/")), "esc-1")
 }
 
 test fn submit_body_nests_the_stored_request_as_a_json_string() -> Bool {

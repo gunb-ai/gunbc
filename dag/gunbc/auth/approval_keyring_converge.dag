@@ -10,7 +10,9 @@ import gunbc.auth.approval_request_submission {
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
-import extdeps.shell
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 
 data approval_keyring_config_dir: NonEmptyStr = "/etc/gunbc-roadmap"
 
@@ -66,23 +68,23 @@ fn approval_capability_digest_standing(observed_hex: String) -> ProcessExit {
 }
 
 fn keyring_host_must_be_srv1(host: String) -> Bool {
-  host == "srv1"
+  host == operator_host_srv1 as String
 }
 
 fn approval_keyring_converge_refuses_off_srv1(host: String) -> ProcessExit {
   if keyring_host_must_be_srv1(host: host) {
     ExitSuccess
   } else {
-    exit_failure(reason: concat("approval keyring converge refuses host '", concat(host, "': the files live on the machine that serves /approve, which is srv1")))
+    exit_failure(reason: concat("approval keyring converge refuses host '", concat(host, concat("': the files live on the machine that serves /approve, which is ", operator_host_srv1 as String))))
   }
 }
 
 fn approval_keyring_converge_wet() -> ProcessExit {
-  let host = match shell.Env.Get(name: "FLEET_CONVERGE_EXPECTED_HOST" as NonEmptyStr).value {
-    Absent => ""
-    Present { value: v } => v
-  }
-  match approval_keyring_converge_refuses_off_srv1(host: host) {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("approval keyring converge: ", concat(v, concat(" ", concat(d, "; one host per run, named by the dispatch")))))
+    ActionsVariablePresent { value: host } =>
+      match approval_keyring_converge_refuses_off_srv1(host: host) {
     ExitSuccess => {
       let cap = Filesystem.Read(path: approval_mac_key_path as String)
       let sub = Filesystem.Read(path: approval_submission_mac_key_path as String)
@@ -99,5 +101,6 @@ fn approval_keyring_converge_wet() -> ProcessExit {
       }
     }
     other => other
+      }
   }
 }

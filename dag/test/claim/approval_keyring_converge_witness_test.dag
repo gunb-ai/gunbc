@@ -1,13 +1,14 @@
 module test.claim.approval_keyring_converge_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool }
+import std.types { Bool, String }
 import std.process { ExitSuccess }
 import gunbc.auth.approval_keyring_converge {
   sha256_prefix_compare, Sha256PrefixMatches, Sha256PrefixMismatch, Sha256Unavailable,
   approval_mac_key_payload_sha256_prefix, keyring_host_must_be_srv1,
   approval_keyring_converge_refuses_off_srv1, approval_capability_digest_standing,
 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -34,9 +35,9 @@ test fn short_digest_is_unavailable_not_a_match() -> Bool {
 }
 
 test fn keyring_converge_is_srv1_only() -> Bool {
-  keyring_host_must_be_srv1(host: "srv1")
-    && !keyring_host_must_be_srv1(host: "srv2")
-    && match approval_keyring_converge_refuses_off_srv1(host: "srv1") { ExitSuccess => true  _ => false }
+  keyring_host_must_be_srv1(host: operator_host_srv1 as String)
+    && !keyring_host_must_be_srv1(host: operator_host_srv2 as String)
+    && match approval_keyring_converge_refuses_off_srv1(host: operator_host_srv1 as String) { ExitSuccess => true  _ => false }
 }
 
 test fn digest_standing_admits_the_modeled_prefix_and_refuses_a_mismatch() -> Bool {
