@@ -1,0 +1,323 @@
+module gunbc.live_deploy.fleet_request
+
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import v2.std.collection { Present, Absent }
+import std.algebra { Empty, Cons }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+  GoalAssessment,
+  GoalSatisfied,
+  GoalDiverged,
+  GoalIndeterminate,
+  GoalAssessmentRefused,
+  GoalInspection,
+  GoalInspected,
+  GoalObservationRefused,
+  assess_by_deviations,
+}
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.host_convergence_protocol {
+  HostEffectDomainProjection,
+  inspect_via_host_effect_projection,
+}
+import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.member_identity {
+  ConvergedMember,
+  Executable,
+  DirectoryRoot,
+  MemberIdentity,
+  UnitFileAt,
+  UnitFileIdentity,
+  RootAt,
+  member_identity_member,
+  decide_release_members,
+  decision_label,
+  ObservedMember,
+  MemberObserved,
+  MemberAbsentOnHost,
+  MemberUnobservable,
+  MemberDecision,
+  AlreadyConverged,
+  Create,
+  Replace,
+  MemberRefused,
+  decide_member,
+  decision_member,
+  observed_member_member,
+  converged_member_eq,
+  converged_member_label,
+  release_member_roster,
+  derive_member_plan,
+  EffectDerivation,
+  EffectsDerived,
+  EffectsRefused,
+  ReleaseEffectPlan,
+  ReleaseTarget,
+}
+
+// CONVERGENCE-ONE C3, independent of C2's selected-identity field.
+//
+// Selected deployment identity is DesiredDeployment (gunbc.live_deploy.desired). That type is
+// not on main yet. This module does not mint a stand-in for it. The FleetConvergeRequest arm
+// that would carry that field waits for #11425. What this cut does construct is the MEMBER
+// BASIS — candidate, roster, observed population, decisions, effect plan — whose mint cannot
+// be a host name.
+//
+// LiveDeployMemberBasis is sole_constructor. There is no host field. A host-only
+// FleetConvergeRequest for this scope is UNCONSTRUCTIBLE: LiveDeploy is a scope with no
+// request variant until C2 supplies DesiredDeployment, and observe_fleet_converge_request_wet
+// therefore cannot build one from hostname.
+//
+// Plan-side C1 projection is consumed here (inspect_via_host_effect_projection). The
+// protocol module is not edited. C4 still owns converge_apply_for_host.
+
+type LiveDeployMemberBasis sole_constructor {
+  candidate: CandidateRelease
+  roster: List<ConvergedMember>
+  observed: List<ObservedMember>
+  decisions: List<MemberDecision>
+  effects: ReleaseEffectPlan
+}
+
+type LiveDeployAdmissionRefusal
+  = LiveDeployIncompletePopulation { missing: List<String> }
+  | LiveDeployUnreadableMember { member: ConvergedMember, cause: String }
+  | LiveDeployForeignReplacement { member: ConvergedMember }
+  | LiveDeployEffectsRefused { refusals: List<MemberDecision> }
+
+type LiveDeployMemberBasisAdmission
+  = LiveDeployBasisAdmitted { basis: LiveDeployMemberBasis }
+  | LiveDeployBasisRefused { cause: LiveDeployAdmissionRefusal }
+
+fn observed_of_member(observed: List<ObservedMember>, member: ConvergedMember) -> ObservedMember? {
+  fold(observed, init: none, f: (acc, o) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if converged_member_eq(a: observed_member_member(o: o), b: member) {
+          Present { value: o }
+        } else {
+          none
+        }
+    })
+}
+
+fn roster_missing_from_observed(
+  roster: List<ConvergedMember>,
+  observed: List<ObservedMember>,
+) -> List<String> {
+  fold(roster, init: [], f: (acc, m) =>
+    match observed_of_member(observed: observed, member: m) {
+      Present { value: _ } => acc
+      Absent => concat([converged_member_label(m: m)], acc)
+    })
+}
+
+fn unit_owned_by_target(target: ReleaseTarget, file: UnitFileIdentity) -> Bool {
+  (file.unit as String) == (target.unit as String)
+}
+
+fn root_path_in_roster(roster: List<ConvergedMember>, path: NonEmptyStr) -> Bool {
+  fold(roster, init: false, f: (acc, x) =>
+    if acc {
+      true
+    } else {
+      match x {
+        DirectoryRoot { path: p } => (p as String) == (path as String)
+        _ => false
+      }
+    })
+}
+
+fn replacement_is_foreign(target: ReleaseTarget, roster: List<ConvergedMember>, d: MemberDecision) -> Bool {
+  match d {
+    Replace { member: _, from: from, to: _ } =>
+      match from {
+        UnitFileAt { file: f } => !unit_owned_by_target(target: target, file: f)
+        RootAt { root: r } => !root_path_in_roster(roster: roster, path: r.path)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn live_deploy_observe_supplied(
+  subject: ConvergedMember,
+  request: List<ObservedMember>,
+) -> ObservationAttempt<ObservedMember, String> {
+  match observed_of_member(observed: request, member: subject) {
+    Absent => ObservationRefused { cause: "member missing from independently observed population" }
+    Present { value: o } =>
+      match o {
+        MemberUnobservable { member: _, cause: c } => ObservationRefused { cause: c }
+        _ => ObservationEstablished { observed: o }
+      }
+  }
+}
+
+fn live_deploy_assess_member(
+  goal: MemberIdentity,
+  observed: ObservedMember,
+) -> GoalAssessment<MemberDecision, MemberDecision, String, String> {
+  let member = member_identity_member(i: goal)
+  let d = decide_member(member: member, desired: goal, observed: observed)
+  match d {
+    MemberRefused { member: _, cause: _ } =>
+      GoalAssessmentRefused { cause: decision_label(d: d) }
+    AlreadyConverged { member: _ } =>
+      assess_by_deviations(evidence: d, deviations: Empty)
+    Create { member: _, to: _ } =>
+      assess_by_deviations(evidence: d, deviations: Cons { head: d, tail: Empty })
+    Replace { member: _, from: _, to: _ } =>
+      assess_by_deviations(evidence: d, deviations: Cons { head: d, tail: Empty })
+  }
+}
+
+fn live_deploy_decide_plan(
+  assessment: GoalAssessment<MemberDecision, MemberDecision, String, String>,
+) -> UpsertDecision<MemberDecision> {
+  match assessment {
+    GoalSatisfied { evidence: _ } => Noop
+    GoalDiverged { deviations: ds } => Apply { plan: ds.head }
+    GoalIndeterminate { known_deviations: _, unknowns: _ } =>
+      Refuse { reason: "live-deploy assessment indeterminate" as NonEmptyStr }
+    GoalAssessmentRefused { cause: why } =>
+      Refuse { reason: why as NonEmptyStr }
+  }
+}
+
+fn live_deploy_member_projection() -> HostEffectDomainProjection<ConvergedMember, MemberIdentity, List<ObservedMember>, ObservedMember, MemberDecision, MemberDecision, String, String, String, MemberDecision> {
+  HostEffectDomainProjection {
+    observe: live_deploy_observe_supplied,
+    assess: live_deploy_assess_member,
+    decide: live_deploy_decide_plan,
+  }
+}
+
+fn live_deploy_inspect_member(
+  member: ConvergedMember,
+  desired: MemberIdentity,
+  observed: List<ObservedMember>,
+) -> GoalInspection<ConvergedMember, MemberIdentity, List<ObservedMember>, ObservedMember, MemberDecision, MemberDecision, String, String, String> {
+  inspect_via_host_effect_projection(
+    subject: member,
+    goal: desired,
+    request: observed,
+    projection: live_deploy_member_projection(),
+  )
+}
+
+fn first_unreadable(observed: List<ObservedMember>) -> LiveDeployAdmissionRefusal? {
+  fold(observed, init: none, f: (acc, o) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match o {
+          MemberUnobservable { member: m, cause: c } =>
+            Present { value: LiveDeployUnreadableMember { member: m, cause: c } }
+          _ => none
+        }
+    })
+}
+
+fn first_foreign(
+  target: ReleaseTarget,
+  roster: List<ConvergedMember>,
+  decisions: List<MemberDecision>,
+) -> LiveDeployAdmissionRefusal? {
+  fold(decisions, init: none, f: (acc, d) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if replacement_is_foreign(target: target, roster: roster, d: d) {
+          Present { value: LiveDeployForeignReplacement { member: decision_member(d: d) } }
+        } else {
+          none
+        }
+    })
+}
+
+fn admit_live_deploy_member_basis(
+  candidate: CandidateRelease,
+  target: ReleaseTarget,
+  observed: List<ObservedMember>,
+  desired: fn(ConvergedMember) -> MemberIdentity,
+) -> LiveDeployMemberBasisAdmission {
+  let roster = release_member_roster()
+  match first_unreadable(observed: observed) {
+    Present { value: u } => LiveDeployBasisRefused { cause: u }
+    Absent => {
+      let missing = roster_missing_from_observed(roster: roster, observed: observed)
+      if count(missing) > 0 {
+        LiveDeployBasisRefused { cause: LiveDeployIncompletePopulation { missing: missing } }
+      } else {
+        match live_deploy_inspect_member(member: Executable, desired: desired(Executable), observed: observed) {
+          GoalObservationRefused { subject: s, goal: _, request: _, cause: c } =>
+            LiveDeployBasisRefused { cause: LiveDeployUnreadableMember { member: s, cause: c } }
+          GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: _ } => {
+            let derivation = derive_member_plan(
+              roster: roster,
+              desired: desired,
+              observed: m =>
+                match observed_of_member(observed: observed, member: m) {
+                  Present { value: o } => o
+                  Absent => MemberUnobservable {
+                    member: m,
+                    cause: "incomplete population reached derivation",
+                  },
+                },
+              target: target,
+            )
+            match derivation {
+              EffectsRefused { refusals: r } => LiveDeployBasisRefused {
+                cause: LiveDeployEffectsRefused { refusals: r },
+              }
+              EffectsDerived { plan: plan } => {
+                let decisions = decide_release_members(
+                  roster: roster,
+                  desired: desired,
+                  observed: m =>
+                    match observed_of_member(observed: observed, member: m) {
+                      Present { value: o } => o
+                      Absent => MemberUnobservable { member: m, cause: "missing" },
+                    },
+                )
+                match first_foreign(target: target, roster: roster, decisions: decisions) {
+                  Present { value: f } => LiveDeployBasisRefused { cause: f }
+                  Absent => LiveDeployBasisAdmitted {
+                    basis: LiveDeployMemberBasis {
+                      candidate: candidate,
+                      roster: roster,
+                      observed: observed,
+                      decisions: decisions,
+                      effects: plan,
+                    },
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn live_deploy_admission_refusal_text(cause: LiveDeployAdmissionRefusal) -> String {
+  match cause {
+    LiveDeployIncompletePopulation { missing: m } =>
+      join(["LiveDeployIncompletePopulation missing=", join(m, ",")], "")
+    LiveDeployUnreadableMember { member: m, cause: c } =>
+      join(["LiveDeployUnreadableMember ", converged_member_label(m: m), " — ", c], "")
+    LiveDeployForeignReplacement { member: m } =>
+      join(["LiveDeployForeignReplacement ", converged_member_label(m: m)], "")
+    LiveDeployEffectsRefused { refusals: _ } =>
+      "LiveDeployEffectsRefused"
+  }
+}
+
+fn live_deploy_host_only_request_refusal_reason() -> String {
+  "live-deploy FleetConvergeRequest is unconstructible until DesiredDeployment lands; a host-only LiveDeploy request has no spelling"
+}

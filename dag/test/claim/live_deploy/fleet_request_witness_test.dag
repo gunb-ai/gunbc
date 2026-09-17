@@ -1,0 +1,200 @@
+module test.claim.live_deploy.fleet_request_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr, CommitSha }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.member_identity {
+  ConvergedMember,
+  DirectoryRoot,
+  Executable,
+  TreePublication,
+  UnitFile,
+  UnitManager,
+  ServiceProcess,
+  TreePublicationIdentity, UnitFileIdentity, ManagerLoadedCurrent,
+  ProcessRunningRelease,
+  MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt,
+  ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
+  release_member_roster, plan_mutation_count,
+  ReleaseTarget,
+  converged_member_eq,
+}
+import gunbc.live_deploy.fleet_request {
+  admit_live_deploy_member_basis,
+  LiveDeployBasisAdmitted,
+  LiveDeployBasisRefused,
+  LiveDeployIncompletePopulation,
+  LiveDeployUnreadableMember,
+  LiveDeployForeignReplacement,
+  LiveDeployEffectsRefused,
+  live_deploy_admission_refusal_text,
+}
+import gunbc.fleet_converge_plan {
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire,
+  LiveDeploy,
+  ScopeDecoded,
+  ScopeUndecodable,
+}
+
+fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }
+fn rev_b() -> CommitSha { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as CommitSha }
+fn bin_a() -> Digest { sha256_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr) }
+fn bin_b() -> Digest { sha256_digest(hex: "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr) }
+fn unit_a() -> Fnv1a64Structural { content_hash_atom(value: "[Unit]\nDescription=a\n" as NonEmptyStr) }
+fn unit_b() -> Fnv1a64Structural { content_hash_atom(value: "[Unit]\nDescription=b\n" as NonEmptyStr) }
+fn unit_name() -> NonEmptyStr { "gunbc-roadmap.service" as NonEmptyStr }
+
+fn candidate() -> CandidateRelease {
+  CandidateRelease {
+    revision: rev_a(),
+    expected_surface_identity: content_hash_atom(value: "surface" as NonEmptyStr),
+  }
+}
+
+fn target() -> ReleaseTarget {
+  ReleaseTarget {
+    revision: rev_a(),
+    executable: bin_a(),
+    unit: unit_name(),
+  }
+}
+
+fn desired_tree() -> MemberIdentity { TreeIdentity { tree: TreePublicationIdentity { revision: rev_a(), tracked_projection_clean: true } } }
+fn desired_bin() -> MemberIdentity { ExecutableIdentity { digest: bin_a() } }
+fn desired_file() -> MemberIdentity { UnitFileAt { file: UnitFileIdentity { unit: unit_name(), document: unit_a() } } }
+fn desired_manager() -> MemberIdentity { UnitManagerAt { standing: ManagerLoadedCurrent } }
+fn desired_process() -> MemberIdentity { ProcessAt { process: ProcessRunningRelease { revision: rev_a() } } }
+
+fn desired_for(m: ConvergedMember) -> MemberIdentity {
+  match m {
+    Executable => desired_bin()
+    TreePublication => desired_tree()
+    UnitFile => desired_file()
+    UnitManager => desired_manager()
+    ServiceProcess => desired_process()
+    DirectoryRoot { path: _ } => desired_bin()
+  }
+}
+
+fn matching_obs() -> List<ObservedMember> {
+  map(release_member_roster(), m => MemberObserved { identity: desired_for(m: m) })
+}
+
+fn admit_obs(observed: List<ObservedMember>) -> gunbc.live_deploy.fleet_request.LiveDeployMemberBasisAdmission {
+  admit_live_deploy_member_basis(
+    candidate: candidate(),
+    target: target(),
+    observed: observed,
+    desired: m => desired_for(m: m),
+  )
+}
+
+fn one_drift(member: ConvergedMember, observed: ObservedMember) -> List<ObservedMember> {
+  map(release_member_roster(), m =>
+    if converged_member_eq(a: m, b: member) {
+      observed
+    } else {
+      MemberObserved { identity: desired_for(m: m) }
+    })
+}
+
+test fn matching_identities_derive_zero_operations() -> Bool {
+  match admit_obs(observed: matching_obs()) {
+    LiveDeployBasisRefused { cause: _ } => false
+    LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) == 0
+  }
+}
+
+test fn fresh_absence_derives_creates() -> Bool {
+  match admit_obs(observed: one_drift(member: Executable, observed: MemberAbsentOnHost { member: Executable })) {
+    LiveDeployBasisRefused { cause: _ } => false
+    LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) > 0
+  }
+}
+
+test fn stale_identities_derive_replacements() -> Bool {
+  match admit_obs(observed: one_drift(
+    member: Executable,
+    observed: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } },
+  )) {
+    LiveDeployBasisRefused { cause: _ } => false
+    LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) > 0
+  }
+}
+
+test fn unreadable_members_refuse_because_the_observation_was_unusable() -> Bool {
+  match admit_obs(observed: one_drift(
+    member: Executable,
+    observed: MemberUnobservable { member: Executable, cause: "sha256sum refused" },
+  )) {
+    LiveDeployBasisAdmitted { basis: _ } => false
+    LiveDeployBasisRefused { cause: c } => match c {
+      LiveDeployUnreadableMember { member: Executable, cause: why } =>
+        why == "sha256sum refused"
+          && string_contains(s: live_deploy_admission_refusal_text(cause: c), pattern: "sha256sum refused")
+          && !string_contains(s: live_deploy_admission_refusal_text(cause: c), pattern: "IncompletePopulation")
+      _ => false
+    }
+  }
+}
+
+test fn incomplete_member_populations_cannot_produce_an_admitted_empty_plan() -> Bool {
+  match admit_obs(observed: [MemberObserved { identity: desired_bin() }]) {
+    LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) != 0
+    LiveDeployBasisRefused { cause: c } => match c {
+      LiveDeployIncompletePopulation { missing: m } => count(m) > 0
+      _ => false
+    }
+  }
+}
+
+test fn a_foreign_unowned_member_cannot_derive_destructive_replacement() -> Bool {
+  match admit_obs(observed: one_drift(
+    member: UnitFile,
+    observed: MemberObserved {
+      identity: UnitFileAt {
+        file: UnitFileIdentity {
+          unit: "someone-elses.service" as NonEmptyStr,
+          document: unit_b(),
+        },
+      },
+    },
+  )) {
+    LiveDeployBasisAdmitted { basis: _ } => false
+    LiveDeployBasisRefused { cause: c } => match c {
+      LiveDeployForeignReplacement { member: UnitFile } => true
+      _ => false
+    }
+  }
+}
+
+test fn a_desired_identity_for_another_member_refuses_the_effect_plan() -> Bool {
+  match admit_live_deploy_member_basis(
+    candidate: candidate(),
+    target: target(),
+    observed: matching_obs(),
+    desired: m =>
+      match m {
+        Executable => desired_tree()
+        _ => desired_for(m: m)
+      },
+  ) {
+    LiveDeployBasisAdmitted { basis: _ } => false
+    LiveDeployBasisRefused { cause: c } => match c {
+      LiveDeployEffectsRefused { refusals: r } => count(r) > 0
+      LiveDeployUnreadableMember { member: _, cause: _ } => false
+      LiveDeployIncompletePopulation { missing: _ } => false
+      _ => false
+    }
+  }
+}
+
+test fn live_deploy_is_a_decodable_fleet_converge_scope() -> Bool {
+  match fleet_converge_scope_of_wire(wire: fleet_converge_scope_wire(scope: LiveDeploy)) {
+    ScopeUndecodable { cause: _ } => false
+    ScopeDecoded { scope: LiveDeploy } => true
+    ScopeDecoded { scope: _ } => false
+  }
+}
