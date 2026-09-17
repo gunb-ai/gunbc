@@ -50,18 +50,18 @@ fn fixture_request() -> StoredApprovalRequest {
 // ── keyring ────────────────────────────────────────────────────────────────────────────────────
 
 test fn keyring_loads_sixty_four_lower_hex_and_refuses_the_rest() -> Bool {
-  match approval_keyring_from_content(content: fixture_key_hex) { ApprovalKeyLoaded { key: k } => k.suite == approval_mac_key_suite  _ => false }
-    && match approval_keyring_from_content(content: "") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: 0 } } => true  _ => false }
-    && match approval_keyring_from_content(content: concat(fixture_key_hex, "\n")) { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: n } } => n == 65  _ => false }
-    && match approval_keyring_from_content(content: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: _ } } => true  _ => false }
+  match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: fixture_key_hex) { ApprovalKeyLoaded { key: k } => k.suite == approval_mac_key_suite  _ => false }
+    && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: "") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: 0 } } => true  _ => false }
+    && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: concat(fixture_key_hex, "\n")) { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: n } } => n == 65  _ => false }
+    && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: _ } } => true  _ => false }
 }
 
 // ABSENT IS THE FILESYSTEM'S ANSWER AND UNREADABLE IS A DIFFERENT ONE: a missing file and a
 // permission failure both arrive with empty content, and only the exact read tells them apart.
 test fn keyring_absent_and_unreadable_are_two_refusals() -> Bool {
-  match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "No such file or directory (os error 2)", error_kind: "not_found")) { ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: _ } } => true  _ => false }
-    && match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "Permission denied (os error 13)", error_kind: "permission_denied")) { ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: _, error: _ } } => true  _ => false }
-    && match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: fixture_key_hex, success: true, error: "", error_kind: "")) { ApprovalKeyLoaded { key: _ } => true  _ => false }
+  match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "No such file or directory (os error 2)", error_kind: "not_found")) { ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: _ } } => true  _ => false }
+    && match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "Permission denied (os error 13)", error_kind: "permission_denied")) { ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: _, error: _ } } => true  _ => false }
+    && match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: fixture_key_hex, success: true, error: "", error_kind: "")) { ApprovalKeyLoaded { key: _ } => true  _ => false }
 }
 
 // ── the record round-trips through its own wire ────────────────────────────────────────────────

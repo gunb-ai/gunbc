@@ -3,7 +3,7 @@ module gunbc.auth.approval_request_submission
 import std.types { Bool, Int, NonEmptyStr, String, Secret }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
-import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, mac_sign, mac_verify, mac_verification_reason }
+import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, mac_sign, mac_verify, mac_verification_reason }
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, NtfyPublished, NtfyPublishRefused, NtfyPublishUnreached, NtfyPublishUndecodable, ntfy_publish_outcome_of, ntfy_priority_wire, ntfy_cache_wire }
@@ -16,12 +16,12 @@ import gunbc.auth.approval_ntfy_deployment
 import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
 import std.algebra { trim }
 import gunbc.auth.approval_decision_store {
-  ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal, ApprovalKeyFileAbsent, ApprovalKeyFileUnreadable, ApprovalKeyMalformed,
+  ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal,
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
   approval_capability_authority, approval_capability_expectation, claims_for, capability_path_segment,
   file_approval_request, StoreWritten, StoreSlotOccupied, StoreRefused,
   EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable, observe_escalation,
-  approval_keyring_from_exact_read, approval_mac_key_path,
+  read_mac_keyring,
 }
 
 // THE FILING HALF OF THE APPROVAL LOOP: how a request reaches the store and the operator's phone.
@@ -71,22 +71,8 @@ data approval_submission_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approva
 // that user to the group. An unreadable token is a typed refusal below, never a fabricated publish.
 data approval_publisher_token_path: NonEmptyStr = "/etc/gunbc-ntfy/publisher-token"
 
-fn submission_keyring_from_content(content: String) -> ApprovalKeyringRead {
-  if content.length() != 64 {
-    ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: approval_submission_mac_key_path, length: content.length() } }
-  } else {
-    ApprovalKeyLoaded { key: MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: content as Secret } }
-  }
-}
-
 fn read_submission_keyring() -> ApprovalKeyringRead {
-  let read = Filesystem.Read(path: approval_submission_mac_key_path as String)
-  match filesystem_exact_read(path: approval_submission_mac_key_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
-    FilesystemExactPathRead { path: _, content: c } => submission_keyring_from_content(content: c)
-    FilesystemExactPathAbsent { path: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_submission_mac_key_path } }
-    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: approval_submission_mac_key_path, error: e } }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: approval_submission_mac_key_path, error: concat(o, concat(": ", e)) } }
-  }
+  read_mac_keyring(path: approval_submission_mac_key_path, key_id: approval_submission_mac_key_id)
 }
 
 type PublisherTokenRead
@@ -170,20 +156,26 @@ fn parse_submission_envelope(text: String) -> SubmissionEnvelopeParse {
 // this store brokers for. The operator is shown nothing that fails either.
 type SubmissionVerdict
   = SubmissionVerified { request: StoredApprovalRequest }
-  | SubmissionUnreadable { detail: NonEmptyStr }
+  | SubmissionNotAdmitted { refusal: SubmissionRefusal }
+
+// THE REFUSALS ARE THEIR OWN COPRODUCT so that an outcome carrying a refusal cannot carry the
+// success arm: the filing outcome below embeds SubmissionRefusal, never SubmissionVerdict, and so
+// owes no rendering and no status for "refused because verified".
+type SubmissionRefusal
+  = SubmissionUnreadable { detail: NonEmptyStr }
   | SubmissionKeyUnavailable { cause: ApprovalKeyringRefusal }
   | SubmissionNotEnrolled { detail: String }
   | SubmissionAuthorityRefused { requester: NonEmptyStr, authority: NonEmptyStr }
 
 fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest, keyring: ApprovalKeyringRead) -> SubmissionVerdict {
   match keyring {
-    ApprovalKeyringRefused { cause: c } => SubmissionKeyUnavailable { cause: c }
+    ApprovalKeyringRefused { cause: c } => SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: c } }
     ApprovalKeyLoaded { key: key } => {
       let verification: MacVerification = mac_verify(key: key, message: submission_message(request: request), tag_hex: tag_hex)
       let enrolled = match verification { MacVerified { verified: v } => v.message == submission_message(request: request)  _ => false }
       match admit_submission(requester: request.requester, authority: approval_capability_authority, requester_enrolled: enrolled, authority_permitted: true) {
-        SubmissionRequesterNotEnrolled { requester: _ } => SubmissionNotEnrolled { detail: mac_verification_reason(v: verification) }
-        SubmissionAuthorityNotPermittedForRequester { requester: rq, authority: a } => SubmissionAuthorityRefused { requester: rq, authority: a }
+        SubmissionRequesterNotEnrolled { requester: _ } => SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: mac_verification_reason(v: verification) } }
+        SubmissionAuthorityNotPermittedForRequester { requester: rq, authority: a } => SubmissionNotAdmitted { refusal: SubmissionAuthorityRefused { requester: rq, authority: a } }
         SubmissionAdmitted { requester: _, authority: _ } => SubmissionVerified { request: request }
       }
     }
@@ -192,7 +184,7 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
 
 fn admit_approval_submission(text: String, keyring: ApprovalKeyringRead) -> SubmissionVerdict {
   match parse_submission_envelope(text: text) {
-    SubmissionEnvelopeUnreadable { detail: d } => SubmissionUnreadable { detail: d }
+    SubmissionEnvelopeUnreadable { detail: d } => SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: d } }
     SubmissionEnvelopeParsed { tag_hex: tag, request: r } => admit_parsed_submission(tag_hex: tag, request: r, keyring: keyring)
   }
 }
@@ -259,7 +251,7 @@ type SubmissionOutcome
   | SubmissionFiledLinksNotIssued { escalation_id: NonEmptyStr, key_id: MacKeyId }
   | SubmissionAlreadyFiled { escalation_id: NonEmptyStr }
   | SubmissionStoreRefused { detail: NonEmptyStr }
-  | SubmissionRefused { verdict: SubmissionVerdict }
+  | SubmissionRefused { refusal: SubmissionRefusal }
   | SubmissionCapabilityKeyUnavailable { cause: ApprovalKeyringRefusal }
 
 fn submission_outcome_reason(o: SubmissionOutcome) -> String {
@@ -275,8 +267,7 @@ fn submission_outcome_reason(o: SubmissionOutcome) -> String {
     SubmissionFiledLinksNotIssued { escalation_id: e, key_id: k } => join(["filed ", e as String, " but no link could be issued under key ", k as String], "")
     SubmissionAlreadyFiled { escalation_id: e } => join(["escalation ", e as String, " is already filed"], "")
     SubmissionStoreRefused { detail: d } => join(["approval store refused the filing: ", d as String], "")
-    SubmissionRefused { verdict: v } => match v {
-      SubmissionVerified { request: _ } => "verified"
+    SubmissionRefused { refusal: v } => match v {
       SubmissionUnreadable { detail: d } => join(["submission unreadable: ", d as String], "")
       SubmissionKeyUnavailable { cause: _ } => "the submission key is unavailable on this host"
       SubmissionNotEnrolled { detail: d } => join(["requester not enrolled: ", d], "")
@@ -344,7 +335,7 @@ fn submit_parsed_submission(
 ) -> SubmissionOutcome {
   match admit_parsed_submission(tag_hex: tag_hex, request: request, keyring: submission_keyring) {
     SubmissionVerified { request: r } => file_and_notify(root: root, capability_keyring: capability_keyring, publisher: publisher, request: r)
-    refused => SubmissionRefused { verdict: refused }
+    SubmissionNotAdmitted { refusal: refused } => SubmissionRefused { refusal: refused }
   }
 }
 

@@ -10,9 +10,9 @@ import gunbc.auth.approval_decision_store {
   approval_mac_key_id, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed,
 }
 import gunbc.auth.approval_request_submission {
-  approval_submission_mac_key_id, submission_keyring_from_content,
+  approval_submission_mac_key_id,
   sign_submission, submission_envelope_json, parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
-  admit_approval_submission, SubmissionVerified, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
+  admit_approval_submission, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
   issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status_text,
 }
 
@@ -75,9 +75,9 @@ test fn a_non_canonical_record_is_refused_before_it_is_verified() -> Bool {
 test fn a_correctly_signed_submission_is_admitted_and_a_wrong_key_is_not_enrolled() -> Bool {
   let other = MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: capability_key_hex as Secret }
   match admit_approval_submission(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionVerified { request: r } => r.escalation_id == "esc-mtc1-boot-1"  _ => false }
-    && match admit_approval_submission(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: other }) { SubmissionNotEnrolled { detail: _ } => true  _ => false }
-    && match admit_approval_submission(text: signed_envelope(), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-submission-mac-key" } }) { SubmissionKeyUnavailable { cause: _ } => true  _ => false }
-    && match admit_approval_submission(text: "garbage", keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionUnreadable { detail: _ } => true  _ => false }
+    && match admit_approval_submission(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: other }) { SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true  _ => false }
+    && match admit_approval_submission(text: signed_envelope(), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-submission-mac-key" } }) { SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: _ } } => true  _ => false }
+    && match admit_approval_submission(text: "garbage", keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: _ } } => true  _ => false }
 }
 
 // THE CAPABILITY KEY MUST NOT FILE: a runner holding only the key that mints consent is exactly
@@ -86,7 +86,7 @@ test fn the_capability_key_cannot_file_a_request() -> Bool {
   match sign_submission(key: capability_key(), request: request()) {
     MacSigned { tag: t } =>
       match admit_approval_submission(text: submission_envelope_json(request: request(), tag_hex: t.hex), keyring: ApprovalKeyLoaded { key: submission_key() }) {
-        SubmissionNotEnrolled { detail: _ } => true
+        SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true
         _ => false
       }
     MacKeyMaterialNotHex { key_id: _ } => false

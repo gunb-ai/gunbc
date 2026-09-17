@@ -139,26 +139,35 @@ fn is_lower_hex(s: String) -> Bool {
 // refused rather than trimmed, because a key that verifies with one reader and not another is
 // worse than one that refuses everywhere. An empty file is malformed, not absent: absence is the
 // filesystem's answer, established by the exact read below, never inferred from empty content.
-fn approval_keyring_from_content(content: String) -> ApprovalKeyringRead {
+fn approval_keyring_from_content(path: NonEmptyStr, key_id: MacKeyId, content: String) -> ApprovalKeyringRead {
   if content.length() != 64 || !is_lower_hex(s: content) {
-    ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: approval_mac_key_path, length: content.length() } }
+    ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: path, length: content.length() } }
   } else {
-    ApprovalKeyLoaded { key: MacKey { id: approval_mac_key_id, suite: approval_mac_key_suite, material: content as Secret } }
+    ApprovalKeyLoaded { key: MacKey { id: key_id, suite: approval_mac_key_suite, material: content as Secret } }
   }
 }
 
-fn approval_keyring_from_exact_read(exact: FilesystemExactRead) -> ApprovalKeyringRead {
+// ONE READER FOR EVERY MAC KEY FILE THE APPROVAL LOOP HOLDS. The capability key and the submission
+// key (gunbc.auth.approval_request_submission) differ only in path and key id, so those are
+// parameters; the 64-lower-hex rule and the absent/unreadable/malformed partition are stated once.
+// A second copy of this fold drifted (it dropped the hex check) within a day of being written, and
+// the drift reported a malformed server key to the filer as its own 403.
+fn approval_keyring_from_exact_read(path: NonEmptyStr, key_id: MacKeyId, exact: FilesystemExactRead) -> ApprovalKeyringRead {
   match exact {
-    FilesystemExactPathRead { path: _, content: c } => approval_keyring_from_content(content: c)
-    FilesystemExactPathAbsent { path: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_mac_key_path } }
-    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: approval_mac_key_path, error: e } }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: approval_mac_key_path, error: concat(o, concat(": ", e)) } }
+    FilesystemExactPathRead { path: _, content: c } => approval_keyring_from_content(path: path, key_id: key_id, content: c)
+    FilesystemExactPathAbsent { path: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: path } }
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: path, error: e } }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: path, error: concat(o, concat(": ", e)) } }
   }
+}
+
+fn read_mac_keyring(path: NonEmptyStr, key_id: MacKeyId) -> ApprovalKeyringRead {
+  let read = Filesystem.Read(path: path as String)
+  approval_keyring_from_exact_read(path: path, key_id: key_id, exact: filesystem_exact_read(path: path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind))
 }
 
 fn read_approval_keyring() -> ApprovalKeyringRead {
-  let read = Filesystem.Read(path: approval_mac_key_path as String)
-  approval_keyring_from_exact_read(exact: filesystem_exact_read(path: approval_mac_key_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind))
+  read_mac_keyring(path: approval_mac_key_path, key_id: approval_mac_key_id)
 }
 
 // ── what the verifier accepts ──────────────────────────────────────────────────────────────────

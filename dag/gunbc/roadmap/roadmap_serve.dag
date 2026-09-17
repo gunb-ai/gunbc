@@ -7,7 +7,7 @@ import gunbc.auth.approval_request_submission {
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
   SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionCapabilityKeyUnavailable,
-  SubmissionVerified, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled, SubmissionAuthorityRefused,
+  SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled, SubmissionAuthorityRefused,
 }
 import gunbc.auth.approval_decision_store {
   approval_decision_store_root, approval_identity_trust, read_approval_keyring, redeem_over_store, store_redemption_reason,
@@ -625,7 +625,7 @@ fn approval_decide_response(
 // operator's phone.
 fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
   let outcome = match parse_submission_envelope(text: request.body) {
-    SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { verdict: SubmissionUnreadable { detail: d } }
+    SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
     SubmissionEnvelopeParsed { tag_hex: tag, request: r } => submit_parsed_submission(
       root: approval_decision_store_root,
       submission_keyring: read_submission_keyring(),
@@ -642,8 +642,7 @@ fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
     SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => 503
     SubmissionAlreadyFiled { escalation_id: _ } => 409
     SubmissionStoreRefused { detail: _ } => 503
-    SubmissionRefused { verdict: v } => match v {
-      SubmissionVerified { request: _ } => 500
+    SubmissionRefused { refusal: v } => match v {
       SubmissionUnreadable { detail: _ } => 400
       SubmissionKeyUnavailable { cause: _ } => 503
       SubmissionNotEnrolled { detail: _ } => 403

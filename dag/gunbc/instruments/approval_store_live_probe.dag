@@ -175,7 +175,7 @@ fn probe_submit(root: NonEmptyStr, signer: MacKey) -> ProbeSubmitStanding {
         request: probe_request(),
       )
       match outcome {
-        SubmissionRefused { verdict: SubmissionNotEnrolled { detail: _ } } => ProbeNotEnrolled
+        SubmissionRefused { refusal: SubmissionNotEnrolled { detail: _ } } => ProbeNotEnrolled
         SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => ProbeFiledTokenUnavailable
         SubmissionAlreadyFiled { escalation_id: _ } => ProbeAlreadyFiled
         other => ProbeOther { reason: submission_outcome_reason(o: other) }
