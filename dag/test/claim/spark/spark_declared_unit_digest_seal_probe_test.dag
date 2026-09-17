@@ -11,17 +11,24 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// WHAT THIS FILE ESTABLISHES TODAY, STATED FIRST SO IT IS NOT MISREAD AS COVERAGE. This module
-// declares ReadsLiveTree, because its probe sources import real corpus modules and the census must
-// resolve them. v2.workflow.floor_route_gap records that a file with that disposition has every
-// identity DECLINED BEFORE EXECUTION (RequiredFloorDisposition.DeclinedLiveTree), and that
-// claim_executor --required-floor is the only witness-executing consumer in the tree -- so a
-// declined identity RUNS NOWHERE. The same is true of the probe this file is modelled on,
-// test.claim.fabric_m0_origin_readback_seal_test, which is also ReadsLiveTree and is in no workflow
-// roster. So these rows are ENROLLED AND NOT EXECUTED, and are cited as exactly that: DESIGN 4b
-// calls a check that cannot run a decoration, worse than absent because it gets counted as coverage.
-// NEXT-RUNG TRIGGER, A CAPABILITY: the floor executing ReadsLiveTree claims, SUFFICIENT FOR these
-// rows to run. Read the floor's printed disposition, not this sentence.
+// WHAT THIS FILE ESTABLISHES, MEASURED RATHER THAN PREDICTED. An earlier revision of this header
+// said these rows were DECLINED BEFORE EXECUTION and ran nowhere, reasoning from
+// v2.workflow.floor_route_gap's note that ReadsLiveTree files are declined. THAT WAS WRONG, and
+// understating a wall is a rung-honesty defect in the same way overstating one is (DESIGN 4b(1)):
+// an unproven-looking wall does not get climbed, and the next reader is misled about what holds.
+// RECEIPT, required-floor run 35162345507 on e549dfda76d, all three rows:
+//   standing=planned-and-passed disposition=planned_as_changed_witness outcome=passed
+// They ran because a PR that CHANGES a witness file gets it planned and executed as a changed
+// witness, which is a different route from the hermetic discovery corpus.
+//
+// AND THE LIMIT OF THAT, STATED WITH ITS OWN EVIDENCE. This is a wall MEASURED ON THE CHANGE THAT
+// INTRODUCES IT, not a standing gate on every later run: in that same run the sibling probe
+// test.claim.fabric_m0_origin_readback_seal_test -- also ReadsLiveTree, but unchanged by this PR --
+// does not appear at all. So once this file stops changing, nothing re-runs these arms. That is the
+// same standing extdeps.filesystem.filesystem_io records for its own sole_constructor measurement:
+// one execution of a wall whose arms nothing currently re-runs, taken once at the fixture boundary.
+// NEXT-RUNG TRIGGER, A CAPABILITY: the floor planning ReadsLiveTree claims on every run rather than
+// only when their file changes, SUFFICIENT FOR these arms to become a standing gate.
 //
 // THE HALF THAT IS WALLED WITHOUT THIS FILE, AND IT IS THE LARGER HALF. The split is enforced by
 // ORDINARY COMPILATION for every module in the corpus, on every floor run:

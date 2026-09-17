@@ -433,10 +433,11 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
 // returns the UNSEALED RenderedUnitDigestStanding, so bytes cannot become a sealed standing without
 // a typecheck refusal, and sole_constructor refuses a forge at the literal's own position.
 // FOR FOREIGN SOURCE TEXT the probes in test.claim.spark.spark_declared_unit_digest_seal_probe_test
-// ask the same question of a fixture module -- but that file declares ReadsLiveTree and is therefore
-// DECLINED BEFORE EXECUTION today, so it is enrolled and NOT YET EXECUTED. Its own header carries
-// that standing and the capability trigger; do not read it as coverage until the floor's printed
-// disposition says it ran.
+// ask the same question of a fixture module, and they EXECUTED AND PASSED: required-floor run
+// 35162345507 reports standing=planned-and-passed for all three, a cross-module forge refused at the
+// literal's own position and the sanctioned group route tripping no violation. What that does NOT
+// establish is a standing gate -- a ReadsLiveTree claim is planned when its file CHANGES, so nothing
+// re-runs those arms once this file settles. That file's header carries the receipt and the trigger.
 //
 // RUNG HONESTY (DESIGN §4b). Structurally guaranteed on the source-to-.dag acceptance path; NOT
 // structural on the emitted-Rust path, where a sole_constructor type's emitted mirror is a public
