@@ -9,7 +9,7 @@ import gunbc.auth.approval_keyring_converge {
   sha256_prefix_compare, Sha256PrefixMatches, Sha256PrefixMismatch, Sha256Unavailable,
   keyring_host_must_be_srv1,
   approval_keyring_converge_refuses_off_srv1, approval_mac_key_digest_standing,
-  keyring_mkdir_argv,
+  keyring_mkdir_argv, store_root_mkdir_argv,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 
@@ -52,6 +52,13 @@ test fn digest_standing_admits_the_modeled_prefix_and_refuses_a_mismatch() -> Bo
 
 test fn keyring_mkdir_is_install_not_a_local_sudo() -> Bool {
   match list_head(xs: keyring_mkdir_argv()) {
+    HeadFound { value: w } => w == "install"
+    _ => false
+  }
+}
+
+test fn store_root_mkdir_is_install_not_a_local_sudo() -> Bool {
+  match list_head(xs: store_root_mkdir_argv()) {
     HeadFound { value: w } => w == "install"
     _ => false
   }
