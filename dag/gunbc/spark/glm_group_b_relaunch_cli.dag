@@ -215,9 +215,22 @@ fn observe_rank_report(
 data glm_group_b_observe_attempt_raw: String = "glm-group-b-serving-observe"
 data glm_group_b_observe_receipt_path: String = "target/glm-group-b-serving-observation.txt"
 
+// AN EMPTY SUBJECT ROSTER REFUSES BEFORE A CREDENTIAL IS MATERIALIZED, and the check is here rather
+// than after the reads for the same reason the transaction's is before its capture phase: at zero
+// subjects the report list is empty, `count(filter(reports, r => !r.complete)) > 0` is vacuously
+// false, and this route writes a receipt naming no ranks and exits successfully -- an affirmative
+// reading of "every rank is on the verbs transport" derived from ZERO observations, by the route this
+// module calls the one that reads the facts off a live rank.
+//
+// AND THE ROSTER IS A FILTER, so it is empty the moment Group B's hosts stop being observed rather
+// than only when someone writes it that way. Refusing before the access bracket also means an
+// unobserved group does not cause an administrator credential to be read off disk for no reason.
 fn glm_group_b_observe_wet() -> ProcessExit
   uses net: Network
 {
+  if count(glm_group_b_subjects()) == 0 {
+    exit_failure(reason: "glm group b names no observed hosts, so there is nothing to read; an empty roster is a group whose members are not observed, not an arm with no ranks to check")
+  } else {
   with_group_b_access(use: fn(trust, path, administrator, file) {
     let reports = map(glm_group_b_subjects(), s =>
       observe_rank_report(trust: trust, path: path, administrator: administrator, credential_file: file, subject: s))
@@ -237,6 +250,7 @@ fn glm_group_b_observe_wet() -> ProcessExit
       ExitSuccess
     }
   }, attempt_raw: glm_group_b_observe_attempt_raw, credential_file_name: "gunbc-glm-group-b-observe-admin-password" as NonEmptyStr)
+  }
 }
 
 // ── THE ACTUATING ROUTE ───────────────────────────────────────────────────────────────────────
@@ -306,6 +320,9 @@ fn glm_group_b_relaunch_wet() -> ProcessExit
   match glm_group_b_rank_plans() {
     ArmPlanRefused { cause: why } => exit_failure(reason: why as String)
     ArmPlanned { plans: plans } =>
+      if count(plans) == 0 {
+        exit_failure(reason: "the launch planner produced no ranks for this group, so there is nothing to relaunch; an empty roster is a group whose members are not observed")
+      } else {
       with_group_b_access(use: fn(trust, path, administrator, file) {
         let outcome = relaunch_arm(ranks: map(plans, p => rank_plan(
           subject: p.subject, spec: p.spec, node_rank: p.node_rank, gid_selection: p.gid_selection,
@@ -326,6 +343,7 @@ fn glm_group_b_relaunch_wet() -> ProcessExit
           }
         }
       }, attempt_raw: glm_group_b_relaunch_attempt_raw, credential_file_name: "gunbc-glm-group-b-relaunch-admin-password" as NonEmptyStr)
+      }
   }
 }
 
