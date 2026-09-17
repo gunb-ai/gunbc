@@ -150,3 +150,74 @@ the post-change read establishes anything about the copper. If the legs are corr
 ends are forced, and the link still will not come up at 100G, `extdeps.ethernet.link_mode` is explicit
 that operating at 50GBASE-CR2 never certified 100GBASE-CR2 — that outcome is a real possible answer,
 not a failure of the procedure.
+
+---
+
+## 6. Modeling gaps & incompatibilities found during actuation (2026-09-17)
+
+Discovered by actually driving the switch and hosts (see fabric-switch-actuation-log.md).
+Each is a place the `.dag` model does not yet express something the real path required.
+
+### Switch model (extdeps.mikrotik.crs812 / gunbc.spark.fabric_switch_*)
+
+- **G1 — no autonegotiation dimension.** The lane model carries speed and FEC but NOT
+  auto-negotiation on/off. Copper (BASE-CR) bring-up is entirely governed by autoneg
+  state; the whole experiment turned on it. `Crs812LaneIntent` needs an autoneg field.
+- **G2 — FEC enum cannot express what 100GBASE-CR2 needs.** `Crs812FecMode =
+  FecAuto|FecOff|Fec74|Fec91`. `fec91` = RS(528,514) clause 91 (25G/50G-per-lane).
+  100GBASE-CR2 uses 50G-PAM4 lanes whose RS-FEC is RS(544,514) (KP4 / clause 134). The
+  model conflates "RS-FEC" without the codeword distinction, and the CRS812 REST surface
+  only exposes fec74/fec91/off/auto — it may not offer RS(544,514) at all. This is both a
+  modeling gap AND a possible switch capability limitation worth recording as a fact.
+- **G3 — the live link OUTCOME is unmodeled.** The assessment models intent-vs-observed
+  lane divergence, but the observed reading needs: negotiated speed, link state
+  (up / polling / down / auto-init-failed), and FEC-locked, read from BOTH ends. RouterOS
+  `status` (link-ok/auto-init-failed) and `eeprom-checksum` are unmodeled.
+- **G4 — a link is two-ended; the model treats the switch lane as the subject.** The
+  switch reporting `link-ok/100Gbps` is a LOCAL claim; the host was in `Polling`. Link-up
+  is a bilateral fact requiring both ends to agree. The observed model joins both ends for
+  the CABLE receipt but not for the live LINK state.
+- **G5 — QSFP-DD (switch-side) module is unmodeled.** The switch reads the QSFP-DD end,
+  which is CMIS/SFF-8024, NOT the SFF-8636 the host QSFP56 end uses. `sff8636_*` decoders
+  don't cover it. The `eeprom-checksum: bad` on the Generic-coded DD end has no home.
+- **G6 — no RouterOS REST transport / reader / apply.** Still the whole of step B: nothing
+  turns crs812_rest_* paths into requests; `fabric_switch_subject()` passes `readings: []`.
+- **G7 — no switch credential standing landed.** `fabric-switch-factory-admin` exists in
+  Secret Manager but no SecretRef rows; factory->rotated bootstrap unmodeled.
+- **G8 — the fabric legs are on qsfp56-dd cages, not qsfp56.** Confirm desired/assessment
+  target the qsfp56-dd interfaces (the 50G breakout legs), per the observed roster.
+
+### Host model (gunbc.spark.*)
+
+- **G9 — host link control is via mstlink (MFT), which has NO extdeps authority.** The
+  NVIDIA firmware tool surface (mstlink, mstconfig, mstflint) is entirely unmodeled. Host
+  link force/FEC/lane-count lives there, not in ethtool.
+- **G10 — ethtool cannot express 2-lane (CR2) forcing on ConnectX-7.** `ethtool -s speed
+  100000` is lane-count-ambiguous and selects CR4; only mstlink can pin 100G_2X. A modeled
+  host-force MUST use mstlink, and mstlink's flags `-s`, `--link_mode_force`, `-k` are
+  mutually exclusive per invocation (separate calls required).
+- **G11 — no host-side SET/force grant.** This PR modeled only the EEPROM READ grant.
+  Forcing the host link needs a mstlink grant (root), unmodeled and uninstalled.
+- **G12 — fabric_switch_observed is now STALE on main.** It states legs are 0x0B-coded and
+  the NIC refuses 100G_2X. Post-recode: byte 192 = 0x40, NIC Supported Cable Speed =
+  100G_2X. The observed authority must be updated with the new reading (and should model
+  the recode as an event, not overwrite silently).
+
+### Operational / workflow
+
+- **G13 — spark_grants dispatch cannot fan out.** Dispatching 8 fleet-converge runs 3s
+  apart CANCELLED 4 via the workflow concurrency group. Multi-target grant install must be
+  serialized (one run completes before the next) or the workflow needs a fan-out mode.
+- **G14 — spark_grants installs ALL missing grants, not a scoped one.** No dispatch-level
+  way to install only the EEPROM grant vs also InspectServingContainer.
+- **G15 — dropin filename drift.** Host holds `/etc/sudoers.d/gunbc-gunbc-automation` for
+  the linger grant while the model derives `gunbc-enable-linger`. The installed filename
+  and the modeled `spark_managed_grant_dropin_name` disagree; re-install would write a
+  second file. (Noticed earlier, unrelated to this PR, still real.)
+
+### Credential containment (process, not model)
+
+- **G16 — actuation ran on ad-hoc curl with pasted GCP tokens.** The token expired
+  mid-experiment and left srv5 down with no recovery path in-session. The modeled path
+  (WIF on a runner, credential materialized and removed in-step) exists for grant install
+  and must be the ONLY actuation path; ad-hoc curl from a session is the scaffold to kill.
