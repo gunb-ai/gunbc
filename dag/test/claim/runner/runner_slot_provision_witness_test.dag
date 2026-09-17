@@ -72,6 +72,7 @@ import gunbc.runner_slot_retirement {
   runner_retirement_standing,
   retirement_observation_from_readings,
   srv4_transition_interruption_authorization,
+  srv1_transition_interruption_authorization,
   CgroupObservedPopulated,
   CgroupAbsent,
   CgroupUnobserved,
@@ -641,6 +642,51 @@ fn srv4_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence)
   }
 }
 
+fn srv1_evidence(standings: List<RunnerRetirementStanding>) -> SlotRetirementEvidence {
+  SlotRetirementEvidencePresent {
+    authorization: srv1_transition_interruption_authorization,
+    standings: standings,
+  }
+}
+
+fn srv1_deploy() -> RunnerHostDeploy {
+  match runner_host_deploy_for(host: operator_host_srv1) {
+    RunnerHostDeployFound { deploy: d } => d
+    RunnerHostDeployUnmodeled { host: _ } => fixture_five_slot_deploy()
+    RunnerHostDeployRefused { host: _, cause: _ } => fixture_five_slot_deploy()
+  }
+}
+
+fn srv1_surplus_member(name: String, active: Bool, enabled: Bool) -> RunnerSlotMember {
+  provenance_witness_member(
+    name: name,
+    p: SlotProvenanceObserved {
+      in_host_grammar: true,
+      registration: SlotUnregistered,
+      unit_active: active,
+      unit_enabled: enabled,
+    },
+  )
+}
+
+fn srv1_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence) -> List<String> {
+  match actions_runner_binary_artifact_for_arch(
+    binary_release: actions_runner_release_2_336_0,
+    arch: altra_max_m12830_catalog.architecture,
+  ) {
+    Absent => []
+    Present { value: artifact } => {
+      let plan = runner_slot_provision_plan(
+        deploy: srv1_deploy(),
+        artifact: artifact,
+        observed: observed,
+        retirement_evidence: evidence,
+      )
+      concat(plan.retirement_scripts, plan.teardown_scripts)
+    }
+  }
+}
+
 fn emits_no_tree_removal(lines: List<String>) -> Bool {
   !any(lines, l => string_contains(s: l, pattern: "-rf"))
 }
@@ -718,6 +764,27 @@ test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
     ]),
   )
   any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv4-13"))
+    && !emits_mask(lines: lines)
+}
+
+// THE srv1 POSITIVE CONTROL THE APPLY SCRIPT MUST CARRY. Same planner, host-local authorization,
+// a completed standing for a remainder slot: the teardown argv names that tree. An apply.sh that
+// still only prints withheld lines fails this even if the srv4 row stays green.
+test fn a_completed_srv1_surplus_retirement_emits_the_teardown_argv() -> Bool {
+  let lines = srv1_plan(
+    observed: [srv1_surplus_member(name: "srv1-22", active: false, enabled: false)],
+    evidence: srv1_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv1-22.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupAbsent,
+        ),
+      ),
+    ]),
+  )
+  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv1-22"))
     && !emits_mask(lines: lines)
 }
 

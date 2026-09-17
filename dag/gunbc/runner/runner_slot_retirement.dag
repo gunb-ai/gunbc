@@ -3,7 +3,8 @@ module gunbc.runner_slot_retirement
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
-import gunbc.runner_slot_population_census { unit_is_owned_by_host }
+import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
 import gunbc.runner_width_transition { required_retirees_for_host }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
@@ -286,6 +287,39 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
     "actions-runner@srv4-21.service" as NonEmptyStr,
   ],
   operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+}
+
+// srv1'S SURPLUS IS THE 50-SLOT REMAINDER, NOT THE NINE-SLOT 21-TO-12 DELTA ALONE.
+//
+// The operator work item names srv1-22..50 as the unregistered/inactive/disabled trees to retire.
+// The declared prior width for that host is 50, so the obligation is 13..50: 22..50 plus the
+// 21-to-12 retirees. Permission is authored here, independently of that obligation, as coverage
+// over exactly those identities. It does not name srv1-01..12 -- the committed remaining
+// population -- and membership already refuses to act on an active or enabled tree.
+fn srv1_transition_interruption_scope() -> List<NonEmptyStr> {
+  desired_unit_names_range(host: operator_host_srv1, slot: 13, limit: 50) |> map(u => u as NonEmptyStr)
+}
+
+data srv1_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: srv1_transition_interruption_scope(),
+  operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical 50-slot remainder 22-50 and the 21-to-12 width-transition retirees 13-21): these may be interrupted for the 26/25 GiB transition; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+}
+
+type HostInterruptionAuthorizationStanding
+  = HostInterruptionAuthorizationPresent { authorization: InterruptionAuthorization }
+  | HostInterruptionAuthorizationAbsent { host: HostIdentity, cause: String }
+
+fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAuthorizationStanding {
+  if (host as String) == (operator_host_srv1 as String) {
+    HostInterruptionAuthorizationPresent { authorization: srv1_transition_interruption_authorization }
+  } else if (host as String) == (operator_host_srv4 as String) {
+    HostInterruptionAuthorizationPresent { authorization: srv4_transition_interruption_authorization }
+  } else {
+    HostInterruptionAuthorizationAbsent {
+      host: host,
+      cause: join([host as String, " has no operator interruption authorization for this width transition, so surplus slots may be neither masked nor deleted"], ""),
+    }
+  }
 }
 
 // THE OBLIGATION LIVES IN ITS OWN AUTHORITY, AND THIS MODULE ONLY CHECKS PERMISSION OVER IT.
