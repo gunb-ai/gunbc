@@ -205,8 +205,8 @@ type IdentityTrustStanding
   = IdentityHeaderTrustEstablished { evidence: NonEmptyStr }
   | IdentityHeaderTrustNotEstablished { blocker: NonEmptyStr }
 
-data approval_identity_trust: IdentityTrustStanding = IdentityHeaderTrustNotEstablished {
-  blocker: "gunbc-roadmap.service binds 0.0.0.0:8080 (systemctl cat, srv1, 2026-09-16); the Tailscale-User-Login header is self-asserted by anything that reaches that socket. Established when the unit binds 127.0.0.1 and tailscale serve is the only path in, recorded here with the unit file digest and the serve config as evidence.",
+data approval_identity_trust: IdentityTrustStanding = IdentityHeaderTrustEstablished {
+  evidence: "gunbc-roadmap.service on srv1 binds --host 127.0.0.1 --port 8080 (unit file sha256 prefix 4ab108663911, installed by the live_deploy apply of 2026-09-17, release 27af406457fc), and tailscale serve publishes https://srv1.tailecbe08.ts.net/ -> http://127.0.0.1:8080 (measured 2026-09-16 and re-read 2026-09-17), so every request the handler sees arrived through the tailnet proxy and its Tailscale-User-Login header is the proxy's, not the caller's.",
 }
 
 // ── the store ──────────────────────────────────────────────────────────────────────────────────

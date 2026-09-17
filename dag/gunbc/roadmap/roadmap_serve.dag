@@ -15,6 +15,7 @@ import gunbc.auth.approval_decision_store {
   RedemptionBrokerRefused, RedemptionLostTheRace, RedemptionStoreUnreadable, RedemptionKeyringUnavailable,
   RedemptionIdentityUntrusted, RedemptionCommitRefused,
   IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
+  parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
 }
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
@@ -568,14 +569,28 @@ fn approval_confirm_page_response(
 // before trying again, and it is the honest successor to the 501 this route answered while the
 // store did not exist.
 //
-// THE CLOCK AND THE KEYRING ARE READ ONLY PAST THE TRUST GATE. Both are effects, and an effect
-// performed on the way to a refusal is work the refusal should have prevented -- it is also what
-// keeps the hermetic witness able to reach this handler while the row says not established, since
-// Clock.Now has no hermetic arm.
+// THE SEGMENT IS PARSED BEFORE ANY HOST READ, AND THE CLOCK AND KEYRING ARE READ ONLY PAST THE
+// TRUST GATE. All three are ordered so that a refusal costs no effect it should have prevented: a
+// segment that is not <escalation>.<decision>.<hex> is 400 with the clock, the keyring and the
+// store untouched -- which is also what keeps the hermetic witness able to reach this handler now
+// that the trust row is established, since Clock.Now has no hermetic arm.
 fn approval_decide_response(
   request: ServeHttpRequest,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
+  let segment = path_param_value(params: params, name: "capability")
+  match parse_capability_segment(segment: segment) {
+    CapabilitySegmentMalformed { detail: d } =>
+      serve_text_response(
+        status: 400,
+        content_type: text_plain_utf8,
+        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.identity), "\n"], ""),
+      )
+    CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } => approval_decide_parsed_response(request: request, segment: segment)
+  }
+}
+
+fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -> ServeHttpResponse {
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
@@ -589,7 +604,7 @@ fn approval_decide_response(
     trust: approval_identity_trust,
     keyring: keyring,
     method: request.method,
-    segment: path_param_value(params: params, name: "capability"),
+    segment: segment,
     presented_identity: request.identity,
     observed_at: observed_at,
   )
@@ -611,7 +626,7 @@ fn approval_decide_response(
     content_type: text_plain_utf8,
     body: join([
       "approval decision: ", store_redemption_reason(r: outcome), "\n",
-      "capability: ", path_param_value(params: params, name: "capability"), "\n",
+      "capability: ", segment, "\n",
       "identity: ", tailnet_identity_login(i: request.identity), "\n",
       "observed_at: ", observed_at, "\n",
     ], ""),

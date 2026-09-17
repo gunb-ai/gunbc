@@ -111,13 +111,15 @@ test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() ->
 
 // ── the deployment property gates everything ───────────────────────────────────────────────────
 
-// TODAY'S ROW SAYS NOT ESTABLISHED, and a redemption under it refuses before the segment is even
-// parsed -- with a well-formed segment and a loaded key, so nothing else could be the cause.
+// AN UNTRUSTED IDENTITY HEADER REFUSES BEFORE THE SEGMENT IS EVEN PARSED -- with a well-formed
+// segment and a loaded key, so nothing else could be the cause. The production row is established
+// as of 2026-09-17 (loopback bind + tailscale serve), so the untrusted standing is supplied here;
+// the row itself is pinned established so a regression to not-established is loud.
 test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool {
-  match approval_identity_trust { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
+  match approval_identity_trust { IdentityHeaderTrustEstablished { evidence: _ } => true  _ => false }
     && match redeem_over_store(
       root: "/nonexistent/approvals",
-      trust: approval_identity_trust,
+      trust: IdentityHeaderTrustNotEstablished { blocker: "witness: the deployment cannot vouch for the header" },
       keyring: ApprovalKeyLoaded { key: fixture_key() },
       method: POST,
       segment: capability_path_segment(escalation_id: "esc-mtc1-boot-1", decision: ProposeApprove, tag_hex: fixture_approve_tag) as String,
