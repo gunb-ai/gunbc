@@ -62,6 +62,15 @@ my own hand measurement today — I picked concurrency 8 with no reason when the
 carries `max_num_seqs: 16`, so the first reading understated aggregate by half. An undeclared load is
 a number whose denominator nobody can reconstruct.
 
+### 2b. The offered load itself needs an authority, not a preference
+Declaring the load is necessary and not sufficient: the FIGURE must be grounded. `max_num_seqs: 16`
+is carried in `glm_native_concurrent_profile` as a chosen number, so a probe at 16 streams inherits
+whatever justified it. The probe's concurrency is derived from the subject's admitted concurrency
+policy, and that policy owes an observed capacity receipt from the real startup readings rather than
+a figure someone liked. *Prevents:* the shape one level up from my concurrency-8 error — not picking
+the wrong number, but picking any number without an authority behind it, which makes every rate
+measured at it unattributable. (Raised by the side-chat review, 2026-09-17.)
+
 ### 3. Saturation standing is part of the reading, and this is the subtle one
 If nothing queued, the probe measured the LOAD IT OFFERED, not the subject's capacity. Those are
 different facts and collapsing them is the §5 absorbing-fallback shape: a comfortable number that
@@ -104,6 +113,16 @@ operating budget someone owns** ("Group B on verbs sustains ≥ X aggregate at 1
 sustains ≥ Y jobs/hour at N slots"), or **a monotone contract** that may only be raised deliberately,
 with provenance on the row either way. The verdict itself is `std.goal_assessment` — a caller-supplied
 goal assessed against an independent observation, which is exactly this and must not be re-coined.
+
+## Provenance of the converged state is part of the subject
+
+A rate measured against an arm someone converged by hand is not a reading about a gunbc convergence,
+and recording it as one would claim an evidence chain that does not exist. The Group B arm serving on
+2026-09-17 was converged by a lane outside the modelled transaction, so its standing is
+`AdoptedOutOfBandRealization` — observed, admitted as the incumbent, and explicitly NOT
+converged-by-gunbc. The distinction matters the moment a floor is set from such a reading: a number
+taken from an adopted realization grounds a floor for the SUBJECT, never a claim about the
+transaction that did not run. (Raised by the side-chat review, 2026-09-17.)
 
 ## Conformance (DESIGN §3b) — the answer is yes, and here are the rows it touches
 
