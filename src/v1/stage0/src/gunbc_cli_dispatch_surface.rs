@@ -617,7 +617,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: Some("scope:full-host".to_string()),
 }),
     arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:spark-serving".to_string()]),
+    doc: Rc::new(vec!["Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:live-deploy | scope:spark-serving".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "plan_run_id".to_string(),

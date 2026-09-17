@@ -82,7 +82,7 @@ pub enum Commands {
         /// plan | apply | deploy
         #[arg(long)]
         mode: String,
-        /// Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:spark-serving
+        /// Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:live-deploy | scope:spark-serving
         #[arg(long, default_value = "scope:full-host")]
         scope: String,
         /// Run id printed by the plan receipt; required for --mode apply

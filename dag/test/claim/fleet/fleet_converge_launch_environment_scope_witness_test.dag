@@ -14,6 +14,7 @@ import gunbc.fleet_converge_plan {
   LaunchEnvironment,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  LiveDeploy,
   FleetConvergeApplyTerminal,
   FullyApplied,
   PartiallyApplied,
@@ -113,6 +114,7 @@ fn scope_is_launch_environment(s: FleetConvergeScope) -> Bool {
     FullHost => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    LiveDeploy => false
   }
 }
 
@@ -443,13 +445,14 @@ test fn the_launch_environment_wire_round_trips_through_the_decode() -> Bool {
 
 // SCOPE EQUALITY IS NOW ASKED OF THE WIRE FOLD, so the property the old pairwise match had for
 // free must be stated: two scopes sharing a wire spelling would compare equal, and the decode's
-// inverse would be ambiguous too. This pins the four wires pairwise distinct.
+// inverse would be ambiguous too. This pins every FleetConvergeScope wire pairwise distinct.
 test fn every_scope_wire_is_distinct() -> Bool {
   let wires = [
     fleet_converge_scope_wire(scope: FullHost),
     fleet_converge_scope_wire(scope: LaunchEnvironment),
     fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
     fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+    fleet_converge_scope_wire(scope: LiveDeploy),
   ]
   all(wires, w => list_length(items: filter(wires, x => x == w)) == 1)
 }
