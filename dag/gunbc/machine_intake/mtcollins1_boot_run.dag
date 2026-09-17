@@ -131,20 +131,65 @@ fn mtcollins1_boot_instant_from_probe(reading: NonEmptyStr?) -> Timestamp? {
   }
 }
 
-fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
+fn mtcollins1_boot_sol_held_from_observations(
+  pid_path: String,
+  pid_file_ok: Bool,
+  pid_file_content: String,
+  cmdline_ok: Bool,
+  cmdline_content: String,
+) -> Bool {
   if pid_path == "" {
     false
+  } else if !pid_file_ok {
+    false
+  } else {
+    let pid = trim(s: pid_file_content)
+    if pid == "" {
+      false
+    } else {
+      cmdline_ok && string_contains(s: cmdline_content, pattern: "ipmitool")
+    }
+  }
+}
+
+fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
+  if pid_path == "" {
+    mtcollins1_boot_sol_held_from_observations(
+      pid_path: pid_path,
+      pid_file_ok: false,
+      pid_file_content: "",
+      cmdline_ok: false,
+      cmdline_content: "",
+    )
   } else {
     let pid_read = Filesystem.Read(path: pid_path)
     if !pid_read.success {
-      false
+      mtcollins1_boot_sol_held_from_observations(
+        pid_path: pid_path,
+        pid_file_ok: false,
+        pid_file_content: pid_read.content,
+        cmdline_ok: false,
+        cmdline_content: "",
+      )
     } else {
       let pid = trim(s: pid_read.content)
       if pid == "" {
-        false
+        mtcollins1_boot_sol_held_from_observations(
+          pid_path: pid_path,
+          pid_file_ok: true,
+          pid_file_content: pid_read.content,
+          cmdline_ok: false,
+          cmdline_content: "",
+        )
       } else {
         let cmdline = Filesystem.Read(path: concat("/proc/", concat(pid, "/cmdline")))
-        cmdline.success && string_contains(s: cmdline.content, pattern: "ipmitool")
+        mtcollins1_boot_sol_held_from_observations(
+          pid_path: pid_path,
+          pid_file_ok: true,
+          pid_file_content: pid_read.content,
+          cmdline_ok: cmdline.success,
+          cmdline_content: cmdline.content,
+        )
       }
     }
   }

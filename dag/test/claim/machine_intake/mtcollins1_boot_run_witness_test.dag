@@ -9,6 +9,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_boot_submit_timeout,
   mtcollins1_status_from_get, mtcollins1_boot_instant_from_probe, mtcollins1_boot_sol_is_held,
+  mtcollins1_boot_sol_held_from_observations,
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
@@ -81,6 +82,41 @@ test fn clock_unreadable_is_not_an_observation_instant() -> Bool {
 
 test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
   !mtcollins1_boot_sol_is_held(pid_path: "")
+    && !mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: false,
+      pid_file_content: "123",
+      cmdline_ok: true,
+      cmdline_content: "ipmitool",
+    )
+    && !mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: true,
+      pid_file_content: "\n",
+      cmdline_ok: true,
+      cmdline_content: "ipmitool",
+    )
+    && !mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: true,
+      pid_file_content: "123\n",
+      cmdline_ok: true,
+      cmdline_content: "bash",
+    )
+    && !mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: true,
+      pid_file_content: "123\n",
+      cmdline_ok: false,
+      cmdline_content: "ipmitool",
+    )
+    && mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: true,
+      pid_file_content: "123\n",
+      cmdline_ok: true,
+      cmdline_content: "ipmitool sol activate",
+    )
 }
 
 test fn a_spent_boot_claim_slot_is_the_escalation_id_on_the_shared_claim_root() -> Bool {
