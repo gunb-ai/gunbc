@@ -28,8 +28,7 @@ use std::process::Command;
 
 use v1_compiler::cli_run::namespace_wave_admission::{
     base_records, environment_load_refusal_text, load_parse_environment_at,
-    materialize_revision_paths, run_wave_admission_between, AdjudicationEvent,
-    WaveAdmissionOutcome,
+    materialize_revision_paths, run_wave_admission_between, WaveAdmissionOutcome,
 };
 use v1_compiler::cli_run::{run_dag_parse_sweep, workspace_root};
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -261,14 +260,8 @@ fn a_grammar_change_between_base_and_head_is_adjudicated_not_refused() {
         )
     });
 
-    let outcome = run_wave_admission_between(
-        &scratch,
-        &base,
-        &head,
-        &sweep.index,
-        AdjudicationEvent::PullRequest,
-    )
-    .unwrap_or_else(|e| panic!("wave adjudication errored: {e}"));
+    let outcome = run_wave_admission_between(&scratch, &base, &head, &sweep.index)
+        .unwrap_or_else(|e| panic!("wave adjudication errored: {e}"));
 
     match outcome {
         WaveAdmissionOutcome::Adjudicated {
@@ -338,14 +331,8 @@ fn an_untouched_file_the_base_grammar_refuses_is_reached_only_by_the_full_reread
             errors.first().map(String::as_str).unwrap_or("<none>")
         )
     });
-    let outcome = run_wave_admission_between(
-        &scratch,
-        &base,
-        &head,
-        &sweep.index,
-        AdjudicationEvent::PullRequest,
-    )
-    .unwrap_or_else(|e| panic!("wave adjudication errored: {e}"));
+    let outcome = run_wave_admission_between(&scratch, &base, &head, &sweep.index)
+        .unwrap_or_else(|e| panic!("wave adjudication errored: {e}"));
 
     match outcome {
         WaveAdmissionOutcome::NotEvaluated { reason } => assert!(

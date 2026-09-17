@@ -3,6 +3,10 @@ module test.claim.workflow_dispatch_input_witness
 import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
+import gunbc.fleet_converge_plan {
+  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly,
+}
+import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
@@ -394,14 +398,20 @@ test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
 // changing it is a deliberate act with a red here rather than a quiet consequence of adding a member
 // to FleetConvergeScope. The three modes that DO name a scope are asserted beside it, so a projection
 // that answered `none` for everything cannot pass.
-test fn dashboard_deploy_names_no_fleet_scope_while_the_plan_modes_do() -> Bool {
-  let deploy_absent = match fleet_converge_mode_scope(mode: DashboardDeploy) {
-    Absent => true
-    Present { value: _ } => false
+test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> Bool {
+  let deploy_live = match fleet_converge_mode_scope(mode: DashboardDeploy) {
+    Absent => false
+    Present { value: s } => match s {
+      LiveDeploy => true
+      FullHost => false
+      LaunchEnvironment => false
+      FabricExecutionCellsOnly => false
+      FabricAllocationStoreOnly => false
+    }
   }
   let plans_present = all(
     [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan],
     m => match fleet_converge_mode_scope(mode: m) { Present { value: _ } => true  Absent => false },
   )
-  deploy_absent && plans_present
+  deploy_live && plans_present
 }

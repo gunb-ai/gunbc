@@ -198,17 +198,31 @@ fn harness_unit_tool_call_parser(unit: HarnessServingUnit) -> NonEmptyStr {
 // end token, so the list is empty rather than carrying a name that will never appear. The model
 // authorities keep their rows -- `reasoning_content` IS what Zhipu's and DeepSeek's own APIs return --
 // and they are simply not what this fleet's engines emit.
-fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningResponseProjection {
+// THE PROJECTION IS OPTIONAL AT ITS SOURCE, SO IT IS OPTIONAL HERE. ServingRuntimeRow carries
+// reasoning_projection as ReasoningResponseProjection? because a runtime that has never served cannot
+// say how its reasoning comes back. This function used to declare the bare type and hand back the
+// row's field directly, which only looked right while every row it reads happened to carry one.
+fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningResponseProjection? {
   match unit {
     DeepseekV4FlashOnVllm => gunbc_sparkrun_ds4_row.reasoning_projection
     Glm53FlashOnVllm => gitcommit90_sm121_exl3_row.reasoning_projection
   }
 }
 
+// AN ABSENT PROJECTION TAKES THE SAME PLACEHOLDER AS AN INLINE ONE, AND THAT IS NOT AN OBSERVATION
+// CLAIM. Neither arm has a field name on the wire to report: an inline unit emits none, and an
+// unprobed runtime has told us nothing. Naming the model's own field keeps this function total
+// without minting a sentinel every caller would have to branch on, exactly as the inline arm already
+// does -- it does not assert that the runtime answers under that name.
+//
+// THE ABSENT ARM IS UNREACHABLE FOR BOTH UNITS THIS HARNESS SERVES, because both rows it reads carry
+// a projection today. It exists so that adding a unit whose runtime has never served cannot silently
+// unwrap into a fabricated name, which is what the previous bare-typed signature would have done.
 fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
   match harness_unit_reasoning_projection(unit: unit) {
-    ParsedReasoningField { field: f } => f
-    InlineReasoning { end_token: _ } => harness_unit_model_reasoning_field(unit: unit)
+    Absent => harness_unit_model_reasoning_field(unit: unit)
+    Present { value: ParsedReasoningField { field: f } } => f
+    Present { value: InlineReasoning { end_token: _ } } => harness_unit_model_reasoning_field(unit: unit)
   }
 }
 
@@ -226,10 +240,15 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
 // THE ALIASES ARE THE OTHER NAMES A READER SHOULD TRY, and for a parsed unit that is the model
 // authority's own spelling -- the one the vendor's hosted API returns, which a future engine build
 // may well switch to. For an inline unit there is no member to alias.
+// AN ABSENT PROJECTION OFFERS NO ALIASES, for the same reason an inline one does not: there is no
+// second name to try on a wire that carries no reasoning member. This arm was not part of the review
+// that found the other two; it is here because the same widening reached three consumers and only two
+// were named.
 fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmptyStr> {
   match harness_unit_reasoning_projection(unit: unit) {
-    ParsedReasoningField { field: _ } => [harness_unit_model_reasoning_field(unit: unit)]
-    InlineReasoning { end_token: _ } => [] as List<NonEmptyStr>
+    Absent => [] as List<NonEmptyStr>
+    Present { value: ParsedReasoningField { field: _ } } => [harness_unit_model_reasoning_field(unit: unit)]
+    Present { value: InlineReasoning { end_token: _ } } => [] as List<NonEmptyStr>
   }
 }
 

@@ -117,7 +117,7 @@ fn healthz_surface_projection(body: String) -> HealthzSurfaceProjection {
 //   the OBSERVED side is a wire body, and its refusals ARE observations with different remedies.
 //   They are NOT discarded here: this predicate is reached only after the readiness check has
 //   already parsed the same body for its release identity and refused on its own cause if it could
-//   not (gunbc.live_deploy.readiness ground_service_ready_from_healthz_body, whose ordering note
+//   not (gunbc.live_deploy.readiness healthz_body_verdict, whose ordering note
 //   states parse-then-identity-then-revision-then-surface). So HealthzBodyUnreadable is unreachable
 //   FROM THAT CALLER -- reachable from this function, which is why it exists, and not occupied
 //   there. Answering false for it is correct, not merely tolerable.

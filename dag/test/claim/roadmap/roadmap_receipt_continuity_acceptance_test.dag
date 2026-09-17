@@ -121,29 +121,6 @@ fn history_with_mutated_first_event_accepted_on(history: List<RoadmapAcceptanceE
   }
 }
 
-test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
-  witness_deleted_history_event_refuses()
-    && witness_deleted_event_and_prior_prefix_refuses()
-    && witness_wrong_prior_digest_in_revocation_refuses()
-    && witness_revocation_while_exact_receipt_live_refuses()
-    && witness_duplicate_revocations_refuse()
-    && witness_exact_revocation_admits_vanished_receipt()
-    && witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
-    && witness_git_refusal_observation_refuses_integrity()
-    && witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit()
-    && witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses()
-    && witness_digest_field_mutation_without_revocation_refuses_prefix()
-    && witness_authority_projection_refuses_when_receipts_projection_refuses()
-    && witness_receipts_projection_refuses_when_history_load_refuses()
-    && witness_withheld_projection_refuses_when_history_load_refuses()
-    && witness_unreadable_carrier_text_refuses_load_with_line_parse_detail()
-    && witness_unreadable_merge_base_carrier_parse_refuses_prior_observation()
-    && witness_missing_carrier_prevents_silent_empty_authority_projection()
-    && witness_dispatch_never_presents_empty_frontier_on_authority_refusal()
-    && witness_unreplayable_history_refuses_receipts_projection()
-    && witness_replayable_empty_live_set_still_projects_affirmatively()
-}
-
 test fn witness_fixture_history_loads_with_nonempty_live_set() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false

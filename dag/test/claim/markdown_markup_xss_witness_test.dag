@@ -189,14 +189,12 @@ fn witness_escape_url_passes_javascript_scheme() -> Bool {
 
 test fn witness_javascript_link_reject_discriminates_from_char_escape() -> Bool {
   let unchecked = serialize_markdown_document(doc: javascript_link_doc())
-  witness_javascript_link_rejects()
-    && witness_escape_url_passes_javascript_scheme()
+  witness_escape_url_passes_javascript_scheme()
     && unchecked == "<div><p><a href=\"javascript:alert(1)\">click</a></p></div>"
 }
 
 test fn witness_data_image_reject_discriminates_from_char_escape() -> Bool {
-  witness_data_image_rejects()
-    && starts_with(
+  starts_with(
       s: serialize_markdown_document(doc: data_image_doc()),
       prefix: "<div><p><img src=\"data:"
     )

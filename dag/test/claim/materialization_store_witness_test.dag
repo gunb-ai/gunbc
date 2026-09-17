@@ -1,7 +1,11 @@
 module test.claim.materialization_store_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value }
+import std.content_hash {
+  ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value, serialize_content_hash,
+  sha256_hex_digest, sha512_hex_digest, as_content_hash_cryptographic, as_content_hash_sha512,
+  content_hash_family, Sha256Family, Sha512Family, Sha1Family, Fnv1a64StructuralFamily
+}
 import std.cache_identity { CacheInterfaceId }
 import std.measure { byte_size }
 import std.materialization_provider {
@@ -9,7 +13,11 @@ import std.materialization_provider {
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
+  provider_serve, persisted_probe, lookup_is_hit, lookup_fold, ProviderLookup,
   request_key, request_kind, request_required_outputs, request_declared_inputs,
+  request_judgment_contract, evaluation_store_address, evaluation_store_admitted_address,
+  evaluation_store_address_preimage,
+  evaluation_identity_canonical, ResultContentIdentity, result_content_identity,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
   output_native_compiler_executable, output_native_compiler_build_diagnostics,
@@ -28,7 +36,11 @@ import std.materialization_object {
   store_commit_prepare, store_commit_settle, store_lookup_decide,
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
-  encode_store_object, percent_encode_payload, percent_decode_payload,
+  encode_store_object, decode_store_object, percent_encode_payload, percent_decode_payload,
+  parse_recorded_store_key,
+  result_content_canonical, store_object_name, store_object_magic, store_object_format_version,
+  StoreObjectDecoded, StoreObjectMalformed,
+  store_observed_digest, artifact_from_manifest, ManifestDecoded,
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemPermissionDenied,
@@ -45,6 +57,22 @@ import extdeps.realization.materialization_store_local {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => true,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
+  )
+}
 
 // HERMETIC CONTROLS FOR THE PROVIDER SPINE: the native route's three request families, and the
 // store semantics of std.materialization_object driven through its OBSERVATION coproducts, so every
@@ -118,9 +146,16 @@ fn witness_store() -> OpenedMaterializationStore {
   }
 }
 
+fn eval_preimage(req: ArtifactRequest) -> NonEmptyStr {
+  match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+    Present { value: a } => evaluation_store_address_preimage(address: a)
+    Absent => "unreachable-family-refused" as NonEmptyStr
+  }
+}
+
 fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
   match store_commit_prepare(req: req, payloads: payloads) {
-    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _ } => o
+    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
     StoreCommitNotPrepared { commit: _ } => ""
   }
 }
@@ -215,15 +250,32 @@ test fn a_truncated_object_is_malformed_not_incomplete() -> Bool {
   store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: torn)) == "malformed"
 }
 
-// a universe artifact's object read where the verdict bundle's object belongs
-test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
+test fn a_foreign_object_refuses_as_evaluation_preimage_mismatch() -> Bool {
   let foreign = prepared_object(req: universe_req(), payloads: universe_payloads())
-  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: foreign)) == "contract_kind_mismatch"
+  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: foreign)) == "evaluation_preimage_mismatch"
+}
+
+// Kind and request-key walls still discriminate after a matching preimage: the stored
+// evaluation_preimage is the lookup's, while kind or recorded request_key is forged.
+test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
+  let lookup = bundle_req()
+  let universe = prepared_object(req: universe_req(), payloads: universe_payloads())
+  let expected = percent_encode_payload(s: eval_preimage(req: lookup) as String)
+  let stored = percent_encode_payload(s: eval_preimage(req: universe_req()) as String)
+  let forged = replace(universe, stored, expected)
+  store_lookup_refusal_tag(l: lookup_present(req: lookup, object: forged)) == "contract_kind_mismatch"
 }
 
 test fn an_object_for_another_request_of_the_same_kind_refuses_as_wrong_artifact() -> Bool {
-  let other = prepared_object(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")), payloads: bundle_payloads())
-  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: other)) == "contract_wrong_artifact"
+  let lookup = bundle_req()
+  let good = prepared_object(req: lookup, payloads: bundle_payloads())
+  let foreign_key = serialize_content_hash(
+    hash: request_key(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
+  ) as String
+  let ours = serialize_content_hash(hash: request_key(req: lookup)) as String
+  let forged = replace(good, ours, foreign_key)
+  (forged == good) == false
+    && store_lookup_refusal_tag(l: lookup_present(req: lookup, object: forged)) == "contract_wrong_artifact"
 }
 
 test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
@@ -234,7 +286,9 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
       request_key: request_key(req: bundle_req()),
       parts: [payload_part(payload: verdicts)]
     },
-    payloads: [verdicts]
+    payloads: [verdicts],
+    evaluation_preimage: eval_preimage(req: bundle_req()),
+    result_preimage: result_content_canonical(parts: [payload_part(payload: verdicts)], payloads: [verdicts])
   )
   store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: incomplete)) == "contract_incomplete"
 }
@@ -253,13 +307,13 @@ test fn the_write_door_refuses_before_publishing() -> Bool {
 fn preparation_tag(p: StoreCommitPreparation) -> String {
   match p {
     StoreCommitNotPrepared { commit: c } => store_commit_refusal_tag(c: c)
-    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _ } => "prepared"
+    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _, offered_result: _ } => "prepared"
   }
 }
 
 fn offered_digest(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ContentHash {
   match store_commit_prepare(req: req, payloads: payloads) {
-    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: d } => d
+    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: d, offered_result: _ } => d
     StoreCommitNotPrepared { commit: _ } => request_key(req: req)
   }
 }
@@ -267,22 +321,33 @@ fn offered_digest(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> Cont
 test fn commit_settles_only_on_a_verified_read_back() -> Bool {
   let key = request_key(req: bundle_req())
   let offered = offered_digest(req: bundle_req(), payloads: bundle_payloads())
+  let offered_result = offered_result_of(req: bundle_req(), payloads: bundle_payloads())
   let ours = lookup_present(req: bundle_req(), object: prepared_object(req: bundle_req(), payloads: bundle_payloads()))
   let theirs = lookup_present(req: bundle_req(), object: prepared_object(req: bundle_req(), payloads: [
     ArtifactPayload { id: output_module_test_verdicts, content: "v2.test.alpha.t1 fail" },
     ArtifactPayload { id: output_module_preparation_diagnostics, content: "" },
   ]))
-  settle_tag(key: key, offered: offered, publish: StoreObjectPublished, read_back: ours) == "committed"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: ours) == "converged_on_prior_commit"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: theirs) == "conflict"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectPublished, read_back: StoreLookupMiss { key: key }) == "read_back_refused"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: lookup_present(req: bundle_req(), object: "garbage")) == "read_back_refused"
-    && settle_tag(key: key, offered: offered, publish: StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: "ENOSPC" } }, read_back: ours) == "publish_refused"
+  settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublished, read_back: ours) == "committed"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: ours) == "converged_on_prior_commit"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: theirs) == "result_content_conflict"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublished, read_back: StoreLookupMiss { key: key }) == "read_back_refused"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectOccupied, read_back: lookup_present(req: bundle_req(), object: "garbage")) == "read_back_refused"
+    && settle_tag(key: key, offered: offered, offered_result: offered_result, publish: StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: "ENOSPC" } }, read_back: ours) == "publish_refused"
 }
 
-fn settle_tag(key: ContentHash, offered: ContentHash, publish: StoreObjectPublish, read_back: StoreLookup) -> String {
+fn offered_result_of(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ResultContentIdentity {
+  match store_commit_prepare(req: req, payloads: payloads) {
+    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _, offered_result: r } => r
+    StoreCommitNotPrepared { commit: _ } => result_content_identity(
+      bucket: request_key(req: req),
+      canonical_preimage: "missing" as NonEmptyStr
+    )
+  }
+}
+
+fn settle_tag(key: ContentHash, offered: ContentHash, offered_result: ResultContentIdentity, publish: StoreObjectPublish, read_back: StoreLookup) -> String {
   store_commit_refusal_tag(c: store_commit_settle(
-    store: witness_store(), prepared_key: key, offered_digest: offered, publish: publish, read_back: read_back))
+    store: witness_store(), prepared_key: key, offered_digest: offered, offered_result: offered_result, publish: publish, read_back: read_back))
 }
 
 test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
@@ -291,9 +356,9 @@ test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
   let a = store_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectPresent { content: object })
   let b = store_lookup_decide(store: other_store, req: bundle_req(), read: StoreObjectPresent { content: object })
   match a {
-    StoreLookupHit { artifact: _, payloads: _, receipt: ra } =>
+    StoreLookupHit { artifact: _, payloads: _, receipt: ra, evaluation_identity: _ } =>
       match b {
-        StoreLookupHit { artifact: _, payloads: _, receipt: rb } =>
+        StoreLookupHit { artifact: _, payloads: _, receipt: rb, evaluation_identity: _ } =>
           ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
             && (ra.provider == rb.provider) == false && (ra.store_instance == rb.store_instance) == false
         StoreLookupMiss { key: _ } => false
@@ -465,9 +530,9 @@ test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
   let a = store_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectPresent { content: object })
   let b = store_lookup_decide(store: other_store, req: compiler_req(), read: StoreObjectPresent { content: object })
   match a {
-    StoreLookupHit { artifact: _, payloads: _, receipt: ra } =>
+    StoreLookupHit { artifact: _, payloads: _, receipt: ra, evaluation_identity: _ } =>
       match b {
-        StoreLookupHit { artifact: _, payloads: _, receipt: rb } =>
+        StoreLookupHit { artifact: _, payloads: _, receipt: rb, evaluation_identity: _ } =>
           ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
             && ra.request_key == request_key(req: compiler_req())
             && (ra.provider == rb.provider) == false
@@ -476,5 +541,145 @@ test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
       }
     StoreLookupMiss { key: _ } => false
     StoreLookupRefused { key: _, refusal: _ } => false
+  }
+}
+
+test fn store_hit_requires_evaluation_preimage() -> Bool {
+  let req = bundle_req()
+  let good = prepared_object(req: req, payloads: bundle_payloads())
+  let foreign = eval_preimage(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
+  let expected = eval_preimage(req: req)
+  let tampered = replace(good, percent_encode_payload(s: expected as String), percent_encode_payload(s: foreign as String))
+  store_lookup_is_hit(l: lookup_present(req: req, object: good))
+    && store_lookup_refusal_tag(l: lookup_present(req: req, object: tampered)) == "evaluation_preimage_mismatch"
+}
+
+test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
+  let req = bundle_req()
+  let good = prepared_object(req: req, payloads: bundle_payloads())
+  let foreign = eval_preimage(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
+  let expected = eval_preimage(req: req)
+  let tampered = replace(good, percent_encode_payload(s: expected as String), percent_encode_payload(s: foreign as String))
+  match decode_store_object(content: tampered) {
+    StoreObjectMalformed { cause: _ } => false
+    StoreObjectDecoded { manifest: m, payloads: ps, evaluation_preimage: p, result_preimage: _ } =>
+      match artifact_from_manifest(m: m) {
+        ManifestDecoded { artifact: a } =>
+          lookup_is_refused_evaluation_preimage_mismatch(l: provider_serve(
+            req: req,
+            probe: persisted_probe(
+              artifact: a,
+              observed_digest: store_observed_digest(manifest: m, payloads: ps),
+              observed_evaluation_preimage: p
+            )
+          )) && ((p.encoded as String) == (expected as String)) == false
+        _ => false
+      }
+  }
+}
+
+test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bool {
+  let req = bundle_req()
+  match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+    Absent => false
+    Present { value: addr } => {
+      let name = store_object_name(address: addr)
+      let v1_name = concat(serialize_content_hash(hash: request_key(req: req)) as String, ".materialization")
+      let v1_object = replace(
+        prepared_object(req: req, payloads: bundle_payloads()),
+        store_object_magic,
+        "gunbc-materialization-object v1"
+      )
+      match decode_store_object(content: v1_object) {
+        StoreObjectMalformed { cause: c } =>
+          (name == v1_name) == false
+            && (name |> split(delimiter: ".") |> filter(p => p == store_object_format_version) |> count()) == 1
+            && (c |> split(delimiter: store_object_format_version) |> count()) > 1
+        StoreObjectDecoded { manifest: _, payloads: _, evaluation_preimage: _, result_preimage: _ } => false
+      }
+    }
+  }
+}
+
+test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
+  let req = bundle_req()
+  let part = payload_part(payload: ArtifactPayload { id: output_module_test_verdicts, content: "x" })
+  let payloads = [ArtifactPayload { id: output_module_test_verdicts, content: "x" }]
+  let pre = eval_preimage(req: req)
+  let result = result_content_canonical(parts: [part], payloads: payloads)
+  match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: sha } =>
+      match sha512_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+        Absent => false
+        Present { value: s512 } => {
+          let k256 = as_content_hash_cryptographic(digest: sha)
+          let k512 = as_content_hash_sha512(digest: s512)
+          let o256 = encode_store_object(
+            manifest: ArtifactManifest { kind: request_kind(req: req), request_key: k256, parts: [part] },
+            payloads: payloads,
+            evaluation_preimage: pre,
+            result_preimage: result
+          )
+          let o512 = encode_store_object(
+            manifest: ArtifactManifest { kind: request_kind(req: req), request_key: k512, parts: [part] },
+            payloads: payloads,
+            evaluation_preimage: pre,
+            result_preimage: result
+          )
+          match decode_store_object(content: o256) {
+            StoreObjectMalformed { cause: _ } => false
+            StoreObjectDecoded { manifest: m256, payloads: _, evaluation_preimage: _, result_preimage: _ } =>
+              match decode_store_object(content: o512) {
+                StoreObjectMalformed { cause: _ } => false
+                StoreObjectDecoded { manifest: m512, payloads: _, evaluation_preimage: _, result_preimage: _ } =>
+                  m256.request_key == k256
+                    && m512.request_key == k512
+                    && match content_hash_family(hash: m256.request_key) {
+                      Sha256Family => true
+                      Fnv1a64StructuralFamily => false
+                      Sha1Family => false
+                      Sha512Family => false
+                    }
+                    && match content_hash_family(hash: m512.request_key) {
+                      Sha512Family => true
+                      Fnv1a64StructuralFamily => false
+                      Sha1Family => false
+                      Sha256Family => false
+                    }
+                    && match parse_recorded_store_key(key_text: serialize_content_hash(hash: k256) as String) {
+                      Absent => false
+                      Present { value: p } =>
+                        (p == k256) && ((serialize_content_hash(hash: p) as String) == (serialize_content_hash(hash: k256) as String))
+                    }
+                    && match parse_recorded_store_key(key_text: serialize_content_hash(hash: k512) as String) {
+                      Absent => false
+                      Present { value: p } =>
+                        (p == k512) && ((serialize_content_hash(hash: p) as String) == (serialize_content_hash(hash: k512) as String))
+                    }
+              }
+          }
+        }
+      }
+  }
+}
+
+test fn parse_recorded_store_key_refuses_trailing_repeated_prefix() -> Bool {
+  match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: sha } => {
+      let h = as_content_hash_cryptographic(digest: sha)
+      let canon = serialize_content_hash(hash: h) as String
+      let alias = concat(canon, "sha256:ignored")
+      match parse_recorded_store_key(key_text: alias) {
+        Present { value: _ } => false
+        Absent =>
+          match parse_recorded_store_key(key_text: canon) {
+            Absent => false
+            Present { value: p } =>
+              (p == h) && ((serialize_content_hash(hash: p) as String) == canon)
+          }
+      }
+    }
   }
 }

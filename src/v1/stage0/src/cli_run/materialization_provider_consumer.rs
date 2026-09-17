@@ -69,6 +69,7 @@ pub enum ResolvedGraphProviderOutcome {
     RefusedKindMismatch,
     RefusedWrongContent,
     RefusedCrossFamilyContentHash,
+    RefusedUnqualifiedPersistedFormat,
     LookupUnclassified { label: String },
 }
 
@@ -189,6 +190,9 @@ fn lookup_fold_outcome(
             "wrong_artifact" => Ok(ResolvedGraphProviderOutcome::RefusedWrongArtifact),
             "wrong_content" => Ok(ResolvedGraphProviderOutcome::RefusedWrongContent),
             "cross_family_hash" => Ok(ResolvedGraphProviderOutcome::RefusedCrossFamilyContentHash),
+            "unqualified_persisted_format" => {
+                Ok(ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat)
+            }
             "incomplete" => {
                 let missing = v1_interpreter::run_in_context_with_args(
                     ctx,

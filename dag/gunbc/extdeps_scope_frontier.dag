@@ -487,6 +487,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/colo/vastnet.dag",
   "dag/extdeps/cpu_attachment/lotes_azifa072.dag",
   "dag/extdeps/energy/nj_electricity.dag",
+  "dag/extdeps/ethtool/ethtool.dag",
   "dag/extdeps/github/commits.dag",
   "dag/extdeps/git/plumbing.dag",
   "dag/extdeps/languages/bash/invocation.dag",

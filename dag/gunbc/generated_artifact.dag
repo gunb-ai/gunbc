@@ -5,6 +5,7 @@ import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs }
 import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly }
 import gunbc.plan_registry { all_plans }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
+import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
 import gunbc.fleet_intent { ComputeHost, fleet_intent_known_hosts }
 import product.placement_supply { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
@@ -42,11 +43,12 @@ type GeneratedArtifact
   | RunnerHostSudoersArtifact { host: HostIdentity }
   | PlanArtifact { plan: Plan }
   | CouponCadQueryProgramArtifact
+  | WholeCorpusCompileMeasuredRootDemandsArtifact
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -54,11 +56,14 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
 
+// CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
+// resolves (gunbc.whole_corpus_compile_demand_projection).
 type RepoConsumer
   = GitProtocol
   | GithubActionsWorkflow
   | ProjectDocumentation
   | HostReconciler
+  | CompilerRunInput
 
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
@@ -188,6 +193,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     RunnerDeployArtifact => ArtifactLocation { directory: ".github", name: "fleet-runner-deploy.manifest" }
     CouponCadQueryProgramArtifact =>
       ArtifactLocation { directory: "manufacturing", name: "hole_diameter_ladder_r1.py" }
+    WholeCorpusCompileMeasuredRootDemandsArtifact => ArtifactLocation { directory: whole_corpus_compile_demand_projection_directory, name: whole_corpus_compile_demand_projection_name }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -261,6 +267,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
       }
     RunnerDeployArtifact => NotCommitted
     CouponCadQueryProgramArtifact => NotCommitted
+    WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -315,6 +322,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     GeneratedArtifactMergeDriverArtifact => match b { GeneratedArtifactMergeDriverArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
     CouponCadQueryProgramArtifact => match b { CouponCadQueryProgramArtifact => true  _ => false }
+    WholeCorpusCompileMeasuredRootDemandsArtifact => match b { WholeCorpusCompileMeasuredRootDemandsArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
@@ -382,6 +390,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     GeneratedArtifactMergeDriverArtifact => decl_ref(module_path: "gunbc.generated_artifact_merge_driver", decl_name: "expected_generated_artifact_merge_driver_sh")
     RunnerDeployArtifact => decl_ref(module_path: "gunbc.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest")
     CouponCadQueryProgramArtifact => decl_ref(module_path: "product.printed_chassis.cadquery_realization", decl_name: "expected_coupon_cadquery_program")
+    WholeCorpusCompileMeasuredRootDemandsArtifact => decl_ref(module_path: "gunbc.whole_corpus_compile_demand_projection", decl_name: "expected_whole_corpus_compile_measured_root_demands_json")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")

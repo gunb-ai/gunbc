@@ -1,0 +1,9 @@
+module test.fixture.reference_derived_graph.consumer_type_only
+
+import std.types { Int }
+
+fn uses(
+  x: test.fixture.reference_derived_graph.provider.ProvidedMarker
+) -> Int {
+  1
+}

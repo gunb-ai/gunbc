@@ -2,7 +2,6 @@ module test.claim.public_workload_census_witness
 
 import std.types { Bool, List, String, NonEmptyStr }
 import std.measure { hardware_thread_count }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.github.workflow_runs {
@@ -1192,46 +1191,5 @@ test fn witness_mixed_catalog_arm_and_not_arm_alternatives_are_unresolved() -> B
     DeclaredArchitectureUnresolved { via, cause } => true
     DeclaredArm { via } => false
     DeclaredNotArm { via, architecture } => false
-  }
-}
-
-fn all_claims_hold() -> Bool {
-  witness_x64_catalog_label_is_never_arm_evidence()
-    && witness_an_unresolved_label_is_not_reported_as_x64()
-    && witness_selected_population_is_three_complementary_jobs()
-    && witness_rejected_and_unresolved_remain_visible()
-    && witness_every_row_is_job_scoped_and_versioned()
-    && witness_biome_baseline_is_admitted_and_openobserve_is_not()
-    && witness_pdns_declared_architecture_stays_unresolved_while_observed_is_arm()
-    && witness_declared_and_observed_providers_are_separate_readings()
-    && witness_openobserve_amd64_is_catalog_x64_and_rejected()
-    && witness_observed_labels_and_attempt_are_read_from_the_job_resource()
-    && witness_unobserved_cache_is_never_warm()
-    && witness_effect_disposition_is_derived_from_kind()
-    && witness_admitted_same_revision_and_blob_equivalent_hold()
-    && witness_blob_mismatch_is_refused_even_when_tests_ran()
-    && witness_matrix_selector_mismatch_is_refused_when_display_name_matches()
-    && witness_axis_name_mismatch_is_refused_when_values_and_display_name_match()
-    && witness_swapped_axis_names_are_refused_when_value_order_matches_the_observed_name()
-    && witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
-    && witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key()
-    && witness_multiple_labels_are_not_resolved_from_the_first()
-    && witness_a_green_job_without_tests_is_not_a_baseline()
-    && witness_empty_labels_are_not_an_architecture_reading()
-    && witness_absent_conclusion_is_not_a_baseline()
-    && witness_run_attempt_zero_is_not_attempt_one()
-    && witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical()
-    && witness_plural_yaml_job_name_rows_are_uninspected()
-    && witness_unread_job_run_is_unresolved_identity()
-    && witness_empty_declared_alternatives_are_unresolved()
-    && witness_empty_declared_label_is_unresolved()
-    && witness_mixed_catalog_arm_and_not_arm_alternatives_are_unresolved()
-}
-
-fn public_workload_census_witness_main() -> ProcessExit {
-  if all_claims_hold() {
-    ExitSuccess
-  } else {
-    ExitFailure { code: 1, reason: "one or more public workload census claims did not hold" }
   }
 }

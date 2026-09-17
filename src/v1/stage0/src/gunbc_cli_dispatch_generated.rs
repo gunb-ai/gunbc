@@ -36,6 +36,13 @@ pub enum Commands {
         /// to a subtree so a small closure can be emitted without a whole-tree pass.
         #[arg(long)]
         entry: Option<String>,
+        /// Repository identity of a whole-root compile, declared by the caller. Joined with the
+        /// primary root and dependency pools to find the root's measured demand.
+        #[arg(long)]
+        repository: Option<String>,
+        /// Location of the repository's generated demand projection (gunbc.whole_corpus_compile_demand_projection).
+        #[arg(long)]
+        measured_root_demands: Option<String>,
     },
     /// Execute a .dag program directly (interpreter)
     Run {
@@ -75,7 +82,7 @@ pub enum Commands {
         /// plan | apply | deploy
         #[arg(long)]
         mode: String,
-        /// Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:spark-serving
+        /// Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:live-deploy | scope:spark-serving
         #[arg(long, default_value = "scope:full-host")]
         scope: String,
         /// Run id printed by the plan receipt; required for --mode apply
@@ -119,6 +126,22 @@ pub enum Commands {
         #[arg(long)]
         eval_budget_wall_ms: Option<u64>,
     },
+    /// Measure a root's whole-root compile demand under an enforceable cgroup memory limit.
+    /// The only product is a receipt (gunbc.root_demand_measurement); no artifact, no verdict.
+    MeasureRootDemand {
+        /// The primary root to measure first, then its dependency pools in order.
+        #[arg(long = "source-root")]
+        source_roots: Vec<String>,
+        /// Repository identity of the root, declared by the caller.
+        #[arg(long)]
+        repository: String,
+        /// Where the parent writes the measurement receipt.
+        #[arg(long)]
+        receipt: String,
+        /// Set by the measuring parent on the child it observes; the child emits only its census line.
+        #[arg(long)]
+        measurement_child: bool,
+    },
     /// Run one target by its absolute label and report the standing its own
     /// producer answers in. The label is exact: a target PATTERN refuses, and
     /// an unbound or unknown target refuses rather than reporting a pass.
@@ -139,6 +162,8 @@ pub trait CliDispatchHost {
         target: String,
         dependency_pool_index: String,
         entry: Option<String>,
+        repository: Option<String>,
+        measured_root_demands: Option<String>,
     ) -> !;
     fn run_verb(
         &self,
@@ -159,6 +184,13 @@ pub trait CliDispatchHost {
         eval_budget_cpu_ms: Option<u64>,
         eval_budget_wall_ms: Option<u64>,
     ) -> !;
+    fn measure_root_demand(
+        &self,
+        source_roots: Vec<String>,
+        repository: String,
+        receipt: String,
+        measurement_child: bool,
+    ) -> !;
     fn invoke_bound_target_producer(&self, target: String) -> !;
 }
 
@@ -176,6 +208,8 @@ pub fn dispatch<H: CliDispatchHost>(
                 target,
                 dependency_pool_index,
                 entry,
+                repository,
+                measured_root_demands,
             },
             _,
         ) => __gunbc_dispatch_executor_0.retained_host_kernel(
@@ -185,6 +219,8 @@ pub fn dispatch<H: CliDispatchHost>(
             target,
             dependency_pool_index,
             entry,
+            repository,
+            measured_root_demands,
         ),
         (
             Commands::Run {
@@ -262,6 +298,20 @@ pub fn dispatch<H: CliDispatchHost>(
             release_revision,
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
+        ),
+        (
+            Commands::MeasureRootDemand {
+                source_roots,
+                repository,
+                receipt,
+                measurement_child,
+            },
+            _,
+        ) => __gunbc_dispatch_executor_0.measure_root_demand(
+            source_roots,
+            repository,
+            receipt,
+            measurement_child,
         ),
         (Commands::Test { target }, _) => {
             __gunbc_dispatch_executor_0.invoke_bound_target_producer(target)

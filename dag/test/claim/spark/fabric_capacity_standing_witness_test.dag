@@ -1,6 +1,7 @@
 module test.claim.spark.fabric_capacity_standing_witness
 
 import std.types { Bool, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure { concurrent_request_hundredths_count, token_count }
@@ -16,6 +17,13 @@ import gunbc.instruments.fabric_capacity_standing {
   ProbeFieldName, Invocation, UnitSha, Container, ImageSha, StartedAt, PoolLine, ConcurrencyLine,
   AllocatorBlocks, BlockSize, MaxModelLen,
   LaunchRead, LaunchIdentified, LaunchUnidentified, launch_from_fields,
+  GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing,
+  standing_for_authority,
+}
+import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, ReleasedToFleet, PairRealizationUnestablished,
 }
 
 fn w_cell(name: ProbeFieldName) -> String {
@@ -237,4 +245,132 @@ test fn a_synthesized_or_bare_integer_is_not_a_startup_line() -> Bool {
           Absent => true
           Present { value: _ } => false
         })
+}
+
+// THE BOUNDARY CONTROLS FOR THE EMPTY-DOMAIN WALL. The instrument's own roster carries exactly one
+// member, so the vacuous case cannot be driven through the live entry point without deleting that row;
+// a guard whose refusal nothing executes is a decoration rather than a wall (section 4b asks whether a
+// check's RED is authorable before the check is written). capacity_standing_verdict takes the standings
+// as a parameter for exactly this reason, and fabric_capacity_standing is the thin binding that supplies
+// the live ones -- these controls exercise the production seam, not a parallel reimplementation.
+//
+// The two populated claims are not decoration either: the empty claim alone would stay green if the
+// verdict degenerated into a constant refusal, so the admitting case is what keeps the empty arm from
+// passing for the wrong reason, and the mixed case keeps the universal from collapsing into existence.
+fn w_admitting_standing() -> GroupStanding {
+  GroupStanding { text: "witness: admitting", admitting: true }
+}
+
+fn w_refusing_standing() -> GroupStanding {
+  GroupStanding { text: "witness: refusing", admitting: false }
+}
+
+fn w_refused(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+}
+
+test fn an_empty_standing_roster_refuses_instead_of_passing_vacuously() -> Bool {
+  match capacity_standing_verdict(standings: []) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "no serving group is claimed")
+        && string_contains(s: r, pattern: "no subject")
+  }
+}
+
+test fn a_wholly_admitting_standing_roster_still_succeeds() -> Bool {
+  match capacity_standing_verdict(standings: [w_admitting_standing(), w_admitting_standing()]) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
+  w_refused(exit: capacity_standing_verdict(standings: [w_admitting_standing(), w_refusing_standing()]))
+}
+
+// THE PAIRING OBLIGATION FOR THE SUPPLIED STANDINGS. The three claims above hand
+// capacity_standing_verdict its population instead of computing it, which is what lets the empty case
+// exist at all -- but supplied inputs may never be the only thing that runs. This claim executes the
+// real route end to end: the live roster, the real group_report producer, and the binding that joins
+// them, AND IT ASSERTS THE ROUTE RATHER THAN TWO MATCHING ANSWERS. That distinction is the whole
+// content of the claim: asking only whether the producer refuses AND the entry refuses is satisfied by
+// an entry that ignores the roster entirely and returns a constant refusal, so it would prove the two
+// endpoints agree while the integration between them was gone. Joining the producer's own text into
+// the entry's reason is what makes deleting the map-over-the-roster binding, bypassing group_report,
+// or substituting an unrelated refusal go red.
+//
+// It asserts refusal rather than success on purpose, and the reason is a frontier rather than a
+// defect: gunbc.instruments.fabric_capacity_standing live_inventory_host_effect_frontier records that
+// the entry refuses until a modeled host-effect realizes remote inventory, so refusal IS today's
+// correct answer on the live path. When that frontier fires this claim flips, and it should -- it is
+// the control that notices, rather than a green that would have said nothing either way.
+test fn the_live_entry_point_runs_its_real_producer_and_refuses_today() -> Bool {
+  let live = group_report(group: FabricGroupA)
+  match fabric_capacity_standing() {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } =>
+      (live.admitting == false)
+        && string_contains(s: reason, pattern: live.text)
+  }
+}
+
+// A SUSPENDED GROUP PRODUCES A STANDING THAT DOES NOT ADMIT, AND A RELEASED ONE TOO -- but neither
+// disappears, which is the property the empty-roster guard depends on. If suspension had been modeled
+// by dropping the group from the population instead, the guard would see a shorter list rather than a
+// missing subject, and at one member it would see an empty one and refuse a deliberate pause as though
+// the fleet had lost its roster.
+// THE FIXTURE HASH IS FOLDED HERE TOO. sha256_hex_digest yields Sha256Digest? and ContentHash's arm is
+// Sha256Hash(Sha256Digest); an earlier version of this file passed the Option straight into LeaseEpoch
+// and ReleasedToFleet, which does not typecheck. The sibling witness had already been repaired and this
+// one had not -- the repair did not travel with the lesson, which is why it is written here rather than
+// left as a shape to remember.
+fn with_capacity_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
+  match sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000") {
+    Absent => false
+    Present { value: d } => scenario(Sha256Hash(d))
+  }
+}
+
+fn w_suspended_authority(h: ContentHash) -> PairServingGroupAuthority {
+  SuspensionPendingReconciliation {
+    group: FabricGroupA,
+    transaction: "witness-transaction" as NonEmptyStr,
+    lease: held_lease(
+      epoch: LeaseEpoch {
+        lease_key: "witness-lease" as NonEmptyStr,
+        resource_fingerprint: h,
+        owner_fingerprint: h,
+        generation: 1,
+      },
+      observed: LeaseRunningExpected),
+  }
+}
+
+test fn a_suspended_authority_stands_without_admitting() -> Bool {
+  with_capacity_hash(scenario: h => {
+    let st = standing_for_authority(a: w_suspended_authority(h: h))
+    (st.admitting == false) && string_contains(s: st.text, pattern: "deliberately not admitting")
+  })
+}
+
+test fn a_released_authority_says_the_hosts_are_not_ours() -> Bool {
+  with_capacity_hash(scenario: h => {
+    let st = standing_for_authority(a: ReleasedToFleet { group: FabricGroupA, release_receipt: h })
+    (st.admitting == false) && string_contains(s: st.text, pattern: "no longer claims these hosts")
+  })
+}
+
+// AN ORDINARY SUBJECT STILL ROUTES TO THE LIVE PROBE, which is what keeps the two claims above from
+// being satisfied by a fold that refuses everything.
+test fn an_ordinary_authority_routes_to_the_live_probe() -> Bool {
+  let via_authority = standing_for_authority(a: PairServingActive {
+    group: FabricGroupA,
+    exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
+  })
+  let direct = group_report(group: FabricGroupA)
+  (via_authority.admitting == direct.admitting) && (via_authority.text == direct.text)
 }

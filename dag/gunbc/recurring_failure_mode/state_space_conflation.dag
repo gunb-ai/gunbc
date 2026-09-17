@@ -213,6 +213,10 @@ data state_space_conflation: RecurringFailureMode = RecurringFailureMode {
 
     "**RECOGNITION RULE FOR THE FORM: when a consumer narrows a closed variant to an `Optional`, the narrowing is where the states are lost, and the arm that gives the collapsed case a permissive default is where the loss becomes a fail-open.** The tell is a refusal reason that is empty on some path: a refusal that cannot say why was never a refusal.",
 
+    "**RECEIPT (2026-09-17, CARRIER-KEY-1): THE REFERENCE-SITE FALLBACK ARM IS SPLIT, AND THE SPLIT ITSELF CORRECTED THE CONFLATION'S PROXY.** `v1.std.core` `type_reference_provenance` answered `this node IS the declaration` and `this reference's declaration was not recovered` with one arm keyed on the node's own span. The obvious proxy for telling them apart -- is a Resolved node bound -- is itself a conflation: on the typed tree, `v1.compiler.infer_resolve` resolves a LEAF reference by substituting the declaration (no Resolved node, correct span) and builds an APPLIED reference's Resolved node on the REFERENCE's span (a Resolved node, location key). `v1.std.core` `type_reference_identity` over `std.coercion` `TypeReferenceIdentity` therefore splits on the parser's `ModuleItemTypeDeclaration` mark and the kernel mint, and refuses the rest with a cause. Populations are re-derived by `v1.tests.claim.carrier_realization_census` column `split_identity`; the executing RED is `v1.compiler.compiler_tests_rust` `ct_type_reference_identity_split_test`. Production is unchanged and declared as `gunbc.rung_drop` `type_reference_location_fallback_keys_production_realization`.",
+
+    "**RECOGNITION RULE ADDED BY THAT RECEIPT: a presence test on a carrier field is not a state test.** `inferred is Resolved` and `span is non-empty` each looked like the discriminator and each put both states on both sides of it. Ask what STRUCTURE only one state can have.",
+
   ],
 
   evidence: [],

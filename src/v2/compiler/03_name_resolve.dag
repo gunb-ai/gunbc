@@ -617,23 +617,6 @@ fn admitted_subject_from_bindings(
   }
 }
 
-fn namespace_for_subject(
-  lm: LanguageModel,
-  roots: FreeMonoid<NormalizedTree>,
-  admission: Admission,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  policy: NameResolutionPolicy
-) -> Outcome<AdmittedSubject> {
-  namespace_for_subject_in_context(
-    context: resolution_context(lm: lm, roots: roots),
-    admission: admission,
-    index: index,
-    active_roots: active_roots,
-    policy: policy
-  )
-}
-
 fn namespace_for_subject_in_context(
   context: Outcome<ResolutionContext>,
   admission: Admission,

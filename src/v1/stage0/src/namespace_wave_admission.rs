@@ -380,40 +380,57 @@ pub struct ConsumedRowReceipt {
 
 /// WHO OWES THE DELETION, AUTHORED WHERE THE DEBT IS CREATED.
 ///
-/// A row used to admit its own change's base->candidate delta is satisfied at the candidate by
-/// construction (the head check in `adjudicate` proves exactly that), so its consumption on landing
-/// is KNOWN at the owner's own merge-queue run. That is the instant to charge the deletion: the
-/// owner's `merge_group` run refuses a used row whose follow-up is `NotAuthored`
-/// (`OwnerFollowUpAbsent` in `wave_admission_refusal`). Charging it anywhere later bills a
-/// bystander -- the externalized degradation gunbc#9824 removed -- and charging it at the owner's
-/// pull_request run would refuse before the follow-up can reasonably exist.
+/// `deletion_follow_up` RECORDS A DEBT; NOTHING ENFORCES IT IN ADVANCE, AND THAT IS DELIBERATE.
+/// The field stays on the row and stays read, so a row can say which pull request is meant to
+/// delete it once its owner lands. What was removed (2026-09-16, operator ruling) are the two
+/// `merge_group` arms that refused on its absence: `OwnerFollowUpAbsent`, charging a row's owner at
+/// their own queue run, and `ConsumedRowOwnerChargeBypassed`, charging a BYSTANDER composition for
+/// someone else's unauthored follow-up.
 ///
-/// RUNG, STATED HONESTLY: the wall establishes that a follow-up NUMBER is authored, and NOTHING
-/// MORE. Whether that number names an OPEN pull request that deletes these rows is checked by NO
-/// EXECUTING ROUTE IN THIS REPOSITORY -- not by this binary, which reads no forge, and not by any
-/// other consumer (review 65476, verified). The pre-enqueue landing procedure that reads it is
-/// out-of-band human review, so that property is OUTSIDE THE MODELED GUARANTEE (DESIGN section 4b)
-/// and its trigger is the CLASS B forge read. A fabricated number passes this wall and, today, is
-/// caught by nothing here. The bypass backstop covers the ABSENCE of an authored follow-up number -- it reads
-/// `consumed_without_follow_up`, and any `PullRequest(n)`, valid or fabricated, enters the owned
-/// population instead -- so it does NOT cover the invalidity or lifecycle of a number that WAS
-/// authored. Reference verification happens out of band or not at all, and its failure is caught
-/// by nothing in this repository.
+/// WHERE THE DEBT STILL REFUSES, AT THE GRAIN THE REQUIRED PATH ACTUALLY HAS. A consumed row
+/// refuses when `roster_due` -- `base == head` OR a roster-source edit. An earlier revision of this
+/// paragraph stopped there and read as though the deletion were still compelled; it is not, on the
+/// path that gates a merge. The merge queue moved the required verdict off the push to the default
+/// branch (fierce-lark-661, 2026-09-13), and that was the only run where `base == head`, so on the
+/// required path `roster_due` reduces to `roster_touched` alone: a base-consumed row whose owner
+/// authored no follow-up refuses on NO required run until somebody edits the roster directory.
+/// That loss is declared, not implied -- `gunbc.rung_drop.consumed_row_owner_charge_unenforced` --
+/// and citing the `base == head` arm without saying it is off the required path is the §4b(1)
+/// inflation that row exists to prevent.
+///
+/// WHY THE ADVANCE CHARGE WAS NOT WORTH ITS COST -- WHICH IS NOT THE SAME AS SAYING IT COST NOTHING
+/// TO REMOVE. What it established was that a NUMBER was authored and nothing more: whether that
+/// number named an open pull request deleting these rows is checked by no executing route in this
+/// repository -- not by this binary, which reads no forge, and not by any other consumer
+/// (review 65476, verified) -- so a fabricated number passed it. That is what made the charge a poor
+/// trade, and the second arm additionally made a BYSTANDER pay it. But a weak GREEN is not a
+/// decoration: DESIGN section 4b reserves that word for a check whose RED cannot be authored at all,
+/// and both arms had authorable REDs that fired (review 67014). So both removals are declared
+/// section 4b(3) rung drops -- `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced` -- each naming the capability that
+/// restores it. Reference verification remains out of band or absent, which is now stated rather
+/// than implied by a wall that could not perform it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeletionFollowUp {
     NotAuthored,
     PullRequest(u32),
 }
 
-/// THE CI EVENT WHOSE SUBJECT THIS RUN ADJUDICATES. The consumption obligation differs by subject,
-/// so the verdict needs the event as an input rather than inferring it from the shape of the diff:
-/// a `merge_group` composition is the tree about to BECOME the default branch, so it is where the
-/// owner's follow-up is charged. A base-consumed row seen there does NOT by itself mean that charge
-/// was bypassed -- review 65313 disproved that inference -- since it may equally be an owned row
-/// inside its declared deletion window, which is why `adjudicate` partitions on the authored
-/// follow-up rather than refusing on consumption alone. `Local` is a run with no CI event at all (an author's machine); it takes the
-/// pull_request policy. An event name this enum does not model is refused by
-/// `adjudication_event_from_name` rather than defaulted to either.
+/// THE CI EVENT THIS RUN WAS TRIGGERED BY. IT NO LONGER SELECTS A POLICY, AND THE DOC SAYING IT DID
+/// OUTLIVED THE THING IT DESCRIBED (review 67027).
+///
+/// Until 2026-09-16 the consumption obligation genuinely differed by event: two `merge_group` arms
+/// charged a deletion follow-up that no other run charged. Those arms were removed on an operator
+/// ruling (gunbc#11481) and nothing downstream branches on the event now -- every run refuses on the
+/// same set: stale rows, unadjudicated deltas, and a consumed row when `base == head` or the roster
+/// source is touched.
+///
+/// WHAT THE ENUM STILL DOES, STATED AS WHAT IT IS. `adjudication_event_from_name` refuses a
+/// `GITHUB_EVENT_NAME` this enum does not model rather than adjudicating under assumptions nobody
+/// stated. With no event-selected policy left, that refusal is a tripwire on the workflow's TRIGGER
+/// SET and not a policy selector: add a trigger this module never considered and the required run
+/// stops loudly (DESIGN section 5) instead of quietly producing a verdict for a run nobody sized.
+/// `Local` is a run with no CI event at all -- an author's machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdjudicationEvent {
     PullRequest,
@@ -431,9 +448,9 @@ pub fn adjudication_event_from_name(name: Option<&str>) -> Result<AdjudicationEv
         Some("push") => Ok(AdjudicationEvent::Push),
         Some("workflow_dispatch") => Ok(AdjudicationEvent::WorkflowDispatch),
         Some(other) => Err(format!(
-            "GITHUB_EVENT_NAME `{other}` is not an event the wave-admission consumption policy \
-             models, so which obligation this run owes is unknown; refusing rather than applying \
-             the pull_request policy to it"
+            "GITHUB_EVENT_NAME `{other}` is not an event wave admission models, so this run was \
+             never sized against the trigger that produced it; refusing rather than adjudicating \
+             under assumptions nobody stated"
         )),
     }
 }
@@ -466,11 +483,22 @@ pub struct WaveAdmissionReport {
     /// refusal in `stale_admissions`.
     pub consumed_admissions: Vec<String>,
     /// Rows USED to admit a delta in this run whose owner authored no deletion follow-up. Each is
-    /// satisfied at the candidate, so it will be consumed when the candidate lands; on a
-    /// merge_group run that is the owner's refusal.
+    /// satisfied at the candidate, so it will be consumed when the candidate lands.
+    ///
+    /// NOTHING REFUSES ON THIS SET. It used to be the owner's refusal on a `merge_group` run
+    /// (`OwnerFollowUpAbsent`); that arm was removed on 2026-09-16 and declared as the drop
+    /// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed`. The set is still COUNTED in the
+    /// refusal message when some other arm produces one, which is the record the ruling kept.
     pub used_without_follow_up: Vec<String>,
-    /// The subset of `consumed_admissions` whose owner authored NO deletion follow-up: the genuine
-    /// bypass of the owner's charge, and the only consumed rows a bystander's composition refuses.
+    /// The subset of `consumed_admissions` whose owner authored NO deletion follow-up.
+    ///
+    /// NO PRODUCTION READER SINCE gunbc#11481, FLAGGED RATHER THAN HIDDEN. This was the population
+    /// `ConsumedRowOwnerChargeBypassed` refused on; that arm is removed and declared as the drop
+    /// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. The field is still POPULATED and is
+    /// read only by tests, so it is a DESIGN 3c dangling field today -- kept because it is the exact
+    /// population that drop's restoration trigger has to re-cover, and deleting it would discard the
+    /// one derivation a restoration would need. Its honest disposition is decided when that drop is
+    /// retired: consumed by the restored charge, or removed with the drop row.
     pub consumed_without_follow_up: Vec<String>,
     /// The complement: consumed rows with an authored follow-up, carried as receipts.
     pub owned_consumed_receipts: Vec<ConsumedRowReceipt>,
@@ -1392,8 +1420,6 @@ pub enum WaveAdmissionOutcome {
         /// Whether this diff touches the roster source. Consumed rows come due here
         /// and on main (base == head); stale rows refuse regardless of this flag.
         roster_touched: bool,
-        /// The CI event whose subject this run adjudicated.
-        event: AdjudicationEvent,
     },
 }
 
@@ -1836,22 +1862,34 @@ fn parse_decl_ref_list(
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
 /// Stale rows and unadjudicated deltas always refuse. Consumed rows refuse at landing
-/// (base == head) or on a roster-source edit. On a `merge_group` composition two more arms hold:
-/// a row the composition USES whose owner authored no `deletion_follow_up` refuses
-/// (`OwnerFollowUpAbsent`, the owner's charge, known at the owner's own queue run because a used
-/// row is satisfied at the candidate), and a base-consumed row on a composition that does not touch
-/// the roster refuses as `ConsumedRowOwnerChargeBypassed` ONLY when its owner authored no
-/// deletion follow-up, naming each owing change so the blocked author reads whose debt it is. A
-/// base-consumed row WITH an authored follow-up does not refuse there: it is an
-/// `owned_consumed_receipts` entry. The two arms are NOT exclusive by construction -- the owner's
-/// charge establishes that a follow-up number is authored, not that the deletion has landed -- so
-/// between the owner's landing and its follow-up's landing every composition sees the owned row, and
-/// refusing it would bill a bystander for that window (review 65313; lane ruling X). The forge state
-/// of the follow-up (open, closed unmerged, merged with the row present) is read by no executing
-/// route here: it is printed as a receipt and left outside the modeled guarantee until the CLASS B
-/// forge read lands (review 65476). The roster-touched and base == head arms are unchanged by X. Lane ruling (fierce-lark-661, 2026-09-13):
-/// the merge queue moved the required verdict off the push to the default branch, and with it the
-/// only run where base == head. Lifecycle is derived from the candidate-set
+/// (base == head) or on a roster-source edit. THAT IS THE WHOLE REFUSAL SET.
+///
+/// Two `merge_group` arms were removed on 2026-09-16 (operator ruling): `OwnerFollowUpAbsent`,
+/// which refused a used row whose owner had authored no `deletion_follow_up`, and
+/// `ConsumedRowOwnerChargeBypassed`, which refused a bystander composition for a prior owner's
+/// unauthored follow-up. BOTH TOOK COVERAGE WITH THEM AND BOTH ARE DECLARED AS §4b(3) DROPS —
+/// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. Two earlier revisions of this note said
+/// otherwise and both were caught in review. The first arm did establish only that a number had
+/// been typed -- its own message conceded it "checks that a number is authored, never that it names
+/// an open or deleting pull request" -- but a weak GREEN is not a decoration: §4b reserves that for
+/// a check whose RED cannot be authored at all, and this one's RED was authored and fired
+/// (review 67014). The second billed a change for a debt its own comment said was not its own,
+/// which is a reason to remove it, not a reason its coverage was nothing.
+///
+/// WHAT THIS COSTS, STATED PLAINLY. An earlier revision of this note claimed
+/// the landing arm still compels a consumed row's deletion. On the REQUIRED path it does not.
+/// Lane ruling (fierce-lark-661, 2026-09-13): the merge queue moved the required verdict off the
+/// push to the default branch, and with it the only run where base == head -- so `roster_due`
+/// reduces to `roster_touched` alone there. With `ConsumedRowOwnerChargeBypassed` gone, a
+/// base-consumed row whose owner authored no follow-up refuses on NO required run until somebody
+/// happens to edit the roster directory. That is the coverage the consumed-row drop declares, and
+/// it is a separate row from the owner-side one because the two are restored by different
+/// capabilities: adjudicating a consumed row at all, versus resolving an authored follow-up number
+/// to the pull request it claims to name.
+///
+/// `used_without_follow_up` is still COUNTED in the message, so the debt stays visible as a
+/// receipt; it just no longer refuses. Lifecycle is derived from the candidate-set
 /// proof, never predicted by an authored row. Policy authority:
 /// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
@@ -1865,53 +1903,27 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             head,
             report,
             roster_touched,
-            event,
         } => {
             let unadjudicated = report_unadjudicated(report);
             let roster_due = base == head || *roster_touched;
-            let composition = *event == AdjudicationEvent::MergeGroup;
-            // THE OWNER'S CHARGE: a row this composition uses will be consumed when it lands, so a
-            // merge_group run refuses it unless its owner authored the deletion follow-up.
-            let owner_follow_up_due = composition && !report.used_without_follow_up.is_empty();
-            // THE BACKSTOP: a base-consumed row whose owner authored NO follow-up, on a composition
-            // that does not touch the roster, is the genuine bypass of the owner's charge -- it
-            // refuses and says the debt is not this change's. An OWNED consumed row is a receipt,
-            // not a refusal: its follow-up may simply not have landed yet (review 65313).
-            let bypass_due =
-                composition && !roster_due && !report.consumed_without_follow_up.is_empty();
+            // THE FOLLOW-UP ARMS ARE GONE, AND THE DEBT IS STILL ENFORCED. Two merge_group arms
+            // used to refuse here: OwnerFollowUpAbsent (a used row whose owner authored no
+            // deletion_follow_up) and ConsumedRowOwnerChargeBypassed (a bystander composition
+            // charged for someone else's unauthored follow-up). Both are removed.
+            //
+            // COVERAGE FALLS WITH THEM AND IT IS DECLARED, NOT WAVED OFF. Each removal has its
+            // own §4b(3) row -- `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+            // `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. What SURVIVES is a record
+            // rather than a refusal: `deletion_follow_up` remains on the row and is still read, and
+            // `consumed_due` below still refuses a consumed row at landing or on a roster-source
+            // edit -- which, since the merge queue moved the required verdict off the push to the
+            // default branch, means on a roster-source edit alone on the required path. The two
+            // rows say exactly what that leaves uncovered and what would restore it.
             let consumed_due = roster_due && !report.consumed_admissions.is_empty();
             let stale_due = !report.stale_admissions.is_empty();
-            if unadjudicated.is_empty()
-                && !stale_due
-                && !consumed_due
-                && !bypass_due
-                && !owner_follow_up_due
-            {
+            if unadjudicated.is_empty() && !stale_due && !consumed_due {
                 return None;
             }
-            let owner_clause = if owner_follow_up_due {
-                format!(
-                    "; OwnerFollowUpAbsent: author each row's deletion_follow_up -- the number of \
-                     the pull request that deletes it after this change lands. This wall checks \
-                     that a number is authored, never that it names an open or deleting pull \
-                     request. Author it before enqueueing: {}",
-                    report.used_without_follow_up.join("; ")
-                )
-            } else {
-                String::new()
-            };
-            let bypass_clause = if bypass_due {
-                format!(
-                    "; ConsumedRowOwnerChargeBypassed: this debt is NOT this change's -- the rows \
-                     below were consumed by a PRIOR merge whose owner authored no deletion \
-                     follow-up, so the owner's merge_group charge was bypassed; each names its \
-                     owning change, and a deletion of these rows must land before this \
-                     composition can: {}",
-                    report.consumed_without_follow_up.join("; ")
-                )
-            } else {
-                String::new()
-            };
             let remedy = if stale_due || consumed_due {
                 let rows = report
                     .stale_admissions
@@ -1929,8 +1941,7 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             };
             Some(format!(
                 "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){}, {} used row(s) without a deletion follow-up){remedy}\
-                 {owner_clause}{bypass_clause}",
+                 consumed admission(s){}, {} used row(s) without a deletion follow-up){remedy}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
                 report.consumed_admissions.len(),
@@ -2124,7 +2135,6 @@ pub fn base_records(
 /// whole graphs, since an unmoved module's subject or bindings can be moved by one that did.
 pub fn run_required_wave_admission(
     head_index: &DeclarationIndex,
-    event: AdjudicationEvent,
 ) -> Result<WaveAdmissionOutcome, String> {
     let workspace = workspace_root();
     let head = git_stdout(&workspace, &["rev-parse", "HEAD"])?;
@@ -2141,7 +2151,7 @@ pub fn run_required_wave_admission(
             })
         }
     };
-    run_wave_admission_between(&workspace, &base, &head, head_index, event)
+    run_wave_admission_between(&workspace, &base, &head, head_index)
 }
 
 /// The wave adjudication over an EXPLICIT repository and revision pair.
@@ -2440,15 +2450,14 @@ pub(crate) fn reconstruct_base_index(
 /// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
 /// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
 /// base and head speak different grammars. Nothing about the adjudication differs between the two
-/// callers: the seam selects the subject, never the rules. The CI event travels with the subject
-/// for the same reason: the consumption obligation differs by event (`AdjudicationEvent`), so the
-/// caller states which run this is rather than the seam inferring it.
+/// callers: the seam selects the subject, never the rules. The CI event no longer travels with the
+/// subject at all -- it stopped selecting an obligation when the follow-up arms were removed
+/// (gunbc#11481), and this sentence said otherwise until review 67027.
 pub fn run_wave_admission_between(
     workspace: &std::path::Path,
     base: &str,
     head: &str,
     head_index: &DeclarationIndex,
-    event: AdjudicationEvent,
 ) -> Result<WaveAdmissionOutcome, String> {
     let admissions = load_transition_admissions(workspace)?;
     let (base, head, base_index, head_touched) =
@@ -2463,7 +2472,6 @@ pub fn run_wave_admission_between(
                     head,
                     report: Box::new(adjudicate(head_index, head_index, &admissions)),
                     roster_touched: false,
-                    event,
                 });
             }
             BaselineReconstruction::NotEvaluated { reason } => {
@@ -2488,7 +2496,6 @@ pub fn run_wave_admission_between(
         head,
         report: Box::new(report),
         roster_touched,
-        event,
     })
 }
 
