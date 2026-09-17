@@ -18,9 +18,10 @@ import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, 
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
   event_parent_expectation, AppendDecision, AppendAdmitted, AppendStale, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_from_head,
+  EventDecode, EventDecoded, EventUndecodable,
 }
 import product.capacity.pool_events {
-  PoolEvent, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
+  PoolEvent, pool_event_wire_text, pool_event_decode,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
@@ -172,17 +173,25 @@ fn event_log_observe_head_from_mirror(layout: EventLogLayout, partition: Partiti
 // READING A PARTITION: fetch the head's objects into the mirror, then read each event by its
 // address following parents, bounded, and hand the collected envelopes to the pure walk so the
 // chain's shape is decided by one authority.
-type PartitionRead
-  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<PoolEvent> }
+// THE LOG IS GENERIC IN ITS PAYLOAD, AND THE CODEC IS THE PAYLOAD'S. One object per event, one ref
+// per partition, one compare-and-set on the head -- none of that is about seats. The pool events
+// were the first partition kind and the read and append were written against their codec, which
+// made a second partition kind (the pair-serving authority, gunbc.spark.pair_serving_authority_log)
+// need a second read and a second append: the §2 duplication, with the linearization law copied
+// twice. So the read walks and the append publishes for ANY payload, taking the payload's encode
+// and decode, and event_log_read_partition / event_log_append below are those two with the pool
+// codec supplied -- specializations of one root, not a second spelling of it.
+type PartitionRead<P>
+  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<P> }
   | PartitionReadRefused { step: String, reason: String }
 
-type CollectState {
+type CollectState<P> {
   current: HeadExpectation
-  collected: List<ChainEnvelope<PoolEvent>>
+  collected: List<ChainEnvelope<P>>
   refused: String?
 }
 
-fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
+fn collect_step<P>(layout: EventLogLayout, st: CollectState<P>, decode: fn(String) -> EventDecode<P>) -> CollectState<P> {
   match st.refused {
     Present { value: _ } => st
     Absent =>
@@ -193,9 +202,9 @@ fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
           if !r.success {
             CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["cat-file ", h as String, " refused"], "") } }
           } else {
-            match pool_event_decode(text: r.content) {
-              PoolEventUndecodable { reason: why } => CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
-              PoolEventDecoded { event: e } => CollectState {
+            match decode(r.content) {
+              EventUndecodable { reason: why } => CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
+              EventDecoded { event: e } => CollectState {
                 current: event_parent_expectation(e: e),
                 collected: concat(st.collected, [ChainEnvelope { id: h, event: e }]),
                 refused: none,
@@ -207,7 +216,7 @@ fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
   }
 }
 
-fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budget: Nat) -> PartitionRead {
+fn event_log_read_partition_with<P>(layout: EventLogLayout, partition: PartitionId, budget: Nat, decode: fn(String) -> EventDecode<P>) -> PartitionRead<P> {
   match event_log_ensure_mirror(layout: layout) {
     MirrorRefused { step: s, reason: why } => PartitionReadRefused { step: s, reason: why }
     MirrorReady =>
@@ -222,7 +231,7 @@ fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budg
               if f.exit_code != 0 {
                 PartitionReadRefused { step: "fetch", reason: join(["exit ", to_string(f.exit_code), ": ", trim(s: f.stderr)], "") }
               } else {
-                let st = fold(nat_range_inclusive(lo: 1, hi: budget), init: CollectState { current: HeadAt { id: h }, collected: [], refused: none }, f: (acc, _i) => collect_step(layout: layout, st: acc))
+                let st = fold(nat_range_inclusive(lo: 1, hi: budget), init: CollectState { current: HeadAt { id: h }, collected: [], refused: none }, f: (acc, _i) => collect_step(layout: layout, st: acc, decode: decode))
                 match st.refused {
                   Present { value: why } => PartitionReadRefused { step: "read", reason: why }
                   Absent => PartitionReadOk { head: HeadAt { id: h }, walk: chain_from_head(envs: st.collected, head: HeadAt { id: h }, budget: budget) }
@@ -232,6 +241,10 @@ fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budg
           }
       }
   }
+}
+
+fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budget: Nat) -> PartitionRead<PoolEvent> {
+  event_log_read_partition_with(layout: layout, partition: partition, budget: budget, decode: fn(text) { pool_event_decode(text: text) })
 }
 
 // APPEND: publish the bytes as an object in the mirror, then advance the partition ref at the
@@ -249,7 +262,7 @@ type EventAppend
 // and a completed foreign write published another writer's event under this writer's admitted
 // append. The lease guards the head, not the object's content. The enrolled evidence is
 // test.claim.fabric_event_log_append_real_execution.
-fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+fn event_log_append_with<P>(layout: EventLogLayout, partition: PartitionId, event: ChainEvent<P>, expected: HeadExpectation, encode: fn(ChainEvent<P>) -> String) -> EventAppend {
   if !head_expectation_eq(a: event_parent_expectation(e: event), b: expected) {
     EventAppendRefused { step: "parent", reason: "the event's parent is not the head the append expects" }
   } else {
@@ -259,7 +272,7 @@ fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: Chain
         match event_log_remote_word(remote: layout.remote) {
           Absent => EventAppendRefused { step: "remote", reason: "the event log is unplaced" }
           Present { value: remote } => {
-            let h = git.Plumbing.HashObjectWriteStdin(address: mirror_address(layout: layout), content: pool_event_wire_text(event: event))
+            let h = git.Plumbing.HashObjectWriteStdin(address: mirror_address(layout: layout), content: encode(event))
             if h.exit_code != 0 {
               EventAppendRefused { step: "hash-object", reason: join(["exit ", to_string(h.exit_code), ": ", trim(s: h.stderr)], "") }
             } else {
@@ -283,6 +296,10 @@ fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: Chain
         }
     }
   }
+}
+
+fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+  event_log_append_with(layout: layout, partition: partition, event: event, expected: expected, encode: fn(e) { pool_event_wire_text(event: e) })
 }
 
 // THE SEAT TRANSACTION, WET AND BOUNDED: read, fold, propose, append; a stale append re-reads and

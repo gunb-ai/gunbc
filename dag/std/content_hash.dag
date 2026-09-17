@@ -253,6 +253,47 @@ fn serialize_content_hash(hash: ContentHash) -> NonEmptyStr {
   }
 }
 
+// THE INVERSE OF serialize_content_hash, AT THE SAME HOME. It stood in std.materialization_object
+// as parse_recorded_store_key, named for one consumer; the pair-serving authority log is a second
+// consumer of the same wire, so the inverse lives beside the grammar it inverts (DESIGN §4: one
+// grammar read in both directions). The round-trip check is what makes it exact: a candidate that
+// does not re-serialize to the text it was read from is not that text's hash.
+fn parse_content_hash_candidate(wire: String) -> ContentHash? {
+  if starts_with(s: wire, prefix: "sha256:") {
+    match get(xs: split(s: wire, delimiter: "sha256:"), index: 1) {
+      Absent => none
+      Present { value: hex } =>
+        match sha256_hex_digest(hex: hex) {
+          Absent => none
+          Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
+        }
+    }
+  } else if starts_with(s: wire, prefix: "sha512:") {
+    match get(xs: split(s: wire, delimiter: "sha512:"), index: 1) {
+      Absent => none
+      Present { value: hex } =>
+        match sha512_hex_digest(hex: hex) {
+          Absent => none
+          Present { value: d } => Present { value: as_content_hash_sha512(digest: d) }
+        }
+    }
+  } else {
+    content_hash_from_structural_digest(digest: wire)
+  }
+}
+
+fn parse_content_hash(wire: String) -> ContentHash? {
+  match parse_content_hash_candidate(wire: wire) {
+    Absent => none
+    Present { value: parsed } =>
+      if (serialize_content_hash(hash: parsed) as String) == wire {
+        Present { value: parsed }
+      } else {
+        none
+      }
+  }
+}
+
 fn sha256_digest_wire_form(digest: Sha256Digest) -> NonEmptyStr {
   join(["sha256:", digest.hex as String], "") as NonEmptyStr
 }

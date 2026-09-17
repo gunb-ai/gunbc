@@ -15,7 +15,10 @@ import gunbc.fleet_bootstrap_principal_session {
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { gunbc_spark_pair_runtime_dockerfile }
 import gunbc.spark.fabric_switch_observed { FabricGroup }
-import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, pair_serving_apply_admits, pair_serving_authority_for }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, pair_serving_apply_admits }
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities, current_authority_for, current_authority_wire,
+}
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.spark.fabric_reach { SparkReachPath, ReachManagementLan, ReachFabricRail, spark_reach_path_wire, spark_reach_endpoint, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
@@ -194,8 +197,22 @@ fn spark_pair_apply_plan_under(r: SparkPairRealization, authority: PairServingGr
   }
 }
 
-fn spark_pair_apply_plan(r: SparkPairRealization) -> SparkPairApplyPlan {
-  spark_pair_apply_plan_under(r: r, authority: pair_serving_authority_for(group: spark_pair_realization_group(r: r)))
+// THE LIVE AUTHORITY IS THE LOG'S, NOT THE SOURCE ROW'S. gunbc.spark.pair_serving_authority_log
+// folds the row through every recorded transition, so a group a transaction has suspended is
+// suspended HERE, from the transaction's own tree. A group whose authority could not be read is
+// refused with the read's cause -- never planned on the row it rests on -- and a group the roster
+// does not name at all is refused as having no authority (absence is not permission).
+fn spark_pair_apply_plan_current(r: SparkPairRealization, current: List<CurrentAuthority>) -> SparkPairApplyPlan {
+  match current_authority_for(current: current, group: spark_pair_realization_group(r: r)) {
+    Absent => spark_pair_apply_plan_under(r: r, authority: none)
+    Present { value: CurrentAuthorityUnread { group: _, step: _, reason: _ } } =>
+      match current_authority_for(current: current, group: spark_pair_realization_group(r: r)) {
+        Present { value: c } => SparkPairApplyRefused { cause: join(["the serving authority could not be read, so nothing is converged: ", current_authority_wire(c: c)], "") }
+        Absent => spark_pair_apply_plan_under(r: r, authority: none)
+      }
+    Present { value: CurrentAuthorityRead { authority: a, head: _, generation: _ } } =>
+      spark_pair_apply_plan_under(r: r, authority: Present { value: a })
+  }
 }
 
 fn spark_pair_realization_group(r: SparkPairRealization) -> FabricGroup {
@@ -205,11 +222,15 @@ fn spark_pair_realization_group(r: SparkPairRealization) -> FabricGroup {
   }
 }
 
-// EVERY PROMOTED GROUP IS PLANNED, IN ROSTER ORDER. One refusal anywhere refuses the whole apply:
-// a converge that brought up group A while silently skipping group B would report success for a
-// desired state it did not reach.
-fn spark_pair_apply_plans() -> List<SparkPairApplyPlan> {
-  map(spark_pair_realizations(), r => spark_pair_apply_plan(r: r))
+// EVERY PROMOTED GROUP IS PLANNED, IN ROSTER ORDER, UNDER THE AUTHORITY THE EXECUTOR READS. One
+// refusal anywhere refuses the whole apply: a converge that brought up group A while silently
+// skipping group B would report success for a desired state it did not reach.
+fn spark_pair_apply_plans_current(current: List<CurrentAuthority>) -> List<SparkPairApplyPlan> {
+  map(spark_pair_realizations(), r => spark_pair_apply_plan_current(r: r, current: current))
+}
+
+fn spark_pair_apply_plans(executor: String) -> List<SparkPairApplyPlan> {
+  spark_pair_apply_plans_current(current: current_pair_serving_authorities(short_hostname: executor))
 }
 
 fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<String> {
@@ -293,16 +314,16 @@ fn spark_pair_serving_apply_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
-  let plans = spark_pair_apply_plans()
-  let refusals = spark_pair_apply_plan_refusals(plans: plans)
-  if length(plans) == 0 {
-    exit_failure(reason: "spark_pair_serving_apply: no group is promoted to pair serving")
-  } else if length(refusals) != 0 {
-    exit_failure(reason: join(["spark_pair_serving_apply: a group realization refused: ", join(refusals, "; ")], ""))
-  } else {
-    match observe_executor_reach() {
-      ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: ", c], ""))
-      ExecutorReachKnown { short_hostname: executor, path: path } =>
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: path } => {
+      let plans = spark_pair_apply_plans(executor: executor)
+      let refusals = spark_pair_apply_plan_refusals(plans: plans)
+      if length(plans) == 0 {
+        exit_failure(reason: "spark_pair_serving_apply: no group is promoted to pair serving")
+      } else if length(refusals) != 0 {
+        exit_failure(reason: join(["spark_pair_serving_apply: a group realization refused: ", join(refusals, "; ")], ""))
+      } else {
           match read_bootstrap_credential() {
             BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
             BootstrapCredentialReady { secret: administrator } =>
@@ -350,4 +371,5 @@ fn spark_pair_serving_apply_wet() -> ProcessExit
           }
     }
   }
+}
 }
