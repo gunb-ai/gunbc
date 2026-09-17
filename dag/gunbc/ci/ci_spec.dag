@@ -1974,6 +1974,17 @@ fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
   ]
 }
 
+data gunbc_ci_approval_keyring_converge_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_approval_keyring_converge_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
 fn mtcollins1_sol_activate_ipmitool_command() -> String {
   match mtcollins1_bmc_username {
     Absent => "echo MtCollins1BmcUsernameUnobserved >&2; exit 1"
@@ -2016,25 +2027,42 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
   ]
 }
 
+data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_mtcollins1_boot_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, PINNED BMC and submission-MAC secret versions fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk, ipmitool sol activate held in background. The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential/SOL runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
 fn gunbc_ci_approval_keyring_converge_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_approval_keyring_converge_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_approval_keyring_converge_target.entry,
-    function: gunbc_ci_approval_keyring_converge_target.function,
-    claim_run: false,
-    receipt_rel: none
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_approval_keyring_converge_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_approval_keyring_converge_target.entry,
+      function: gunbc_ci_approval_keyring_converge_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
   )
 }
 
 fn gunbc_ci_mtcollins1_boot_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_mtcollins1_boot_credential_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_mtcollins1_boot_target.entry,
-    function: gunbc_ci_mtcollins1_boot_target.function,
-    claim_run: false,
-    receipt_rel: none
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_mtcollins1_boot_credential_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_mtcollins1_boot_target.entry,
+      function: gunbc_ci_mtcollins1_boot_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
   )
 }
 
