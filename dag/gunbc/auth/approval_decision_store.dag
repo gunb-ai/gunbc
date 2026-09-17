@@ -32,6 +32,7 @@ import gunbc.durable_cas_file_store {
   observe_cas_slot_state,
 }
 import std.durable_compare_and_set {
+  cas_unreadable_slot_detail,
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
   CasReadableSlot, CasReadableAbsent, CasReadablePresent,
@@ -446,7 +447,7 @@ type EscalationSlot
 
 fn observe_escalation(root: NonEmptyStr, escalation_id: NonEmptyStr) -> EscalationSlot {
   match observe_cas_slot_state(root: root, key: escalation_id) {
-    CasObservedUnreadable { cause: _ } => EscalationUnreadable { detail: "approval store slot unreadable" }
+    CasObservedUnreadable { cause: c } => EscalationUnreadable { detail: concat("approval store slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => EscalationNotFiled
       CasReadablePresent { version: v } => match parse_stored_record(text: v.value as String) {
