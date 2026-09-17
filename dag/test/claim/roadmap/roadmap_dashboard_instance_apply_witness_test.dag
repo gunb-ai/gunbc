@@ -799,20 +799,3 @@ test fn dashboard_ensure_release_revision_is_admitted_not_head() -> Bool {
     && !any(argv, t => t == "HEAD")
 }
 
-test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
-  production_reading_never_equates_absent_with_observed()
-    && unpeered_host_refuses_nothing_and_reads_nothing()
-    && peer_isolation_still_requires_the_instance_to_own_its_paths()
-    && dashboard_source_transport_argv_is_exact_and_atomic()
-    && dashboard_local_origin_ref_translation_is_exact()
-    && dashboard_service_is_named_and_scoped_off_production()
-    && dashboard_provider_runtime_and_auth_share_one_state_binding()
-    && dashboard_target_preflight_derives_dispatch_platform_dependencies()
-    && dashboard_health_requires_intended_instance_identity()
-    && dashboard_plan_is_end_to_end_and_production_disjoint()
-    && dashboard_refusal_receipt_is_typed_and_located()
-    && dashboard_dirty_controller_source_refuses_before_apply()
-    && dashboard_bootstrap_parent_writability_is_a_preflight_fact()
-    && dashboard_unreachable_root_refuses_before_choosing_a_parent()
-    && dashboard_poll_interval_is_a_usable_duration()
-}

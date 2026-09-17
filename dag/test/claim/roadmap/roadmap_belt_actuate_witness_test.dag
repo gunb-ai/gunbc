@@ -1196,36 +1196,6 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
   }
 }
 
-test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
-  witness_dispatch_result_ok_spawned_and_live()
-    && witness_dispatch_result_refusals_not_ok()
-    && witness_dispatch_status_labels_glued_to_ok_set()
-    && witness_dispatch_status_labels_pin_wire_contract()
-    && witness_band_fold_pins_operator_vocabulary()
-    && witness_no_result_maps_to_in_progress()
-    && witness_ok_labels_derive_from_band_fold()
-    && witness_label_band_cover_reds_on_missing_row()
-    && witness_exemplar_roster_reconciles_variant_set()
-    && witness_exemplar_roster_missing_variant_reds()
-    && codex_provider_v0_preflight_keystone_holds()
-    && oracle_refs_projection_runs_and_selects_pinnable_scopes()
-    && verify_without_observable_subject_defers_instead_of_rerunning()
-    && agent_incomplete_attempt_defers_verification()
-    && observe_refused_spawn_does_not_zero_verify_pass()
-    && observe_refused_with_empty_verify_is_deferred_not_recorded()
-    && unknown_spawn_workdir_refuses_instance_resolution()
-    && the_known_spawn_workdir_resolves_to_its_own_instance()
-    && verification_presentation_absent_receipt_is_queued()
-    && verification_presentation_unreadable_receipt_is_blocked()
-    && verification_presentation_decouples_verify_from_spawn_observe_refusal()
-    && verification_presentation_verify_refused_is_blocked()
-    && verification_presentation_verify_failed_is_failed()
-    && verification_presentation_wire_carries_detail()
-    && malformed_pass_reason_makes_receipt_unreadable()
-    && belt_tick_receipt_missing_file_read_is_absent()
-    && belt_tick_receipt_io_failure_read_is_unreadable()
-}
-
 test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
   match dashboard_instance_for_repo_root(repo_root: "/typo/gunbc") {
     DashboardInstanceRootUnknown { repo_root: w } => w == "/typo/gunbc"

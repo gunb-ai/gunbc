@@ -159,8 +159,8 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // roadmap_workflow_progress derives observed facts from admission, attempt-state publication,
 // provider JSONL, retained process exit, and future independent
 // verification/publication/review/audit receipts, then reconciles them against the shared desired
-// roster through workflow_reconcile. Behavioral receipts: roadmap_workflow_progress_keystone_holds,
-// workflow_reconcile_keystone_holds, the workflow route witness, and the page client/markup
+// roster through workflow_reconcile. Behavioral receipts: the per-leaf workflow-progress
+// and workflow-reconcile witnesses, the workflow route witness, and the page client/markup
 // witnesses. Derived by execution; this digest only pins bytes.
 
 // Re-pinned 2026-07-27 for dispatch lifecycle truth: the stylesheet changes only because the

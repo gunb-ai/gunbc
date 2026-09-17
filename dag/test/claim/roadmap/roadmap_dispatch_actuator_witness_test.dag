@@ -574,21 +574,6 @@ test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
     && !string_contains(s: wire, pattern: "aggregated_output")
 }
 
-test fn codex_provider_v0_argv_keystone_holds() -> Bool {
-  witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
-    && witness_actuator_automatic_selection_refuses_with_standing_reason()
-    && witness_projection_standing_refusal_specimen_holds()
-    && witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt()
-    && witness_codex_argv_is_unattended_but_sandboxed()
-    && witness_selected_provider_shapes_codex_tmux_command()
-    && witness_lab_instance_moves_repo_tmux_and_codex_state_together()
-    && witness_tmux_attempt_panes_parse_alive_and_exit()
-    && witness_tmux_attempt_panes_malformed_row_refuses()
-    && witness_event_pipe_emits_grammar_quoted_command()
-    && witness_provider_projection_is_exact_bounded_capability()
-    && witness_host_exec_argv_shapes_bound_to_extdeps()
-}
-
 test fn witness_stop_argv_targets_session() -> Bool {
   let cmd = tmux_kill_session_argv(session_name: "gunbc-dispatch-node-3")
   cmd.args == ["kill-session", "-t", "gunbc-dispatch-node-3"]

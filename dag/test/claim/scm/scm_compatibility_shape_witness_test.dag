@@ -224,11 +224,3 @@ test fn witness_one_c0_fixture_accepts_three_realization_receipts() -> Bool {
   }
 }
 
-test fn witness_r1_acceptance_contract_holds() -> Bool {
-  witness_one_c0_fixture_accepts_three_realization_receipts()
-    && witness_git_modeled_advance_refuses_different_guarantee()
-    && witness_mercurial_missing_advance_refuses_required_capability()
-    && witness_pijul_missing_advance_refuses_required_capability()
-    && witness_git_readback_mismatch_refuses_binding()
-    && witness_fourth_realization_adds_handler_without_primary_edit()
-}

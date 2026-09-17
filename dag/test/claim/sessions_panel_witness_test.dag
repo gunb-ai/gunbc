@@ -203,16 +203,3 @@ test fn sessions_banner_is_styled_loud() -> Bool {
   return string_contains(s: roadmap_css(), pattern: ".observe-refused { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-4) var(--space-0) var(--space-8); font-family: var(--font-mono) }")
 }
 
-test fn sessions_panel_keystone_holds() -> Bool {
-  witness_projection_standing_refusal_specimen_omits_wire_row()
-    && sessions_observed_projects_to_wire()
-    && retained_dead_process_projects_clear_without_erasing_session()
-    && sessions_refusal_is_loud_on_the_wire()
-    && sessions_client_marks_presence_reobserves_and_shouts_refusal()
-    && sessions_client_reobserves_after_dispatch_and_on_cadence()
-    && sessions_client_serializes_each_observation_source()
-    && sessions_presence_does_not_overwrite_dispatch_presentation()
-    && sessions_refusal_withdraws_prior_presence()
-    && attempts_refusal_withdraws_prior_rows()
-    && sessions_banner_is_styled_loud()
-}
