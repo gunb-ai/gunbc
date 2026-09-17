@@ -1,0 +1,104 @@
+module extdeps.ethtool
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// ethtool is the Linux NIC query and control utility. It is its own independently versioned upstream
+// project with its own manual page and its own option set, so it gets its own module rather than
+// rows on a generic "network tools" hub -- the external-decomposition rule in DESIGN §3: a shared
+// interface may be agnostic, but a concrete independently governed tool owns its own authority.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/ethtool.8.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ethtool",
+      decl_name: "ethtool_binary_name",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ethtool_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data ethtool_binary_name: NonEmptyStr = "ethtool" as NonEmptyStr
+
+// WHERE THE BINARY LIVES, AND WHY IT IS NOT systemd's DIRECTORY. `extdeps.systemd` declares
+// /usr/bin because that is where distribution-packaged systemd clients sit; ethtool is a network
+// ADMINISTRATION tool and the filesystem hierarchy puts those in sbin. Measured on spark-a3ee
+// 2026-09-17: `command -v ethtool` and `readlink -f` both report /usr/sbin/ethtool, version 6.7.
+// Borrowing systemd's row would have produced /usr/bin/ethtool, which is the absolute path a
+// sudoers Cmnd_Spec would then fail to match -- a grant that silently authorizes nothing.
+data ethtool_binary_directory: NonEmptyStr = "/usr/sbin" as NonEmptyStr
+
+fn ethtool_binary_path() -> NonEmptyStr {
+  join([ethtool_binary_directory as String, "/", ethtool_binary_name as String], "") as NonEmptyStr
+}
+
+// ================= THE MODULE-INFORMATION READ =================
+//
+// `-m` (long form `--module-info`) dumps the pluggable module's EEPROM for one device. It TAKES ITS
+// DEVICE, and as with loginctl's enable-linger the parameter is required here rather than optional:
+// a sudoers grant written without the device authorizes the read on EVERY interface the host has,
+// which is a materially wider authorization than the one this repository needs. The device is the
+// subject of the read, so it is carried, not defaulted.
+data ethtool_module_info_flag: NonEmptyStr = "-m" as NonEmptyStr
+
+fn ethtool_module_info_argv(device: NonEmptyStr) -> List<String> {
+  [ethtool_binary_name as String, ethtool_module_info_flag as String, device as String]
+}
+
+fn ethtool_module_info_command(device: NonEmptyStr) -> NonEmptyStr {
+  join([
+    ethtool_binary_path() as String,
+    " ", ethtool_module_info_flag as String,
+    " ", device as String,
+  ], "") as NonEmptyStr
+}
+
+// THE RAW FORM IS A DIFFERENT COMMAND, NOT A MODE OF THE ONE ABOVE, and the distinction is
+// load-bearing for this fleet rather than pedantic. `ethtool -m <dev>` prints ethtool's own DECODING
+// of the EEPROM, and gunbc.spark.fabric_switch_observed records that decoding fabricating a
+// measurement: byte 140 holds FFh, the SFF-8636 escape meaning "the real rate is in byte 222", and
+// ethtool rendered it as "BR, nominal: 25500 Mb/s" -- 255 x 100, the sentinel multiplied out and
+// printed as though it were a reading.
+//
+// `raw on` returns the BYTES, which is the only form from which byte 116, byte 192 and byte 222 can
+// be read as themselves and decoded by extdeps.transceiver.sff_8636, whose decoders this repository
+// owns and can be asked questions. So the raw form is what the compliance-coding question is
+// actually answered from, and the decoded form is kept only because it names the vendor and part.
+//
+// Both spellings are rendered from the same rows below, so the argv a grant executes and the
+// Cmnd_Spec that authorizes it cannot drift apart -- the fork measured on srv5/srv6 2026-08-22,
+// where the sudoers line carried a subject the argv did not.
+data ethtool_module_info_raw_keyword: NonEmptyStr = "raw" as NonEmptyStr
+data ethtool_module_info_raw_on: NonEmptyStr = "on" as NonEmptyStr
+
+fn ethtool_module_info_raw_argv(device: NonEmptyStr) -> List<String> {
+  [
+    ethtool_binary_name as String,
+    ethtool_module_info_flag as String,
+    device as String,
+    ethtool_module_info_raw_keyword as String,
+    ethtool_module_info_raw_on as String,
+  ]
+}
+
+fn ethtool_module_info_raw_command(device: NonEmptyStr) -> NonEmptyStr {
+  join([
+    ethtool_binary_path() as String,
+    " ", ethtool_module_info_flag as String,
+    " ", device as String,
+    " ", ethtool_module_info_raw_keyword as String,
+    " ", ethtool_module_info_raw_on as String,
+  ], "") as NonEmptyStr
+}
