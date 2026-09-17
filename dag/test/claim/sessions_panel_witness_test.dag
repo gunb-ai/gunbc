@@ -21,7 +21,10 @@ import gunbc.worker_lifecycle {
 import gunbc.roadmap_component {
   dispatch_client_js_source, sessions_route_path,
 }
-import gunbc.roadmap_style { roadmap_css }
+import gunbc.roadmap_style { roadmap_rules }
+import gunbc.design.material { StaticRule }
+import extdeps.languages.css.selectors { ClassSelector }
+import v2.std.algebra { any }
 import std.upsert_decision { ObservationVerdict, Converged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -200,6 +203,15 @@ test fn attempts_refusal_withdraws_prior_rows() -> Bool {
 }
 
 test fn sessions_banner_is_styled_loud() -> Bool {
-  return string_contains(s: roadmap_css(), pattern: ".observe-refused { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-4) var(--space-0) var(--space-8); font-family: var(--font-mono) }")
+  any(xs: roadmap_rules(), predicate: fn(r) {
+    match r {
+      StaticRule { selector: sel, decls: decls } =>
+        match sel {
+          ClassSelector { name: n } => n == "observe-refused" && count(decls) == 6
+          _ => false
+        }
+      _ => false
+    }
+  })
 }
 
