@@ -10,7 +10,7 @@ import gunbc.roadmap_serve {
   InstrumentTunerAssetHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
-  BeltPublishHandler,
+  BeltPublishHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -109,6 +109,8 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
+    && selects(method: POST, path: "/approvals", want: ApprovalSubmitHandler)
+    && selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
@@ -415,6 +417,32 @@ test fn an_absent_identity_arrives_at_the_handler_as_absent() -> Bool {
   )
   string_contains(s: r.body, pattern: "identity: \n")
     && !string_contains(s: r.body, pattern: "briansrls")
+}
+
+test fn a_garbage_approval_submission_is_400_and_names_the_unreadable_body() -> Bool {
+  let r = roadmap_serve_respond(
+    method_label: "POST",
+    path: "/approvals",
+    body: "nope",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 400
+    && string_contains(s: r.body, pattern: "approval submission:")
+    && !string_contains(s: r.body, pattern: "http")
+}
+
+test fn an_unfiled_escalation_status_is_text_plain_standing() -> Bool {
+  let r = roadmap_serve_respond(
+    method_label: "GET",
+    path: "/approvals/esc-never-filed",
+    body: "",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: "standing=")
+    && !string_contains(s: r.body, pattern: "{")
 }
 
 // ── The plan authority is a parameter ───────────────────────────────────────────────────────────

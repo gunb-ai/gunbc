@@ -5,6 +5,7 @@ import std.types { Bool, NonEmptyStr, String, Timestamp, POST, GET, Secret }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, mac_verify, MacVerified, MacTagMismatch, mac_key_material_hex_length, mac_suite_key_size }
 import std.measure { byte_size_count }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import extdeps.tailscale.identity { tailnet_identity_of }
 import extdeps.filesystem.filesystem_io { filesystem_exact_read }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
@@ -14,7 +15,7 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed,
   StoredDecisionParsed, StoredRecordUnreadable,
   claims_for, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
-  IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, approval_identity_trust,
+  IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, approval_identity_trust, approval_identity_trust_for,
   redeem_over_store, RedemptionIdentityUntrusted,
 }
 
@@ -111,12 +112,22 @@ test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() ->
 
 // ── the deployment property gates everything ───────────────────────────────────────────────────
 
+// THE TRUST STANDING FOLLOWS THE INSTANCE ROW AND NOTHING ELSE: loopback establishes it, any other
+// bind or an unparseable host keeps it closed, and the production row is exactly the derivation
+// over srv1_live_dashboard_instance.listen_host -- so the gate cannot be opened by editing a row
+// beside the one the unit is emitted from.
+test fn identity_trust_is_derived_from_the_instance_bind() -> Bool {
+  match approval_identity_trust_for(listen_host: "127.0.0.1") { IdentityHeaderTrustEstablished { evidence: _ } => true  _ => false }
+    && match approval_identity_trust_for(listen_host: "0.0.0.0") { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
+    && match approval_identity_trust_for(listen_host: "srv1.internal") { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
+    && approval_identity_trust == approval_identity_trust_for(listen_host: srv1_live_dashboard_instance().listen_host)
+}
+
 // AN UNTRUSTED IDENTITY HEADER REFUSES BEFORE THE SEGMENT IS EVEN PARSED -- with a well-formed
-// segment and a loaded key, so nothing else could be the cause. The production row is established
-// as of 2026-09-17 (loopback bind + tailscale serve), so the untrusted standing is supplied here;
-// the row itself is pinned established so a regression to not-established is loud.
+// segment and a loaded key, so nothing else could be the cause. The untrusted standing is supplied,
+// since the production row is whatever the instance bind makes it.
 test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool {
-  match approval_identity_trust { IdentityHeaderTrustEstablished { evidence: _ } => true  _ => false }
+  true
     && match redeem_over_store(
       root: "/nonexistent/approvals",
       trust: IdentityHeaderTrustNotEstablished { blocker: "witness: the deployment cannot vouch for the header" },

@@ -15,6 +15,9 @@ import std.scoped_authorization {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
 import extdeps.tailscale.identity { TailnetIdentity }
+import extdeps.network.address { IpV4, ip_address_is_loopback }
+import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
@@ -103,10 +106,9 @@ data approval_mac_key_id: MacKeyId = "approval-capability-mac-key/1" as MacKeyId
 data approval_mac_key_suite: MacSuite = HmacSha256
 
 // WHERE THE KEY LIVES ON THE HOST THAT SERVES /approve: a file under the roadmap server's config
-// directory, the same shape as /etc/gunbc-ntfy/publisher-token, written by fleet converge from the
-// SecretRef above and readable by the unit's user only. The server reads the PATH from this row and
-// the material into a Secret; nothing renders it. The converge step that writes the file is the
-// declared frontier at the bottom of this module.
+// directory, the same shape as /etc/gunbc-ntfy/publisher-token, written by fleet-converge mode
+// approval_keyring_converge from the SecretRef above and readable by the unit's user only. The
+// server reads the PATH from this row and the material into a Secret; nothing renders it.
 data approval_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-mac-key"
 
 // ABSENT AND UNREADABLE ARE TWO REFUSALS WITH TWO REMEDIES (review 66990;
@@ -195,19 +197,44 @@ data approval_capability_expectation: CapabilityExpectation = CapabilityExpectat
 data approval_operator_login: NonEmptyStr = fleet_operator_email
 
 // AND THE IDENTITY HEADER IS ONLY EVIDENCE WHEN THE BACKEND IS REACHABLE THROUGH TAILSCALE SERVE
-// ALONE (extdeps.tailscale.identity identity_header_trust_is_a_deployment_property_note). The
-// roadmap unit binds 0.0.0.0:8080 today. Until the deployment is loopback-only behind
-// `tailscale serve`, a request that reaches the socket directly can present any login, and a
-// redemption that trusted it would report the operator's consent for something they never saw.
-// So the store refuses to redeem unless the deployment property is DECLARED established, and the
-// declaration is a row a deploy change flips with its evidence -- not a flag a handler defaults.
+// ALONE (extdeps.tailscale.identity identity_header_trust_is_a_deployment_property_note). Until
+// the deployment is loopback-only behind `tailscale serve`, a request that reaches the socket
+// directly can present any login, and a redemption that trusted it would report the operator's
+// consent for something they never saw. So the store refuses to redeem unless the deployment
+// property is established, and the standing is derived from the instance row the unit is emitted
+// from (approval_identity_trust_for) -- not a flag a handler defaults and not a second row.
 type IdentityTrustStanding
   = IdentityHeaderTrustEstablished { evidence: NonEmptyStr }
   | IdentityHeaderTrustNotEstablished { blocker: NonEmptyStr }
 
-data approval_identity_trust: IdentityTrustStanding = IdentityHeaderTrustEstablished {
-  evidence: "gunbc-roadmap.service on srv1 binds --host 127.0.0.1 --port 8080 (unit file sha256 prefix 4ab108663911, installed by the live_deploy apply of 2026-09-17, release 27af406457fc), and tailscale serve publishes https://srv1.tailecbe08.ts.net/ -> http://127.0.0.1:8080 (measured 2026-09-16 and re-read 2026-09-17), so every request the handler sees arrived through the tailnet proxy and its Tailscale-User-Login header is the proxy's, not the caller's.",
+// THE TRUST STANDING IS DERIVED FROM THE ROW THE UNIT IS EMITTED FROM, never asserted beside it
+// (review 67264): gunbc.roadmap_dashboard_instance srv1_live_dashboard_instance.listen_host is the
+// one fact live_deploy turns into the unit's --host, so the standing reads that field. A loopback
+// bind means every request reaches the handler through the tailscale serve proxy
+// (https://srv1.tailecbe08.ts.net/ -> 127.0.0.1:8080, measured 2026-09-16 and 2026-09-17) and the
+// Tailscale-User-Login header is the proxy's; any other bind means the header is self-assertable
+// by whoever can reach the port, and the gate stays closed. A later edit of the row back to
+// 0.0.0.0 therefore closes the gate in the same commit, with no second row to forget.
+fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStanding {
+  match parse_ipv4_address(text: listen_host as String) {
+    Ipv4Parsed { address: a } =>
+      if ip_address_is_loopback(addr: IpV4 { v4: a }) {
+        IdentityHeaderTrustEstablished {
+          evidence: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host), reachable only through tailscale serve https://srv1.tailecbe08.ts.net/ -> loopback, so the identity header is the proxy's"], "") as NonEmptyStr,
+        }
+      } else {
+        IdentityHeaderTrustNotEstablished {
+          blocker: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host), so a Tailscale-User-Login header can be set by anyone who reaches the port; the gate opens when the row binds loopback"], "") as NonEmptyStr,
+        }
+      }
+    Ipv4ParseFailed { error: _ } =>
+      IdentityHeaderTrustNotEstablished {
+        blocker: join(["srv1_live_dashboard_instance.listen_host '", listen_host as String, "' is not an IPv4 address, so the bind cannot be classified as loopback"], "") as NonEmptyStr,
+      }
+  }
 }
+
+data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: srv1_live_dashboard_instance().listen_host)
 
 // ── the store ──────────────────────────────────────────────────────────────────────────────────
 
@@ -698,10 +725,3 @@ data approval_issuance_frontier: DissolutionCondition = unbound_dissolution(
   description: "a MAC issuance primitive (hmac_sha256_hex) and extdeps.crypto.mac mac_sign, so that gunbc.auth.approval_capability can mint an ApprovalCapability for claims_for(request, ProposeApprove) and claims_for(request, ProposeDeny) -- SUFFICIENT FOR filing a request into this store and publishing gunbc.auth.approval_notification with capability_path_segment links; in flight as the approval-loop part A lane (eager-owl-205, 2026-09-16). NOT satisfied by a hand-computed tag committed as a fixture, which is what the witness uses to exercise the verify side until then.",
 )
 
-// THE KEY ON THE HOST: fleet converge materializes approval_mac_key_secret_ref into
-// approval_mac_key_path, 0640, owned by root and readable by the roadmap unit's user, the same
-// shape as /etc/gunbc-ntfy/publisher-token. Until that step exists the keyring reads absent and
-// every redemption refuses RedemptionKeyringUnavailable -- loud, never a fabricated key.
-data approval_keyring_materialization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a fleet-converge step that reads approval_mac_key_secret_ref through the WIF-backed convergence account and writes approval_mac_key_path (0640 root:<roadmap unit user>) on the host that serves /approve, with the file's sha256 compared to the store's payload -- SUFFICIENT FOR read_approval_keyring to load the key on srv1; the same step is the model for GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE materialization in gunbc.host.host_reset_return_run.",
-)
