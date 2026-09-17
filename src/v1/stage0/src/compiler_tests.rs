@@ -4654,6 +4654,143 @@ mod compiler_tests {
         );
     }
 
+    // CARRIER-KEY-1: THE SPLIT OF THE REFERENCE-SITE FALLBACK ARM. v1.std.core
+    // type_reference_provenance answers the file the node SITS in whenever no Resolved node is bound,
+    // so a reference whose declaration was not recovered is keyed on a location.
+    // type_reference_identity splits that arm by STRUCTURE. These rows supply nodes shaped like the
+    // ones v1.tests.claim.carrier_realization_census observes on the typed tree, which is where the
+    // real producer's shapes are read.
+    //
+    // THE RED is the first row. An implementation that restores the own-span fallback answers
+    // ReferenceIsTheDeclaration on the reference's file and fails it. The legacy read is asserted on
+    // the same node so the row shows the fabricated key it refuses, not just that some refusal happens.
+    // The rows assert nothing about production, which still reads type_reference_provenance
+    // (gunbc.rung_drop type_reference_location_fallback_keys_production_realization).
+    #[test]
+    fn type_reference_identity_split_refuses_where_the_key_is_a_location() {
+        use crate::std_coercion::{
+            ReferenceIdentityUnavailableCause as Cause, TypeDeclarationProvenance as Prov,
+            TypeReferenceIdentity as Id,
+        };
+        fn node(
+            name: &str,
+            file: &str,
+            kind: crate::v1_std_core::ParsedModuleItemKind,
+            resolved: Option<std::rc::Rc<crate::v1_std_core::Node>>,
+        ) -> std::rc::Rc<crate::v1_std_core::Node> {
+            let base = shaped_type_node(name, Vec::new());
+            std::rc::Rc::new(crate::v1_std_core::Node {
+                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: file.to_string(),
+                    start: 0,
+                    end: 0,
+                })),
+                module_item_kind: kind,
+                inferred: resolved.map(|rt| {
+                    std::rc::Rc::new(crate::v1_std_core::InferredNode::Resolved { node: rt })
+                }),
+                ..(*base).clone()
+            })
+        }
+        use crate::v1_std_core::ParsedModuleItemKind::{
+            ModuleItemTypeDeclaration as Decl, NotAModuleItem as Ref,
+        };
+        let identity = |n: std::rc::Rc<crate::v1_std_core::Node>| {
+            (*crate::v1_std_core::type_reference_identity(n)).clone()
+        };
+        let legacy = |n: std::rc::Rc<crate::v1_std_core::Node>| {
+            (*crate::v1_std_core::type_reference_provenance(n)).clone()
+        };
+
+        // (1) THE RED: a field-position reference with no resolution, sitting outside its declaring module.
+        let unresolved = node("String", "src/v2/compiler/01_tokenize.dag", Ref, None);
+        assert!(
+            matches!(identity(unresolved.clone()), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::NoResolutionBoundAtReference)),
+            "an unresolved reference must refuse, never key on the file it sits in"
+        );
+        assert!(
+            matches!(legacy(unresolved), Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/compiler/01_tokenize.dag"),
+            "the legacy read keys that same reference on its own location -- the answer the split refuses"
+        );
+
+        // (2) A node that IS its declaration keeps its own span as a legitimate key.
+        let declaration = node("String", "src/v2/std/text.dag", Decl, None);
+        assert!(
+            matches!(identity(declaration), Id::ReferenceIsTheDeclaration { provenance } if matches!(&*provenance, Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/std/text.dag")),
+            "a type declaration node answers its own declaring file"
+        );
+
+        // (3) The kernel mint for its own name is a declaration with no corpus file.
+        let kernel = node(
+            "String",
+            &crate::v1_std_core::kernel_span("String".to_string()).file,
+            Ref,
+            None,
+        );
+        assert!(
+            matches!(identity(kernel), Id::ReferenceIsTheDeclaration { provenance } if matches!(&*provenance, Prov::KernelMinted { minted_name } if minted_name == "String")),
+            "a kernel-minted node answers KernelMinted through the existing kernel recognizer"
+        );
+
+        // (4) A reference resolved to a declaration node answers that declaration, not its own file.
+        let resolved = node(
+            "List",
+            "src/v2/std/node.dag",
+            Ref,
+            Some(node("List", "dag/std/types.dag", Decl, None)),
+        );
+        assert!(
+            matches!(identity(resolved), Id::ReferenceResolvedToDeclaration { provenance } if matches!(&*provenance, Prov::CorpusDeclared { decl_file } if decl_file == "dag/std/types.dag")),
+            "a Resolved declaration node answers its declaring file"
+        );
+
+        // (5) A Resolved node that is NOT a declaration (the applied-reference expansion built on the
+        // reference's own span) refuses; the legacy read keys it on the reference's file.
+        let expansion = node("FreeMonoid", "src/v2/std/algebra.dag", Ref, None);
+        let applied = node("FreeMonoid", "src/v2/std/algebra.dag", Ref, Some(expansion));
+        assert!(
+            matches!(identity(applied.clone()), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::ResolvedNodeIsNotADeclaration)),
+            "a Resolved node that is not a declaration must refuse, not be read as one"
+        );
+        assert!(
+            matches!(legacy(applied), Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/std/algebra.dag"),
+            "the legacy read keys the non-declaration Resolved node on the reference's location"
+        );
+
+        // (7) A type-variable binder is neither a declaration nor a refusal. Its binding is minted on a
+        // kernel span, so without this arm it would be misfiled as KernelMinted.
+        let binder = std::rc::Rc::new(crate::v1_std_core::Node {
+            inferred: Some(std::rc::Rc::new(
+                crate::v1_std_core::InferredNode::TypeVariable {
+                    id: "T".to_string(),
+                },
+            )),
+            ..(*node(
+                "T",
+                &crate::v1_std_core::kernel_span("T".to_string()).file,
+                Ref,
+                None,
+            ))
+            .clone()
+        });
+        assert!(
+            matches!(identity(binder.clone()), Id::ReferenceIsTypeVariableBinder { binder_name } if binder_name == "T"),
+            "a type-variable binding answers the binder arm, not KernelMinted"
+        );
+        let bound_reference = node("T", "src/v2/std/optional.dag", Ref, Some(binder));
+        assert!(
+            matches!(identity(bound_reference), Id::ReferenceIsTypeVariableBinder { binder_name } if binder_name == "T"),
+            "a reference resolved to a type-variable binding answers the binder arm"
+        );
+
+        // (6) A declaration node with no span is a refusal with its own cause, not a reference miss.
+        let spanless = node("Widget", "", Decl, None);
+        assert!(
+            matches!(identity(spanless), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::DeclarationNodeCarriesNoSpan)),
+            "a declaration without a span refuses with DeclarationNodeCarriesNoSpan"
+        );
+    }
+
     fn item_of_kind(
         name: &str,
         kind: crate::v1_std_core::ParsedModuleItemKind,
