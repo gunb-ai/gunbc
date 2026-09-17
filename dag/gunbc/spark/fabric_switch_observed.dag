@@ -36,12 +36,37 @@ import gunbc.fleet_intent_network {
 //   - BOTH second-function netdevs come up from the one leg, with distinct MACs the switch sees on
 //     the same lane. Only one of them may carry the rail address.
 //
-// THE LEG LINKS AT 50G, NOT 100G, AND THE COMPLIANCE CODING IS A DEMONSTRATED BLOCKER. The legs are
-// QSFP28-coded: extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") at byte
-// 192, with byte 116 read as 00h -- so nothing attests 100GBASE-CR2. The ConnectX-7 firmware
-// therefore derives "Supported Cable Speed 50G_2X" and refuses 100G_2X with "Cable speed not
-// enabled" (mstlink status opcode 16). That the coding blocks the mode is observed. Whether it is
-// the ONLY blocker is NOT, and this file must not say otherwise.
+// THE LEG LINKS AT 50G, THE CODING BLOCKER IS GONE, AND A SECOND BLOCKER IS NOW DEMONSTRATED. Until
+// 2026-09-16 the legs were QSFP28-coded: extended specification compliance 0x0B ("100GBASE-CR4 or
+// 25GBASE-CR CA-L") at byte 192, with byte 116 read as 00h, so nothing attested 100GBASE-CR2; the
+// ConnectX-7 firmware derived "Supported Cable Speed 50G_2X" and refused 100G_2X with "Cable speed
+// not enabled" (mstlink status opcode 16). That head closed by refusing to say the coding was the
+// ONLY blocker. It was not, and the experiment the head called for is what settled it.
+//
+// THE RE-FLASH LANDED. The operator programmed every leg of both breakouts to the NVIDIA (ETH)
+// coding on 2026-09-16 and each leg this repository read afterwards carries byte 192 = 0x40, with
+// BOTH SFF-8636 checksums recomputing correctly over the read bytes -- CC_BASE at 191 over 128-190
+// and CC_EXT at 223 over 192-222 -- so the programmer updated the checksum its own byte-192 write
+// invalidated, and the coding is not merely present but self-consistent. Every ConnectX-7 queried
+// afterwards derives "Supported Cable Speed 100G_2X, 50G_1X, 50G_2X, 25G, 10G, 1G" and reports
+// status opcode 0, "No issue was observed". The refusal that stood here for eight days is retired
+// by execution, which is what product.breakout_leg_programming's read obligation asked for.
+//
+// AND THE MODE STILL DOES NOT TRAIN, so the coding was necessary and not sufficient. One lane was
+// driven through four switch/NIC combinations and the link came up in none of them: switch lane
+// forced to 100G-baseCR2 with the NIC left in auto-negotiation (the NIC never retrains -- a forced
+// lane offers no AN partner, so it holds the rate it already had); the lane forced with the NIC
+// forced to 100G at every width; the lane forced with the NIC forced to exactly 100G_2X, the one
+// mode the new coding attests; and that same pair with the lane's FEC moved from fec91 to auto. The
+// last three all report mstlink status opcode 2, "Negotiation failure", with the physical state in
+// Polling and no speed, width or FEC resolved. The lane was returned to 50G-baseCR2 / fec91 /
+// autoneg-off and the link recovered, so the 50G path is undamaged by the attempt.
+//
+// WHAT THAT LEAVES OPEN IS NAMED, NOT GUESSED. A negotiation failure at 100G_2X on an assembly whose
+// coding attests it is consistent with the copper's insertion loss, with the switch serdes' PAM4
+// capability on a broken-out lane, and with an FEC the two ends cannot agree on -- and nothing read
+// so far discriminates between them. So this block records the failure and does NOT name its cause;
+// the operator holds the link-training investigation.
 //
 // WHAT BYTE 222 DOES AND DOES NOT ESTABLISH. It says 6Ah = 106, which at the specification's
 // 250 MBd unit is a declared nominal 26,500 MBd. That is EEPROM METADATA: it is what the module
@@ -111,8 +136,81 @@ type FabricLegCableObserved {
 data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
   vendor: "FS" as NonEmptyStr,
   part_number: "QDD-400G-4QPC015" as NonEmptyStr,
-  nic_supported_speeds: "50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028)" as NonEmptyStr,
+  nic_supported_speeds: "100G_2X, 50G_1X, 50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028, after the 2026-09-16 NVIDIA (ETH) re-flash)" as NonEmptyStr,
   linked_speed_gbps: 50,
+}
+
+// THE LINK'S RATE AND THE MODE THE NIC WILL ACCEPT ARE NOW DIFFERENT FACTS, and the row above says
+// both because the re-flash separated them: the NIC accepts 100G_2X and the link still runs at 50G.
+// Before 2026-09-16 the two moved together, which is why one row could carry them without the pair
+// ever disagreeing.
+//
+// THE SWITCH'S OWN RATE FIELD IS NOT AN ADMISSIBLE READING OF EITHER. With the lane configured for
+// 100G-baseCR2, RouterOS `/interface/ethernet/monitor` reported `rate: 100Gbps` and
+// `status: link-ok` while the ConnectX-7 at the other end of that same lane was trained at 50G and
+// reporting it. The field echoes the lane's CONFIGURATION, so consuming it as a measured rate
+// produces exactly the fabricated plausible output DESIGN section 5 forbids -- and it would have
+// reported this fabric converged at 100G all evening. The trained rate is read from the host, which
+// is why both fields on this row are host-side. The same monitor's `eeprom-checksum: bad` is a
+// switch-side artefact of reading a QSFP-DD module on a different offset basis than the host uses:
+// the checksums verify over the host's dump.
+type ForcedModeTrainingAttempt {
+  lane_interface: NonEmptyStr
+  switch_speed: NonEmptyStr
+  switch_fec: NonEmptyStr
+  nic_forced_modes: NonEmptyStr
+  trained: Bool
+  nic_status_opcode: Nat
+  nic_recommendation: NonEmptyStr
+}
+
+// ONE ROW PER COMBINATION DRIVEN, so "we tried 100G and it failed" cannot stand in for which pairing
+// failed. Each row is a receipt of a live attempt on 2026-09-16 against lane qsfp56-dd-2-1 (the
+// spark-3336 leg), chosen so a failure cost one host rather than the group. `trained: false` with
+// opcode 2 is the discriminating result; the first row is separate because it did not fail to
+// train, it never attempted to -- a NIC in auto-negotiation opposite a forced lane keeps the rate it
+// already holds, which is why the switch-side change alone looked like a no-op.
+data fabric_forced_100g_attempts: List<ForcedModeTrainingAttempt> = [
+  ForcedModeTrainingAttempt {
+    lane_interface: "qsfp56-dd-2-1" as NonEmptyStr,
+    switch_speed: "100G-baseCR2" as NonEmptyStr,
+    switch_fec: "fec91" as NonEmptyStr,
+    nic_forced_modes: "none, auto-negotiation left on" as NonEmptyStr,
+    trained: false,
+    nic_status_opcode: 0,
+    nic_recommendation: "No issue was observed (the NIC held 50G_2X and never re-trained)" as NonEmptyStr,
+  },
+  ForcedModeTrainingAttempt {
+    lane_interface: "qsfp56-dd-2-1" as NonEmptyStr,
+    switch_speed: "100G-baseCR2" as NonEmptyStr,
+    switch_fec: "fec91" as NonEmptyStr,
+    nic_forced_modes: "100G_1X, 100G_2X, 100G_4X" as NonEmptyStr,
+    trained: false,
+    nic_status_opcode: 2,
+    nic_recommendation: "Negotiation failure" as NonEmptyStr,
+  },
+  ForcedModeTrainingAttempt {
+    lane_interface: "qsfp56-dd-2-1" as NonEmptyStr,
+    switch_speed: "100G-baseCR2" as NonEmptyStr,
+    switch_fec: "fec91" as NonEmptyStr,
+    nic_forced_modes: "100G_2X" as NonEmptyStr,
+    trained: false,
+    nic_status_opcode: 2,
+    nic_recommendation: "Negotiation failure" as NonEmptyStr,
+  },
+  ForcedModeTrainingAttempt {
+    lane_interface: "qsfp56-dd-2-1" as NonEmptyStr,
+    switch_speed: "100G-baseCR2" as NonEmptyStr,
+    switch_fec: "auto" as NonEmptyStr,
+    nic_forced_modes: "100G_2X" as NonEmptyStr,
+    trained: false,
+    nic_status_opcode: 2,
+    nic_recommendation: "Negotiation failure" as NonEmptyStr,
+  },
+]
+
+fn fabric_forced_100g_ever_trained() -> Bool {
+  any(fabric_forced_100g_attempts, a => a.trained)
 }
 
 type FabricLaneObserved {
@@ -208,17 +306,58 @@ type FabricLegEepromObservation {
   coding: CableLegObservation
 }
 
-// Each row states what ITS dump returned, written out rather than pointing at a shared value. The
-// two agree byte for byte today; that agreement is a DERIVABLE fact about two receipts, and storing
-// it as one row would make the agreement unfalsifiable and the divergence unrepresentable.
+// Each row states what ITS dump returned, written out rather than pointing at a shared value. All
+// eight agree byte for byte today; that agreement is a DERIVABLE fact about eight receipts, and
+// storing it as one row would make the agreement unfalsifiable and the divergence unrepresentable.
+//
+// ALL EIGHT LEGS ARE NOW READ, WHERE TWO WERE BEFORE, and the roster went from a partial plant that
+// refused to a complete one. The rows are the post-re-flash acquisition of 2026-09-16: every leg
+// returns byte 192 = 0x40 and both SFF-8636 checksums recompute over the read bytes, so the
+// programmer's write is self-consistent on every leg and not merely on the ones that were spot
+// checked. The pre-re-flash rows for spark-a3ee and spark-ac79 are GONE rather than kept beside
+// these: fabric_leg_reading takes the first receipt for a host, so a second row for one host is a
+// second answer to what that leg codes TODAY, and the 0x0B state exists on no leg in the plant.
+//
+// THE SERIALS WERE NOT UNIQUE ON THE FIRST READ, AND THAT IS WHY UNIQUENESS IS CHECKED RATHER THAN
+// ASSUMED. The first post-re-flash pass read the cage-2 legs as S2630771509-3 and -4 -- serials the
+// cage-1 legs also carried -- which cannot both be true of one leg. The programmer had written two
+// legs with another assembly's serial; the operator re-flashed exactly those two and they now read
+// S2630771508-3 and -4. So the plant resolves into one assembly per cage, legs 1 through 4, which is
+// what a QSFP-DD breakout physically is. The receipt identity survived that defect precisely because
+// it is per-acquisition: a shared row could not have represented two legs claiming one serial, and
+// the witness that compares serials across rows is what makes the recurrence visible.
 data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
+  FabricLegEepromObservation {
+    host: "spark-3bd5" as NonEmptyStr,
+    vendor_serial: "S2630771509-1" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 64,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
   FabricLegEepromObservation {
     host: "spark-a3ee" as NonEmptyStr,
     vendor_serial: "S2630771509-2" as NonEmptyStr,
-    date_code: "260728" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
-      primary_compliance_code: 11,
+      primary_compliance_code: 64,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+  FabricLegEepromObservation {
+    host: "spark-c2b1" as NonEmptyStr,
+    vendor_serial: "S2630771509-3" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 64,
       secondary_compliance: SecondaryObserved { code: 0 },
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
@@ -226,11 +365,59 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
   },
   FabricLegEepromObservation {
     host: "spark-ac79" as NonEmptyStr,
-    vendor_serial: "S2630771509-3" as NonEmptyStr,
-    date_code: "260728" as NonEmptyStr,
+    vendor_serial: "S2630771509-4" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
-      primary_compliance_code: 11,
+      primary_compliance_code: 64,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+  FabricLegEepromObservation {
+    host: "spark-0c75" as NonEmptyStr,
+    vendor_serial: "S2630771508-1" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 64,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+  FabricLegEepromObservation {
+    host: "spark-b66c" as NonEmptyStr,
+    vendor_serial: "S2630771508-2" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 64,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+  FabricLegEepromObservation {
+    host: "spark-3336" as NonEmptyStr,
+    vendor_serial: "S2630771508-3" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 64,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+  FabricLegEepromObservation {
+    host: "spark-2196" as NonEmptyStr,
+    vendor_serial: "S2630771508-4" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 64,
       secondary_compliance: SecondaryObserved { code: 0 },
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
