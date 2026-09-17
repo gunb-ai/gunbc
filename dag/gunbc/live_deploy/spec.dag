@@ -344,8 +344,7 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // why that is a deliberate stop short of the stronger model rather than the model itself.
 
 // THE UNIT NAME IS PASSED, NOT DERIVED, AND THAT IS A DELIBERATE STOP RATHER THAN THE WEAKER MODEL.
-// Deriving it from instance_id is what this module should eventually do — it is what
-// dashboard_instance_service_session_name already does for the tmux session, and derivation is what
+// Deriving it from instance_id is what this module should eventually do — derivation is what
 // makes a collision unwritable instead of merely unlikely. But srv1-live is RUNNING as gunbc-
 // roadmap.service right now, and instance_id srv1-live derives gunbc-srv1-live.service. Deriving
 // here would rename a live unit as a side effect of an abstraction change: the next apply installs
