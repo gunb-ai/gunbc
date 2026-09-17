@@ -31,6 +31,7 @@ import gunbc.auth.approval_keyring_pins {
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_capture_path_env,
   mtcollins1_boot_sol_pid_path_env,
+  mtcollins1_boot_sol_settle,
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username }
@@ -40,7 +41,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
-import std.measure { second, millisecond, Minute, minute, minute_count }
+import std.measure { second, millisecond, Minute, minute, minute_count, second_count }
 import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
@@ -2013,7 +2014,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: mtcollins1_sol_activate_ipmitool_command()) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_capture_path_env as String, "=\"$SOL_OUT\""))) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_pid_path_env as String, "=\"$SOL_PID_FILE\""))) },
-    Do { run: ci_retry_body_run(command: "sleep 2") },
+    Do { run: ci_retry_body_run(command: concat("sleep ", to_string(second_count(s: mtcollins1_boot_sol_settle) as Int))) },
   ]
 }
 

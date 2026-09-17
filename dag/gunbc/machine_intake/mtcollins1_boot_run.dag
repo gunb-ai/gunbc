@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
-import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp, Duration }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -30,12 +30,11 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical }
 import extdeps.clock { Clock }
 import v2.std.optional { Present }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.http.client
-import extdeps.shell
 
 data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
 
@@ -49,8 +48,21 @@ data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
 data mtcollins1_boot_poll_tick_budget: Int = 90
 
+data mtcollins1_boot_sol_settle: Second = second(count: 2)
+
+data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
+
+data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
+
 fn mtcollins1_boot_approval_window() -> Second {
   second(count: mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int))
+}
+
+fn mtcollins1_boot_step_timeout_minutes() -> Duration {
+  let secs = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_approval_window()) as Int)
+    + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
+  (secs + 59) / 60
 }
 
 fn mtcollins1_status_from_get(success: Bool, body: String) -> FiledApprovalStatus {
@@ -171,25 +183,18 @@ fn mtcollins1_boot_poll_ticks(
   }
 }
 
-fn env_path(name: NonEmptyStr) -> String {
-  match shell.Env.Get(name: name).value {
-    Absent => ""
-    Present { value: v } => trim(s: v)
-  }
-}
-
 fn mtcollins1_boot_wet() -> ProcessExit
   uses net: std.resources.Network
 {
-  let cred = env_path(name: host_reset_bmc_credential_path_env)
+  let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
     return exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched")))
   }
-  let sub_path = env_path(name: approval_submission_mac_key_path_env)
+  let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
   if sub_path == "" {
     return exit_failure(reason: concat("mtcollins1 boot: ", concat(approval_submission_mac_key_path_env as String, " is unset; controller untouched")))
   }
-  let sol_pid_path = env_path(name: mtcollins1_boot_sol_pid_path_env)
+  let sol_pid_path = actions_variable_trimmed(name: mtcollins1_boot_sol_pid_path_env)
   if !mtcollins1_boot_sol_is_held(pid_path: sol_pid_path) {
     return exit_failure(reason: "mtcollins1 boot: SOL collector process is not held; ipmitool sol activate must still be live before any controller write")
   }
@@ -225,7 +230,7 @@ fn mtcollins1_boot_wet() -> ProcessExit
         SubmissionMacKeyNotHex { key_id: k } =>
           exit_failure(reason: concat("mtcollins1 boot: submission MAC key is not hex: ", k as String))
         SubmissionMacReady { tag_hex: tag } => {
-          let tmp = env_path(name: "RUNNER_TEMP" as NonEmptyStr)
+          let tmp = actions_variable_trimmed(name: "RUNNER_TEMP" as NonEmptyStr)
           if tmp == "" {
             return exit_failure(reason: "mtcollins1 boot: RUNNER_TEMP is unset; cannot write the submit body")
           }

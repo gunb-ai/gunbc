@@ -61,7 +61,7 @@ import gunbc.fleet_workflow_steps {
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
-import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
@@ -1191,7 +1191,7 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_boot_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+    timeout_minutes: Present { value: mtcollins1_boot_step_timeout_minutes() }
   }
 }
 

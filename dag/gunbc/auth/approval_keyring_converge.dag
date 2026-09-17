@@ -12,9 +12,8 @@ import gunbc.auth.approval_request_submission {
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.sudo.elevation { sudo_elevate }
-import extdeps.shell
 import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, actions_variable_trimmed }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_key_path_env,
   approval_capability_mac_key_path_env,
@@ -120,13 +119,6 @@ fn keyring_ssh_target() -> SshTarget {
   }
 }
 
-fn env_path(name: NonEmptyStr) -> String {
-  match shell.Env.Get(name: name).value {
-    Absent => ""
-    Present { value: v } => trim(s: v)
-  }
-}
-
 fn keyring_elevated_exec(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -177,8 +169,8 @@ fn keyring_install_file(
 fn approval_keyring_converge_on_host() -> ProcessExit
   uses net: Network
 {
-  let cap_path = env_path(name: approval_capability_mac_key_path_env)
-  let sub_path = env_path(name: approval_submission_mac_key_path_env)
+  let cap_path = actions_variable_trimmed(name: approval_capability_mac_key_path_env)
+  let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
   if cap_path == "" {
     exit_failure(reason: concat("approval keyring: ", concat(approval_capability_mac_key_path_env as String, " is unset; the capability key stays in the runner temp until the administrator write")))
   } else if sub_path == "" {

@@ -6,6 +6,7 @@ import std.measure { second_count }
 import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
+  mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_status_from_get, mtcollins1_boot_instant_from_probe, mtcollins1_boot_sol_is_held,
 }
 import gunbc.auth.approval_request_client {
@@ -18,6 +19,13 @@ test fn approval_window_is_the_poll_budget_not_zero() -> Bool {
   let window = second_count(s: mtcollins1_boot_approval_window()) as Int
   window == mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int)
     && window > 0
+}
+
+test fn the_step_timeout_covers_the_poll_window_and_the_actuation_allowance() -> Bool {
+  let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_approval_window()) as Int)
+    + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
+  (mtcollins1_boot_step_timeout_minutes() * 60) >= covered
 }
 
 test fn a_zero_window_expires_on_the_next_observation() -> Bool {

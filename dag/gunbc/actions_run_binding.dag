@@ -54,6 +54,13 @@ fn actions_variable_read(name: String) -> ActionsVariableRead {
   }
 }
 
+fn actions_variable_trimmed(name: NonEmptyStr) -> String {
+  match actions_variable_read(name: name as String) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+}
+
 fn observe_actions_run_binding() -> ActionsRunBindingObservation {
   match actions_variable_read(name: github_repository_variable_name) {
     ActionsVariableAbsent { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
