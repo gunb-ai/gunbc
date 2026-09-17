@@ -1,7 +1,5 @@
 module v2.test.lens_structural_resolution.binds_to_resolved
 
-
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sr_claim_hash: Hash = sr_claim_hash
 
@@ -74,5 +72,3 @@ test fn binds_to_resolved_claim_holds() -> Bool {
     _ => false
   }
 }
-
-data binds_to_resolved_claim_passes: Bool = binds_to_resolved_claim_holds()

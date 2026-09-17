@@ -129,15 +129,3 @@ test fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
-
-test fn isolate_t1_holds() -> Bool {
-  compile_eval_bool_reaches_node_value_holds()
-}
-
-test fn isolate_t2_holds() -> Bool {
-  compile_eval_bool_via_compile_entry_refuses_underived_holds()
-}
-
-test fn isolate_t3_holds() -> Bool {
-  compile_eval_unit_unrepresentable_red_holds()
-}
