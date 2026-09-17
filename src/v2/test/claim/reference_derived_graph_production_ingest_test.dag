@@ -1,0 +1,238 @@
+module v2.test.claim.reference_derived_graph_production_ingest
+
+import std.types { Int }
+import v2.compiler.reference_site_collector { collect_module_reference_sites }
+import v2.lens.module_graph {
+  LocatedModuleRoot,
+  ModuleDependencyEdge,
+  reference_derived_edges_from_located_roots
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes,
+  fold_node,
+  NodeFold
+}
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+import v2.test.claim.reference_derived_graph_fixture {
+  consumer_both_path,
+  consumer_call_only_path,
+  consumer_callee_only_path,
+  consumer_field_bare_local_path,
+  consumer_import_only_path,
+  consumer_reference_only_path,
+  consumer_type_bare_local_path,
+  consumer_type_imported_path,
+  consumer_type_only_path,
+  provider_module,
+  provider_path,
+  xl4_fixture_trees,
+  xl4_item_at,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// MEASUREMENTS OF TODAY'S XL-4 ROUTE over the shared ingest xl4_fixture_trees.located.
+// The collector and edge fold stay per claim. Call-argument and callee: tree-side.
+// Qualified mentions: dotted-reference capability. Bare field-type: tree-side census.
+
+data provided_marker_dotted: String = "test.fixture.reference_derived_graph.provider.ProvidedMarker"
+
+data provided_marker_bare: String = "ProvidedMarker"
+
+data local_marker_bare: String = "LocalMarker"
+
+data local_field_only_bare: String = "LocalFieldOnly"
+
+data local_param_marker_bare: String = "LocalParamMarker"
+
+data local_wrapper_sym: Symbol = ^LocalWrapper
+
+data local_field_only_sym: Symbol = ^LocalFieldOnly
+
+data local_param_marker_sym: Symbol = ^LocalParamMarker
+
+data local_wrapper_field_name_sym: Symbol = ^f
+
+data production_ingest_refused_count: Int = -1
+
+fn located_pair(items: List<LocatedModuleRoot>, consumer_path: String) -> Optional<List<LocatedModuleRoot>> {
+  match xl4_item_at(items: items, path: provider_path) {
+    Absent => Absent
+    Present { value: provider } =>
+      match xl4_item_at(items: items, path: consumer_path) {
+        Absent => Absent
+        Present { value: consumer } => Present { value: [provider, consumer] }
+      }
+  }
+}
+
+fn production_edge_count(path: String, target: String) -> Int {
+  match xl4_fixture_trees().located {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match located_pair(items: items, consumer_path: path) {
+        Absent => production_ingest_refused_count
+        Present { value: pair } =>
+          length(
+            xs: reference_derived_edges_from_located_roots(
+              items: pair
+            ).edges |> filter(e => e.path == path && e.target_module == target)
+          )
+      }
+  }
+}
+
+fn site_spelling_count(path: String, needle: String) -> Int {
+  match xl4_fixture_trees().located {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match xl4_item_at(items: items, path: path) {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          length(
+            xs: collect_module_reference_sites(root: item.root).sites
+              |> filter(site => qualified_name_to_dotted_string(qn: site.spelling) == needle)
+          )
+      }
+  }
+}
+
+fn node_atom_is(n: Node, needle: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == needle
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn tree_named_edge_count_in_root(root: Node, needle: Symbol) -> Int {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(_) { 0 },
+      step: fn(acc, edge, child_count) {
+        let here = match edge.label {
+          Named { name: nm } => if nm == needle { 1 } else { 0 }
+          Positional => 0
+        }
+        acc + here + child_count
+      }
+    }
+  )
+}
+
+fn tree_atom_count(path: String, needle: Symbol) -> Int {
+  match xl4_fixture_trees().located {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match xl4_item_at(items: items, path: path) {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          length(xs: node_subtree_nodes(root: item.root) |> filter(n => node_atom_is(n: n, needle: needle)))
+      }
+  }
+}
+
+fn tree_named_edge_count(path: String, needle: Symbol) -> Int {
+  match xl4_fixture_trees().located {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match xl4_item_at(items: items, path: path) {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          tree_named_edge_count_in_root(root: item.root, needle: needle)
+      }
+  }
+}
+
+fn tree_atom_and_label_absent(path: String, needle: Symbol) -> Bool {
+  tree_atom_count(path: path, needle: needle) == 0
+    && tree_named_edge_count(path: path, needle: needle) == 0
+}
+
+test fn production_route_reference_only_plain_value_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_reference_only_path, target: provider_module) == 0
+}
+
+test fn production_route_import_only_has_no_reference_edge_holds() -> Bool {
+  production_edge_count(path: consumer_import_only_path, target: provider_module) == 0
+}
+
+test fn production_route_both_plain_value_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_both_path, target: provider_module) == 0
+}
+
+test fn production_route_call_contents_are_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
+}
+
+test fn production_route_type_position_qualified_site_is_missing_today_holds() -> Bool {
+  site_spelling_count(path: consumer_type_only_path, needle: provided_marker_dotted) == 0
+}
+
+test fn production_route_type_position_qualified_edge_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_type_only_path, target: provider_module) == 0
+}
+
+test fn production_route_type_imported_bare_site_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_type_imported_path, needle: provided_marker_bare) > 0
+}
+
+test fn production_route_type_imported_site_does_not_yield_edge_today_holds() -> Bool {
+  production_edge_count(path: consumer_type_imported_path, target: provider_module) == 0
+}
+
+test fn production_route_bare_local_type_position_site_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_type_bare_local_path, needle: local_marker_bare) > 0
+}
+
+test fn production_route_bare_param_type_in_field_fixture_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_field_bare_local_path, needle: local_param_marker_bare) > 0
+}
+
+test fn production_route_bare_field_type_site_is_missing_today_holds() -> Bool {
+  site_spelling_count(path: consumer_field_bare_local_path, needle: local_field_only_bare) == 0
+}
+
+test fn production_tree_field_fixture_param_type_atom_is_present_holds() -> Bool {
+  tree_atom_count(path: consumer_field_bare_local_path, needle: local_param_marker_sym) > 0
+}
+
+test fn production_tree_field_fixture_wrapper_name_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_sym)
+}
+
+test fn production_tree_field_fixture_field_name_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_field_name_sym)
+}
+
+test fn production_tree_field_fixture_field_type_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_field_only_sym)
+}
+
+test fn production_route_callee_with_no_arguments_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_callee_only_path, target: provider_module) == 0
+}

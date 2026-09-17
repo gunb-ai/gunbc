@@ -8,7 +8,6 @@ use self::DataRefResolution::*;
 use self::DataReferenceUnresolvableCause::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::ParamDefaultResolution::*;
-use self::ReferenceDerivedCandidateDisposition::*;
 use self::WitnessCtorPathVerdict::*;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
@@ -39,6 +38,14 @@ pub use crate::gunbc_cli_dispatch_surface::{
 pub use crate::gunbc_cli_dispatch_surface::{
     CliArmRealization, CliBootstrapDagOperationBinding, CliBootstrapExecutionClass, CliOperandRow,
     CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
+};
+use crate::gunbc_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{
+    CandidateExportProofFailed, CandidateLeafAmbiguous, CandidateOwnModule,
+    CandidateRegistryAbsent, CandidateSurvived, CandidateVariantDelegatedToParent,
+    CandidateVariantParentUnresolved,
+};
+pub use crate::gunbc_reference_derived_candidate::{
+    ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow,
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
@@ -9609,25 +9616,6 @@ pub fn local_coproduct_variant_names(
         }
         __result
     })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ReferenceDerivedCandidateDisposition {
-    CandidateSurvived { provider_module: String },
-    CandidateOwnModule,
-    CandidateVariantDelegatedToParent { parent_enum: String },
-    CandidateVariantParentUnresolved,
-    CandidateRegistryAbsent,
-    CandidateLeafAmbiguous,
-    CandidateExportProofFailed { provider_module: String },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ReferenceDerivedCandidateRow {
-    pub module_name: String,
-    pub name: String,
-    pub disposition: Rc<ReferenceDerivedCandidateDisposition>,
 }
 
 pub fn reference_derived_candidate_disposition(
