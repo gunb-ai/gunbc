@@ -12,7 +12,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
 import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host, spark_unplaced_hosts }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.exec.command { ArgvCommand, argv_words, shell_quote }
 import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli {
   DockerBuildArg, DockerBuildSpec,
@@ -28,11 +28,19 @@ import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build {
   VllmContainerBuildRecipe,
   vllm_07b75534_aarch64_release_recipe,
+  vllm_8d09804_sm121_recipe,
+  vllm_glm_5_3_flash_sm121_revision,
   vllm_recipe_targeting,
   vllm_cuda_arch_supported,
   vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
   vllm_clone_url,
 }
+import extdeps.flashinfer.flashinfer {
+  FlashInferWheel,
+  flashinfer_0_7_0_dev20260910_wheels, flashinfer_0_7_0_dev20260910_wheel_url,
+}
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.tools.curl { curl_download_command }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext, SshTarget,
@@ -247,6 +255,171 @@ fn vllm_recipe_arch_is_buildable(r: VllmContainerBuildRecipe) -> Bool {
   fold(r.torch_cuda_arch_list, init: true, f: (acc, a) => acc && vllm_cuda_arch_supported(arch: a))
 }
 
+// ── THE GLM-5.3-FLASH SM121 IMAGE: THE BASE PLUS THE FLASHINFER NIGHTLY OVERRIDE ─────────────
+//
+// THE IMAGE THAT SERVES THE GLM NATIVE ARM IS BUILT, NOT PULLED. The arm's declared pin through
+// 2026-09-17 was the stock vllm/vllm-openai:glm53-flash digest, which on this fleet's measured
+// evidence cannot serve the model at all: every fp8 spelling crashes in concat_and_cache_mla
+// (pe_dim must be 64; the model's is 0 -- extdeps.vllm.kv_cache), and bfloat16 finds no attention
+// backend for sparse MLA at pe_dim=0 on that build. What actually served from 2026-09-13 was a
+// LOCAL build, read from its layer history 2026-09-17: upstream vLLM 8d09804c877c48165c6ba69bc9dc02d09bae0b83
+// for SM121 (the base recipe, extdeps.vllm.source_build vllm_8d09804_sm121_recipe) plus a derived
+// stage that force-reinstalls the flashinfer 0.7.0.dev20260910 nightly over the base's 0.6.18
+// (extdeps.flashinfer.flashinfer flashinfer_0_7_0_dev20260910_wheels). This section is that
+// derivation's home; the hand-built original (local tag gunbc-vllm-glm53-nope-gb10:derived-63d1a4759d0075b4)
+// is the observation it was read from, and the first build through this lane replaces it.
+
+// THE REPOSITORY IS A FUNCTION OF THE RECIPE, because one repository name per lane is what keeps
+// two image families from sharing a tag namespace. The GLM family gets its own name rather than
+// reusing the hand build's "nope" spelling: what the build IS is the recipe, and the name says so.
+data glm53_image_repository: NonEmptyStr = "gunbc-vllm-glm53-gb10" as NonEmptyStr
+
+fn vllm_image_repository_for(r: VllmContainerBuildRecipe) -> NonEmptyStr {
+  if (r.source.full_revision as String) == (vllm_glm_5_3_flash_sm121_revision.full_revision as String) {
+    glm53_image_repository
+  } else {
+    vllm_image_repository
+  }
+}
+
+// THE DERIVED STAGE'S IDENTITY: the base image's build key plus the three wheel digests, folded by
+// the same artifact-store authority that keys the base. A nightly wheel that changes under its
+// version string changes the key, which is exactly what a digest pin is for. The pure functions take
+// the base's tag and key rather than its identity record: the derived stage depends on those two
+// facts, and taking them separately keeps the text and key renderers constructible by a witness
+// (VllmImageIdentity is sole_constructor, so only a real build leg can mint one).
+fn glm53_derived_key_inputs(base_key: ContentHash) -> List<ArtifactRealizationInput> {
+  concat(
+    [ArtifactRealizationInput { identity: "base_image_build_key" as NonEmptyStr, content_digest: content_hash_atom(value: serialize_content_hash(hash: base_key)) }],
+    map(flashinfer_0_7_0_dev20260910_wheels, w => ArtifactRealizationInput {
+      identity: w.filename,
+      content_digest: content_hash_atom(value: w.sha256.hex as NonEmptyStr),
+    })
+  )
+}
+
+fn glm53_derived_key(base_key: ContentHash) -> ContentHash {
+  artifact_realization_digest(inputs: glm53_derived_key_inputs(base_key: base_key))
+}
+
+fn glm53_derived_tag(base_key: ContentHash) -> NonEmptyStr {
+  join([glm53_image_repository as String, ":derived-", serialize_content_hash(hash: glm53_derived_key(base_key: base_key)) as String], "") as NonEmptyStr
+}
+
+fn glm53_derived_context_dir() -> NonEmptyStr {
+  join([vllm_build_root() as String, "/glm53-derived"], "") as NonEmptyStr
+}
+
+// THE DERIVED DOCKERFILE, mirroring the observed hand build layer for layer: the wheels staged at
+// /tmp/gunbc-wheels, then one pip install --no-deps --force-reinstall over all three. The stage is
+// named so the generic DockerBuildSpec's --target has a stage to select.
+fn glm53_derived_dockerfile(base_tag: NonEmptyStr) -> String {
+  join([
+    "FROM ", base_tag as String, " AS glm53derived\n",
+    "COPY ", join(map(flashinfer_0_7_0_dev20260910_wheels, w => w.filename as String), " "), " /tmp/gunbc-wheels/\n",
+    "RUN python3 -m pip install --no-deps --force-reinstall ",
+    join(map(flashinfer_0_7_0_dev20260910_wheels, w => join(["/tmp/gunbc-wheels/", w.filename as String], "")), " "),
+    "\n",
+  ], "")
+}
+
+// THE PREPARE LEG: fetch the three digest-pinned wheels from the nightly release and verify each
+// against its declared sha256 BEFORE anything builds from them, then write the Dockerfile. A digest
+// mismatch stops the leg with sha256sum's own failure line; nothing falls back to an unverified
+// wheel. Runs as the managed executor -- the context lives in that home and needs no root.
+fn glm53_derived_prepare_script(base_tag: NonEmptyStr) -> String {
+  let dir = glm53_derived_context_dir() as String
+  join([
+    "set -e\n",
+    "install -d ", dir, "\n",
+    fold(flashinfer_0_7_0_dev20260910_wheels, init: "", f: (acc, w) => join([
+      acc,
+      "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_0_dev20260910_wheel_url(w: w) as String, "\n",
+      "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
+    ], "")),
+    "printf '%s' ", shell_quote(arg: glm53_derived_dockerfile(base_tag: base_tag)), " > ", dir, "/Dockerfile\n",
+  ], "")
+}
+
+fn glm53_derived_build_spec(base_tag: NonEmptyStr, base_key: ContentHash) -> DockerBuildSpec {
+  DockerBuildSpec {
+    tag: glm53_derived_tag(base_key: base_key),
+    context_dir: glm53_derived_context_dir() as FilePath,
+    dockerfile: join([glm53_derived_context_dir() as String, "/Dockerfile"], "") as NonEmptyStr,
+    target: "glm53derived" as NonEmptyStr,
+    platform: "linux/arm64" as NonEmptyStr,
+    build_args: [] as List<DockerBuildArg>,
+  }
+}
+
+// THE DERIVED CONVERGENCE, with the same adoption/build/readback discipline as the base: a tag
+// already present is adopted under its expected tag with source equality unestablished; a build
+// that reports success is not believed until the digest reads back.
+fn converge_glm53_derived_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, base: VllmImageIdentity) -> VllmImageBuild
+  uses net: Network
+{
+  let tag = glm53_derived_tag(base_key: base.build_key)
+  match vllm_docker_leg(ctx: ctx, step: "derived-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+    ImageLegFailed { step: st, cause: why } =>
+      VllmImageBuildRefused { step: st, cause: join(["the derived image query did not run, so nothing is known about whether the tag exists: ", why], "") }
+    ImageLegRan { stdout: digest } =>
+      if digest != "" {
+        VllmImageBuilt {
+          identity: VllmImageIdentity {
+            tag: tag, local_config_digest: digest as NonEmptyStr, requested_from: base.requested_from,
+            build_key: glm53_derived_key(base_key: base.build_key), provenance: AdoptedUnderExpectedTag,
+          },
+          already_present: true,
+        }
+      } else {
+        match vllm_image_leg(target: target, context: context, step: "derived-prepare" as NonEmptyStr, command: posix_sh_program_command(script: glm53_derived_prepare_script(base_tag: base.tag))) {
+          ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+          ImageLegRan { stdout: _ } =>
+            match vllm_docker_leg(ctx: ctx, step: "derived-build" as NonEmptyStr, command: docker_build_spec_command(spec: glm53_derived_build_spec(base_tag: base.tag, base_key: base.build_key))) {
+              ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+              ImageLegRan { stdout: _ } =>
+                match vllm_docker_leg(ctx: ctx, step: "derived-readback" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+                  ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: join(["the derived build reported success and the readback did not run: ", why], "") }
+                  ImageLegRan { stdout: readback } =>
+                    if readback == "" {
+                      VllmImageBuildRefused { step: "derived-readback" as NonEmptyStr, cause: "the derived build reported success and no image carries the tag it was asked to write" }
+                    } else {
+                      VllmImageBuilt {
+                        identity: VllmImageIdentity {
+                          tag: tag, local_config_digest: readback as NonEmptyStr, requested_from: base.requested_from,
+                          build_key: glm53_derived_key(base_key: base.build_key), provenance: BuiltByThisRun,
+                        },
+                        already_present: false,
+                      }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// WHETHER A RECIPE CARRIES A DERIVED STAGE IS A FACT ABOUT THE RECIPE, not about the entry that
+// runs it: the GLM base is not servable without the nightly override, so the stage follows the
+// recipe's source revision. A recipe with no stage builds as before.
+fn converge_vllm_image_for_recipe(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
+  uses net: Network
+{
+  match converge_vllm_runtime_image(target: target, context: context, ctx: ctx, r: r) {
+    VllmImageBuildRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+    VllmImageBuilt { identity: base, already_present: p } =>
+      if (r.source.full_revision as String) == (vllm_glm_5_3_flash_sm121_revision.full_revision as String) {
+        match converge_glm53_derived_image(target: target, context: context, ctx: ctx, base: base) {
+          VllmImageBuildRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+          VllmImageBuilt { identity: derived, already_present: dp } =>
+            VllmImageBuilt { identity: derived, already_present: p && dp }
+        }
+      } else {
+        VllmImageBuilt { identity: base, already_present: p }
+      }
+  }
+}
+
 // ── THE IDENTITY OF THE BUILD ─────────────────────────────────────────────────────────────────
 //
 // A CONTENT KEY OVER THE INPUTS, AND THE TAG IS THAT KEY. The image this lane produces is a
@@ -301,7 +474,7 @@ fn vllm_image_build_key(r: VllmContainerBuildRecipe) -> ContentHash {
 }
 
 fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
-  join([vllm_image_repository as String, ":", serialize_content_hash(hash: vllm_image_build_key(r: r)) as String], "") as NonEmptyStr
+  join([vllm_image_repository_for(r: r) as String, ":", serialize_content_hash(hash: vllm_image_build_key(r: r)) as String], "") as NonEmptyStr
 }
 
 // ── THE INVOCATION ────────────────────────────────────────────────────────────────────────────
@@ -646,7 +819,12 @@ fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionCont
 // decision, not this lane's), or this entry is executed against a warm context and its receipt lands
 // here. Until then the fallback build is correct by reading on this transport and executed only on the
 // other one, and this row is what keeps that from being read the other way round.
-fn vllm_runtime_image_build_ci_wet() -> ProcessExit
+// THE ENTRY BODY, PARAMETERIZED BY THE RECIPE. The admission preamble (target selection, host
+// admission, executor reach, credential, trust) is identical for every image family; what differs
+// is the recipe and whether it carries a derived stage, which converge_vllm_image_for_recipe
+// reads off the recipe itself. The v41 fallback and the GLM SM121 image are the two current
+// callers; a third family adds a recipe row and a one-line entry, not a copy of this body.
+fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -687,7 +865,7 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
                                       identity_file_name: "gunbc-vllm-image-build-admin-password" as NonEmptyStr,
                                       secret_bytes: administrator as Secret,
                                       use: fn(file) {
-                                        converge_vllm_runtime_image(
+                                        converge_vllm_image_for_recipe(
                                           target: SshTarget { endpoint: endpoint as NonEmptyStr, principal: spark_managed_executor_login as NonEmptyStr },
                                           context: context,
                                           ctx: SparkMaterializeContext {
@@ -698,7 +876,7 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
                                             admin_credential_file: file,
                                             executor: HostCli,
                                           },
-                                          r: v41_gb10_recipe(),
+                                          r: r,
                                         )
                                       },
                                     ) {
@@ -707,7 +885,7 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
                                         let body = join([
                                           join(["vllm runtime image build probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint, " executor=", executor, "\n"], ""),
                                           known_hosts_materialization_receipt(outcome: materialization),
-                                          join(["recipe arch_list=", vllm_torch_cuda_arch_list_wire(archs: v41_gb10_recipe().torch_cuda_arch_list), " cuda=", v41_gb10_recipe().cuda_version as String, " base=", v41_gb10_recipe().build_base_image as String, "\n"], ""),
+                                          join(["recipe arch_list=", vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list), " cuda=", r.cuda_version as String, " base=", r.build_base_image as String, "\n"], ""),
                                           vllm_image_receipt_line(b: build),
                                         ], "")
                                         let w = Filesystem.Write(path: vllm_image_build_receipt_path, content: body)
@@ -730,6 +908,21 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
         }
       }
   }
+}
+
+fn vllm_runtime_image_build_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  vllm_runtime_image_build_entry(r: v41_gb10_recipe())
+}
+
+// THE GLM-5.3-FLASH SM121 BUILD ENTRY. The recipe is the observed base (extdeps.vllm.source_build
+// vllm_8d09804_sm121_recipe) and the derived stage follows it; the product is the image the GLM
+// native arm's declared reference is repointed to once a build through this lane has served.
+fn glm53_runtime_image_build_wet() -> ProcessExit
+  uses net: Network
+{
+  vllm_runtime_image_build_entry(r: vllm_8d09804_sm121_recipe)
 }
 
 // ── ACQUIRING THE SOURCE ON ITS OWN ──────────────────────────────────────────────────────────

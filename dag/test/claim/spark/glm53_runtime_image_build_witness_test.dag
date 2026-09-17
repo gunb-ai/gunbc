@@ -1,0 +1,75 @@
+module test.claim.spark.glm53_runtime_image_build_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { serialize_content_hash }
+import gunbc.spark.vllm_runtime_image_build {
+  vllm_image_repository, glm53_image_repository, vllm_image_repository_for,
+  vllm_image_tag, vllm_image_build_key, vllm_recipe_arch_is_buildable,
+  glm53_derived_key, glm53_derived_tag, glm53_derived_dockerfile, glm53_derived_prepare_script,
+  glm53_derived_build_spec, glm53_derived_context_dir,
+}
+import extdeps.vllm.source_build {
+  vllm_8d09804_sm121_recipe, vllm_glm_5_3_flash_sm121_revision, vllm_07b75534_aarch64_release_recipe,
+}
+import extdeps.flashinfer.flashinfer {
+  flashinfer_0_7_0_dev20260910_wheels, flashinfer_0_7_0_dev20260910_release_url,
+  flashinfer_0_7_0_dev20260910_wheel_url,
+}
+
+// THE RECIPE IS THE OBSERVED BASE BUILD: SM121 only, cuda 13.0.2, kv connectors off, and within
+// vLLM's supported arch set at the pinned revision.
+test fn the_glm53_recipe_targets_sm121_and_is_buildable() -> Bool {
+  vllm_8d09804_sm121_recipe.torch_cuda_arch_list == ["12.1" as NonEmptyStr]
+    && (vllm_8d09804_sm121_recipe.cuda_version as String) == "13.0.2"
+    && !vllm_8d09804_sm121_recipe.install_kv_connectors
+    && vllm_recipe_arch_is_buildable(r: vllm_8d09804_sm121_recipe)
+    && (vllm_8d09804_sm121_recipe.source.full_revision as String) == (vllm_glm_5_3_flash_sm121_revision.full_revision as String)
+}
+
+// THE REPOSITORY FOLLOWS THE RECIPE'S FAMILY: the GLM recipe tags under gunbc-vllm-glm53-gb10 and
+// the v41 recipe keeps its existing repository, so the two families never share a tag namespace.
+test fn the_repository_dispatches_on_the_recipe_family() -> Bool {
+  (vllm_image_repository_for(r: vllm_8d09804_sm121_recipe) as String) == (glm53_image_repository as String)
+    && (vllm_image_repository_for(r: vllm_07b75534_aarch64_release_recipe) as String) == (vllm_image_repository as String)
+    && string_contains(s: vllm_image_tag(r: vllm_8d09804_sm121_recipe) as String, pattern: "gunbc-vllm-glm53-gb10:")
+    && string_contains(s: vllm_image_tag(r: vllm_07b75534_aarch64_release_recipe) as String, pattern: "gunbc-vllm-dsv41-gb10:")
+}
+
+// THE DERIVED KEY IS NOT THE BASE KEY: the nightly override changes the image's identity, so a
+// fleet that has the base does not believe it has the derived image.
+test fn the_derived_stage_has_its_own_identity() -> Bool {
+  let base_key = vllm_image_build_key(r: vllm_8d09804_sm121_recipe)
+  (serialize_content_hash(hash: glm53_derived_key(base_key: base_key)) as String) != (serialize_content_hash(hash: base_key) as String)
+    && string_contains(s: glm53_derived_tag(base_key: base_key) as String, pattern: "gunbc-vllm-glm53-gb10:derived-")
+}
+
+// THE DERIVED DOCKERFILE MIRRORS THE OBSERVED HAND BUILD: FROM the base tag, the three nightly
+// wheels staged at /tmp/gunbc-wheels, one pip install --no-deps --force-reinstall over all three.
+test fn the_derived_dockerfile_replays_the_observed_layers() -> Bool {
+  let d = glm53_derived_dockerfile(base_tag: "gunbc-vllm-glm53-gb10:base-fixture" as NonEmptyStr)
+  string_contains(s: d, pattern: "FROM gunbc-vllm-glm53-gb10:base-fixture AS glm53derived")
+    && string_contains(s: d, pattern: "COPY flashinfer_python-0.7.0.dev20260910-py3-none-any.whl flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl /tmp/gunbc-wheels/")
+    && string_contains(s: d, pattern: "RUN python3 -m pip install --no-deps --force-reinstall /tmp/gunbc-wheels/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl /tmp/gunbc-wheels/flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl /tmp/gunbc-wheels/flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl")
+}
+
+// THE PREPARE LEG VERIFIES BEFORE IT BUILDS: every wheel is fetched from its declared release URL
+// and checked against its declared sha256, and the Dockerfile is written only after the checks.
+test fn the_prepare_leg_fetches_and_verifies_every_wheel() -> Bool {
+  let s = glm53_derived_prepare_script(base_tag: "gunbc-vllm-glm53-gb10:base-fixture" as NonEmptyStr)
+  string_contains(s: s, pattern: "set -e")
+    && fold(flashinfer_0_7_0_dev20260910_wheels, init: true, f: (acc, w) => acc
+      && string_contains(s: s, pattern: flashinfer_0_7_0_dev20260910_wheel_url(w: w) as String)
+      && string_contains(s: s, pattern: w.sha256.hex as String))
+    && string_contains(s: s, pattern: "sha256sum -c -")
+    && string_contains(s: s, pattern: flashinfer_0_7_0_dev20260910_release_url as String)
+}
+
+// THE DERIVED BUILD SPEC: the named stage, the arm64 platform, no build args -- the override is
+// entirely in the Dockerfile and the pinned wheels.
+test fn the_derived_build_spec_selects_the_named_stage() -> Bool {
+  let spec = glm53_derived_build_spec(base_tag: "gunbc-vllm-glm53-gb10:base-fixture" as NonEmptyStr, base_key: vllm_image_build_key(r: vllm_8d09804_sm121_recipe))
+  (spec.target as String) == "glm53derived"
+    && (spec.platform as String) == "linux/arm64"
+    && spec.build_args.length() == 0
+    && string_contains(s: spec.dockerfile as String, pattern: glm53_derived_context_dir() as String)
+}
