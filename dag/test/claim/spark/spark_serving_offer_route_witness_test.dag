@@ -553,6 +553,41 @@ fn t_sha256(hex: String) -> ContentHash {
 // digest, and the disagreeing rows use a fixed foreign hex instead. That keeps every arm
 // discriminating without an alternate mint: what varies across the rows is the OBSERVATION, which is
 // exactly the fact the route is deciding about.
+// DECLARED DIVERGENCE FROM DESIGN SECTION 3's SUPPLIED-INPUT RULE, STATED HERE RATHER THAN ONLY IN
+// REVIEW (DESIGN 3b: a divergence with a stated reason is admitted; an UNSTATED one is the fork that
+// gets consolidated later at interest). Review 67089 is RIGHT on the rule: a witness discriminates at
+// one interface, its inputs belong there as SUPPLIED VALUES, and deriving them re-executes
+// production the claim is not about -- once per claim. The subject of the rows below is
+// spark_serving_route_standing's ARM SELECTION (region, incarnation, provenance, configuration), not
+// the mint, so by the letter of that rule the declared standing should be handed in.
+//
+// WHY IT IS NOT, AND WHY NO THIRD OPTION EXISTS HERE. A supplied value must be AUTHORABLE, and this
+// one is not: DeclaredUnitDigestEvidence is a sole_constructor record whose only corpus constructor
+// is spark_pair_declared_head_digest(group). That seal is not incidental -- it is the repair for
+// gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress, whose receipt on
+// THIS carrier is that an earlier revision exported a mint taking SparkPairUnitRender and so let any
+// module aim the declared digest with bytes of its choosing. Re-opening an authorable standing for
+// the witnesses' convenience would re-open exactly that hole, because a sole_constructor wall cannot
+// tell a fixture from production. The other arm, DeclaredUnitDigestUnavailable, IS freely
+// constructible and is supplied where it fits (t_unit_unavailable), but it refuses BEFORE the
+// incarnation is consulted, so it cannot serve the rows whose subject lies past that gate --
+// the declared-unit-before-incarnation ordering is itself required.
+//
+// THE COST, NAMED SO IT IS COUNTABLE: every row below reaching a digested standing executes one real
+// Sha256.DigestStdin, which is why this file is excluded from hermetic discovery and enrolled per
+// function on the local-repo wet lane (gunbc.ci.ci_layer_roots
+// excl_local_repo_wet_declared_unit_digest_reason, v2.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule, v2.workflow.floor_route_gap). It is a subprocess per row, not a fabric
+// effect. What DESIGN section 3 demands and this file does NOT skip is the pairing obligation's real
+// half: the mint's own inhabitance is executed separately and once, by
+// test.claim.spark.spark_pair_head_unit_digest_witness and
+// test.claim.serving.serving_availability_bind_wet_witness.
+//
+// DISSOLUTION, THE SAME TRIGGER THE EXCLUSION ROW NAMES: mock_response coverage for
+// extdeps.tools.sha256sum Sha256.DigestStdin sufficient to replay a digest over caller-supplied
+// stdin bytes. On that day these rows stop reaching a host effect, drop off the wet schedule and the
+// route-gap roster, and this divergence retires -- without unsealing anything.
+
 data t_other_unit_hex: String = "6666666666666666666666666666666666666666666666666666666666666666"
 data t_image_hex: String = "7777777777777777777777777777777777777777777777777777777777777777"
 
