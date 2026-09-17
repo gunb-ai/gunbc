@@ -1518,27 +1518,47 @@ fn module_test_references(m: TypedModule, test_modules: Map<String, Bool>, test_
   concat(body_refs, member_refs, module_refs)
 }
 
-fn test_reference_row_matches(row: TestReferenceDebtRow, o: TestReferenceOccurrence) -> Bool {
-  row.module_name == o.module_name && row.referrer == o.referrer && row.target == o.target
+// One key per (module, referrer, target) identity, so admission and the budget are map lookups built
+// once per compile rather than scans of the ledger or the occurrence list (DESIGN section 6: a
+// quadratic fold is always fixed, whatever the realized n).
+fn test_reference_key(module_name: String, referrer: String, target: String) -> String {
+  concat(module_name, "|", referrer, "|", target)
 }
 
-fn test_reference_occurrence_diag(o: TestReferenceOccurrence, debt: List<TestReferenceDebtRow>) -> ErrorNode {
+fn test_reference_occurrence_key(o: TestReferenceOccurrence) -> String {
+  test_reference_key(module_name: o.module_name, referrer: o.referrer, target: o.target)
+}
+
+fn test_reference_occurrence_diag(o: TestReferenceOccurrence, debt_keys: Map<String, Bool>) -> ErrorNode {
   let referrer = concat(o.module_name, ".", o.referrer)
-  if debt |> any(r => test_reference_row_matches(row: r, o: o)) {
+  if map_contains_key(debt_keys, test_reference_occurrence_key(o: o)) {
     make_error_node(diagnostic: TestCodeReferenceAdmitted { referrer: referrer, target: o.target, span: o.span }, module_name: o.module_name)
   } else {
     make_error_node(diagnostic: TestCodeReferenced { referrer: referrer, target: o.target, span: o.span }, module_name: o.module_name)
   }
 }
 
-fn test_reference_budget_diags(row: TestReferenceDebtRow, occurrences: List<TestReferenceOccurrence>, module_span: SourceSpan) -> List<ErrorNode> {
-  let observed = occurrences |> filter(o => test_reference_row_matches(row: row, o: o))
-  if (observed |> count) == row.occurrences { [] } else {
-    let span = match observed |> first {
-      Present { value: o } => o.span
-      Absent => module_span
+fn observed_test_reference_count(counts: Map<String, Int>, key: String) -> Int {
+  match map_get(counts, key) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn test_reference_budget_diag(row: TestReferenceDebtRow, counts: Map<String, Int>, first_spans: Map<String, SourceSpan>, compiled_modules: Map<String, SourceSpan>) -> List<ErrorNode> {
+  match map_get(compiled_modules, row.module_name) {
+    Absent => []
+    Present { value: module_span } => {
+      let key = test_reference_key(module_name: row.module_name, referrer: row.referrer, target: row.target)
+      let observed = observed_test_reference_count(counts: counts, key: key)
+      if observed == row.occurrences { [] } else {
+        let span = match map_get(first_spans, key) {
+          Present { value: s } => s
+          Absent => module_span
+        }
+        [make_error_node(diagnostic: TestCodeReferenceBudgetMismatch { referrer: concat(row.module_name, ".", row.referrer, " -> ", row.target), declared: row.occurrences, observed: observed, span: span }, module_name: row.module_name)]
+      }
     }
-    [make_error_node(diagnostic: TestCodeReferenceBudgetMismatch { referrer: concat(row.module_name, ".", row.referrer, " -> ", row.target), declared: row.occurrences, observed: observed |> count, span: span }, module_name: row.module_name)]
   }
 }
 
@@ -1547,14 +1567,18 @@ fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, 
   let test_modules = typed.modules
     |> filter(m => module_declares_tests(m: m))
     |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), true))
+  let compiled_modules = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m.module.span))
   let occurrences = typed.modules |> flat_map(m => module_test_references(m: m, test_modules: test_modules, test_keys: test_keys, source_indices: source_indices))
-  let debt = test_reference_debt()
-  let occurrence_diags = occurrences |> map(o => test_reference_occurrence_diag(o: o, debt: debt))
-  let budget_diags = typed.modules |> flat_map(m =>
-    debt
-      |> filter(r => r.module_name == authored_name_at(source_indices: source_indices, node: m.module))
-      |> flat_map(r => test_reference_budget_diags(row: r, occurrences: occurrences, module_span: m.module.span))
+  let counts = occurrences |> fold(init: empty_map(), f: (acc, o) =>
+    map_insert(acc, test_reference_occurrence_key(o: o), observed_test_reference_count(counts: acc, key: test_reference_occurrence_key(o: o)) + 1)
   )
+  let first_spans = occurrences |> fold(init: empty_map(), f: (acc, o) =>
+    if map_contains_key(acc, test_reference_occurrence_key(o: o)) { acc } else { map_insert(acc, test_reference_occurrence_key(o: o), o.span) }
+  )
+  let debt = test_reference_debt()
+  let debt_keys = debt |> fold(init: empty_map(), f: (acc, r) => map_insert(acc, test_reference_key(module_name: r.module_name, referrer: r.referrer, target: r.target), true))
+  let occurrence_diags = occurrences |> map(o => test_reference_occurrence_diag(o: o, debt_keys: debt_keys))
+  let budget_diags = debt |> flat_map(r => test_reference_budget_diag(row: r, counts: counts, first_spans: first_spans, compiled_modules: compiled_modules))
   concat(occurrence_diags, budget_diags)
 }
 

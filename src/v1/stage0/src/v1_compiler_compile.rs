@@ -804,34 +804,33 @@ pub fn module_test_references(
     }
 }
 
-pub fn test_reference_row_matches(
-    row: Rc<TestReferenceDebtRow>,
-    o: Rc<TestReferenceOccurrence>,
-) -> bool {
-    (((row.module_name.clone() == o.module_name.clone())
-        && (row.referrer.clone() == o.referrer.clone()))
-        && (row.target.clone() == o.target.clone()))
+pub fn test_reference_key(module_name: String, referrer: String, target: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(module_name.clone(), "|".to_string()),
+                referrer.clone(),
+            ),
+            "|".to_string(),
+        ),
+        target.clone(),
+    )
+}
+
+pub fn test_reference_occurrence_key(o: Rc<TestReferenceOccurrence>) -> String {
+    test_reference_key(o.module_name.clone(), o.referrer.clone(), o.target.clone())
 }
 
 pub fn test_reference_occurrence_diag(
     o: Rc<TestReferenceOccurrence>,
-    debt: Rc<Vec<Rc<TestReferenceDebtRow>>>,
+    debt_keys: Rc<HashMap<String, bool>>,
 ) -> Rc<ErrorNode> {
     {
         let referrer = v1_rt::concat(
             v1_rt::concat(o.module_name.clone(), ".".to_string()),
             o.referrer.clone(),
         );
-        if {
-            let mut __found = false;
-            for r in debt.iter().cloned() {
-                if test_reference_row_matches(r.clone(), o.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        } {
+        if v1_rt::map_contains_key(&debt_keys, test_reference_occurrence_key(o.clone())) {
             crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::TestCodeReferenceAdmitted {
                     referrer: referrer.clone(),
@@ -853,47 +852,55 @@ pub fn test_reference_occurrence_diag(
     }
 }
 
-pub fn test_reference_budget_diags(
+pub fn observed_test_reference_count(counts: Rc<HashMap<String, i64>>, key: String) -> i64 {
+    match v1_rt::map_get(&counts, key.clone()) {
+        Some(n) => n.clone(),
+        std::option::Option::None => 0,
+    }
+}
+
+pub fn test_reference_budget_diag(
     row: Rc<TestReferenceDebtRow>,
-    occurrences: Rc<Vec<Rc<TestReferenceOccurrence>>>,
-    module_span: Rc<SourceSpan>,
+    counts: Rc<HashMap<String, i64>>,
+    first_spans: Rc<HashMap<String, Rc<SourceSpan>>>,
+    compiled_modules: Rc<HashMap<String, Rc<SourceSpan>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let observed = Rc::new({
-            let mut __result = Vec::new();
-            for o in occurrences.iter().cloned() {
-                if test_reference_row_matches(row.clone(), o.clone()) {
-                    __result.push(o);
-                }
-            }
-            __result
-        });
-        if ((observed.clone().len() as i64) == row.occurrences.clone()) {
-            Rc::new(vec![])
-        } else {
-            {
-                let span = match observed.clone().first().cloned() {
-                    Some(o) => o.span.clone(),
-                    std::option::Option::None => module_span.clone(),
-                };
-                Rc::new(vec![crate::v1_std_core::make_error_node(
-                    Rc::new(CompilerDiagnostic::TestCodeReferenceBudgetMismatch {
-                        referrer: v1_rt::concat(
-                            v1_rt::concat(
+    match v1_rt::map_get(&compiled_modules, row.module_name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(module_span) => {
+            let key = test_reference_key(
+                row.module_name.clone(),
+                row.referrer.clone(),
+                row.target.clone(),
+            );
+            let observed = observed_test_reference_count(counts.clone(), key.clone());
+            if (observed.clone() == row.occurrences.clone()) {
+                Rc::new(vec![])
+            } else {
+                {
+                    let span = match v1_rt::map_get(&first_spans, key.clone()) {
+                        Some(s) => s.clone(),
+                        std::option::Option::None => module_span.clone(),
+                    };
+                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::TestCodeReferenceBudgetMismatch {
+                            referrer: v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(row.module_name.clone(), ".".to_string()),
-                                    row.referrer.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(row.module_name.clone(), ".".to_string()),
+                                        row.referrer.clone(),
+                                    ),
+                                    " -> ".to_string(),
                                 ),
-                                " -> ".to_string(),
+                                row.target.clone(),
                             ),
-                            row.target.clone(),
-                        ),
-                        declared: row.occurrences.clone(),
-                        observed: (observed.clone().len() as i64),
-                        span: span.clone(),
-                    }),
-                    row.module_name.clone(),
-                )])
+                            declared: row.occurrences.clone(),
+                            observed: observed.clone(),
+                            span: span.clone(),
+                        }),
+                        row.module_name.clone(),
+                    )])
+                }
             }
         }
     }
@@ -926,6 +933,16 @@ pub fn test_reference_diagnostics(
                 )
             },
         );
+        let compiled_modules = typed.modules.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
+            |acc: Rc<HashMap<String, Rc<SourceSpan>>>, m: Rc<TypedModule>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
+                    m.module.clone().span.clone(),
+                )
+            },
+        );
         let occurrences = Rc::new({
             let mut __result = Vec::new();
             for m in typed.modules.clone().iter().cloned() {
@@ -942,49 +959,61 @@ pub fn test_reference_diagnostics(
             }
             __result
         });
+        let counts = occurrences.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, i64>(),
+            |acc: Rc<HashMap<String, i64>>, o: Rc<TestReferenceOccurrence>| {
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    test_reference_occurrence_key(o.clone()),
+                    (observed_test_reference_count(
+                        acc.clone(),
+                        test_reference_occurrence_key(o.clone()),
+                    ) + 1),
+                )
+            },
+        );
+        let first_spans = occurrences.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
+            |acc: Rc<HashMap<String, Rc<SourceSpan>>>, o: Rc<TestReferenceOccurrence>| {
+                if v1_rt::map_contains_key(&acc, test_reference_occurrence_key(o.clone())) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        test_reference_occurrence_key(o.clone()),
+                        o.span.clone(),
+                    )
+                }
+            },
+        );
         let debt = test_reference_debt();
+        let debt_keys = debt.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, r: Rc<TestReferenceDebtRow>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    test_reference_key(r.module_name.clone(), r.referrer.clone(), r.target.clone()),
+                    true,
+                )
+            },
+        );
         let occurrence_diags = Rc::new({
             let mut __result = Vec::new();
             for o in occurrences.iter().cloned() {
-                __result.push(test_reference_occurrence_diag(o.clone(), debt.clone()));
+                __result.push(test_reference_occurrence_diag(o.clone(), debt_keys.clone()));
             }
             __result
         });
         let budget_diags = Rc::new({
             let mut __result = Vec::new();
-            for m in typed.modules.clone().iter().cloned() {
+            for r in debt.iter().cloned() {
                 __result.extend(
-                    (*Rc::new({
-                        let mut __result = Vec::new();
-                        for r in Rc::new({
-                            let mut __result = Vec::new();
-                            for r in debt.iter().cloned() {
-                                if (r.module_name.clone()
-                                    == crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        m.module.clone(),
-                                    ))
-                                {
-                                    __result.push(r);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.extend(
-                                (*test_reference_budget_diags(
-                                    r.clone(),
-                                    occurrences.clone(),
-                                    m.module.clone().span.clone(),
-                                ))
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    }))
+                    (*test_reference_budget_diag(
+                        r.clone(),
+                        counts.clone(),
+                        first_spans.clone(),
+                        compiled_modules.clone(),
+                    ))
                     .iter()
                     .cloned(),
                 );
