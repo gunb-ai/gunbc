@@ -9,6 +9,9 @@ import v2.compiler.self_host.compiler_closure_emit {
   CompilerClosureEmitReceipt,
   emit_compiler_import_closure_from_ingest
 }
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_assemble_located_reason_from_diagnostics
+}
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.infer { InferredTree, infer }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -81,15 +84,72 @@ fn derisk_infer_accepts(src: String) -> Bool {
   }
 }
 
-fn derisk_emit_accepts(src: String) -> Bool {
-  match emit_compiler_import_closure_from_ingest(
+fn derisk_emit_outcome_for(src: String) -> Outcome<CompilerClosureEmitReceipt> {
+  emit_compiler_import_closure_from_ingest(
     ingest: derisk_ingest_for(src: src),
     admission: derisk_module_admission(),
     target: rust_target_model()
-  ) {
+  )
+}
+
+fn derisk_emit_accepts(src: String) -> Bool {
+  match derisk_emit_outcome_for(src: src) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+}
+
+// Local diagnosis only: claim_batch prints a non-Bool return. Head can be
+// parse_grammar_choice_overlap_residue; the located fold skips that residue.
+fn derisk_emit_head_reason(src: String) -> Symbol {
+  match derisk_emit_outcome_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => ^emit_accepted
+    Rejected { diagnostics: d } => d.head.reason
+  }
+}
+
+fn derisk_emit_located_reason(src: String) -> Symbol {
+  match derisk_emit_outcome_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => ^emit_accepted
+    Rejected { diagnostics: d } =>
+      frontier_probe_assemble_located_reason_from_diagnostics(d: d)
+  }
+}
+
+fn derisk_assemble_located_reason(src: String) -> Symbol {
+  match derisk_assemble_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => ^assemble_accepted
+    Rejected { diagnostics: d } =>
+      frontier_probe_assemble_located_reason_from_diagnostics(d: d)
+  }
+}
+
+fn derisk_infer_located_reason(src: String) -> Symbol {
+  match derisk_infer_outcome_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => ^infer_accepted
+    Rejected { diagnostics: d } =>
+      frontier_probe_assemble_located_reason_from_diagnostics(d: d)
+  }
+}
+
+test fn probe_emit_ownership_miss_head_reason() -> Symbol {
+  derisk_emit_head_reason(src: src_single_arm_match)
+}
+
+test fn probe_emit_ownership_miss_located_reason() -> Symbol {
+  derisk_emit_located_reason(src: src_single_arm_match)
+}
+
+test fn probe_assemble_single_arm_located_reason() -> Symbol {
+  derisk_assemble_located_reason(src: src_single_arm_match)
+}
+
+test fn probe_infer_single_arm_located_reason() -> Symbol {
+  derisk_infer_located_reason(src: src_single_arm_match)
+}
+
+test fn probe_emit_two_user_types_located_reason() -> Symbol {
+  derisk_emit_located_reason(src: src_two_user_types)
 }
 
 test fn self_host_frontier_emit_ownership_miss_accepts() -> Bool {
