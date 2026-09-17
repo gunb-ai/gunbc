@@ -1,6 +1,7 @@
 module gunbc.spark.model_snapshot_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address, ipv4_address_eq }
 import extdeps.huggingface.hub {
   HubRepoId, HubModelRepo, hub_repo_cache_directory_name, hub_cli_program,
@@ -73,7 +74,7 @@ data deepseek_v4_flash_tool_call_parser: NonEmptyStr = "deepseek_v4" as NonEmpty
 data glm_5_3_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
   identity: "glm-5.3-flash" as NonEmptyStr,
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
-  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   revision_provenance: "resolved from the Hub model API for zai-org/GLM-5.3-Flash on 2026-09-07; the same response reported lastModified 2026-09-07T12:13:47Z, so the branch was moving when this was taken" as NonEmptyStr,
 }

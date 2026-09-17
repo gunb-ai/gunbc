@@ -1192,6 +1192,10 @@ pub struct FilesystemReadResult {
     pub content: String,
 }
 
+pub fn unrealized_host_seam<T>(seam: &str) -> T {
+    panic!("{}", seam);
+}
+
 pub fn filesystem_read(path: String) -> FilesystemReadResult {
     let content =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
