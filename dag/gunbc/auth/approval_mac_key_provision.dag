@@ -20,7 +20,7 @@ import gunbc.secret_provision_actuator {
   snapshot_minted_secret, CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
   verified_version, verified_snapshot_identity,
 }
-import gunbc.auth.secret_rotation { inventory_from_list_response, inventory_enabled_versions, ListSecretVersionsResponse }
+import gunbc.auth.secret_rotation { inventory_from_list_response, version_is_enabled, InventoryComplete, InventoryTruncated, ListSecretVersionsResponse }
 import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant, secret_access_ensure_for }
 import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref }
@@ -98,16 +98,29 @@ fn standing_ok(s: KeyProvisionStanding) -> Bool {
   }
 }
 
-fn first_enabled_version(response: ListSecretVersionsResponse) -> NonEmptyStr? {
-  match inventory_enabled_versions(inventory: inventory_from_list_response(response: response)).first() {
-    Absent => none
-    Present { value: v } => match sm_resolved_version_id(identity: v.name) {
-      SmVersionIdProjected { version: ver } => Present { value: ver }
-      SmVersionIdNotAVersionResource { supplied: _ } => none
-    }
+// A TRUNCATED INVENTORY IS A REFUSAL, NEVER "NO VERSION": gunbc.auth.secret_rotation refuses to act
+// on a page it cannot establish is complete, and adding a version over an unknown inventory is
+// exactly the sprawl that refusal exists to prevent (review 67075). Only a COMPLETE inventory with
+// no enabled version admits a mint.
+type EnabledVersionStanding
+  = EnabledVersionFound { version: NonEmptyStr }
+  | NoEnabledVersionInCompleteInventory
+  | InventoryNotEstablished { seen: Int }
+  | EnabledVersionNameUnreadable { supplied: String }
+
+fn enabled_version_standing(response: ListSecretVersionsResponse) -> EnabledVersionStanding {
+  match inventory_from_list_response(response: response) {
+    InventoryTruncated { seen: n } => InventoryNotEstablished { seen: n }
+    InventoryComplete { versions: vs } =>
+      match filter(vs, v => version_is_enabled(listed: v)).first() {
+        Absent => NoEnabledVersionInCompleteInventory
+        Present { value: v } => match sm_resolved_version_id(identity: v.name) {
+          SmVersionIdProjected { version: ver } => EnabledVersionFound { version: ver }
+          SmVersionIdNotAVersionResource { supplied: s } => EnabledVersionNameUnreadable { supplied: s }
+        }
+      }
   }
 }
-
 
 // MINT, SNAPSHOT, ADD, VERIFY -- for a container that exists and holds no enabled version, or one
 // this run just created.
@@ -160,9 +173,11 @@ fn provision_one(ref: SecretRef, token: Secret) -> KeyProvisionStanding
       let listed = gcp.SecretManager.ListVersions(access_token: token, secret_name: c.observed_resource as String)
       match classify_rest_outcome(standing: RestReadExchange { rest: listed.outcome }) {
         RestExchangeSucceeded =>
-          match first_enabled_version(response: ListSecretVersionsResponse { versions: listed.versions, next_page_token: Present { value: listed.next_page_token }, total_size: none }) {
-            Present { value: v } => KeyAlreadyEnabled { secret_id: secret_id, version: v }
-            Absent => add_first_version(secret_id: secret_id, container: Present { value: c }, token: token)
+          match enabled_version_standing(response: ListSecretVersionsResponse { versions: listed.versions, next_page_token: Present { value: listed.next_page_token }, total_size: none }) {
+            EnabledVersionFound { version: v } => KeyAlreadyEnabled { secret_id: secret_id, version: v }
+            NoEnabledVersionInCompleteInventory => add_first_version(secret_id: secret_id, container: Present { value: c }, token: token)
+            InventoryNotEstablished { seen: n } => KeyProvisionRefused { secret_id: secret_id, cause: concat("the version inventory is truncated after ", concat(to_string(n), " entries; refusing to add a version over an inventory that is not established")) as NonEmptyStr }
+            EnabledVersionNameUnreadable { supplied: s } => KeyProvisionRefused { secret_id: secret_id, cause: concat("an enabled version's resource name is not a version resource: ", s) as NonEmptyStr }
           }
         RestExchangeStatusRefused { status: _, body: b } => KeyProvisionRefused { secret_id: secret_id, cause: concat("versions could not be listed: ", b) as NonEmptyStr }
         RestExchangeCommitAmbiguous { detail: d } => KeyProvisionRefused { secret_id: secret_id, cause: d }

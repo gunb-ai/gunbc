@@ -1,0 +1,43 @@
+module test.claim.approval_mac_key_provision_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.cloud.gcp.secret_manager { GcpSecretVersion, SmResolvedVersionIdentity, SmVersionState, SmEnabled, SmDisabled, ListSecretVersionsResponse }
+import gunbc.auth.approval_mac_key_provision {
+  enabled_version_standing, EnabledVersionFound, NoEnabledVersionInCompleteInventory, InventoryNotEstablished, EnabledVersionNameUnreadable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn version_row(name: String, state: SmVersionState) -> GcpSecretVersion {
+  GcpSecretVersion { name: name as SmResolvedVersionIdentity, state: state, create_time: "2026-09-16T00:00:00Z", etag: none, destroy_time: none }
+}
+
+fn listing(versions: List<GcpSecretVersion>, next_page_token: String?) -> ListSecretVersionsResponse {
+  ListSecretVersionsResponse { versions: versions, next_page_token: next_page_token, total_size: none }
+}
+
+data v1: String = "projects/582015116396/secrets/approval-submission-mac-key/versions/1"
+data v2: String = "projects/582015116396/secrets/approval-submission-mac-key/versions/2"
+
+// THE MINT IS ADMITTED ONLY BY A COMPLETE, EMPTY-OF-ENABLED INVENTORY. A truncated page refuses
+// (review 67075: folding truncation into "none enabled" is the AddVersion sprawl path
+// secret_rotation refuses); a disabled version alone still admits; an enabled one is reported.
+test fn a_truncated_inventory_refuses_rather_than_admitting_a_mint() -> Bool {
+  match enabled_version_standing(response: listing(versions: [], next_page_token: Present { value: "next" })) {
+    InventoryNotEstablished { seen: 0 } => true
+    _ => false
+  }
+    && match enabled_version_standing(response: listing(versions: [version_row(name: v1, state: SmDisabled)], next_page_token: Present { value: "" })) {
+      NoEnabledVersionInCompleteInventory => true
+      _ => false
+    }
+    && match enabled_version_standing(response: listing(versions: [version_row(name: v1, state: SmDisabled), version_row(name: v2, state: SmEnabled)], next_page_token: none)) {
+      EnabledVersionFound { version: v } => v == "2"
+      _ => false
+    }
+    && match enabled_version_standing(response: listing(versions: [version_row(name: "not-a-version-resource", state: SmEnabled)], next_page_token: none)) {
+      EnabledVersionNameUnreadable { supplied: _ } => true
+      _ => false
+    }
+}
