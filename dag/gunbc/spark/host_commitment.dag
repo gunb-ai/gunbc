@@ -17,7 +17,7 @@ import gunbc.spark.cell_role {
   spark_cell_role_assignments,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, fabric_group_wire }
-import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
@@ -488,6 +488,11 @@ fn spark_admissible_hosts_to(standings: List<SparkHostStanding>, subject: Servin
 // THE PRODUCTION APPLICATION, AND IT IS THE ONLY PLACE THE COMMITMENT SOURCES ARE NAMED TOGETHER.
 // Everything below is a projection of this one value.
 //
+// IT TAKES THE AUTHORITIES IT FILTERS, so a control can supply a released one and watch four hosts
+// leave. Every live row commits hosts today, so a claim over the live fold alone cannot tell the filter
+// from its absence -- deleting the filter would keep every count identical. Supplying the population is
+// what makes the filter's removal observable.
+//
 // IT READS AUTHORITY, NOT MEMBERSHIP, AND THE DIFFERENCE ONLY SHOWS UNDER A TRANSACTION. Claiming a
 // group and being free to act on it are two facts; this fold wants the first, and mapping the roster
 // directly conflated them. Today every claimed group is PairServingActive, so the population is
@@ -495,13 +500,17 @@ fn spark_admissible_hosts_to(standings: List<SparkHostStanding>, subject: Servin
 // still commits its four hosts, so nothing reads the pause as free capacity and lands a build or a
 // second lane on a host we are holding. gunbc.spark.pair_serving_authority pair_serving_commits_hosts
 // is where that answer lives, and ReleasedToFleet is the only arm that drops the commitment.
-fn spark_claimed_serving_group_members() -> List<ClaimedServingGroupMember> {
+fn spark_claimed_members_under(authorities: List<PairServingGroupAuthority>) -> List<ClaimedServingGroupMember> {
   flat_map(
-    filter(spark_pair_serving_authorities, a => pair_serving_commits_hosts(a: a)),
+    filter(authorities, a => pair_serving_commits_hosts(a: a)),
     a => {
       let g = pair_serving_authority_group(a: a)
       map(fabric_group_hosts(g: g), h => ClaimedServingGroupMember { group: g, host: h })
     })
+}
+
+fn spark_claimed_serving_group_members() -> List<ClaimedServingGroupMember> {
+  spark_claimed_members_under(authorities: spark_pair_serving_authorities)
 }
 
 fn spark_claimed_serving_group_hosts() -> List<HostIdentity> {

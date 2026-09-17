@@ -18,6 +18,12 @@ import gunbc.instruments.fabric_capacity_standing {
   AllocatorBlocks, BlockSize, MaxModelLen,
   LaunchRead, LaunchIdentified, LaunchUnidentified, launch_from_fields,
   GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing,
+  standing_for_authority,
+}
+import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
+import std.content_hash { sha256_hex_digest }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, ReleasedToFleet, PairRealizationUnestablished,
 }
 
 fn w_cell(name: ProbeFieldName) -> String {
@@ -310,4 +316,48 @@ test fn the_live_entry_point_runs_its_real_producer_and_refuses_today() -> Bool 
       (live.admitting == false)
         && string_contains(s: reason, pattern: live.text)
   }
+}
+
+// A SUSPENDED GROUP PRODUCES A STANDING THAT DOES NOT ADMIT, AND A RELEASED ONE TOO -- but neither
+// disappears, which is the property the empty-roster guard depends on. If suspension had been modeled
+// by dropping the group from the population instead, the guard would see a shorter list rather than a
+// missing subject, and at one member it would see an empty one and refuse a deliberate pause as though
+// the fleet had lost its roster.
+fn w_suspended_authority() -> PairServingGroupAuthority {
+  SuspensionPendingReconciliation {
+    group: FabricGroupA,
+    transaction: "witness-transaction" as NonEmptyStr,
+    lease: held_lease(
+      epoch: LeaseEpoch {
+        lease_key: "witness-lease" as NonEmptyStr,
+        resource_fingerprint: sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000"),
+        owner_fingerprint: sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000"),
+        generation: 1,
+      },
+      observed: LeaseRunningExpected),
+  }
+}
+
+test fn a_suspended_authority_stands_without_admitting() -> Bool {
+  let st = standing_for_authority(a: w_suspended_authority())
+  (st.admitting == false) && string_contains(s: st.text, pattern: "deliberately not admitting")
+}
+
+test fn a_released_authority_says_the_hosts_are_not_ours() -> Bool {
+  let st = standing_for_authority(a: ReleasedToFleet {
+    group: FabricGroupA,
+    release_receipt: sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000"),
+  })
+  (st.admitting == false) && string_contains(s: st.text, pattern: "no longer claims these hosts")
+}
+
+// AN ORDINARY SUBJECT STILL ROUTES TO THE REAL PROBE, which is what keeps the two claims above from
+// being satisfied by a fold that refuses everything.
+test fn an_ordinary_authority_routes_to_the_live_probe() -> Bool {
+  let via_authority = standing_for_authority(a: PairServingActive {
+    group: FabricGroupA,
+    exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
+  })
+  let direct = group_report(group: FabricGroupA)
+  (via_authority.admitting == direct.admitting) && (via_authority.text == direct.text)
 }

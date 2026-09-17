@@ -4,8 +4,7 @@ import std.types { Bool, NonEmptyStr, List }
 import std.content_hash { ContentHash }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, held_lease_observed_verdict }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
 
 // WHOSE HOSTS WE CLAIM AND WHAT WE MAY DO WITH THEM ARE TWO FACTS, AND THIS MODULE IS THE SECOND.
 // gunbc.spark.pair_serving_desired spark_pair_serving_groups answers membership -- which groups this
@@ -115,15 +114,11 @@ fn pair_serving_commits_hosts(a: PairServingGroupAuthority) -> Bool {
 // pair_serving_commits_hosts directly, through host_commitment, which is where the question already
 // lived.
 
-// PROJECTION 4 -- WHAT CAPACITY STANDING SEES. ITS CONSUMER IS A DECLARED FRONTIER, NOT A DANGLING
-// DECLARATION. gunbc.instruments.fabric_capacity_standing is mid-change on gunbc#11473, which splits
-// its verdict behind capacity_standing_verdict so the empty-roster arm is authorable; wiring this
-// projection into the same function on this branch would collide with that change in the one place
-// both edit. TRIGGER: #11473 lands, and fabric_capacity_standing maps this projection over
-// spark_pair_serving_authorities instead of the bare roster. SUFFICIENT FOR: a suspended group reports
-// a typed suspended standing rather than a probe refusal that reads as a fleet defect. Until then this
-// projection is consumed by its controls only, and that is a gap with a date rather than inert
-// vocabulary. The rule from the design is that capacity standing gets
+// PROJECTION 4 -- WHAT CAPACITY STANDING SEES. Its consumer was a declared frontier while #11473 was
+// in flight, because that PR was splitting the same function behind capacity_standing_verdict and both
+// edits landed in the one place. #11473 merged, so the trigger fired and the frontier is discharged in
+// this PR rather than left to rot: gunbc.instruments.fabric_capacity_standing standing_for_authority
+// maps this projection over spark_pair_serving_authorities. The rule from the design is that capacity standing gets
 // a TYPED SUSPENDED RESULT and never an empty population, because an instrument whose subject silently
 // disappears is the vacuity failure this whole carrier exists to prevent. So suspension is a standing
 // the instrument reports, not a row it stops seeing.
@@ -209,20 +204,32 @@ fn pair_serving_may_finish(a: PairServingGroupAuthority) -> Bool {
 // omit the other arms: they are what the apply seam and the capacity instrument consume to answer
 // correctly WHEN a transaction starts, and a coproduct missing them cannot express the state machine
 // the Cut D transaction declares total.
-// MEMBERSHIP STAYS WITH THE ROSTER AND THIS DERIVES FROM IT. Authoring a second list of groups here
-// would be a membership fork: two rows could disagree about which groups we claim, and the disagreement
-// would be silent because each list is individually well-formed. So the authority population is a MAP
-// over spark_pair_serving_groups -- the roster answers WHICH groups, this answers WHAT WE MAY DO with
-// each. One consequence worth stating: emptying the roster still empties this, so this carrier does not
-// rescue the vacuity hazard the roster's own annotation describes, and does not claim to.
-fn pair_serving_authority_for(group: FabricGroup) -> PairServingGroupAuthority {
+// THE AUTHORITY IS DATA, BECAUSE A GATE WHOSE REFUSAL NO EDIT CAN REACH IS A DECORATION. An earlier
+// shape here was a function that ignored its group and returned PairServingActive unconditionally.
+// Every projection above then had exactly one reachable answer, and the apply seam's refusal was
+// unreachable BY CONSTRUCTION rather than merely unused today -- no row, no observation, no producer,
+// so nothing short of editing code could make it fire. DESIGN section 4b asks whether a check's RED is
+// authorable BEFORE the check is written; a suspension is now authored by editing this row, exactly as
+// the roster's membership is authored by editing that one.
+//
+// MEMBERSHIP STILL LIVES WITH THE ROSTER. These rows carry STATE for claimed groups and are not a
+// second answer to which groups we claim -- pair_serving_authority_roster_agrees_with_membership joins
+// the two at group identity rather than by count, so a row for an unclaimed group, or a claimed group
+// with no row, is caught rather than silently believed.
+data spark_pair_serving_authorities: List<PairServingGroupAuthority> = [
   PairServingActive {
-    group: group,
+    group: FabricGroupA,
     exact_realization: PairRealizationUnestablished { obligation: pair_realization_key_obligation },
-  }
-}
+  },
+]
 
-data spark_pair_serving_authorities: List<PairServingGroupAuthority> = map(spark_pair_serving_groups, g => pair_serving_authority_for(group: g))
+// ABSENCE IS NOT PERMISSION. A claimed group with no authority row is a missing fact, and the honest
+// answer is no authority at all rather than a default Active -- defaulting would mean a group could be
+// converged because someone forgot to write its row, which is the fail-open direction.
+fn pair_serving_authority_for(group: FabricGroup) -> PairServingGroupAuthority? {
+  first(filter(spark_pair_serving_authorities, a =>
+    (fabric_group_wire(g: pair_serving_authority_group(a: a)) as String) == (fabric_group_wire(g: group) as String)))
+}
 
 // THE OBLIGATION THIS ROW CARRIES IS A REAL BLOCKER FOR CUT D, not a formality. Until the incumbent
 // has a content-addressed identity, a transaction cannot prove that what it suspended is what it
