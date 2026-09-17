@@ -8,7 +8,7 @@ import extdeps.tools { CliTool, SourceCoreutils }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.crypto.hash { Digest, sha256_digest, sha256sum_program }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
@@ -38,7 +38,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Declaring one is a modeling act on this module's own subject rather than part of removing the
 // fork, so it stays with this module's owner.
 data sha256sum_cli_tool: CliTool = CliTool {
-  name: "sha256sum",
+  name: sha256sum_program as String,
   min_version: none,
   installable_via: [SourceCoreutils],
 }
@@ -129,10 +129,19 @@ type Sha256FileDigest
 
 fn sha256sum_file_digest_via_shell(path: NonEmptyStr) -> Sha256FileDigest {
   let observed = sha256sum.Sha256.DigestFile(path: path)
-  if observed.success == false {
-    Sha256FileDigestUnavailable { path: path, reason: "sha256sum could not read the file" }
+  sha256sum_digest_from_line(path: path, success: observed.success, line: observed.line)
+}
+
+fn sha256sum_stdin_digest_via_shell(content: String) -> Sha256FileDigest {
+  let observed = sha256sum.Sha256.DigestStdin(content: content)
+  sha256sum_digest_from_line(path: "-" as NonEmptyStr, success: observed.success, line: observed.line)
+}
+
+fn sha256sum_digest_from_line(path: NonEmptyStr, success: Bool, line: String) -> Sha256FileDigest {
+  if success == false {
+    Sha256FileDigestUnavailable { path: path, reason: "sha256sum could not digest the input" }
   } else {
-    match get(xs: split(s: trim(s: observed.line), delimiter: " "), index: 0) {
+    match get(xs: split(s: trim(s: line), delimiter: " "), index: 0) {
       Absent =>
         Sha256FileDigestUnavailable { path: path, reason: "sha256sum printed no digest field" }
       Present { value: hex } =>

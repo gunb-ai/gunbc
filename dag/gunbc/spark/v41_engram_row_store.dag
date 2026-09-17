@@ -25,7 +25,9 @@ import gunbc.fabric.engram_materialization { engram_component_identity }
 // not a parallel prose checklist. rank_map is what dest_rank/local_row match; row_order is what
 // rank_payload concatenates (offsets on a rank follow global_row, not the caller's list order); dtypes go through SafetensorsDtype + safetensors_dtype_token; endianness
 // is Endianness + endianness_token. Alignment is not a key field: nothing pads, and packed 264-byte
-// records would disagree with a 64-byte alignment sentence. The digest is THIS encoding's; it does
+// records would disagree with a 64-byte alignment sentence. The encoder emits v41_row_store_magic
+// as the file prefix, placement offsets start after that prefix, and the rank digest hashes the
+// prefixed payload — the same file open() reads. The digest is THIS encoding's; it does
 // not inherit a safetensors shard digest.
 //
 // A hash-only Python streamer of the published shards is an INDEPENDENT implementation of
@@ -34,6 +36,7 @@ import gunbc.fabric.engram_materialization { engram_component_identity }
 data v41_row_store_format_revision: Nat = 1
 data v41_row_store_endianness: Endianness = LittleEndian
 data v41_row_store_rank_count: Nat = 4
+data v41_row_store_magic: NonEmptyStr = "ENGR1\n" as NonEmptyStr
 
 // THE PARTITION RULE IS THE PLACER. InterleaveByRankRemainder is dest_rank = global_row % rank_count
 // and local_row = global_row / rank_count; the encoding key hashes this variant, not a parallel
@@ -268,6 +271,7 @@ fn v41_encoding_spec_inputs(spec: V41RowStoreEncodingSpec) -> List<ArtifactReali
   concat(concat([
     v41_input(identity: "component", value: declaration_ref_display_key(ref: spec.component) as String),
     v41_input(identity: "format_revision", value: to_string(spec.format_revision)),
+    v41_input(identity: "magic", value: v41_row_store_magic as String),
     v41_input(identity: "endianness", value: endianness_token(e: spec.endianness) as String),
     v41_input(identity: "row_order", value: v41_order_token(o: spec.row_order) as String),
     v41_input(identity: "rank_map", value: v41_partition_token(p: spec.rank_map) as String),
@@ -360,6 +364,10 @@ fn v41_local_row(global_row: Nat, spec: V41RowStoreEncodingSpec) -> Nat? {
   }
 }
 
+fn v41_row_store_magic_size() -> ByteSize {
+  byte_size(count: (v41_row_store_magic as String).length())
+}
+
 fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank: Nat) -> V41PlacedRow? {
   match v41_dest_rank(global_row: row.global_row, spec: spec) {
     Absent => none
@@ -371,7 +379,7 @@ fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank
           global_row: row.global_row,
           rank: rank,
           local_row: local,
-          offset: byte_size(count: prior_on_rank * byte_size_count(b: v41_row_bytes(g: spec.geometry))),
+          offset: byte_size(count: byte_size_count(b: v41_row_store_magic_size()) + prior_on_rank * byte_size_count(b: v41_row_bytes(g: spec.geometry))),
           payload: row.payload,
         }
       }
@@ -450,9 +458,13 @@ fn v41_place_all(rows: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> Lis
 
 fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat, order: V41RowStoreOrder) -> String? {
   match order {
-    GlobalAscendingInterleavedByRank => Present {
-      value: join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
-    }
+    GlobalAscendingInterleavedByRank =>
+      let body = join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
+      if body == "" {
+        Present { value: "" }
+      } else {
+        Present { value: join([v41_row_store_magic as String, body], "") }
+      }
     RowOrderReservedUninhabited => none
   }
 }

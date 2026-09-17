@@ -19,6 +19,8 @@ import extdeps.tools.sha256sum {
   Sha256FileDigestUnavailable,
   sha256sum_file_digest_via_shell
 }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
+import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 import tools.self_host_curated_seed_linked_harness {
   cssl_std_bridge_shims_rel,
@@ -474,10 +476,23 @@ fn emission_compile_args(scope: EmissionScope, render_target: EmissionRenderTarg
       concat(["compile", "--source-root", "dag", "--source-root", "src/v2", "--entry", e], tail)
     PrimaryRootScope { primary_root: r, dependency_pools: pools } =>
       concat(
-        concat(["compile", "--source-root", r], pools |> flat_map(pl => ["--source-root", pl])),
-        tail
+        concat(
+          concat(["compile", "--source-root", r], pools |> flat_map(pl => ["--source-root", pl])),
+          tail
+        ),
+        emission_primary_root_demand_args()
       )
   }
+}
+
+// A WHOLE-ROOT MEASUREMENT IS ADMITTED ON ITS ROOT'S OWN MEASURED DEMAND, so the argv hands the
+// compile this repository's identity and the location of its demand projection -- both read from
+// their authorities, never spelled here -- and an entry measurement carries neither.
+fn emission_primary_root_demand_args() -> List<String> {
+  [
+    "--repository", whole_corpus_compile_repository as String,
+    "--measured-root-demands", whole_corpus_compile_demand_projection_path(),
+  ]
 }
 
 // THE ENTRY A SCOPE NAMES, IF IT NAMES ONE -- ONE AUTHORITY WITH TWO CONSUMERS RATHER THAN A
