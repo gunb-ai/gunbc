@@ -304,20 +304,29 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // Args[0]=serve, with the model path at Args[1] -- so a line that also spelled "serve" would reach the
 // engine as `vllm serve serve <path>` and refuse.
 //
-// `--quantization` IS SPELLED EXPLICITLY EVEN THOUGH THE ENGINE WOULD INFER IT. The checkpoint's own
-// config declares quant_method fp8, so vLLM resolves it unaided -- but an omitted flag makes the RUNNING
-// LINE unable to say which weights it loaded, and the convergence reader that decides whether the
-// desired arm is serving reads exactly that line. Omitting it would make every such read report an
-// incomplete identity and withhold. A launch line that names its own artifact is what makes the arm
-// observable at all -- and that reader is a later change, not a module in this tree today.
+// `--quantization` IS SPELLED ONLY WHERE THE CHECKPOINT SAYS IT SHOULD BE, and for the native FP8
+// checkpoint that means NOT AT ALL. Its row answers QuantizationResolvedFromCheckpointConfig: the
+// config.json carries quant_method fp8 with a weight_block_size and a 1509-entry
+// modules_to_not_convert list, and passing a bare `--quantization fp8` would override that structure
+// with a scheme name. The live arm agrees -- the container that served from 2026-09-13 carries no
+// --quantization in its argv.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH SAID THE OPPOSITE, asserting the flag "IS SPELLED EXPLICITLY
+// EVEN THOUGH THE ENGINE WOULD INFER IT". That was written when the launch spelled it
+// unconditionally, and it survived the move to checkpoint_quantization_argv, which emits the flag
+// only for a checkpoint whose quantization is spelled on argv. The EXL3 canary is such a checkpoint;
+// this arm's is not.
 //
 // `--master-addr` IS THE HEAD'S RAIL ADDRESS, WHICH IS THE WHOLE POINT OF THE FABRIC. Tensor-parallel
 // collectives cross this address on every forward pass; pointing it at a management address would route
 // them over the wireless LAN while a 200G switched fabric sat idle, and nothing would report an error --
 // the group would simply be slow. The rail address is derived from the lane observation via
 // gunbc.spark.fabric_rail_desired rather than authored here.
-// THE PROFILE'S PREFIX-CACHING REQUEST REACHES THE ENGINE HERE, which until now it could not: this argv
-// named no prefix-caching flag at all, so every launch took whatever the engine inferred. At the revision
+// THE PROFILE'S PREFIX-CACHING REQUEST REACHES THE ENGINE HERE, which until now it could not: THIS
+// MODULE's argv named no prefix-caching flag at all, so any launch it rendered took whatever the
+// engine inferred. That is a statement about this renderer and NOT about the arm now running: the
+// live container was created out of band and does carry --enable-prefix-caching, which is why the
+// profile records PrefixCachingExplicit and its receipt is not describing a different request. At the revision
 // this fleet runs that inference goes through the MODEL configuration rather than a declared default, so
 // "nothing said" was not a stable request -- it was a different request per checkpoint.
 // THE TWO NCCL_DEBUG ASSIGNMENTS ARE AN OBSERVATION OBLIGATION, NOT A TUNING KNOB, and they exist for a
