@@ -117,6 +117,3 @@ fn approval_poll_standing(
     }
   }
 }
-
-// HTTP transport success is not filing standing: 409 already-filed and 502 after a durable write
-// with minted links still poll. The filed= token is the only admit.
