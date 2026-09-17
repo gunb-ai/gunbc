@@ -26,10 +26,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // is the cheap src/v2 arm of the production partition. Collapsing it into the resolver would
 // re-index src/v2 as a full graph, which is the cost the partition exists to avoid.
 //
-// WHAT IS NOT NETTED. ExistingSeedItemModified covers resolve_entry_graph_shared and the
-// candidate-scan helpers that already existed as private functions when this census bound them.
-// Generated dispatch rows in v1_interpreter_dispatch_generated.rs are projections of
+// WHAT IS NOT NETTED. ExistingSeedItemModified covers resolve_entry_graph_shared, which
+// already existed when this census bound it. Generated dispatch rows in
+// v1_interpreter_dispatch_generated.rs are projections of
 // gunbc.v1.v1_interpreter_primitive_surface and are exempt by generation authority.
+// BuiltinSignature inserts in v1_compiler_infer_method are the same ExistingSeedItemModified
+// class: they extend an existing map, they are not new declarations.
 //
 // HAND-ITEM DELTA is derived by gunbc.rust_item_host_observation and is not restated as a
 // transcribed count. Two sibling census builtins
@@ -37,15 +39,32 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // also lack rows; they are accumulated debt, not this change's licence, and are not enrolled here.
 data evaluation_store_address_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ResolvedCallEdgeRow", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ResolvedCallEdgeCensus", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "EvaluationStoreAddressProductionCoverage", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "resolved_call_edges_from_graph", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_importer_resolved_call_edges", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_callsite_resolved_call_edges", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_call_form_leaf_guard", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "first_call_form_leaf", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "token_is_trivia", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "EvaluationStoreAddressProductionCoverage", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "dag_ident_continue", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "content_has_target_leaf_at_ident_boundary", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "resolve_roots_for_call_edge_pool", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "first_call_form_leaf", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_call_form_leaf_guard", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_candidate_resolved_call_edges", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "collect_dag_files_complete", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "significant_token_shapes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "token_keyword", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "token_ident", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "dotted_path_from", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "ReferenceFormFile", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "parse_reference_form_file", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "load_reference_form_pool", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_candidate_resolved_call_edges_uncached", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "resolved_call_edge_census_value", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "evaluation_store_address_production_coverage_value", field: WholeDeclaration }
   ],
-  reason: "The store-address census asks the compiler what ResolvedCallee edges exist and asks the tokenizer which src/v2 files contain a call-form of three named leaves. Both questions are about seed pipeline products. compile_dag_callsite_resolved_call_edges selects callers from a horizon and resolves each selected entry's derived import closure over witness_layer_roots, refusing blocking diagnostics before projecting edges. compile_dag_importer_resolved_call_edges is the import-only twin used to prove the qualified-call gap. compile_dag_call_form_leaf_guard tokenizes the zero-candidate pool fail-closed. first_call_form_leaf and token_is_trivia are the guard's leaf-then-lparen recognizer. EvaluationStoreAddressProductionCoverage is the typed coverage carrier; evaluation_store_address_production_coverage_value projects it into interpreter values.",
+  reason: "The store-address census asks the compiler what ResolvedCallee edges exist and asks the tokenizer which src/v2 files contain a call-form of three named leaves. Both questions are about seed pipeline products. compile_dag_callsite_resolved_call_edges selects callers from a horizon and resolves each selected entry's derived import closure over witness_layer_roots, refusing blocking diagnostics before projecting edges. compile_dag_importer_resolved_call_edges is the import-only twin used to prove the qualified-call gap. compile_dag_call_form_leaf_guard tokenizes the zero-candidate pool fail-closed. first_call_form_leaf and token_is_trivia are the guard's leaf-then-lparen recognizer. content_has_target_leaf_at_ident_boundary is a conservative ident-boundary prefilter only; call-form authority stays with the tokenizer. resolve_roots_for_call_edge_pool keeps fixture pools from rebuilding the live-tree universe. The remaining emit_host items are the scan, tokenize, and resolve helpers those three builtins call. ResolvedCallEdgeRow, ResolvedCallEdgeCensus, and EvaluationStoreAddressProductionCoverage are the host carriers; the two v1_interpreter projections lift them into interpreter values.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete these items when option A lands: the floor exposes its accepted live-tree resolution/index product (or an equivalent exact query interface) and the census derives resolver-produced call edges over the complete production roots without building another corpus index per witness. Then the dag/src/v2 partition is deleted, one exact join remains, and a host builtin standing beside a modeled query is the duplicated authority this receipt refuses.",
   current_boundary: "Reachable only as .dag free-calls. The production exact arm scans dag, resolves through the admitted witness-layer universe, and refuses under-resolved graphs. The src/v2 arm tokenizes and never resolves. Neither writes the corpus, neither substitutes a Bool for a coverage carrier, and neither is an escape hatch around a modeled query that does not yet exist."
