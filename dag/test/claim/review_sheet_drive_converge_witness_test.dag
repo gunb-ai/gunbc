@@ -336,20 +336,29 @@ test fn search_query_keys_on_app_properties_and_excludes_trashed() -> Bool {
 
 
 // The service config must spell the environment variable as a literal because the config parse
-// extracts a literal rather than evaluating a reference. This claim is what keeps that forced
-// duplicate honest: if either spelling moves, the transport silently stops finding a token and
-// every Drive call refuses as AuthDeclaredButUnwired, which reads like a missing credential rather
-// than a renamed one.
+// extracts a literal rather than evaluating a reference. WHAT THIS CLAIM REACHES IS ONE SIDE OF
+// THAT DUPLICATE: it joins the drive_token_env DECLARATION to a third copy of the string written
+// on the line below, and it cannot read the auth_source literal in the service config, because no
+// fold in this corpus can read a config's literals. So it goes red when the declaration moves and
+// stays GREEN when the transport spelling moves alone -- which is the drift that actually breaks
+// the call, refusing every Drive request as AuthDeclaredButUnwired and reading like a missing
+// credential rather than a renamed one. The class is rostered as gunbc.recurring_failure_mode
+// a_pin_claim_compares_two_copies_while_a_third_drifts; the wall that would close it is a config
+// parse that evaluates a declaration reference, leaving one spelling and nothing to drift from.
 test fn drive_token_env_matches_the_configured_literal() -> Bool {
   drive_token_env == "GUNBC_REVIEW_SHEET_TOKEN"
 }
 
 
 // The property NAME is a literal in the create body because the body builder emits field names as
-// written. This claim is the same kind of pin as the env-var one, and it exists because the first
-// live run failed exactly here: a mismatch between the name written into the file and the name
-// searched for produces a file that exists and cannot be found, which reads as "the create did not
-// take" rather than "the create wrote a different name".
+// written. This claim has the SAME LIMIT as the env-var one above: it joins this declaration to a
+// third copy on the line below and never reads the appProperties literal in CreateFile's body, so a
+// drift confined to that literal stays green. It is kept beside the receipt that motivated it, and
+// the receipt is the reason to state the limit rather than imply coverage -- the first live run
+// failed exactly here, and a mismatch between the name written into the file and the name searched
+// for produces a file that exists and cannot be found, reading as "the create did not take" rather
+// than "the create wrote a different name". A claim cited as catching that, which cannot, is worse
+// than no claim at all.
 test fn app_property_key_matches_the_created_property() -> Bool {
   (review_sheet_app_property_key as String) == "gunbcReviewSheet"
 }
