@@ -194,6 +194,72 @@ fn evidence_has_standing_for(evidence: SlotRetirementEvidence, unit: String) -> 
   }
 }
 
+fn instance_name_of_runner_unit(unit: String) -> NonEmptyStr {
+  let without_prefix =
+    if starts_with(s: unit, prefix: runner_unit_prefix) {
+      substring(s: unit, start: string_length(s: runner_unit_prefix), end: string_length(s: unit))
+    } else {
+      unit
+    }
+  if string_length(s: without_prefix) >= string_length(s: runner_unit_suffix) {
+    let cut = string_length(s: without_prefix) - string_length(s: runner_unit_suffix)
+    let maybe_suffix = substring(s: without_prefix, start: cut, end: string_length(s: without_prefix))
+    if maybe_suffix == runner_unit_suffix {
+      substring(s: without_prefix, start: 0, end: cut) as NonEmptyStr
+    } else {
+      without_prefix as NonEmptyStr
+    }
+  } else {
+    without_prefix as NonEmptyStr
+  }
+}
+
+fn obligation_slot_dir(unit: String) -> NonEmptyStr {
+  runner_slot_instance_dir(instance_name: instance_name_of_runner_unit(unit: unit))
+}
+
+fn membership_does_not_name(removed: List<String>, unit: String) -> Bool {
+  !any(removed, r => r == unit)
+}
+
+// REQUIRED RETIREES THAT MEMBERSHIP NEVER SAW MUST STILL BE NAMED WHEN THEY ARE NOT MASKED.
+//
+// `retirement_actuation_units` only emits `RemovalActuationRequired`. An unobserved readback, a
+// refused interruption, or a required identity with no bound standing produced no mask and no
+// withheld line — the silent-degradation arm DESIGN section 5 forbids, and the exact population
+// this planner exists to reach (serving 13..21). Membership teardown already prints those
+// dispositions for `MemberRemoved` trees; this is the same diagnostic for the obligation set.
+fn obligation_withheld_scripts(
+  deploy: RunnerHostDeploy,
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
+  evidence: SlotRetirementEvidence,
+) -> List<String> {
+  let removed = membership_removed_unit_names(membership: membership)
+  transition_required_retiring(host: deploy.host_label as HostIdentity)
+    |> map(u => u as String)
+    |> filter(u => membership_does_not_name(removed: removed, unit: u))
+    |> flat_map(u =>
+      if evidence_has_standing_for(evidence: evidence, unit: u)
+        && realization_requires_actuation(evidence: evidence, unit: u) {
+        []
+      } else {
+        match slot_removal_realization(evidence: evidence, unit: u) {
+          RemovalActuationRequired { unit: au } =>
+            [slot_removal_withheld_line(
+              unit: au,
+              tree: obligation_slot_dir(unit: au),
+              cause: "no retirement standing is bound for this required retiree, so neither mask nor deletion is authorized",
+            )]
+          RemovalRetirementPending { unit: pu, cause: c } =>
+            [slot_removal_withheld_line(unit: pu, tree: obligation_slot_dir(unit: pu), cause: c)]
+          RemovalRetirementRefused { unit: ru, cause: c } =>
+            [slot_removal_withheld_line(unit: ru, tree: obligation_slot_dir(unit: ru), cause: c)]
+          RemovalTeardownAuthorized { unit: _ } => []
+        }
+      }
+    )
+}
+
 fn retirement_actuation_units(
   deploy: RunnerHostDeploy,
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
@@ -210,6 +276,9 @@ fn retirement_actuation_units(
   first_occurrences(items: concat(from_membership, from_obligation))
 }
 
+// A WITHHELD DELETION SAYS SO RATHER THAN VANISHING. A skipped teardown that printed nothing would
+// leave a narrowing host quietly accumulating trees with no record of which units were waiting on
+// what, which is the silent-degradation arm DESIGN section 5 forbids.
 fn slot_removal_withheld_line(unit: String, tree: NonEmptyStr, cause: String) -> String {
   join(
     [
@@ -519,7 +588,8 @@ fn runner_slot_provision_plan(
       membership: membership,
       evidence: retirement_evidence,
     ) |> map(u => retirement_mask_line(unit: u)),
-    teardown_scripts: flat_map(membership.actions, a =>
+    teardown_scripts: concat(
+      flat_map(membership.actions, a =>
       match a {
         MemberRemoved { at: _, from: m } =>
           match slot_removal_realization(
@@ -540,6 +610,12 @@ fn runner_slot_provision_plan(
         MemberRemovalRefused { from: _, cause: _ } => []
         MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
+      ),
+      obligation_withheld_scripts(
+        deploy: deploy,
+        membership: membership,
+        evidence: retirement_evidence,
+      ),
     ),
   }
 }

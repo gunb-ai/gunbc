@@ -735,6 +735,28 @@ test fn an_active_authorized_required_retiree_is_masked_and_not_deleted() -> Boo
   emits_mask(lines: lines) && emits_no_tree_removal(lines: lines)
 }
 
+test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld() -> Bool {
+  let lines = srv1_plan(
+    observed: [srv1_surplus_member(name: "srv1-13", active: true, enabled: true)],
+    evidence: srv1_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv1-13.service" as NonEmptyStr,
+          unit_file_state: "enabled",
+          active_state: "active",
+          occupancy: CgroupUnobserved { cause: "probe refused" },
+        ),
+      ),
+    ]),
+  )
+  !emits_mask(lines: lines)
+    && emits_no_tree_removal(lines: lines)
+    && any(lines, l =>
+      string_contains(s: l, pattern: "__GUNBC_CONVERGE_WITHHELD__")
+        && string_contains(s: l, pattern: "actions-runner@srv1-13.service")
+    )
+}
+
 // 2. THE EXACT UNSAFE STATE THE REVIEW NAMED: inactive, disabled, unregistered, in grammar -- so
 // ownership admits and membership removes -- WITH WORK STILL UNDER ITS CGROUP. The old planner
 // deleted this tree. The realization must withhold, because occupancy is the fact the provenance
