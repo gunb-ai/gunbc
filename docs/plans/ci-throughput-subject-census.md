@@ -1,7 +1,10 @@
 # CI throughput comparability — a whole-path census of the current tree
 
-Stage 3 of [throughput-qualified convergence](throughput-qualified-convergence-design.md), which named
-the CI side a frontier rather than a bound subject and required its census to read the CURRENT tree.
+Stage 3 of the throughput-qualified convergence design, which named the CI side a frontier rather than
+a bound subject and required its census to read the CURRENT tree. **That parent does not exist in this
+tree: it is open as gunbc#11540 and this census must land with or after it** — the link below resolves
+only once that PR lands, and naming it here is the declared frontier's trigger (§3c) rather than a
+citation that silently dangles: [throughput-qualified-convergence-design.md](throughput-qualified-convergence-design.md).
 That instruction was specific and is honoured literally here: `docs/plans/ci-humming.md` describes the
 June slot/cgroup program and an older control/apply architecture, and deriving axes from it would
 model a fleet that has since been replaced.
@@ -11,8 +14,10 @@ prior CI rate inapplicable** — and it answers it by naming carriers that exist
 
 ## The finding that motivates the rest
 
-**Nothing in the runner subsystem measures a rate, and nothing anywhere folds the timestamps that
-would yield one.** 76 modules under `dag/gunbc/runner/` model slot
+**No fold anywhere derives an aggregate CI rate** — completed homogeneous work per unit time, bound to
+an admitted subject, a declared protocol and an observed realization. Durations DO exist and are
+derived (`gunbc.superseded_run_starvation_census` `timestamp_diff_seconds`); a rate does not. 76
+modules under `dag/gunbc/runner/` model slot
 identity, width admission, microVM sizing, placement, connectivity repair, and receipts for nearly
 every step of an attempt's life. Searching them for a throughput quantity returns two hits, and
 neither is one: `runner_unit_file` `InvocationLocalCargo { jobs_per_slot }` is a **cargo invocation
@@ -68,8 +73,9 @@ observed execution rows with those timestamps populated. So the claim to make is
 than "nothing measures a rate": **every current consumer uses those timestamps as ORDERING
 PREDICATES, never as an interval.** `gunbc.run_disposition` asks whether `run_started_at` is strictly
 later than `created_at` to prove execution began; `gunbc.pr_base_freshness` asks whether a base commit
-landed after a run started. Neither subtracts. No fold in the tree derives a duration, a queue delay
-or a rate from a pair of these timestamps.
+landed after a run started — both use the timestamps as ordering predicates rather than intervals.
+That is a fact about THOSE TWO consumers and not about the tree, which is where an earlier revision of
+this census overreached.
 
 **And the sentence above was itself wrong when first written, which is the correction worth reading.**
 A revision of this census asserted that "neither subtracts; no fold in the tree derives a duration, a
@@ -168,6 +174,8 @@ It also does not rank hosts, shapes or widths. The moment anything chooses among
 
 ## Standing
 
-A census, not enrolled in DESIGN, governing nothing. Its consumer is stage 3 of the parent design,
+A census, not enrolled in DESIGN, governing nothing. Its consumer is stage 3 of the parent design —
+which is gunbc#11540 and is NOT YET IN THE TREE, so this document's only consumer is a declared
+frontier and its merge dependency is that PR,
 and its finding — that CI models its configuration thoroughly and its rate not at all — is the same
 finding the parent made for serving, arrived at independently on the other side of the fleet.
