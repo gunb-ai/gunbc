@@ -427,9 +427,5 @@ data approval_submission_authority_policy_frontier: DissolutionCondition = unbou
 // THE FILING ROUTES ARE NOW ON THE SERVE TABLE (POST /approvals, GET /approvals/\{escalation_id\}).
 // Remaining dissolution is the same path used by every approval-gated fleet action, not one host's boot.
 data approval_submission_client_frontier: DissolutionCondition = unbound_dissolution(
-<<<<<<< HEAD
-  description: "every approval-gated fleet action files through POST /approvals and GET /approvals/\{id\}, then joins the grant with grant_from_approved_decision over those standing fields; SUFFICIENT FOR that HTTP client path (runners never open the 0600 store), not one host's boot and not grant_from_store; the srv3 source-declared grant dissolves into the same run.",
-=======
   description: "every approval-gated fleet action files through POST /approvals and GET /approvals/ plus the escalation id, then joins the grant with grant_from_approved_decision over those standing fields; SUFFICIENT FOR that HTTP client path (runners never open the 0600 store), not one host's boot and not grant_from_store; the srv3 source-declared grant dissolves into the same run.",
->>>>>>> 9513f2a495 (Digest both staged MAC keys before install and name the boot POST bound as Second.)
 )
