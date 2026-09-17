@@ -110,11 +110,3 @@ test fn headless_flags_survive_both_arms() -> Bool {
     && cursor_argv_contains(argv: shaped.argv, token: "stream-json")
     && cursor_argv_contains(argv: shaped.argv, token: "/srv/attempt")
 }
-
-test fn cursor_cli_invocation_keystone_holds() -> Bool {
-  environment_arm_binds_the_variable_and_keeps_argv_clean()
-    && argument_arm_places_the_key_in_argv_and_binds_nothing()
-    && the_two_auth_arms_produce_different_processes()
-    && automation_constructor_only_materializes_into_the_env_var()
-    && headless_flags_survive_both_arms()
-}
