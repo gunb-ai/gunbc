@@ -1053,7 +1053,7 @@ type RankState sole_constructor {
 }
 
 type ArmRelaunchOutcome
-  = ArmCommitted { verdicts: List<RankTransportVerdict>, preserved: List<NonEmptyStr> }
+  = ArmCommitted { verdicts: List<RankTransportVerdict>, preserved: List<NonEmptyStr>, moved_axes: List<RelaunchAxis> }
   | ArmRefusedBeforeActuation { step: RelaunchStep, causes: List<NonEmptyStr> }
   | ArmRolledBack { step: RelaunchStep, cause: NonEmptyStr, rollbacks: List<RollbackOutcome> }
 
@@ -1566,6 +1566,13 @@ fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
           ArmCommitted {
             verdicts: verification.verdicts,
             preserved: map(captured.captures, c => c.preserved),
+            moved_axes: fold(captured.captures, init: [], f: (acc, c) =>
+              fold(c.moved_axes, init: acc, f: (inner, a) =>
+                if count(filter(inner, x => (relaunch_axis_wire(a: x) as String) == (relaunch_axis_wire(a: a) as String))) > 0 {
+                  inner
+                } else {
+                  concat(inner, [a])
+                })),
           }
         }
       }
@@ -1573,11 +1580,51 @@ fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
   }
 }
 
+// ── THE HEADLINE IS DERIVED FROM WHAT MOVED, NOT ASSERTED ─────────────────────────────────────
+//
+// A COMMIT DOES NOT IMPLY A FLIP, and a first cut said it did. `successor_standing` returns
+// SuccessorAsIntended when the admitted delta moved NO transport axis and the transport correctly
+// HELD -- which is what a relaunch onto a new concurrency profile is on an arm already running verbs,
+// and which this module's own witness asserts as legitimate. So the headline read "all 4 ranks
+// flipped transport" for a relaunch in which none did.
+//
+// THIS IS THE ONE SENTENCE AN OPERATOR READS UNDER PRESSURE, about the exact fact this whole vertical
+// exists to make visible. The per-rank lines beneath it were already honest; the summary above them
+// was the fabricated plausible output DESIGN section 5 forbids, in the fold built to stop silent
+// transport wrongness.
+fn commit_headline(verdicts: List<RankTransportVerdict>, moved_axes: List<RelaunchAxis>) -> String {
+  let ranks = join([to_string(count(verdicts)), if count(verdicts) == 1 { " rank" } else { " ranks" }], "")
+  if axes_include_transport(axes: moved_axes) {
+    join(["all ", ranks, " flipped transport to ", committed_transport_text(verdicts: verdicts), "."], "")
+  } else {
+    join([
+      "all ", ranks, " relaunched on ",
+      join(map(moved_axes, a => relaunch_axis_wire(a: a) as String), " and "),
+      "; the transport was not asked to move and HELD at ", committed_transport_text(verdicts: verdicts), ".",
+    ], "")
+  }
+}
+
+// THE TRANSPORT IS READ OFF THE VERDICTS RATHER THAN NAMED, so a commit whose ranks somehow disagree
+// says so instead of picking one. Nothing admits that state -- every rank is verified before a commit
+// is minted -- which is why it renders as a refusal-shaped sentence rather than a chosen value.
+fn committed_transport_text(verdicts: List<RankTransportVerdict>) -> String {
+  let names = fold(verdicts, init: [], f: (acc, v) => {
+    let n = nccl_realized_transport_wire(t: v.reading.transport) as String
+    if count(filter(acc, x => x == n)) > 0 { acc } else { concat(acc, [n]) }
+  })
+  match names.first() {
+    Absent => "no transport, because no rank was verified"
+    Present { value: only } =>
+      if count(names) == 1 { only } else { join(["DISAGREEING transports: ", join(names, ", ")], "") }
+  }
+}
+
 fn arm_relaunch_outcome_text(o: ArmRelaunchOutcome) -> String {
   match o {
-    ArmCommitted { verdicts: vs, preserved: ps } =>
+    ArmCommitted { verdicts: vs, preserved: ps, moved_axes: axs } =>
       join([
-        "COMMITTED: all ", to_string(count(vs)), " ranks flipped transport.\n",
+        "COMMITTED: ", commit_headline(verdicts: vs, moved_axes: axs), "\n",
         join(map(vs, v => join(["  ", rank_transport_verdict_text(v: v)], "")), "\n"),
         "\n  preserved incumbents: ", join(map(ps, p => p as String), ", "),
       ], "")

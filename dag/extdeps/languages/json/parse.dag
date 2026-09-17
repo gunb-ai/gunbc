@@ -1,6 +1,7 @@
 module extdeps.languages.json.parse
 
 import std.types { String, Int, List, Bool }
+import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit {
@@ -402,5 +403,189 @@ fn json_text_parseable(s: String) -> Bool {
   match parse_json_document(s: s) {
     JsonDocumentParsed { value: _ } => true
     JsonDocumentUnreadable { gap: _ } => false
+  }
+}
+
+// ── READING ONE MEMBER OF A JSON OBJECT, THREE-VALUED ─────────────────────────────────────────
+//
+// WHY THIS LIVES HERE RATHER THAN BESIDE ITS FIRST CONSUMER. Nothing below is a fact about any
+// upstream product: it is the JSON language's own question -- is this member missing, present and of
+// the shape I asked for, or present and of another shape -- asked once. The first consumer was a
+// vendor readback module (extdeps.docker.container_inspect), and declaring it there would have made
+// the next JSON readback in this corpus re-mint it, which is DESIGN section 2's test for whether an
+// edit reduced redundancy or moved it: net concepts must not grow by re-invention.
+//
+// A MEMBER IS MISSING, PRESENT AND WELL SHAPED, OR PRESENT AND WRONG. Two-valued readers collapse
+// the third into the first, and that collapse is how a readback comes to report agreement about a
+// field it failed to understand -- the defect the docker readback was extended to make detectable,
+// arriving one layer down in the reader built to detect it.
+//
+// JSON `null` READS AS ABSENT AND THAT IS A JUDGEMENT THIS MODULE OWNS, not the caller's: a wire
+// null is the document declining to carry a value, which is what absence means here. A caller for
+// which null and missing differ reads the raw JsonValue through json_object_unique_member and
+// decides for itself, which is the arm that stays available.
+// ── THE FIELD READERS, EACH THREE-VALUED ──────────────────────────────────────────────────────
+//
+// A member is MISSING, PRESENT AND WELL SHAPED, or PRESENT AND WRONG. Two-valued readers collapse
+// the third into the first, and that collapse is precisely how a readback reports agreement about a
+// field it failed to understand.
+type JsonFieldRead<T>
+  = FieldAbsent
+  | FieldRead { value: T }
+  | FieldMalformed { cause: String }
+
+fn json_field(obj: JsonValue, key: String) -> JsonFieldRead<JsonValue> {
+  match json_object_unique_member(v: obj, key: key) {
+    JsonMemberAbsent => FieldAbsent
+    JsonMemberNotAnObject => FieldMalformed { cause: join(["the enclosing value carrying ", key, " is not an object"], "") }
+    JsonMemberDuplicated { count: n } => FieldMalformed { cause: join([key, " is named ", to_string(n), " times in one object"], "") }
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldRead { value: v }
+        JsonNumber { lexeme: _ } => FieldRead { value: v }
+        JsonString { value: _ } => FieldRead { value: v }
+        JsonArray { elements: _ } => FieldRead { value: v }
+        JsonObject { members: _ } => FieldRead { value: v }
+      }
+  }
+}
+
+fn json_field_string(obj: JsonValue, key: String) -> JsonFieldRead<String> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonString { value: s } => FieldRead { value: s }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where a string was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where a string was expected"], "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a string was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a string was expected"], "") }
+      }
+  }
+}
+
+fn json_field_bool(obj: JsonValue, key: String) -> JsonFieldRead<Bool> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonBool { value: b } => FieldRead { value: b }
+        JsonNull => FieldAbsent
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where a bool was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where a bool was expected"], "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a bool was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a bool was expected"], "") }
+      }
+  }
+}
+
+fn json_field_int(obj: JsonValue, key: String) -> JsonFieldRead<Int> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonNumber { lexeme: lx } =>
+          match parse_int(s: lx) {
+            Present { value: n } => FieldRead { value: n }
+            Absent => FieldMalformed { cause: join([key, " carries the number lexeme ", lx, ", which is not an integer"], "") }
+          }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where a number was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where a number was expected"], "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a number was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a number was expected"], "") }
+      }
+  }
+}
+
+// A NEGATIVE READING IS A REFUSAL, NOT A CLAMP. `Nat` cannot hold -1, and the wire does use -1 for
+// several fields (the memory_swap frontier row above rosters one). Clamping to zero would answer a
+// different question in the same units, which is the failure extdeps.vllm.log_lines was written
+// against: arithmetic over real fields producing a convincing wrong number.
+fn json_field_nat(obj: JsonValue, key: String) -> JsonFieldRead<Nat> {
+  match json_field_int(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: n } =>
+      if n < 0 {
+        FieldMalformed { cause: join([key, " is ", to_string(n), ", which no unsigned carrier can hold; it is refused rather than clamped"], "") }
+      } else {
+        FieldRead { value: n }
+      }
+  }
+}
+
+
+
+type JsonStringListAcc {
+  values: List<String>
+  cause: String?
+}
+
+
+fn json_string_list_step(acc: JsonStringListAcc, key: String, v: JsonValue) -> JsonStringListAcc {
+  match acc.cause {
+    Present { value: _ } => acc
+    Absent =>
+      match v {
+        JsonString { value: s } => JsonStringListAcc { values: concat(acc.values, [s]), cause: none }
+        JsonNull => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a null where every element must be a string"], "") } }
+        JsonBool { value: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a bool where every element must be a string"], "") } }
+        JsonNumber { lexeme: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a number where every element must be a string"], "") } }
+        JsonArray { elements: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds an array where every element must be a string"], "") } }
+        JsonObject { members: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds an object where every element must be a string"], "") } }
+      }
+  }
+}
+
+
+fn json_field_string_list(obj: JsonValue, key: String) -> JsonFieldRead<List<String>> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } => {
+          let acc = fold(es, init: JsonStringListAcc { values: [], cause: none }, f: (a, e) => json_string_list_step(acc: a, key: key, v: e))
+          match acc.cause {
+            Present { value: c } => FieldMalformed { cause: c }
+            Absent => FieldRead { value: acc.values }
+          }
+        }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where an array was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where an array was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where an array was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where an array was expected"], "") }
+      }
+  }
+}
+
+
+// ── COLLECTING THE REFUSALS RATHER THAN STOPPING AT THE FIRST ─────────────────────────────────
+//
+// A document that disagrees with this model in four places should say so in four places. Cascading
+// matches would report the first and hide the rest, which turns one decode into four round trips
+// against a live daemon -- and against a CAPTURE, which cannot be re-run at all, it would hide
+// findings permanently.
+fn json_field_value(r: JsonFieldRead<T>) -> T? {
+  match r {
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+    FieldRead { value: v } => Present { value: v }
+  }
+}
+
+
+fn json_field_cause(r: JsonFieldRead<T>) -> String? {
+  match r {
+    FieldAbsent => none
+    FieldMalformed { cause: c } => Present { value: c }
+    FieldRead { value: _ } => none
   }
 }
