@@ -425,16 +425,3 @@ test fn stale_or_wrong_teardown_subjects_refuse() -> Bool {
     }
   })
 }
-
-fn main() -> Bool {
-  vmm_cannot_observe_its_own_teardown() && changing_observation_instrument_refuses() &&
-  cross_boot_processes_refuse() && evidence_frontier_is_well_formed() &&
-  fractional_minutes_preserve_meter_and_exclude_staging() &&
-  missing_meter_and_initiator_refuse() &&
-  different_tenant_or_attempt_cannot_supply_usage_or_initiator() &&
-  invalid_interval_and_cross_clock_refuse() && cpu_clock_meter_refuses() &&
-  zero_cpu_or_unrecorded_resolution_refuse() &&
-  independent_present_then_absent_is_accepted() && destroyer_cannot_attest_its_own_teardown() &&
-  an_always_absent_instrument_refuses() && every_residue_and_unreadable_resource_refuses() &&
-  missing_observer_receipt_is_detectable() && stale_or_wrong_teardown_subjects_refuse()
-}

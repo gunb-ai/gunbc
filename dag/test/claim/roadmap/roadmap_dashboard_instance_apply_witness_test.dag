@@ -40,7 +40,6 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_production_reading_refused,
   dashboard_production_reading_detail,
   dashboard_production_readings_equal,
-  DashboardExecResult,
   DashboardProvisionStepReceipt,
   DashboardInstanceApplyResult,
   DashboardApplyRefused,
@@ -52,10 +51,6 @@ import gunbc.roadmap_dashboard_instance_apply {
   DashboardBootstrapReady,
   DashboardBootstrapRefused,
   DashboardBootstrapUnobserved,
-  DashboardPathObservation,
-  PathObservedPresent,
-  PathObservedAbsent,
-  PathObservationRefused,
   DashboardExecutableSurvey,
   ExecutablesSurveyed,
   ExecutableSurveyRefused,
@@ -67,6 +62,13 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_apply_preflight_json_value,
   dashboard_bootstrap_preflight_decision,
   dashboard_required_target_executables,
+}
+import gunbc.roadmap_dashboard_instance_observe {
+  DashboardExecResult,
+  DashboardPathObservation,
+  PathObservedPresent,
+  PathObservedAbsent,
+  PathObservationRefused,
 }
 import gunbc.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }
@@ -638,5 +640,4 @@ test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
       peer: witness_peered(),
     )
 }
-
 

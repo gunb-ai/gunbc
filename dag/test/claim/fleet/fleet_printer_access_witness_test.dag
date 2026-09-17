@@ -231,15 +231,3 @@ test fn a_404_over_an_existing_receipt_is_not_read_as_never_provisioned() -> Boo
     PrinterCredentialLocusConflicted { printer: _, matches: _ } => false
   }
 }
-
-test fn fleet_printer_access_witnesses_hold() -> Bool {
-  printer_access_code_locus_roster_is_the_exact_declared_population()
-    && each_printer_locus_names_the_secret_its_canonical_constructor_produces()
-    && an_unknown_printer_refuses_instead_of_fabricating_a_secret_locus()
-    && duplicate_printer_loci_refuse_instead_of_taking_the_last_row()
-    && both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources()
-    && a_404_is_read_as_the_container_being_absent()
-    && a_status_that_is_not_404_never_becomes_absence()
-    && a_present_container_with_no_receipt_is_not_reported_as_absent()
-    && a_404_over_an_existing_receipt_is_not_read_as_never_provisioned()
-}

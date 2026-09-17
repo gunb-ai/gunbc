@@ -38,6 +38,7 @@ import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
 import product.fabric.demand { Demand }
 import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.candidate_field { FieldRequest, CandidateField, assemble_candidate_field }
+import product.fabric.route_readiness { ExerciseOfRoute }
 import product.fabric.selection {
   DispatchInputs,
   OfferCandidacy, OfferPriced, OfferNotFungible, OfferUnavailableForGrant,
@@ -1836,6 +1837,10 @@ fn cp_probe_scope(work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseScop
 // was a question nothing on this path asked. It now goes through the offer-to-route correspondence
 // like any other consumer, so a facts row that drifted onto the wrong route would refuse here
 // instead of admitting quietly.
+// THE PROBE IS AN EXERCISE OF ITS OWN ROUTE (product.fabric.route_readiness), so it is admitted
+// onto that one route for this one work without a prior exercise; a probe that could only run on an
+// already-exercised route could never produce the first exercise. The decision instant is unread
+// on that arm, which is why it is zero rather than a clock reading.
 fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> CandidateField<NonEmptyStr> {
   assemble_candidate_field(
     routes: [
@@ -1845,6 +1850,9 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
     active: cp_probe_posture(),
     scope: cp_probe_scope(work: work),
     decision_receipt: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_decision_receipt"),
+    exercises: [],
+    readiness: ExerciseOfRoute { route: probe_route(), work: work },
+    at: 0,
     requests: [
       FieldRequest {
         offer: cp_probe_offer_for(executor: executor),

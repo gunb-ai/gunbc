@@ -1,0 +1,22 @@
+module gunbc.reference_derived_candidate
+
+import std.types { String }
+
+// THE EMIT-RUST REFERENCE-DERIVED CANDIDATE, ONE HOME. v1.compiler.emit_rust produces rows of this
+// shape; v2.workflow.legacy_repair_tap consumes the same types through the host bridge. Reachability
+// of ResolvedGraph explains the bridge, not a second copy of the coproduct (review 64840).
+
+type ReferenceDerivedCandidateDisposition
+  = CandidateSurvived { provider_module: String }
+  | CandidateOwnModule
+  | CandidateVariantDelegatedToParent { parent_enum: String }
+  | CandidateVariantParentUnresolved
+  | CandidateRegistryAbsent
+  | CandidateLeafAmbiguous
+  | CandidateExportProofFailed { provider_module: String }
+
+type ReferenceDerivedCandidateRow {
+  module_name: String
+  name: String
+  disposition: ReferenceDerivedCandidateDisposition
+}

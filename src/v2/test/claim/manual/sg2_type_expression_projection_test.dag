@@ -237,17 +237,6 @@ test fn sg2_instantiation_delimiters_bidirectional() -> Bool {
     row.instantiation_form.close == ^rust_token_gt
 }
 
-test fn witness_sg2_arrow_holds() -> Bool {
-  (content_hash(n: sg2_project_arrow_emitted()) == content_hash(n: rust_sg2_arrow_xy_emitted()))
-    && sg2_arrow_serialize_matches_expected()
-    && sg2_arrow_projected_serialize_matches_expected()
-    && sg2_conj_projected_serialize_matches_expected()
-    && sg2_instantiation_projected_serialize_matches_expected()
-    && sg2_binary_fn_projection_accepts()
-    && sg2_arrow_malformed_projection_rejects()
-    && sg2_arrow_swapped_split_serialize_mismatches_expected()
-}
-
 test fn witness_sg2_projection_falsification_holds() -> Bool {
   !sg2_serialize_accepts(emitted: sg2_fail_node())
     && !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_atom_zero_positional_emitted())

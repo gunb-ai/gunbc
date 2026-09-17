@@ -40,6 +40,7 @@ import gunbc.spark.serving_arm {
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
   serving_arm_admits, serving_checkpoint_row, serving_runtime_row,
+  runtime_artifact_wire, checkpoint_quantization_argv,
 }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotRole, SnapshotSeed,
@@ -278,7 +279,7 @@ fn glm_canary_convergence_text(v: GlmCanaryConvergence) -> String {
 fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjection? {
   match serving_runtime_row(r: arm.runtime) {
     Absent => none
-    Present { value: row } => Present { value: row.reasoning_projection }
+    Present { value: row } => row.reasoning_projection
   }
 }
 
@@ -301,7 +302,7 @@ fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExec
       container_path: "/out" as NonEmptyStr,
     }
     Present { value: rrow } => ContainerizedCli {
-      image: rrow.image_reference,
+      image: runtime_artifact_wire(a: rrow.artifact),
       cli_path: rrow.hub_cli_path,
       host_path: glm_canary_host_path(arm: arm),
       container_path: "/out" as NonEmptyStr,
@@ -363,15 +364,15 @@ fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
         Absent => none
         Present { value: _ } => Present { value: concat(
           concat(
-            [
+            concat([
               "serve", "/model",
               "--served-model-name", arm.served_model_alias as String,
-              "--quantization", crow.quantization_wire as String,
+            ], concat(checkpoint_quantization_argv(row: crow), [
               "--tensor-parallel-size", to_string(serving_topology_rank_count(t: arm.topology)),
               "--kv-cache-dtype", glm_5_3_flash_vllm_kv_cache_dtype_wire as String,
               "--max-model-len", to_string(token_count_value(t: arm.max_model_len)),
               "--max-num-seqs", to_string(glm_canary_seq_bound(b: arm.max_num_seqs)),
-            ],
+            ])),
             concat(
               glm_canary_batched_token_argv(p: arm.max_num_batched_tokens),
               concat(
@@ -421,21 +422,28 @@ fn glm_canary_candidate(arm: GlmCanaryArm) -> DeploymentCandidate {
 // carries no --distributed-executor-backend, so it takes the single-node default rather than the Ray
 // backend the four-rank pair route requires. Recording Ray here would describe a cluster this arm
 // does not form.
+// A ROW WHOSE DEFAULTS REVISION IS UNMODELLED PRODUCES NO PARAMETERS, rather than borrowing the nearest
+// modelled one. The profile's identity includes the vLLM revision its omitted flags resolve through, so
+// substituting a neighbour's would mint an identity for an engine nobody characterised.
 fn glm_canary_parameters(arm: GlmCanaryArm) -> ServingDecisionParameters? {
   match serving_runtime_row(r: arm.runtime) {
     Absent => none
-    Present { value: rrow } => Present { value: serving_decision_parameters(
-      max_model_len: arm.max_model_len,
-      memory_request: arm.memory_request,
-      max_num_batched_tokens: glm_canary_batched_token_count(p: arm.max_num_batched_tokens),
-      max_num_seqs: glm_canary_seq_bound(b: arm.max_num_seqs),
-      executor: ExecutorMpProfile,
-      kv_layout: KvFp8Layout,
-      speculative: glm_canary_speculative_policy(p: arm.speculation),
-      runtime: runtime_revision(
-        image: rrow.image_reference,
-        vllm_revision: (defaults_source_revision(r: rrow.claimed_defaults_revision)).full_revision),
-    ) }
+    Present { value: rrow } =>
+      match rrow.claimed_defaults_revision {
+        Absent => none
+        Present { value: claimed } => Present { value: serving_decision_parameters(
+          max_model_len: arm.max_model_len,
+          memory_request: arm.memory_request,
+          max_num_batched_tokens: glm_canary_batched_token_count(p: arm.max_num_batched_tokens),
+          max_num_seqs: glm_canary_seq_bound(b: arm.max_num_seqs),
+          executor: ExecutorMpProfile,
+          kv_layout: KvFp8Layout,
+          speculative: glm_canary_speculative_policy(p: arm.speculation),
+          runtime: runtime_revision(
+            image: runtime_artifact_wire(a: rrow.artifact),
+            vllm_revision: (defaults_source_revision(r: claimed)).full_revision),
+        ) }
+      }
   }
 }
 
@@ -618,7 +626,7 @@ fn glm_canary_run_argv(arm: GlmCanaryArm) -> List<String>? {
           "--network", "host",
           "--ipc", "host",
           "-v", join([glm_canary_host_path(arm: arm) as String, ":/model:ro"], ""),
-          rrow.image_reference as String,
+          runtime_artifact_wire(a: rrow.artifact) as String,
         ], serve.skip(n: 1)) }
       }
   }
@@ -891,11 +899,15 @@ fn glm_canary_resolved_memory(arm: GlmCanaryArm) -> ResolvedVllmMemoryPolicy {
   match serving_runtime_row(r: arm.runtime) {
     Absent => MemoryResolutionRefused { cause: "this arm has no runtime row, so no revision governs its omitted memory flags" as NonEmptyStr }
     Present { value: rrow } =>
-      resolve_vllm_memory_policy(
-        request: arm.memory_request,
-        device_total: gb10_torch_device_memory,
-        defaults: vllm_runtime_defaults_for(revision: defaults_source_revision(r: rrow.claimed_defaults_revision)),
-      )
+      match rrow.claimed_defaults_revision {
+        Absent => MemoryResolutionRefused { cause: "this runtime claims a vLLM revision this repository does not model, so no declared default governs its omitted memory flags -- resolving through a neighbour's revision would answer for an engine nobody characterised" as NonEmptyStr }
+        Present { value: claimed } =>
+          resolve_vllm_memory_policy(
+            request: arm.memory_request,
+            device_total: gb10_torch_device_memory,
+            defaults: vllm_runtime_defaults_for(revision: defaults_source_revision(r: claimed)),
+          )
+      }
   }
 }
 
@@ -974,7 +986,7 @@ fn glm_canary_checkpoint_wire(arm: GlmCanaryArm) -> String {
 fn glm_canary_runtime_wire(arm: GlmCanaryArm) -> String {
   match serving_runtime_row(r: arm.runtime) {
     Absent => "(unmodelled)"
-    Present { value: r } => r.image_reference as String
+    Present { value: r } => runtime_artifact_wire(a: r.artifact) as String
   }
 }
 

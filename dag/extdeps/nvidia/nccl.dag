@@ -1,6 +1,8 @@
 module extdeps.nvidia.nccl
 
-import std.types { String, List, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -128,3 +130,511 @@ fn nccl_realized_transport_wire(t: NcclRealizedTransport) -> NonEmptyStr {
 // the log line does not have to guess which spelling the verdict uses.
 data nccl_network_name_socket: NonEmptyStr = "Socket" as NonEmptyStr
 data nccl_network_name_ib: NonEmptyStr = "IB" as NonEmptyStr
+
+// ── THE PRODUCER: READING NCCL'S OWN ANNOUNCEMENT OFF A LOG ────────────────────────────────────
+//
+// WHAT THIS CLOSES. `NcclRealizedTransport` above declares that NCCL publishes its verdict itself
+// and names the `Using network <name>` line as "the producer, and the only thing here entitled to
+// answer" -- and then nothing in the repository read that line. Every inhabitant was a supplied
+// value, so the type's whole claim was untested. This fold is the route it named.
+//
+// THE PREFIX IS PART OF THE FACT, NOT NOISE TO STRIP. NCCL writes every line as
+// `<host tag>:<pid>:<tid> [<local device>] NCCL INFO <body>`, and those four fields are what let a
+// verdict say WHICH process on WHICH host produced it. A reader that greps for the body and throws
+// the prefix away produces a verdict that cannot be attributed, which is the exact deficiency
+// gunbc.spark.collective_transport_plan records as the reason TransportPlanOutcome was deleted
+// rather than kept behind a frontier.
+//
+// THE LOCAL DEVICE INDEX IS NOT THE GLOBAL RANK, and conflating them is the trap this fleet is
+// primed for. `[0]` in the prefix is the CUDA device ordinal within the process; on this arm every
+// rank is a single-GPU process, so every rank's lines read `[0]` -- including rank 3's. The rank is
+// read from the container's own argv (`--node-rank`), and this module does not offer one.
+//
+// AND `NET/IB : Using ...` IS NOT `Using network IB`. The socket capture of 2026-09-16 contains the
+// line `NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.17<0>` -- emitted by the IB plugin while
+// reporting that it found NO device, immediately after `NET/IB : No device found.`, on an
+// incarnation that then ran every channel over TCP. A reader keyed on `NET/IB` and `Using` in the
+// same line answers IB for a socket run. The discriminator is the whole token `Using network `, and
+// nothing weaker.
+type NcclLogEmitter sole_constructor {
+  host_tag: NonEmptyStr
+  pid: Nat
+  tid: Nat
+  local_device: Nat
+}
+
+type NcclLogLine sole_constructor {
+  emitter: NcclLogEmitter
+  body: NonEmptyStr
+  raw: NonEmptyStr
+}
+
+data nccl_info_marker: String = " NCCL INFO "
+
+fn nccl_parse_emitter(prefix: String) -> NcclLogEmitter? {
+  let parts = split(s: prefix, delimiter: ":")
+  if count(parts) != 3 {
+    none
+  } else {
+    match parts.first() {
+      Absent => none
+      Present { value: host } =>
+        if host == "" {
+          none
+        } else {
+          match parts |> skip(1) |> first {
+            Absent => none
+            Present { value: pid_text } =>
+              match parse_int(s: pid_text) {
+                Absent => none
+                Present { value: pid } =>
+                  if pid < 0 {
+                    none
+                  } else {
+                    match parts |> skip(2) |> first {
+                      Absent => none
+                      Present { value: tid_and_device } => nccl_parse_tid_and_device(host: host, pid: pid, text: tid_and_device)
+                    }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+// `346 [0]` -- the thread id and the bracketed CUDA device ordinal, which NCCL writes as one field.
+fn nccl_parse_tid_and_device(host: String, pid: Nat, text: String) -> NcclLogEmitter? {
+  let halves = split(s: text, delimiter: " [")
+  if count(halves) != 2 {
+    none
+  } else {
+    match halves.first() {
+      Absent => none
+      Present { value: tid_text } =>
+        match parse_int(s: tid_text) {
+          Absent => none
+          Present { value: tid } =>
+            if tid < 0 {
+              none
+            } else {
+              match halves |> skip(1) |> first {
+                Absent => none
+                Present { value: bracketed } => {
+                  let device_text = substring(s: bracketed, start: 0, end: string_length(s: bracketed) - 1)
+                  match parse_int(s: device_text) {
+                    Absent => none
+                    Present { value: device } =>
+                      if device < 0 {
+                        none
+                      } else {
+                        Present { value: NcclLogEmitter {
+                          host_tag: host as NonEmptyStr,
+                          pid: pid,
+                          tid: tid,
+                          local_device: device,
+                        } }
+                      }
+                  }
+                }
+              }
+            }
+        }
+    }
+  }
+}
+
+// A LINE THAT IS NOT AN `NCCL INFO` LINE IS NOT A MALFORMED ONE. A captured log carries the engine's
+// own output interleaved with NCCL's, so a line without the marker is simply not this module's
+// subject and is dropped -- which is a classification, not a widening: nothing about the transport is
+// inferred from it, and the lines that DO carry the marker are all read.
+fn nccl_parse_log_line(raw: String) -> NcclLogLine? {
+  let halves = split(s: raw, delimiter: nccl_info_marker)
+  if count(halves) < 2 {
+    none
+  } else {
+    match halves.first() {
+      Absent => none
+      Present { value: prefix } =>
+        match nccl_parse_emitter(prefix: prefix) {
+          Absent => none
+          Present { value: emitter } => {
+            let body = trim(s: substring(s: raw, start: string_length(s: prefix) + string_length(s: nccl_info_marker), end: string_length(s: raw)))
+            if body == "" {
+              none
+            } else {
+              Present { value: NcclLogLine { emitter: emitter, body: body as NonEmptyStr, raw: trim(s: raw) as NonEmptyStr } }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn nccl_log_lines(text: String) -> List<NcclLogLine> {
+  fold(split(s: text, delimiter: "\n"), init: [], f: (acc, raw) =>
+    match nccl_parse_log_line(raw: raw) {
+      Absent => acc
+      Present { value: l } => concat(acc, [l])
+    })
+}
+
+// ── THE ANNOUNCEMENT, AND WHAT IT CAN AND CANNOT BE BOUND TO ──────────────────────────────────
+//
+// NCCL EMITS `Using network <name>` ONCE PER COMMUNICATOR INITIALIZATION and prints NO communicator
+// handle on that line. The 2026-09-16 socket capture carries the line TWICE from one process with
+// identical pid and tid -- two inits in one thread -- so the emitter alone does not separate them.
+// The identity this module offers is therefore the emitter PLUS the ordinal of the announcement
+// within the captured text, and it is named for what it is rather than borrowed from a field NCCL
+// does not print. The lines that DO carry a handle (`ncclIbResiliencyInit: ... comm=0x...`) are a
+// different event on a different thread and are not evidence about which network an init chose.
+type NcclCommInitOccurrence sole_constructor {
+  emitter: NcclLogEmitter
+  ordinal: Nat
+}
+
+type NcclNetworkAnnouncement sole_constructor {
+  occurrence: NcclCommInitOccurrence
+  transport: NcclRealizedTransport
+}
+
+data nccl_using_network_marker: String = "Using network "
+
+// AN UNKNOWN NETWORK NAME REFUSES. NCCL builds networks this fleet has not seen, and answering
+// "Socket" for a name this module does not recognise would be the fabricated default DESIGN section
+// 5 forbids -- it would report the exact failure state for a run that is not in it.
+type NcclNetworkNameRead
+  = NcclNetworkNamed { transport: NcclRealizedTransport }
+  | NcclNetworkNameUnknown { name: String }
+
+fn nccl_network_name_read(name: String, read_from: NonEmptyStr) -> NcclNetworkNameRead {
+  if name == (nccl_network_name_ib as String) {
+    NcclNetworkNamed { transport: NcclTransportIbVerbs { read_from: read_from } }
+  } else if name == (nccl_network_name_socket as String) {
+    NcclNetworkNamed { transport: NcclTransportSocket { read_from: read_from } }
+  } else {
+    NcclNetworkNameUnknown { name: name }
+  }
+}
+
+// ── THE CHANNELS, WHICH ARE A SECOND AND INDEPENDENT FACT ─────────────────────────────────────
+//
+// `Using network IB` SAYS WHICH NETWORK THE COMMUNICATOR BUILT. It does not say which network each
+// data channel was then wired over, and those are separately printed:
+//
+//   Channel 00/0 : 2[0] -> 0[0] [receive] via NET/IB/0
+//
+// Reading only the announcement would admit a run that announced IB and wired channels over sockets.
+// Nothing in the captures shows that happening, and that is exactly why the cross-check is written
+// now rather than after it does: a verdict that cannot disagree with itself is a verdict with one
+// source, and the whole reason this arm exists is that a single source about this fact was already
+// wrong once.
+type NcclChannelDirection = NcclChannelSend | NcclChannelReceive
+
+type NcclChannelTransport sole_constructor {
+  emitter: NcclLogEmitter
+  channel: Nat
+  direction: NcclChannelDirection
+  net_device: Nat
+  transport: NcclRealizedTransport
+}
+
+data nccl_channel_marker: String = "Channel "
+data nccl_channel_via_marker: String = " via NET/"
+data nccl_channel_send_marker: String = "[send]"
+data nccl_channel_receive_marker: String = "[receive]"
+
+// A CHANNEL LINE THIS MODULE CANNOT READ IS NOT "NOT A CHANNEL LINE", and collapsing the two is the
+// arm that made the cross-check vacuous. `Channel 00/0 : 2[0] -> 0[0] [receive] via NET/NVLS/0` beside
+// an announcement of `Using network IB` used to return "no channel here", so the disagreeing set came
+// back EMPTY and the fold reported agreement -- the announcement's own `NcclUnknownNetworkName`
+// refusal existing three functions away while the channel arm dropped the identical fact. A verdict
+// that commits a relaunch on a channel it could not name is the fabricated output DESIGN section 5
+// forbids, and it is the silent path this whole vertical was written to close, reproduced inside it.
+// A `Channel ...` LINE WITH NO `via NET/` CLAUSE IS NOT UNREADABLE EITHER. It is NCCL describing a
+// channel it did not build over the network layer at all -- an intra-node peer-to-peer or
+// shared-memory path -- so it carries no network name, is not this fold's subject, and is classified
+// rather than refused.
+type NcclChannelRead
+  = NcclChannelNotAChannelLine
+  | NcclChannelReadTransport { channel: NcclChannelTransport }
+  | NcclChannelUnreadable { line: NonEmptyStr, cause: NonEmptyStr }
+
+fn nccl_channel_transport(line: NcclLogLine) -> NcclChannelRead {
+  let body = line.body as String
+  if !starts_with(s: body, prefix: nccl_channel_marker) {
+    NcclChannelNotAChannelLine
+  } else if !string_contains(s: body, pattern: nccl_channel_via_marker) {
+    NcclChannelNotAChannelLine
+  } else {
+    nccl_channel_after_marker(line: line, body: body)
+  }
+}
+
+fn nccl_channel_unreadable(line: NcclLogLine, cause: String) -> NcclChannelRead {
+  NcclChannelUnreadable { line: line.raw, cause: cause as NonEmptyStr }
+}
+
+fn nccl_channel_after_marker(line: NcclLogLine, body: String) -> NcclChannelRead {
+  let halves = split(s: body, delimiter: nccl_channel_via_marker)
+  if count(halves) != 2 {
+    nccl_channel_unreadable(line: line, cause: "the line names `via NET/` more than once, so which network it was wired over is ambiguous")
+  } else {
+    match halves |> skip(1) |> first {
+      Absent => nccl_channel_unreadable(line: line, cause: "the line ends at `via NET/` with no network after it")
+      Present { value: tail } => {
+        let net_parts = split(s: tail, delimiter: "/")
+        if count(net_parts) != 2 {
+          nccl_channel_unreadable(line: line, cause: "the text after `via NET/` is not `<network>/<device>`")
+        } else {
+          match net_parts.first() {
+            Absent => nccl_channel_unreadable(line: line, cause: "the text after `via NET/` names no network")
+            Present { value: net_name } =>
+              match net_parts |> skip(1) |> first {
+                Absent => nccl_channel_unreadable(line: line, cause: "the text after `via NET/` names no device index")
+                Present { value: device_text } =>
+                  match parse_int(s: trim(s: device_text)) {
+                    Absent => nccl_channel_unreadable(line: line, cause: join(["the device index `", trim(s: device_text), "` is not an integer"], ""))
+                    Present { value: device } =>
+                      if device < 0 {
+                        nccl_channel_unreadable(line: line, cause: "the device index is negative")
+                      } else {
+                        match nccl_network_name_read(name: net_name, read_from: line.raw) {
+                          NcclNetworkNameUnknown { name: n } =>
+                            nccl_channel_unreadable(line: line, cause: join([
+                              "this channel was wired over the network `", n,
+                              "`, which extdeps.nvidia.nccl does not model; a channel whose network cannot be named cannot be compared with the announcement",
+                            ], ""))
+                          NcclNetworkNamed { transport: t } =>
+                            match nccl_channel_number(body: body) {
+                              Absent => nccl_channel_unreadable(line: line, cause: "the channel number is not an integer")
+                              Present { value: channel } =>
+                                match nccl_channel_direction(body: body) {
+                                  Absent => nccl_channel_unreadable(line: line, cause: "the line names neither [send] nor [receive]")
+                                  Present { value: dir } =>
+                                    NcclChannelReadTransport { channel: NcclChannelTransport {
+                                      emitter: line.emitter,
+                                      channel: channel,
+                                      direction: dir,
+                                      net_device: device,
+                                      transport: t,
+                                    } }
+                                }
+                            }
+                        }
+                      }
+                  }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// `Channel 00/0 : ...` -- the channel number, printed zero-padded, before the `/`.
+fn nccl_channel_number(body: String) -> Nat? {
+  let after = substring(s: body, start: string_length(s: nccl_channel_marker), end: string_length(s: body))
+  match split(s: after, delimiter: "/") |> first {
+    Absent => none
+    Present { value: digits } =>
+      match parse_int(s: trim(s: digits)) {
+        Absent => none
+        Present { value: n } => if n < 0 { none } else { Present { value: n } }
+      }
+  }
+}
+
+fn nccl_channel_direction(body: String) -> NcclChannelDirection? {
+  if string_contains(s: body, pattern: nccl_channel_send_marker) {
+    Present { value: NcclChannelSend }
+  } else if string_contains(s: body, pattern: nccl_channel_receive_marker) {
+    Present { value: NcclChannelReceive }
+  } else {
+    none
+  }
+}
+
+// ── THE FOLD, AND EVERY WAY IT REFUSES ────────────────────────────────────────────────────────
+//
+// FIVE REFUSAL ARMS, EACH A DIFFERENT FACT WITH A DIFFERENT REMEDY. A capture with no announcement
+// is not a socket run; a capture whose announcements disagree is not one verdict; a network this
+// module cannot name is not Socket; a channel wired over a network the announcement did not name is
+// not agreement. Collapsing any of them into "socket" would answer the incident's own question with
+// the incident's own answer, which is the substitution the type above exists to refuse.
+type NcclChannelAcc {
+  channels: List<NcclChannelTransport>
+  unreadable: List<NonEmptyStr>
+  causes: List<NonEmptyStr>
+}
+
+fn nccl_channel_step(acc: NcclChannelAcc, line: NcclLogLine) -> NcclChannelAcc {
+  match nccl_channel_transport(line: line) {
+    NcclChannelNotAChannelLine => acc
+    NcclChannelReadTransport { channel: c } =>
+      NcclChannelAcc { channels: concat(acc.channels, [c]), unreadable: acc.unreadable, causes: acc.causes }
+    NcclChannelUnreadable { line: raw, cause: why } =>
+      NcclChannelAcc {
+        channels: acc.channels,
+        unreadable: concat(acc.unreadable, [raw]),
+        causes: concat(acc.causes, [why]),
+      }
+  }
+}
+
+type NcclAnnouncementAcc {
+  announcements: List<NcclNetworkAnnouncement>
+  unknown_names: List<String>
+  seen: Nat
+}
+
+fn nccl_announcement_step(acc: NcclAnnouncementAcc, line: NcclLogLine) -> NcclAnnouncementAcc {
+  let body = line.body as String
+  if !starts_with(s: body, prefix: nccl_using_network_marker) {
+    acc
+  } else {
+    let name = trim(s: substring(s: body, start: string_length(s: nccl_using_network_marker), end: string_length(s: body)))
+    match nccl_network_name_read(name: name, read_from: line.raw) {
+      NcclNetworkNameUnknown { name: n } => NcclAnnouncementAcc {
+        announcements: acc.announcements,
+        unknown_names: concat(acc.unknown_names, [n]),
+        seen: acc.seen + 1,
+      }
+      NcclNetworkNamed { transport: t } => NcclAnnouncementAcc {
+        announcements: concat(acc.announcements, [NcclNetworkAnnouncement {
+          occurrence: NcclCommInitOccurrence { emitter: line.emitter, ordinal: acc.seen },
+          transport: t,
+        }]),
+        unknown_names: acc.unknown_names,
+        seen: acc.seen + 1,
+      }
+    }
+  }
+}
+
+type NcclTransportRefusal
+  = NcclNoAnnouncement
+  | NcclAnnouncementsDisagree { names: List<String> }
+  | NcclUnknownNetworkName { names: List<String> }
+  | NcclChannelDisagreesWithAnnouncement { announced: NonEmptyStr, channel_lines: List<NonEmptyStr> }
+  | NcclChannelUnreadableLines { lines: List<NonEmptyStr>, causes: List<NonEmptyStr> }
+  | NcclAnnouncedWithoutChannels { announced: NonEmptyStr, read_from: NonEmptyStr }
+
+// THE READING BINDS EVERY ANNOUNCEMENT IT SAW, NOT JUST THE ONE IT ANSWERS WITH. A capture that
+// announced the same network four times is a stronger reading than one that announced it once, and
+// a consumer that wants to say WHICH line the verdict came from needs the line rather than the name.
+type NcclTransportReading sole_constructor {
+  transport: NcclRealizedTransport
+  announcements: List<NcclNetworkAnnouncement>
+  channels: List<NcclChannelTransport>
+}
+
+type NcclTransportVerdict
+  = NcclTransportRead { reading: NcclTransportReading }
+  | NcclTransportRefused { cause: NcclTransportRefusal }
+
+fn nccl_transports_agree(a: NcclRealizedTransport, b: NcclRealizedTransport) -> Bool {
+  (nccl_realized_transport_wire(t: a) as String) == (nccl_realized_transport_wire(t: b) as String)
+}
+
+fn nccl_transport_verdict(captured_text: String) -> NcclTransportVerdict {
+  let lines = nccl_log_lines(text: captured_text)
+  let acc = fold(lines, init: NcclAnnouncementAcc { announcements: [], unknown_names: [], seen: 0 },
+    f: (a, l) => nccl_announcement_step(acc: a, line: l))
+  if count(acc.unknown_names) > 0 {
+    NcclTransportRefused { cause: NcclUnknownNetworkName { names: acc.unknown_names } }
+  } else {
+    match acc.announcements.first() {
+      Absent => NcclTransportRefused { cause: NcclNoAnnouncement }
+      Present { value: head } => {
+        let disagreeing = filter(acc.announcements, a => !nccl_transports_agree(a: a.transport, b: head.transport))
+        if count(disagreeing) > 0 {
+          NcclTransportRefused { cause: NcclAnnouncementsDisagree {
+            names: map(acc.announcements, a => nccl_realized_transport_wire(t: a.transport) as String),
+          } }
+        } else {
+          let scan = fold(lines, init: NcclChannelAcc { channels: [], unreadable: [], causes: [] },
+            f: (acc, l) => nccl_channel_step(acc: acc, line: l))
+          let channels = scan.channels
+          let wrong = filter(channels, c => !nccl_transports_agree(a: c.transport, b: head.transport))
+          if count(scan.unreadable) > 0 {
+            NcclTransportRefused { cause: NcclChannelUnreadableLines { lines: scan.unreadable, causes: scan.causes } }
+          } else if count(channels) == 0 {
+            NcclTransportRefused { cause: NcclAnnouncedWithoutChannels {
+              announced: nccl_realized_transport_wire(t: head.transport),
+              read_from: nccl_transport_read_from_line(t: head.transport),
+            } }
+          } else if count(wrong) > 0 {
+            NcclTransportRefused { cause: NcclChannelDisagreesWithAnnouncement {
+              announced: nccl_realized_transport_wire(t: head.transport),
+              channel_lines: map(wrong, c => nccl_channel_line_text(c: c)),
+            } }
+          } else {
+            NcclTransportRead { reading: NcclTransportReading {
+              transport: head.transport,
+              announcements: acc.announcements,
+              channels: channels,
+            } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// AN ANNOUNCEMENT WITH NO DATA PATH IS NOT A TRANSPORT READING, and reading it as one is the same
+// vacuous agreement this module already closed for a channel it could not name. `Using network IB`
+// says which network the communicator BUILT; the `via NET/...` lines say what each channel was
+// actually wired over, and with none of them present the cross-check compares the announcement
+// against nothing and reports agreement. A consumer deciding whether to commit a four-host relaunch
+// would take an announcement flushed a moment before its channel lines as a completed flip.
+//
+// IT IS A NOT-YET ARM, NOT A DEFECT ARM, and the distinction is what keeps it from being a worse
+// failure than the one it fixes: NCCL writes the announcement and the channels in that order, so a
+// log read between the two genuinely has an announcement and no channels. A caller waiting for a
+// communicator to come up retries this exactly as it retries a missing announcement; a caller reading
+// a settled log gets a refusal that names what is missing.
+fn nccl_transport_read_from_line(t: NcclRealizedTransport) -> NonEmptyStr {
+  match t {
+    NcclTransportIbVerbs { read_from: l } => l
+    NcclTransportSocket { read_from: l } => l
+  }
+}
+
+fn nccl_channel_line_text(c: NcclChannelTransport) -> NonEmptyStr {
+  join([
+    "channel ", to_string(c.channel), " ", nccl_channel_direction_wire(d: c.direction),
+    " via NET/", nccl_realized_transport_wire(t: c.transport) as String, "/", to_string(c.net_device),
+    " on ", c.emitter.host_tag as String, ":", to_string(c.emitter.pid),
+  ], "") as NonEmptyStr
+}
+
+fn nccl_channel_direction_wire(d: NcclChannelDirection) -> String {
+  match d {
+    NcclChannelSend => "send"
+    NcclChannelReceive => "receive"
+  }
+}
+
+fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
+  match c {
+    NcclNoAnnouncement =>
+      "the captured text carries no `NCCL INFO ... Using network <name>` line, so no communicator announced a transport; that is an absent reading and not a socket run" as NonEmptyStr
+    NcclAnnouncementsDisagree { names: ns } =>
+      join(["the captured text announces more than one network -- ", join(ns, ", "), " -- so it is not one verdict about one incarnation"], "") as NonEmptyStr
+    NcclUnknownNetworkName { names: ns } =>
+      join(["NCCL announced the network(s) ", join(ns, ", "), ", which extdeps.nvidia.nccl does not model; a name this module cannot read is refused rather than defaulted"], "") as NonEmptyStr
+    NcclChannelDisagreesWithAnnouncement { announced: a, channel_lines: ls } =>
+      join(["the communicator announced ", a as String, " and ", to_string(count(ls)), " channel(s) were wired over a different network: ", join(map(ls, l => l as String), "; ")], "") as NonEmptyStr
+    NcclAnnouncedWithoutChannels { announced: a, read_from: l } =>
+      join([
+        "a communicator announced ", a as String, " and no data channel had been wired over any network yet, so the announcement is not cross-checked against a data path: ",
+        l as String,
+      ], "") as NonEmptyStr
+    NcclChannelUnreadableLines { lines: ls, causes: cs } =>
+      join([
+        to_string(count(ls)), " channel line(s) could not be read, so the cross-check between the announcement and the data path was not made: ",
+        join(map(cs, c => c as String), "; "), " -- on: ", join(map(ls, l => l as String), " | "),
+      ], "") as NonEmptyStr
+  }
+}

@@ -111,6 +111,42 @@ type TypeDeclarationProvenance
   | KernelMinted { minted_name: String }
   | DeclarationIdentityAbsent
 
+// WHICH STATE A TYPE REFERENCE IS IN WHEN ITS DECLARATION IS ASKED FOR -- the split of the one arm
+// the reference-site read used to answer for two states. v1.std.core type_reference_provenance
+// falls back to the reference node's OWN span whenever no Resolved node is bound, so `this node IS
+// a declaration` and `this reference's declaration was not recovered here` both answer
+// CorpusDeclared on the file the node sits in. The second case is a location standing where an
+// identity was owed: DESIGN section 5's absorbing fallback, and gunbc.recurring_failure_mode
+// state_space_conflation's form for this carrier.
+//
+// Each arm is decided from STRUCTURE, never from span presence. A declaration node is one the parser
+// marked ModuleItemTypeDeclaration, or the kernel mint for its own name. A Resolved node that is
+// neither is NOT a declaration: the resolver builds the Resolved node of an applied reference on
+// the REFERENCE's span, so reading its span is the same location key one hop later. Those arms
+// refuse, and the cause says which of the two shapes refused.
+//
+// A TYPE-VARIABLE BINDER IS ITS OWN ARM. A generic parameter such as T is bound by the enclosing
+// declaration and has no declaring module to key on. Filing it as a declaration would let the kernel
+// span its binding is minted on pass for a KernelMinted type. Filing it as a refusal would count a
+// correctly bound name as a missing identity. It is recognized only when the node itself carries
+// the binding (inferred TypeVariable). An unresolved T sitting in a field still has no binding on the
+// node, and refuses like any other unresolved reference.
+//
+// THIS IS NOT YET A PRODUCTION WALL. The production read is unchanged and still mis-keys, which is
+// declared as gunbc.rung_drop type_reference_location_fallback_keys_production_realization. The
+// consumer today is the census and the witness; the restoration trigger is the renderer reroute
+// onto this query.
+type TypeReferenceIdentity
+  = ReferenceResolvedToDeclaration { provenance: TypeDeclarationProvenance }
+  | ReferenceIsTheDeclaration { provenance: TypeDeclarationProvenance }
+  | ReferenceIsTypeVariableBinder { binder_name: String }
+  | ReferenceIdentityUnavailable { cause: ReferenceIdentityUnavailableCause }
+
+type ReferenceIdentityUnavailableCause
+  = NoResolutionBoundAtReference
+  | ResolvedNodeIsNotADeclaration
+  | DeclarationNodeCarriesNoSpan
+
 type RealizationRefusalCause
   = DeclarationIdentityUnavailable
   | ExactSourceIdentityAbsent { detail: String }

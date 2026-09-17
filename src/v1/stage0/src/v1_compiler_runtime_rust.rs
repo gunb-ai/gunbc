@@ -65,7 +65,7 @@ pub fn rt_rc_container_ops() -> String {
 }
 
 pub fn rt_filesystem() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::extdeps_filesystem_rust_realization::rust_file_create_new_canonical_block(), "\n".to_string()), "#[derive(Debug, Clone)]\n".to_string()), "pub struct FilesystemReadResult {\n".to_string()), "    pub content: String,\n".to_string()), "}\n\n".to_string()), "pub fn filesystem_read(path: String) -> FilesystemReadResult {\n".to_string()), "    let content = std::fs::read_to_string(&path)\n".to_string()), "        .unwrap_or_else(|e| panic!(\"failed to read {}: {}\", path, e));\n".to_string()), "    FilesystemReadResult { content }\n".to_string()), "}\n".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::extdeps_filesystem_rust_realization::rust_file_create_new_canonical_block(), "\n".to_string()), "#[derive(Debug, Clone)]\n".to_string()), "pub struct FilesystemReadResult {\n".to_string()), "    pub content: String,\n".to_string()), "}\n\n".to_string()), "pub fn unrealized_host_seam<T>(seam: &str) -> T {\n".to_string()), "    panic!(\"{}\", seam);\n".to_string()), "}\n\n".to_string()), "pub fn filesystem_read(path: String) -> FilesystemReadResult {\n".to_string()), "    let content = std::fs::read_to_string(&path)\n".to_string()), "        .unwrap_or_else(|e| panic!(\"failed to read {}: {}\", path, e));\n".to_string()), "    FilesystemReadResult { content }\n".to_string()), "}\n".to_string())
 }
 
 pub fn rt_hash_ops() -> String {

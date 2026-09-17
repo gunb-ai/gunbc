@@ -1,6 +1,8 @@
 //! Provider consumer matrix for the resolved-graph disk seam (Dispatch G).
 //!
 //! Checkable receipt: `dag/test/retirement/materialization_provider_resolved_graph_consumer_retained.dag`.
+//! Format-wall control: `gunbc.rung_drop` `persisted_resolved_graph_disk_probe_unqualified_format`.
+//! Provider-context reuse is a different mechanism and is kept under its own name.
 
 use im::Vector;
 use std::fs;
@@ -15,7 +17,7 @@ use v1_compiler::cli_run::{
 };
 use v1_compiler::resolved_graph_cache::{
     closure_content_digest, encode_resolved_graph_parts, transform_content_digest,
-    FaithfulResolvedGraphProbeParts,
+    FaithfulResolvedGraphProbeParts, UNION_PART_ABSENT_DIGEST,
 };
 use v1_compiler::v1_std_core::ErrorNode;
 
@@ -106,10 +108,67 @@ fn fixture_parts_and_keys(
     )
 }
 
+fn fnv_probe_parts(union_absent: bool) -> FaithfulResolvedGraphProbeParts {
+    if union_absent {
+        FaithfulResolvedGraphProbeParts {
+            graph_digest: "0000000000000000".to_string(),
+            graph_bytes: 1,
+            indices_digest: "0000000000000000".to_string(),
+            indices_bytes: 1,
+            union_digest: UNION_PART_ABSENT_DIGEST.to_string(),
+            union_bytes: 0,
+        }
+    } else {
+        FaithfulResolvedGraphProbeParts {
+            graph_digest: "0000000000000000".to_string(),
+            graph_bytes: 1,
+            indices_digest: "0000000000000000".to_string(),
+            indices_bytes: 1,
+            union_digest: "0000000000000000".to_string(),
+            union_bytes: 1,
+        }
+    }
+}
+
+fn serve_fnv(parts: &FaithfulResolvedGraphProbeParts) -> ResolvedGraphProviderOutcome {
+    let request_key =
+        resolve_closure_request_key_from_digests("0000000000000000", "0000000000000000")
+            .expect("request key");
+    serve_resolved_graph_stored_disk_probe_for_test(
+        "0000000000000000",
+        "0000000000000000",
+        &request_key,
+        "0000000000000000",
+        parts,
+    )
+    .expect("admitted FNV disk parts must reach a typed lookup")
+}
+
 #[test]
-fn stored_disk_probe_hit_builds_provider_ctx_once() {
+fn stored_disk_probe_unqualified_persisted_format_refuses_complete_and_incomplete() {
+    let complete = serve_fnv(&fnv_probe_parts(false));
+    let incomplete = serve_fnv(&fnv_probe_parts(true));
+    assert_eq!(
+        complete,
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat,
+        "complete-probe door: legacy FNV object is not served"
+    );
+    assert_eq!(
+        incomplete,
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat,
+        "incomplete-probe door: legacy FNV object is not served"
+    );
+    assert!(
+        v1_compiler::cli_run::provider_integrity_refusal_message_for_test(complete)
+            .expect("typed refusal classified")
+            .contains("unqualified persisted format")
+    );
+}
+
+#[test]
+fn stored_disk_probe_reuses_provider_ctx_built_during_fixture_setup() {
     reset_materialization_provider_ctx_for_test();
-    let dir = temp_dir("hit");
+    let dir = temp_dir("ctx-reuse");
     let (roots, entry) = write_fixture(&dir);
     let (parts, closure, compiler, request_key, semantic) = fixture_parts_and_keys(&roots, &entry);
     let builds_before = materialization_provider_ctx_build_count_for_test();
@@ -124,12 +183,15 @@ fn stored_disk_probe_hit_builds_provider_ctx_once() {
         &semantic,
         &parts,
     )
-    .expect("valid v3 probe must hit");
-    assert_eq!(outcome, ResolvedGraphProviderOutcome::Hit);
+    .expect("admitted FNV disk parts must reach a typed lookup");
+    assert_eq!(
+        outcome,
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat
+    );
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),
         builds_before,
-        "first hit must reuse provider ctx built during fixture setup"
+        "first serve must reuse provider ctx built during fixture setup"
     );
     let outcome2 = serve_resolved_graph_stored_disk_probe_for_test(
         &closure,
@@ -138,52 +200,15 @@ fn stored_disk_probe_hit_builds_provider_ctx_once() {
         &semantic,
         &parts,
     )
-    .expect("second hit must reuse ctx");
-    assert_eq!(outcome2, ResolvedGraphProviderOutcome::Hit);
+    .expect("second serve must reuse ctx");
+    assert_eq!(
+        outcome2,
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat
+    );
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),
         builds_before,
-        "second hit must reuse provider ctx"
-    );
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn stored_disk_probe_wrong_request_key_refuses() {
-    reset_materialization_provider_ctx_for_test();
-    let dir = temp_dir("wrong-key");
-    let (roots, entry) = write_fixture(&dir);
-    let (parts, closure, compiler, _request_key, semantic) = fixture_parts_and_keys(&roots, &entry);
-    let outcome = serve_resolved_graph_stored_disk_probe_for_test(
-        &closure,
-        &compiler,
-        "ffffffffffffffff",
-        &semantic,
-        &parts,
-    )
-    .expect("wrong stored request key must refuse");
-    assert_eq!(outcome, ResolvedGraphProviderOutcome::RefusedWrongArtifact);
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn stored_disk_probe_wrong_semantic_digest_refuses() {
-    reset_materialization_provider_ctx_for_test();
-    let dir = temp_dir("wrong-semantic");
-    let (roots, entry) = write_fixture(&dir);
-    let (parts, closure, compiler, request_key, _semantic) = fixture_parts_and_keys(&roots, &entry);
-    let outcome = serve_resolved_graph_stored_disk_probe_for_test(
-        &closure,
-        &compiler,
-        &request_key,
-        "ffffffffffffffff",
-        &parts,
-    )
-    .expect("wrong stored semantic digest must refuse via provider_serve");
-    assert_eq!(
-        outcome,
-        ResolvedGraphProviderOutcome::RefusedWrongContent,
-        "modeled provider_serve must own semantic digest comparison"
+        "second serve must reuse provider ctx"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -203,36 +228,13 @@ fn incomplete_provider_outcome_maps_to_typed_refusal_message() {
 }
 
 #[test]
-fn synthetic_wrong_semantic_parts_refuse_via_provider_serve() {
-    reset_materialization_provider_ctx_for_test();
-    let builds_before = materialization_provider_ctx_build_count_for_test();
-    let parts = FaithfulResolvedGraphProbeParts {
-        graph_digest: "0000000000000000".to_string(),
-        graph_bytes: 1,
-        indices_digest: "0000000000000000".to_string(),
-        indices_bytes: 1,
-        union_digest: "0000000000000000".to_string(),
-        union_bytes: 1,
-    };
-    let request_key =
-        resolve_closure_request_key_from_digests("0000000000000000", "0000000000000000")
-            .expect("request key");
-    let outcome = serve_resolved_graph_stored_disk_probe_for_test(
-        "0000000000000000",
-        "0000000000000000",
-        &request_key,
-        "0000000000000000",
-        &parts,
+fn unqualified_persisted_format_outcome_maps_to_typed_refusal_message() {
+    let msg = v1_compiler::cli_run::provider_integrity_refusal_message_for_test(
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat,
     )
-    .expect("wrong stored semantic digest must refuse via provider_serve");
-    assert_eq!(
-        outcome,
-        ResolvedGraphProviderOutcome::RefusedWrongContent,
-        "stored header semantic digest must disagree with derived artifact content"
-    );
-    assert_eq!(
-        materialization_provider_ctx_build_count_for_test(),
-        builds_before + 1,
-        "stored disk probe must build provider ctx before provider_serve refusal"
+    .expect("unqualified persisted format must refuse");
+    assert!(
+        msg.contains("unqualified persisted format"),
+        "typed unqualified-format refusal: {msg}"
     );
 }

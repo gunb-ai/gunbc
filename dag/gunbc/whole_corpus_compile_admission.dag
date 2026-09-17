@@ -233,8 +233,42 @@ data whole_corpus_compile_public_root_demand: WholeCorpusCompileDemand = Measure
 
 // THE ROSTER OF MEASURED ROOTS IN THIS REPOSITORY. A repository carries its own roots' rows; another
 // repository's row is added in that repository, measured once on its own runner with its receipt.
+// THE XL-1 TAP'S FIXTURE ROOT. The only root the namespace program's live tap compiles on a
+// required route: the eleven-module reference-derived-graph fixture as primary root with dag as its
+// dependency pool (the fixture imports std.types, so it is not compilable alone; dag/std is the
+// smallest pool that resolves it, and the pool is part of the identity). Measured once by the
+// modeled instrument on a session host whose cgroup memory.max bound the child; the receipt's
+// completed arm (exit 0, census reported) is what gunbc.root_demand_measurement
+// measured_for_root_from_receipt admits, and the peak is at that module's grain (278921216 bytes
+// rounded up to whole gibibytes). Re-measure trigger: the same as the public row's - a later
+// completing peak that exceeds this figure.
+data whole_corpus_compile_xl1_fixture_root: WholeCorpusCompileRootIdentity = WholeCorpusCompileRootIdentity {
+  repository: whole_corpus_compile_repository,
+  primary_root: "dag/test/fixture/reference_derived_graph" as SourceRootIdentity,
+  dependency_pools: ["dag/std" as SourceRootIdentity],
+}
+
+data whole_corpus_compile_xl1_fixture_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {
+  root: whole_corpus_compile_xl1_fixture_root,
+  census: WholeCorpusCompileSourceCensus {
+    source_count: 14,
+    source_bytes: SourceBytesRecorded { bytes: byte_size(73093) },
+  },
+  peak: byte_size(1073741824),
+  receipt: WholeCorpusCompileDemandReceipt {
+    measured_on: "2026-09-17" as NonEmptyStr,
+    instrument_run: "gunbc measure-root-demand --repository gunbc --source-root dag/test/fixture/reference_derived_graph --source-root dag/std (3d35de172cc5c26bce303073efde2a7dfa00efd6-dirty, child pid 737628 at unix 1789616975) on 60e1d18cada1 under cgroup memory.max (/sys/fs/cgroup/), limit 33578549248: completed, exit 0, peak 278921216" as NonEmptyStr,
+    evidence: DeclarationRef {
+      module_path: "gunbc.root_demand_measurement",
+      decl_name: "measured_for_root_from_receipt",
+      field: WholeDeclaration
+    },
+  },
+}
+
 data whole_corpus_compile_measured_root_demands: List<WholeCorpusCompileDemand> = [
   whole_corpus_compile_public_root_demand,
+  whole_corpus_compile_xl1_fixture_root_demand,
 ]
 
 // THE JOIN. A root with no MeasuredForRoot row in the roster is UnmeasuredRoot -- never the nearest
