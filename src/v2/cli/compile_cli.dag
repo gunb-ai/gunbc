@@ -46,17 +46,35 @@ import v2.std.text { String }
 // on one instrument is not evidence about the other in either direction, and widening the proven
 // population is something this entry does rather than a side effect of being bigger.
 //
-// WHERE THE HOST BOUNDARY IS, AND WHY IT IS EXACTLY HERE. A `.dag` fold cannot read a file: a
-// resource method on an ordinary `fn` is a LOCATED COMPILER REFUSAL, measured here rather than
-// assumed -- `Filesystem.Read` off a plain function refuses with "receiver type
-// 'Primitive(Filesystem)' establishes no method surface", because resource operations resolve only
-// inside a workflow function and are realized by the seed INTERPRETER, which an emitted binary is
-// not running under. So argv, the source-root walk, the byte reads, stdout and the process status
-// stay with the rendered main, and EVERY DECISION -- which verb, which refusal, what to emit, what
-// status to exit with -- is decided in this module. That split is the capability
-// `gunbc.source_root_eval_driver_seed_growth` names as the trigger that retires ITS row: "the
-// rendered main becomes one call into that fold". This driver's main is written to that shape from
-// the start, so it adds a door without adding the debt.
+// WHERE THE HOST BOUNDARY IS -- AND THE FIRST VERSION OF THIS PARAGRAPH PUT IT IN THE WRONG PLACE,
+// WHICH IS CORRECTED HERE RATHER THAN SOFTENED. It read "a `.dag` fold cannot read a file", and
+// gunbc#11526 retracts that from the design document's Two CLIs rule. What is measured stays: a
+// resource METHOD on an ordinary `fn` is a located compiler refusal -- `Filesystem.Read` off a plain
+// function answers "receiver type 'Primitive(Filesystem)' establishes no method surface", because
+// resource operations resolve only inside a workflow function and are realized by the seed
+// INTERPRETER. What was false is the conclusion drawn from it. The FREE primitive `filesystem_read`
+// is a different route with no interpreter in it: typed by `v1.compiler.infer_method`
+// `builtin_function_registry`, bridged by `extdeps.languages.rust.emit` `rt_function_registry`, and
+// realized by `v1.compiler.runtime_rust` `rt_filesystem` as `std::fs::read_to_string`. An emitted
+// binary reads files. The seed carries the receipt in one block: `rt_filesystem` emits
+// `unrealized_host_seam` and `filesystem_read` two declarations apart, so the paragraph denying the
+// reader was landed beside the reader.
+//
+// SO WHAT ACTUALLY KEEPS THE WALK IN THE RENDERED MAIN IS TWO GAPS, NOT A WALL, and the difference
+// decides where the repair goes. `filesystem_read` PANICS on a missing file rather than returning a
+// typed outcome, which is the refusal arm DESIGN section 5 requires of a door whose whole job is to
+// refuse precisely; and the emitted surface carries no directory listing, which a source-root walk
+// needs before it can be a fold at all. Both close in EMISSION -- a bridged primitive gaining an
+// outcome type and a listing row -- and neither closes by growing the interpreter, so neither is a
+// reason to call this boundary permanent.
+//
+// What is unchanged by the correction is the DECISION split, which was never the file-reading claim:
+// EVERY decision -- which verb, which refusal, what to emit, what status to exit with -- is decided
+// in this module, and that split is the capability `gunbc.source_root_eval_driver_seed_growth` names
+// as the trigger that retires ITS row: "the rendered main becomes one call into that fold". This
+// driver's main is written to that shape from the start, so it adds a door without adding the debt.
+// Closing the two gaps above moves the walk itself into this fold, which is what the second
+// generation needs.
 //
 // THE PROTOCOL IS TWO CALLS AND A WRITE, and the shape is forced by the boundary above. The host
 // cannot know which roots to walk until the argv has been parsed, and this module cannot parse argv
