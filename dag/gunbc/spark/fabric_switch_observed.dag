@@ -36,6 +36,18 @@ import gunbc.fleet_intent_network {
 //   - BOTH second-function netdevs come up from the one leg, with distinct MACs the switch sees on
 //     the same lane. Only one of them may carry the rail address.
 //
+// SUPERSEDED 2026-09-17 -- THE NARRATIVE FROM HERE TO "only then is anything established about the
+// copper" BELOW IS THE PRE-RECODE STATE. The operator re-flashed the QSFP56 host ends to NVIDIA(ETH)
+// on 2026-09-17; on spark-a3ee byte 192 now reads 0x40 (attests 100GBASE-CR2), mstlink reports
+// Supported Cable Speed 100G_2X, and the "Cable speed not enabled" refusal is GONE. So the
+// current-tense claims below -- "COMPLIANCE CODING IS A DEMONSTRATED BLOCKER", "nothing attests
+// 100GBASE-CR2", "refuses 100G_2X", and "the coding does not attest the required mode and the NIC
+// refuses it today" -- are no longer true of the fleet: the coding now attests the mode, and the
+// live blocker has moved to the switch-side QSFP-DD end (docs/plans/fabric-switch-actuation-log.md).
+// The block is kept as the pre-recode reading rather than rewritten, because the fix is to model the
+// recode as an EVENT (gap G12) so this becomes one dated observation superseded by the next, which
+// PR-1 of docs/plans/fabric-switch-convergence-build-plan.md lands. TRIGGER: that event model.
+//
 // THE LEG LINKS AT 50G, NOT 100G, AND THE COMPLIANCE CODING IS A DEMONSTRATED BLOCKER. The legs are
 // QSFP28-coded: extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") at byte
 // 192, with byte 116 read as 00h -- so nothing attests 100GBASE-CR2. The ConnectX-7 firmware
@@ -236,9 +248,17 @@ type FabricLegEepromObservation {
   coding: CableLegObservation
 }
 
-// Each row states what ITS dump returned, written out rather than pointing at a shared value. The
-// two agree byte for byte today; that agreement is a DERIVABLE fact about two receipts, and storing
-// it as one row would make the agreement unfalsifiable and the divergence unrepresentable.
+// Each row states what ITS dump returned, written out rather than pointing at a shared value.
+//
+// SUPERSEDED 2026-09-17: these two rows are the PRE-RECODE acquisition (`ethtool -m raw on`,
+// 2026-09-08), so primary_compliance_code: 11 (0x0B) was true THEN. After the 2026-09-17 recode,
+// spark-a3ee's byte 192 reads 0x40 (=64); spark-ac79 was not re-read. The rows are NOT re-valued,
+// because a receipt is a dated snapshot and overwriting it would falsify the historical record --
+// the post-recode reading is a NEW acquisition, which lands as an additional row when gap G12's
+// event model supports multiple dated acquisitions per leg (PR-1). Until then these rows ARE the
+// pre-recode coding and the current coding for spark-a3ee is byte 192 = 0x40 (docs/plans/
+// fabric-switch-actuation-log.md); the "agree byte for byte" derivation below is likewise a
+// pre-recode fact.
 data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
   FabricLegEepromObservation {
     host: "spark-a3ee" as NonEmptyStr,
