@@ -16760,6 +16760,7 @@ fn emit_candidate_compile_host_method(params: String) -> String {
     "        }\n",
     "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n",
     "            subject: subject.unwrap(),\n",
+    "            root_demand: cli_run::RootDemandDeclaration { repository: repository.clone(), measured_root_demands: measured_root_demands.clone() },\n",
     "            source_roots: source_roots.iter().cloned().collect(),\n",
     "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n",
     "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n",

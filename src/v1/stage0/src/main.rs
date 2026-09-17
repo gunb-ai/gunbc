@@ -36,6 +36,14 @@ enum RetainedCommands {
         /// to a subtree so a small closure can be emitted without a whole-tree pass.
         #[arg(long)]
         entry: Option<String>,
+        /// Repository identity of a whole-root compile, as declared by the caller; joined with the
+        /// primary root and dependency pools to find the root's measured demand.
+        #[arg(long)]
+        repository: Option<String>,
+        /// Location of the repository's generated demand projection
+        /// (gunbc.whole_corpus_compile_demand_projection).
+        #[arg(long = "measured-root-demands")]
+        measured_root_demands: Option<String>,
     },
 
     /// Run one target by its absolute label and report the standing its own producer
@@ -359,6 +367,8 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         target: String,
         dependency_pool_index: String,
         entry: Option<String>,
+        repository: Option<String>,
+        measured_root_demands: Option<String>,
     ) -> ! {
         retained_dispatch(
             RetainedCommands::Compile {
@@ -368,6 +378,8 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
                 target,
                 dependency_pool_index,
                 entry,
+                repository,
+                measured_root_demands,
             },
             self.dry_run,
         )
@@ -391,6 +403,16 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
             },
             self.dry_run,
         )
+    }
+
+    fn measure_root_demand(
+        &self,
+        source_roots: Vec<String>,
+        repository: String,
+        receipt: String,
+        measurement_child: bool,
+    ) -> ! {
+        cli_run::measure_root_demand(source_roots, repository, receipt, measurement_child)
     }
 
     fn handle_serve(
@@ -433,6 +455,8 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             target,
             dependency_pool_index,
             entry,
+            repository,
+            measured_root_demands,
         } => {
             // THE SILENT-PICK PIGGYBACK GATE THAT STOOD IN THIS HANDLER IS DELETED, AND THE
             // PARAGRAPH THAT DESCRIBED IT IS THE CITATION THE DELETION CORRECTS. It claimed a
@@ -493,6 +517,10 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 let multi_target = render_targets.len() > 1;
                 let run = cli_run::compile_emission(&cli_run::CompileRequest {
                     subject,
+                    root_demand: cli_run::RootDemandDeclaration {
+                        repository: repository.clone(),
+                        measured_root_demands: measured_root_demands.clone(),
+                    },
                     source_roots: source_roots.clone(),
                     primary_precedence: matches!(
                         pool_index,
