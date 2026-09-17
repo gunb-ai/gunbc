@@ -6,12 +6,19 @@ import std.temporal_effect { HeldLease, HeldLeaseObservedState, held_lease_obser
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
 
-// WHOSE HOSTS WE CLAIM AND WHAT WE MAY DO WITH THEM ARE TWO FACTS, AND THIS MODULE IS THE SECOND.
-// gunbc.spark.pair_serving_desired spark_pair_serving_groups answers membership -- which groups this
-// repository claims -- and its carrier annotation records why emptying it is not a withdrawal
-// mechanism. What that roster cannot express is a group we still claim but may not currently act on,
-// which is exactly the state a replacement transaction needs: the hosts stay ours, the old realization
-// stops being applied, and no consumer silently reads the gap as "no subject".
+// WHOSE HOSTS WE CLAIM AND WHAT WE MAY DO WITH THEM ARE TWO QUESTIONS WITH ONE ANSWER, AND IT IS HERE.
+// A bare roster of claimed groups could say which groups are ours and nothing about whether we are free
+// to act on them, so a replacement transaction had only withdrawal available -- and withdrawing a
+// one-member roster empties it, which turns every fold over it vacuously true exactly when the fleet is
+// least ordinary. What was missing is the state a transaction actually needs: the hosts stay ours, the
+// old realization stops being applied, and no consumer reads the pause as "no subject".
+//
+// So this row carries both. An authority names its group, which makes membership a projection of it
+// (gunbc.spark.pair_serving_desired spark_pair_serving_groups maps this population), and it carries
+// what may be done with that group, which is what the roster alone could not express. The reasoning
+// about withdrawal, vacuity and the shared V4/V4.1 subject lives on that derived row's annotation and
+// is not restated here -- section 2 -- but the row an author edits to withdraw is THIS one, and
+// suspension sits beside it in the same declaration.
 //
 // THE DISTINCTION THIS CARRIER EXISTS TO MAKE IS WITHDRAW VERSUS SUSPEND. Withdrawal removes the
 // claim, so every fold over the roster loses its domain at once -- and an `all` over an empty list is
@@ -222,10 +229,14 @@ fn pair_serving_may_finish(a: PairServingGroupAuthority) -> Bool {
 // authorable BEFORE the check is written; a suspension is now authored by editing this row, exactly as
 // the roster's membership is authored by editing that one.
 //
-// MEMBERSHIP STILL LIVES WITH THE ROSTER. These rows carry STATE for claimed groups and are not a
-// second answer to which groups we claim -- pair_serving_authority_roster_agrees_with_membership joins
-// the two at group identity rather than by count, so a row for an unclaimed group, or a claimed group
-// with no row, is caught rather than silently believed.
+// AND MEMBERSHIP IS DERIVED FROM IT, WHICH IS WHY THERE IS NO LONGER A JOIN TO CHECK. This row briefly
+// stood BESIDE gunbc.spark.pair_serving_desired spark_pair_serving_groups as a second hand-edited
+// answer to which groups we claim, with a witness asserting the two agreed at group identity. One fact
+// with two authors is a fork whatever the validator says, and DESIGN section 5 is explicit that making
+// the wrong state unwritable beats catching it. Every arm here already carries its group, so the roster
+// is now a projection of this population: a row for an unclaimed group cannot exist because this row IS
+// the claim, and a claimed group with no authority cannot exist for the same reason. The agreement
+// witness dissolved with the climb rather than being kept as reassurance.
 data spark_pair_serving_authorities: List<PairServingGroupAuthority> = [
   PairServingActive {
     group: FabricGroupA,

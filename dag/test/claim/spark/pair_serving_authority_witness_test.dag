@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, LeaseAbsent, LeasePortForeign, LeaseInaccessible }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_unit }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_unit }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_plan_under, SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused }
 import gunbc.spark.host_commitment { spark_claimed_serving_group_members, spark_claimed_members_under }
 import gunbc.spark.pair_serving_realization { spark_pair_realization, SparkPairRealization }
@@ -211,24 +211,6 @@ test fn the_live_commitment_fold_still_claims_every_group_a_host() -> Bool {
   length(spark_claimed_serving_group_members())
     == length(fabric_group_hosts(g: FabricGroupA))
     && all(spark_pair_serving_authorities, a => pair_serving_commits_hosts(a: a))
-}
-
-// MEMBERSHIP AND AUTHORITY AGREE AT GROUP IDENTITY, NOT BY COUNT. The rows carry state for claimed
-// groups; they are not a second answer to which groups we claim. Two equal-length lists naming
-// different groups satisfy a count check while leaving one claimed group ungoverned and one unclaimed
-// group carrying an authority nobody reads, so this joins in both directions and keeps the count only
-// as the third conjunct rather than the whole test. The carrier annotation names this claim as the
-// thing that keeps its data row from forking membership.
-test fn pair_serving_authority_roster_agrees_with_membership() -> Bool {
-  all(spark_pair_serving_groups, g =>
-    match pair_serving_authority_for(group: g) {
-      Absent => false
-      Present { value: _ } => true
-    })
-  && all(spark_pair_serving_authorities, a =>
-       any(spark_pair_serving_groups, g =>
-         (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: pair_serving_authority_group(a: a)) as String)))
-  && (length(spark_pair_serving_authorities) == length(spark_pair_serving_groups))
 }
 
 // AN UNCLAIMED GROUP HAS NO AUTHORITY AT ALL, which is the discriminating input for the lookup: a
