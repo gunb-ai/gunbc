@@ -164,10 +164,14 @@ fn vllm_resolved_kv_format_is_observed(f: VllmResolvedKvFormat) -> Bool {
 //
 // THE LAW IS A PROPERTY OF THE (KERNEL, BUILD) PAIR, NOT OF "vLLM". The same model on the older
 // canary build (vllm_source_revision_read, 0.21.1rc1) runs fp8_ds_mla to serving on
-// FLASHINFER_MLA_SPARSE_SM120 -- measured 2026-09-08 -- so a blanket "this model cannot do fp8"
-// row would contradict an observed fact. What is established is the requirement THIS kernel
-// asserts on THIS build; which builds enforce it is a per-build observation, and a build with no
-// observation is unanswered, not admitted.
+// FLASHINFER_MLA_SPARSE_SM120 -- measured 2026-09-08 -- and the GLM native arm's lane-built
+// derived image (vLLM 8d09804c877c + flashinfer 0.7.0.dev20260910) selects that same backend,
+// announces the fp8_ds_mla format and proceeds under `--kv-cache-dtype fp8` (smoke on srv10,
+// 2026-09-17), its hand-built twin having served the model from 2026-09-13 to 2026-09-16 -- so a
+// blanket "this model cannot do fp8" row would contradict two observed facts. What is established
+// is the requirement THIS kernel asserts on THIS build; which builds enforce it is a per-build
+// observation, and a build with no observation is unanswered, not admitted. The per-build join
+// for the GLM native arm lives at gunbc.spark.serving_arm glm_native_kv_cache_dtype_admission.
 data vllm_fp8_ds_mla_required_pe_dim: Nat = 64
 
 fn vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: Nat) -> Bool {

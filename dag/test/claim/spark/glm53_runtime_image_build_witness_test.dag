@@ -6,8 +6,10 @@ import gunbc.spark.vllm_runtime_image_build {
   vllm_image_repository, glm53_image_repository, vllm_image_repository_for,
   vllm_image_tag, vllm_image_build_key, vllm_recipe_arch_is_buildable,
   glm53_derived_key, glm53_derived_tag, glm53_derived_dockerfile, glm53_derived_prepare_script,
-  glm53_derived_build_spec, glm53_derived_context_dir,
+  glm53_derived_build_spec, glm53_derived_context_dir, glm53_derived_prepare_steps,
+  glm53_derived_prepare_script_path, glm53_derived_dockerfile_path,
 }
+import gunbc.remote_operation { remote_operation_count, remote_operation_file_write_count, remote_operation_argv }
 import extdeps.vllm.source_build {
   vllm_8d09804_sm121_recipe, vllm_glm_5_3_flash_sm121_revision, vllm_07b75534_aarch64_release_recipe,
 }
@@ -52,16 +54,39 @@ test fn the_derived_dockerfile_replays_the_observed_layers() -> Bool {
     && string_contains(s: d, pattern: "RUN python3 -m pip install --no-deps --force-reinstall /tmp/gunbc-wheels/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl /tmp/gunbc-wheels/flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl /tmp/gunbc-wheels/flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl")
 }
 
-// THE PREPARE LEG VERIFIES BEFORE IT BUILDS: every wheel is fetched from its declared release URL
-// and checked against its declared sha256, and the Dockerfile is written only after the checks.
+// THE PREPARE SCRIPT VERIFIES BEFORE IT BUILDS: every wheel is fetched from its declared release
+// URL and checked against its declared sha256.
 test fn the_prepare_leg_fetches_and_verifies_every_wheel() -> Bool {
-  let s = glm53_derived_prepare_script(base_tag: "gunbc-vllm-glm53-gb10:base-fixture" as NonEmptyStr)
+  let s = glm53_derived_prepare_script()
   string_contains(s: s, pattern: "set -e")
     && fold(flashinfer_0_7_0_dev20260910_wheels, init: true, f: (acc, w) => acc
       && string_contains(s: s, pattern: flashinfer_0_7_0_dev20260910_wheel_url(w: w) as String)
       && string_contains(s: s, pattern: w.sha256.hex as String))
     && string_contains(s: s, pattern: "sha256sum -c -")
     && string_contains(s: s, pattern: flashinfer_0_7_0_dev20260910_release_url as String)
+}
+
+// THE PREPARE PLAN RESPECTS THE PORTABLE-WORD WALL: four ordered steps -- make the context
+// directory, land the script and the Dockerfile as readback-verified file writes, then run the
+// script as `sh <path>`. No step carries the script as an argv word, which is the shape the
+// far-side re-parse allowlist refuses.
+test fn the_prepare_plan_lands_files_then_runs_sh_path() -> Bool {
+  match glm53_derived_prepare_steps(base_tag: "gunbc-vllm-glm53-gb10:base-fixture" as NonEmptyStr) {
+    Absent => false
+    Present { value: steps } =>
+      remote_operation_count(operations: map(steps, s => s.operation)) == 4
+        && remote_operation_file_write_count(operations: map(steps, s => s.operation)) == 2
+        && steps.first().identity == "derived-context-dir" as NonEmptyStr
+        && steps.skip(n: 3).first().identity == "derived-prepare-run" as NonEmptyStr
+        && match remote_operation_argv(operation: steps.skip(n: 3).first().operation) {
+          Absent => false
+          Present { value: argv } =>
+            argv.length() == 2
+              && argv.first() == "sh"
+              && argv.skip(n: 1).first() == (glm53_derived_prepare_script_path() as String)
+        }
+        && string_contains(s: glm53_derived_dockerfile_path() as String, pattern: glm53_derived_context_dir() as String)
+  }
 }
 
 // THE DERIVED BUILD SPEC: the named stage, the arm64 platform, no build args -- the override is

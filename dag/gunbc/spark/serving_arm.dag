@@ -22,9 +22,6 @@ import gunbc.spark.runtime_architecture_registry_reading {
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
 }
-import extdeps.vllm.kv_cache { vllm_fp8_ds_mla_kernel_admits_pe_dim }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_mla_pe_dim }
-
 // A SERVING ARM IS A CHECKPOINT, A RUNTIME AND A TOPOLOGY -- NOT A MODEL.
 //
 // WHY THIS AXIS IS BEING ADDED, AND WHAT IT COST TO DISCOVER. gunbc.harness.harness_reasoning_wire
@@ -452,58 +449,89 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
   ], "")
 }
 
-// ── THE KV DTYPE IS ADMITTED, NOT CHOSEN ───────────────────────────────────────────────────────
+// ── THE KV DTYPE IS ADMITTED PER ENGINE BUILD, NOT CHOSEN ─────────────────────────────────────
 //
-// The profile's kv_cache_dtype_wire stood as a bare wire string until 2026-09-17, when the arm
-// crash-looped on a fact the corpus already half-knew: every fp8 spelling for this MLA checkpoint
-// resolves to fp8_ds_mla (extdeps.vllm.kv_cache), whose kernel requires pe_dim == 64 on this arm's
-// engine build, and this model's pe_dim is 0 (extdeps.zhipu.glm_5_3_flash). The admission below is
-// the JOIN of those two authorities, and it lives here because this module is where the arm's
-// profile is decided. "auto" is refused with the fp8 spellings: observed 2026-09-17, it resolved
-// to fp8_ds_mla on this checkpoint and crashed identically. An unlisted spelling is refused as
-// unobserved rather than admitted by silence.
+// THE LAW THAT GATEKEEPED THIS ROW IS PER-(KERNEL, BUILD), AND 2026-09-17 MEASURED BOTH BUILDS.
+// The stock digest's kernel asserts pe_dim == 64 for fp8_ds_mla (cache_kernels.cu:928) and finds
+// no attention backend at all under bfloat16, so THAT build serves this model on no spelling --
+// both crash classes observed on the srv9 head 2026-09-17. The lane-built derived image (vLLM
+// 8d09804 + flashinfer 0.7.0.dev20260910, gunbc.spark.vllm_runtime_image_build) inverts both
+// readings: its only backend for this model is FLASHINFER_MLA_SPARSE_SM120, which supports ONLY
+// the fp8 KV cache -- bfloat16 is refused by the selector with "kv_cache_dtype not supported"
+// (smoke on srv10, 2026-09-17) -- and under fp8 it selects that backend, announces the fp8_ds_mla
+// format, and proceeds (same smoke); its hand-built twin with the same recipe inputs served this
+// model from 2026-09-13 to 2026-09-16, which on this build is possible only under an fp8 spelling.
+// So the admission is a function of the BUILD first and the dtype second, and the build is a
+// declared row rather than a fact re-derived at each call site.
 //
+// THE BUILD NAMES ITS IMAGE, and native_serving_realization derives the arm's image reference
+// from the declared build -- one authority for "which engine the arm runs", so the admission and
+// the pin cannot drift apart.
+type GlmNativeEngineBuild
+  = GlmNativeEngineStockG385dce36b
+  | GlmNativeEngineDerived8d09804
+
+fn glm_native_engine_build_image(build: GlmNativeEngineBuild) -> NonEmptyStr {
+  match build {
+    GlmNativeEngineStockG385dce36b =>
+      "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
+    GlmNativeEngineDerived8d09804 =>
+      "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr
+  }
+}
+
+// THE ARM'S DECLARED BUILD: the lane-built derived image, receipt target/v41-runtime-image-build
+// -receipt.txt 2026-09-17 (provenance=built-by-this-run, local_config_digest sha256:c7d63d15...).
+// The stock digest is retained in the enum because it is the observed counter-example, not because
+// it is a candidate: it serves this model on no admitted spelling.
+data glm_native_engine_build: GlmNativeEngineBuild = GlmNativeEngineDerived8d09804
+
 // RUNG HONESTY: this is mechanically preventable, not structural -- the profile is a data row and
 // cannot refuse its own field, so the gate is the witness in
 // dag/test/claim/spark/serving_arm_kv_dtype_witness_test.dag, which goes red if the profile
-// carries a refused dtype. The next-rung trigger is a profile constructor that takes the admission
-// as an argument, making a refused dtype unconstructible.
+// carries a dtype its declared build refuses. The next-rung trigger is a profile constructor that
+// takes the admission as an argument, making a refused dtype unconstructible.
 type GlmNativeKvCacheDtypeAdmission
   = GlmNativeKvCacheDtypeAdmitted { dtype: VllmKvCacheDtypeRequest }
   | GlmNativeKvCacheDtypeRefused { dtype: VllmKvCacheDtypeRequest, cause: NonEmptyStr }
 
-fn glm_native_kv_cache_dtype_admission(dtype: VllmKvCacheDtypeRequest) -> GlmNativeKvCacheDtypeAdmission {
-  match dtype {
-    KvBf16 => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
-    KvFp16 => GlmNativeKvCacheDtypeRefused {
-      dtype: dtype,
-      cause: "no observation admits float16 for this model on this arm's engine build" as NonEmptyStr,
-    }
-    KvAuto =>
-      if vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: glm_5_3_flash_mla_pe_dim()) {
-        GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
-      } else {
-        GlmNativeKvCacheDtypeRefused {
+fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmKvCacheDtypeRequest) -> GlmNativeKvCacheDtypeAdmission {
+  match build {
+    GlmNativeEngineDerived8d09804 =>
+      match dtype {
+        KvAuto => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+        KvFp8 => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+        KvFp8DsMla => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+        KvBf16 => GlmNativeKvCacheDtypeRefused {
           dtype: dtype,
-          cause: "auto inherits this fp8-quantized checkpoint's dtype and resolves to fp8_ds_mla, whose kernel requires pe_dim == 64 on this arm's engine build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed crash under auto 2026-09-17)" as NonEmptyStr,
+          cause: "this build's only backend for the model (FLASHINFER_MLA_SPARSE_SM120) supports only the fp8 KV cache; the selector refused bfloat16 with 'kv_cache_dtype not supported' (smoke on srv10 2026-09-17)" as NonEmptyStr,
+        }
+        KvFp16 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "unobserved, and this build's only backend for the model supports only the fp8 KV cache (the selector's refusal vocabulary for bfloat16, 2026-09-17)" as NonEmptyStr,
         }
       }
-    KvFp8 =>
-      if vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: glm_5_3_flash_mla_pe_dim()) {
-        GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
-      } else {
-        GlmNativeKvCacheDtypeRefused {
+    GlmNativeEngineStockG385dce36b =>
+      match dtype {
+        KvBf16 => GlmNativeKvCacheDtypeRefused {
           dtype: dtype,
-          cause: "resolves to fp8_ds_mla on this MLA checkpoint, whose kernel requires pe_dim == 64 on this arm's engine build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed 2026-09-17)" as NonEmptyStr,
+          cause: "no valid attention backend for sparse MLA at pe_dim=0 with a non-fp8 KV cache on this build (srv9 head, 2026-09-17)" as NonEmptyStr,
         }
-      }
-    KvFp8DsMla =>
-      if vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: glm_5_3_flash_mla_pe_dim()) {
-        GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
-      } else {
-        GlmNativeKvCacheDtypeRefused {
+        KvFp16 => GlmNativeKvCacheDtypeRefused {
           dtype: dtype,
-          cause: "names the fp8_ds_mla kernel directly, which requires pe_dim == 64 on this arm's engine build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed 2026-09-17)" as NonEmptyStr,
+          cause: "no observation admits float16 for this model on this build" as NonEmptyStr,
+        }
+        KvAuto => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "auto inherits this fp8-quantized checkpoint's dtype and resolves to fp8_ds_mla, whose kernel requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed crash under auto 2026-09-17)" as NonEmptyStr,
+        }
+        KvFp8 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "resolves to fp8_ds_mla on this MLA checkpoint, whose kernel requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed 2026-09-17)" as NonEmptyStr,
+        }
+        KvFp8DsMla => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "names the fp8_ds_mla kernel directly, which requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed 2026-09-17)" as NonEmptyStr,
         }
       }
   }
@@ -527,20 +555,21 @@ fn glm_native_kv_cache_dtype_admission(dtype: VllmKvCacheDtypeRequest) -> GlmNat
 // another model, quantisation or KV layout -- and the measurement that would replace a chosen
 // bound with a derived one (concurrent-request KV occupancy) remains the standing trigger.
 //
-// kv_cache_dtype IS KvBf16, NOT AN FP8 VARIANT, AND THE REASON IS THE ADMISSION ABOVE, NOT A
-// PREFERENCE. 2026-09-17: on this arm's engine build every fp8 KV-cache spelling for this MLA
-// checkpoint resolves to fp8_ds_mla, whose kernel requires pe_dim == 64; GLM-5.3-Flash's pe_dim is
-// 0, so both KvAuto and KvFp8 crashed in CUDA-graph capture (cache_kernels.cu:928, observed on the
-// srv9 head). bfloat16 is the model's native dtype and the only honest arm short of an alternate
-// MLA backend; the memory cost is accepted until a backend supporting fp8 at this pe_dim is
-// admitted. glm_native_kv_cache_dtype_admission is the authority; the witness
-// test.claim.spark.serving_arm_kv_dtype_witness goes red if this row carries a refused dtype.
+// kv_cache_dtype IS KvFp8, AND THE REASON IS THE BUILD-KEYED ADMISSION ABOVE, NOT A PREFERENCE.
+// On the arm's declared build (the lane-built derived image) the only backend the selector admits
+// for this model is FLASHINFER_MLA_SPARSE_SM120, which supports ONLY the fp8 KV cache -- bfloat16
+// is refused by the engine itself (smoke, srv10 2026-09-17) -- and fp8 resolves to fp8_ds_mla,
+// the format this build serves (its hand-built twin served 2026-09-13 to 2026-09-16). The pe_dim
+// == 64 kernel law that forbids fp8 on the STOCK build is a per-(kernel, build) fact
+// (extdeps.vllm.kv_cache) and does not bind here. The witness
+// test.claim.spark.serving_arm_kv_dtype_witness goes red if this row carries a dtype the declared
+// build refuses.
 data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: 262144,
   max_num_batched_tokens: 2048,
   max_num_seqs: 16,
   decided_gpu_memory_basis_points: 8400,
-  kv_cache_dtype: KvBf16,
+  kv_cache_dtype: KvFp8,
   speculation_enabled: false,
   serve_port: 30000,
   served_alias: "glm-5.3-flash" as NonEmptyStr,

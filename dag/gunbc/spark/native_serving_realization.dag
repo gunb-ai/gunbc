@@ -24,7 +24,9 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, FabricLan
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.model_snapshot_acquisition { glm_5_3_flash_snapshot, spark_hub_cache_root, ModelSnapshotPinned, ModelSnapshotUnpinned }
-import gunbc.spark.serving_arm { glm_native_initial_profile }
+import gunbc.spark.serving_arm {
+  glm_native_initial_profile, glm_native_engine_build, glm_native_engine_build_image,
+}
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -63,11 +65,16 @@ data glm_native_rank_unit_name: NonEmptyStr = "gunbc-glm-native-rank.service" as
 // each is carried by its own authority.
 data glm_native_engine_binary: NonEmptyStr = "/usr/local/bin/vllm" as NonEmptyStr
 
-// THE IMAGE THE ARM RUNS, pinned to the digest the group B hosts resolved the glm53-flash tag to on
-// 2026-09-10. The decision-layer row for this runtime (a ServingRuntimeRow beside the other arms)
-// arrives with the change that carries the general arm renderer; until then this row is the only
-// authority for the reference on this branch, and the consolidation is owed here when it lands.
-data glm_native_image_reference: NonEmptyStr = "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
+// THE IMAGE THE ARM RUNS IS THE DECLARED BUILD'S IMAGE -- gunbc.spark.serving_arm
+// glm_native_engine_build is the single authority, so the pin and the KV-dtype admission cannot
+// drift apart. As of 2026-09-17 that is the lane-built derived image (vLLM 8d09804 + flashinfer
+// 0.7.0.dev20260910, receipt target/v41-runtime-image-build-receipt.txt, built-by-this-run): the
+// stock digest it replaces serves this model on no admitted KV-cache spelling -- fp8 crashes on
+// the pe_dim == 64 kernel assert and bfloat16 finds no attention backend (both observed on the
+// srv9 head 2026-09-17). The decision-layer row for this runtime (a ServingRuntimeRow beside the
+// other arms) arrives with the change that carries the general arm renderer; the consolidation is
+// owed there when it lands.
+data glm_native_image_reference: NonEmptyStr = glm_native_engine_build_image(build: glm_native_engine_build)
 
 // THE RENDEZVOUS PORT, authored rather than inherited: the image would pick 29501 itself (its own
 // ParallelConfig default, read 2026-09-10), and authoring it converts a value the image would have

@@ -125,6 +125,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_attach_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_disconnect_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program_command"),
+    decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_script_command"),
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_regular_file_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_exists_command"),

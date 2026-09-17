@@ -12,7 +12,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
 import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host, spark_unplaced_hosts }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { ArgvCommand, argv_words, shell_quote }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli {
   DockerBuildArg, DockerBuildSpec,
@@ -39,7 +39,17 @@ import extdeps.flashinfer.flashinfer {
   FlashInferWheel,
   flashinfer_0_7_0_dev20260910_wheels, flashinfer_0_7_0_dev20260910_wheel_url,
 }
-import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.posix.sh_invocation { posix_sh_script_command }
+import gunbc.file_access { FileTreeScope }
+import gunbc.host_effect { FleetSsh }
+import gunbc.remote_operation { RemoteArgv, RemoteFileBytes, PlannedRemoteStep }
+import gunbc.spark.remote_step_sequence {
+  run_remote_step_sequence, remote_step_sequence_failed, remote_step_failure_causes_wire,
+}
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWriteAdmitted, TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileModeOwnerReadWrite, typed_remote_file_write_seal,
+}
 import extdeps.tools.curl { curl_download_command }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {
@@ -323,29 +333,97 @@ fn glm53_derived_dockerfile(base_tag: NonEmptyStr) -> String {
   ], "")
 }
 
-// THE PREPARE LEG: fetch the three digest-pinned wheels from the nightly release and verify each
-// against its declared sha256 BEFORE anything builds from them, then write the Dockerfile. A digest
-// mismatch stops the leg with sha256sum's own failure line; nothing falls back to an unverified
-// wheel. Runs as the managed executor -- the context lives in that home and needs no root.
-fn glm53_derived_prepare_script(base_tag: NonEmptyStr) -> String {
+// THE PREPARE SCRIPT: fetch the three digest-pinned wheels from the nightly release and verify
+// each against its declared sha256 BEFORE anything builds from them. A digest mismatch stops the
+// leg with sha256sum's own failure line; nothing falls back to an unverified wheel.
+//
+// THE SCRIPT IS FILE CONTENT, NOT AN ARGV WORD. An earlier revision handed the whole script to
+// `sh -c` as one remote word, and the portable-word wall at gunbc.fleet_known_hosts_anchor refused
+// it before anything ran -- correctly: a word carrying spaces, pipes and redirects is exactly what
+// that wall exists to stop, and the jit-cache wheel's URL alone carries a `+` the allowlist does
+// not admit. The modeled route is the corpus's own: the script and the Dockerfile travel as
+// typed_remote_file_write payloads (staged, moded, renamed, read back byte-for-byte), and the only
+// argv is `sh <path>` -- two portable words. The wheel fetches and their pipes then run as the far
+// side's reading of a verified file, which is data, not a re-parsed word.
+fn glm53_derived_prepare_script() -> String {
   let dir = glm53_derived_context_dir() as String
   join([
     "set -e\n",
-    "install -d ", dir, "\n",
     fold(flashinfer_0_7_0_dev20260910_wheels, init: "", f: (acc, w) => join([
       acc,
       "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_0_dev20260910_wheel_url(w: w) as String, "\n",
       "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
     ], "")),
-    "printf '%s' ", shell_quote(arg: glm53_derived_dockerfile(base_tag: base_tag)), " > ", dir, "/Dockerfile\n",
   ], "")
+}
+
+fn glm53_derived_prepare_script_path() -> NonEmptyStr {
+  join([glm53_derived_context_dir() as String, "/prepare.sh"], "") as NonEmptyStr
+}
+
+fn glm53_derived_dockerfile_path() -> NonEmptyStr {
+  join([glm53_derived_context_dir() as String, "/Dockerfile"], "") as NonEmptyStr
+}
+
+// Both payloads seal against the derived context directory and nothing else -- the seal is what
+// turns a path-plus-content pair into a TypedRemoteFileWrite at all.
+fn glm53_derived_file_scope() -> FileTreeScope {
+  FileTreeScope { root_path: glm53_derived_context_dir() }
+}
+
+// THE PREPARE PLAN, ORDERED: make the context directory, land the script and the Dockerfile as
+// readback-verified files, then run the script. The sequence halts at the first failure and the
+// standing names the step, so a refusal on the receipt is located.
+fn glm53_derived_prepare_steps(base_tag: NonEmptyStr) -> List<PlannedRemoteStep>? {
+  match typed_remote_file_write_seal(
+    path: glm53_derived_prepare_script_path() as FilePath,
+    content: glm53_derived_prepare_script(),
+    allowed_scope: glm53_derived_file_scope(),
+  ) {
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+    TypedRemoteFileWriteAdmitted { write: script } =>
+      match typed_remote_file_write_seal(
+        path: glm53_derived_dockerfile_path() as FilePath,
+        content: glm53_derived_dockerfile(base_tag: base_tag),
+        allowed_scope: glm53_derived_file_scope(),
+      ) {
+        TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+        TypedRemoteFileWriteAdmitted { write: dockerfile } => Present {
+          value: [
+            PlannedRemoteStep {
+              identity: "derived-context-dir" as NonEmptyStr,
+              operation: RemoteArgv {
+                argv: argv_words(command: mkdir_parents_command_at(
+                  mkdir_binary: mkdir_path_resolved_program,
+                  path: glm53_derived_context_dir() as String,
+                )),
+              },
+            },
+            PlannedRemoteStep {
+              identity: "derived-prepare-script" as NonEmptyStr,
+              operation: RemoteFileBytes { write: script, mode: RemoteFileModeOwnerReadWrite },
+            },
+            PlannedRemoteStep {
+              identity: "derived-dockerfile" as NonEmptyStr,
+              operation: RemoteFileBytes { write: dockerfile, mode: RemoteFileModeOwnerReadWrite },
+            },
+            PlannedRemoteStep {
+              identity: "derived-prepare-run" as NonEmptyStr,
+              operation: RemoteArgv {
+                argv: argv_words(command: posix_sh_script_command(path: glm53_derived_prepare_script_path())),
+              },
+            },
+          ],
+        }
+      }
+  }
 }
 
 fn glm53_derived_build_spec(base_tag: NonEmptyStr, base_key: ContentHash) -> DockerBuildSpec {
   DockerBuildSpec {
     tag: glm53_derived_tag(base_key: base_key),
     context_dir: glm53_derived_context_dir() as FilePath,
-    dockerfile: join([glm53_derived_context_dir() as String, "/Dockerfile"], "") as NonEmptyStr,
+    dockerfile: glm53_derived_dockerfile_path(),
     target: "glm53derived" as NonEmptyStr,
     platform: "linux/arm64" as NonEmptyStr,
     build_args: [] as List<DockerBuildArg>,
@@ -372,9 +450,14 @@ fn converge_glm53_derived_image(target: SshTarget, context: FleetSshExecutionCon
           already_present: true,
         }
       } else {
-        match vllm_image_leg(target: target, context: context, step: "derived-prepare" as NonEmptyStr, command: posix_sh_program_command(script: glm53_derived_prepare_script(base_tag: base.tag))) {
-          ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
-          ImageLegRan { stdout: _ } =>
+        match glm53_derived_prepare_steps(base_tag: base.tag) {
+          Absent =>
+            VllmImageBuildRefused { step: "derived-prepare" as NonEmptyStr, cause: "the prepare payloads did not seal against the derived context scope" }
+          Present { value: steps } => {
+            let standings = run_remote_step_sequence(steps: steps, transport: FleetSsh { target: target, context: context })
+            if remote_step_sequence_failed(standings: standings) {
+              VllmImageBuildRefused { step: "derived-prepare" as NonEmptyStr, cause: remote_step_failure_causes_wire(standings: standings) }
+            } else {
             match vllm_docker_leg(ctx: ctx, step: "derived-build" as NonEmptyStr, command: docker_build_spec_command(spec: glm53_derived_build_spec(base_tag: base.tag, base_key: base.build_key))) {
               ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
               ImageLegRan { stdout: _ } =>
@@ -394,6 +477,8 @@ fn converge_glm53_derived_image(target: SshTarget, context: FleetSshExecutionCon
                     }
                 }
             }
+            }
+          }
         }
       }
   }
