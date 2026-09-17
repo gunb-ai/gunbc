@@ -21,6 +21,7 @@ import gunbc.auth.approval_keyring_pins {
   approval_mac_key_payload_sha256_prefix,
 }
 import gunbc.runner_host_grants { executor_bootstrap_principal }
+import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -35,10 +36,6 @@ import gunbc.typed_remote_file_write {
 data approval_keyring_config_dir: NonEmptyStr = "/etc/gunbc-roadmap"
 
 data approval_keyring_file_mode: NonEmptyStr = "0640"
-
-data approval_keyring_file_owner: NonEmptyStr = "root"
-
-data approval_keyring_file_group: NonEmptyStr = "briansrls"
 
 type KeyringSha256Compare
   = Sha256PrefixMatches { prefix: NonEmptyStr }
@@ -101,15 +98,15 @@ fn keyring_mkdir_argv() -> List<String> {
     "-m",
     "0750",
     "-o",
-    approval_keyring_file_owner as String,
+    fleet_posix_root_user.name as String,
     "-g",
-    approval_keyring_file_group as String,
+    fleet_posix_operator_user.name as String,
     approval_keyring_config_dir as String,
   ]
 }
 
 fn keyring_chown_argv(path: NonEmptyStr) -> List<String> {
-  ["chown", concat(approval_keyring_file_owner as String, concat(":", approval_keyring_file_group as String)), path as String]
+  ["chown", concat(fleet_posix_root_user.name as String, concat(":", fleet_posix_operator_user.name as String)), path as String]
 }
 
 fn keyring_chmod_argv(path: NonEmptyStr) -> List<String> {
