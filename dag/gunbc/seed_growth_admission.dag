@@ -1,6 +1,10 @@
 module gunbc.seed_growth_admission
 
 import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_address_census_seed_growth_justification }
+import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
+  persisted_resolved_graph_format_wall_seed_growth_justification,
+  resolved_graph_provider_ctx_reuse_seed_growth_justification
+}
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
 import gunbc.closure_edge_demand_seed_growth { closure_edge_demand_seed_growth_justification }
@@ -222,6 +226,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   [
     claim_scope_fixture_seed_growth_justification,
     evaluation_store_address_census_seed_growth_justification,
+    persisted_resolved_graph_format_wall_seed_growth_justification,
+    resolved_graph_provider_ctx_reuse_seed_growth_justification,
     anonymous_record_resolution_seed_growth_justification,
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
