@@ -450,24 +450,42 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
         crate::v1_interpreter::ExecutionMode::Wet,
     );
     match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &[], true) {
-        Ok(crate::v1_interpreter::Value::Bool(true)) => InvocationOutcome {
-            termination: Termination::ObservationHeld,
-            message: format!("evaluation-store-address-exact-head: held ({FUNCTION})"),
-        },
-        Ok(crate::v1_interpreter::Value::Bool(false)) => InvocationOutcome {
-            termination: Termination::ObservationDidNotHold,
-            message: "evaluation-store-address-exact-head: join/coverage did not hold".to_string(),
-        },
-        Ok(other) => InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "evaluation-store-address-exact-head: {FUNCTION} returned a non-Bool value: {other}"
-            ),
-        },
+        Ok(value) => exact_head_standing_outcome(FUNCTION, &value),
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: format!("evaluation-store-address-exact-head: eval failed: {cause}"),
         },
+    }
+}
+
+fn exact_head_standing_outcome(
+    function: &str,
+    value: &crate::v1_interpreter::Value,
+) -> InvocationOutcome {
+    let rendered = value.to_string();
+    if rendered == "ExactHeadHeld" {
+        return InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!("evaluation-store-address-exact-head: held ({function})"),
+        };
+    }
+    if rendered.starts_with("ExactHeadDidNotHold") {
+        return InvocationOutcome {
+            termination: Termination::ObservationDidNotHold,
+            message: format!("evaluation-store-address-exact-head: {rendered}"),
+        };
+    }
+    if rendered.starts_with("ExactHeadRefused") {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("evaluation-store-address-exact-head: {rendered}"),
+        };
+    }
+    InvocationOutcome {
+        termination: Termination::Refused,
+        message: format!(
+            "evaluation-store-address-exact-head: {function} returned a non-standing value: {rendered}"
+        ),
     }
 }
 

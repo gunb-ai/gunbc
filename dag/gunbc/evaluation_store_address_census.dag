@@ -41,6 +41,11 @@ type EvaluationStoreAddressProductionCoverage
       target_leaf: String
     }
 
+type EvaluationStoreAddressExactHeadStanding
+  = ExactHeadHeld
+  | ExactHeadDidNotHold { cause: NonEmptyStr }
+  | ExactHeadRefused { cause: NonEmptyStr }
+
 data evaluation_store_address_home_modules: List<String> = [
   "std.materialization_provider",
   "std.materialization_object",
@@ -128,16 +133,11 @@ fn evaluation_store_address_zero_candidate_plant_absent_coverage() -> Evaluation
   )
 }
 
-fn evaluation_store_address_production_coverage_qualified(
-  coverage: EvaluationStoreAddressProductionCoverage
+fn evaluation_store_address_src_v2_zero_candidate_root(
+  zero_candidate_roots: List<String>
 ) -> Bool {
-  match coverage {
-    ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots } =>
-      ((zero_candidate_roots |> count()) == 1)
-        && (zero_candidate_roots |> fold(init: false, f: (acc, r) => acc || r == "src/v2"))
-    ProductionCoverageRefused { root: _, path: _, cause: _ } => false
-    CandidateOutsideExactResolution { root: _, path: _, target_leaf: _ } => false
-  }
+  ((zero_candidate_roots |> count()) == 1)
+    && (zero_candidate_roots |> fold(init: false, f: (acc, r) => acc || r == "src/v2"))
 }
 
 fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool {
@@ -183,14 +183,35 @@ fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool
 }
 
 // Enrolled body of //gunbc/instruments:evaluation-store-address-exact-head (not a floor test fn).
-fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
+// Three arms stay distinct through the host: Held=0, DidNotHold=1, Refused=2.
+fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> EvaluationStoreAddressExactHeadStanding {
   match evaluation_store_address_production_census() {
-    ResolvedCallEdgeCensusRefused { cause: _ } => false
+    ResolvedCallEdgeCensusRefused { cause } => ExactHeadRefused { cause: cause }
     ResolvedCallEdgeCensusObserved { edges } =>
-      evaluation_store_address_join_observed(edges: edges)
-        && evaluation_store_address_production_coverage_qualified(
-          coverage: evaluation_store_address_production_coverage()
-        )
+      if evaluation_store_address_join_observed(edges: edges) {
+        match evaluation_store_address_production_coverage() {
+          ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots } =>
+            if evaluation_store_address_src_v2_zero_candidate_root(
+              zero_candidate_roots: zero_candidate_roots
+            ) {
+              ExactHeadHeld
+            } else {
+              ExactHeadDidNotHold {
+                cause: "src/v2 did not uniquely qualify as the zero-candidate root"
+              }
+            }
+          ProductionCoverageRefused { root: _, path: _, cause } =>
+            ExactHeadRefused { cause: cause as NonEmptyStr }
+          CandidateOutsideExactResolution { root: _, path: _, target_leaf: _ } =>
+            ExactHeadDidNotHold {
+              cause: "a scanned entry sits outside exact resolution"
+            }
+        }
+      } else {
+        ExactHeadDidNotHold {
+          cause: "observed callers do not join the closed roster"
+        }
+      }
   }
 }
 
