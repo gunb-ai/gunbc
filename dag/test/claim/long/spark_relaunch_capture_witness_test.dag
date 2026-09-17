@@ -96,18 +96,18 @@ import test.fixture.glm_group_b_captures {
 //   - the agreement between the archived RoCE narrow selection and the document it was selected from,
 //     which is what licenses the cheap module's RoCE rows.
 //
-// THE REASON IS MEASURED AND IT IS THE PARSE, NOT THE ASSERTIONS. The required floor bounds eval
-// steps at about 72,300 for a new identity. Every row here decodes at least one 18 KB captured
-// document and reads 405,451 to 1,593,069 steps; a row asserting one field of a decoded container
-// costs 405,497 and a row asserting six costs 406,072, so the cost does not move when the assertions
-// do. The narrower `.HostConfig` question was taken where it could be -- that is what the sibling
-// module is -- and the rows above genuinely need the whole document.
+// THE REASON IS MEASURED AND IT IS THE PARSE, NOT THE ASSERTIONS -- and the figures are not copied
+// here, because a transcribed measurement rots without anyone touching either end. The producer that
+// re-derives every one of them is the recipe `gunbc.offline_local_recipe` renders for this module:
+// `claim_batch` prints `cpu` and `eval_steps` per row, which is the same reading
+// `required-floor-claim-cost` publishes, and the envelope those readings are measured against is
+// derived by `v2.workflow.required_floor` from `required_floor_new_witness_envelope_ms` and
+// `v2.workflow.floor_eval_step_calibration`. Run it and compare; that is the citation.
 //
-// THE STANDING IS A PATH DEFERRAL AND NOT AN EXACT ADMISSION, stated so nobody reads it as one: an
-// exact `gunbc.explicit_witness_admission` row naming `OfflineLocalRecipe` is REFUSED by design,
-// because a local recipe is not an executing cadence. So what stands here is the frozen path-deferral
-// class, which `gunbc.witness_deferral_freeze` tolerates and does not bless, and this block is the
-// declaration that class asks for rather than a substitute for admission.
+// WHAT THE COMPARISON SHOWS, stated as a SHAPE rather than as numbers: every row here exceeds the
+// new-witness eval-step envelope by a large multiple, a row asserting one field of a decoded
+// container costs the same as one asserting six, and the narrower `.HostConfig` question -- which is
+// what the sibling module reads -- lands comfortably under it. The cost is the parse.
 //
 // TRIGGER, NAMED AS A CAPABILITY RATHER THAN AN ARTIFACT: a floor cadence that can admit a
 // whole-document parse -- an executing consumer whose eval-step envelope accommodates a
@@ -117,13 +117,9 @@ import test.fixture.glm_group_b_captures {
 // authored fixture this whole change exists to replace, and the narrow captures are already the
 // honest end of that road -- the daemon answering a narrower question, not a file cut down.
 //
-// STANDING TODAY: every row here executes by local recipe and is run that way, printing the same
-// per-row `cpu`/`eval_steps` reading `required-floor-claim-cost` publishes:
-//
-//   ROWS=$(grep -oP '^test fn \K[a-z0-9_]+(?=\(\))' \
-//     dag/test/claim/long/spark_relaunch_capture_witness_test.dag | paste -sd,)
-//   claim_batch --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/long/spark_relaunch_capture_witness_test.dag --functions "$ROWS"
+// STANDING TODAY: every row here executes by the local recipe `gunbc.offline_local_recipe` renders
+// for this entry, and is run that way. The command is not written out here; that carrier owns it, so
+// there is one spelling of it and it moves when the file does.
 //
 // That is a cadence a person runs, not one the merge path runs, and the difference is the whole
 // content of this declaration.
@@ -302,25 +298,27 @@ test fn w_the_daemon_reads_the_capability_back_with_its_cap_prefix() -> Bool {
       })
 }
 
-// A NULL CapAdd AND AN EMPTY Devices ARE DIFFERENT FACTS, and the socket capture carries one of each.
-// Collapsing them would erase the difference between a field the daemon did not set and a field it set
-// to nothing.
-test fn w_a_null_member_reads_absent_and_an_empty_array_reads_empty() -> Bool {
+// A NULL CapAdd IS AN OBSERVED EMPTINESS AND AN EMPTY Devices ARRAY IS A DIFFERENT ONE, and the
+// socket capture carries one of each. What the decoder must NOT do is read either as "I could not
+// tell": null is the daemon's spelling for "no capabilities were added" on a member it always emits,
+// and `[]` is the daemon naming an empty list. A member the document does not mention at all is the
+// third state, and it is unread -- which is the distinction the capability reader was corrected for.
+test fn w_a_null_member_and_an_empty_array_are_both_readings() -> Bool {
   captures_present()
-    &&
-  with_decoded(text: inspect_socket_rank0(), f: c =>
-    match c.host_config {
-      Absent => false
-      Present { value: hc } =>
-        match hc.cap_add {
-          Present { value: _ } => false
-          Absent =>
-            match hc.devices {
-              Absent => false
-              Present { value: ds } => count(ds) == 0
-            }
-        }
-    })
+    && with_decoded(text: inspect_socket_rank0(), f: c =>
+      match c.host_config {
+        Absent => false
+        Present { value: hc } =>
+          match hc.cap_add {
+            Absent => false
+            Present { value: cs } =>
+              count(cs) == 0
+                && match hc.devices {
+                  Absent => false
+                  Present { value: ds } => count(ds) == 0
+                }
+          }
+      })
 }
 
 // ── THE RANK COMES OUT OF THE ARGV ────────────────────────────────────────────────────────────

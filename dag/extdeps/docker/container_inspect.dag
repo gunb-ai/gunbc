@@ -19,6 +19,8 @@ import extdeps.languages.json.parse {
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed,
   json_field, json_field_string, json_field_bool, json_field_int, json_field_nat,
   json_field_string_list, json_field_value, json_field_cause,
+  JsonMemberPresence, JsonMemberMissing, JsonMemberNull, JsonMemberValue, JsonMemberUnreadable,
+  json_member_presence,
 }
 
 type ContainerState
@@ -585,6 +587,32 @@ fn json_field_ulimit_list(obj: JsonValue, key: String) -> JsonFieldRead<List<Doc
   }
 }
 
+// ── A MISSING CapAdd IS UNREAD; A NULL CapAdd IS AN OBSERVED EMPTINESS ────────────────────────
+//
+// THESE ARE THE SAME VALUE THROUGH `json_field_string_list` AND THEY ARE NOT THE SAME FACT. The
+// 2026-09-16 socket capture reads `"CapAdd": null` -- the daemon saying no capabilities were added on
+// a member it always emits -- which is a READING. A document that does not mention CapAdd at all is a
+// document this reader could not get the answer from.
+//
+// WHY IT MATTERED MORE HERE THAN ANYWHERE ELSE. cap_add is on the TRANSPORT AXIS, so a consumer
+// comparing it against a plan treats a difference as an INTENDED change rather than a refusal -- and
+// with the two collapsed, "I did not read the capability set" became "the capability set differs as
+// planned", and a transaction would stop four serving hosts on a capability set it never read.
+// THE EMPTY READING IS A NAMED VALUE rather than a bare literal, because the list's element type is
+// not inferable at the arm and because "the daemon reported no capabilities" is worth saying once.
+data no_capabilities: List<String> = []
+
+fn json_field_capability_list(obj: JsonValue, key: String) -> JsonFieldRead<List<String>> {
+  match json_member_presence(obj: obj, key: key) {
+    JsonMemberMissing => FieldMalformed {
+      cause: join([key, " is not present on this HostConfig at all, so the capability set was not read; a member the document does not mention is not an empty one"], ""),
+    }
+    JsonMemberUnreadable { cause: c } => FieldMalformed { cause: c }
+    JsonMemberNull => FieldRead { value: no_capabilities }
+    JsonMemberValue { value: _ } => json_field_string_list(obj: obj, key: key)
+  }
+}
+
 fn json_field_restart_policy(obj: JsonValue, key: String) -> JsonFieldRead<DockerInspectRestartPolicy> {
   match json_field(obj: obj, key: key) {
     FieldAbsent => FieldAbsent
@@ -632,7 +660,7 @@ fn docker_inspect_host_config(v: JsonValue) -> HostConfigRead {
   let pid_mode = json_field_string(obj: v, key: "PidMode")
   let ipc_mode = json_field_string(obj: v, key: "IpcMode")
   let uts_mode = json_field_string(obj: v, key: "UTSMode")
-  let cap_add = json_field_string_list(obj: v, key: "CapAdd")
+  let cap_add = json_field_capability_list(obj: v, key: "CapAdd")
   let cap_drop = json_field_string_list(obj: v, key: "CapDrop")
   let exposed_ports = json_field_opaque_entry_list(obj: v, key: "ExposedPorts")
   let port_bindings = json_field_opaque_entry_list(obj: v, key: "PortBindings")
@@ -1076,7 +1104,7 @@ fn container_adds_capability(inspect: ContainerInspect, capability: String) -> V
     Absent => VerbsShapeUnreported { cause: "the inspect document carries no HostConfig, so whether a capability is added is unread" as NonEmptyStr }
     Present { value: hc } =>
       match hc.cap_add {
-        Absent => VerbsShapeAbsent
+        Absent => VerbsShapeUnreported { cause: "HostConfig names no CapAdd member, so whether a capability is added is unread" as NonEmptyStr }
         Present { value: cs } =>
           if count(filter(cs, c => docker_capability_canonical(name: c) == docker_capability_canonical(name: capability))) > 0 {
             VerbsShapePresent
@@ -1087,11 +1115,13 @@ fn container_adds_capability(inspect: ContainerInspect, capability: String) -> V
   }
 }
 
-// `CapAdd: null` IS `VerbsShapeAbsent` AND NOT UNREPORTED, and that asymmetry with Devices is read
-// off the capture rather than chosen: the socket incarnation reports `"CapAdd": null` while the RoCE
-// incarnation reports a list, so null is the daemon's spelling for "no capabilities were added" on a
-// member it always emits. `Devices` behaves differently -- the socket side reports `[]`, not null --
-// so an absent Devices member is a document shape this reader has not seen and does not interpret.
+// `CapAdd: null` READS AS AN EMPTY LIST AND NOT AS AN ABSENT FIELD, which is decided at the decoder
+// rather than here: the socket incarnation reports `"CapAdd": null` while the RoCE one reports a
+// list, so null is the daemon's spelling for "no capabilities were added" on a member it always
+// emits. A document that does not MENTION CapAdd is a different thing and reaches this reader as
+// Absent, which is unread. `Devices` behaves differently again -- the socket side reports `[]`, not
+// null -- so an absent Devices member is a document shape this reader has not seen and does not
+// interpret.
 
 // MEMLOCK IS UNLIMITED WHEN BOTH BOUNDS ARE -1, which is what `--ulimit memlock=-1:-1` reads back
 // as. A row naming memlock with any other pair is a real answer of `Absent`: the limit exists and is

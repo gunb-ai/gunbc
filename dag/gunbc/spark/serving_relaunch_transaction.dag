@@ -342,13 +342,19 @@ fn planned_cap_add_text(spec: DockerCreateSpec) -> String {
   join(sorted_text(xs: map(spec.cap_add, c => docker_capability_canonical(name: c as String))), ",")
 }
 
-// A NULL CapAdd IS THE EMPTY SET AND NOT AN UNREAD FIELD. The socket incarnation reads back
-// `"CapAdd": null` while the RoCE one reads a list, so null is this daemon's spelling for "no
-// capabilities were added" on a member it always emits.
-fn observed_cap_add_text(hc: HostConfig) -> String {
+// THIS WAS THE ONE FIELD WHOSE OBSERVED SIDE COULD NOT BE UNREADABLE, and that made it the worst
+// place for the collapse. It returned `""` for an unread CapAdd and wrapped the result in an
+// unconditional `Present`, so a document that did not report the member compared as "no capabilities"
+// -- and because cap_add sits on the TRANSPORT AXIS, the resulting mismatch was admitted as an
+// INTENDED change rather than refused. The transaction would have stopped four serving hosts on a
+// capability set it never read, through the one field this module says most loudly must be read.
+//
+// THE DECODER NOW KEEPS null AND MISSING APART, so Absent here genuinely means unread and this
+// returns the optional every sibling comparison returns.
+fn observed_cap_add_text(hc: HostConfig) -> String? {
   match hc.cap_add {
-    Absent => ""
-    Present { value: cs } => join(sorted_text(xs: map(cs, c => docker_capability_canonical(name: c))), ",")
+    Absent => none
+    Present { value: cs } => Present { value: join(sorted_text(xs: map(cs, c => docker_capability_canonical(name: c))), ",") }
   }
 }
 
@@ -581,7 +587,7 @@ fn relaunch_comparisons(spec: DockerCreateSpec, observed: ContainerInspect, gid_
       compare_text_field(field: SpecShmSize, planned: to_string(spec.shm_size_bytes), observed: observed_shm_size_text(hc: hc)),
       compare_text_field(field: SpecMemlock, planned: planned_memlock_text(spec: spec), observed: observed_memlock_text(hc: hc)),
       compare_text_field(field: SpecDevices, planned: planned_devices_text(spec: spec), observed: observed_devices_text(hc: hc)),
-      compare_text_field(field: SpecCapAdd, planned: planned_cap_add_text(spec: spec), observed: Present { value: observed_cap_add_text(hc: hc) }),
+      compare_text_field(field: SpecCapAdd, planned: planned_cap_add_text(spec: spec), observed: observed_cap_add_text(hc: hc)),
       compare_text_field(field: SpecRestart, planned: docker_restart_policy_wire(p: spec.restart) as String, observed: observed_restart_text(hc: hc)),
       compare_text_field(field: SpecMounts, planned: planned_mounts_text(spec: spec), observed: observed_mounts_text(hc: hc)),
       compare_env_field(spec: spec, observed: observed, gid_selection: gid_selection),
@@ -1076,9 +1082,15 @@ type ArmRelaunchOutcome
 // EVERY RANK IS CAPTURED AND EVERY REFUSAL IS COLLECTED, rather than stopping at the first. An
 // operator who has to fix four ranks one round trip at a time against a live arm is being made to
 // pay for the fold's convenience.
+// A CAUSE CARRIES THE STEP IT CAME FROM. All of these were reported as StepProveDelta, but this fold
+// accumulates an inspect refusal, a transport-observation refusal, a preserved-name collision and a
+// rank disagreement into one list -- and only one of those is the delta proof. Naming the others by it
+// is a diagnostic pointing at an operation that did not fail, which this module corrected once for its
+// rollback legs and once for its verification step.
 type CaptureAcc {
   captures: List<ArmCapture>
   causes: List<NonEmptyStr>
+  step: RelaunchStep?
 }
 
 fn capture_rank(plan: RankPlan) -> CaptureAcc
@@ -1086,7 +1098,7 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
 {
   match observe_rank_container(ctx: plan.ctx, subject: plan.subject) {
     RankInspectRefused { refusal: r } =>
-      CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
+      CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr], step: Present { value: StepCaptureIncumbent } }
     RankInspected { subject: _, container: incumbent } =>
       match relaunch_delta(spec: plan.spec, observed: incumbent, gid_selection: plan.gid_selection) {
         DeltaRefused { comparisons: cs, unobservable: us, unclaimed_env: ns } =>
@@ -1096,11 +1108,12 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
               observed_rank_subject_text(s: plan.subject), ": ",
               relaunch_delta_text(d: DeltaRefused { comparisons: cs, unobservable: us, unclaimed_env: ns }),
             ], "") as NonEmptyStr],
+            step: Present { value: StepProveDelta },
           }
         DeltaOnlyIntended { comparisons: admitted, unobservable: not_compared, unclaimed_env: not_asked } =>
           match observe_rank_transport(ctx: plan.ctx, subject: plan.subject, container: incumbent) {
             RankTransportRefused { refusal: r } =>
-              CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
+              CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr], step: Present { value: StepCaptureIncumbent } }
             RankTransportObserved { verdict: before } => {
               let preserved = preserved_container_name(
                 name: plan.subject.container,
@@ -1108,8 +1121,9 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
                 incarnation: before.incarnation,
               )
               match preserved_name_is_free(ctx: plan.ctx, subject: plan.subject, preserved: preserved) {
-                Present { value: why } => CaptureAcc { captures: [], causes: [why] }
+                Present { value: why } => CaptureAcc { captures: [], causes: [why], step: Present { value: StepPreserveIncumbent } }
                 Absent => CaptureAcc {
+                  step: none,
                   captures: [ArmCapture {
                     rank: plan,
                     before: before,
@@ -1182,17 +1196,26 @@ fn capture_rank_agrees(c: ArmCapture) -> NonEmptyStr? {
 fn capture_arm(ranks: List<RankPlan>) -> CaptureAcc
   uses net: Network
 {
-  let captured = fold(ranks, init: CaptureAcc { captures: [], causes: [] }, f: (acc, plan) => {
+  let captured = fold(ranks, init: CaptureAcc { captures: [], causes: [], step: none }, f: (acc, plan) => {
     let one = capture_rank(plan: plan)
-    CaptureAcc { captures: concat(acc.captures, one.captures), causes: concat(acc.causes, one.causes) }
+    CaptureAcc {
+      captures: concat(acc.captures, one.captures),
+      causes: concat(acc.causes, one.causes),
+      step: match acc.step { Present { value: st } => Present { value: st }, Absent => one.step },
+    }
   })
+  let disagreements = fold(captured.captures, init: [], f: (acc, c) =>
+    match capture_rank_agrees(c: c) {
+      Absent => acc
+      Present { value: why } => concat(acc, [why])
+    })
   CaptureAcc {
     captures: captured.captures,
-    causes: concat(captured.causes, fold(captured.captures, init: [], f: (acc, c) =>
-      match capture_rank_agrees(c: c) {
-        Absent => acc
-        Present { value: why } => concat(acc, [why])
-      })),
+    causes: concat(captured.causes, disagreements),
+    step: match captured.step {
+      Present { value: st } => Present { value: st }
+      Absent => if count(disagreements) > 0 { Present { value: StepCaptureIncumbent } } else { none }
+    },
   }
 }
 
@@ -1304,6 +1327,16 @@ fn rollback_restore_names(states: List<RankState>) -> List<RollbackOutcome>
   map(states |> sort_by(st => st.capture.rank.node_rank) |> reverse, st => rollback_restore_one(st: st))
 }
 
+// WHETHER A SUCCESSOR EXISTS IS ASKED, NOT INFERRED FROM AN EXIT CODE. `RankPreserved` is reached
+// whenever `docker create` FAILED TO REPORT -- a non-zero exit or an ssh leg that never landed -- and
+// a daemon that created the object and then lost its reply leaves a real container holding the name.
+// A first cut concluded "no successor" from that state, skipped the force-remove, and issued a rename
+// onto a name that was taken, turning a recoverable rollback into RollbackFailed with four hosts down.
+//
+// THE OBSERVER THAT ANSWERS IT IS ALREADY IN THIS MODULE, used for exactly this question when the
+// preserved name is checked before actuation. Concluding a fact about a host from an actuation's
+// return is what DESIGN section 3d forbids, and this module's own header says so; the rollback leg was
+// where it was not obeyed.
 fn rollback_restore_one(st: RankState) -> RollbackOutcome
   uses net: Network
 {
@@ -1312,9 +1345,30 @@ fn rollback_restore_one(st: RankState) -> RollbackOutcome
   match st.progress {
     RankUntouched => NothingToRollBack
     RankStopped => RolledBack { restored: name }
-    RankPreserved => rollback_rename_back(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: false)
+    RankPreserved => rollback_after_observing(st: st, ctx: ctx, name: name)
     RankSuccessorCreated => rollback_rename_back(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: true)
     RankSuccessorStarted => rollback_rename_back(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: true)
+  }
+}
+
+// AN UNREADABLE PRESENCE REFUSES RATHER THAN GUESSING EITHER WAY. Removing a container that may not
+// exist and renaming onto a name that may be taken are both wrong, and a rollback that cannot see the
+// host is a rollback that must say so while the operator still has the preserved object.
+fn rollback_after_observing(st: RankState, ctx: SparkMaterializeContext, name: NonEmptyStr) -> RollbackOutcome
+  uses net: Network
+{
+  match observe_container_presence(ctx: ctx, subject: st.capture.rank.subject) {
+    ContainerAbsent => rollback_rename_back(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: false)
+    ContainerPresent { container: _ } =>
+      rollback_rename_back(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: true)
+    ContainerPresenceUnread { refusal: r } => RollbackFailed {
+      step: StepRemoveSuccessor,
+      cause: join([
+        "the create leg did not report, and whether it left a container holding ", name as String,
+        " could not be read, so neither removing nor renaming onto that name is safe: ",
+        rank_observation_refusal_text(r: r),
+      ], "") as NonEmptyStr,
+    }
   }
 }
 
@@ -1593,7 +1647,10 @@ fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
       causes: ["this arm has no ranks to relaunch; an empty roster is a group whose members are not observed, not a relaunch with nothing left to do" as NonEmptyStr],
     }
   } else if count(captured.causes) > 0 {
-    ArmRefusedBeforeActuation { step: StepProveDelta, causes: captured.causes }
+    ArmRefusedBeforeActuation {
+      step: match captured.step { Present { value: st } => st, Absent => StepCaptureIncumbent },
+      causes: captured.causes,
+    }
   } else if count(captured.captures) != count(ranks) {
     ArmRefusedBeforeActuation {
       step: StepCaptureIncumbent,

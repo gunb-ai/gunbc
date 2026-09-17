@@ -434,6 +434,38 @@ type JsonFieldRead<T>
   | FieldRead { value: T }
   | FieldMalformed { cause: String }
 
+// ── MISSING AND NULL ARE THE SAME ANSWER FOR MOST CALLERS, AND NOT FOR ALL ────────────────────
+//
+// `json_field` COLLAPSES THEM, and that is the right default: a wire null is the document declining
+// to carry a value. But a caller for whom "the document did not mention this member" and "the
+// document said null" are DIFFERENT facts needs them apart -- the first means it could not read the
+// member, the second is a reading. Collapsing them there turns an unread field into an observed
+// emptiness, which is the widening that admits a change nobody looked at.
+//
+// THE INFORMATION IS ALREADY THERE; only this seam discarded it.
+type JsonMemberPresence
+  = JsonMemberMissing
+  | JsonMemberNull
+  | JsonMemberValue { value: JsonValue }
+  | JsonMemberUnreadable { cause: String }
+
+fn json_member_presence(obj: JsonValue, key: String) -> JsonMemberPresence {
+  match json_object_unique_member(v: obj, key: key) {
+    JsonMemberAbsent => JsonMemberMissing
+    JsonMemberNotAnObject => JsonMemberUnreadable { cause: join(["the enclosing value carrying ", key, " is not an object"], "") }
+    JsonMemberDuplicated { count: n } => JsonMemberUnreadable { cause: join([key, " is named ", to_string(n), " times in one object"], "") }
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNull => JsonMemberNull
+        JsonBool { value: _ } => JsonMemberValue { value: v }
+        JsonNumber { lexeme: _ } => JsonMemberValue { value: v }
+        JsonString { value: _ } => JsonMemberValue { value: v }
+        JsonArray { elements: _ } => JsonMemberValue { value: v }
+        JsonObject { members: _ } => JsonMemberValue { value: v }
+      }
+  }
+}
+
 fn json_field(obj: JsonValue, key: String) -> JsonFieldRead<JsonValue> {
   match json_object_unique_member(v: obj, key: key) {
     JsonMemberAbsent => FieldAbsent

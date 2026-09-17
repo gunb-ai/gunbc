@@ -260,20 +260,51 @@ fn memlock_is_unlimited(hc: HostConfig) -> Bool {
   }
 }
 
-// A NULL CapAdd AND AN EMPTY Devices ARE DIFFERENT FACTS, and the socket capture carries one of each.
-// Collapsing them would erase the difference between a field the daemon did not set and one it set to
-// nothing.
-test fn w_a_null_member_reads_absent_and_an_empty_array_reads_empty() -> Bool {
+// A NULL CapAdd AND AN EMPTY Devices ARE BOTH READINGS, not two spellings of "I could not tell".
+// Null is the daemon's way of saying no capabilities were added on a member it always emits; `[]` is
+// it naming an empty list. The third state -- a member the document does not mention -- is unread,
+// and the row below is what keeps it from collapsing into these two.
+test fn w_a_null_member_and_an_empty_array_are_both_readings() -> Bool {
   captures_present()
     && with_host_config(c: socket_rank0_hostconfig, f: hc =>
       match hc.cap_add {
-        Present { value: _ } => false
-        Absent =>
-          match hc.devices {
-            Absent => false
-            Present { value: ds } => count(ds) == 0
-          }
+        Absent => false
+        Present { value: cs } =>
+          count(cs) == 0
+            && match hc.devices {
+              Absent => false
+              Present { value: ds } => count(ds) == 0
+            }
       })
+}
+
+// ── AND A MEMBER THE DOCUMENT DOES NOT MENTION IS UNREAD, WHICH IS THE ARM THAT WAS MISSING ───
+//
+// THE COLLAPSE THIS CLOSES, AND WHY IT WAS THE WORST ONE IN THE DIFF. A missing CapAdd and a null
+// CapAdd were the same value, so "I did not read the capability set" compared equal to "no
+// capabilities" -- and because cap_add sits on the TRANSPORT AXIS, the resulting mismatch was admitted
+// as an INTENDED change rather than refused. A transaction would have stopped four serving hosts on a
+// capability set it never read, through the one field this work says most loudly must be read.
+//
+// THE INPUT IS A REAL CAPTURE WITH ONE MEMBER REMOVED, which is the only way to author this arm: no
+// daemon on this fleet emits a HostConfig without CapAdd, so the discriminating document does not
+// exist in the wild and is constructed -- and it is constructed by DELETION from a real one rather
+// than written, so every other field it carries is still the daemon's.
+test fn w_a_host_config_that_does_not_mention_cap_add_is_unread() -> Bool {
+  captures_present()
+    && match read_capture(c: socket_rank0_hostconfig) {
+      CaptureUnread { path: _ } => false
+      CaptureBytes { text: t } =>
+        match parse_json_document(s: replace(s: t, pattern: "\"CapAdd\":null,", replacement: "")) {
+          JsonDocumentUnreadable { gap: _ } => false
+          JsonDocumentParsed { value: v } =>
+            match docker_inspect_host_config(v: v) {
+              HostConfigDecoded { host_config: _ } => false
+              HostConfigMalformed { causes: cs } =>
+                count(filter(cs, c => string_contains(s: c, pattern: "CapAdd"))) == 1
+            }
+        }
+    }
 }
 
 // ── THE FIELD THAT WAS INVISIBLE IN BOTH DIRECTIONS ───────────────────────────────────────────
