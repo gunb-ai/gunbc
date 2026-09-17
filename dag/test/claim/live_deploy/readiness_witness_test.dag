@@ -173,23 +173,6 @@ test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
     && string_contains(s: url as String, pattern: "/healthz")
 }
 
-test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
-  match observe_service_readiness_from_healthz(
-    read: HealthzProbeRefused {
-      probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
-    },
-    bundle: unused_surface_bundle(),
-    expected_revision: deploy_witness_release_revision,
-    expected_surface_identity: witness_expected_surface_identity(),
-  ) {
-    Pending { cause: ServiceProbeUnanswered { detail } } =>
-      string_contains(s: detail, pattern: "timed out")
-    Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
-    Ready { evidence: _ } => false
-    Refused { cause: _ } => false
-  }
-}
-
 test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
   match observe_service_readiness_from_healthz(
     read: HealthzProbeRefused {

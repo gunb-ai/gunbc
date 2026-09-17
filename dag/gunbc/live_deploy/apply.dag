@@ -259,6 +259,21 @@ fn live_deploy_apply_readiness_gate(
   )
 }
 
+// One NotConverged, reached from both non-Ready arms. The Pending/Refused
+// distinction is NOT erased by the collapse: service_readiness_reason carries the
+// readiness value into the reason, and the retry decision that consumes the
+// distinction lives in the poll, not in this gate.
+fn readiness_gate_not_converged(
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  readiness: ServiceReadiness,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let intent = match mutation {
+    Converged { evidence: _, applied: applied_intent } => applied_intent
+    NotConverged { reason: _, applied: applied_intent } => applied_intent
+  }
+  NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
+}
+
 fn live_deploy_apply_readiness_gate_with_readiness(
   mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
   readiness: ServiceReadiness,
@@ -268,20 +283,8 @@ fn live_deploy_apply_readiness_gate_with_readiness(
   } else {
     match readiness {
       Ready { evidence: _ } => mutation
-      Pending { cause: _ } =>
-        match mutation {
-          Converged { evidence: _, applied: intent } =>
-            NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
-          NotConverged { reason: _, applied: intent } =>
-            NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
-        }
-      Refused { cause: _ } =>
-        match mutation {
-          Converged { evidence: _, applied: intent } =>
-            NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
-          NotConverged { reason: _, applied: intent } =>
-            NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
-        }
+      Pending { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
+      Refused { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
     }
   }
 }
