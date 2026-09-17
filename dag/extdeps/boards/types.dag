@@ -24,6 +24,7 @@ type BaseboardModel
   = AsrockRackAltrad8ud1l2t
   | GigabyteMp72Hb0
   | AmpereMtCollins
+  | AmpereMtJade
 
 type BaseboardCatalogRow {
   model: BaseboardModel
@@ -31,6 +32,8 @@ type BaseboardCatalogRow {
   vendor: Vendor<Hardware>
   bmc_firmware: BmcFirmwareFamily
 }
+
+data ampere_mt_jade_identity_note: NonEmptyStr = "AmpereMtJade is the OCP/Ampere dual-socket Altra motherboard identity. Wiwynn chassis manufacture is a separate product (extdeps.wiwynn.sv328r). Fitted PSU wattage, NIC occupancy, and BMC firmware family are unit observations, not this coproduct. No BaseboardCatalogRow is authored here because that row currently requires a BmcFirmwareFamily and Mt. Jade's cited options are AMI MegaRAC OR OpenBMC."
 
 type ServerBaseboard {
   catalog: BaseboardCatalogRow

@@ -123,7 +123,7 @@ type Sv328rOcpSlotStanding
   = OcpNic30SffSlotPresent { occupancy_note: NonEmptyStr }
 
 data sv328r_ocp_slot: Sv328rOcpSlotStanding = OcpNic30SffSlotPresent {
-  occupancy_note: "Datasheet states One PCI-E 4.0 x16 OCP NIC 3.0 (small form factor). It does not state a bundled card.",
+  occupancy_note: "Datasheet states One PCI-E 4.0 x16 OCP NIC 3.0 (small form factor). It does not state a bundled card. Occupancy of that slot, or of a PCIe riser NIC, is a per-unit observation.",
 }
 
 data sv328r_specifications_model_scope: ExternalModelScope = ExternalModelScope {

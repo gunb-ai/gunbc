@@ -1,0 +1,50 @@
+module gunbc.machine_intake_ethernet
+
+import std.types { Bool, NonEmptyStr, String }
+
+// ONE PHYSICAL CONNECTOR IS NOT ONE FUNCTION. Mt. Collins initially misread a second BMC
+// address as the host PXE interface. Mt. Jade's rear panel can carry a dedicated BMC RJ45
+// plus a dual-port host module, and one of those host ports may also bind BMC NCSI. A Bool
+// "is dedicated management" cannot represent that. Connector identity and function bindings
+// are therefore separate types.
+
+type EthernetAttachment
+  = BaseboardOnboard
+  | PcieCem
+  | OcpNic3
+  | AttachmentUnobserved { discriminator: NonEmptyStr }
+
+type PhysicalEthernetPort {
+  panel_label: NonEmptyStr
+  connector_label: NonEmptyStr
+  attachment: EthernetAttachment
+}
+
+type EthernetFunction
+  = BmcDedicated
+  | BmcNcsi
+  | HostData
+  | PrebootNetwork
+
+type EthernetFunctionBinding {
+  port: PhysicalEthernetPort
+  function: EthernetFunction
+}
+
+fn ethernet_function_eq(a: EthernetFunction, b: EthernetFunction) -> Bool {
+  match a {
+    BmcDedicated => match b { BmcDedicated => true, _ => false }
+    BmcNcsi => match b { BmcNcsi => true, _ => false }
+    HostData => match b { HostData => true, _ => false }
+    PrebootNetwork => match b { PrebootNetwork => true, _ => false }
+  }
+}
+
+fn ethernet_port_may_carry_multiple_functions(
+  a: EthernetFunctionBinding,
+  b: EthernetFunctionBinding,
+) -> Bool {
+  (a.port.panel_label as String) == (b.port.panel_label as String)
+    && (a.port.connector_label as String) == (b.port.connector_label as String)
+    && ethernet_function_eq(a: a.function, b: b.function) == false
+}
