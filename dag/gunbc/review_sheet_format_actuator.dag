@@ -1,0 +1,167 @@
+module gunbc.review_sheet_format_actuator
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.resources { Network }
+import extdeps.transports.rest {
+  RestMutationExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.sheets
+import extdeps.google.sheets { SheetsColor, spreadsheet_first_sheet_id }
+
+// THE COLOURS COME FROM THE CITED PALETTE, NOT FROM TASTE. gunbc.design.catalog carries okabe_ito
+// as a CitedUpstream set anchored at jfly.uni-koeln.de, and it is the right set for this sheet for
+// a reason beyond availability: the column a reader scans fastest is Standing, and Okabe-Ito is
+// constructed to stay distinguishable under the common colour vision deficiencies. A palette
+// chosen for looking pleasant would fail exactly the reader who most needs the distinction.
+//
+// EACH TRIPLE IS TRANSCRIBED BESIDE THE SWATCH IT COMES FROM, and that duplication is forced: a
+// Sheets colour channel is a Float in [0,1], a swatch channel is an 8-bit Int, and this corpus has
+// no Int-to-Float conversion, so 0/255, 158/255 and 115/255 cannot be computed here. The arithmetic
+// is written out so a reader can check it, and the dissolution is that conversion landing in std --
+// at which point these rows derive from gunbc.design.catalog and stop being transcriptions.
+
+// okabe_ito_bluish_green Srgb8 { r: 0, g: 158, b: 115 } -> 0/255, 158/255, 115/255
+data standing_admitted_color: SheetsColor = SheetsColor { red: 0.0, green: 0.6196, blue: 0.4510 }
+
+// okabe_ito_vermillion Srgb8 { r: 213, g: 94, b: 0 } -> 213/255, 94/255, 0/255
+data standing_refused_color: SheetsColor = SheetsColor { red: 0.8353, green: 0.3686, blue: 0.0 }
+
+// okabe_ito_blue Srgb8 { r: 0, g: 114, b: 178 } -> 0/255, 114/255, 178/255
+data header_background_color: SheetsColor = SheetsColor { red: 0.0, green: 0.4471, blue: 0.6980 }
+
+// A thin ink rather than pure black: pure black on a saturated ground reads as a hole, and the
+// header is the one band a reader's eye crosses on every scan.
+data header_foreground_color: SheetsColor = SheetsColor { red: 1.0, green: 1.0, blue: 1.0 }
+
+// Evidence-insufficient rows are deliberately NOT coloured to attention. They are the majority of
+// the sheet and colouring them would spend the reader's attention on the rows that earned the
+// least of it; a mid grey says "read this last" more honestly than a hue would.
+data standing_thin_color: SheetsColor = SheetsColor { red: 0.4, green: 0.4, blue: 0.4 }
+
+data review_sheet_header_row_count: Int = 1
+
+data review_sheet_column_count: Int = 17
+
+// The Standing column, zero-indexed: Rank, Repository, Owner, Standing -> index 3.
+data standing_column_index: Int = 3
+
+type FormatStepOutcome
+  = FormatStepApplied { step: NonEmptyStr }
+  | FormatStepRefused { step: NonEmptyStr, cause: NonEmptyStr }
+
+// A FORMAT WRITE HAS NO READBACK HERE AND THAT IS A STATED LIMIT, not an oversight. Reading a
+// cell's format back means spreadsheets.get with includeGridData, a response shape this module does
+// not model, so these steps report what the API answered and nothing about what the sheet now
+// looks like. That is weaker evidence than the values converge carries, and the honest consequence
+// is that formatting is NOT idempotent-by-observation: re-running re-applies rather than adopting.
+// Conditional rules in particular accumulate, which is why the rule steps take an explicit index.
+fn classify_format_step(step: NonEmptyStr, outcome: RestOutcome) -> FormatStepOutcome {
+  match classify_rest_outcome(standing: RestMutationExchange { rest: outcome }) {
+    RestExchangeSucceeded => FormatStepApplied { step: step }
+    RestExchangeStatusRefused { status, body } =>
+      FormatStepRefused {
+        step: step,
+        cause: join(["refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      FormatStepRefused { step: step, cause: join(["never reached Sheets: ", cause as String], "") as NonEmptyStr }
+    RestExchangeUndecodable { status, cause } =>
+      FormatStepRefused {
+        step: step,
+        cause: join(["answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      FormatStepRefused {
+        step: step,
+        cause: join(["left the write ambiguous: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+fn freeze_header(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Network {
+  let r = sheets.Spreadsheets.SetFrozenRows(
+    spreadsheet_id: spreadsheet_id as String,
+    sheet_id: spreadsheet_first_sheet_id,
+    frozen_row_count: review_sheet_header_row_count,
+  )
+  classify_format_step(step: "freeze header row" as NonEmptyStr, outcome: r.outcome)
+}
+
+fn format_header_band(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Network {
+  let r = sheets.Spreadsheets.FormatCellRange(
+    spreadsheet_id: spreadsheet_id as String,
+    sheet_id: spreadsheet_first_sheet_id,
+    start_row: 0,
+    end_row: review_sheet_header_row_count,
+    start_col: 0,
+    end_col: review_sheet_column_count,
+    background: header_background_color,
+    foreground: header_foreground_color,
+    bold: true,
+  )
+  classify_format_step(step: "header band" as NonEmptyStr, outcome: r.outcome)
+}
+
+fn color_standing(
+  spreadsheet_id: NonEmptyStr,
+  match_text: String,
+  color: SheetsColor,
+  rule_index: Int,
+) -> FormatStepOutcome uses net: Network {
+  let r = sheets.Spreadsheets.AddTextColorRule(
+    spreadsheet_id: spreadsheet_id as String,
+    sheet_id: spreadsheet_first_sheet_id,
+    start_row: review_sheet_header_row_count,
+    start_col: standing_column_index,
+    end_col: standing_column_index + 1,
+    match_text: match_text,
+    foreground: color,
+    rule_index: rule_index,
+  )
+  classify_format_step(
+    step: join(["standing colour for ", match_text], "") as NonEmptyStr,
+    outcome: r.outcome,
+  )
+}
+
+type StandingColorRule {
+  standing: String
+  color: SheetsColor
+}
+
+// The roster is ordered so the arms a reader acts on are the first rules Sheets evaluates. It is a
+// declared list rather than a match over the standing type because this module formats a SHEET and
+// does not own the standing vocabulary: a new standing arriving in ci_acquisition should not make
+// this module fail to compile, it should simply arrive uncoloured until someone chooses a colour.
+data standing_color_rules: List<StandingColorRule> = [
+  StandingColorRule { standing: "CostOpportunity", color: standing_admitted_color },
+  StandingColorRule { standing: "ConcurrencyOpportunity", color: standing_admitted_color },
+  StandingColorRule { standing: "LatencyOpportunity", color: standing_admitted_color },
+  StandingColorRule { standing: "VerifiedArbitrage", color: standing_admitted_color },
+  StandingColorRule { standing: "ArchitectureIncompatible", color: standing_refused_color },
+  StandingColorRule { standing: "PrivateInputsRequired", color: standing_refused_color },
+  StandingColorRule { standing: "ReplayNotPermitted", color: standing_refused_color },
+  StandingColorRule { standing: "ReplayUnsafe", color: standing_refused_color },
+  StandingColorRule { standing: "NoCommercialSignal", color: standing_thin_color },
+  StandingColorRule { standing: "EvidenceInsufficient", color: standing_thin_color },
+]
+
+fn format_step_text(o: FormatStepOutcome) -> String {
+  match o {
+    FormatStepApplied { step: s } => join(["applied: ", s as String], "")
+    FormatStepRefused { step: s, cause: c } => join(["REFUSED ", s as String, ": ", c as String], "")
+  }
+}
+
+fn format_step_is_applied(o: FormatStepOutcome) -> Bool {
+  match o {
+    FormatStepApplied { step: _ } => true
+    FormatStepRefused { step: _, cause: _ } => false
+  }
+}
