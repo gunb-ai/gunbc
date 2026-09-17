@@ -1,7 +1,6 @@
 module gunbc.spark.fabric_switch_read
 
 import std.types { String, Bool, List, NonEmptyStr }
-import v2.std.algebra { map, filter }
 import extdeps.mikrotik.crs812 {
   Crs812EthernetWire,
   Crs812LaneSpeedFromWire, LaneSpeedParsed, LaneSpeedWireUnmodelled, crs812_lane_speed_from_wire,

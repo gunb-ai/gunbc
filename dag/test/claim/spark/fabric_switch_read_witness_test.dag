@@ -1,0 +1,113 @@
+module test.claim.spark.fabric_switch_read_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.mikrotik.crs812 {
+  Crs812EthernetWire, Lane50GCr2, Lane100GCr2, Fec91,
+}
+import gunbc.spark.fabric_switch_assessment {
+  Crs812LaneReading, LaneReadingTaken, LaneNeverRead,
+  crs812_lane_speed_eq, crs812_fec_mode_eq,
+}
+import gunbc.spark.fabric_switch_read {
+  Crs812LaneReadOutcome, LaneReadOk, LaneReadWireRefused,
+  crs812_lane_read_one, crs812_fabric_lane_read_outcomes,
+  crs812_lane_read_outcome_refused, crs812_fabric_leg_comment,
+}
+
+// A fabric-leg wire record as the switch actually returned it (captured 2026-09-17 from
+// GET /rest/interface/ethernet on gunbc-fabric-switch, 192.168.1.240). All eight legs were
+// byte-identical in these fields, so one shape stands for the fleet and the interface name varies.
+fn leg_wire(name: String, speed: String, fec: String, disabled: String) -> Crs812EthernetWire {
+  Crs812EthernetWire {
+    name: name as NonEmptyStr,
+    speed: speed,
+    fec_mode: fec,
+    auto_negotiation: "false",
+    running: "true",
+    disabled: disabled,
+    comment: crs812_fabric_leg_comment as String,
+  }
+}
+
+data captured_fabric_legs: List<Crs812EthernetWire> = [
+  leg_wire(name: "qsfp56-dd-1-1", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
+  leg_wire(name: "qsfp56-dd-1-3", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
+  leg_wire(name: "qsfp56-dd-1-5", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
+  leg_wire(name: "qsfp56-dd-1-7", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
+  leg_wire(name: "qsfp56-dd-2-1", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
+  leg_wire(name: "qsfp56-dd-2-3", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
+  leg_wire(name: "qsfp56-dd-2-5", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
+  leg_wire(name: "qsfp56-dd-2-7", speed: "50G-baseCR2", fec: "fec91", disabled: "false"),
+]
+
+// A non-fabric interface the GET also returns (management port), which the leg filter must drop.
+data ether1_wire: Crs812EthernetWire = Crs812EthernetWire {
+  name: "ether1" as NonEmptyStr,
+  speed: "",
+  fec_mode: "",
+  auto_negotiation: "true",
+  running: "true",
+  disabled: "false",
+  comment: "",
+}
+
+fn outcome_is_ok_5050(o: Crs812LaneReadOutcome) -> Bool {
+  match o {
+    LaneReadWireRefused { interface: _, field: _, wire: _ } => false
+    LaneReadOk { reading: r } => match r {
+      LaneNeverRead { interface: _ } => false
+      LaneReadingTaken { interface: _, speed: sp, fec: fc, enabled: en } =>
+        crs812_lane_speed_eq(a: sp, b: Lane50GCr2) && crs812_fec_mode_eq(a: fc, b: Fec91) && en
+    }
+  }
+}
+
+// THE READ PATH TURNS THE REAL RESPONSE INTO EIGHT 50G READINGS. This is the producer the assessment
+// was written to receive (fabric_switch_subject passes readings: [] today). Green here is the decode
+// executing over the captured bytes, not a shape check.
+test fn reads_the_eight_fabric_legs_as_50g_fec91_enabled() -> Bool {
+  let outcomes = crs812_fabric_lane_read_outcomes(wires: captured_fabric_legs)
+  outcomes.length() == 8 && all(outcomes, o => outcome_is_ok_5050(o: o))
+}
+
+// The management port is not a fabric leg and must not appear in the readings.
+test fn a_non_fabric_interface_is_filtered_out() -> Bool {
+  let outcomes = crs812_fabric_lane_read_outcomes(wires: [ether1_wire, leg_wire(name: "qsfp56-dd-1-1", speed: "50G-baseCR2", fec: "fec91", disabled: "false")])
+  outcomes.length() == 1
+}
+
+// DISCRIMINATING RED 1: a speed the corpus does not model refuses at the speed field rather than
+// decoding to the nearest known value. This is the fail-closed boundary the reader exists to hold;
+// without it a schema change or an unexpected speed would be silently mis-read.
+test fn an_unmodelled_speed_refuses_at_the_speed_field() -> Bool {
+  match crs812_lane_read_one(w: leg_wire(name: "qsfp56-dd-1-1", speed: "800G-baseCR8", fec: "fec91", disabled: "false")) {
+    LaneReadWireRefused { interface: _, field: f, wire: w } =>
+      (f as String) == "speed" && w == "800G-baseCR8"
+    LaneReadOk { reading: _ } => false
+  }
+}
+
+// DISCRIMINATING RED 2: an unmodelled FEC refuses at the fec-mode field.
+test fn an_unmodelled_fec_refuses_at_the_fec_field() -> Bool {
+  match crs812_lane_read_one(w: leg_wire(name: "qsfp56-dd-1-1", speed: "50G-baseCR2", fec: "fec134", disabled: "false")) {
+    LaneReadWireRefused { interface: _, field: f, wire: _ } => (f as String) == "fec-mode"
+    LaneReadOk { reading: _ } => false
+  }
+}
+
+// A disabled lane reads as not-enabled, so the assessment can tell a leg that should carry traffic
+// but is administratively down from one that is up.
+test fn a_disabled_lane_reads_as_not_enabled() -> Bool {
+  match crs812_lane_read_one(w: leg_wire(name: "qsfp56-dd-1-2", speed: "50G-baseCR2", fec: "fec91", disabled: "true")) {
+    LaneReadOk { reading: r } => match r {
+      LaneReadingTaken { interface: _, speed: _, fec: _, enabled: en } => !en
+      LaneNeverRead { interface: _ } => false
+    }
+    LaneReadWireRefused { interface: _, field: _, wire: _ } => false
+  }
+}
+
+// The whole captured response has no refusals -- every fabric leg decoded.
+test fn the_captured_response_has_no_wire_refusals() -> Bool {
+  !any(crs812_fabric_lane_read_outcomes(wires: captured_fabric_legs), o => crs812_lane_read_outcome_refused(o: o))
+}
