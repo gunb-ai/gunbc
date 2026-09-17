@@ -1,0 +1,98 @@
+module product.fabric.route_readiness
+
+import std.types { Bool, List, EpochSecs }
+import std.decl_ref { DeclarationRef }
+import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
+import product.fabric.provider_route { ProviderRoute, provider_route_eq }
+
+// A ROUTE WE MAY USE IS NOT YET A ROUTE THAT RUNS WORK.
+//
+// product.fabric.provider_admission answers whether we are AUTHORISED to use a route - posture,
+// jurisdiction, sanctions, agreements. It says nothing about whether work placed there would
+// actually start: whether our credentials still work, our image is present, durable state is
+// reachable from that region, identity injection and the network path hold. A provider that is
+// only listed on a website is a hypothetical fallback, and counting it as capacity is the failure
+// this module exists to refuse: the day a node or site is lost is the day the unexercised route is
+// first tried.
+//
+// THE EVIDENCE IS ONE END-TO-END EXERCISE, NOT A CHECKLIST OF ITS PARTS. A run that started,
+// reached durable state and returned its receipt through our own control plane has established the
+// credentials, image, identity, network and state-reach facts together; a checklist whose rows
+// were each ticked separately establishes none of them jointly. So the carrier is the exercise and
+// its receipt.
+//
+// WHAT AN EXERCISE DOES NOT ESTABLISH, stated so the type is not read as more than it is: that the
+// route has CAPACITY now (that is AvailabilityObservation on the dispatch inputs, taken per
+// decision), and that THIS work's shape or image runs there (that is fungibility, decided by
+// selection). An exercise is per route, so it proves the path and not the payload.
+//
+// AN EXERCISE EXPIRES. Credentials rotate, images are garbage-collected, a provider changes its
+// API; an exercise from last year is not evidence about today. valid_through is declared by whoever
+// records the exercise and is compared against the decision instant the caller supplies, so a
+// stale exercise refuses by name rather than standing as readiness forever.
+type RouteExercise {
+  route: ProviderRoute
+  exercised_at: EpochSecs
+  valid_through: EpochSecs
+  receipt: DeclarationRef
+}
+
+// WHAT THE PLACEMENT REQUIRES. Ordinary work requires an unexpired exercise of its route. The one
+// exception is the exercise itself - without it no route could ever become ready - and it is bound
+// to BOTH the route being exercised and the work identity doing the exercising, so it admits that
+// one work onto that one route and nothing else. It is minted by the caller; that is a declared
+// boundary (the exercise scheduler owns it), not a construction wall, and a reviewer should read a
+// production caller passing ExerciseOfRoute for customer work as the defect it is.
+type RouteReadinessRequirement<P>
+  = RequireExercisedRoute
+  | ExerciseOfRoute { route: ProviderRoute, work: FabricIdentity<P, WorkKey> }
+
+type RouteReadiness
+  = RouteReady { exercise: RouteExercise }
+  | RouteAdmittedForItsOwnExercise { route: ProviderRoute }
+  | RouteNeverExercised { route: ProviderRoute }
+  | RouteExerciseExpired { route: ProviderRoute, latest_valid_through: EpochSecs, at: EpochSecs }
+
+fn exercises_of(exercises: List<RouteExercise>, route: ProviderRoute) -> List<RouteExercise> {
+  filter(exercises, e => provider_route_eq(a: e.route, b: route))
+}
+
+fn later_valid_through(held: RouteExercise, next: RouteExercise) -> RouteExercise {
+  if next.valid_through > held.valid_through { next } else { held }
+}
+
+// ANY UNEXPIRED EXERCISE MAKES THE ROUTE READY, and the one reported is the one valid longest. Two
+// exercises of one route are ordinary history rather than an ambiguity (unlike two facts rows for
+// one offer), and the answer does not depend on roster order: readiness is monotone in the set.
+fn route_readiness<P>(
+  exercises: List<RouteExercise>,
+  requirement: RouteReadinessRequirement<P>,
+  route: ProviderRoute,
+  work: FabricIdentity<P, WorkKey>,
+  at: EpochSecs,
+) -> RouteReadiness {
+  match requirement {
+    ExerciseOfRoute { route: exercised, work: exercising } =>
+      if provider_route_eq(a: exercised, b: route) && fabric_identity_eq(left: exercising, right: work) {
+        RouteAdmittedForItsOwnExercise { route: route }
+      } else {
+        readiness_from_exercises(exercises: exercises, route: route, at: at)
+      }
+    RequireExercisedRoute => readiness_from_exercises(exercises: exercises, route: route, at: at)
+  }
+}
+
+fn readiness_from_exercises(exercises: List<RouteExercise>, route: ProviderRoute, at: EpochSecs) -> RouteReadiness {
+  let mine = exercises_of(exercises: exercises, route: route)
+  match mine.first() {
+    Absent => RouteNeverExercised { route: route }
+    Present { value: first } => {
+      let latest = fold(mine, init: first, f: (held, next) => later_valid_through(held: held, next: next))
+      if latest.valid_through >= at {
+        RouteReady { exercise: latest }
+      } else {
+        RouteExerciseExpired { route: route, latest_valid_through: latest.valid_through, at: at }
+      }
+    }
+  }
+}

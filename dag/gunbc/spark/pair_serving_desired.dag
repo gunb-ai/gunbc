@@ -25,6 +25,7 @@ import gunbc.spark.fabric_switch_observed {
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire,
   FabricLaneObserved, fabric_lane_for_host,
 }
+import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
 import gunbc.spark.pair_serving_observed { first_pair_observed_head }
@@ -254,7 +255,22 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // PairServingUnitOn FabricGroupA, so a successor must be discriminated by its exact authorization and
 // candidate realization rather than by subject identity, which does not change across that transition. The reasoning is at
 // docs/plans/dsv41-cut-d-redesign.md; the obligation is here, on the row that decides.
-data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA]
+// THIS ROW IS NOW DERIVED, AND THE ROW IT DERIVES FROM IS WHERE THE OBLIGATIONS ABOVE NOW BITE.
+// Claiming a group and being free to act on it were briefly authored as two hand-edited lists whose
+// agreement a test asserted -- one fact with two authors, admitted on the strength of a validator,
+// which is the shape DESIGN section 5 names when it says construction beats validation. Every authority
+// arm already carries its group, so membership is a projection of the authority population and a row
+// for an unclaimed group, or a claimed group with no authority, is now UNWRITABLE rather than merely
+// caught. The join claim that used to hold the two together dissolved with the climb.
+//
+// WHAT MOVED, precisely, so the reasoning above is not read against the wrong row: everything this
+// annotation says about withdrawal, vacuity and the shared V4/V4.1 subject is unchanged in substance,
+// but the row an author edits to withdraw Group A is now
+// gunbc.spark.pair_serving_authority spark_pair_serving_authorities. Emptying THAT empties this, so the
+// vacuity hazard is not removed by the indirection -- it is relocated onto the row that also carries
+// the suspension states, which is the point: an author reaching for withdrawal now has suspension
+// sitting in front of them in the same declaration.
+data spark_pair_serving_groups: List<FabricGroup> = map(spark_pair_serving_authorities, a => pair_serving_authority_group(a: a))
 
 // WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair
 // (serve process, unit and Ray node address were all there). Group B: srv9 (spark-0c75), the unit the

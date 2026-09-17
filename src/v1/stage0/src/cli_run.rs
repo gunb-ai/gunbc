@@ -7288,6 +7288,73 @@ mod entry_admission_tests {
     }
 }
 
+/// WHY A PRIMARY-ROOT SUBJECT REFUSES, WITH THE PHASE THE TRANSACTION REPORTS IT UNDER.
+pub struct PrimaryRootSubjectRefusal {
+    pub phase: &'static str,
+    pub cause: String,
+}
+
+/// THE ONE DERIVATION OF A PRIMARY-ROOT SUBJECT'S CLOSURE, consumed by the compile transaction's
+/// `CompileSubject::PrimaryRoot` arm and by the XL-1 live tap (`emit_host.rs`
+/// `compile_xl1_primary_root_tap`). Every module whose source sits under the root is an entry;
+/// the closure is those modules plus their transitive import edges, then the reference closure
+/// iterated to a fixpoint (`extend_sources_to_both_closure_fixpoint` -- the same relation the
+/// entry arm uses, because an import edge is strictly weaker than a reference in this flat
+/// namespace and the walk alone under-pulls across the pool boundary; measured on the specimen
+/// in the arm's history: compiling `src/v2` with `dag` as the pool refused 36 blocking
+/// diagnostics, 16 of them live pool modules the import walk could not reach).
+///
+/// A ROOT THAT MATCHES NO MODULE REFUSES rather than compiling nothing: zero modules is the
+/// transaction failing to reach any subject, and `Completed { emitted_count: 0 }` would be the
+/// empty-observation narrow. The module-less-`.dag` visibility step runs BEFORE that refusal
+/// and is NOT optional: a `.dag` file under the root with no `module` declaration is not in the
+/// index, is not in the subject, and would vanish with the transaction reporting `Completed`;
+/// the empty-root arm cannot catch it because a root holding one good file and one forgotten
+/// one is not empty. Its read failure refuses as `subject-read` rather than narrowing the
+/// population that exists to say which files were removed from the subject.
+pub fn primary_root_subject_closure(
+    index: &MultiEntryIndex,
+    root: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, PrimaryRootSubjectRefusal> {
+    let root_prefix = workspace_relative_entry_path(root);
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+    for (module_path, source) in index.source_files.iter() {
+        let rel = workspace_relative_entry_path(&source.path);
+        if rel == root_prefix || rel.starts_with(&format!("{root_prefix}/")) {
+            seen.insert(module_path.clone(), source.clone());
+            entry_sources.push(source.clone());
+        }
+    }
+    let moduleless = match moduleless_dag_entry_paths_under_root(&root_prefix) {
+        Ok(paths) => paths,
+        Err(cause) => {
+            return Err(PrimaryRootSubjectRefusal {
+                phase: "subject-read",
+                cause,
+            })
+        }
+    };
+    report_moduleless_dag_entry_skips(&moduleless);
+    if entry_sources.is_empty() {
+        return Err(PrimaryRootSubjectRefusal {
+            phase: "subject-discovery",
+            cause: format!(
+                "no indexed module has a source file under the primary root '{root}' \
+                 -- the compile has no subject (pass a --source-root that covers it)"
+            ),
+        });
+    }
+    entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
+    let import_closure = resolve_transitively_bfs_legacy(entry_sources, &index.source_files, seen);
+    extend_sources_to_both_closure_fixpoint(import_closure, index).map_err(|e| {
+        PrimaryRootSubjectRefusal {
+            phase: "closure-load",
+            cause: format!("reference-derived closure load failed: {e}"),
+        }
+    })
+}
+
 fn compile_not_executed(
     subject: &CompileSubject,
     started: std::time::Instant,
@@ -7868,137 +7935,39 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         // and reporting it as `Completed { emitted_count: 0 }` is the empty-observation
         // narrow DESIGN names -- the exact shape that makes a ratchet read zero errors from
         // a run that compiled nothing.
+        // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY. The derivation of that subject --
+        // root-prefix filter, the module-less-`.dag` visibility step, the empty-root refusal,
+        // the import walk and the reference-closure fixpoint -- is ONE function,
+        // `primary_root_subject_closure`, because the XL-1 live tap (emit_host.rs
+        // `compile_xl1_primary_root_tap`) derives the same subject for the same question and a
+        // second copy had already drifted: it lacked the module-less step, so a `.dag` under the
+        // root with no `module` header would have left its closure silently (review 66847 on
+        // gunbc#11461; DESIGN 2/6 forked logic). Each refusal names its phase so this arm maps it
+        // onto compile_not_executed and the tap onto its own refusal, from one derivation.
+        // Both population arms name a root and derive the same subject from it.
         CompileSubject::PrimaryRoot(_) | CompileSubject::RootDemandMeasurement(_) => {
             let root = request
                 .subject
                 .population_root()
                 .expect("both population arms name a root");
-            let root_prefix = workspace_relative_entry_path(root);
-            let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
-            let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
-            for (module_path, source) in index.source_files.iter() {
-                let rel = workspace_relative_entry_path(&source.path);
-                if rel == root_prefix || rel.starts_with(&format!("{root_prefix}/")) {
-                    seen.insert(module_path.clone(), source.clone());
-                    entry_sources.push(source.clone());
-                }
-            }
-            // MODULE-LESS FILES UNDER THE ROOT ARE REPORTED, NOT SILENTLY DROPPED.
-            //
-            // The subject is discovered from `index.source_files`, which is keyed by module
-            // path -- so a `.dag` file under the root with NO `module` declaration is not in
-            // the index, is not in the subject, and would vanish with the transaction
-            // reporting `Completed`. The empty-root arm below cannot catch it, because a root
-            // holding one good file and one forgotten one is not empty.
-            //
-            // That visibility existed in the pipeline this transaction replaced and the
-            // consolidation dropped it. It is restored here through the SAME authority that
-            // already owned it -- `moduleless_dag_entry_paths` / `report_moduleless_dag_entry_skips`,
-            // both already `pub` in this file with their own tests. An earlier revision of the
-            // deletion note claimed this behaviour had no counterpart in `cli_run`; that was an
-            // absence asserted without grepping for it, and it was false.
-            //
-            // It REPORTS rather than refuses, which is the weaker of the two arms and is
-            // declared as such: a module-less `.dag` is a legitimate parse fixture today, so
-            // refusing would break real callers. The terminal form is the total role
-            // classification (`RootPopulation`), under which every `.dag` carries exactly one
-            // role and an unclassified file refuses. Until that lands this is countable
-            // visibility, not a wall.
-            // A `.dag` THAT CANNOT BE READ IS A REFUSAL, NOT AN OMISSION. The walk's contract
-            // is "every `.dag` under the root", and an `if let Ok(..)` that skips an unreadable
-            // file narrows that to "every READABLE `.dag`" while still reporting under the
-            // wider name -- so a permission error or a mid-walk deletion would remove a file
-            // from the visibility population that exists to say which files were removed from
-            // the subject. That is the empty-observation narrow at the one place whose job is
-            // to prevent it.
-            let moduleless = match moduleless_dag_entry_paths_under_root(&root_prefix) {
-                Ok(paths) => paths,
-                Err(cause) => {
-                    return compile_not_executed(&request.subject, started, "subject-read", cause)
-                }
-            };
-            report_moduleless_dag_entry_skips(&moduleless);
-
-            if entry_sources.is_empty() {
-                return compile_not_executed(
-                    &request.subject,
-                    started,
-                    "subject-discovery",
-                    format!(
-                        "no indexed module has a source file under the primary root '{root}' \
-                         -- the compile has no subject (pass a --source-root that covers it)"
-                    ),
-                );
-            }
-            entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
-            let import_closure =
-                resolve_transitively_bfs_legacy(entry_sources, &index.source_files, seen);
-            // THEN THE REFERENCE CLOSURE, FOR THE SAME REASON THE ENTRY ARM USES IT.
-            //
-            // The import-edge walk alone was wrong here, and the assumption that made it look
-            // right is worth stating because it is nearly true: when every module under the
-            // root is already an entry, reference derivation can only over-pull WITHIN the
-            // root. That holds inside the root and fails at the POOL boundary. This corpus
-            // resolves most cross-module references with no import line at all, so a module
-            // under the root that names a type or fn in a pool module has NO edge to walk, the
-            // provider stays census-only -- a name for lookup, no definition for emit -- and
-            // the compile refuses with `unresolved type` or `function not found in scope`
-            // against a module that is present and correct.
-            //
-            // Measured on the specimen that produced this fix: compiling `src/v2` with `dag` as
-            // the pool refused with 36 blocking diagnostics, of which 16 were exactly this --
-            // `ContextAccess` and `StringLiteral` in `dag/extdeps/github/expressions.dag`,
-            // `run_bootstrap_witness` in `dag/gunbc/instruments/bootstrap_witness_transport.dag`,
-            // `KvmObservedScreen` in `dag/gunbc/os_install_deduction.dag`, every one of them a
-            // live module the walk could not reach. They are not 16 defects; they are one
-            // closure being derived from the wrong relation.
-            //
-            // `extend_sources_to_both_closure_fixpoint` is the SAME function the entry arm
-            // calls -- bare-reference closure and pool-reference closure iterated to a
-            // fixpoint -- so the two subjects now derive their closures by one relation
-            // instead of two that had to agree by luck. That they did not agree is what this
-            // repair is: DESIGN's namespace Rule-1 reasoning applied to the arm that was left
-            // out of it.
-            match extend_sources_to_both_closure_fixpoint(import_closure, &index) {
+            match primary_root_subject_closure(&index, root) {
                 Ok(closure) => closure,
-                Err(e) => {
-                    return compile_not_executed(
-                        &request.subject,
-                        started,
-                        "closure-load",
-                        format!("reference-derived closure load failed: {e}"),
-                    );
+                Err(PrimaryRootSubjectRefusal { phase, cause }) => {
+                    return compile_not_executed(&request.subject, started, phase, cause);
                 }
             }
         }
     };
-    let closure_modules: std::collections::HashSet<String> = closure
-        .iter()
-        .filter_map(|s| extract_module_path(&s.content))
-        .collect();
-
     // Everything indexed and outside the closure enters the NAME CENSUS only. This is
-    // what makes the transaction see a parse break anywhere under the source roots, and
-    // membership is keyed on MODULE PATH rather than file path because the closure loader
-    // and the index normalize paths differently -- a file-path compare would fail to
-    // exclude closure modules and double-load them into the census.
-    let mut census_only: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .source_files
-        .iter()
-        .filter(
-            |(module_path, _): &(&String, &Rc<v1_compiler_compile::SourceFile>)| {
-                !closure_modules.contains(*module_path)
-            },
-        )
-        .map(|(_, source)| source.clone())
-        .collect();
-    census_only.sort_by(|a, b| a.path.cmp(&b.path));
-    let census_modules = census_only.len();
+    // what makes the transaction see a parse break anywhere under the source roots. ONE
+    // derivation, shared with the required floor and the XL-1 tap:
+    // compile_clean_census_only_sources_for_compiled keys membership on MODULE PATH
+    // because the closure loader and the index normalize paths differently (review 67039
+    // on gunbc#11461: this arm and the tap each carried a copy, and the copies had already
+    // drifted from the helper in sort order).
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
+    let census_modules = options.census_only_sources.len();
 
-    let options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
-        analyze_complexity: false,
-        census_only_sources: Rc::new(census_only.into()),
-    });
     // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
     // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
     // path through this pair is the same computation it was before multi-target routing --

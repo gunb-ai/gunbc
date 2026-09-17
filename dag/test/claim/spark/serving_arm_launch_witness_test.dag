@@ -1,0 +1,247 @@
+module test.claim.spark.serving_arm_launch_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { token_count_value }
+import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire }
+import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOverInterface }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.serving_arm {
+  ServingLaunchProfile, glm_native_concurrent_profile,
+  ArmIntent, ArmNormalServing, ArmBoundedExperiment,
+  GunbcSparkrunVllmDs4Gb10,
+  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  glm_native_initial_profile, serving_checkpoint_row, serving_runtime_row,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmNode, ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
+  plan_arm_launch, plan_arm_launch_for, arm_node, arm_container_spec,
+}
+
+// THE FIXTURE IS THE REAL GROUP B ARM, because the property under test is a property of THIS
+// deployment: the four ranks that were found serving on TCP sockets. A synthetic group would test
+// the renderer and say nothing about the arm that was wrong.
+fn planned_lines(f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
+  planned_lines_for(profile: glm_native_initial_profile, f: f)
+}
+
+// THE CONCURRENT PROFILE IS PLANNED THROUGH THE SAME FOLD, not merely read for a field. It is the
+// configuration this arm is intended to run -- sixteen admitted sequences at 8567 basis points --
+// and a profile that only ever appears inside an equality check is a row nothing produces a launch
+// from. Planning it is what makes its subject reachable.
+fn planned_lines_for(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
+  match plan_arm_launch(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    group: FabricGroupB,
+    profile: profile,
+  ) {
+    ArmLaunchRefused { cause: _ } => false
+    ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
+  }
+}
+
+// ── THE ARM PLANS FOUR RANKS AND NOT THREE ────────────────────────────────────────────────────
+//
+// A roster that silently dropped an unresolvable host would leave an engine waiting forever for a
+// peer nobody started, which is why the roster refuses whole rather than shrinking.
+test fn w_the_group_b_arm_plans_exactly_four_ranks() -> Bool {
+  planned_lines(f: ls => length(ls) == 4)
+}
+
+// ── EVERY RANK IS CREATED WITH THE VERBS DEVICE, THE CAPABILITY AND THE LOCK ──────────────────
+//
+// THIS IS THE DISCRIMINATING ROW OF THIS MODULE. On 2026-09-15 the Group B containers were found
+// with Devices=[], CapAdd=null and Ulimits=[] while the host RoCE sat ACTIVE and LINK_UP, so every
+// rank reported `NET/IB : No device found.` and then `Using network Socket`. A plan that renders
+// those three empty is the defect, and this row is what makes it fail to be planned rather than
+// fail in production two and a half days later.
+test fn w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory() -> Bool {
+  planned_lines(f: ls => all(ls, l =>
+    length(filter(l.container.devices, d => (d.host_path as String) == "/dev/infiniband")) == 1
+      && length(filter(l.container.cap_add, c => (c as String) == "IPC_LOCK")) == 1
+      && l.container.memlock_unlimited))
+}
+
+// ── AND THE ENDPOINT NAMES COME FROM THE OBSERVED LANE, NOT FROM A LITERAL ────────────────────
+//
+// The interface and the HCA are read off the fabric lane this fleet already observes. Asserting the
+// concrete values is deliberate: a plan that rendered SOME interface would pass a shape check while
+// naming a device that is not on this wire.
+test fn w_every_rank_names_this_fleets_leg_and_hca() -> Bool {
+  planned_lines(f: ls => all(ls, l =>
+    any(l.container.env, e => (e.name as String) == "NCCL_SOCKET_IFNAME" && e.value == "enp1s0f1np1")
+      && any(l.container.env, e => (e.name as String) == "GLOO_SOCKET_IFNAME" && e.value == "enp1s0f1np1")
+      && any(l.container.env, e => (e.name as String) == "NCCL_IB_HCA" && e.value == "rocep1s0f1")
+      && any(l.container.env, e => (e.name as String) == "UCX_NET_DEVICES" && e.value == "rocep1s0f1:1")))
+}
+
+// ── NCCL STAYS LOUD, BECAUSE ITS OUTPUT IS THE ONLY EVIDENCE THAT DISTINGUISHES THE TWO ───────
+//
+// `NET/IB : No device found.` versus `Using network IB` is the line this entire repair is judged by,
+// and it exists only at NCCL_DEBUG=INFO with the INIT,NET subsystems selected.
+test fn w_every_rank_keeps_the_transport_evidence_producer_on() -> Bool {
+  planned_lines(f: ls => all(ls, l =>
+    any(l.container.env, e => (e.name as String) == "NCCL_DEBUG" && e.value == "INFO")
+      && any(l.container.env, e => (e.name as String) == "NCCL_DEBUG_SUBSYS" && e.value == "INIT,NET")))
+}
+
+// ── THE ENGINE ARGUMENTS CARRY THE BATCHING BOUNDS AS DECLARED, NOT AS REMEMBERED ─────────────
+//
+// max_num_seqs is why the live aggregate reads as a single stream at 1, and 2048 is an explicit flag
+// rather than a default nobody chose. Both are asserted against the profile rather than a literal,
+// so the row states that the argv AGREES WITH THE PROFILE and does not quietly re-declare a policy.
+test fn w_the_engine_argv_states_the_profiles_batching_bounds() -> Bool {
+  planned_lines(f: ls => all(ls, l =>
+    argv_pair_is(argv: l.engine_argv, flag: "--max-num-seqs", value: to_string(glm_native_initial_profile.max_num_seqs))
+      && argv_pair_is(argv: l.engine_argv, flag: "--max-num-batched-tokens", value: to_string(token_count_value(t: glm_native_initial_profile.max_num_batched_tokens)))
+      && argv_pair_is(argv: l.engine_argv, flag: "--tensor-parallel-size", value: "4")))
+}
+
+// A FLAG AND ITS VALUE ARE ADJACENT, and reading them as a pair is what stops a row from passing on
+// a value that belongs to a different flag. The argv is framed with a separator no argument can
+// contain before searching, so `--max-num-seqs 1` cannot be satisfied by a rendered `10`: an
+// unframed substring search would accept exactly that, which is the difference between asserting a
+// bound and asserting a prefix of one.
+data argv_frame: String = "\u{1f}"
+
+fn argv_pair_is(argv: List<String>, flag: String, value: String) -> Bool {
+  string_contains(
+    s: join(concat([""], concat(argv, [""])), argv_frame),
+    pattern: join([argv_frame, flag, argv_frame, value, argv_frame], ""))
+}
+
+// ── THE CONTROL: THE ROW ABOVE IS READING THE PLAN, NOT ASSERTING A CONSTANT ──────────────────
+//
+// A claim that every rank maps the verbs device would pass just as green if the spec builder mapped
+// it unconditionally, and then it would be a decoration rather than a wall -- permanently true by
+// construction and worse than absent, because it would be cited as coverage for exactly the defect
+// it cannot see. So this row builds a rank with a SOCKET plan and requires the same three fields to
+// come back empty. It is the state Group B was found in, expressed as a value, and it is the reason
+// the row above carries information.
+data fx_socket_rank: ArmNode = arm_node(
+  host: operator_host_srv9,
+  rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 21),
+  node_rank: 0,
+  transport: SocketOverInterface { interface: "enp1s0f1np1" as NonEmptyStr },
+)
+
+test fn w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory() -> Bool {
+  match serving_checkpoint_row(c: Glm53NativeFp8) {
+    Absent => false
+    Present { value: crow } =>
+      match serving_runtime_row(r: GunbcGlm53NopeDerivedGb10) {
+        Absent => false
+        Present { value: rrow } => {
+          let spec = arm_container_spec(
+            node: fx_socket_rank,
+            master: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 21),
+            crow: crow, rrow: rrow, ranks: 4,
+            profile: glm_native_initial_profile)
+          length(spec.devices) == 0
+            && length(spec.cap_add) == 0
+            && !spec.memlock_unlimited
+            && !any(spec.env, e => (e.name as String) == "NCCL_IB_HCA")
+        }
+      }
+  }
+}
+
+// ── AN UNRUN SUBJECT MAY NOT BE PLANNED FOR NORMAL SERVING ────────────────────────────────────
+//
+// THE WALL AND ITS CONTROL IN ONE PAIR. The Group B arm above plans because it carries an execution
+// receipt. This tuple carries none -- nobody has run the native checkpoint on the DeepSeek runtime at
+// four ranks -- so the measured roster admits a bounded experiment and not production traffic. Asking
+// for normal serving must refuse, and asking for a bounded experiment must not.
+//
+// THIS IS WHAT MAKES THE ROW ABOVE INFORMATIVE. If the planner ignored the admission, both arms below
+// would plan and this row would go red -- which is the only reason the Group B row's success says
+// anything about the wall rather than about the renderer.
+fn plan_unrun_subject(intent: ArmIntent) -> ArmLaunchPlan {
+  plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcSparkrunVllmDs4Gb10,
+    topology: FourSparkTp4,
+    group: FabricGroupB,
+    intent: intent,
+    profile: glm_native_initial_profile,
+  )
+}
+
+fn plan_refusal_cause(p: ArmLaunchPlan) -> String {
+  match p {
+    ArmLaunchRefused { cause: c } => c as String
+    ArmLaunchPlanned { lines: _, master: _ } => ""
+  }
+}
+
+test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer() -> Bool {
+  (match plan_unrun_subject(intent: ArmNormalServing) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  })
+    && plan_refusal_cause(p: plan_unrun_subject(intent: ArmNormalServing))
+       != plan_refusal_cause(p: plan_unrun_subject(intent: ArmBoundedExperiment))
+}
+
+// ── THE UTILISATION REACHES THE ARGV AT FULL PRECISION, AND IT COMES FROM THE PROFILE ─────────
+//
+// TWO DEFECTS IN ONE ROW, BOTH FOUND AGAINST THE LIVE ARM. This module carried its own
+// basis-point renderer which divided the fractional part by 100 and padded two digits, so 8567
+// rendered as `0.85` -- the plan could not express the value the engine is actually running at.
+// extdeps.vllm.engine_args vllm_basis_point_fraction_wire already owned that projection and
+// preserves full precision while still trimming 8200 to `0.82`, so the local one is deleted rather
+// than repaired.
+//
+// AND THE VALUE IS THE PROFILE'S. The utilisation used to arrive as an independent function
+// argument beside a profile that also carried one, so a caller could hand the renderer 8567 while
+// the compatibility subject -- which is keyed by the profile -- said 8400, and both typechecked.
+// The argument is gone; there is one value and no second place for it to disagree with itself.
+test fn w_the_utilisation_argv_is_the_profiles_value_at_full_precision() -> Bool {
+  planned_lines(f: ls => all(ls, l =>
+    argv_pair_is(argv: l.engine_argv, flag: "--gpu-memory-utilization", value: "0.84")))
+    && planned_experiment_lines(profile: glm_native_concurrent_profile, f: ls => all(ls, l =>
+        argv_pair_is(argv: l.engine_argv, flag: "--gpu-memory-utilization", value: "0.8567")
+          && argv_pair_is(argv: l.engine_argv, flag: "--max-num-seqs", value: "16")))
+}
+
+// THE CONCURRENT PROFILE IS PLANNED AS AN EXPERIMENT, BECAUSE THAT IS WHAT IT IS ENTITLED TO.
+//
+// A FIRST VERSION OF THE ROW ABOVE PLANNED IT FOR NORMAL SERVING AND WENT RED, which is the wall in
+// this module doing its job against its own author. That subject carries no execution receipt --
+// nobody has observed an engine serving sixteen sequences at 8567 basis points -- so
+// intent_refusal admits it for a bounded experiment and refuses it for production traffic. The
+// witness was asserting the opposite of the rule the same change added.
+//
+// SO THE ROW ASKS FOR WHAT THE SUBJECT ALLOWS, and the argv it yields is still the thing under test:
+// the utilisation must render 0.8567 rather than the 0.85 a two-digit renderer produced, whichever
+// intent asked for it.
+fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
+  match plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    group: FabricGroupB,
+    intent: ArmBoundedExperiment,
+    profile: profile,
+  ) {
+    ArmLaunchRefused { cause: _ } => false
+    ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
+  }
+}
+
+test fn w_all_serving_arm_launch_claims_hold() -> Bool {
+  w_the_group_b_arm_plans_exactly_four_ranks()
+    && w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory()
+    && w_every_rank_names_this_fleets_leg_and_hca()
+    && w_every_rank_keeps_the_transport_evidence_producer_on()
+    && w_the_engine_argv_states_the_profiles_batching_bounds()
+    && w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory()
+    && w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer()
+    && w_the_utilisation_argv_is_the_profiles_value_at_full_precision()
+}

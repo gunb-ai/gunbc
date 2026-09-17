@@ -697,6 +697,39 @@ pub fn compile_dag_reference_occurrence_binding_census(
         };
     };
 
+    match observed_occurrence_transport_and_bindings(graph.as_ref()) {
+        ObservedOccurrenceBindingHalves::Refused { cause } => {
+            ReferenceOccurrenceBindingCensus::Refused { cause }
+        }
+        ObservedOccurrenceBindingHalves::Ready {
+            denominator,
+            observations,
+            ..
+        } => ReferenceOccurrenceBindingCensus::Observed {
+            source_digest,
+            compiler_digest,
+            denominator,
+            observations,
+        },
+    }
+}
+
+pub(crate) enum ObservedOccurrenceBindingHalves {
+    Ready {
+        transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
+        denominator: Vec<ReferenceOccurrenceDenominatorRow>,
+        observations: Vec<ReferenceOccurrenceBindingRow>,
+    },
+    Refused {
+        cause: String,
+    },
+}
+
+/// Seed-observed occurrence transport (per-module sidecars concatenated as stored) plus the
+/// occurrence-grain binding walk over that same transport. Callers must not rebuild containment.
+pub(crate) fn observed_occurrence_transport_and_bindings(
+    graph: &v1_compiler_compile::ResolvedGraph,
+) -> ObservedOccurrenceBindingHalves {
     use crate::std_occurrence_binding_candidates as candidates;
     use crate::std_occurrence_identity as identity;
     let mut entries = Vec::new();
@@ -757,7 +790,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
             index.clone()
         }
         other => {
-            return ReferenceOccurrenceBindingCensus::Refused {
+            return ObservedOccurrenceBindingHalves::Refused {
                 cause: format!("reference binding census: candidate index refused: {other:?}"),
             }
         }
@@ -789,8 +822,8 @@ pub fn compile_dag_reference_occurrence_binding_census(
             .get(&reference.occurrence.value)
             .cloned()
         else {
-            return ReferenceOccurrenceBindingCensus::Refused {
-                cause: format!(
+            return ObservedOccurrenceBindingHalves::Refused {
+                    cause: format!(
                     "reference binding census: occurrence {} is in the references view with no \
                      recorded consumer module; the walk that fills both changed under this instrument",
                     reference.occurrence.value
@@ -798,7 +831,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
             };
         };
         let Some(authored_name) = names.get(&reference.occurrence.value).cloned() else {
-            return ReferenceOccurrenceBindingCensus::Refused {
+            return ObservedOccurrenceBindingHalves::Refused {
                 cause: format!(
                     "reference binding census: occurrence {} is in the references view with no \
                      entry in the occurrence index, so it has no authored spelling",
@@ -844,7 +877,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
                         .iter()
                         .find(|module| module.type_env.module_path == consumer_module)
                     else {
-                        return ReferenceOccurrenceBindingCensus::Refused {
+                        return ObservedOccurrenceBindingHalves::Refused {
                             cause: format!(
                                 "reference binding census: consumer module '{consumer_module}' \
                                  carries occurrence {} but is absent from the resolved graph, so \
@@ -887,9 +920,8 @@ pub fn compile_dag_reference_occurrence_binding_census(
             disposition,
         });
     }
-    ReferenceOccurrenceBindingCensus::Observed {
-        source_digest,
-        compiler_digest,
+    ObservedOccurrenceBindingHalves::Ready {
+        transport,
         denominator,
         observations,
     }
@@ -1365,4 +1397,139 @@ pub fn transport_script_position_facts_for_path(
         ));
     }
     facts
+}
+
+/// Host body of the one XL-1 builtin `emit_rust_reference_derived_rows_bridge`.
+/// Not a builtin spelling, CLI flag, or second compile entry: only that interpreter arm calls it.
+#[derive(Debug, Clone)]
+pub(crate) enum Xl1PrimaryRootTap {
+    Refused {
+        cause: String,
+    },
+    Observed {
+        primary_root: String,
+        repair_rows: Rc<im::Vector<Rc<crate::v1_compiler_emit_rust::ReferenceDerivedCandidateRow>>>,
+        occurrence_transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
+        binding_rows: Vec<ReferenceOccurrenceBindingRow>,
+    },
+}
+
+pub(crate) fn compile_xl1_primary_root_tap(
+    source_roots: &[String],
+    repository: &str,
+    measured_root_demands: &str,
+) -> Xl1PrimaryRootTap {
+    if source_roots.is_empty() {
+        return Xl1PrimaryRootTap::Refused {
+            cause: "xl1 primary-root tap: source_roots is empty".to_string(),
+        };
+    }
+    let root = source_roots[0].clone();
+    // THE ROOT DEMAND IS DECLARED BY THE CALLER, exactly as `gunbc compile` receives it on
+    // argv: the repository identity and the projection path are repository facts
+    // (gunbc.whole_corpus_compile_admission whole_corpus_compile_repository,
+    // gunbc.whole_corpus_compile_demand_projection), so the .dag caller names them and the
+    // tap borrows no identity. Admission is then the SAME whole-root admission the compile
+    // transaction asks, on the root's own measured row (#11265).
+    let request = CompileRequest {
+        subject: CompileSubject::PrimaryRoot(root.clone()),
+        source_roots: source_roots.to_vec(),
+        primary_precedence: false,
+        render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        root_demand: RootDemandDeclaration {
+            repository: Some(repository.to_string()),
+            measured_root_demands: Some(measured_root_demands.to_string()),
+        },
+    };
+    if let Err(cause) = request.primary_root_agrees_with_precedence() {
+        return Xl1PrimaryRootTap::Refused { cause };
+    }
+    let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
+        repository: repository.to_string(),
+        primary_root: root.clone(),
+        dependency_pools: source_roots.iter().skip(1).cloned().collect(),
+    };
+    let read =
+        crate::memory_governor::read_whole_corpus_compile_demands(Some(measured_root_demands));
+    let budget = crate::memory_governor::read_host_budget_resolution();
+    let admission =
+        crate::memory_governor::whole_corpus_compile_admission(&budget, &identity, &read);
+    if let Some(diagnostic) =
+        crate::memory_governor::whole_corpus_compile_refusal_diagnostic(&admission)
+    {
+        return Xl1PrimaryRootTap::Refused { cause: diagnostic };
+    }
+    let root_abs = if std::path::Path::new(&root).is_absolute() {
+        std::path::PathBuf::from(&root)
+    } else {
+        process_workspace_root().join(&root)
+    };
+    if repo_relative_path(&root_abs).is_err() {
+        return Xl1PrimaryRootTap::Refused {
+            cause: format!(
+                "primary source root is outside the workspace root: {} is not under {}",
+                root_abs.display(),
+                process_workspace_root().display()
+            ),
+        };
+    }
+    let index = match try_process_shared_index(source_roots) {
+        Ok(idx) => idx,
+        Err(cause) => {
+            return Xl1PrimaryRootTap::Refused {
+                cause: format!("xl1 primary-root tap: source-discovery: {cause}"),
+            }
+        }
+    };
+    // ONE DERIVATION OF THE PRIMARY-ROOT SUBJECT, shared with the compile transaction's
+    // `CompileSubject::PrimaryRoot` arm (`cli_run.rs` `primary_root_subject_closure`). This
+    // tap used to carry its own copy and the copy had drifted in the fail-open direction: it
+    // had no module-less-`.dag` visibility step, so a `.dag` under the root that lost its
+    // `module` header would have left the closure silently and the census would have
+    // under-counted while reporting rows (review 66847 on gunbc#11461).
+    let closure = match primary_root_subject_closure(&index, &root) {
+        Ok(c) => c,
+        Err(PrimaryRootSubjectRefusal { phase, cause }) => {
+            return Xl1PrimaryRootTap::Refused {
+                cause: format!("xl1 primary-root tap: {phase}: {cause}"),
+            }
+        }
+    };
+    // The pool outside the closure enters the name census only -- the SAME derivation the
+    // compile transaction's PrimaryRoot arm and the required floor consume, never a copy
+    // (review 67039 on gunbc#11461).
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
+    let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        v1_compiler_compile::compile_to_resolved_with_options(
+            Rc::new(closure.clone().into()),
+            options,
+        )
+    })) {
+        Ok(value) => value,
+        Err(_) => {
+            return Xl1PrimaryRootTap::Refused {
+                cause: "xl1 primary-root tap: frontend panicked before producing a graph"
+                    .to_string(),
+            }
+        }
+    };
+    let Some(graph) = resolved.graph.clone() else {
+        return Xl1PrimaryRootTap::Refused {
+            cause: "xl1 primary-root tap: frontend produced no resolved graph".to_string(),
+        };
+    };
+    let repair_rows = crate::v1_compiler_emit_rust::emit_rust_reference_derived_rows(graph.clone());
+    match observed_occurrence_transport_and_bindings(graph.as_ref()) {
+        ObservedOccurrenceBindingHalves::Refused { cause } => Xl1PrimaryRootTap::Refused { cause },
+        ObservedOccurrenceBindingHalves::Ready {
+            transport,
+            observations,
+            ..
+        } => Xl1PrimaryRootTap::Observed {
+            primary_root: root,
+            repair_rows,
+            occurrence_transport: transport,
+            binding_rows: observations,
+        },
+    }
 }
