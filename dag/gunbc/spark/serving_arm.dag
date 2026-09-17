@@ -66,9 +66,6 @@ fn serving_topology_rank_count(t: ServingTopology) -> Nat {
   }
 }
 
-// ONE GB10's UNIFIED POOL, read off a live member on 2026-09-08 (`free -g` on spark-0c75 reported
-// 121 GiB total). It is carried as a per-unit figure because aggregate admissibility is the product
-// of this and the rank count, and stating the aggregate directly would hide which half moved.
 // ── THE RANK COUNT BACK TO A TOPOLOGY, DERIVED FROM THE FORWARD MAP AND TOTAL ─────────────────
 //
 // WHY THIS IS A SEARCH OVER THE ROSTER AND NOT A SECOND TABLE. `serving_topology_rank_count` above
@@ -125,6 +122,9 @@ fn serving_topology_wire(t: ServingTopology) -> NonEmptyStr {
   }
 }
 
+// ONE GB10's UNIFIED POOL, read off a live member on 2026-09-08 (`free -g` on spark-0c75 reported
+// 121 GiB total). It is carried as a per-unit figure because aggregate admissibility is the product
+// of this and the rank count, and stating the aggregate directly would hide which half moved.
 data gb10_unified_pool_gib: Nat = 121
 
 fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
@@ -536,6 +536,11 @@ type ServingArmVerdict
 
 
 
+// THE FOOTPRINT ALLOWANCE IS DELIBERATELY NOT A UTILISATION FRACTION. Weights are not the whole
+// requirement: the engine also needs KV, activations and graph memory, and the recipe's own runtime
+// minimum for native FP8 exceeds its weight size by a quarter. A checkpoint is admitted only when
+// the aggregate pool exceeds the weights with headroom, and the headroom is stated rather than
+// tuned away.
 data serving_arm_headroom_numerator: Nat = 5
 data serving_arm_headroom_denominator: Nat = 4
 
@@ -673,7 +678,6 @@ type ServingLaunchProfile sole_constructor {
   max_num_seqs: Nat
   decided_gpu_memory_basis_points: BasisPoint
   kv_cache_dtype_wire: NonEmptyStr
-  speculation_enabled: Bool
   serve_port: Port
   served_alias: NonEmptyStr
   prefix_caching: VllmPrefixCachingRequest
@@ -682,6 +686,19 @@ type ServingLaunchProfile sole_constructor {
 // THE PREFIX-CACHING REQUEST IS PART OF THE IDENTITY. Two launches differing only in whether they asked
 // for prefix caching are two different launches, and a compatibility receipt recorded against one must not
 // cover the other -- which is precisely what a key omitting this field would let it do.
+// SPECULATION IS ABSENT FROM THIS KEY BECAUSE IT WAS ABSENT FROM THE LAUNCH.
+//
+// The profile carried `speculation_enabled: Bool` and this key spelled it `spec=on`/`spec=off`, so
+// two subjects differing only in that flag were different subjects -- while arm_engine_argv rendered
+// no speculative flag under either value. A profile set true planned an argv identical to false, so a
+// compatibility receipt attached to that subject would have claimed a speculative configuration for
+// an engine that never speculated: the borrowed-profile substitution this type exists to stop,
+// committed by the type itself.
+//
+// A Bool COULD NOT HAVE BEEN REALIZED ANYWAY. vLLM's --speculative-config needs a method and a
+// draft-token count; "true" names neither. When this arm wants speculation it arrives as the modelled
+// policy that already exists -- extdeps.vllm.engine_args VllmSpeculativePolicy, and the argv shape
+// gunbc.spark.glm_canary_converge renders from SpeculationPolicy -- carrying the basis a Bool drops.
 fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
   join([
     "len=", to_string(token_count_value(t: p.max_model_len)),
@@ -689,7 +706,6 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
     " seqs=", to_string(p.max_num_seqs),
     " util_bp=", to_string(basis_point_count(bp: p.decided_gpu_memory_basis_points)),
     " kv=", p.kv_cache_dtype_wire as String,
-    " spec=", if p.speculation_enabled { "on" } else { "off" },
     " port=", to_string(p.serve_port),
     " alias=", p.served_alias as String,
     " prefix=", match p.prefix_caching {
@@ -705,7 +721,6 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_num_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
-  speculation_enabled: false,
   serve_port: 30000,
   served_alias: "glm-5.3-flash" as NonEmptyStr,
   prefix_caching: PrefixCachingExplicit { enabled: true },
@@ -739,7 +754,6 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   max_num_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8567),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
-  speculation_enabled: false,
   serve_port: glm_native_initial_profile.serve_port,
   served_alias: glm_native_initial_profile.served_alias,
   prefix_caching: PrefixCachingExplicit { enabled: true },
@@ -762,7 +776,6 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_num_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 9000),
   kv_cache_dtype_wire: "fp8" as NonEmptyStr,
-  speculation_enabled: false,
   serve_port: 30001,
   served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
   prefix_caching: PrefixCachingOmitted,

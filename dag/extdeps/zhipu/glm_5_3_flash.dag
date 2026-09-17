@@ -1,11 +1,7 @@
-
-
 module extdeps.zhipu.glm_5_3_flash
 
 import std.types { NonEmptyStr, String, Bool, List }
-
 import std.nat { Nat }
-
 import std.measure { TokenCount, token_count, token_count_value,
   ByteSize, byte_size, byte_size_count,
   Gibibyte, gibibyte, Mebibyte, mebibyte, Second, second,
@@ -13,9 +9,7 @@ import std.measure { TokenCount, token_count, token_count_value,
 }
 
 import extdeps.external_authority { ExternalAuthority }
-
 import extdeps.uri { Uri, Https }
-
 import v2.std.optional { Present, Absent }
 
 // THE GLM-5.3-FLASH FAMILY, as its own extdeps authority for the reason extdeps.deepseek.deepseek_v4
