@@ -416,14 +416,3 @@ test fn green_children_do_not_complete_pending_parent() -> Bool {
     }
 }
 
-test fn workflow_reconcile_keystone_holds() -> Bool {
-  recursive_reconcile_all_satisfied_is_noop()
-    && missing_nested_child_derives_one_reconcile_action()
-    && goal_revision_change_is_modified_not_delete_add()
-    && reparented_child_is_one_member_changed()
-    && silent_goal_shrink_refuses_evidence_deletion()
-    && explicit_waiver_is_a_fact_not_deletion()
-    && deep_failure_blocks_green_parent_and_siblings()
-    && observed_refusal_is_not_generic_non_convergence()
-    && green_children_do_not_complete_pending_parent()
-}

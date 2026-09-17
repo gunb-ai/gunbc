@@ -269,21 +269,6 @@ test fn codex_item_activity_ignores_a_quoted_type_in_the_payload() -> Bool {
   forged == "Agent working · reporting" && genuine == "Agent working · editing files"
 }
 
-test fn roadmap_provider_events_keystone_holds() -> Bool {
-  codex_stream_classifies_running_activity()
-    && codex_agent_message_completed_is_finishing_not_complete()
-    && codex_completed_is_terminal_only_from_provider_event()
-    && codex_completed_state_is_terminal()
-    && codex_turn_failed_preserves_raw_provider_evidence()
-    && codex_error_is_not_absorbed_into_spawned()
-    && truncated_line_refuses_with_location_and_raw()
-    && unknown_event_refuses_instead_of_guessing_progress()
-    && nested_type_token_cannot_fabricate_terminal_success()
-    && braced_but_invalid_json_cannot_fabricate_terminal_success()
-    && oversized_event_refuses_without_echoing_payload()
-    && refusal_marks_prior_activity_as_historical()
-}
-
 // The agent REPORT members of the projection filter, pinned as a string contract because the filter
 // is a jq program the substrate assembles but does not itself interpret
 // (codex_projection_filter_scaffold_note). Nothing downstream of the shell can prove what the
