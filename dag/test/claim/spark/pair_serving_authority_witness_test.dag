@@ -11,7 +11,7 @@ import gunbc.spark.pair_serving_authority {
   SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
   PairRealizationUnestablished,
   pair_serving_apply_admits, pair_serving_commits_hosts, pair_serving_holds_placement,
-  pair_serving_capacity_subject, pair_serving_may_start, pair_serving_may_finish,
+  pair_serving_capacity_subject, pair_serving_successor_may_launch, pair_serving_may_finish,
   pair_serving_authority_group, spark_pair_serving_authorities,
   CapacityOrdinarySubject, CapacitySuspendedSubject, CapacityReleasedSubject,
 }
@@ -97,20 +97,12 @@ test fn only_release_drops_the_host_commitment() -> Bool {
     && (pair_serving_commits_hosts(a: w_released()) == false)
 }
 
-// PLACEMENT TRACKS COMMITMENT, NOT ACTION. A paused group is not converging anything, and a build
-// admitted onto its hosts on that basis would land mid-replacement.
-test fn a_suspended_group_still_holds_its_placement() -> Bool {
-  pair_serving_holds_placement(a: w_suspended(stale: false))
-    && pair_serving_holds_placement(a: w_pending(stale: false))
-    && (pair_serving_holds_placement(a: w_released()) == false)
-}
-
 // EXPIRY REMOVES THE RIGHT TO START AND KEEPS THE RIGHT TO FINISH. Both halves are asserted on the
 // same stale lease, because either alone is satisfied by a degenerate answer: may_start false for
 // everything, or may_finish true for everything.
-test fn an_expired_lease_stops_starting_but_not_finishing() -> Bool {
-  (pair_serving_may_start(a: w_suspended(stale: false)) == false)
-    && (pair_serving_may_start(a: w_suspended(stale: true)) == false)
+test fn an_expired_lease_stops_launching_but_not_finishing() -> Bool {
+  pair_serving_successor_may_launch(a: w_suspended(stale: false))
+    && (pair_serving_successor_may_launch(a: w_suspended(stale: true)) == false)
     && pair_serving_may_finish(a: w_suspended(stale: true))
     && pair_serving_may_finish(a: w_pending(stale: true))
     && pair_serving_may_finish(a: w_fenced())
@@ -118,8 +110,14 @@ test fn an_expired_lease_stops_starting_but_not_finishing() -> Bool {
 
 // AN ACTIVE AUTHORITY MAY START AND HAS NOTHING TO FINISH, which is what keeps may_finish from being
 // trivially true and stops the pair collapsing into one predicate.
-test fn an_active_authority_starts_and_has_nothing_to_finish() -> Bool {
-  pair_serving_may_start(a: w_active())
+// ONLY THE AUTHORIZED SUCCESSOR MAY LAUNCH. The incumbent never launches through this projection --
+// it applies, which is a different question with a different projection -- and the three other arms
+// have no launch authority at all, which is what stops this collapsing into "not released".
+test fn only_an_authorized_successor_may_launch() -> Bool {
+  (pair_serving_successor_may_launch(a: w_active()) == false)
+    && (pair_serving_successor_may_launch(a: w_pending(stale: false)) == false)
+    && (pair_serving_successor_may_launch(a: w_fenced()) == false)
+    && (pair_serving_successor_may_launch(a: w_released()) == false)
     && (pair_serving_may_finish(a: w_active()) == false)
 }
 

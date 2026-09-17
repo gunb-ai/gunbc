@@ -2,8 +2,8 @@ module gunbc.spark.pair_serving_authority
 
 import std.types { Bool, NonEmptyStr, List }
 import std.content_hash { ContentHash }
-import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseRunningExpected, LeaseRunningStale, LeasePortForeign, LeaseInaccessible }
-import v2.std.optional { Present, Absent }
+import std.temporal_effect { HeldLease, HeldLeaseObservedState, held_lease_observed_verdict }
+import std.observation { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 
@@ -106,14 +106,14 @@ fn pair_serving_commits_hosts(a: PairServingGroupAuthority) -> Bool {
   }
 }
 
-// PROJECTION 3 -- IS THE HOST STILL PLACED, for build and probe admission. A build may run on a host
-// nothing else has placed work on, so the question this answers is whether OUR work still occupies
-// the host. It tracks commitment rather than action: a suspended group is not converging anything,
-// but its hosts are emphatically not free for a build to land on, and treating a paused group as
-// unplaced is how a build would be admitted onto a host mid-replacement.
-fn pair_serving_holds_placement(a: PairServingGroupAuthority) -> Bool {
-  pair_serving_commits_hosts(a: a)
-}
+// THERE IS NO SEPARATE PLACEMENT PROJECTION, AND THAT IS THE FINDING RATHER THAN AN OMISSION. A
+// pair_serving_holds_placement stood here returning pair_serving_commits_hosts unchanged, with its own
+// annotation claiming it "tracks commitment rather than action" -- which describes why it EQUALS
+// commitment, not a second fact. One concept under two names is the fork DESIGN section 3 names first,
+// and it would have cost a real edit later: someone changing when a host is placed would change one
+// name and leave the other answering the old way. Build and probe admission read
+// pair_serving_commits_hosts directly, through host_commitment, which is where the question already
+// lived.
 
 // PROJECTION 4 -- WHAT CAPACITY STANDING SEES. ITS CONSUMER IS A DECLARED FRONTIER, NOT A DANGLING
 // DECLARATION. gunbc.instruments.fabric_capacity_standing is mid-change on gunbc#11473, which splits
@@ -145,47 +145,35 @@ fn pair_serving_capacity_subject(a: PairServingGroupAuthority) -> PairServingCap
   }
 }
 
-// LEASE EXPIRY CHANGES WHAT AN AUTHORITY PERMITS, NOT WHICH AUTHORITY IT IS. The design's rule is that
+// LEASE EXPIRY CHANGES WHAT AN AUTHORITY PERMITS, NOT WHICH AUTHORITY IT IS, AND WHAT IT GATES IS THE
+// SUCCESSOR'S LAUNCH -- not the incumbent's apply. An earlier shape of this module asked whether an
+// authority "may start" and consulted the lease on every arm, which was dead reasoning: apply is
+// admitted only under PairServingActive, and Active carries no lease at all. The design puts expiry on
+// launch, offer and seat authority, all of which belong to the authorized successor, so that is the
+// only arm where a lease can decide anything. The design's rule is that
 // expiry removes the right to START things -- launch, offer, seat -- and keeps the right to FINISH
 // them -- cleanup, fencing. Modeling that as a state TRANSITION was the tempting shape and it is the
 // wrong one: every destination is unsafe on its own. Expiry releasing the reservation lets another lane
 // take a host with no cleanup; expiry restoring the prior authority may restart convergence over
 // drifted, foreign or unread state; expiry changing nothing makes "bounded" a word rather than a
 // property. Splitting the question into may-start and may-finish is what leaves all three closed.
-fn pair_serving_lease_of(a: PairServingGroupAuthority) -> HeldLease? {
+fn pair_serving_successor_may_launch(a: PairServingGroupAuthority) -> Bool {
   match a {
-    PairServingActive { group: _, exact_realization: _ } => none
-    SuspensionPendingReconciliation { group: _, transaction: _, lease: l } => l
-    SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: l, cleanup: _ } => l
-    FencedRefusal { group: _, cause: _, disposition_authority: _ } => none
-    ReleasedToFleet { group: _, release_receipt: _ } => none
+    PairServingActive { group: _, exact_realization: _ } => false
+    SuspensionPendingReconciliation { group: _, transaction: _, lease: _ } => false
+    SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: l, cleanup: _ } =>
+      pair_serving_lease_is_live(o: l.observed)
+    FencedRefusal { group: _, cause: _, disposition_authority: _ } => false
+    ReleasedToFleet { group: _, release_receipt: _ } => false
   }
 }
 
-// A lease that is stale, absent, foreign or unreadable is not a lease we may start work under. Only
-// LeaseRunningExpected is a live hold; the other four arms are each a different way of not having one,
-// and collapsing them into "not expected" here would be fine for this predicate but would hide which
-// one occurred from the caller, so the arms stay named.
-fn pair_serving_lease_is_live(o: HeldLeaseObservedState) -> Bool {
-  match o {
-    LeaseRunningExpected => true
-    LeaseAbsent => false
-    LeaseRunningStale => false
-    LeasePortForeign => false
-    LeaseInaccessible => false
-  }
-}
-
-fn pair_serving_may_start(a: PairServingGroupAuthority) -> Bool {
-  match pair_serving_lease_of(a: a) {
-    Absent => pair_serving_apply_admits(a: a)
-    Present { value: l } => pair_serving_apply_admits(a: a) && pair_serving_lease_is_live(o: l.observed)
-  }
-}
-
-// Cleanup and fencing survive expiry by construction: this answers from the authority alone and never
+// CLEANUP AND FENCING SURVIVE EXPIRY BY CONSTRUCTION: this answers from the authority alone and never
 // consults the lease, which is what makes "the lease ran out mid-transaction" a recoverable state
-// rather than a stranded fleet.
+// rather than a stranded fleet. Its consumer is a DECLARED FRONTIER: the cleanup actuator is D1 of the
+// Cut D transaction and does not exist yet. TRIGGER: the D1 cleanup actuator lands and asks this before
+// releasing execution claims, offers and seats. SUFFICIENT FOR: cleanup after an expired lease is
+// permitted rather than refused, so an expiry cannot strand the four hosts.
 fn pair_serving_may_finish(a: PairServingGroupAuthority) -> Bool {
   match a {
     PairServingActive { group: _, exact_realization: _ } => false
