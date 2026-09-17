@@ -112,6 +112,130 @@ data github_actions_linux_16core_price: GithubActionsRunnerPriceRow = GithubActi
   pricing_citation: "actions-runner-pricing#linux_16_core",
 }
 
+data github_actions_billing_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/billing/managing-billing-for-your-products/about-billing-for-github-actions"
+  }
+}
+
+// A RATE IS NOT A BILL, and until this section existed this module carried only rates. A consumer
+// could multiply a per-minute price by observed minutes for ANY repository and get a number, with
+// nothing here saying that for a standard runner in a public repository the answer is zero. That
+// is not a rounding error in a sales model: it is the difference between a prospect and a
+// non-prospect, and it was reached by reasoning rather than by reading until an operator asked for
+// the source on 2026-09-17.
+//
+// The cited text, read 2026-09-17: "The use of standard GitHub-hosted runners is free: In public
+// repositories / For GitHub Pages / For Dependabot", and immediately after it, "Larger runners are
+// always charged for, even when used by public repositories or when you have quota available from
+// your plan."
+//
+// THE INCLUDED-MINUTE ALLOWANCE IS A PRIVATE-REPOSITORY QUOTA. The per-plan table sits above that
+// sentence and governs private usage; public standard-runner minutes are free and do not draw on
+// it. Reading the allowance as a universal cap is the plausible misreading this type exists to
+// make unwritable -- the quota and the visibility are different facts and neither implies the
+// other.
+type ActionsRepositoryVisibility
+  = PublicRepository
+  | PrivateRepository
+
+// The 4, 8 and 16 core SKUs are what the cited page calls larger runners. The 2-core Linux and the
+// slim SKU are standard.
+//
+// THE ARM SKU WAS SETTLED BY EXECUTION, not by reading. This row refused to classify it for an
+// hour, because GitHub has shipped ARM under both standard and larger terms and a per-minute price
+// does not say which. Two probe runs on gunb-ai/gunbc, a public repository, answered it:
+// ubuntu-24.04-arm reported 0 billable ms alongside an ubuntu-latest control that also reported 0
+// (runs 35169284367 and 35169573172, 2026-09-17). The deduction is the cited rule run backwards --
+// a larger runner is charged EVEN on a public repository, so a hosted runner that bills zero on a
+// public repository is not a larger runner.
+//
+// The control is what makes that an argument rather than an anecdote: x86 had already answered
+// zero on this repository half an hour earlier, so the ARM zero is a fact about the SKU and not
+// about the repository, the plan or the day.
+// RunnerClassUnread survives the one SKU that used it, and deliberately. The next hosted SKU
+// GitHub ships arrives unclassified, and the arm is what makes that state sayable instead of
+// forcing a guess into StandardRunner -- which, for a prospect model, is the direction that
+// invents a payer.
+type ActionsRunnerClass
+  = StandardRunner
+  | LargerRunner
+  | RunnerClassUnread { obligation: NonEmptyStr }
+
+fn actions_runner_class(sku: GithubActionsBillingSku) -> ActionsRunnerClass {
+  match sku {
+    ActionsLinuxSlim => StandardRunner
+    ActionsLinux => StandardRunner
+    Linux4Core => LargerRunner
+    Linux8Core => LargerRunner
+    Linux16Core => LargerRunner
+    ActionsLinuxArm => StandardRunner
+  }
+}
+
+type ActionsBillability
+  = FreeInPublicRepository
+  | ChargedAgainstPlanQuota
+  | AlwaysChargedPerMinute
+  | BillabilityUnread { obligation: NonEmptyStr }
+
+fn actions_billability(
+  sku: GithubActionsBillingSku,
+  visibility: ActionsRepositoryVisibility,
+) -> ActionsBillability {
+  match actions_runner_class(sku: sku) {
+    RunnerClassUnread { obligation: o } => BillabilityUnread { obligation: o }
+    LargerRunner => AlwaysChargedPerMinute
+    StandardRunner =>
+      match visibility {
+        PublicRepository => FreeInPublicRepository
+        PrivateRepository => ChargedAgainstPlanQuota
+      }
+  }
+}
+
+// The consuming question in one predicate: does observed usage of this SKU on a repository of this
+// visibility cost its owner anything at all? BillabilityUnread answers false, which is the
+// fail-closed direction for a PROSPECT model -- an unread SKU must not be ranked as a payer.
+fn actions_usage_is_billable(
+  sku: GithubActionsBillingSku,
+  visibility: ActionsRepositoryVisibility,
+) -> Bool {
+  match actions_billability(sku: sku, visibility: visibility) {
+    AlwaysChargedPerMinute => true
+    ChargedAgainstPlanQuota => true
+    FreeInPublicRepository => false
+    BillabilityUnread { obligation: _ } => false
+  }
+}
+
+type ActionsPlanAllowance {
+  plan: NonEmptyStr
+  included_minutes_per_month: Int
+}
+
+// Read 2026-09-17 from the cited billing page. These are PRIVATE-repository minutes; the page
+// states the allowance and the public-repository exemption in the same section, and conflating
+// them is the error this roster is written to prevent.
+data github_actions_plan_allowances: List<ActionsPlanAllowance> = [
+  ActionsPlanAllowance { plan: "GitHub Free" as NonEmptyStr, included_minutes_per_month: 2000 },
+  ActionsPlanAllowance { plan: "GitHub Pro" as NonEmptyStr, included_minutes_per_month: 3000 },
+  ActionsPlanAllowance { plan: "GitHub Free for organizations" as NonEmptyStr, included_minutes_per_month: 2000 },
+  ActionsPlanAllowance { plan: "GitHub Team" as NonEmptyStr, included_minutes_per_month: 3000 },
+  ActionsPlanAllowance { plan: "GitHub Enterprise Cloud" as NonEmptyStr, included_minutes_per_month: 50000 }
+]
+
+// Larger-runner usage never draws on the allowance, which the page states directly: charged "even
+// when you have quota available from your plan".
+fn allowance_applies(sku: GithubActionsBillingSku) -> Bool {
+  match actions_runner_class(sku: sku) {
+    StandardRunner => true
+    LargerRunner => false
+    RunnerClassUnread { obligation: _ } => false
+  }
+}
+
 fn github_actions_runner_price_catalog() -> List<GithubActionsRunnerPriceRow> {
   [
     github_actions_linux_slim_price,

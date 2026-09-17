@@ -131,25 +131,24 @@ fn color_standing(
 }
 
 type StandingColorRule {
-  standing: String
+  fragment: String
   color: SheetsColor
 }
 
-// The roster is ordered so the arms a reader acts on are the first rules Sheets evaluates. It is a
-// declared list rather than a match over the standing type because this module formats a SHEET and
-// does not own the standing vocabulary: a new standing arriving in ci_acquisition should not make
-// this module fail to compile, it should simply arrive uncoloured until someone chooses a colour.
+// SUBSTRING RULES, NOT ONE PER STANDING, and that is a modelling choice rather than a shortcut.
+// Matching "Opportunity" colours CostOpportunity, ConcurrencyOpportunity and LatencyOpportunity
+// together because they are one thing to a reader -- a row worth acting on -- and because a
+// standing arm added to ci_acquisition later inherits the colour instead of arriving invisible.
+// An exact-match rule per arm would silently fail to cover the next arm anyone writes.
+//
+// Evidence-insufficient and no-commercial-signal rows match nothing here on purpose. They are most
+// of the sheet, and a colour spent on them is attention taken from the rows that earned it.
 data standing_color_rules: List<StandingColorRule> = [
-  StandingColorRule { standing: "CostOpportunity", color: standing_admitted_color },
-  StandingColorRule { standing: "ConcurrencyOpportunity", color: standing_admitted_color },
-  StandingColorRule { standing: "LatencyOpportunity", color: standing_admitted_color },
-  StandingColorRule { standing: "VerifiedArbitrage", color: standing_admitted_color },
-  StandingColorRule { standing: "ArchitectureIncompatible", color: standing_refused_color },
-  StandingColorRule { standing: "PrivateInputsRequired", color: standing_refused_color },
-  StandingColorRule { standing: "ReplayNotPermitted", color: standing_refused_color },
-  StandingColorRule { standing: "ReplayUnsafe", color: standing_refused_color },
-  StandingColorRule { standing: "NoCommercialSignal", color: standing_thin_color },
-  StandingColorRule { standing: "EvidenceInsufficient", color: standing_thin_color },
+  StandingColorRule { fragment: "Opportunity", color: standing_admitted_color },
+  StandingColorRule { fragment: "Arbitrage", color: standing_admitted_color },
+  StandingColorRule { fragment: "Incompatible", color: standing_refused_color },
+  StandingColorRule { fragment: "Required", color: standing_refused_color },
+  StandingColorRule { fragment: "Replay", color: standing_refused_color },
 ]
 
 fn format_step_text(o: FormatStepOutcome) -> String {
@@ -164,4 +163,62 @@ fn format_step_is_applied(o: FormatStepOutcome) -> Bool {
     FormatStepApplied { step: _ } => true
     FormatStepRefused { step: _, cause: _ } => false
   }
+}
+
+
+type FormatReport {
+  freeze: FormatStepOutcome
+  header: FormatStepOutcome
+  opportunity: FormatStepOutcome
+  arbitrage: FormatStepOutcome
+  incompatible: FormatStepOutcome
+  required: FormatStepOutcome
+  replay: FormatStepOutcome
+}
+
+// The steps are named individually rather than folded over the roster because each is an EFFECT
+// and the report names which one refused. A fold would answer "one of five failed", which is the
+// shape of diagnostic this session has repeatedly had to go back and re-derive.
+fn format_review_sheet(spreadsheet_id: NonEmptyStr) -> FormatReport uses net: Network {
+  FormatReport {
+    freeze: freeze_header(spreadsheet_id: spreadsheet_id),
+    header: format_header_band(spreadsheet_id: spreadsheet_id),
+    opportunity: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Opportunity",
+      color: standing_admitted_color, rule_index: 0),
+    arbitrage: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Arbitrage",
+      color: standing_admitted_color, rule_index: 1),
+    incompatible: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Incompatible",
+      color: standing_refused_color, rule_index: 2),
+    required: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Required",
+      color: standing_refused_color, rule_index: 3),
+    replay: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Replay",
+      color: standing_refused_color, rule_index: 4),
+  }
+}
+
+fn format_report_text(r: FormatReport) -> String {
+  join(
+    [
+      format_step_text(o: r.freeze), "\n", format_step_text(o: r.header), "\n",
+      format_step_text(o: r.opportunity), "\n", format_step_text(o: r.arbitrage), "\n",
+      format_step_text(o: r.incompatible), "\n", format_step_text(o: r.required), "\n",
+      format_step_text(o: r.replay),
+    ],
+    "",
+  )
+}
+
+fn format_report_all_applied(r: FormatReport) -> Bool {
+  format_step_is_applied(o: r.freeze)
+    && format_step_is_applied(o: r.header)
+    && format_step_is_applied(o: r.opportunity)
+    && format_step_is_applied(o: r.arbitrage)
+    && format_step_is_applied(o: r.incompatible)
+    && format_step_is_applied(o: r.required)
+    && format_step_is_applied(o: r.replay)
 }

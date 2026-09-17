@@ -418,7 +418,7 @@ service sheets.Spreadsheets {
                   }
                 ],
                 booleanRule: {
-                  condition: { type: "TEXT_EQ", values: [{ userEnteredValue: match_text }] },
+                  condition: { type: "TEXT_CONTAINS", values: [{ userEnteredValue: match_text }] },
                   format: { textFormat: { bold: true, foregroundColor: foreground } }
                 }
               },
