@@ -4456,13 +4456,6 @@ pub fn type_reference_provenance(n: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
     }
 }
 
-pub fn node_is_type_declaration(n: Rc<Node>) -> bool {
-    match n.module_item_kind.clone() {
-        ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
-        _ => false,
-    }
-}
-
 pub fn declaration_node_provenance(n: Rc<Node>) -> Option<Rc<TypeDeclarationProvenance>> {
     match (*declaration_provenance_of(n.clone())).clone() {
         TypeDeclarationProvenance::KernelMinted {
@@ -4471,12 +4464,18 @@ pub fn declaration_node_provenance(n: Rc<Node>) -> Option<Rc<TypeDeclarationProv
             minted_name: nm.clone(),
         })),
         TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
-            if node_is_type_declaration(n.clone()) {
-                Some(Rc::new(TypeDeclarationProvenance::CorpusDeclared {
-                    decl_file: f.clone(),
-                }))
-            } else {
-                std::option::Option::None
+            match n.module_item_kind.clone() {
+                ParsedModuleItemKind::ModuleItemTypeDeclaration => {
+                    Some(Rc::new(TypeDeclarationProvenance::CorpusDeclared {
+                        decl_file: f.clone(),
+                    }))
+                }
+                ParsedModuleItemKind::ModuleItemFunction => std::option::Option::None,
+                ParsedModuleItemKind::ModuleItemDataValue => std::option::Option::None,
+                ParsedModuleItemKind::ModuleItemService => std::option::Option::None,
+                ParsedModuleItemKind::ModuleItemResource => std::option::Option::None,
+                ParsedModuleItemKind::ModuleItemUnrecognized => std::option::Option::None,
+                ParsedModuleItemKind::NotAModuleItem => std::option::Option::None,
             }
         }
         TypeDeclarationProvenance::DeclarationIdentityAbsent => std::option::Option::None,
@@ -4487,10 +4486,16 @@ pub fn declaration_node_unavailable_cause(
     n: Rc<Node>,
     when_not_a_declaration: ReferenceIdentityUnavailableCause,
 ) -> ReferenceIdentityUnavailableCause {
-    if node_is_type_declaration(n.clone()) {
-        ReferenceIdentityUnavailableCause::DeclarationNodeCarriesNoSpan
-    } else {
-        when_not_a_declaration
+    match n.module_item_kind.clone() {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => {
+            ReferenceIdentityUnavailableCause::DeclarationNodeCarriesNoSpan
+        }
+        ParsedModuleItemKind::ModuleItemFunction => when_not_a_declaration,
+        ParsedModuleItemKind::ModuleItemDataValue => when_not_a_declaration,
+        ParsedModuleItemKind::ModuleItemService => when_not_a_declaration,
+        ParsedModuleItemKind::ModuleItemResource => when_not_a_declaration,
+        ParsedModuleItemKind::ModuleItemUnrecognized => when_not_a_declaration,
+        ParsedModuleItemKind::NotAModuleItem => when_not_a_declaration,
     }
 }
 

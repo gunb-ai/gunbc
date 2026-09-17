@@ -2546,24 +2546,36 @@ fn type_reference_provenance(n: Node) -> TypeDeclarationProvenance {
 // until the reroute is measured (std.coercion TypeReferenceIdentity says why each arm is decided
 // from structure). Kernel identity is read through declaration_provenance_of, which already owns
 // it by exact equality, so this adds no second kernel recognizer.
-fn node_is_type_declaration(n: Node) -> Bool {
-  match n.module_item_kind {
-    ModuleItemTypeDeclaration => true
-    _ => false
-  }
-}
-
+// EVERY ParsedModuleItemKind ARM IS SPELLED, no wildcard. A kind that should key as a declaration
+// must be a compile-time decision here, never a silent `not a declaration` that reads as a refusal
+// (the positive-authority rule stated on ParsedModuleItemKind itself; review 67150).
 fn declaration_node_provenance(n: Node) -> TypeDeclarationProvenance? {
   match declaration_provenance_of(item: n) {
     KernelMinted { minted_name: nm } => Present { value: KernelMinted { minted_name: nm } }
     CorpusDeclared { decl_file: f } =>
-      if node_is_type_declaration(n: n) { Present { value: CorpusDeclared { decl_file: f } } } else { none }
+      match n.module_item_kind {
+        ModuleItemTypeDeclaration => Present { value: CorpusDeclared { decl_file: f } }
+        ModuleItemFunction => none
+        ModuleItemDataValue => none
+        ModuleItemService => none
+        ModuleItemResource => none
+        ModuleItemUnrecognized => none
+        NotAModuleItem => none
+      }
     DeclarationIdentityAbsent => none
   }
 }
 
 fn declaration_node_unavailable_cause(n: Node, when_not_a_declaration: ReferenceIdentityUnavailableCause) -> ReferenceIdentityUnavailableCause {
-  if node_is_type_declaration(n: n) { DeclarationNodeCarriesNoSpan } else { when_not_a_declaration }
+  match n.module_item_kind {
+    ModuleItemTypeDeclaration => DeclarationNodeCarriesNoSpan
+    ModuleItemFunction => when_not_a_declaration
+    ModuleItemDataValue => when_not_a_declaration
+    ModuleItemService => when_not_a_declaration
+    ModuleItemResource => when_not_a_declaration
+    ModuleItemUnrecognized => when_not_a_declaration
+    NotAModuleItem => when_not_a_declaration
+  }
 }
 
 fn type_variable_binder_name(n: Node) -> String? {
