@@ -147,7 +147,9 @@ fn approval_store_live_probe(root: String) -> ProcessExit {
 }
 
 // THE FILING SIDE OVER A REAL STORE, publish excepted: a run signs a request with the submission
-// key, the server admits it and files generation 1, and a second filing reports the slot occupied.
+// key, the server admits it and files generation 1; the SAME bytes filed again re-notify (the
+// retry path for a failed publish, so with the fixture publisher the answer is the token refusal
+// a second time), and DIFFERENT bytes under the same escalation id report the slot occupied.
 // The publisher token is a fixture refusal so no message leaves this probe; the publish leg's
 // receipt is part D's first real run. A request signed with the CAPABILITY key is refused as not
 // enrolled, over the same store.
@@ -163,8 +165,24 @@ type ProbeSubmitStanding
   | ProbeAlreadyFiled
   | ProbeOther { reason: String }
 
-fn probe_submit(root: NonEmptyStr, signer: MacKey) -> ProbeSubmitStanding {
-  match sign_submission(key: signer, request: probe_request()) {
+// A SECOND REQUEST UNDER THE SAME ESCALATION ID WITH DIFFERENT BYTES: the slot is occupied by the
+// first, and different bytes may not re-notify, so this is the input that reaches AlreadyFiled.
+fn probe_request_other_bytes() -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: probe_escalation,
+    request_revision: probe_revision,
+    attempt: "mtc1-boot-attempt-2" as AttemptIdentity,
+    requester: "eager-owl-205",
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    destructive: true,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: "2026-09-17T20:00:00Z",
+    key_id: approval_mac_key_id,
+  }
+}
+
+fn probe_submit(root: NonEmptyStr, signer: MacKey, request: StoredApprovalRequest) -> ProbeSubmitStanding {
+  match sign_submission(key: signer, request: request) {
     MacKeyMaterialNotHex { key_id: _ } => ProbeOther { reason: "unsigned" }
     MacSigned { tag: t } => {
       let outcome = submit_parsed_submission(
@@ -173,7 +191,7 @@ fn probe_submit(root: NonEmptyStr, signer: MacKey) -> ProbeSubmitStanding {
         capability_keyring: ApprovalKeyLoaded { key: probe_key() },
         publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "probe fixture: no message leaves this probe" },
         tag_hex: t.hex,
-        request: probe_request(),
+        request: request,
       )
       match outcome {
         SubmissionRefused { refusal: SubmissionNotEnrolled { detail: _ } } => ProbeNotEnrolled
@@ -199,13 +217,15 @@ fn approval_submission_live_probe(root: String) -> ProcessExit {
     exit_failure(reason: "approval submission live probe: --arg root=<empty directory> is required")
   } else {
     let r = root as NonEmptyStr
-    let wrong_key = probe_submit(root: r, signer: probe_key())
-    let filed = probe_submit(root: r, signer: probe_submission_key())
-    let refiled = probe_submit(root: r, signer: probe_submission_key())
-    let report = join(["wrong-key=", probe_submit_word(s: wrong_key), "\nfiled=", probe_submit_word(s: filed), "\nrefiled=", probe_submit_word(s: refiled)], "")
+    let wrong_key = probe_submit(root: r, signer: probe_key(), request: probe_request())
+    let filed = probe_submit(root: r, signer: probe_submission_key(), request: probe_request())
+    let renotified = probe_submit(root: r, signer: probe_submission_key(), request: probe_request())
+    let other_bytes = probe_submit(root: r, signer: probe_submission_key(), request: probe_request_other_bytes())
+    let report = join(["wrong-key=", probe_submit_word(s: wrong_key), "\nfiled=", probe_submit_word(s: filed), "\nrenotified=", probe_submit_word(s: renotified), "\nother-bytes=", probe_submit_word(s: other_bytes)], "")
     let ok = match wrong_key { ProbeNotEnrolled => true  _ => false }
       && match filed { ProbeFiledTokenUnavailable => true  _ => false }
-      && match refiled { ProbeAlreadyFiled => true  _ => false }
+      && match renotified { ProbeFiledTokenUnavailable => true  _ => false }
+      && match other_bytes { ProbeAlreadyFiled => true  _ => false }
     if ok {
       ExitSuccess
     } else {
