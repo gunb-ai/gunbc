@@ -19,7 +19,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // different resource from the project policy that says what the account may do
 // (cloud.google.com/iam/docs/reference/rest, projects.serviceAccounts getIamPolicy / setIamPolicy).
 // Both are POST on the account resource, and getIamPolicy is a POST rather than a GET because the
-// upstream declares it so.
+// upstream declares it so, and getIamPolicy carries an EMPTY BODY on purpose: Google's frontend
+// answers 411 Length Required to a POST with no body at all, so a bodyless POST never reaches the
+// API. Observed 2026-09-17 against the live endpoint, during the run that created the heal
+// publisher's account. The policy version is requested as a QUERY parameter, matching the shape
+// gcp.SecretManager GetSecretIamPolicy already uses -- and it is not decoration: reading at
+// version 1 mangles conditional bindings, which reconcile_gcp_policy refuses as
+// GcpPolicyRepresentationLossy rather than replacing somebody's restricted access.
 //
 // EVERY OPERATION HERE CARRIES A RestOutcome, INCLUDING THE CREATES, and the reason is 409. A
 // provisioning run that creates a pool, a provider and an account performs three writes that cannot
@@ -29,6 +35,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // is a fact the caller must be able to read and decide about -- it establishes that a resource with
 // that id exists, and NOT that its configuration is the desired one, so the honest consumer treats
 // it as an unverified presence and refuses to call the run converged on the strength of it.
+// TWO CONSTRAINTS THIS MODULE LEARNED THE EXPENSIVE WAY, both observed against the live API on
+// 2026-09-17 during the run that provisioned the heal publisher's identity, and both recorded at
+// module-item grain because that is the only grain source annotations have (DESIGN section 4c).
+//
+// CreateWorkloadIdentityPool caps display_name at 32 CHARACTERS: a longer one answers 400
+// INVALID_ARGUMENT, "The WorkloadIdentityPool's display name must be less than or equal to 32
+// characters." Nothing here enforces it -- NonEmptyStr carries no length -- so consumers hold the
+// bound with a claim over their own declared name. That gap is rostered as
+// gunbc.recurring_failure_mode upstream_input_constraint_held_only_by_prose, whose ceiling is a
+// length-refined carrier on this input, after which an over-long literal has no constructor.
+//
+// GetServiceAccountIamPolicy's bindings and version are OPTIONAL because an empty policy omits them:
+// an account created seconds earlier answers 200 with an etag alone. Declaring them required made
+// that ordinary state undecodable. They are optional because the WIRE is; what an absent array MEANS
+// is the caller's decision, not this module's. Rostered as gunbc.recurring_failure_mode
+// required_output_field_absent_for_an_empty_upstream_resource, which also names the latent sibling in
+// gcp.SecretManager GetSecretIamPolicy.
 service gcp.IamAdmin {
   config {
     endpoint: "https://iam.googleapis.com"
@@ -71,12 +94,14 @@ service gcp.IamAdmin {
       project_id: GcpProjectId
       service_account: ServiceAccountEmail
     }
-    output { bindings: List<GcpBinding>, etag: String, version: Int, outcome: RestOutcome }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
 
     idempotent
     transport rest {
       method: POST,
-      path: "/v1/projects/\{project_id\}/serviceAccounts/\{service_account\}:getIamPolicy"
+      path: "/v1/projects/\{project_id\}/serviceAccounts/\{service_account\}:getIamPolicy",
+      query: { "options.requestedPolicyVersion": 3 },
+      body: { }
     }
     response {
       200 => GcpPolicy

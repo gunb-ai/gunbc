@@ -5,7 +5,11 @@ import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
-import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
+import gunbc.auth.github_apps {
+  DeclaredGitHubApp,
+  gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id,
+  gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id
+}
 import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
 import extdeps.github.org_admin_auth {
   github_app_installation_access_token_url,
@@ -63,14 +67,10 @@ import gunbc.commit_workflow {
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.auth.heal_publisher_federation {
-  HealPublisherAppRegistration, HealPublisherAppRegistered, HealPublisherAppRegistrationPending,
-  heal_publisher_app_registration,
-  heal_publisher_app_key_secret,
   heal_publisher_installation_token_request_body,
   heal_publisher_key_unreadable_message,
   heal_publisher_token_refused_message
 }
-import gunbc.auth.github_apps { DeclaredGitHubApp }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
@@ -2250,7 +2250,7 @@ fn gunbc_ci_heal_publication_admit_invoke() -> String {
 fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "heal-publisher",
-    key_secret: heal_publisher_app_key_secret,
+    key_secret: gunbai_bot_app_pem_secret,
     app_id: app.app_id.value,
     app_slug: app.slug as String,
     installation_id: installation.value,
@@ -2270,24 +2270,20 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
   }
 }
 
-// AN UNREGISTERED PUBLISHER EMITS A POISON MARKER RATHER THAN A SCRIPT. The workflow that would
-// carry this step refuses to generate at all while the App registration is pending
-// (gunbc.heal_publisher_workflow), so this text is unreachable in any emitted artifact; it is not
-// valid shell, so a path that ever did reach it stops rather than running a step whose credential
-// does not exist.
-data heal_publisher_unregistered_poison: String = "__GUNBC_HEAL_PUBLISHER_UNREGISTERED__ the publishing App is not registered, so no publication step can be emitted\n"
-
+// THE PUBLISHER MINTS ITS OWN TOKEN IN-RUN, down-scoped to contents:write on this repository alone.
+// An earlier revision matched on a registration coproduct here and emitted a deliberately invalid
+// shell marker on its Pending arm; that arm is gone with the coproduct, because the App is
+// gunbai-bot -- already registered, already installed, and its key already in Secret Manager
+// labelled for exactly this purpose -- so no arm of that match was reachable any more.
 fn gunbc_ci_heal_publication_publish_invoke() -> String {
-  match heal_publisher_app_registration {
-    HealPublisherAppRegistrationPending { detail: _ } => heal_publisher_unregistered_poison
-    HealPublisherAppRegistered { app, installation } =>
-      gunbc_run_step_script_with_prelude(
-        prelude: github_app_installation_token_prelude(spec: heal_publisher_token_mint(app: app, installation: installation)),
-        source_roots: witness_layer_roots,
-        entry: gunbc_ci_heal_publication_publish_target.entry,
-        function: gunbc_ci_heal_publication_publish_target.function,
-        claim_run: false,
-        receipt_rel: none
-      )
-  }
+  gunbc_run_step_script_with_prelude(
+    prelude: github_app_installation_token_prelude(
+      spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+    ),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_publication_publish_target.entry,
+    function: gunbc_ci_heal_publication_publish_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }

@@ -4,8 +4,7 @@ import std.types { NonEmptyStr, String, Int, List, Map, Bool }
 import v2.std.optional { Present }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId, WifPool, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import extdeps.github.app { GitHubAppInstallationId }
-import gunbc.auth.github_apps { DeclaredGitHubApp }
+import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }
 import gunbc.auth.github_gcp_federation {
   fleet_secrets_project_id, fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member
 }
@@ -34,12 +33,42 @@ import extdeps.languages.json.emit { json_object, json_array, json_kv, json_stri
 // execute pull-request code. Nothing else may enter the pool, so a binding to the pool is a binding
 // to that one job.
 //
-// THE SERVICE ACCOUNT HOLDS ONE ROLE ON ONE SECRET. It is reachable only by that pool (no keys exist
-// or may be minted for it), and it may read the publisher App's private key and nothing else.
+// THE SERVICE ACCOUNT HOLDS ONE ROLE ON ONE SECRET, and the secret is the EXISTING gunbai-bot App
+// key (operator ruling, 2026-09-17). No new App is registered: GitHub requires a human to create and
+// install one, and this key already exists labelled purpose=ci-heal-push, put there on 2026-09-09 by
+// the effort that was meant to build this publisher and stopped before wiring it. The account is
+// reachable only by the pool above -- no keys exist or may be minted for it -- so it is a door that
+// only the pinned job can open.
+//
+// WHY THIS APP AND NOT THE ORG-ADMINISTRATIVE ONE, STATED AT THE EVIDENCE LEVEL IT ACTUALLY HAS.
+// gunbai-ci was the first choice and was withdrawn because its key is an ORG-ADMINISTRATIVE App's:
+// a holder can mint installation tokens across the org, where gunbai-bot's is the programming-agent
+// App whose key was already provisioned labelled purpose=ci-heal-push. The difference bought is in
+// what the KEY can do, and that is the whole of it.
+//
+// AN EARLIER DRAFT OF THIS PARAGRAPH CLAIMED MORE AND WAS WRONG. It argued the ci key was also more
+// REACHABLE, being readable by fleet-cloud-convergence through a provider conditioned only on
+// `assertion.repository == 'gunb-ai/gunbc'`. Reading the live policy on 2026-09-17 showed
+// fleet-cloud-convergence holds secretAccessor on the BOT key too, so both keys sit behind the same
+// repository-wide path and the reachability argument applies equally to both. It is corrected rather
+// than deleted because the next reader will otherwise re-derive the same plausible claim.
+//
+// THE RESIDUAL, NAMED: both App keys remain readable by an identity any job in this repository
+// holding id-token:write can assume. This change neither creates that nor removes it. The publisher's
+// OWN path does not inherit it -- it federates through the pinned pool above, not that one.
+//
+// THE PROVIDER CONDITION IS STILL LOAD-BEARING, and that is not a formality. A KEY can mint more than
+// the token taken through it, so the wall is not the mint request -- it is that this account is
+// reachable from one workflow, on one ref, by one event, on a hosted runner. That is the grain
+// gunbc.auth.github_gcp_federation does NOT admit, and the grain gunbc#10887 was exploited at.
 
 data heal_publisher_wif_pool_id: NonEmptyStr = "github-heal-publisher"
 
-data heal_publisher_wif_pool_display_name: NonEmptyStr = "GitHub heal publisher (protected publication only)"
+// 31 CHARACTERS, AND THE CEILING IS THE UPSTREAM'S: createWorkloadIdentityPool answers HTTP 400
+// INVALID_ARGUMENT for a display name over 32. Measured 2026-09-17, not read from a doc -- the first
+// provisioning run refused on it. The witness beside this row holds the length so the next author
+// finds it at claim time rather than in a failed provisioning run.
+data heal_publisher_wif_pool_display_name: NonEmptyStr = "Heal publisher (protected push)"
 
 data heal_publisher_wif_provider_id: NonEmptyStr = "github-heal-publisher-oidc"
 
@@ -48,13 +77,6 @@ data heal_publisher_service_account_id: NonEmptyStr = "heal-publisher"
 data heal_publisher_service_account: ServiceAccountEmail = "heal-publisher@gunbai-secrets.iam.gserviceaccount.com"
 
 data heal_publisher_service_account_display_name: NonEmptyStr = "Heal publisher (WIF-only, one secret, no keys)"
-
-data heal_publisher_app_key_secret: SecretRef = SecretRef {
-  project: fleet_secrets_project_id,
-  secret: "heal-publisher-github-app-private-key",
-  version: "latest",
-  hash_state: HashPending,
-}
 
 data heal_publisher_wif_pool: WifPool = WifPool {
   name: heal_publisher_wif_pool_id
@@ -125,35 +147,16 @@ fn heal_publisher_service_account_member() -> String {
 
 // ── The App this publishes as ───────────────────────────────────────────────────────────────
 
-// THE REGISTRATION IS AN OBSERVATION, NOT AN ASSUMPTION. A GitHub App's id and installation id are
-// facts of the forge, established when an operator creates and installs it; until they have been
-// read from there, this row says so and the publisher workflow REFUSES TO EMIT. A plausible-looking
-// number here would be a fabricated fact that typechecks, emits a workflow, and fails only when a
-// repair is waiting on it.
-type HealPublisherAppRegistration
-  = HealPublisherAppRegistered {
-      app: DeclaredGitHubApp
-      installation: GitHubAppInstallationId
-    }
-  | HealPublisherAppRegistrationPending { detail: NonEmptyStr }
-
-data heal_publisher_app_registration: HealPublisherAppRegistration = HealPublisherAppRegistrationPending {
-  detail: "the gunbc-heal-publisher GitHub App has not been created and installed yet: its app id, client id and installation id are read from github.com/organizations/gunb-ai/settings/apps once an operator creates it with Contents: read and write and installs it on this repository alone, and its private key is provisioned into the heal-publisher-github-app-private-key secret by gunbc.auth.heal_publisher_provision heal_publisher_key_provision_with_supplied_token, whose federation peer heal_publisher_federation_provision_with_supplied_token creates the pool, the provider and the service account this row's publisher federates to"
-}
-
-fn heal_publisher_app_registration_detail(r: HealPublisherAppRegistration) -> String {
-  match r {
-    HealPublisherAppRegistered { app: _, installation: _ } => ""
-    HealPublisherAppRegistrationPending { detail } => detail as String
-  }
-}
-
-fn heal_publisher_app_is_registered(r: HealPublisherAppRegistration) -> Bool {
-  match r {
-    HealPublisherAppRegistered { app: _, installation: _ } => true
-    HealPublisherAppRegistrationPending { detail: _ } => false
-  }
-}
+// THE PUBLISHER PUBLISHES AS gunbai-ci, WHICH IS ALREADY REGISTERED AND INSTALLED. An earlier
+// revision carried its own HealPublisherAppRegistration coproduct whose Pending arm made the
+// workflow REFUSE TO EMIT until an operator created a dedicated App -- correct while that App was a
+// fact nobody had established, and a decoration once the answer is a row this corpus already holds.
+// A gate whose refusing arm is unreachable is permanently green by construction and worse than
+// absent, because it will be cited as coverage (DESIGN section 4b).
+//
+// So the app and installation are read from gunbc.auth.github_apps, which is their single authority
+// and is already consumed by the org-admin prelude. Restating them here would be a second home for a
+// forge fact, and the id is not ours to restate: it is observed, not chosen.
 
 // ── What the publisher's token may do, and what to say when the mint cannot happen ──────────
 
@@ -176,7 +179,7 @@ fn heal_publisher_installation_token_request_body() -> String {
 fn heal_publisher_key_unreadable_message(http_status: String) -> String {
   join([
     "HealPublisherAppKeyUnreadable: Secret Manager answered HTTP ", http_status, " for ",
-    secret_ref_version_resource(ref: heal_publisher_app_key_secret),
+    secret_ref_version_resource(ref: gunbai_bot_app_pem_secret),
     " to the ", heal_publisher_service_account as String, " principal. 403 means the version exists and is not readable OR does not exist",
     " -- REMEDY: run gunbc.auth.heal_publisher_provision heal_publisher_key_provision_with_supplied_token, which provisions the key into that secret and binds roles/secretmanager.secretAccessor for that service account only after reading the version back.",
     " Minting NO token, so nothing is published."

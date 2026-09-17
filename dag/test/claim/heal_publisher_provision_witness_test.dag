@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
 import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
-import gunbc.auth.heal_publisher_federation { heal_publisher_wif_principal_set }
+import gunbc.auth.heal_publisher_federation { heal_publisher_wif_principal_set, heal_publisher_wif_pool_display_name }
 import gunbc.auth.heal_publisher_provision {
   SubjectCreation, SubjectCreated, SubjectAlreadyPresentUnverified, SubjectCreateRefused,
   subject_creation, FederationDisposition, FederationBindable, FederationStopped,
@@ -179,4 +179,24 @@ test fn witness_the_readback_distinguishes_a_policy_carrying_the_cell_from_one_t
       GcpBinding { role: "roles/viewer", members: [c.member], condition: none }
     ]))
     && !impersonation_binding_present(policy: policy_with(bindings: []))
+}
+
+// ── the upstream's own limits on what we may declare ────────────────────────────────────────
+
+// A POOL DISPLAY NAME OVER 32 CHARACTERS IS REFUSED BY THE SERVICE, not by us: createWorkloadIdentityPool
+// answers 400 INVALID_ARGUMENT. This was found the expensive way on 2026-09-17 -- a provisioning run
+// that had already been authorized, tokened and launched refused on it -- and the whole cost of that
+// discovery is removed by asserting the length here, where it is checked every time the floor runs.
+//
+// THE BOUND IS SPELLED AS A LITERAL AND THAT IS CORRECT HERE, against the ordinary rule: it is an
+// EXTERNAL authority's published constraint, not a measurement of our own tree, so it is exactly the
+// "external or versioned authority" case DESIGN section 5 admits as an oracle.
+test fn witness_the_pool_display_name_is_within_the_services_limit() -> Bool {
+  string_length(s: heal_publisher_wif_pool_display_name as String) <= 32
+}
+
+// THE DISCRIMINATOR. If string_length answered something constant, the claim above would pass for any
+// name at all; a name known to be over the limit must fail the same predicate.
+test fn witness_a_name_over_the_limit_would_not_pass_that_check() -> Bool {
+  string_length(s: "GitHub heal publisher (protected publication only)") > 32
 }

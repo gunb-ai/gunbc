@@ -34,8 +34,7 @@ import gunbc.heal_publication_boundary {
 }
 import gunbc.heal_publication { heal_publication_candidate_directory_env }
 import gunbc.auth.heal_publisher_federation {
-  heal_publisher_wif_provider_resource, heal_publisher_service_account,
-  heal_publisher_app_registration, heal_publisher_app_is_registered, heal_publisher_app_registration_detail
+  heal_publisher_wif_provider_resource, heal_publisher_service_account
 }
 import gunbc.ci_spec {
   gunbc_ci_heal_publication_admit_invoke,
@@ -391,21 +390,12 @@ data heal_publisher_isolation_refusal_reason: String = "REFUSED gunbc.heal_publi
 
 data heal_publisher_capability_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the job's capability closure does not hold. No workflow yaml was emitted."
 
-fn heal_publisher_registration_refusal_reason() -> String {
-  concat(
-    "REFUSED gunbc.heal_publisher_workflow: the publishing App is not registered, so no workflow yaml was emitted -- ",
-    heal_publisher_app_registration_detail(r: heal_publisher_app_registration)
-  )
-}
-
 fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutcome {
   match admit_workflow_toolchain_homes(workflow: heal_publisher_workflow) {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       HealPublisherWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if !heal_publisher_app_is_registered(r: heal_publisher_app_registration) {
-        HealPublisherWorkflowGenerationRefused { reason: heal_publisher_registration_refusal_reason() }
-      } else if !heal_publication_phases_isolated() {
+      if !heal_publication_phases_isolated() {
         HealPublisherWorkflowGenerationRefused { reason: heal_publisher_isolation_refusal_reason }
       } else if !heal_publisher_capability_closure_holds() {
         HealPublisherWorkflowGenerationRefused { reason: heal_publisher_capability_refusal_reason }
