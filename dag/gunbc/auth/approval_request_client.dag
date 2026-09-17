@@ -119,5 +119,4 @@ fn approval_poll_standing(
 }
 
 // HTTP transport success is not filing standing: 409 already-filed and 502 after a durable write
-// still poll. The filed= token from gunbc.auth.approval_status_wire submission_body_admits_poll
-// is the only admit.
+// with minted links still poll. The filed= token is the only admit.

@@ -392,7 +392,7 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
           )
           let _wiped = Filesystem.Delete(path: body_path)
           // HTTP success is not filing standing (409 already-filed and 502 after a durable write
-          // still poll). The filed= token is the admit.
+          // with minted links still poll). The filed= token is the admit; no-link 502/503 is filed=no.
           if !submission_body_admits_poll(body: posted.body) {
             return exit_failure(reason: concat("mtcollins1 boot: POST /approvals refused; controller untouched; ", posted.body))
           }
