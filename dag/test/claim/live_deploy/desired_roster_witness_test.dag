@@ -8,7 +8,6 @@ import std.dissolution {
   DissolutionFired,
   DissolutionUnbound,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   DesiredRosterAdmitted,
@@ -180,26 +179,16 @@ test fn srv2_deploy_is_not_the_srv1_host() -> Bool {
     && !(deployment_plan_host_identity(spec: selected_deployment_spec(row: srv1_production_desired_deployment())) == "srv2")
 }
 
-fn production_wrapper_ref() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "gunbc.live_deploy.apply",
-    decl_name: "live_deploy_apply_srv1_wet",
-    field: WholeDeclaration,
-  }
-}
-
-test fn srv1_production_wrapper_dissolution_is_pending_while_the_wet_entry_exists() -> Bool {
-  match dissolution_status(condition: srv1_production_wrapper_dissolution, present_decls: [production_wrapper_ref()]) {
-    DissolutionPending => true
+test fn srv1_production_wrapper_dissolution_stays_unbound_until_the_wrapper_population_has_no_caller() -> Bool {
+  let desc = dissolution_description(condition: srv1_production_wrapper_dissolution)
+  match dissolution_status(condition: srv1_production_wrapper_dissolution, present_decls: []) {
+    DissolutionUnbound => true
+    DissolutionPending => false
     DissolutionFired => false
-    DissolutionUnbound => false
   }
-    && match dissolution_status(condition: srv1_production_wrapper_dissolution, present_decls: []) {
-      DissolutionFired => true
-      DissolutionPending => false
-      DissolutionUnbound => false
-    }
     && !(srv1_production_wrapper_frontier.reason as String == "")
+    && string_contains(s: desc, pattern: "SUFFICIENT FOR")
+    && string_contains(s: desc, pattern: "no remaining production caller")
 }
 
 test fn apply_script_only_path_discrimination_stays_unbound_until_a_disjoint_script_receipt() -> Bool {

@@ -1,9 +1,8 @@
 module gunbc.live_deploy.desired
 
 import std.types { String, NonEmptyStr, List, Bool }
-import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_path }
 import std.keyed_row { KeyedRow, keyed_row_find }
 import std.keyed_roster {
   keyed_roster_build,
@@ -266,24 +265,16 @@ fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeploymentL
 // Their deletion consumer is CONVERGENCE-ONE C8: the first wet action, which must select a
 // DesiredDeployment from this roster and therefore cannot keep a production-only entry as
 // the executing route. The wrappers retire by deletion; that absence is the discharge.
-// The trigger names the wet production entry that still exists, not deployment_spec_srv1
-// (moved into this module in this change — a DeclarationRetires on the old spec-module name
-// would fire on merge while the wrappers still run).
-data srv1_production_wrapper_dissolution: DissolutionCondition = retires_dissolution(
-  ref: DeclarationRef {
-    module_path: "gunbc.live_deploy.apply",
-    decl_name: "live_deploy_apply_srv1_wet",
-    field: WholeDeclaration,
-  }
+// ONE ROW OVER THE POPULATION, not one DeclarationRetires on live_deploy_apply_srv1_wet:
+// apply.dag still defines ten live_deploy_{apply,retract}_srv1* wrappers. A singular
+// retirement trigger would fire (or look discharged) while nine production callers remained.
+data srv1_production_wrapper_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the production wrappers retire when gunbc.live_deploy.desired deployment_spec_srv1 has no remaining production caller. The capability is that absence across the wrapper population (apply, retract, with-access, wet, operator, operator-local, transaction), not the deletion of any one wrapper name. A DeclarationRetires on live_deploy_apply_srv1_wet alone is not this trigger. SUFFICIENT FOR: every live_deploy_{apply,retract}_srv1* production wrapper gone, and no remaining production caller of deployment_spec_srv1." as NonEmptyStr
 )
 
-data srv1_production_wrapper_frontier: FrontierRow = frontier_row_decl(
-  ref: DeclarationRef {
-    module_path: "gunbc.live_deploy.apply",
-    decl_name: "live_deploy_apply_srv1_wet",
-    field: WholeDeclaration,
-  },
-  reason: "production live_deploy_apply_srv1_wet wrapper is a typed scaffold until C8 selects a DesiredDeployment",
+data srv1_production_wrapper_frontier: FrontierRow = frontier_row_path(
+  path: "gunbc.live_deploy.apply srv1 production wrappers",
+  reason: "production live_deploy_{apply,retract}_srv1* wrappers are typed scaffolds until C8 selects a DesiredDeployment; they retire together when deployment_spec_srv1 has no remaining production caller",
   dissolution: srv1_production_wrapper_dissolution,
 )
 
