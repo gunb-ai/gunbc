@@ -1,17 +1,18 @@
 module gunbc.machine_intake_ethernet
 
 import std.types { Bool, NonEmptyStr, String }
+import extdeps.standards.nic_attachment { NicAttachmentClass }
 
 // ONE PHYSICAL CONNECTOR IS NOT ONE FUNCTION. Mt. Collins initially misread a second BMC
 // address as the host PXE interface. Mt. Jade's rear panel can carry a dedicated BMC RJ45
 // plus a dual-port host module, and one of those host ports may also bind BMC NCSI. A Bool
 // "is dedicated management" cannot represent that. Connector identity and function bindings
-// are therefore separate types.
+// are therefore separate types. Expansion-card attachment is the standard
+// NicAttachmentClass, not a second PcieCem/OcpNic3 spelling.
 
 type EthernetAttachment
   = BaseboardOnboard
-  | PcieCem
-  | OcpNic3
+  | NicClass { class: NicAttachmentClass }
   | AttachmentUnobserved { discriminator: NonEmptyStr }
 
 type PhysicalEthernetPort {
