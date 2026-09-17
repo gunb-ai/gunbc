@@ -21063,7 +21063,8 @@ fn record_call_frequency(func_name: &str) {
         "parse_table_record_miss",
         "parse_table_lookup",
         "parse_table_insert",
-        "parse_choice_residue_backtrack",
+        "parse_choice_plan",
+        "parse_choice_ordered_backtrack",
         "uri_percent_encode_scalar_fragment",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
