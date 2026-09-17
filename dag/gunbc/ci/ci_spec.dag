@@ -36,6 +36,7 @@ import gunbc.auth.approval_keyring_converge {
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_capture_path_env,
+  mtcollins1_boot_sol_pid_path_env,
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username }
@@ -2018,7 +2019,9 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
     Do { run: ci_retry_body_run(command: mtcollins1_sol_activate_ipmitool_command()) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_capture_path_env as String, "=\"$SOL_OUT\""))) },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_pid_path_env as String, "=\"$SOL_PID_FILE\""))) },
     Do { run: ci_retry_body_run(command: "sleep 2") },
+    Do { run: ci_retry_body_run(command: "SOL_PID=$(tr -d '[:space:]' < \"$SOL_PID_FILE\"); if [ -z \"$SOL_PID\" ] || ! [ -r \"/proc/$SOL_PID/cmdline\" ] || ! grep -q ipmitool \"/proc/$SOL_PID/cmdline\"; then echo MtCollins1SolActivateNotHeld >&2; exit 1; fi") },
   ]
 }
 

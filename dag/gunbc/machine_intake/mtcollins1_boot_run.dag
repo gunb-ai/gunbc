@@ -26,7 +26,7 @@ import gunbc.auth.approval_keyring_converge { approval_submission_mac_key_path_e
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
-import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical }
 import extdeps.clock { Clock }
 import v2.std.optional { Present }
@@ -38,6 +38,8 @@ import extdeps.http.client
 import extdeps.shell
 
 data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
+
+data mtcollins1_boot_sol_pid_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_PID_FILE"
 
 data mtcollins1_boot_artifact_glob: String = "artifacts/mtcollins1-boot-*"
 
@@ -87,12 +89,34 @@ fn mtcollins1_boot_refusal(gate: MtCollins1BootGate) -> ProcessExit {
   }
 }
 
-fn mtcollins1_boot_sol_is_held(path: String) -> Bool {
-  if path == "" {
+fn mtcollins1_boot_instant_from_probe(reading: NonEmptyStr?) -> Timestamp? {
+  match reading {
+    Absent => none
+    Present { value: ts } =>
+      if utc_instant_is_canonical(t: ts as Timestamp) {
+        Present { value: ts as Timestamp }
+      } else {
+        none
+      }
+  }
+}
+
+fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
+  if pid_path == "" {
     false
   } else {
-    let read = Filesystem.Read(path: path)
-    read.success && read.content.length() > 0
+    let pid_read = Filesystem.Read(path: pid_path)
+    if !pid_read.success {
+      false
+    } else {
+      let pid = trim(s: pid_read.content)
+      if pid == "" {
+        false
+      } else {
+        let cmdline = Filesystem.Read(path: concat("/proc/", concat(pid, "/cmdline")))
+        cmdline.success && string_contains(s: cmdline.content, pattern: "ipmitool")
+      }
+    }
   }
 }
 
@@ -124,19 +148,26 @@ fn mtcollins1_boot_poll_ticks(
 ) -> MtCollins1BootGate
   uses net: std.resources.Network
 {
-  let observed = clock_now_probed_at_or_unknown() as Timestamp
-  if remaining <= 0 {
-    return BootGateExpired
-  }
-  let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: request.escalation_id))
-  let status = mtcollins1_status_from_get(success: got.success, body: got.body)
-  let standing = approval_poll_standing(status: status, observed_at: observed, expires_at: expires_at)
-  match standing {
-    PollStillPending => {
-      let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
-      mtcollins1_boot_poll_ticks(remaining: remaining - 1, request: request, expires_at: expires_at)
-    }
-    _ => mtcollins1_boot_gate_from_poll(poll: standing, request: request, observed_at: observed)
+  match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
+    Absent =>
+      BootGateStoreUnreadable {
+        detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr,
+      }
+    Present { value: observed } =>
+      if remaining <= 0 {
+        BootGateExpired
+      } else {
+        let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: request.escalation_id))
+        let status = mtcollins1_status_from_get(success: got.success, body: got.body)
+        let standing = approval_poll_standing(status: status, observed_at: observed, expires_at: expires_at)
+        match standing {
+          PollStillPending => {
+            let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+            mtcollins1_boot_poll_ticks(remaining: remaining - 1, request: request, expires_at: expires_at)
+          }
+          _ => mtcollins1_boot_gate_from_poll(poll: standing, request: request, observed_at: observed)
+        }
+      }
   }
 }
 
@@ -158,9 +189,9 @@ fn mtcollins1_boot_wet() -> ProcessExit
   if sub_path == "" {
     return exit_failure(reason: concat("mtcollins1 boot: ", concat(approval_submission_mac_key_path_env as String, " is unset; controller untouched")))
   }
-  let sol_path = env_path(name: mtcollins1_boot_sol_capture_path_env)
-  if !mtcollins1_boot_sol_is_held(path: sol_path) {
-    return exit_failure(reason: "mtcollins1 boot: SOL capture is not held; collector must be attached before any controller write")
+  let sol_pid_path = env_path(name: mtcollins1_boot_sol_pid_path_env)
+  if !mtcollins1_boot_sol_is_held(pid_path: sol_pid_path) {
+    return exit_failure(reason: "mtcollins1 boot: SOL collector process is not held; ipmitool sol activate must still be live before any controller write")
   }
   let run_id = match actions_variable_read(name: github_run_id_variable_name) {
     ActionsVariablePresent { value: v } => v
@@ -174,64 +205,69 @@ fn mtcollins1_boot_wet() -> ProcessExit
     escalation_id: escalation,
     attempt: concat("mtcollins1-boot-", run_id) as AttemptIdentity,
   )
-  let issued = clock_now_probed_at_or_unknown() as Timestamp
-  let expires = match mtcollins1_approval_expires_at(issued: issued) {
-    Absent => ""
-    Present { value: e } => e
-  }
-  if expires == "" {
-    return exit_failure(reason: "mtcollins1 boot: issued_at is not a canonical UTC instant; cannot mint an approval window; controller untouched")
-  }
-  let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)
-  let key_read = Filesystem.Read(path: sub_path)
-  if !key_read.success {
-    return exit_failure(reason: concat("mtcollins1 boot: submission MAC key unreadable: ", key_read.error))
-  }
-  match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
-    SubmissionMacKeyNotHex { key_id: k } =>
-      exit_failure(reason: concat("mtcollins1 boot: submission MAC key is not hex: ", k as String))
-    SubmissionMacReady { tag_hex: tag } => {
-      let tmp = env_path(name: "RUNNER_TEMP" as NonEmptyStr)
-      if tmp == "" {
-        return exit_failure(reason: "mtcollins1 boot: RUNNER_TEMP is unset; cannot write the submit body")
+  match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
+    Absent =>
+      exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot mint issued_at or an approval window; controller untouched")
+    Present { value: issued } => {
+      let expires = match mtcollins1_approval_expires_at(issued: issued) {
+        Absent => ""
+        Present { value: e } => e
       }
-      let body_path = concat(tmp, "/mtcollins1-approval-submit.json")
-      let body = submission_envelope_json(request: stored, tag_hex: tag)
-      let written = Filesystem.WriteOwnerOnly(path: body_path, content: body)
-      if !written.success {
-        return exit_failure(reason: concat("mtcollins1 boot: could not write submit body: ", written.error))
+      if expires == "" {
+        return exit_failure(reason: "mtcollins1 boot: issued_at is not a canonical UTC instant; cannot mint an approval window; controller untouched")
       }
-      let posted = http.Client.PostJsonFromFile(
-        url: approval_submit_url(),
-        request_body_file: body_path as NonEmptyStr,
-        max_seconds: "30" as NonEmptyStr,
-      )
-      let _wiped = Filesystem.Delete(path: body_path)
-      if !approval_post_admits_poll(success: posted.success, body: posted.body) {
-        return exit_failure(reason: concat("mtcollins1 boot: POST /approvals refused; controller untouched; ", posted.body))
+      let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)
+      let key_read = Filesystem.Read(path: sub_path)
+      if !key_read.success {
+        return exit_failure(reason: concat("mtcollins1 boot: submission MAC key unreadable: ", key_read.error))
       }
-      let gate = mtcollins1_boot_poll_ticks(
-        remaining: mtcollins1_boot_poll_tick_budget,
-        request: request,
-        expires_at: expires,
-      )
-      let pw_read = Filesystem.Read(path: cred)
-      if !pw_read.success {
-        return exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error))
+      match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
+        SubmissionMacKeyNotHex { key_id: k } =>
+          exit_failure(reason: concat("mtcollins1 boot: submission MAC key is not hex: ", k as String))
+        SubmissionMacReady { tag_hex: tag } => {
+          let tmp = env_path(name: "RUNNER_TEMP" as NonEmptyStr)
+          if tmp == "" {
+            return exit_failure(reason: "mtcollins1 boot: RUNNER_TEMP is unset; cannot write the submit body")
+          }
+          let body_path = concat(tmp, "/mtcollins1-approval-submit.json")
+          let body = submission_envelope_json(request: stored, tag_hex: tag)
+          let written = Filesystem.WriteOwnerOnly(path: body_path, content: body)
+          if !written.success {
+            return exit_failure(reason: concat("mtcollins1 boot: could not write submit body: ", written.error))
+          }
+          let posted = http.Client.PostJsonFromFile(
+            url: approval_submit_url(),
+            request_body_file: body_path as NonEmptyStr,
+            max_seconds: "30" as NonEmptyStr,
+          )
+          let _wiped = Filesystem.Delete(path: body_path)
+          if !approval_post_admits_poll(success: posted.success, body: posted.body) {
+            return exit_failure(reason: concat("mtcollins1 boot: POST /approvals refused; controller untouched; ", posted.body))
+          }
+          let gate = mtcollins1_boot_poll_ticks(
+            remaining: mtcollins1_boot_poll_tick_budget,
+            request: request,
+            expires_at: expires,
+          )
+          let pw_read = Filesystem.Read(path: cred)
+          if !pw_read.success {
+            return exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error))
+          }
+          let actuated = mtcollins1_boot_after_gate(
+            gate: gate,
+            password_raw: pw_read.content,
+            password_file: cred,
+            attempt: run_id,
+          )
+          let exit_word = match actuated { ExitSuccess => "ok"  _ => "refused" }
+          let receipt_body = concat("escalation_id=", concat(escalation as String, concat("\nexit=", exit_word)))
+          let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)
+          if !kept.success {
+            return exit_failure(reason: concat("mtcollins1 boot: could not write receipt: ", kept.error))
+          }
+          actuated
+        }
       }
-      let actuated = mtcollins1_boot_after_gate(
-        gate: gate,
-        password_raw: pw_read.content,
-        password_file: cred,
-        attempt: run_id,
-      )
-      let exit_word = match actuated { ExitSuccess => "ok"  _ => "refused" }
-      let receipt_body = concat("escalation_id=", concat(escalation as String, concat("\nexit=", exit_word)))
-      let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)
-      if !kept.success {
-        return exit_failure(reason: concat("mtcollins1 boot: could not write receipt: ", kept.error))
-      }
-      actuated
     }
   }
 }

@@ -1,11 +1,12 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, Int }
+import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { second_count }
+import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
-  mtcollins1_status_from_get,
+  mtcollins1_status_from_get, mtcollins1_boot_instant_from_probe, mtcollins1_boot_sol_is_held,
 }
 import gunbc.auth.approval_request_client {
   StatusUnreadable, StatusPending, parse_filed_approval_status, approval_poll_standing, PollExpired, PollUnreadable,
@@ -47,4 +48,18 @@ test fn a_failed_status_get_is_unreadable_not_pending() -> Bool {
       StatusPending { expires_at: _ } => true
       _ => false
     }
+}
+
+test fn clock_unreadable_is_not_an_observation_instant() -> Bool {
+  match mtcollins1_boot_instant_from_probe(reading: none) { Absent => true  _ => false }
+    && match mtcollins1_boot_instant_from_probe(reading: Present { value: "clock-unreadable" as NonEmptyStr }) { Absent => true  _ => false }
+    && match mtcollins1_boot_instant_from_probe(reading: Present { value: "2026-09-16T20:00:00Z" as NonEmptyStr }) {
+      Present { value: t } => t as String == "2026-09-16T20:00:00Z"
+      _ => false
+    }
+}
+
+test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
+  !mtcollins1_boot_sol_is_held(pid_path: "")
+    && !mtcollins1_boot_sol_is_held(pid_path: "/tmp/mtcollins1-sol-pid-absent")
 }
