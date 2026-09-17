@@ -668,7 +668,7 @@ fn v41_dropped_source_row_is_unfaithful(source: List<V41SourceRow>, spec: V41Row
 
 fn v41_published_transform_standing() -> V41TransformResult {
   V41PublishedTransformUnestablished {
-    obligation: "the published Engram shards (layers 1 and 14 embed weight+scale) have not been supplied as this module's transform source; a fixture correspondence is a different subject; a hash-only Python streamer of those shards is an independent implementation of dest_rank = global_row % rank_count and packed records, and its receipt does not mint Identified here" as NonEmptyStr,
+    obligation: "the published Engram shards (layers 1 and 14 embed weight+scale) have not been acquired, so they cannot be this module's transform source (proud-deer-538, 2026-09-17: no V4.1 checkpoint on srv1; spark_pair_desired_snapshot is deepseek_v4_flash_snapshot, a different subject; do not invent a Spark path). Keep this Unestablished. A fixture correspondence is a different subject. A hash-only Python streamer of those shards is an independent implementation of dest_rank = global_row % rank_count and packed records, and its receipt does not mint Identified here." as NonEmptyStr,
   }
 }
 
