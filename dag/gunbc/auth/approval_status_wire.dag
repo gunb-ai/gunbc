@@ -221,6 +221,9 @@ fn submission_filed_text(filed: Bool, reason: String) -> String {
   )
 }
 
+// Poll admission is the filed= token only. HTTP success is not a conjunct: a 409 already-filed
+// or a 502 after a durable write still polls. A wrapper that AND-ed the transport Bool was a
+// tautology (success == success) and a permanently-green decoration; this function is the authority.
 fn submission_body_admits_poll(body: String) -> Bool {
   match kv_line_read(body: body, key: filed_kv_key) {
     KvLinePresent { value: v } => v == filed_yes

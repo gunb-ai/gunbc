@@ -4,16 +4,16 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.auth.approval_request_client {
   approval_submit_url, approval_status_url, approval_loopback_origin, approval_request_submit_path,
-  approval_poll_standing, approval_post_admits_poll, PollStillPending, PollApproved, PollExpired, PollUnreadable,
+  approval_poll_standing, PollStillPending, PollApproved, PollExpired, PollUnreadable,
   StoredApprovalRequest,
 }
 import gunbc.auth.approval_status_wire {
-  parse_filed_approval_status, filed_approval_status_text, submission_filed_text,
+  parse_filed_approval_status, filed_approval_status_text, submission_filed_text, submission_body_admits_poll,
   StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
 }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
-import gunbc.auth.approval_decision_store { approval_mac_key_id }
+import gunbc.auth.approval_decision_store { approval_mac_key_id, approval_capability_authority }
 import std.scoped_authorization { AttemptIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -29,6 +29,7 @@ fn fixture_stored() -> StoredApprovalRequest {
     issued_at: "2026-09-16T20:00:00Z",
     expires_at: "2026-09-16T21:00:00Z",
     key_id: approval_mac_key_id,
+    authority: approval_capability_authority,
   }
 }
 
@@ -110,11 +111,11 @@ test fn poll_expires_after_expires_at_unless_already_decided() -> Bool {
 }
 
 test fn post_filed_token_admits_poll_including_notify_failure() -> Bool {
-  approval_post_admits_poll(success: true, body: submission_filed_text(filed: true, reason: "approval submission: filed esc-1 and notified (ntfy message m)"))
-    && approval_post_admits_poll(success: false, body: submission_filed_text(filed: true, reason: "approval submission: escalation esc-1 is already filed"))
-    && approval_post_admits_poll(success: false, body: submission_filed_text(filed: true, reason: "approval submission: filed esc-1 but the notification did not publish: refused 502 x"))
-    && !approval_post_admits_poll(success: false, body: submission_filed_text(filed: false, reason: "approval submission: requester not enrolled: bad tag"))
-    && !approval_post_admits_poll(success: true, body: "approval submission: filed esc-1 and notified (ntfy message m)")
+  submission_body_admits_poll(body: submission_filed_text(filed: true, reason: "approval submission: filed esc-1 and notified (ntfy message m)"))
+    && submission_body_admits_poll(body: submission_filed_text(filed: true, reason: "approval submission: escalation esc-1 is already filed"))
+    && submission_body_admits_poll(body: submission_filed_text(filed: true, reason: "approval submission: filed esc-1 but the notification did not publish: refused 502 x"))
+    && !submission_body_admits_poll(body: submission_filed_text(filed: false, reason: "approval submission: requester not enrolled: bad tag"))
+    && !submission_body_admits_poll(body: "approval submission: filed esc-1 and notified (ntfy message m)")
 }
 
 test fn status_text_round_trips_through_the_same_grammar() -> Bool {

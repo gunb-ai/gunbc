@@ -43,6 +43,22 @@ fn request() -> StoredApprovalRequest {
     issued_at: "2026-09-16T20:00:00Z",
     expires_at: "2026-09-17T20:00:00Z",
     key_id: approval_mac_key_id,
+    authority: approval_capability_authority,
+  }
+}
+
+fn request_foreign_authority() -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: request().escalation_id,
+    request_revision: request().request_revision,
+    attempt: request().attempt,
+    requester: request().requester,
+    purpose: request().purpose,
+    destructive: request().destructive,
+    issued_at: request().issued_at,
+    expires_at: request().expires_at,
+    key_id: request().key_id,
+    authority: "gunbc.auth.not-this-capability" as NonEmptyStr,
   }
 }
 
@@ -65,7 +81,7 @@ test fn a_signed_envelope_parses_back_to_the_same_request_and_tag() -> Bool {
 }
 
 test fn a_non_canonical_record_is_refused_before_it_is_verified() -> Bool {
-  match parse_submission_envelope(text: "{\"tag\":\"00\",\"request\":\"{\\\"kind\\\": \\\"request\\\", \\\"escalation_id\\\": \\\"e\\\", \\\"request_revision\\\": \\\"r\\\", \\\"attempt\\\": \\\"a\\\", \\\"requester\\\": \\\"q\\\", \\\"purpose\\\": \\\"p\\\", \\\"destructive\\\": true, \\\"issued_at\\\": \\\"2026-09-16T20:00:00Z\\\", \\\"expires_at\\\": \\\"2026-09-17T20:00:00Z\\\", \\\"key_id\\\": \\\"k\\\",  \\\"extra\\\": 1}\"}") {
+  match parse_submission_envelope(text: "{\"tag\":\"00\",\"request\":\"{\\\"kind\\\": \\\"request\\\", \\\"escalation_id\\\": \\\"e\\\", \\\"request_revision\\\": \\\"r\\\", \\\"attempt\\\": \\\"a\\\", \\\"requester\\\": \\\"q\\\", \\\"purpose\\\": \\\"p\\\", \\\"destructive\\\": true, \\\"issued_at\\\": \\\"2026-09-16T20:00:00Z\\\", \\\"expires_at\\\": \\\"2026-09-17T20:00:00Z\\\", \\\"key_id\\\": \\\"k\\\", \\\"authority\\\": \\\"gunbc.auth.approval_capability\\\",  \\\"extra\\\": 1}\"}") {
     SubmissionEnvelopeUnreadable { detail: _ } => true
     SubmissionEnvelopeParsed { tag_hex: _, request: _ } => false
   }
@@ -90,6 +106,18 @@ test fn a_correctly_signed_submission_is_admitted_and_a_wrong_key_is_not_enrolle
     && match admit(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: other }) { SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true  _ => false }
     && match admit(text: signed_envelope(), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-submission-mac-key" } }) { SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: _ } } => true  _ => false }
     && match admit(text: "garbage", keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: _ } } => true  _ => false }
+}
+
+test fn a_signed_request_for_a_foreign_authority_is_refused_before_the_operator_sees_it() -> Bool {
+  match sign_submission(key: submission_key(), request: request_foreign_authority()) {
+    MacSigned { tag: t } =>
+      match admit_approval_submission(text: submission_envelope_json(request: request_foreign_authority(), tag_hex: t.hex), keyring: ApprovalKeyLoaded { key: submission_key() }) {
+        SubmissionAuthorityRefused { requester: rq, authority: a } =>
+          rq == request_foreign_authority().requester && a == request_foreign_authority().authority
+        _ => false
+      }
+    MacKeyMaterialNotHex { key_id: _ } => false
+  }
 }
 
 // THE CAPABILITY KEY MUST NOT FILE: a runner holding only the key that mints consent is exactly

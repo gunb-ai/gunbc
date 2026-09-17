@@ -21,12 +21,12 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
 import gunbc.auth.approval_request_client {
   stored_request_from_authorization, sign_stored_request,
   approval_submit_url, approval_status_url,
-  approval_poll_standing, approval_post_admits_poll,
+  approval_poll_standing,
   SubmissionMacReady, SubmissionMacKeyNotHex,
   PollStillPending,
 }
 import gunbc.auth.approval_status_wire {
-  parse_filed_approval_status, FiledApprovalStatus, StatusUnreadable,
+  parse_filed_approval_status, FiledApprovalStatus, StatusUnreadable, submission_body_admits_poll,
 }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
@@ -391,7 +391,9 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
             max_seconds: to_string(second_count(s: mtcollins1_boot_submit_timeout)) as NonEmptyStr,
           )
           let _wiped = Filesystem.Delete(path: body_path)
-          if !approval_post_admits_poll(success: posted.success, body: posted.body) {
+          // HTTP success is not filing standing (409 already-filed and 502 after a durable write
+          // still poll). The filed= token is the admit.
+          if !submission_body_admits_poll(body: posted.body) {
             return exit_failure(reason: concat("mtcollins1 boot: POST /approvals refused; controller untouched; ", posted.body))
           }
           let gate = mtcollins1_boot_poll_ticks(

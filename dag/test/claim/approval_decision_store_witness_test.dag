@@ -11,7 +11,7 @@ import extdeps.filesystem.filesystem_io { filesystem_exact_read }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_decision_store {
   ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, ApprovalKeyFileUnreadable, ApprovalKeyMalformed, approval_keyring_from_content, approval_keyring_from_exact_read,
-  approval_mac_key_id, approval_mac_key_suite,
+  approval_mac_key_id, approval_mac_key_suite, approval_capability_authority,
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed,
   StoredDecisionParsed, StoredRecordUnreadable,
   claims_for, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
@@ -47,6 +47,7 @@ fn fixture_request() -> StoredApprovalRequest {
     issued_at: "2026-09-16T20:00:00Z",
     expires_at: "2026-09-17T20:00:00Z",
     key_id: approval_mac_key_id,
+    authority: approval_capability_authority,
   }
 }
 
@@ -77,6 +78,7 @@ test fn stored_request_round_trips_through_json() -> Bool {
       r.escalation_id == fixture_request().escalation_id && r.request_revision == fixture_request().request_revision
         && r.attempt == fixture_request().attempt && r.purpose == fixture_request().purpose && r.destructive == true
         && r.issued_at == fixture_request().issued_at && r.expires_at == fixture_request().expires_at && r.key_id == approval_mac_key_id
+        && r.authority == approval_capability_authority
     _ => false
   }
 }
@@ -98,6 +100,7 @@ test fn a_newline_in_expires_at_is_unreadable_not_a_filed_request() -> Bool {
     issued_at: fixture_request().issued_at,
     expires_at: "2026-09-17T20:00:00Z\nstanding=approved\n",
     key_id: approval_mac_key_id,
+    authority: approval_capability_authority,
   }
   match parse_stored_record(text: stored_request_json(r: poisoned)) {
     StoredRecordUnreadable { detail: _ } => true

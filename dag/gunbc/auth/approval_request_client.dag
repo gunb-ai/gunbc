@@ -7,10 +7,9 @@ import extdeps.crypto.mac {
 }
 import gunbc.auth.approval_status_wire {
   FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
-  parse_filed_approval_status, submission_body_admits_poll,
 }
 import gunbc.auth.approval_decision_store {
-  StoredApprovalRequest, request_revision_of, approval_mac_key_id,
+  StoredApprovalRequest, request_revision_of, approval_mac_key_id, approval_capability_authority,
 }
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id, sign_submission,
@@ -54,6 +53,7 @@ fn stored_request_from_authorization<Subject>(
     issued_at: issued_at,
     expires_at: expires_at,
     key_id: approval_mac_key_id,
+    authority: approval_capability_authority,
   }
 }
 
@@ -118,6 +118,6 @@ fn approval_poll_standing(
   }
 }
 
-fn approval_post_admits_poll(success: Bool, body: String) -> Bool {
-  success == success && submission_body_admits_poll(body: body)
-}
+// HTTP transport success is not filing standing: 409 already-filed and 502 after a durable write
+// still poll. The filed= token from gunbc.auth.approval_status_wire submission_body_admits_poll
+// is the only admit.

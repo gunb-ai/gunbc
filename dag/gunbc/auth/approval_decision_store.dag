@@ -268,6 +268,7 @@ type StoredApprovalRequest {
   issued_at: Timestamp
   expires_at: Timestamp
   key_id: MacKeyId
+  authority: NonEmptyStr
 }
 
 fn stored_request_json(r: StoredApprovalRequest) -> String {
@@ -282,6 +283,7 @@ fn stored_request_json(r: StoredApprovalRequest) -> String {
     json_kv(key: "issued_at", value: json_string(s: r.issued_at)),
     json_kv(key: "expires_at", value: json_string(s: r.expires_at)),
     json_kv(key: "key_id", value: json_string(s: r.key_id as String)),
+    json_kv(key: "authority", value: json_string(s: r.authority as String)),
   ]))
 }
 
@@ -366,24 +368,28 @@ fn parse_stored_request(v: JsonValue) -> StoredRecordParse {
                   Absent => StoredRecordUnreadable { detail: "stored request lacks expires_at" }
                   Present { value: expires } => match json_field_string(v: v, key: "key_id") {
                     Absent => StoredRecordUnreadable { detail: "stored request lacks key_id" }
-                    Present { value: kid } =>
-                      if !utc_instant_is_canonical(t: issued as Timestamp) {
-                        StoredRecordUnreadable { detail: "stored request issued_at is not a canonical UTC instant" }
-                      } else if !utc_instant_is_canonical(t: expires as Timestamp) {
-                        StoredRecordUnreadable { detail: "stored request expires_at is not a canonical UTC instant" }
-                      } else {
-                        StoredRequestParsed { request: StoredApprovalRequest {
-                          escalation_id: e as NonEmptyStr,
-                          request_revision: rev as NonEmptyStr,
-                          attempt: att as AttemptIdentity,
-                          requester: req as NonEmptyStr,
-                          purpose: purpose as NonEmptyStr,
-                          destructive: destructive,
-                          issued_at: issued,
-                          expires_at: expires,
-                          key_id: kid as MacKeyId,
-                        } }
-                      }
+                    Present { value: kid } => match json_field_string(v: v, key: "authority") {
+                      Absent => StoredRecordUnreadable { detail: "stored request lacks authority" }
+                      Present { value: auth } =>
+                        if !utc_instant_is_canonical(t: issued as Timestamp) {
+                          StoredRecordUnreadable { detail: "stored request issued_at is not a canonical UTC instant" }
+                        } else if !utc_instant_is_canonical(t: expires as Timestamp) {
+                          StoredRecordUnreadable { detail: "stored request expires_at is not a canonical UTC instant" }
+                        } else {
+                          StoredRequestParsed { request: StoredApprovalRequest {
+                            escalation_id: e as NonEmptyStr,
+                            request_revision: rev as NonEmptyStr,
+                            attempt: att as AttemptIdentity,
+                            requester: req as NonEmptyStr,
+                            purpose: purpose as NonEmptyStr,
+                            destructive: destructive,
+                            issued_at: issued,
+                            expires_at: expires,
+                            key_id: kid as MacKeyId,
+                            authority: auth as NonEmptyStr,
+                          } }
+                        }
+                    }
                   }
                 }
               }
