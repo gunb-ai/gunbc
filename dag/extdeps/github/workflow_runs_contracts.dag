@@ -2,7 +2,7 @@ module extdeps.github.workflow_runs_contracts
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.serialization { CoproductWireContract, StringVariant, SnakeCase }
+import std.serialization { CoproductWireContract, StringVariant, SnakeCase, StripPrefixAndSnakeCase }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -20,4 +20,14 @@ data workflow_run_status_wire_contract: CoproductWireContract = {
 data workflow_run_conclusion_wire_contract: CoproductWireContract = {
   coproduct: DeclarationRef { module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowRunConclusion", field: WholeDeclaration }
   encoding: StringVariant { naming: SnakeCase }
+}
+
+// THE JOBS ENDPOINT'S `filter` IS latest | all, and the variants carry an Attempts prefix because
+// bare Latest and All would be two of the most collidable names available in a tree that resolves
+// bare references. StripPrefixAndSnakeCase is what lets the model keep a readable variant name and
+// still emit the two spellings the upstream accepts, so no hand-written wire fold has to exist
+// beside this contract to disagree with it later.
+data workflow_job_attempt_filter_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobAttemptFilter", field: WholeDeclaration }
+  encoding: StringVariant { naming: StripPrefixAndSnakeCase { prefix: "Attempts" } }
 }

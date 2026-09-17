@@ -9,7 +9,8 @@ import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, Tran
 import extdeps.uri { Uri, Https }
 import extdeps.github.workflow_runs_contracts {
   workflow_run_status_wire_contract,
-  workflow_run_conclusion_wire_contract
+  workflow_run_conclusion_wire_contract,
+  workflow_job_attempt_filter_wire_contract
 }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -129,6 +130,31 @@ type WorkflowRunList {
 // ids, so (run_id, job_id) alone cannot say which attempt an observation belonged to, and a
 // duration compared across attempts is comparing a cold run to a warm one.
 //
+// THE JOBS FILTER IS A CLOSED UPSTREAM VOCABULARY AND WAS MODELLED AS A FREE STRING. GitHub
+// documents `filter` for this endpoint as exactly latest | all, so a String input made "Latest",
+// "all " and "" all representable and sent every one of them to the wire, where a rejected or
+// silently ignored filter changes which attempts a capacity census counts -- the consumer this
+// operation's own annotation names. DESIGN section 4b rung 4 is the standard the neighbours in this
+// tree already meet: extdeps.google.drive models DrivePermissionRole as a coproduct with a wire fold
+// so "Content manager" cannot be written where the wire needs fileOrganizer, extdeps.google.sheets
+// carries SheetsValueRenderOption the same way, and extdeps.github.pulls already defaults a typed
+// input as `state: PullRequestState = Open`. Two variants and a fold make the bad spelling
+// unwritable rather than validated.
+//
+// THE WIRE SPELLING IS NOT WRITTEN HERE. extdeps.github.workflow_runs_contracts
+// workflow_job_attempt_filter_wire_contract carries it as a CoproductWireContract, the same
+// mechanism workflow_run_status_wire_contract already uses for this module's other coproducts, so
+// there is no hand-rolled fold beside the contract to drift from it. The variants carry an Attempts
+// prefix because bare Latest and All are two of the most collidable names in a tree that resolves
+// bare references, and StripPrefixAndSnakeCase turns them back into the latest and all the endpoint
+// documents. `latest` stays the default because it is the upstream's, and it is the right answer for
+// a caller asking what the current state is; a census of consumed capacity wants AttemptsAll,
+// because a re-run mutates a job's record in place and the attempts `latest` drops are execution
+// that really happened and really occupied a runner.
+type WorkflowJobAttemptFilter
+  = AttemptsLatest
+  | AttemptsAll
+
 // A THIRD FIELD WAS DELETED HERE AND STAYS DELETED, and this annotation is the second attempt to
 // settle it. An earlier lane added runner_name because the vendor machine name is corroborating --
 // the Biome baseline job reports "depot-1mw2k81zm2" -- found nothing read it, and deleted it on the
@@ -380,7 +406,7 @@ service github.WorkflowRuns {
       repo: String
       run_id: String
       per_page: Int = max_per_page
-      attempt_filter: String = "latest"
+      attempt_filter: WorkflowJobAttemptFilter = AttemptsLatest
     }
     output {
       result: WorkflowJobRunList
