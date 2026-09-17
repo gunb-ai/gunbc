@@ -1,6 +1,9 @@
 module gunbc.review_sheet_converge_cli
 
 import std.types { NonEmptyStr, String, Bool, Secret, List }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ensure { EnsurePolicy, EnsureMayApply, EnsureObserveOnly }
@@ -265,8 +268,10 @@ fn report_text(r: ReviewSheetConvergeReport) -> String {
 // What is genuinely missing is an argv-free way to reach the GCP steps, whose operations take their
 // token as an operation input because they are shared with consumers this lane does not own. That
 // gap is real and is NOT closed by this deletion -- converge_review_sheet_all remains callable by a
-// caller that can supply a Secret, and the entry point for it lands when those services gain an
-// auth_source read or gunbc.auth.access_token_source grows an in-process reader with a consumer.
+// caller that can supply a Secret. The declarations it alone reaches are rostered, with that
+// trigger, in review_sheet_whole_estate_consumer_frontier_rows at the foot of this module; this
+// annotation deliberately does not restate the set, because the row is the authority and a second
+// copy here would rot against it.
 fn converge_report_exit(report: ReviewSheetConvergeReport) -> ProcessExit {
   if report_is_converged(r: report) {
     ExitSuccess
@@ -341,3 +346,68 @@ fn drive_half_exit(report: DriveHalfReport) -> ProcessExit {
     exit_failure(reason: drive_half_text(r: report))
   }
 }
+
+// THESE DECLARATIONS ARE DANGLING AND THIS IS THE TYPED CARRIER THAT SAYS SO. They were
+// classified in a leading annotation before, which DESIGN section 4c rules out as evidence:
+// no Accepted program can read a comment, so a prose classification is invisible to every
+// consumption check this corpus runs. The rest of this change already uses typed carriers for
+// the same state, and this row makes the two agree. The set below is the exact unreachable
+// closure from this module's entry points, not a sample of it: a frontier that names less than
+// it covers is the defect it was meant to declare.
+data review_sheet_whole_estate_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "ReviewSheetConvergeReport"),
+    reason: "the whole-estate report record: the four converge outcomes a full run would produce. Nothing constructs it but converge_review_sheet_all. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "converge_review_sheet_all"),
+    reason: "the full four-step converge -- both service enablements, the writer service account, and the drive half. It takes a Secret because the GCP half cannot read one in-process. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "converge_report_exit"),
+    reason: "the process exit for that report. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "report_is_converged"),
+    reason: "the whole-report convergence predicate. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "report_text"),
+    reason: "the whole-report operator text. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "service_enable_is_converged"),
+    reason: "service-enablement convergence predicate, reached only through report_is_converged. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "service_account_is_converged"),
+    reason: "service-account convergence predicate, reached only through report_is_converged. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "service_enable_text"),
+    reason: "service-enablement operator text, reached only through report_text. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "service_account_text"),
+    reason: "service-account operator text, reached only through report_text. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "review_sheet_writer_account_id"),
+    reason: "the writer account id the service-account create would request. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_converge_cli", decl_name: "review_sheet_writer_display_name"),
+    reason: "the writer display name the service-account create would request. the GCP operations this subtree calls take their token as an operation input (auth: Bearer with auth_input) because they are shared with consumers this lane does not own, so no argv-free entry can reach them. The capability that dissolves this row is an in-process credential read for those services -- an auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or gunbc.auth.access_token_source growing an in-process reader -- landing together with the entry point that calls this declaration. Drive and Sheets already have that read, which is why the drive half has a working argv-free entry and this half does not",
+    dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
+  )
+]
