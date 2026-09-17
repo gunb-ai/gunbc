@@ -13,7 +13,7 @@ pub use crate::v1_compiler_languages::{language_spec_for_target, test_convention
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CompilerDiagnostic::ModuleFilenameCollision;
+use crate::v1_std_core::CompilerDiagnostic::{EmittedSymbolCollision, ModuleFilenameCollision};
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
@@ -796,4 +796,100 @@ pub fn is_type_decl_item(
             && ((item.params.clone().len() as i64) > 0))
             && (item.body.clone() == std::option::Option::None))
             && ((item.children.clone().len() as i64) == 0)))
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmittedSymbolBinding {
+    pub symbol: String,
+    pub identity: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmittedSymbolOwners {
+    pub owners: Rc<HashMap<String, String>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn emitted_symbol_bindings_for_item(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<EmittedSymbolBinding>>> {
+    let name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+    if item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemService {
+        Rc::new(vec![Rc::new(EmittedSymbolBinding {
+            symbol: sanitize_service_name(name.clone()),
+            identity: v1_rt::concat("service ".to_string(), name.clone()),
+        })])
+    } else if ((is_type_def_item(item.clone())
+        || is_type_alias_item(item.clone(), source_indices.clone()))
+        || is_type_decl_item(item.clone(), source_indices.clone()))
+    {
+        Rc::new(vec![Rc::new(EmittedSymbolBinding {
+            symbol: name.clone(),
+            identity: v1_rt::concat("type ".to_string(), name.clone()),
+        })])
+    } else {
+        Rc::new(vec![])
+    }
+}
+
+pub fn emitted_symbol_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for tm in typed.modules.clone().iter().cloned() {
+            let source_indices = tm.type_env.clone().source_indices.clone();
+            let module_name =
+                crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone());
+            let result = tm.items.clone().iter().cloned().fold(
+                Rc::new(EmittedSymbolOwners {
+                    owners: v1_rt::rc_empty_map::<String, String>(),
+                    diagnostics: Rc::new(vec![]),
+                }),
+                |acc: Rc<EmittedSymbolOwners>, item: Rc<Node>| {
+                    emitted_symbol_bindings_for_item(item.clone(), source_indices.clone())
+                        .iter()
+                        .cloned()
+                        .fold(acc, |inner: Rc<EmittedSymbolOwners>, binding: Rc<EmittedSymbolBinding>| {
+                            match v1_rt::map_get(&inner.owners.clone(), binding.symbol.clone()) {
+                                Some(owner) => {
+                                    if (owner.clone() == binding.identity.clone()) {
+                                        inner.clone()
+                                    } else {
+                                        Rc::new(EmittedSymbolOwners {
+                                            owners: inner.owners.clone(),
+                                            diagnostics: v1_rt::rc_list_push(
+                                                inner.diagnostics.clone(),
+                                                crate::v1_std_core::make_error_node(
+                                                    Rc::new(
+                                                        CompilerDiagnostic::EmittedSymbolCollision {
+                                                            symbol: binding.symbol.clone(),
+                                                            identities: Rc::new(vec![
+                                                                owner.clone(),
+                                                                binding.identity.clone(),
+                                                            ]),
+                                                            span: item.clone().span.clone(),
+                                                        },
+                                                    ),
+                                                    module_name.clone(),
+                                                ),
+                                            ),
+                                        })
+                                    }
+                                }
+                                std::option::Option::None => Rc::new(EmittedSymbolOwners {
+                                    owners: v1_rt::rc_map_insert(
+                                        inner.owners.clone(),
+                                        binding.symbol.clone(),
+                                        binding.identity.clone(),
+                                    ),
+                                    diagnostics: inner.diagnostics.clone(),
+                                }),
+                            }
+                        })
+                },
+            );
+            __result.extend((*result.diagnostics.clone()).iter().cloned());
+        }
+        __result
+    })
 }
