@@ -325,10 +325,6 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
   }
 }
 
-test fn witness_actuator_automatic_selection_refuses_with_standing_reason() -> Bool {
-  witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
-}
-
 test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
   match dispatch_actuator_selection_for_provider(
     provider: ClaudeCodeProvider,

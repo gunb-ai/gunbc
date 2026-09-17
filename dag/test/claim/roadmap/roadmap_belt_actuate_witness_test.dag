@@ -996,16 +996,6 @@ test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording
   }
 }
 
-test fn codex_provider_v0_preflight_keystone_holds() -> Bool {
-  witness_codex_preflight_refuses_missing_cli_before_auth()
-    && witness_codex_preflight_refuses_missing_env_binding()
-    && witness_codex_preflight_separates_broken_runtime_from_auth()
-    && witness_codex_preflight_refuses_wrong_executable_identity()
-    && witness_codex_preflight_refuses_login_status_nonzero()
-    && witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording()
-    && witness_fresh_spawn_wire_names_selected_provider()
-}
-
 // This witness exists because its subject SHIPPED BROKEN while a whole-tree compile reported 0
 // blocking errors. belt_oracle_refs_for_contract called filter_map, a primitive std.primitives
 // declares a contract for and the seed implements nothing for, so the call type-checked and died
