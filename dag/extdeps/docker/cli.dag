@@ -217,6 +217,20 @@ fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["images", "--no-trunc", "--quiet", image as String])
 }
 
+// SAVE AND LOAD ARE THE IMAGE'S BYTE TRANSPORT BETWEEN HOSTS THAT SHARE NO REGISTRY. `docker save
+// -o <path> <image>` writes the image and its metadata as a tar; `docker load -i <path>` reads it
+// back and preserves the image's config digest, which is what makes the delivered identity
+// checkable against the source's readback rather than against the tar's name. Modeled when the
+// GLM derived image needed to leave its build host (2026-09-17): the fleet runs no registry, and
+// rebuilding per host re-pays a two-hour compile for a fact one host already holds.
+fn docker_image_save_command(image: NonEmptyStr, output_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["save", "-o", output_path as String, image as String])
+}
+
+fn docker_image_load_command(input_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["load", "-i", input_path as String])
+}
+
 // DIGEST-PINNED IDENTITY. `docker image inspect <ref>` names repo@sha256:... and prints a JSON
 // array of image objects. The local config id is the unique `Id` member of the single element,
 // read by docker_image_inspect_id_from_stdout (extdeps.languages.json.parse). No --format: a Go

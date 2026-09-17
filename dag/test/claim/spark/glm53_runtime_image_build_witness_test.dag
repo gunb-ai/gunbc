@@ -8,8 +8,13 @@ import gunbc.spark.vllm_runtime_image_build {
   glm53_derived_key, glm53_derived_tag, glm53_derived_dockerfile, glm53_derived_prepare_script,
   glm53_derived_build_spec, glm53_derived_context_dir, glm53_derived_prepare_steps,
   glm53_derived_prepare_script_path, glm53_derived_dockerfile_path,
+  vllm_image_transfer_tar_path, vllm_image_distribution_targets,
 }
 import gunbc.remote_operation { remote_operation_count, remote_operation_file_write_count, remote_operation_argv }
+import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }
+import product.placement_supply { host_identity_eq }
+import extdeps.docker.cli { docker_image_save_command, docker_image_load_command }
+import extdeps.ssh.openssh_client_commands { scp_download_command, scp_upload_command }
 import extdeps.vllm.source_build {
   vllm_8d09804_sm121_recipe, vllm_glm_5_3_flash_sm121_revision, vllm_07b75534_aarch64_release_recipe,
 }
@@ -97,4 +102,56 @@ test fn the_derived_build_spec_selects_the_named_stage() -> Bool {
     && (spec.platform as String) == "linux/arm64"
     && spec.build_args.length() == 0
     && string_contains(s: spec.dockerfile as String, pattern: glm53_derived_context_dir() as String)
+}
+
+// ── DISTRIBUTION ─────────────────────────────────────────────────────────────────────────────
+
+// THE TRANSFER TAR IS CONTENT-NAMED: the derived image's build key is in the path, so a stale tar
+// from another build cannot wear this one's name on any host it passes through.
+test fn the_transfer_tar_path_is_content_named() -> Bool {
+  let key = glm53_derived_key(base_key: vllm_image_build_key(r: vllm_8d09804_sm121_recipe))
+  let p = vllm_image_transfer_tar_path(build_key: key)
+  string_contains(s: p as String, pattern: serialize_content_hash(hash: key) as String)
+    && string_contains(s: p as String, pattern: ".tar")
+}
+
+// THE SAVE AND LOAD ARGV ARE UPSTREAM'S OWN VERBS with the paths where upstream reads them.
+test fn the_save_and_load_argv_are_dockers_own_verbs() -> Bool {
+  let save = docker_image_save_command(image: "img:tag" as NonEmptyStr, output_path: "/tmp/x.tar" as NonEmptyStr)
+  let load = docker_image_load_command(input_path: "/tmp/x.tar" as NonEmptyStr)
+  save.arguments.length() == 4
+    && save.arguments.skip(n: 1).first() == "-o"
+    && save.arguments.skip(n: 2).first() == "/tmp/x.tar"
+    && save.arguments.skip(n: 3).first() == "img:tag"
+    && load.arguments.length() == 3
+    && load.arguments.first() == "load"
+    && load.arguments.skip(n: 1).first() == "-i"
+    && load.arguments.skip(n: 2).first() == "/tmp/x.tar"
+}
+
+// THE scp OPERANDS KEEP THEIR DIRECTION: download carries the remote operand first, upload
+// carries it last, and both put the trust words ahead of everything -- an scp with the operands
+// transposed moves bytes the wrong way, which is exactly the red this claim exists to catch.
+test fn the_scp_operand_direction_is_fixed() -> Bool {
+  let trust = ["-o", "StrictHostKeyChecking=yes"]
+  let down = scp_download_command(trust_words: trust, principal: "exec" as NonEmptyStr, endpoint: "h1" as NonEmptyStr, remote_path: "/tmp/r.tar" as NonEmptyStr, local_path: "/tmp/l.tar" as NonEmptyStr)
+  let up = scp_upload_command(trust_words: trust, principal: "exec" as NonEmptyStr, endpoint: "h1" as NonEmptyStr, local_path: "/tmp/l.tar" as NonEmptyStr, remote_path: "/tmp/r.tar" as NonEmptyStr)
+  down.arguments.length() == 4
+    && down.arguments.first() == "-o"
+    && down.arguments.skip(n: 2).first() == "exec@h1:/tmp/r.tar"
+    && down.arguments.skip(n: 3).first() == "/tmp/l.tar"
+    && up.arguments.length() == 4
+    && up.arguments.skip(n: 2).first() == "/tmp/l.tar"
+    && up.arguments.skip(n: 3).first() == "exec@h1:/tmp/r.tar"
+}
+
+// THE DISTRIBUTION ROSTER IS THE ARM MINUS THE SOURCE: delivering to the host that built the
+// image would move 33GB to no end, and dropping any other member leaves a rank unable to start.
+test fn the_distribution_roster_excludes_exactly_the_source() -> Bool {
+  let hosts = glm_native_ranked_hosts()
+  let source = hosts.first()
+  let targets = vllm_image_distribution_targets(source: source)
+  targets.length() == hosts.length() - 1
+    && !any(targets, h => host_identity_eq(a: h, b: source))
+    && all(hosts, h => host_identity_eq(a: h, b: source) || any(targets, t => host_identity_eq(a: t, b: h)))
 }
