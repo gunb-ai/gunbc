@@ -53,6 +53,7 @@ import gunbc.runner_slot_retirement {
   retirement_observation_from_readings,
   authorized_retirement_actuation,
   cgroup_occupancy_from_reads,
+  control_group_property_means_cgroup_absent,
   transition_interruption_coverage,
   TransitionFullyPermitted,
   TransitionRetireesNotPermitted,
@@ -487,6 +488,26 @@ test fn inhibited_but_service_still_running_is_not_retired() -> Bool {
     RetirementComplete { unit: _ } => false
     RetirementUnobserved { unit: _, cause: _ } => false
   }
+}
+
+// A SUCCESSFULLY READ EMPTY ControlGroup IS ABSENCE. The live remainder trees on srv1 report a blank
+// path because they have no workload cgroup; treating that as unobserved withheld the inhibitor.
+test fn an_empty_control_group_path_is_cgroup_absent() -> Bool {
+  control_group_property_means_cgroup_absent(value: "")
+    && control_group_property_means_cgroup_absent(value: "   ")
+    && !control_group_property_means_cgroup_absent(value: "/system.slice/actions-runner@srv1-22.service")
+    && match runner_retirement_standing(
+      o: retirement_observation_from_readings(
+        unit: "actions-runner@srv1-22.service" as NonEmptyStr,
+        unit_file_state: "disabled",
+        active_state: "inactive",
+        occupancy: CgroupAbsent,
+      ),
+    ) {
+      RetirementPendingDrain { unit: _, cause: _ } => true
+      RetirementComplete { unit: _ } => false
+      RetirementUnobserved { unit: _, cause: _ } => false
+    }
 }
 
 // A UNIT MID-STOP IS STILL RUNNING. `deactivating` is the window in which the unit has been asked to

@@ -593,6 +593,15 @@ fn cgroup_occupancy_from_reads(
   }
 }
 
+// AN EMPTY ControlGroup IS ABSENCE, NOT DOUBT. systemd reports a blank path for a unit that has no
+// workload cgroup -- stopped, not-found, or never started. Plan 35233964848 read srv1-22..50 as
+// RetirementUnobserved on that blank, so mask --now was withheld for the exact trees the membership
+// reconcile had already named REMOVE. A refused property read stays unobserved; a successfully read
+// empty path is CgroupAbsent.
+fn control_group_property_means_cgroup_absent(value: String) -> Bool {
+  trim(s: value) == ""
+}
+
 // THE I/O HALF. It performs at most two reads and decides nothing: the second read is skipped when the
 // directory test says the cgroup is gone, because there is no file to read and a refusal there would
 // be reported as doubt about a question already answered.
@@ -605,8 +614,8 @@ fn observe_slot_cgroup_occupancy(
       CgroupUnobserved { cause: join(["the unit's ControlGroup property could not be read: ", r], "") }
     SystemdPropertyCaptured { value: rel } => {
       let relative = trim(s: rel)
-      if relative == "" {
-        CgroupUnobserved { cause: "the unit reported an empty ControlGroup path, so its workload cgroup identity is unknown" }
+      if control_group_property_means_cgroup_absent(value: relative) {
+        CgroupAbsent
       } else {
         let cgroup_path = join([gunbc_cgroup_v2_root, relative], "") as NonEmptyStr
         let dir = host_operation_exec(transport: transport, operation: CgroupPathIsDirectory { path: cgroup_path })
