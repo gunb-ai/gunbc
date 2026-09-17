@@ -46,33 +46,58 @@ import extdeps.docker.cli { DockerCreateSpec }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
-// ── THIS MODULE IS EXPENSIVE, AND IT STAYS ON THE EXECUTING FLOOR ANYWAY ──────────────────────
+// ── THIS MODULE DOES NOT RUN ON THE MERGE PATH, AND HERE IS EXACTLY WHAT THAT COSTS ───────────
 //
-// EVERY ROW HERE DECODES AT LEAST ONE 18 KB `docker inspect` DOCUMENT. `required-floor-claim-cost` on
-// run 35150370426 measured that at 523-554 ms CPU for one document and 2.1-2.2 s for four, against an
-// enrolment margin of 302 ms (`v2.workflow.floor_enrolment_margin` floor_enrolment_margin_budget_ms,
-// derived from the 500 ms per-subject line). The cost is the JSON parse of a real captured document
-// and it does not move when the assertions move.
+// A READER MUST NOT BE ABLE TO MISTAKE THESE ROWS FOR A WALL. They pass, they are real, and they are
+// the only place several folds execute at all -- but nothing on the required floor runs them, so
+// citing this module as per-PR coverage would be citing a check that did not run. That sentence is
+// the whole reason this block is written out rather than summarised.
 //
-// THE LONG HOME WAS TRIED AND IS THE WRONG INSTRUMENT, which is worth recording because it looks
-// right. `test.claim.long.` buys the margin exemption -- but `gunbc.ci.ci_layer_roots` also carries a
-// blanket `test/claim/long/` exclusion at dir grain that REMOVES those entries from per-PR discovery.
-// Moving the discriminating rows there would have bought a green floor by making the wall execute
-// nowhere, which is DESIGN section 6's inert lens: the machinery exists and nothing gates on it. These
-// rows are the only place `relaunch_delta`, `transport_flipped` and the container decoder run at all,
-// and they are the pairing obligation of section 3 being discharged over real captured bytes.
+// WHAT DOES RUN ON THE MERGE PATH, and it is not nothing:
+// `test.claim.spark.relaunch_hostconfig_witness_test` decodes REAL daemon output --
+// `docker inspect --format` over `.HostConfig`, 1.6 KB, fresh stdout for the socket incarnation --
+// and asserts the three fields this incident was about: the `/dev/infiniband` device mapping, the
+// canonicalized `CAP_IPC_LOCK` capability, and the unlimited memlock ulimit, in both directions over
+// the socket/RoCE pair. It also runs `container_inspect_from_stdout` itself on its refusal arm. So
+// deleting the container decoder reddens the floor, and DESIGN section 3's test for supplied inputs
+// -- deleting the integration must make a control fail -- is met there rather than here.
 //
-// SO THE COST IS DECLARED RATHER THAN HIDDEN. `v2.workflow.floor_cost_debt_admission`
-// floor_cost_debt_typed_admission_attempts is the instrument the corpus reserves for exactly this --
-// its own note says the first identity that would otherwise be appended as a string is authored there
-// and nowhere else -- and it takes a MEASURED reading per identity. See this module's rows in that
-// list; a reading authored from an estimate rather than from an execution would be the fabricated
-// figure this whole change exists to make impossible.
+// WHAT THESE ROWS ESTABLISH THAT NOTHING ON THE MERGE PATH DOES, named so the gap is countable:
+//   - whole-document decode inhabitance: that `container_inspect_from_stdout` ACCEPTS a real
+//     `docker inspect` document and produces a ContainerInspect, as opposed to refusing a subtree;
+//   - the argv readback -- the node rank, the batching bound and the utilization fraction read back
+//     out of `Config.Cmd`;
+//   - the delta comparison between the launch planner's successor spec and an observed incarnation,
+//     including every axis attribution and the off-axis refusal;
+//   - the transport flip and the successor standing that decides commit versus rollback;
+//   - the agreement between the archived RoCE narrow selection and the document it was selected from,
+//     which is what licenses the cheap module's RoCE rows.
 //
-// WHAT IS NOT DONE: the captures are not trimmed. A verbatim capture cut down to parse under a budget
-// is an authored fixture wearing a receipt's name. The rows whose subject is the same captures read as
-// TEXT cost 0-33 ms and live in `test.claim.spark.relaunch_vertical_witness_test`; they are a separate
-// module so this one's declared cost is scoped to the rows that actually incur it.
+// THE REASON IS MEASURED AND IT IS THE PARSE, NOT THE ASSERTIONS. The required floor bounds eval
+// steps at about 72,300 for a new identity. Every row here decodes at least one 18 KB captured
+// document and reads 405,451 to 1,593,069 steps; a row asserting one field of a decoded container
+// costs 405,497 and a row asserting six costs 406,072, so the cost does not move when the assertions
+// do. The narrower `.HostConfig` question was taken where it could be -- that is what the sibling
+// module is -- and the rows above genuinely need the whole document.
+//
+// TRIGGER, NAMED AS A CAPABILITY RATHER THAN AN ARTIFACT: a floor cadence that can admit a
+// whole-document parse -- an executing consumer whose eval-step envelope accommodates a
+// several-hundred-thousand-step claim, whatever form it takes. SUFFICIENT FOR: these rows run on the
+// merge path and this declaration deletes. A cheaper capture does NOT retire it and must not be
+// offered as if it did: trimming a capture until it parses under a budget turns a receipt into the
+// authored fixture this whole change exists to replace, and the narrow captures are already the
+// honest end of that road -- the daemon answering a narrower question, not a file cut down.
+//
+// STANDING TODAY: every row here executes by local recipe and is run that way, printing the same
+// per-row `cpu`/`eval_steps` reading `required-floor-claim-cost` publishes:
+//
+//   ROWS=$(grep -oP '^test fn \K[a-z0-9_]+(?=\(\))' \
+//     dag/test/claim/spark/relaunch_capture_witness_test.dag | paste -sd,)
+//   claim_batch --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/spark/relaunch_capture_witness_test.dag --functions "$ROWS"
+//
+// That is a cadence a person runs, not one the merge path runs, and the difference is the whole
+// content of this declaration.
 
 // ── THE SUBJECT IS NINE FILES OF VERBATIM COMMAND OUTPUT, NOT TEXT AN AUTHOR WROTE ────────────
 //

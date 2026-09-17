@@ -8,6 +8,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.docker.container_inspect {
   HostConfig, HostConfigRead, HostConfigDecoded, HostConfigMalformed, docker_inspect_host_config,
+  ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable, container_inspect_from_stdout,
   DockerInspectDevice, DockerInspectUlimit, docker_capability_canonical, docker_memlock_ulimit_name,
 }
 
@@ -167,6 +168,38 @@ fn provenance_is_daemon(c: NarrowCapture) -> Bool {
     DaemonStdout { command: _, observed_on: _ } => true
     SelectedFromArchivedCapture { source_capture: _, selected_subtree: _ } => false
   }
+}
+
+// ── THE WHOLE-DOCUMENT ENTRY POINT ALSO EXECUTES HERE, AND THIS ROW IS WHY ────────────────────
+//
+// WHAT THE ROWS ABOVE DO NOT COVER, STATED BEFORE SOMEONE READS THEM AS COVERING IT. They call
+// `docker_inspect_host_config` directly, on a `HostConfig` document. The PRODUCTION path --
+// gunbc.spark.serving_rank_observe observe_rank_container -- calls `container_inspect_from_stdout`,
+// which takes the whole one-element-array inspect document, and no small REAL document of that shape
+// exists: the daemon's narrow format answers with the subtree, not with a container object.
+//
+// SO THE ENTRY POINT IS EXERCISED ON ITS REFUSAL ARM, over real bytes, for real. Handing it a genuine
+// captured `HostConfig` document -- a real thing, of the wrong shape -- must refuse.
+//
+// THE ACCEPTING HALF OF THE PAIR IS `w_the_fresh_socket_host_configs_decode`, on the SAME bytes, and
+// it is a sibling row rather than a conjunct here for a measured reason: both in one row parses the
+// document twice and costs 95,856 steps against the floor's ~72,300 bound, while each alone is under
+// it. The pair is what makes this a discrimination rather than a smoke test -- an entry point that
+// accepted anything fails this row, and one that refused everything is caught by its sibling -- and
+// both halves run on the same floor over the same file.
+//
+// IT DOES NOT ESTABLISH THE HAPPY PATH. Whole-document decode inhabitance lives with the rows that
+// pay the whole-document parse, and this module does not claim otherwise.
+test fn w_the_whole_document_entry_refuses_a_subtree_and_the_subtree_decoder_accepts_it() -> Bool {
+  captures_present()
+    && match read_capture(c: socket_rank0_hostconfig) {
+      CaptureUnread { path: _ } => false
+      CaptureBytes { text: t } =>
+        match container_inspect_from_stdout(stdout: t) {
+          ContainerInspectDecoded { container: _ } => false
+          ContainerInspectUnreadable { cause: _ } => true
+        }
+    }
 }
 
 // ── THE DISCRIMINATING PAIR, ON THE FLOOR ─────────────────────────────────────────────────────
