@@ -1,6 +1,6 @@
 module test.claim.roadmap_dashboard_instance_apply_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath, GitRef, CommitSha }
+import std.types { Bool, String, NonEmptyStr, FilePath, GitRef }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_is_shallow_repository_argv,
@@ -10,11 +10,6 @@ import extdeps.git {
   shape_git_bare_fetch_argv,
   shape_git_bare_update_ref_argv,
   shape_git_clone_branch_argv,
-}
-import extdeps.tmux {
-  classify_tmux_has_session,
-  shape_tmux_has_session_argv_for,
-  shape_tmux_new_session_argv_for,
 }
 import extdeps.ssh.session { shape_scp_copy_to_argv }
 import extdeps.llm.cli {
@@ -28,13 +23,9 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
-  dashboard_instance_service_session_name,
-  dashboard_instance_checkout_branch,
-  dashboard_instance_serve_argv,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan_rows,
   dashboard_instance_dispatch_platform_executables,
-  dashboard_instance_dispatch_attempt_state_root,
 }
 import gunbc.roadmap_dashboard_instance_apply {
   DashboardProductionPeer,
@@ -71,14 +62,6 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_apply_preflight_json_value,
   dashboard_bootstrap_preflight_decision,
   dashboard_required_target_executables,
-  dashboard_health_poll_seconds,
-  dashboard_health_poll_attempts,
-  dashboard_service_session_ensure_decision,
-  dashboard_ensure_service_new_session_argv,
-  DashboardServiceSessionEnsureDecision,
-  EnsureCreateServiceSession,
-  EnsureReplaceServiceSession,
-  EnsureRefuseServiceSession,
 }
 import gunbc.roadmap_dashboard_instance_observe {
   DashboardExecResult,
@@ -201,55 +184,6 @@ test fn dashboard_local_origin_ref_translation_is_exact() -> Bool {
     ]
 }
 
-test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  let session = dashboard_instance_service_session_name(instance: lab)
-  shape_tmux_has_session_argv_for(
-    scope: lab.tmux_server,
-    session_name: session as String,
-  ) == [
-    "-L",
-    "srv1-lab-codex-feedback-v0",
-    "has-session",
-    "-t",
-    "gunbc-dashboard-srv1-lab-codex-feedback-v0",
-  ]
-    && shape_tmux_new_session_argv_for(
-      scope: lab.tmux_server,
-      session_name: session as String,
-      working_dir: lab.repo_root as String,
-      inner_argv: concat(
-        [lab.serve_binary as String],
-        dashboard_instance_serve_argv(instance: lab, release_revision: "0123abcd"),
-      ),
-    ) == [
-      "-L",
-      "srv1-lab-codex-feedback-v0",
-      "new-session",
-      "-d",
-      "-s",
-      "gunbc-dashboard-srv1-lab-codex-feedback-v0",
-      "-c",
-      "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source",
-      "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/bin/gunbc",
-      "serve",
-      "--source-root",
-      "dag",
-      "--source-root",
-      "src/v2",
-      "--entry",
-      "dag/gunbc/roadmap/roadmap_serve.dag",
-      "--function",
-      "roadmap_serve_handle_srv1_lab",
-      "--host",
-      "0.0.0.0",
-      "--port",
-      "18081",
-      "--release-revision",
-      "0123abcd",
-    ]
-}
-
 test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   match dashboard_instance_provider_executable(instance: lab) {
@@ -315,6 +249,7 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
   )
     && count(required) == 16
     && any(required, path => path == ("/usr/bin/sh" as FilePath))
+    && any(required, path => path == ("/usr/bin/tmux" as FilePath))
     && any(required, path => path == ("/usr/bin/tee" as FilePath))
     && any(required, path => path == ("/usr/bin/env" as FilePath))
     && any(required, path => path == ("/usr/bin/install" as FilePath))
@@ -334,21 +269,6 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
       required,
       path => path == ("/home/briansrls/.cargo/bin/rustfmt" as FilePath),
     )
-}
-
-// This witness exists because a data row can typecheck and still fail to EVALUATE:
-// dashboard_health_poll_seconds was authored as `2 as Seconds` and no single-entry witness run
-// forced the row, so it went green locally and reded only in CI's affected-set re-eval leg, which
-// evaluates changed data items (`cannot cast Int to Seconds` — the interpreter has no cast into a
-// branded scalar; the corpus idiom is a bare literal, as in
-// srv3_install_hang_no_installer_progress_ms: Milliseconds). Reading the value here forces the
-// evaluation locally, so the same authoring mistake reds in the witness run rather than 15 minutes
-// into the floor.
-
-test fn dashboard_poll_interval_is_a_usable_duration() -> Bool {
-  dashboard_health_poll_seconds == 2
-    && to_string(dashboard_health_poll_seconds) == "2"
-    && dashboard_health_poll_attempts == 31
 }
 
 // review 44058. The served document is the oracle, so the green arm feeds dashboard_instance_json's
@@ -388,21 +308,15 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  count(rows) == 16
+  count(rows) == 14
     && any(rows, row => row.kind == "ensure-provider-state-root")
     && any(rows, row => row.kind == "ensure-serve-binary")
     && any(rows, row => row.kind == "hydrate-controller-history")
     && any(rows, row => row.kind == "prepare-git-bundle")
     && any(rows, row => row.kind == "stage-git-bundle")
-    && any(
-      rows,
-      row =>
-        row.kind == "ensure-directory"
-          && row.target == dashboard_instance_dispatch_attempt_state_root(instance: lab) as String,
-    )
     && any(rows, row => row.kind == "verify-provider-runtime")
     && any(rows, row => row.kind == "verify-provider-auth")
-    && any(rows, row => row.kind == "verify-health")
+    && !any(rows, row => row.kind == "verify-health")
     && dashboard_instances_have_disjoint_owned_paths(
       a: lab,
       b: srv1_live_dashboard_instance(),
@@ -727,94 +641,4 @@ test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
     )
 }
 
-fn witness_ensure_decision(exit_ok: Bool, stderr: String) -> DashboardServiceSessionEnsureDecision {
-  dashboard_service_session_ensure_decision(
-    observation: classify_tmux_has_session(exit_ok: exit_ok, stderr: stderr),
-  )
-}
 
-test fn dashboard_named_session_absent_creates() -> Bool {
-  match witness_ensure_decision(
-    exit_ok: false,
-    stderr: "can't find session: gunbc-dashboard-srv1-lab-codex-feedback-v0",
-  ) {
-    EnsureCreateServiceSession => true
-    EnsureReplaceServiceSession => false
-    EnsureRefuseServiceSession { cause: _ } => false
-  }
-}
-
-test fn dashboard_no_tmux_server_creates() -> Bool {
-  match witness_ensure_decision(
-    exit_ok: false,
-    stderr: "no server running on /tmp/tmux-1000/srv1-lab-codex-feedback-v0",
-  ) {
-    EnsureCreateServiceSession => true
-    EnsureReplaceServiceSession => false
-    EnsureRefuseServiceSession { cause: _ } => false
-  }
-}
-
-test fn dashboard_session_present_replaces_not_duplicate() -> Bool {
-  match witness_ensure_decision(exit_ok: true, stderr: "") {
-    EnsureReplaceServiceSession => true
-    EnsureCreateServiceSession => false
-    EnsureRefuseServiceSession { cause: _ } => false
-  }
-}
-
-test fn dashboard_permission_denied_refuses_no_create() -> Bool {
-  match witness_ensure_decision(
-    exit_ok: false,
-    stderr: "error connecting to /tmp/tmux-1000/default (Permission denied)",
-  ) {
-    EnsureRefuseServiceSession { cause } =>
-      string_contains(s: cause, pattern: "Permission denied")
-    EnsureCreateServiceSession => false
-    EnsureReplaceServiceSession => false
-  }
-}
-
-test fn dashboard_transport_refused_refuses_no_create() -> Bool {
-  match witness_ensure_decision(
-    exit_ok: false,
-    stderr: "ssh: connect to host srv1 port 22: Connection refused",
-  ) {
-    EnsureRefuseServiceSession { cause } =>
-      string_contains(s: cause, pattern: "Connection refused")
-    EnsureCreateServiceSession => false
-    EnsureReplaceServiceSession => false
-  }
-}
-
-test fn dashboard_ensure_release_revision_is_admitted_not_head() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  let admitted = "0123456789abcdef0123456789abcdef01234567" as CommitSha
-  let head_would_return = "fedcba9876543210fedcba9876543210fedcba98"
-  let argv = dashboard_ensure_service_new_session_argv(
-    instance: lab,
-    admitted_release_revision: admitted,
-  )
-  any(argv, t => t == (admitted as String))
-    && !any(argv, t => t == head_would_return)
-    && !any(argv, t => t == "rev-parse")
-    && !any(argv, t => t == "HEAD")
-}
-
-test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
-  production_reading_never_equates_absent_with_observed()
-    && unpeered_host_refuses_nothing_and_reads_nothing()
-    && peer_isolation_still_requires_the_instance_to_own_its_paths()
-    && dashboard_source_transport_argv_is_exact_and_atomic()
-    && dashboard_local_origin_ref_translation_is_exact()
-    && dashboard_service_is_named_and_scoped_off_production()
-    && dashboard_provider_runtime_and_auth_share_one_state_binding()
-    && dashboard_target_preflight_derives_dispatch_platform_dependencies()
-    && dashboard_health_requires_intended_instance_identity()
-    && dashboard_plan_is_end_to_end_and_production_disjoint()
-    && dashboard_refusal_receipt_is_typed_and_located()
-    && dashboard_dirty_controller_source_refuses_before_apply()
-    && dashboard_bootstrap_parent_writability_is_a_preflight_fact()
-    && dashboard_unreachable_root_refuses_before_choosing_a_parent()
-    && dashboard_poll_interval_is_a_usable_duration()
-}

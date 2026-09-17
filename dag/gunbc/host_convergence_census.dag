@@ -585,15 +585,6 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_dashboard_deploy_step_if"),
   ),
   census_row(
-    identity: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_ensure_service"),
-    subject: DashboardInstanceHostStack,
-    phases: protocol_phases(false, true, false, false, false, false, false),
-    current_authority: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_instance_apply"),
-    persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: ReplaceAndDelete { successor: live_member_observe(), terminal: none },
-    first_consumer: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_instance_apply"),
-  ),
-  census_row(
     identity: cite(module_path: "gunbc.dashboard_provider_readiness", decl_name: "observe_dashboard_provider_readiness"),
     subject: RoadmapServeProviderReadiness,
     phases: protocol_phases(false, false, false, false, false, false, true),
