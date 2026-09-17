@@ -125,10 +125,8 @@ fn evaluation_store_address_production_coverage_qualified(
   coverage: EvaluationStoreAddressProductionCoverage
 ) -> Bool {
   match coverage {
-    ProductionCoverageQualified { exact_resolved_roots, zero_candidate_roots } =>
-      ((exact_resolved_roots |> count()) == 1)
-        && ((zero_candidate_roots |> count()) == 1)
-        && (exact_resolved_roots |> fold(init: false, f: (acc, r) => acc || r == "dag"))
+    ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots } =>
+      ((zero_candidate_roots |> count()) == 1)
         && (zero_candidate_roots |> fold(init: false, f: (acc, r) => acc || r == "src/v2"))
     ProductionCoverageRefused { root: _, path: _, cause: _ } => false
     CandidateOutsideExactResolution { root: _, path: _, target_leaf: _ } => false

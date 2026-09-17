@@ -154,6 +154,7 @@ pub enum TargetProducer {
     BehavioralReceiptCensus,
     BehavioralReceiptSelftest,
     CompileCleanDiagnosticCensus,
+    EvaluationStoreAddressExactHead,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -206,6 +207,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-cli"),
             TargetProducer::V2NativeCli,
+        ),
+        (
+            instrument_label("evaluation-store-address-exact-head"),
+            TargetProducer::EvaluationStoreAddressExactHead,
         ),
     ]
 }
@@ -398,6 +403,30 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
+        TargetProducer::EvaluationStoreAddressExactHead => {
+            run_evaluation_store_address_exact_head()
+        }
+    }
+}
+
+fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "evaluation-store-address-exact-head: refused: could not anchor at the workspace root: {e}"
+            ),
+        };
+    }
+    match cli_run::evaluation_store_address_exact_head_holds() {
+        Ok(message) => InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message,
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::ObservationDidNotHold,
+            message: cause,
+        },
     }
 }
 

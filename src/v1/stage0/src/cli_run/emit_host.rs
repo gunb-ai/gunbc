@@ -686,6 +686,124 @@ pub fn compile_dag_callsite_resolved_call_edges(
     )
 }
 
+/// Enrolled producer for `//gunbc/instruments:evaluation-store-address-exact-head`.
+/// Same home modules, exclude, horizon, leaves, and expected callers as
+/// `gunbc.evaluation_store_address_census` / `gunbc.materialization_provider_targets`.
+pub fn evaluation_store_address_exact_head_holds() -> Result<String, String> {
+    use crate::cli_run::{EvaluationStoreAddressProductionCoverage, ResolvedCallEdgeCensus};
+    let home_modules = [
+        "std.materialization_provider".to_string(),
+        "std.materialization_object".to_string(),
+        "extdeps.realization.materialization_store_local".to_string(),
+    ];
+    let exclude = ["/test/".to_string()];
+    let horizon = ["dag".to_string()];
+    let leaves = [
+        "evaluation_store_address".to_string(),
+        "persist_evaluation_store_address".to_string(),
+        "evaluation_store_address_digest".to_string(),
+    ];
+    let census =
+        compile_dag_callsite_resolved_call_edges(&home_modules, &exclude, &horizon, &leaves);
+    let edges = match census {
+        ResolvedCallEdgeCensus::Refused { cause } => {
+            return Err(format!(
+                "evaluation-store-address-exact-head: census refused: {cause}"
+            ));
+        }
+        ResolvedCallEdgeCensus::Observed { edges } => edges,
+    };
+    let join_ok = exact_head_roster_holds(
+        &edges,
+        "std.materialization_provider",
+        "evaluation_store_address",
+        &[
+            ("std.materialization_object", "store_lookup_decide"),
+            ("std.materialization_object", "store_commit_prepare"),
+            (
+                "extdeps.realization.materialization_store_local",
+                "local_store_lookup",
+            ),
+        ],
+    ) && exact_head_roster_holds(
+        &edges,
+        "std.materialization_provider",
+        "persist_evaluation_store_address",
+        &[
+            ("std.materialization_provider", "evaluation_store_address"),
+            ("std.materialization_provider", "provider_serve"),
+        ],
+    ) && exact_head_roster_holds(
+        &edges,
+        "std.materialization_provider",
+        "evaluation_store_address_digest",
+        &[
+            ("std.materialization_object", "store_lookup_from_address"),
+            (
+                "std.materialization_object",
+                "store_commit_prepare_admitted",
+            ),
+            ("std.materialization_object", "store_object_name"),
+        ],
+    );
+    if !join_ok {
+        return Err(
+            "evaluation-store-address-exact-head: observed callers do not join the closed roster"
+                .to_string(),
+        );
+    }
+    let coverage =
+        compile_dag_call_form_leaf_guard(&exclude, &["src/v2".to_string()], &leaves, &horizon);
+    match coverage {
+        EvaluationStoreAddressProductionCoverage::Qualified {
+            exact_resolved_roots: _,
+            zero_candidate_roots,
+        } => {
+            if zero_candidate_roots.len() == 1 && zero_candidate_roots[0] == "src/v2" {
+                Ok(format!(
+                    "evaluation-store-address-exact-head: held; edges={}",
+                    edges.len()
+                ))
+            } else {
+                Err(
+                    "evaluation-store-address-exact-head: src/v2 scan did not qualify as the zero-candidate root"
+                        .to_string(),
+                )
+            }
+        }
+        EvaluationStoreAddressProductionCoverage::Refused { cause, .. } => Err(format!(
+            "evaluation-store-address-exact-head: coverage refused: {cause}"
+        )),
+        EvaluationStoreAddressProductionCoverage::CandidateOutsideExactResolution {
+            root,
+            path,
+            target_leaf,
+        } => Err(format!(
+            "evaluation-store-address-exact-head: src/v2 call-form outside exact arm: {root} {path} {target_leaf}"
+        )),
+    }
+}
+
+fn exact_head_roster_holds(
+    edges: &[crate::cli_run::ResolvedCallEdgeRow],
+    callee_module: &str,
+    callee_decl: &str,
+    expected: &[(&str, &str)],
+) -> bool {
+    let observed: Vec<(&str, &str)> = edges
+        .iter()
+        .filter(|e| e.callee_module == callee_module && e.callee_decl == callee_decl)
+        .map(|e| (e.caller_module.as_str(), e.caller_decl.as_str()))
+        .collect();
+    let missing = expected
+        .iter()
+        .any(|(m, d)| !observed.iter().any(|(om, od)| om == m && od == d));
+    let extra = observed
+        .iter()
+        .any(|(om, od)| !expected.iter().any(|(m, d)| om == m && od == d));
+    !missing && !extra
+}
+
 fn token_is_trivia(token: &crate::v1_std_core::Token) -> bool {
     matches!(
         token.shape,
