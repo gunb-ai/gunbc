@@ -21,12 +21,13 @@ import gunbc.auth.approval_decision_store {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE FIXTURE KEY AND ITS TAGS. Issuance is part A's (approval_issuance_frontier), so the two tags
-// below were computed OUTSIDE the substrate with HMAC-SHA-256 over exactly
-// approval_capability_signing_input(claims_for(fixture_request, d)) under this key -- the same
-// arrangement mac_verification_witness_test uses with the RFC 4231 vectors: the implementation is
-// checked against bytes it did not produce. When mac_sign lands, a round-trip test replaces these
-// literals and they become the regression control that the signing input did not move.
+// THE FIXTURE KEY AND ITS TAGS. The two tags below were computed OUTSIDE the substrate with
+// HMAC-SHA-256 over exactly approval_capability_signing_input(claims_for(fixture_request, d))
+// under this key -- the same arrangement mac_verification_witness_test uses with the RFC 4231
+// vectors: the implementation is checked against bytes it did not produce. Issuance now exists
+// (extdeps.crypto.mac mac_sign, consumed by approval_request_submission issue_links), so these
+// literals are the regression control that the signing input did not move, beside the round-trip
+// in approval_request_submission_witness_test.
 data fixture_key_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 data fixture_approve_tag: NonEmptyStr = "d1f1f1034370302f1405bd0bcd71e907c079ead5bf912da095cbe110d7876663"
 data fixture_deny_tag: NonEmptyStr = "0df108f82248bc3803c611a779d10108a581aecc68a46904a54a95b25e9e9c68"

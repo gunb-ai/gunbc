@@ -718,14 +718,6 @@ fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Su
 
 // ── the frontiers ──────────────────────────────────────────────────────────────────────────────
 
-// ISSUANCE: minting the two links for a filed request needs a MAC tag, and the substrate can only
-// verify one today (extdeps.crypto.mac: hmac_sha256_verify_hex, no signing primitive). The
-// consumer that files a request and publishes the notification with the signed URL is the next
-// change, gated on that primitive.
-data approval_issuance_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a MAC issuance primitive (hmac_sha256_hex) and extdeps.crypto.mac mac_sign, so that gunbc.auth.approval_capability can mint an ApprovalCapability for claims_for(request, ProposeApprove) and claims_for(request, ProposeDeny) -- SUFFICIENT FOR filing a request into this store and publishing gunbc.auth.approval_notification with capability_path_segment links; in flight as the approval-loop part A lane (eager-owl-205, 2026-09-16). NOT satisfied by a hand-computed tag committed as a fixture, which is what the witness uses to exercise the verify side until then.",
-)
-
 // THE KEYS ON THE HOST: a converge step materializes approval_mac_key_secret_ref into
 // approval_mac_key_path AND gunbc.auth.approval_request_submission
 // approval_submission_mac_key_secret_ref into its approval_submission_mac_key_path, 0640, owned by

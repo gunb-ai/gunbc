@@ -37,8 +37,8 @@ import gunbc.auth.approval_decision_store {
 // and stays NotEstablished while that row binds 0.0.0.0; the loopback row (#11484) opens it.
 
 // The same fixture the hermetic witness uses: tags computed outside the substrate over the
-// signing input under this key (approval_issuance_frontier), so a tag the store did not mint
-// still has to verify against the claims the store holds.
+// signing input under this key, so a tag the store did not mint still has to verify against
+// the claims the store holds.
 data probe_key_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 data probe_approve_tag: NonEmptyStr = "d1f1f1034370302f1405bd0bcd71e907c079ead5bf912da095cbe110d7876663"
 data probe_deny_tag: NonEmptyStr = "0df108f82248bc3803c611a779d10108a581aecc68a46904a54a95b25e9e9c68"

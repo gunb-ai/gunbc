@@ -16,7 +16,7 @@ import gunbc.auth.approval_request_submission {
   sign_submission, submission_envelope_json, parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   admit_parsed_submission, SubmissionVerdict, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
   issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status, escalation_status_of,
-  notify_filed, occupied_slot_renotifiable, PublisherTokenLoaded, SubmissionFiledAndNotified, SubmissionFiledPublisherTokenUnavailable, PublisherTokenUnavailable,
+  notify_filed, occupied_slot_renotifiable, PublisherTokenLoaded, SubmissionFiledCapabilityKeyUnavailable, SubmissionFiledAndNotified, SubmissionFiledPublisherTokenUnavailable, PublisherTokenUnavailable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -201,4 +201,13 @@ test fn an_occupied_slot_is_renotifiable_only_while_pending_with_the_same_bytes(
     && !occupied_slot_renotifiable(slot: EscalationPending { request: other }, request: request())
     && !occupied_slot_renotifiable(slot: EscalationNotFiled, request: request())
     && !occupied_slot_renotifiable(slot: EscalationDecided { decision: BrokerDenied { escalation_id: "esc-mtc1-boot-1", revision: "sha256:abababababababababababababababababababababababababababababababab", decided_by: "briansrls@gmail.com", decided_at: "2026-09-16T21:00:00Z", reason: "no" } }, request: request())
+}
+
+// A CAPABILITY-KEY REFUSAL AFTER THE WRITE STILL SAYS WHICH ESCALATION WAS FILED, like every other
+// post-write arm, so the filer retries the same bytes instead of minting a new id (review 67295).
+test fn a_capability_key_refusal_after_filing_names_the_filed_escalation() -> Bool {
+  match notify_filed(capability_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-mac-key" } }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, request: request()) {
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: e, cause: _ } => e == "esc-mtc1-boot-1"
+    _ => false
+  }
 }

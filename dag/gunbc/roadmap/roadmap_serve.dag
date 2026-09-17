@@ -6,7 +6,7 @@ import gunbc.auth.approval_request_submission {
   submit_parsed_submission, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status,
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
-  SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionCapabilityKeyUnavailable,
+  SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionFiledCapabilityKeyUnavailable,
   SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled, SubmissionAuthorityRefused,
 }
 import gunbc.auth.approval_decision_store {
@@ -664,7 +664,7 @@ fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
       SubmissionNotEnrolled { detail: _ } => 403
       SubmissionAuthorityRefused { requester: _, authority: _ } => 403
     }
-    SubmissionCapabilityKeyUnavailable { cause: _ } => 503
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => 503
   }
   serve_text_response(
     status: status,

@@ -245,7 +245,7 @@ type SubmissionOutcome
   | SubmissionAlreadyFiled { escalation_id: NonEmptyStr }
   | SubmissionStoreRefused { detail: NonEmptyStr }
   | SubmissionRefused { refusal: SubmissionRefusal }
-  | SubmissionCapabilityKeyUnavailable { cause: ApprovalKeyringRefusal }
+  | SubmissionFiledCapabilityKeyUnavailable { escalation_id: NonEmptyStr, cause: ApprovalKeyringRefusal }
 
 fn submission_outcome_reason(o: SubmissionOutcome) -> String {
   match o {
@@ -266,7 +266,7 @@ fn submission_outcome_reason(o: SubmissionOutcome) -> String {
       SubmissionNotEnrolled { detail: d } => join(["requester not enrolled: ", d], "")
       SubmissionAuthorityRefused { requester: r, authority: a } => join(["authority ", a as String, " is not permitted for ", r as String], "")
     }
-    SubmissionCapabilityKeyUnavailable { cause: _ } => "the capability key is unavailable on this host, so no link could be minted"
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: e, cause: _ } => join(["filed ", e as String, " but the capability key is unavailable on this host, so no link could be minted; resubmit the same bytes once it is"], "")
   }
 }
 
@@ -285,7 +285,7 @@ fn notify_filed(
   request: StoredApprovalRequest,
 ) -> SubmissionOutcome {
   match capability_keyring {
-    ApprovalKeyringRefused { cause: c } => SubmissionCapabilityKeyUnavailable { cause: c }
+    ApprovalKeyringRefused { cause: c } => SubmissionFiledCapabilityKeyUnavailable { escalation_id: request.escalation_id, cause: c }
     ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_link_base_url(), request: request) {
       LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
       links => match approval_message(request: request, links: links) {
