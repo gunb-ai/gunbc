@@ -36,16 +36,12 @@ import gunbc.scm_compatibility.pijul {
 }
 import test.claim.scm_compatibility_git_witness {
   git_fixture_binding,
-  witness_git_modeled_advance_refuses_different_guarantee,
-  witness_git_readback_mismatch_refuses_binding,
 }
 import test.claim.scm_compatibility_mercurial_witness {
   mercurial_fixture_binding,
-  witness_mercurial_missing_advance_refuses_required_capability,
 }
 import test.claim.scm_compatibility_pijul_witness {
   pijul_fixture_binding,
-  witness_pijul_missing_advance_refuses_required_capability,
 }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
