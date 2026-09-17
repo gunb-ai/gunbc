@@ -273,6 +273,7 @@ use crate::v1_std_core::CompilerDiagnostic::{
     ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
     ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
@@ -326,10 +327,10 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
-    DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, LeafOwner, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    ParsedModuleItemKind, ResolvedCallFormal, StringPart, TextFile, UnaryOpKind,
-    UnprojectableConstruct, VarBindingKind,
+    DeclarationMarker, DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, LeafOwner, MatchPattern, MethodSemantics,
+    NewlineIndex, Node, ParsedModuleItemKind, ResolvedCallFormal, StringPart, TextFile,
+    UnaryOpKind, UnprojectableConstruct, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3698,6 +3699,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })

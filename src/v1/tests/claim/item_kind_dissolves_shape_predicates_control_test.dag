@@ -2,7 +2,7 @@ module v1.tests.claim.item_kind_dissolves_shape_predicates_control_test
 
 import std.types { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v1.std.core {
+import v1.std.core { Unmarked,
   Node, NoExprData, NoConnective, Conj, Required, no_span,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemResource, NotAModuleItem,
 }
@@ -39,7 +39,7 @@ fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Node {
     params: [], inferred: none, return_cardinality: Required, uses: [],
     body: none, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none,
-    module_item_kind: kind, expr_data: NoExprData
+    module_item_kind: kind, declaration_marker: Unmarked, expr_data: NoExprData
   }
 }
 
@@ -50,7 +50,7 @@ fn structured_item(kind: ParsedModuleItemKind) -> Node {
     params: [], inferred: none, return_cardinality: Required, uses: [],
     body: none, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none,
-    module_item_kind: kind, expr_data: NoExprData
+    module_item_kind: kind, declaration_marker: Unmarked, expr_data: NoExprData
   }
 }
 

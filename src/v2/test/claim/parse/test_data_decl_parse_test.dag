@@ -16,9 +16,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // malformed class DESIGN keeps: "no rule applies here" and "this input is wrong" reaching one
 // symbol with opposite remedies.
 //
-// v1 DOES NOT HARDCODE THE PAIRING, which is why this is v2 catching up rather than a form being
-// invented: v1.compiler.parse drop_leading_test_marker strips a leading `test` ident before ANY
-// keyword. The corpus uses exactly two spellings, `test fn` and `test data`.
+// v1 PAIRS THE MARKER WITH EXACTLY THE SAME TWO FORMS, which is why this is v2 catching up rather
+// than a form being invented: v1.compiler.parse test_marked_item_result marks a fn or data item
+// TestMarked and refuses it before any other form. The corpus uses exactly
+// those two spellings, `test fn` and `test data`.
 //
 // WHY THE SECOND CLAIM IS THE ONE THAT MATTERS. `test fn` parsing is the control that the widened
 // choice did not disturb the 19,839 declarations already on that path; `test data` parsing is the

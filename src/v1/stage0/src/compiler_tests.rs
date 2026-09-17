@@ -418,6 +418,84 @@ mod compiler_tests {
         result.expect("self-parse test panicked");
     }
 
+    fn parse_item_kinds(
+        src: &'static str,
+    ) -> Result<
+        Vec<(
+            String,
+            crate::v1_std_core::ParsedModuleItemKind,
+            crate::v1_std_core::DeclarationMarker,
+        )>,
+        String,
+    > {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("parse-test-marker".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let tokens = tokenize(
+                    src.to_string(),
+                    "test.dag".to_string(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
+                let result =
+                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                let verdict = match (&result.error, &result.module) {
+                    (Some(e), _) => Err(format!("{:?}", e)),
+                    (None, Some(m)) => Ok(crate::v1_std_core::module_items(m.clone())
+                        .iter()
+                        .map(|n| (n.name.clone(), n.module_item_kind, n.declaration_marker))
+                        .collect::<Vec<_>>()),
+                    (None, None) => Err("missing module".to_string()),
+                };
+                let _ = tx.send(verdict);
+            })
+            .expect("spawn parse-test-marker");
+        rx.recv_timeout(std::time::Duration::from_secs(8))
+            .expect("seed parser hung")
+    }
+
+    // The `test` marker is carried onto the item and leaves its kind alone; unmarked forms stay Unmarked:
+    // the positive control that the marker is carried rather than dropped.
+    #[test]
+    fn test_marker_selects_the_test_item_kind() {
+        use crate::v1_std_core::DeclarationMarker::*;
+        use crate::v1_std_core::ParsedModuleItemKind::*;
+        let items = parse_item_kinds("module test\n\ntest fn t() -> Bool {\n  true\n}\n\nfn f() -> Bool {\n  true\n}\n\ntest data d: Bool = true\n\ndata e: Bool = true\n").expect("parses");
+        let kind = |n: &str| items.iter().find(|i| i.0 == n).map(|i| (i.1, i.2));
+        assert_eq!(kind("t"), Some((ModuleItemFunction, TestMarked)));
+        assert_eq!(kind("f"), Some((ModuleItemFunction, Unmarked)));
+        assert_eq!(kind("d"), Some((ModuleItemDataValue, TestMarked)));
+        assert_eq!(kind("e"), Some((ModuleItemDataValue, Unmarked)));
+    }
+
+    // The discriminating red: the marker used to be dropped before ANY item form, so a marked type
+    // declaration parsed as an ordinary one. It must refuse.
+    #[test]
+    fn test_marker_on_a_type_declaration_is_refused() {
+        let err = parse_item_kinds("module test\n\ntest type T {\n  a: Bool\n}\n")
+            .expect_err("a test-marked type declaration must refuse");
+        assert!(
+            err.contains("the `test` marker applies only to a fn or data item"),
+            "{}",
+            err
+        );
+        // pattern and interface are BlockBody forms whose constructor stamps ModuleItemFunction,
+        // so a check on the parsed kind admits them; these two rows are what discriminate it.
+        for src in [
+            "module test\n\ntest pattern P(x: Int) {\n  x\n}\n",
+            "module test\n\ntest interface I(x: Int) {\n  x\n}\n",
+        ] {
+            let err =
+                parse_item_kinds(src).expect_err("a test-marked block-bodied form must refuse");
+            assert!(
+                err.contains("the `test` marker applies only to a fn or data item"),
+                "{}",
+                err
+            );
+        }
+    }
+
     fn tco_slot(name: &str) -> String {
         {
             crate::v1_compiler_emit::tco_loop_slot_name(name.to_string())
@@ -3887,6 +3965,7 @@ mod compiler_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
@@ -4135,6 +4214,7 @@ mod compiler_tests {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
                 expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
             })
         }
@@ -4610,6 +4690,7 @@ mod compiler_tests {
         std::rc::Rc::new(crate::v1_std_core::Node {
             properties: std::rc::Rc::new(props),
             module_item_kind: kind,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             ..(*shaped_type_node(name, Vec::new())).clone()
         })
     }
