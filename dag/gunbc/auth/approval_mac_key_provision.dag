@@ -20,7 +20,8 @@ import gunbc.secret_provision_actuator {
   verified_version, verified_snapshot_identity,
 }
 import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
-import gunbc.auth.gcp_secret_access { secret_accessor_grant, secret_access_ensure_for }
+import gunbc.auth.gcp_secret_access { secret_access_ensure_for }
+import gunbc.auth.fleet_secret_accessor_roster { FleetAccessorGrantRow, fleet_accessor_grant, approval_capability_mac_key_accessor_row, approval_submission_mac_key_accessor_row }
 import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref, approval_mac_key_suite }
 import extdeps.crypto.mac { mac_suite_key_size }
 import std.measure { byte_size_count }
@@ -206,12 +207,12 @@ type GrantStanding
   = GrantConverged { secret_id: NonEmptyStr }
   | GrantRefused { secret_id: NonEmptyStr, reason: String }
 
-fn ensure_grant(ref: SecretRef, token: Secret) -> GrantStanding
+fn ensure_grant(row: FleetAccessorGrantRow, token: Secret) -> GrantStanding
   uses net: Network
 {
-  match secret_access_ensure_for(grant: secret_accessor_grant(target: ref), token_source: OperatorSuppliedToken { token: token }) {
-    ExitSuccess => GrantConverged { secret_id: ref.secret }
-    ExitFailure { code: _, reason: r } => GrantRefused { secret_id: ref.secret, reason: r }
+  match secret_access_ensure_for(grant: fleet_accessor_grant(row: row), token_source: OperatorSuppliedToken { token: token }) {
+    ExitSuccess => GrantConverged { secret_id: row.target.secret }
+    ExitFailure { code: _, reason: r } => GrantRefused { secret_id: row.target.secret, reason: r }
   }
 }
 
@@ -241,7 +242,7 @@ fn provision_approval_mac_keys() -> CliWireResponse
       let submission = provision_one(ref: approval_submission_mac_key_secret_ref, token: token)
       let keys_ok = standing_ok(s: capability) && standing_ok(s: submission)
       let grants: List<GrantStanding> = if keys_ok {
-        [ensure_grant(ref: approval_mac_key_secret_ref, token: token), ensure_grant(ref: approval_submission_mac_key_secret_ref, token: token)]
+        [ensure_grant(row: approval_capability_mac_key_accessor_row, token: token), ensure_grant(row: approval_submission_mac_key_accessor_row, token: token)]
       } else {
         []
       }
