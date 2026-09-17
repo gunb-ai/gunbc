@@ -68,6 +68,17 @@ service Clock {
     }
   }
 
+  operation TimestampAdd {
+    input { timestamp: Timestamp, offset: Nat }
+    output { result: Timestamp from "stdout" }
+    readonly
+    transport shell { argv: ["date", "-u", "-d", "{timestamp} +{offset} seconds", "+%Y-%m-%dT%H:%M:%SZ"] }
+    exit {
+      0 => Unit
+      nonzero => String "date add failed"
+    }
+  }
+
   operation TimestampToUnixSecs {
     input { timestamp: Timestamp }
     output { unix_secs: String from "stdout" }

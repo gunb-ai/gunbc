@@ -1,0 +1,50 @@
+module test.claim.machine_intake.mtcollins1_boot_run_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int }
+import std.measure { second_count }
+import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
+  mtcollins1_status_from_get,
+}
+import gunbc.auth.approval_request_client {
+  StatusUnreadable, StatusPending, parse_filed_approval_status, approval_poll_standing, PollExpired, PollUnreadable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn approval_window_is_the_poll_budget_not_zero() -> Bool {
+  let window = second_count(s: mtcollins1_boot_approval_window()) as Int
+  window == mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int)
+    && window > 0
+}
+
+test fn a_zero_window_expires_on_the_next_observation() -> Bool {
+  match approval_poll_standing(
+    status: StatusPending { expires_at: "2026-09-16T20:00:00Z" },
+    observed_at: "2026-09-16T20:00:01Z",
+    expires_at: "2026-09-16T20:00:00Z",
+  ) {
+    PollExpired => true
+    _ => false
+  }
+}
+
+test fn a_failed_status_get_is_unreadable_not_pending() -> Bool {
+  match mtcollins1_status_from_get(success: false, body: "") {
+    StatusUnreadable { detail: _ } => true
+    _ => false
+  }
+    && match approval_poll_standing(
+      status: mtcollins1_status_from_get(success: false, body: ""),
+      observed_at: "2026-09-16T20:00:00Z",
+      expires_at: "2026-09-16T20:22:30Z",
+    ) {
+      PollUnreadable { detail: _ } => true
+      _ => false
+    }
+    && match parse_filed_approval_status(body: "standing=pending\nexpires_at=2026-09-16T20:22:30Z\n") {
+      StatusPending { expires_at: _ } => true
+      _ => false
+    }
+}

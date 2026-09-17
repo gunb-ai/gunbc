@@ -2,7 +2,7 @@ module gunbc.machine_intake_mtcollins1_boot_run
 
 import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
 import std.algebra { trim }
-import std.measure { Second, second }
+import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
@@ -20,7 +20,7 @@ import gunbc.auth.approval_request_client {
   approval_submit_url, approval_status_url, parse_filed_approval_status,
   approval_poll_standing, approval_post_admits_poll,
   SubmissionMacReady, SubmissionMacKeyNotHex,
-  StatusPending, PollStillPending,
+  FiledApprovalStatus, StatusUnreadable, PollStillPending,
 }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_converge { approval_submission_mac_key_path_env }
@@ -28,6 +28,9 @@ import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.auth.approval_capability { utc_instant_is_canonical }
+import extdeps.clock { Clock }
+import v2.std.optional { Present }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -49,6 +52,26 @@ data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.t
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
 data mtcollins1_boot_poll_tick_budget: Int = 90
+
+fn mtcollins1_boot_approval_window() -> Second {
+  second(count: mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int))
+}
+
+fn mtcollins1_status_from_get(success: Bool, body: String) -> FiledApprovalStatus {
+  if success {
+    parse_filed_approval_status(body: body)
+  } else {
+    StatusUnreadable { detail: "status GET did not succeed; the roadmap standing is unknown, not pending" as NonEmptyStr }
+  }
+}
+
+fn mtcollins1_approval_expires_at(issued: Timestamp) -> Timestamp? {
+  if !utc_instant_is_canonical(t: issued) {
+    none
+  } else {
+    Present { value: Clock.TimestampAdd(timestamp: issued, offset: second_count(s: mtcollins1_boot_approval_window())).result }
+  }
+}
 
 fn mtcollins1_boot_refusal(gate: MtCollins1BootGate) -> ProcessExit {
   match gate {
@@ -108,11 +131,7 @@ fn mtcollins1_boot_poll_ticks(
     return BootGateExpired
   }
   let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: request.escalation_id))
-  let status = if got.success {
-    parse_filed_approval_status(body: got.body)
-  } else {
-    StatusPending { expires_at: expires_at }
-  }
+  let status = mtcollins1_status_from_get(success: got.success, body: got.body)
   let standing = approval_poll_standing(status: status, observed_at: observed, expires_at: expires_at)
   match standing {
     PollStillPending => {
@@ -158,7 +177,14 @@ fn mtcollins1_boot_wet() -> ProcessExit
     attempt: concat("mtcollins1-boot-", run_id) as AttemptIdentity,
   )
   let issued = clock_now_probed_at_or_unknown() as Timestamp
-  let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: issued)
+  let expires = match mtcollins1_approval_expires_at(issued: issued) {
+    Absent => ""
+    Present { value: e } => e
+  }
+  if expires == "" {
+    return exit_failure(reason: "mtcollins1 boot: issued_at is not a canonical UTC instant; cannot mint an approval window; controller untouched")
+  }
+  let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)
   let key_read = Filesystem.Read(path: sub_path)
   if !key_read.success {
     return exit_failure(reason: concat("mtcollins1 boot: submission MAC key unreadable: ", key_read.error))
@@ -189,7 +215,7 @@ fn mtcollins1_boot_wet() -> ProcessExit
       let gate = mtcollins1_boot_poll_ticks(
         remaining: mtcollins1_boot_poll_tick_budget,
         request: request,
-        expires_at: issued,
+        expires_at: expires,
       )
       let pw_read = Filesystem.Read(path: cred)
       if !pw_read.success {
