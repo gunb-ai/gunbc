@@ -158,16 +158,43 @@ fn prestart_reading(t: JobTiming) -> PrestartReading? {
 // OCCUPANCY IS A SUM OVER JOBS AND NEVER A RUN'S DURATION. This is the whole repair: a consumer
 // wanting runner-minutes folds executed jobs, and a consumer holding only run records cannot
 // answer at all rather than answering with wall-clock.
-fn job_occupancy(t: JobTiming) -> Second {
+// AN UNREAD INTERVAL IS NOT ZERO OCCUPANCY, and folding it to zero was a fabricated number sitting
+// where this module already had a refusal vocabulary. A list of one executed 27-second job and one
+// unread timing reported 27, which reads as a complete measurement of a population that was not
+// completely measured -- DESIGN section 5's absorbing fallback in its purest form, since the zero
+// widens the answer instead of refusing it. The two non-executing arms are NOT the same fact and
+// that is the whole point: a job that never started occupied a runner for zero seconds, which is a
+// reading, while a job whose interval could not be parsed has no reading at all.
+type OccupancyReading
+  = OccupancyMeasured { seconds: Second }
+  | OccupancyUnreadable { reason: NonEmptyStr }
+
+fn job_occupancy(t: JobTiming) -> OccupancyReading {
   match t {
-    JobExecuted { prestart: _, occupancy: o } => o
-    JobNeverStarted => second(0)
-    JobTimingUnread { reason: _ } => second(0)
+    JobExecuted { prestart: _, occupancy: o } => OccupancyMeasured { seconds: o }
+    JobNeverStarted => OccupancyMeasured { seconds: second(0) }
+    JobTimingUnread { reason: r } => OccupancyUnreadable { reason: r }
   }
 }
 
-fn total_occupancy(timings: List<JobTiming>) -> Second {
-  fold_list(timings, second(0), (acc, t) => measure_add(a: acc, b: job_occupancy(t: t)))
+// The fold is absorbing in the CORRECT direction: one unreadable job makes the total unreadable,
+// because a sum over a population with a hole in it is not that population's occupancy. A caller
+// that wants a partial figure must first partition the list and say so.
+fn total_occupancy(timings: List<JobTiming>) -> OccupancyReading {
+  fold_list(
+    timings,
+    OccupancyMeasured { seconds: second(0) },
+    (acc, t) =>
+      match acc {
+        OccupancyUnreadable { reason: r } => OccupancyUnreadable { reason: r }
+        OccupancyMeasured { seconds: running } =>
+          match job_occupancy(t: t) {
+            OccupancyUnreadable { reason: r } => OccupancyUnreadable { reason: r }
+            OccupancyMeasured { seconds: s } =>
+              OccupancyMeasured { seconds: measure_add(a: running, b: s) }
+          }
+      },
+  )
 }
 
 // A run's wall-clock is deliberately NOT offered as an occupancy fold anywhere in this module. The

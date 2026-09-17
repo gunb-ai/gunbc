@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.iam
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpProject, GcpOperation }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation }
 import extdeps.transports.rest { RestOutcome }
 import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import v2.std.algebra { filter, fold_list }
@@ -410,6 +410,22 @@ service gcp.IamRoles {
   }
 }
 
+// THE v3 GET RETURNS A DIFFERENT SHAPE FROM THE ESTATE'S GcpProject, and conflating them was a
+// real defect rather than a naming nicety: this operation declared `state` in its output while
+// mapping 200 to GcpProject, which is { project_id, project_number, name } and has no such field.
+// Resource Manager v3 projects.get publishes the project RESOURCE -- projectId, the lifecycle
+// state, and a resource name of the form projects/{number} -- and the lifecycle state is exactly
+// what a converge must read, because a project in DELETE_REQUESTED is neither absent nor usable.
+// GcpProject stays what it is, the estate-observation shape carrying the numeric id as its own
+// field; this type is the wire, and it lives beside the service that returns it exactly as
+// GcpPredefinedRole lives beside gcp.IamRoles. Naming them apart is what keeps the estate's
+// project_number from being read as something this response carries, because it does not.
+type GcpProjectResourceV3 {
+  project_id: GcpProjectId from "projectId"
+  state: String
+  resource_name: String from "name"
+}
+
 // CreateProject DOES NOT RETURN A PROJECT. It returns a long-running Operation, so its response
 // establishes that the request was accepted and nothing about whether the project exists -- which
 // is why its output carries an operation name rather than a GcpProject, and why GetProject is the
@@ -426,7 +442,7 @@ service gcp.ResourceManager {
     readonly
     transport rest { method: GET, path: "/v3/projects/\{project_id\}" }
     response {
-      200 => GcpProject
+      200 => GcpProjectResourceV3
       401 => GcpErrorShape
       403 => GcpErrorShape
       404 => GcpErrorShape

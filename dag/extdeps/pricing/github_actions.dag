@@ -201,18 +201,28 @@ fn actions_billability(
   }
 }
 
-// The consuming question in one predicate: does observed usage of this SKU on a repository of this
-// visibility cost its owner anything at all? BillabilityUnread answers false, which is the
-// fail-closed direction for a PROSPECT model -- an unread SKU must not be ranked as a payer.
-fn actions_usage_is_billable(
+// A Bool CANNOT SAY UNREAD, so this question is no longer published as one. The predicate here
+// answered false for BillabilityUnread and called that fail-closed; it is the trap DESIGN section 5
+// names by its own words, top-as-answer conflated with top-as-ignorance. "This SKU costs its owner
+// nothing" and "this SKU has not been classified" are different facts about different states of
+// knowledge, and a caller ranking prospects on the Bool cannot tell which one it received. The
+// three-valued form keeps the distinction the coproduct already carried, and the fail-closed
+// direction a prospect model wants -- never rank an unclassified SKU as a payer -- stays available
+// as a match on BillingConfirmed { billable: true } rather than being baked into a collapse the
+// caller cannot see or override.
+type ActionsBillableVerdict
+  = BillingConfirmed { billable: Bool }
+  | BillingUnread { obligation: NonEmptyStr }
+
+fn actions_usage_billable_verdict(
   sku: GithubActionsBillingSku,
   visibility: ActionsRepositoryVisibility,
-) -> Bool {
+) -> ActionsBillableVerdict {
   match actions_billability(sku: sku, visibility: visibility) {
-    AlwaysChargedPerMinute => true
-    ChargedAgainstPlanQuota => true
-    FreeInPublicRepository => false
-    BillabilityUnread { obligation: _ } => false
+    AlwaysChargedPerMinute => BillingConfirmed { billable: true }
+    ChargedAgainstPlanQuota => BillingConfirmed { billable: true }
+    FreeInPublicRepository => BillingConfirmed { billable: false }
+    BillabilityUnread { obligation: o } => BillingUnread { obligation: o }
   }
 }
 
@@ -237,17 +247,26 @@ data github_actions_plan_allowances: List<ActionsPlanAllowance> = [
 ]
 
 // Larger-runner usage never draws on the allowance, which the page states directly: charged "even
-// when you have quota available from your plan".
-fn allowance_applies(sku: GithubActionsBillingSku) -> Bool {
+// when you have quota available from your plan". The unread arm is the one that mattered and was
+// wrong: collapsing it to false asserted the allowance does NOT apply, which is the direction that
+// charges a prospect in full for a SKU this model could not classify. It is also the opposite
+// reading of the same false that the billability question above returned, so one Bool meant two
+// contradictory things across two functions in one module. Unread is now its own arm in both.
+type AllowanceApplicability
+  = AllowanceApplies
+  | AllowanceDoesNotApply
+  | AllowanceApplicabilityUnread { obligation: NonEmptyStr }
+
+fn allowance_applicability(sku: GithubActionsBillingSku) -> AllowanceApplicability {
   match actions_runner_class(sku: sku) {
-    StandardRunner => true
-    LargerRunner => false
-    RunnerClassUnread { obligation: _ } => false
+    StandardRunner => AllowanceApplies
+    LargerRunner => AllowanceDoesNotApply
+    RunnerClassUnread { obligation: o } => AllowanceApplicabilityUnread { obligation: o }
   }
 }
 
 // THE ALLOWANCE ROSTER AND ITS PREDICATE ARE DANGLING TOO, and the row below was not covering
-// them. It binds one DeclarationRef, actions_usage_is_billable, while its own prose said "these
+// them. It binds one DeclarationRef, actions_usage_billable_verdict, while its own prose said "these
 // declarations" -- so two declarations sat outside the frontier that was supposed to account for
 // them, which is the §3c red the frontier mechanism exists to avoid rather than reproduce. They are
 // named here one row each, because a frontier that names less than it covers is a tally standing in
@@ -255,11 +274,11 @@ fn allowance_applies(sku: GithubActionsBillingSku) -> Bool {
 data actions_allowance_consumer_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.pricing.github_actions", decl_name: "github_actions_plan_allowances"),
-    reason: "the private-repository monthly minute allowances, read from the cited billing page. No fold in this corpus reads them: the consumer is the same prospect standing in strategy.ci_acquisition that actions_usage_is_billable waits on, which lives in gunbc-private and cannot be imported here. The roster is what turns a billable-usage verdict into a question about whether a given account has already spent its included minutes, so it lands with that consumer or not at all",
+    reason: "the private-repository monthly minute allowances, read from the cited billing page. No fold in this corpus reads them: the consumer is the same prospect standing in strategy.ci_acquisition that actions_usage_billable_verdict waits on, which lives in gunbc-private and cannot be imported here. The roster is what turns a billable-usage verdict into a question about whether a given account has already spent its included minutes, so it lands with that consumer or not at all",
     dissolution: unbound_dissolution(description: "a public census producer in this corpus classifies observed runner usage per account and asks whether the account's included minutes are exhausted, which is the first question that reads an allowance rather than a price"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.pricing.github_actions", decl_name: "allowance_applies"),
+    ref: decl_ref(module_path: "extdeps.pricing.github_actions", decl_name: "allowance_applicability"),
     reason: "the predicate separating usage that draws on the plan allowance from usage that is charged regardless, which the cited page states for larger runners as charged even when plan quota is available. It has no consumer for the same reason the roster has none, and it is the half of the allowance model that is easy to get wrong silently: without it, a consumer would subtract larger-runner minutes from an allowance they never touch",
     dissolution: unbound_dissolution(description: "the same census producer reads github_actions_plan_allowances; the predicate is consumed in the same fold, since an allowance cannot be applied without first deciding whether it applies"),
   )
@@ -272,13 +291,13 @@ data actions_allowance_consumer_frontier_rows: List<FrontierRow> = [
 //
 // The trigger is a consumer INSIDE this corpus. The honest one is not "someone imports it" but the
 // thing that would make importing it necessary: a public census producer that classifies observed
-// runner usage, at which point actions_usage_is_billable is what separates a payer from a
+// runner usage, at which point actions_usage_billable_verdict is what separates a payer from a
 // free-tier user and this row goes.
 data actions_billability_consumer_frontier: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "extdeps.pricing.github_actions",
-    decl_name: "actions_usage_is_billable",
+    decl_name: "actions_usage_billable_verdict",
     field: WholeDeclaration
   }
 }

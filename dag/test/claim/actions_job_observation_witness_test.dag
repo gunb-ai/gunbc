@@ -10,6 +10,9 @@ import gunbc.actions_job_observation {
   job_timing,
   job_occupancy,
   total_occupancy,
+  OccupancyReading,
+  OccupancyMeasured,
+  OccupancyUnreadable,
   PrestartReading,
   prestart_reading,
   RunnerProvenance,
@@ -42,12 +45,21 @@ fn w_arm() -> JobTiming {
 // jobs occupied 27 + 28 = 55. Anything folding wall-clock as occupancy undercounts by 62% on a
 // two-job run, and by far more on a wide matrix.
 test fn occupancy_exceeds_run_wall_clock_when_jobs_run_in_parallel() -> Bool {
-  let occ = second_count(total_occupancy(timings: [w_x86(), w_arm()]))
-  occ == 55 && occ > 34
+  match total_occupancy(timings: [w_x86(), w_arm()]) {
+    OccupancyMeasured { seconds: s } => second_count(s) == 55 && second_count(s) > 34
+    OccupancyUnreadable { reason: _ } => false
+  }
 }
 
 test fn each_job_occupancy_is_its_own_execution_interval() -> Bool {
-  second_count(job_occupancy(t: w_x86())) == 27 && second_count(job_occupancy(t: w_arm())) == 28
+  match job_occupancy(t: w_x86()) {
+    OccupancyMeasured { seconds: a } =>
+      match job_occupancy(t: w_arm()) {
+        OccupancyMeasured { seconds: b } => second_count(a) == 27 && second_count(b) == 28
+        OccupancyUnreadable { reason: _ } => false
+      }
+    OccupancyUnreadable { reason: _ } => false
+  }
 }
 
 // THE OTHER MEASUREMENT. The run reported zero admission delay in the same second while both jobs
@@ -150,4 +162,38 @@ test fn cancellation_with_occupancy_is_waste_evidence() -> Bool {
   cancellation_is_waste_evidence(
     r: CancellationReading { cancelled_jobs: 4, cancelled_occupancy: second(1080), jobs_total: 38 }
   )
+}
+
+// THE CLAIM THAT WOULD HAVE CAUGHT THE FABRICATED ZERO. Before this, job_occupancy folded
+// JobTimingUnread to second(0) and nothing asserted otherwise, so a population with a hole in it
+// summed as though it had been measured. This is the discriminating red: it fails if the fold ever
+// goes back to answering a number for an interval it could not read.
+test fn an_unread_timing_has_no_occupancy_reading() -> Bool {
+  match job_occupancy(t: w_unreadable()) {
+    OccupancyUnreadable { reason: _ } => true
+    OccupancyMeasured { seconds: _ } => false
+  }
+}
+
+// AND THE SUM REFUSES WITH IT. One unreadable job among readable ones makes the total unreadable:
+// 27 seconds beside a hole is not 27 seconds of occupancy.
+test fn one_unread_timing_refuses_the_whole_total() -> Bool {
+  match total_occupancy(timings: [w_x86(), w_unreadable()]) {
+    OccupancyUnreadable { reason: _ } => true
+    OccupancyMeasured { seconds: _ } => false
+  }
+}
+
+// A JOB THAT NEVER STARTED IS A READING OF ZERO, not a refusal, and keeping the two apart is the
+// point of the split. This is the control that stops the row above from being satisfied by a fold
+// that simply refuses everything.
+test fn a_job_that_never_started_reads_as_zero_rather_than_refusing() -> Bool {
+  match job_occupancy(t: job_timing(created_epoch: 10, started_epoch: 0, completed_epoch: 0)) {
+    OccupancyMeasured { seconds: s } => second_count(s) == 0
+    OccupancyUnreadable { reason: _ } => false
+  }
+}
+
+fn w_unreadable() -> JobTiming {
+  job_timing(created_epoch: 0, started_epoch: 20, completed_epoch: 5)
 }
