@@ -35,6 +35,7 @@ import gunbc.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_r
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.toolchain_workflow_steps { toolchain_pin_rustup_default_step }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import v2.workflow.ci_workflow_run_emit {
   ci_isolate_toolchain_script,
   ci_native_cache_root_script,
@@ -168,6 +169,12 @@ fn ci_prelude_annotations() -> List<CapabilityAnnotatedStep> {
   ci_prelude_annotations_with_checkout(checkout: ci_checkout_step(), exact_head_preflight: [])
 }
 
+// AN EMPTY `rustflags` IS NOT ABSENCE, IT IS THE OPPOSITE POLICY: passing "" to
+// setup-rust-toolchain SETS RUSTFLAGS to empty, overriding the action's deny-warnings default,
+// so every cargo this lane spawned compiled with warnings ALLOWED while the required lanes
+// denied them. No row stated that as an intent and none of the lane's builds needs it. The
+// value is now the repository's policy row, which is what the required lanes already use
+// (gunbc.repo_self_warning_policy).
 fn ci_setup_rust_step() -> Step {
   UsesStep {
     name: Present { value: "Setup Rust" },
@@ -177,7 +184,7 @@ fn ci_setup_rust_step() -> Step {
       value: [
         kv(key: "components", value: yaml_string(s: "rustfmt")),
         kv(key: "cache", value: yaml_bool(b: false)),
-        kv(key: "rustflags", value: yaml_string(s: ""))
+        kv(key: "rustflags", value: yaml_string(s: repo_self_warning_denial_rustflags()))
       ]
     },
     env: Present {
