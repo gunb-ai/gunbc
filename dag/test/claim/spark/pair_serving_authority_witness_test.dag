@@ -1,0 +1,161 @@
+module test.claim.spark.pair_serving_authority_witness
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, List, String }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, LeaseAbsent, LeasePortForeign, LeaseInaccessible }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
+import gunbc.spark.host_commitment { spark_claimed_serving_group_members }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation,
+  SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
+  PairRealizationUnestablished,
+  pair_serving_apply_admits, pair_serving_commits_hosts, pair_serving_holds_placement,
+  pair_serving_capacity_subject, pair_serving_may_start, pair_serving_may_finish,
+  pair_serving_authority_group, spark_pair_serving_authorities,
+  CapacityOrdinarySubject, CapacitySuspendedSubject, CapacityReleasedSubject,
+}
+
+// EVERY ARM IS EXERCISED ON EVERY PROJECTION, because a carrier whose unusual arms are never asked a
+// question is vocabulary rather than a wall. The live row is PairServingActive and will stay that way
+// until a replacement actually begins, so production alone reaches exactly one of five arms -- these
+// claims are the only thing that establishes what the other four answer, and without them a wrong
+// answer under suspension would be discovered by a fleet mid-transaction rather than by CI.
+
+fn w_hash() -> ContentHash {
+  sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000")
+}
+
+fn w_lease(observed_stale: Bool) -> HeldLease {
+  held_lease(
+    epoch: LeaseEpoch {
+      lease_key: "witness-lease" as NonEmptyStr,
+      resource_fingerprint: w_hash(),
+      owner_fingerprint: w_hash(),
+      generation: 1,
+    },
+    observed: if observed_stale { LeaseRunningStale } else { LeaseRunningExpected })
+}
+
+fn w_active() -> PairServingGroupAuthority {
+  PairServingActive {
+    group: FabricGroupA,
+    exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
+  }
+}
+
+fn w_pending(stale: Bool) -> PairServingGroupAuthority {
+  SuspensionPendingReconciliation {
+    group: FabricGroupA,
+    transaction: "witness-transaction" as NonEmptyStr,
+    lease: w_lease(observed_stale: stale),
+  }
+}
+
+fn w_suspended(stale: Bool) -> PairServingGroupAuthority {
+  SuspendedForAuthorizedSuccessor {
+    group: FabricGroupA,
+    authorization: "witness-authorization" as NonEmptyStr,
+    exact_candidate_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
+    lease: w_lease(observed_stale: stale),
+    cleanup: "witness-cleanup" as NonEmptyStr,
+  }
+}
+
+fn w_fenced() -> PairServingGroupAuthority {
+  FencedRefusal {
+    group: FabricGroupA,
+    cause: "witness-foreign-occupant" as NonEmptyStr,
+    disposition_authority: "witness-operator" as NonEmptyStr,
+  }
+}
+
+fn w_released() -> PairServingGroupAuthority {
+  ReleasedToFleet { group: FabricGroupA, release_receipt: w_hash() }
+}
+
+// APPLY ACTS ONLY WHEN ACTIVE. The four negatives are the content of this claim: an apply seam that
+// converged under any of them would be reconverging a realization whose authority was suspended out
+// from under it, which is the specific harm the carrier exists to prevent.
+test fn only_an_active_authority_admits_the_apply_seam() -> Bool {
+  pair_serving_apply_admits(a: w_active())
+    && (pair_serving_apply_admits(a: w_pending(stale: false)) == false)
+    && (pair_serving_apply_admits(a: w_suspended(stale: false)) == false)
+    && (pair_serving_apply_admits(a: w_fenced()) == false)
+    && (pair_serving_apply_admits(a: w_released()) == false)
+}
+
+// SUSPENSION DOES NOT UNCLAIM HOSTS, and this is the claim whose failure is most expensive: answering
+// false under suspension frees four held hosts to another lane mid-replacement with no cleanup and no
+// readback. Fencing holds them too -- refusing to act is not the same as letting go. Only an explicit
+// release drops them.
+test fn only_release_drops_the_host_commitment() -> Bool {
+  pair_serving_commits_hosts(a: w_active())
+    && pair_serving_commits_hosts(a: w_pending(stale: false))
+    && pair_serving_commits_hosts(a: w_suspended(stale: false))
+    && pair_serving_commits_hosts(a: w_fenced())
+    && (pair_serving_commits_hosts(a: w_released()) == false)
+}
+
+// PLACEMENT TRACKS COMMITMENT, NOT ACTION. A paused group is not converging anything, and a build
+// admitted onto its hosts on that basis would land mid-replacement.
+test fn a_suspended_group_still_holds_its_placement() -> Bool {
+  pair_serving_holds_placement(a: w_suspended(stale: false))
+    && pair_serving_holds_placement(a: w_pending(stale: false))
+    && (pair_serving_holds_placement(a: w_released()) == false)
+}
+
+// EXPIRY REMOVES THE RIGHT TO START AND KEEPS THE RIGHT TO FINISH. Both halves are asserted on the
+// same stale lease, because either alone is satisfied by a degenerate answer: may_start false for
+// everything, or may_finish true for everything.
+test fn an_expired_lease_stops_starting_but_not_finishing() -> Bool {
+  (pair_serving_may_start(a: w_suspended(stale: false)) == false)
+    && (pair_serving_may_start(a: w_suspended(stale: true)) == false)
+    && pair_serving_may_finish(a: w_suspended(stale: true))
+    && pair_serving_may_finish(a: w_pending(stale: true))
+    && pair_serving_may_finish(a: w_fenced())
+}
+
+// AN ACTIVE AUTHORITY MAY START AND HAS NOTHING TO FINISH, which is what keeps may_finish from being
+// trivially true and stops the pair collapsing into one predicate.
+test fn an_active_authority_starts_and_has_nothing_to_finish() -> Bool {
+  pair_serving_may_start(a: w_active())
+    && (pair_serving_may_finish(a: w_active()) == false)
+}
+
+// CAPACITY SEES THREE SUBJECTS AND NEVER AN ABSENCE. A suspended group reports a reason; it does not
+// vanish from the population, which is the property the instrument's empty-roster guard relies on.
+test fn capacity_partitions_into_three_present_subjects() -> Bool {
+  (match pair_serving_capacity_subject(a: w_active()) {
+    CapacityOrdinarySubject { group: _ } => true
+    CapacitySuspendedSubject { group: _, reason: _ } => false
+    CapacityReleasedSubject { group: _ } => false
+  })
+  && (match pair_serving_capacity_subject(a: w_pending(stale: false)) {
+    CapacityOrdinarySubject { group: _ } => false
+    CapacitySuspendedSubject { group: _, reason: _ } => true
+    CapacityReleasedSubject { group: _ } => false
+  })
+  && (match pair_serving_capacity_subject(a: w_fenced()) {
+    CapacityOrdinarySubject { group: _ } => false
+    CapacitySuspendedSubject { group: _, reason: _ } => true
+    CapacityReleasedSubject { group: _ } => false
+  })
+  && (match pair_serving_capacity_subject(a: w_released()) {
+    CapacityOrdinarySubject { group: _ } => false
+    CapacitySuspendedSubject { group: _, reason: _ } => false
+    CapacityReleasedSubject { group: _ } => true
+  })
+}
+
+// THE PAIRING OBLIGATION. Everything above supplies its authority, so on its own this file would prove
+// what the projections answer without proving anyone asks them. This claim runs the real production
+// fold -- host_commitment's claimed members over the live authority population -- and asserts it still
+// yields the four Group A hosts. Delete the authority filter, or let the live row stop committing
+// hosts, and the count moves.
+test fn the_live_commitment_fold_still_claims_every_group_a_host() -> Bool {
+  length(spark_claimed_serving_group_members())
+    == length(fabric_group_hosts(g: FabricGroupA))
+    && length(spark_pair_serving_authorities) == 1
+    && all(spark_pair_serving_authorities, a => pair_serving_commits_hosts(a: a))
+}

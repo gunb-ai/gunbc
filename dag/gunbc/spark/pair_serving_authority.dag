@@ -1,0 +1,224 @@
+module gunbc.spark.pair_serving_authority
+
+import std.types { Bool, NonEmptyStr, List }
+import std.content_hash { ContentHash }
+import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseRunningExpected, LeaseRunningStale, LeasePortForeign, LeaseInaccessible }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
+
+// WHOSE HOSTS WE CLAIM AND WHAT WE MAY DO WITH THEM ARE TWO FACTS, AND THIS MODULE IS THE SECOND.
+// gunbc.spark.pair_serving_desired spark_pair_serving_groups answers membership -- which groups this
+// repository claims -- and its carrier annotation records why emptying it is not a withdrawal
+// mechanism. What that roster cannot express is a group we still claim but may not currently act on,
+// which is exactly the state a replacement transaction needs: the hosts stay ours, the old realization
+// stops being applied, and no consumer silently reads the gap as "no subject".
+//
+// THE DISTINCTION THIS CARRIER EXISTS TO MAKE IS WITHDRAW VERSUS SUSPEND. Withdrawal removes the
+// claim, so every fold over the roster loses its domain at once -- and an `all` over an empty list is
+// true, so the fleet's safety checks would pass loudest at the moment they had least to say
+// (gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain). Suspension keeps the
+// claim and changes the authority, which is why the states below are AUTHORITY STATES rather than
+// diagnostic labels: a consumer asks what it may do, and every arm answers.
+// THE INCUMBENT CANNOT CURRENTLY BE NAMED EXACTLY, AND THIS TYPE SAYS SO RATHER THAN PRETENDING.
+// The design requires a successor to be discriminated by its exact realization, because V4 and V4.1
+// share one serving subject and `active on Group A` therefore distinguishes neither. Writing
+// `exact_realization: ContentHash` would have made that requirement look satisfied; it is not.
+// gunbc.spark.first_party_serving spark_realization_identity is a READBACK COMPARISON -- does the
+// container's configured model path equal the declared one -- not a content-addressed key, so no
+// ContentHash for the live V4 realization exists anywhere in the corpus to put here. An unestablished
+// arm carrying its obligation is the honest shape, and it makes the gap countable instead of hiding it
+// behind a field that would have to be filled with something invented.
+type PairRealizationIdentity
+  = PairRealizationKeyed { key: ContentHash }
+  | PairRealizationUnestablished { obligation: NonEmptyStr }
+
+type PairServingGroupAuthority
+  = PairServingActive {
+      group: FabricGroup
+      exact_realization: PairRealizationIdentity
+    }
+  | SuspensionPendingReconciliation {
+      group: FabricGroup
+      transaction: NonEmptyStr
+      lease: HeldLease
+    }
+  | SuspendedForAuthorizedSuccessor {
+      group: FabricGroup
+      authorization: NonEmptyStr
+      exact_candidate_realization: PairRealizationIdentity
+      lease: HeldLease
+      cleanup: NonEmptyStr
+    }
+  | FencedRefusal {
+      group: FabricGroup
+      cause: NonEmptyStr
+      disposition_authority: NonEmptyStr
+    }
+  | ReleasedToFleet {
+      group: FabricGroup
+      release_receipt: ContentHash
+    }
+
+// THE EXACT REALIZATION IS CARRIED BECAUSE SUBJECT IDENTITY CANNOT DISCRIMINATE A SUCCESSOR.
+// V4 and V4.1 deliberately share one serving subject on this group, so `active on Group A` is true of
+// both and distinguishes neither. A successor is told apart by its exact authorization and its exact
+// candidate realization, never by which group it serves -- so an arm that dropped the realization
+// would make a replacement indistinguishable from the thing it replaces.
+fn pair_serving_authority_group(a: PairServingGroupAuthority) -> FabricGroup {
+  match a {
+    PairServingActive { group: g, exact_realization: _ } => g
+    SuspensionPendingReconciliation { group: g, transaction: _, lease: _ } => g
+    SuspendedForAuthorizedSuccessor { group: g, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => g
+    FencedRefusal { group: g, cause: _, disposition_authority: _ } => g
+    ReleasedToFleet { group: g, release_receipt: _ } => g
+  }
+}
+
+// PROJECTION 1 -- MAY THE PAIR REALIZATION ACT. Active acts; every other state does not, and the two
+// suspended states do not act for DIFFERENT reasons that both end in the same answer: pending
+// reconciliation has not yet decided whose the occupancy is, and an authorized successor has decided
+// that the incumbent is not to be converged. Consumed by the apply seam, which must not converge a
+// realization whose authority has been suspended out from under it.
+fn pair_serving_apply_admits(a: PairServingGroupAuthority) -> Bool {
+  match a {
+    PairServingActive { group: _, exact_realization: _ } => true
+    SuspensionPendingReconciliation { group: _, transaction: _, lease: _ } => false
+    SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => false
+    FencedRefusal { group: _, cause: _, disposition_authority: _ } => false
+    ReleasedToFleet { group: _, release_receipt: _ } => false
+  }
+}
+
+// PROJECTION 2 -- ARE THE HOSTS STILL OURS. This is the projection whose WRONG answer is expensive, so
+// it is the one stated most explicitly: suspension does NOT unclaim hosts. A suspended group's four
+// hosts remain committed, held for the named successor; a fenced group's hosts remain committed too,
+// because fencing is precisely the state in which we refuse to act while refusing to let go. Only an
+// explicit release to the fleet drops the commitment. Answering `false` under suspension would let
+// another lane take a host mid-transaction with no cleanup and no readback.
+fn pair_serving_commits_hosts(a: PairServingGroupAuthority) -> Bool {
+  match a {
+    PairServingActive { group: _, exact_realization: _ } => true
+    SuspensionPendingReconciliation { group: _, transaction: _, lease: _ } => true
+    SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => true
+    FencedRefusal { group: _, cause: _, disposition_authority: _ } => true
+    ReleasedToFleet { group: _, release_receipt: _ } => false
+  }
+}
+
+// PROJECTION 3 -- IS THE HOST STILL PLACED, for build and probe admission. A build may run on a host
+// nothing else has placed work on, so the question this answers is whether OUR work still occupies
+// the host. It tracks commitment rather than action: a suspended group is not converging anything,
+// but its hosts are emphatically not free for a build to land on, and treating a paused group as
+// unplaced is how a build would be admitted onto a host mid-replacement.
+fn pair_serving_holds_placement(a: PairServingGroupAuthority) -> Bool {
+  pair_serving_commits_hosts(a: a)
+}
+
+// PROJECTION 4 -- WHAT CAPACITY STANDING SEES. ITS CONSUMER IS A DECLARED FRONTIER, NOT A DANGLING
+// DECLARATION. gunbc.instruments.fabric_capacity_standing is mid-change on gunbc#11473, which splits
+// its verdict behind capacity_standing_verdict so the empty-roster arm is authorable; wiring this
+// projection into the same function on this branch would collide with that change in the one place
+// both edit. TRIGGER: #11473 lands, and fabric_capacity_standing maps this projection over
+// spark_pair_serving_authorities instead of the bare roster. SUFFICIENT FOR: a suspended group reports
+// a typed suspended standing rather than a probe refusal that reads as a fleet defect. Until then this
+// projection is consumed by its controls only, and that is a gap with a date rather than inert
+// vocabulary. The rule from the design is that capacity standing gets
+// a TYPED SUSPENDED RESULT and never an empty population, because an instrument whose subject silently
+// disappears is the vacuity failure this whole carrier exists to prevent. So suspension is a standing
+// the instrument reports, not a row it stops seeing.
+type PairServingCapacitySubject
+  = CapacityOrdinarySubject { group: FabricGroup }
+  | CapacitySuspendedSubject { group: FabricGroup, reason: NonEmptyStr }
+  | CapacityReleasedSubject { group: FabricGroup }
+
+fn pair_serving_capacity_subject(a: PairServingGroupAuthority) -> PairServingCapacitySubject {
+  match a {
+    PairServingActive { group: g, exact_realization: _ } => CapacityOrdinarySubject { group: g }
+    SuspensionPendingReconciliation { group: g, transaction: t, lease: _ } =>
+      CapacitySuspendedSubject { group: g, reason: t }
+    SuspendedForAuthorizedSuccessor { group: g, authorization: au, exact_candidate_realization: _, lease: _, cleanup: _ } =>
+      CapacitySuspendedSubject { group: g, reason: au }
+    FencedRefusal { group: g, cause: c, disposition_authority: _ } =>
+      CapacitySuspendedSubject { group: g, reason: c }
+    ReleasedToFleet { group: g, release_receipt: _ } => CapacityReleasedSubject { group: g }
+  }
+}
+
+// LEASE EXPIRY CHANGES WHAT AN AUTHORITY PERMITS, NOT WHICH AUTHORITY IT IS. The design's rule is that
+// expiry removes the right to START things -- launch, offer, seat -- and keeps the right to FINISH
+// them -- cleanup, fencing. Modeling that as a state TRANSITION was the tempting shape and it is the
+// wrong one: every destination is unsafe on its own. Expiry releasing the reservation lets another lane
+// take a host with no cleanup; expiry restoring the prior authority may restart convergence over
+// drifted, foreign or unread state; expiry changing nothing makes "bounded" a word rather than a
+// property. Splitting the question into may-start and may-finish is what leaves all three closed.
+fn pair_serving_lease_of(a: PairServingGroupAuthority) -> HeldLease? {
+  match a {
+    PairServingActive { group: _, exact_realization: _ } => none
+    SuspensionPendingReconciliation { group: _, transaction: _, lease: l } => l
+    SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: l, cleanup: _ } => l
+    FencedRefusal { group: _, cause: _, disposition_authority: _ } => none
+    ReleasedToFleet { group: _, release_receipt: _ } => none
+  }
+}
+
+// A lease that is stale, absent, foreign or unreadable is not a lease we may start work under. Only
+// LeaseRunningExpected is a live hold; the other four arms are each a different way of not having one,
+// and collapsing them into "not expected" here would be fine for this predicate but would hide which
+// one occurred from the caller, so the arms stay named.
+fn pair_serving_lease_is_live(o: HeldLeaseObservedState) -> Bool {
+  match o {
+    LeaseRunningExpected => true
+    LeaseAbsent => false
+    LeaseRunningStale => false
+    LeasePortForeign => false
+    LeaseInaccessible => false
+  }
+}
+
+fn pair_serving_may_start(a: PairServingGroupAuthority) -> Bool {
+  match pair_serving_lease_of(a: a) {
+    Absent => pair_serving_apply_admits(a: a)
+    Present { value: l } => pair_serving_apply_admits(a: a) && pair_serving_lease_is_live(o: l.observed)
+  }
+}
+
+// Cleanup and fencing survive expiry by construction: this answers from the authority alone and never
+// consults the lease, which is what makes "the lease ran out mid-transaction" a recoverable state
+// rather than a stranded fleet.
+fn pair_serving_may_finish(a: PairServingGroupAuthority) -> Bool {
+  match a {
+    PairServingActive { group: _, exact_realization: _ } => false
+    SuspensionPendingReconciliation { group: _, transaction: _, lease: _ } => true
+    SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => true
+    FencedRefusal { group: _, cause: _, disposition_authority: _ } => true
+    ReleasedToFleet { group: _, release_receipt: _ } => false
+  }
+}
+
+// THE LIVE ROW. One authority per claimed group, and today Group A is actively serving the declared
+// pair realization -- so this row is PairServingActive and the transaction states are unreachable from
+// production until a replacement actually begins. That is the correct resting state and not a reason to
+// omit the other arms: they are what the apply seam and the capacity instrument consume to answer
+// correctly WHEN a transaction starts, and a coproduct missing them cannot express the state machine
+// the Cut D transaction declares total.
+// MEMBERSHIP STAYS WITH THE ROSTER AND THIS DERIVES FROM IT. Authoring a second list of groups here
+// would be a membership fork: two rows could disagree about which groups we claim, and the disagreement
+// would be silent because each list is individually well-formed. So the authority population is a MAP
+// over spark_pair_serving_groups -- the roster answers WHICH groups, this answers WHAT WE MAY DO with
+// each. One consequence worth stating: emptying the roster still empties this, so this carrier does not
+// rescue the vacuity hazard the roster's own annotation describes, and does not claim to.
+fn pair_serving_authority_for(group: FabricGroup) -> PairServingGroupAuthority {
+  PairServingActive {
+    group: group,
+    exact_realization: PairRealizationUnestablished { obligation: pair_realization_key_obligation },
+  }
+}
+
+data spark_pair_serving_authorities: List<PairServingGroupAuthority> = map(spark_pair_serving_groups, g => pair_serving_authority_for(group: g))
+
+// THE OBLIGATION THIS ROW CARRIES IS A REAL BLOCKER FOR CUT D, not a formality. Until the incumbent
+// has a content-addressed identity, a transaction cannot prove that what it suspended is what it
+// intended to suspend, and it cannot prove afterwards that the thing now serving is the successor
+// rather than the incumbent reconverged -- both readings are `active on Group A`.
+data pair_realization_key_obligation: NonEmptyStr = "the live V4 pair realization has no content-addressed identity: gunbc.spark.first_party_serving spark_realization_identity compares a readback path against the declared one and yields no key. SUFFICIENT FOR: PairServingActive can name the incumbent exactly, so a successor transition is discriminated by realization rather than by a serving subject V4 and V4.1 deliberately share" as NonEmptyStr
