@@ -1,0 +1,188 @@
+module gunbc.github_observation_record
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.nat { Nat }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+}
+
+// THE STORE THAT MAKES A MODEL CHANGE FREE. Every figure this lane has produced so far came from a
+// fetch into a temporary directory that no longer exists, so each time the analysis changed the
+// population was queried again -- and the numbers became unreproducible the moment the directory
+// was cleaned. That is the cost this module removes: an observation is addressed by WHAT WAS ASKED,
+// carries what came back and how complete it was, and every later reading is a pure fold over
+// stored records rather than another traversal of GitHub.
+//
+// The discipline is the one gunbc.repository_census_observation already established for repository
+// populations -- identity derived rather than supplied, no separately writable count, no stored
+// conclusion beside the facts that determine it -- applied to an external API rather than to this
+// repository's own tree. It is a sibling of that module and deliberately not an extension of it:
+// that census observes a population at a revision of THIS repository, and these records observe a
+// third party's API at a wall-clock instant. Joining them under one identity would make a
+// repository revision and an observation time the same kind of thing, and they are not.
+
+// WHAT WAS ASKED, AS A CLOSED SET. A request is an identity, not a URL: two calls that ask the same
+// question must address the same record even if a caller spells the path differently, and two that
+// ask different questions must never collide. Each arm carries exactly the inputs that change the
+// ANSWER -- a per_page that only changes pagination shape is still part of the question, because a
+// page 2 of 100 is not a page 2 of 30.
+type GithubObservationRequest
+  = CodeSearchPage {
+      query: NonEmptyStr,
+      per_page: Int,
+      page: Int,
+    }
+  | WorkflowSourceAtRef {
+      repository: NonEmptyStr,
+      path: NonEmptyStr,
+      ref_oid: NonEmptyStr,
+    }
+  | RunJobsPage {
+      repository: NonEmptyStr,
+      run_id: NonEmptyStr,
+      attempt_filter: NonEmptyStr,
+      per_page: Int,
+      page: Int,
+    }
+
+fn request_identity(request: GithubObservationRequest) -> Fnv1a64Structural {
+  match request {
+    CodeSearchPage { query: q, per_page: pp, page: p } =>
+      tagged_join(
+        tag: "github-observation-code-search-page" as NonEmptyStr,
+        parts: [q as String, to_string(pp), to_string(p)],
+      )
+    WorkflowSourceAtRef { repository: r, path: path, ref_oid: oid } =>
+      tagged_join(
+        tag: "github-observation-workflow-source-at-ref" as NonEmptyStr,
+        parts: [r as String, path as String, oid as String],
+      )
+    RunJobsPage { repository: r, run_id: run, attempt_filter: f, per_page: pp, page: p } =>
+      tagged_join(
+        tag: "github-observation-run-jobs-page" as NonEmptyStr,
+        parts: [r as String, run as String, f as String, to_string(pp), to_string(p)],
+      )
+  }
+}
+
+// THE PARTS ARE JOINED THROUGH THE HASH, NEVER THROUGH A SEPARATOR. Concatenating fields with a
+// delimiter makes two different requests collide the moment a field contains the delimiter, and a
+// code-search query is exactly the field most likely to contain anything. Folding each part in as
+// its own atom means the combination is order-sensitive and separator-free.
+fn tagged_join(tag: NonEmptyStr, parts: List<String>) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: tag,
+    payload: fold_parts(parts: parts),
+  )
+}
+
+fn fold_parts(parts: List<String>) -> Fnv1a64Structural {
+  fold(
+    parts,
+    init: content_hash_atom(value: "github-observation-empty" as NonEmptyStr),
+    f: fn(acc, part) {
+      content_hash_combine_structural(
+        left: acc,
+        right: content_hash_atom(value: nonempty_or_placeholder(value: part)),
+      )
+    },
+  )
+}
+
+// An empty part is a real input and must still be distinguishable from an absent one, so it folds
+// in as a named placeholder rather than being skipped -- skipping would make ["", "a"] and ["a"]
+// the same request.
+fn nonempty_or_placeholder(value: String) -> NonEmptyStr {
+  if value == "" {
+    "github-observation-empty-part" as NonEmptyStr
+  } else {
+    value as NonEmptyStr
+  }
+}
+
+// WHAT CAME BACK, AND HOW MUCH OF IT. A short answer and a complete one are different facts, and an
+// earlier prototype in this lane conflated them twice -- once when a code search returned
+// incomplete_results and was counted as a population, once when a hundred-run sample spanning
+// minutes was extrapolated to a day. Completeness is stored beside the payload because a reader
+// cannot recover it from the payload: a page of 30 hits looks identical whether it is the whole
+// answer or the part that arrived before the search timed out.
+type ObservationCompleteness
+  = ObservationComplete
+  | ObservationTruncatedUpstream { cause: NonEmptyStr }
+  | ObservationMorePagesRemain { next_page: Int }
+  | ObservationRefused { cause: NonEmptyStr }
+
+fn observation_is_usable_as_population(c: ObservationCompleteness) -> Bool {
+  match c {
+    ObservationComplete => true
+    ObservationTruncatedUpstream { cause: _ } => false
+    ObservationMorePagesRemain { next_page: _ } => false
+    ObservationRefused { cause: _ } => false
+  }
+}
+
+// THE RECORD. `observed_at` is a wall-clock instant supplied by the caller rather than read here,
+// because this module performs no effect and a clock read inside a pure fold would make the same
+// request address two records. `body_digest` is what makes the stored bytes checkable without
+// re-reading them, and `api_version` is stored because GitHub's response shape is versioned and a
+// record decoded under one version may not decode under the next.
+type GithubObservation sole_constructor {
+  request: GithubObservationRequest
+  identity: Fnv1a64Structural
+  observed_at: NonEmptyStr
+  api_version: NonEmptyStr
+  body_digest: Fnv1a64Structural
+  completeness: ObservationCompleteness
+  budget: ObservationBudgetStanding
+}
+
+fn github_observation(
+  request: GithubObservationRequest,
+  observed_at: NonEmptyStr,
+  api_version: NonEmptyStr,
+  body_digest: Fnv1a64Structural,
+  completeness: ObservationCompleteness,
+  budget: ObservationBudgetStanding,
+) -> GithubObservation {
+  GithubObservation {
+    request: request,
+    identity: content_hash_combine_structural(
+      left: request_identity(request: request),
+      right: content_hash_tagged_structural(
+        tag: "github-observation-at" as NonEmptyStr,
+        payload: content_hash_atom(value: observed_at),
+      ),
+    ),
+    observed_at: observed_at,
+    api_version: api_version,
+    body_digest: body_digest,
+    completeness: completeness,
+    budget: budget,
+  }
+}
+
+// THE BUDGET RECEIPT THIS TRANSPORT CANNOT TAKE, STATED RATHER THAN FAKED. GitHub reports the
+// remaining budget in response headers -- X-RateLimit-Remaining and its siblings -- and this
+// repository's REST transport cannot read a response header at all: `headers:` in a transport block
+// is the REQUEST direction, every use of it in extdeps sends a header, and no operation anywhere
+// declares an output read from one. So an observation cannot carry what the budget WAS when it was
+// taken.
+//
+// The consequence is specific and a scan producer must respect it: pacing has to come from the
+// DECLARED limits in extdeps.api_rate_limit, which are a published policy, not from an observed
+// remaining count, which is a fact about this account at this moment. Declared pacing cannot see a
+// budget already spent by another process sharing the credential, so a scan that paces this way is
+// making an assumption about exclusivity rather than a measurement. BudgetUnobservable says so at
+// every record instead of a reader inferring that an absent number meant an unlimited one.
+type ObservationBudgetStanding
+  = BudgetUnobservable { reason: NonEmptyStr }
+  | BudgetObserved { remaining: Int, limit: Int, resets_at: NonEmptyStr }
+
+data response_headers_unreadable_reason: NonEmptyStr = "this repository's REST transport models request headers only; no operation declares an output read from a response header, so X-RateLimit-Remaining cannot be observed and pacing must come from the declared limits in extdeps.api_rate_limit rather than from the budget this call actually left behind"
+
+fn budget_unobservable() -> ObservationBudgetStanding {
+  BudgetUnobservable { reason: response_headers_unreadable_reason }
+}
