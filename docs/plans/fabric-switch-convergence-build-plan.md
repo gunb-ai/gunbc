@@ -50,23 +50,32 @@ Mirror `gunbc.spark.bootstrap_credential` / `grant_privileged_operation`:
   the JSON, fixture-tested against captured responses. Wire `fabric_switch_subject()` to a
   live read so `assess_fabric_switch` stops being vacuous (readings: []). Read-only.
 
-- **PR-3: the converge path.** The forced-100G apply (PATCH speed/autoneg/FEC + port
-  bounce), mirroring `gunbc.spark.managed_access_apply`: idempotent, self-checking, each
-  step's outcome typed, exit folds over the report. Run via `fleet-converge.yml` with the
-  switch credential materialized/removed in-step. Refuses (never hangs) when the intent's
-  FEC exceeds the switch's capability. Two-ended convergence: success only when BOTH the
-  switch monitor AND the host report the negotiated speed, not one end's local "link-ok".
-  The host-side READ of negotiated speed is UNPRIVILEGED (`ethtool <dev>` reports Speed
-  without root), so PR-3's success criterion does NOT depend on PR-4: reading a speed and
-  forcing a speed are different privileges. What PR-3 CANNOT do without PR-4 is FORCE the
-  host end. Forced-both is the production candidate the MikroTik breakout requirement
-  points at, NOT an established working config: the one mstlink run of forced-both did NOT
-  train (host stayed in Polling, no bilateral link -- fabric-switch-actuation-log.md). So
-  PR-3 + PR-4 together let us RE-TEST forced-both properly once the QSFP-DD coding is
-  fixed; they do not, on the current evidence, achieve convergence by themselves. PR-3
-  alone can already OBSERVE both ends and refuse honestly: if it lands first it converges
-  the switch and reports the host still at 50G (host unforced), and never claims success
-  off the switch's local link-ok.
+- **PR-3: the converge path, as ONE two-ended transaction.** The mutating actuator is a
+  single transaction over BOTH endpoints, never a switch-only mutation. Its safety shape is
+  fixed now even though the successful parameter tuple and the implementation defer:
+  1. obtain and validate ALL forward AND recovery authorization before the first effect;
+  2. capture host and switch pre-state;
+  3. apply the complete candidate to both endpoints;
+  4. accept success only on bilateral agreement on the required link state (switch monitor
+     AND host both report the negotiated speed, never one end's local "link-ok");
+  5. on every other terminal -- refusal, timeout, interruption, `Polling`, producer
+     disagreement -- restore both captured pre-states WITHOUT fetching new authorization;
+  6. read both endpoints back and make VERIFIED restoration part of the terminal result;
+  7. remove credentials only after confirmed success OR confirmed rollback.
+  It mirrors `gunbc.spark.managed_access_apply` for the per-step typed-outcome/receipt
+  shape, run via `fleet-converge.yml`. The FEC is `fec91` (G2), so there is no
+  FEC-capability refusal arm.
+  **Sequencing rule (the design commits to this now):** because forcing the HOST end needs
+  PR-4's mstlink set grant, the mutating switch effect and the host effect are components of
+  ONE actuator -- PR-3 and PR-4 land together, or the switch converge stays READ-ONLY until
+  both exist. The design does NOT authorize "mutate the switch now, add host actuation and
+  rollback later": that terminates with the endpoints intentionally divergent, which step 5
+  forbids. Reading negotiated speed is unprivileged (`ethtool`), so OBSERVING both ends is
+  available before PR-4; only the two-ended MUTATION requires it. Forced-both is the
+  MikroTik-documented production candidate, not an established working config (the one
+  mstlink run of it did NOT train -- host stayed in Polling -- fabric-switch-actuation-log.md),
+  so PR-3+PR-4 let us RE-TEST it once the QSFP-DD coding is fixed rather than achieve
+  convergence by themselves.
 
 - **PR-4 (host side): mstlink authority + set grant.** `extdeps.mellanox` for mstlink
   (G9), the 2-lane-force fact (G10: ethtool cannot pin CR2), and the host-side set grant
