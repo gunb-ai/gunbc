@@ -85,12 +85,12 @@ fn approval_keyring_staged_digest_ok(path: NonEmptyStr, expected_prefix: NonEmpt
     Sha256FileDigestUnavailable { path: _, reason: r } =>
       exit_failure(reason: concat("approval keyring: could not digest the staged ", concat(role, concat(" MAC key: ", r))))
     Sha256FileDigest { digest: d } =>
-      match sha256_prefix_compare(observed_hex: d.hex as String, expected_prefix: expected_prefix) {
-        Sha256PrefixMatches { prefix: _ } => ExitSuccess
-        Sha256PrefixMismatch { expected: e, observed: o } =>
-          exit_failure(reason: concat("approval keyring: ", concat(role, concat(" MAC key sha256 prefix mismatch (expected ", concat(e as String, concat(", observed ", o as String)), ")"))))
-        Sha256Unavailable { detail: dtl } =>
-          exit_failure(reason: concat("approval keyring: ", concat(role, concat(" MAC key digest unusable: ", dtl as String))))
+      if expected_prefix == approval_mac_key_payload_sha256_prefix {
+        approval_capability_digest_standing(observed_hex: d.hex as String)
+      } else if expected_prefix == approval_submission_mac_key_payload_sha256_prefix {
+        approval_submission_digest_standing(observed_hex: d.hex as String)
+      } else {
+        exit_failure(reason: concat("approval keyring: staged ", concat(role, " MAC key pin is not a modeled payload prefix")))
       }
   }
 }
