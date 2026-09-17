@@ -30,9 +30,14 @@ import extdeps.google.drive {
 // than a credential.
 
 // The key is private to this application (Drive scopes appProperties per-app), so it may be
-// declared once and trusted: another application cannot read or collide with it. It is a DECLARED
-// fact rather than a caller string for the same reason the spreadsheet id is -- a caller that can
-// pass any key can silently start a second lineage of sheets.
+// declared once and trusted: another application cannot read or collide with it.
+//
+// WHAT PINS THIS AND WHAT DOES NOT. This row is the SEARCH side: review_sheet_search_query builds
+// the query from it, and a claim can read that query back. The WRITE side is a literal inside
+// CreateFile's body, which the body builder emits as syntax, so no claim in this corpus can reach
+// it -- the two spellings agreeing is checked on one side and asserted by reading on the other.
+// That asymmetry is the residue of a body builder that cannot take a field NAME from a parameter,
+// and it is stated here rather than described as a pin that covers both.
 data review_sheet_app_property_key: NonEmptyStr = "gunbcReviewSheet"
 
 // WHY THE VALUE IS NOT THE SHEET'S NAME. A name is the one attribute a human will change without
@@ -195,10 +200,13 @@ type ReviewSpreadsheetObservation
   | SheetSearchIncomplete
   | SheetSearchUnreadable { reason: NonEmptyStr }
 
+// THE PLAN DOES NOT CARRY THE PROPERTY KEY, because nothing could use it. CreateFile writes the
+// property NAME as a literal in its body -- the body builder emits field names as written -- so a
+// key travelling in the plan would be a parameter the operation cannot accept, and carrying it
+// would suggest a choice the caller does not actually have.
 type SpreadsheetCreatePlan {
   drive_id: NonEmptyStr
   name: NonEmptyStr
-  app_property_key: NonEmptyStr
   app_property_value: NonEmptyStr
 }
 
@@ -291,7 +299,6 @@ fn ensure_review_spreadsheet(
             plan: SpreadsheetCreatePlan {
               drive_id: drive_id,
               name: sheet_name,
-              app_property_key: review_sheet_app_property_key,
               app_property_value: app_value,
             }
           }

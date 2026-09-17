@@ -14,6 +14,8 @@ import extdeps.transports.rest {
   classify_rest_outcome,
 }
 import extdeps.google.sheets
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.google.sheets {
   ValueRange,
   ValueRangeWrite,
@@ -23,8 +25,23 @@ import extdeps.google.sheets {
   RenderFormattedValue,
 }
 
-// THE TRANSPORT THAT live_sheets_transport_frontier RESERVED. Until this module executed, the
-// Sheets service was fully modelled and had zero call sites -- the frontier stated as a number.
+// THE FIRST EXECUTED CALLER OF THE SHEETS SERVICE, which until this module ran had zero call sites.
+//
+// IT DOES NOT DISSOLVE live_sheets_transport_frontier, and the earlier wording here claimed
+// otherwise. That frontier reserves a caller for review_sheet_ensure specifically -- the cell-level
+// converge with conflict detection over an operator-edited sheet -- and this module does not call
+// it: it converges a whole range against a supplied ValueRange. The frontier is still open and
+// review_sheet_ensure still has no caller. What this module did establish is that the frontier was
+// hiding a defect: value_range_from_derived_write builds an Optional-wrapped body that Sheets
+// refuses, which no witness over a mock response corpus could ever have caught.
+//
+// NO MODULE IN THIS REPOSITORY IMPORTS THIS ONE, and that is a real consumption gap rather than a
+// stylistic one. Its consumer is strategy.ci_prospect_sheet_write in the gunbc-private repository,
+// which this corpus cannot import and a reader here cannot see, so from inside gunbc this module
+// reads exactly like the dangling declaration DESIGN section 3c refuses. The frontier row below is
+// the declaration that makes it honest -- a named consumer and a named trigger -- and not an
+// argument that the gap is acceptable: a cross-repository consumer is invisible to every
+// consumption check this repository runs, and the trigger is the thing that closes that.
 //
 // WHY RAW AND FORMATTED_VALUE, AND WHY THAT PAIRING IS NOT ARBITRARY. gunbc.review_sheet_sheets
 // already reasons it out: USER_ENTERED parses a derived string, so "1/2" becomes a date and a
@@ -281,5 +298,18 @@ fn values_outcome_text(o: ValuesWriteOutcome) -> String {
       join(["written and verified by readback: ", to_string(n), " rows"], "")
     ValuesWriteUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
     ValuesWriteRefused { cause: c } => join(["REFUSED: ", c as String], "")
+  }
+}
+
+
+// The consumer is real and executed -- it wrote 58 rows on 2026-09-16 -- but it lives in another
+// repository, so no check in this one can see it. The trigger is a consumer INSIDE this corpus:
+// when the census producer lands here and a public entry point converges a sheet, this row goes.
+data review_sheet_values_consumer_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_values_actuator",
+    decl_name: "converge_sheet_values",
+    field: WholeDeclaration
   }
 }

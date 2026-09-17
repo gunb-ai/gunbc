@@ -87,7 +87,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // request can influence. One variable serves both services because it is one operator credential
 // for one converge; splitting it would mean two secrets with the same blast radius and one more
 // thing to rotate. The literal is repeated here because the config parse extracts a literal --
-// gunbc.extdeps_google_sheets_token_pin is what keeps the two spellings from drifting.
+// test.claim.review_sheet_transport_pin_witness sheets_token_env_matches_the_configured_literal pins it.
 data sheets_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"
 
 data sheets_api_version: NonEmptyStr = "v4"

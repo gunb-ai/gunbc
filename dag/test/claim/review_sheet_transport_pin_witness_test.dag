@@ -1,0 +1,41 @@
+module test.claim.review_sheet_transport_pin_witness
+
+import std.types { Bool, String }
+import extdeps.google.sheets { sheets_token_env }
+import extdeps.google.drive { drive_token_env }
+import gunbc.review_sheet_drive_converge {
+  review_sheet_app_property_key,
+  review_sheet_search_query,
+}
+
+// THREE PINS OVER LITERALS THE CONFIG PARSE FORCES INTO TWO PLACES. A service config reads its
+// auth_source name and a request body reads its field names through extract_string_value, which
+// pulls a literal out of the node rather than evaluating a reference. So a name that consumers
+// read from a declaration must ALSO be written as a literal where the transport reads it, and
+// nothing in the language ties the two. These claims are that tie.
+//
+// The failure they prevent is quiet in a specific way: a drifted auth variable makes every call
+// refuse as a MISSING credential rather than a renamed one, and a drifted property name makes a
+// created file permanently unfindable by its own key. Both read as "the thing did not happen"
+// rather than "the name moved", which is the wrong half of the system to go looking in -- as this
+// session established twice, the expensive way.
+
+test fn sheets_token_env_matches_the_configured_literal() -> Bool {
+  sheets_token_env == "GUNBC_REVIEW_SHEET_TOKEN"
+}
+
+test fn drive_and_sheets_read_one_credential() -> Bool {
+  drive_token_env == sheets_token_env
+}
+
+// WHAT THIS PINS AND WHAT IT CANNOT. The query is built from the declaration, so reading the query
+// back ties the declaration to the SEARCH. CreateFile's body writes the same name as a literal the
+// body builder emits as syntax, and no claim here can read it: the write side is asserted by a
+// human reading two lines, not by execution. Saying so is the point -- a claim that implied it
+// covered both sides would be worse than this one, because it would be believed.
+test fn search_query_carries_the_declared_property_key() -> Bool {
+  string_contains(
+    s: review_sheet_search_query(app_value: "ci-prospect-sheet"),
+    pattern: review_sheet_app_property_key as String,
+  )
+}

@@ -27,7 +27,6 @@ import gunbc.review_sheet_drive_converge {
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
-  review_sheet_app_property_key,
 }
 
 // THE HARDER AMBIGUITY, AND THE REASON THE KEY IS CHOSEN BEFORE THE CALL. A lost answer from
