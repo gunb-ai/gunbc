@@ -34,6 +34,18 @@ type LexCharClass
   | LineCommentTextChar
   | BlockCommentTextChar
 
+// THE TEXT-CARRYING PATTERNS DECLARE THE QUALIFIED SPELLING ON PURPOSE: a literal or keyword is
+// matched element by element against the source's char list, so `v2.std.text.String` -- the
+// free-monoid char list -- is the carrier the matcher needs, not the target's native string. Every
+// constructor that takes an ordinary `String` from its caller therefore owes `chars` at the field,
+// and `lex_rule_of_fragment` below is the shape the rest follow.
+//
+// THIS IS NOT A TASTE, AND THE FRONT END DOES NOT CATCH IT. An unconverted string is accepted here
+// with zero diagnostics and refuses only at the target's compiler, as a carrier mismatch reported at
+// the FIELD rather than at the missing conversion (E0308, or E0282 where a fold downstream then has
+// no element type to infer). The population is every per-language `*_lex_rule` constructor across
+// `v2.extdeps`, so one of them reading right says nothing about its fourteen siblings -- gunbc#11507
+// fixed the one its closure reached and the rest were still unconverted a PR later.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: v2.std.text.String }

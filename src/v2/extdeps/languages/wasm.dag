@@ -645,7 +645,7 @@ fn wasm_target_model() -> TargetModel {
 fn wasm_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 

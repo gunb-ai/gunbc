@@ -2261,11 +2261,6 @@ fn rust_target_model() -> TargetModel {
   }
 }
 
-// `LexPattern` declares `LiteralPattern { text: v2.std.text.String }` -- the QUALIFIED spelling, so
-// the field is the free-monoid char list on purpose, not the target's native string. The constructor
-// in `v2.std.compilers.lexing` converts with `chars` when it builds one from a fragment; this one
-// took an ordinary string and handed it over unconverted, which rustc answered as a carrier mismatch
-// at the field rather than at the missing conversion.
 fn rust_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,

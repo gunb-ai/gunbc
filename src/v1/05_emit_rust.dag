@@ -11244,6 +11244,26 @@ fn call_target_is_runtime_primitive(target: CallTargetIdentity) -> Bool {
 // `v1.compiler.tokenize source_code_point` -- an ordinary bridged function -- and the rebuilt binary
 // panicked on its own first tokenize. A predicate that is only correct when every caller remembers
 // to pre-filter it is a wall with a hole per consumer, so the filter moved inside.
+// ONE SHAPE, NOT TWO: THE SEAM RENDERS THE SAME CALL WHETHER OR NOT THE SITE'S TYPE IS RESOLVED.
+// The typed arm takes its turbofish from the call's own `inferred`; an unresolved site renders
+// `::<_>` and asks rustc for the same answer from the consuming context. That is deliberately NOT a
+// second arm falling back to the authored spelling: `unrealized_host_seam` diverges either way, so
+// the refusal is the same refusal, and where the context cannot determine T the target answers
+// E0282 -- loud, at the site, naming the type it could not infer. The alternative the earlier shape
+// carried was `func_ident`, which at this arm is `emit_error_expr` (`panic!`) by construction --
+// already a refusal rather than a silent widen, but one that cannot stand in receiver position
+// (E0599, and every argument after it `unreachable`), which is the whole defect the typed seam was
+// built to remove. Keeping it for the unresolved case would have kept that defect for exactly the
+// population the emitter knows least about.
+//
+// AND THE REFUSAL STAYS AT THIS ARM RATHER THAN CLIMBING TO A PRE-EMISSION COLLECTOR. Refusing the
+// MODULE (the EmissionConstructUnprojectable route) would be the higher rung if the question were
+// decidable at body grain -- it is not, for the reason recorded above this predicate: a body walk
+// cannot see which primitives the dedicated arms realize, and the one that was built called
+// `v1.compiler.tokenize source_code_point` unrealized and panicked the rebuilt seed on its own first
+// tokenize. The climb this class is waiting on is a realizability roster the emitter can consult --
+// the same capability `call_target_is_unrealized_primitive`'s note names -- not a second consumer of
+// this predicate placed earlier.
 // The seam's own name, for the refusal text. Empty when the target is not a runtime primitive at
 // all, which the predicate beside this one has already excluded at every call site that asks.
 fn call_target_unrealized_primitive_name(target: CallTargetIdentity) -> String {
@@ -12000,20 +12020,21 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     } }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if unrealized_primitive_call {
-    match inferred {
+    let seam_type = match inferred {
       Present { value: Resolved { node: ret_type } } =>
-        concat(
-          "v1_rt::unrealized_host_seam::<",
-          render_rust_type(n: ret_type, shared_types: shared_types, source_indices: si, emit_info: emit_info),
-          ">(\"",
-          escape_string_literal_body(s: concat(
-            concat("primitive ", call_target_unrealized_primitive_name(target: call_target)),
-            " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers"
-          )),
-          "\")"
-        )
-      _ => func_ident
+        render_rust_type(n: ret_type, shared_types: shared_types, source_indices: si, emit_info: emit_info)
+      _ => "_"
     }
+    concat(
+      "v1_rt::unrealized_host_seam::<",
+      seam_type,
+      ">(\"",
+      escape_string_literal_body(s: concat(
+        concat("primitive ", call_target_unrealized_primitive_name(target: call_target)),
+        " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers"
+      )),
+      "\")"
+    )
   } else {
     if is_rt && func == "concat" && all_args |> count > 2 {
       emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
