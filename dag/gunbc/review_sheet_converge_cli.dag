@@ -249,29 +249,24 @@ fn report_text(r: ReviewSheetConvergeReport) -> String {
   )
 }
 
-// The CLI surface. The token arrives by value here because the host has no modeled path to hand a
-// Secret by reference to a run; gunbc.auth.access_token_source prefers a path for exactly that
-// reason, and binding this entry to that source is the next step rather than a claim made now.
-fn converge_review_sheet_cli(access_token: String) -> ProcessExit uses net: Network {
-  match calling_home_resolution() {
-    HomeUnresolved { cause: c } => exit_failure(reason: c as String)
-    HomeResolved { project_id: p, writer: w } =>
-      match residency_drive(residency: review_sheet_residency) {
-        DriveUnresolved { cause: c } => exit_failure(reason: c as String)
-        DriveResolved { drive_id: d } =>
-          converge_report_exit(
-            report: converge_review_sheet_all(
-              token: access_token as Secret,
-              project_id: p,
-              writer: w,
-              drive_id: d,
-              policy: EnsureMayApply,
-            )
-          )
-      }
-  }
-}
-
+// THERE IS NO ARGV ENTRY POINT HERE, AND THE ONE THAT WAS HERE IS DELETED RATHER THAN DOCUMENTED.
+// It took the operator credential as a CLI argument, which is exactly what gunbc.credential_argv_exposure
+// measures on this fleet -- cmdline is 0444 and runner slots share the host pid namespace, so an
+// argv word is readable by any job payload a pull request can influence. The comment on it admitted
+// the hazard and carried on, which is the escape hatch DESIGN section 5 refuses: a toggle whose only
+// effect is to proceed as if the refusal had not fired.
+//
+// It was also a SECOND PATH beside a modelled one. The Drive and Sheets services read their
+// credential in-process through auth_source, converge_drive_half_cli takes no arguments at all, and
+// those two facts together mean an argv-free entry was not merely possible but already written six
+// lines below. A parallel authority that is strictly worse than the route beside it is not a
+// compatibility arm; it is the one a hurried reader will copy.
+//
+// What is genuinely missing is an argv-free way to reach the GCP steps, whose operations take their
+// token as an operation input because they are shared with consumers this lane does not own. That
+// gap is real and is NOT closed by this deletion -- converge_review_sheet_all remains callable by a
+// caller that can supply a Secret, and the entry point for it lands when those services gain an
+// auth_source read or gunbc.auth.access_token_source grows an in-process reader with a consumer.
 fn converge_report_exit(report: ReviewSheetConvergeReport) -> ProcessExit {
   if report_is_converged(r: report) {
     ExitSuccess

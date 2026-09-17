@@ -54,9 +54,14 @@ import extdeps.google.sheets {
 // which is a statement about the request, not about the sheet. A separate values.get is what
 // establishes the cells now hold what was sent, and it is the same read the next converge performs.
 
+// updated_cells was removed rather than computed. It carried a ROW count under a name that promises
+// cells, which is a reader getting a plausible number that is not the fact its name names -- and a
+// batchUpdate response does report totalUpdatedCells, so the field could have been filled honestly.
+// It is gone instead of filled because nothing consumed it: inventing a consumer to justify a field
+// is how a model grows facts nobody asked for.
 type ValuesWriteOutcome
   = ValuesAlreadyMatch { rows: Int }
-  | ValuesWrittenAndVerified { updated_cells: Int, rows: Int }
+  | ValuesWrittenAndVerified { rows: Int }
   | ValuesWriteUnverified { cause: NonEmptyStr }
   | ValuesWriteRefused { cause: NonEmptyStr }
 
@@ -247,10 +252,7 @@ fn verify_written_values(
     ValuesRead { range: got } =>
       match compare_value_ranges(a: got, b: desired) {
         RowsEqual =>
-          ValuesWrittenAndVerified {
-            updated_cells: value_range_row_count(r: desired),
-            rows: value_range_row_count(r: desired),
-          }
+          ValuesWrittenAndVerified { rows: value_range_row_count(r: desired) }
         RowsIncomparable { cause: c } =>
           ValuesWriteUnverified {
             cause: join([detail as String, ", and the readback could not be compared: ", c as String], "") as NonEmptyStr
@@ -294,7 +296,7 @@ fn converge_sheet_values(
 fn values_outcome_text(o: ValuesWriteOutcome) -> String {
   match o {
     ValuesAlreadyMatch { rows: n } => join(["already matches: ", to_string(n), " rows"], "")
-    ValuesWrittenAndVerified { updated_cells: _, rows: n } =>
+    ValuesWrittenAndVerified { rows: n } =>
       join(["written and verified by readback: ", to_string(n), " rows"], "")
     ValuesWriteUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
     ValuesWriteRefused { cause: c } => join(["REFUSED: ", c as String], "")

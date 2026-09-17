@@ -16,7 +16,7 @@ import extdeps.transports.rest {
 import extdeps.google.sheets
 import extdeps.google.sheets { SheetsColor, spreadsheet_first_sheet_id }
 
-// THE COLOURS COME FROM THE CITED PALETTE, NOT FROM TASTE. gunbc.design.catalog carries okabe_ito
+// THREE OF THE FIVE COLOURS COME FROM THE CITED PALETTE; TWO DO NOT, AND EACH SAYS SO. gunbc.design.catalog carries okabe_ito
 // as a CitedUpstream set anchored at jfly.uni-koeln.de, and it is the right set for this sheet for
 // a reason beyond availability: the column a reader scans fastest is Standing, and Okabe-Ito is
 // constructed to stay distinguishable under the common colour vision deficiencies. A palette
@@ -37,13 +37,20 @@ data standing_refused_color: SheetsColor = SheetsColor { red: 0.8353, green: 0.3
 // okabe_ito_blue Srgb8 { r: 0, g: 114, b: 178 } -> 0/255, 114/255, 178/255
 data header_background_color: SheetsColor = SheetsColor { red: 0.0, green: 0.4471, blue: 0.6980 }
 
-// A thin ink rather than pure black: pure black on a saturated ground reads as a hole, and the
-// header is the one band a reader's eye crosses on every scan.
+// NOT FROM THE PALETTE, and the header's claim does not cover it. White is the ground the figure
+// sits on rather than a hue chosen from a set, and gunbc.design.catalog carries no white in
+// okabe_ito -- island_ivory exists but belongs to a different set, and borrowing across sets to
+// satisfy a sentence would be worse than saying this plainly.
 data header_foreground_color: SheetsColor = SheetsColor { red: 1.0, green: 1.0, blue: 1.0 }
 
-// Evidence-insufficient rows are deliberately NOT coloured to attention. They are the majority of
-// the sheet and colouring them would spend the reader's attention on the rows that earned the
-// least of it; a mid grey says "read this last" more honestly than a hue would.
+// ALSO NOT FROM THE PALETTE, and this one is a hand-picked value. Okabe-Ito has black and no mid
+// grey, so a "read this last" tone had to come from somewhere, and it came from me. That is exactly
+// the taste the header says these colours avoid, so it is marked rather than dressed up: a reader
+// deciding whether to trust these values needs to know which three were derived and which two were
+// chosen. Its dissolution is a neutral ramp in gunbc.design, at which point this row derives.
+//
+// It currently has no consumer -- the standing rules colour only the admitted and refused arms --
+// so nothing in the sheet depends on this choice today.
 data standing_thin_color: SheetsColor = SheetsColor { red: 0.4, green: 0.4, blue: 0.4 }
 
 data review_sheet_header_row_count: Int = 1
