@@ -84,6 +84,7 @@ fn evaluation_store_address_mutation_census() -> ResolvedCallEdgeCensus {
   evaluation_store_address_fixture_callsite_census()
 }
 
+// O(corpus) producer for the exact-head join instrument (not a per-PR floor witness).
 fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
   compile_dag_callsite_resolved_call_edges(
     evaluation_store_address_home_modules,

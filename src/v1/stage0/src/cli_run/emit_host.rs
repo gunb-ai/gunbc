@@ -1155,45 +1155,81 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
     }
     // Caller horizon (`pool_roots`) selects candidate files only. When that horizon is a
     // witness-layer root, resolution runs against the admitted live-tree universe
-    // (`witness_layer_roots` → dag ∪ src/v2); each selected entry's import closure is
-    // derived from that index. Using the horizon `dag` as resolve_roots under-resolved
-    // std.materialization_provider (it imports v2.compiler.self_host.generation). A
-    // fixture pool is not a layer root and resolves against itself.
+    // (`witness_layer_roots` → dag ∪ src/v2) through the process-shared index. Using the
+    // horizon `dag` as resolve_roots under-resolved std.materialization_provider (it
+    // imports v2.compiler.self_host.generation). A fixture pool is not a layer root:
+    // resolve against a PRIVATE index of that subtree only. Routing fixtures through
+    // process_shared_index either rebuilds a whole-corpus slot (two-slot TLS replace) or
+    // typechecks the live-tree universe — the cost that made the alias census an
+    // enrolment_bound_without_ceiling measurement rather than a bounded inhabitance.
     let dependency_universe = resolve_roots_for_call_edge_pool(pool_roots);
+    let layers = crate::cli_run::witness_layer_roots();
+    let live_tree_horizon = pool_roots.is_empty()
+        || pool_roots
+            .iter()
+            .all(|root| layers.iter().any(|layer| layer == root));
     let mut entries: Vec<String> = entries.into_iter().collect();
     entries.sort();
     let mut edges = Vec::new();
     let mut seen: HashSet<(String, String, String, String)> = HashSet::new();
-    for entry in entries {
-        match resolve_entry_graph_shared(&dependency_universe, &entry) {
+    let take_graph = |resolved: Result<(Rc<v1_compiler_compile::ResolvedGraph>, _), String>,
+                      entry: &str|
+     -> Result<
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        crate::cli_run::ResolvedCallEdgeCensus,
+    > {
+        match resolved {
             Ok((graph, _)) => {
                 let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
                     graph.diagnostics.clone(),
                 );
                 if !blocking.is_empty() {
                     let detail = blocking.iter().cloned().collect::<Vec<_>>().join("; ");
-                    return ResolvedCallEdgeCensus::Refused {
+                    return Err(ResolvedCallEdgeCensus::Refused {
                         cause: format!(
                             "candidate resolved call edges: {entry}: blocking acquisition/import/resolution/type diagnostics: {detail}"
                         ),
-                    };
+                    });
                 }
-                for edge in resolved_call_edges_from_graph(&graph) {
-                    let key = (
-                        edge.caller_module.clone(),
-                        edge.caller_decl.clone(),
-                        edge.callee_module.clone(),
-                        edge.callee_decl.clone(),
-                    );
-                    if seen.insert(key) {
-                        edges.push(edge);
-                    }
-                }
+                Ok(graph)
             }
-            Err(cause) => {
-                return ResolvedCallEdgeCensus::Refused {
-                    cause: format!("candidate resolved call edges: {entry}: {cause}"),
-                }
+            Err(cause) => Err(ResolvedCallEdgeCensus::Refused {
+                cause: format!("candidate resolved call edges: {entry}: {cause}"),
+            }),
+        }
+    };
+    let mut push_edges = |graph: &v1_compiler_compile::ResolvedGraph| {
+        for edge in resolved_call_edges_from_graph(graph) {
+            let key = (
+                edge.caller_module.clone(),
+                edge.caller_decl.clone(),
+                edge.callee_module.clone(),
+                edge.callee_decl.clone(),
+            );
+            if seen.insert(key) {
+                edges.push(edge);
+            }
+        }
+    };
+    if live_tree_horizon {
+        for entry in entries {
+            match take_graph(
+                resolve_entry_graph_shared(&dependency_universe, &entry),
+                &entry,
+            ) {
+                Ok(graph) => push_edges(&graph),
+                Err(refused) => return refused,
+            }
+        }
+    } else {
+        let index = crate::cli_run::build_multi_entry_index(&dependency_universe);
+        for entry in entries {
+            match take_graph(
+                crate::cli_run::resolve_entry_with_index(&index, &entry),
+                &entry,
+            ) {
+                Ok(graph) => push_edges(&graph),
+                Err(refused) => return refused,
             }
         }
     }

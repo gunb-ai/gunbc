@@ -90,7 +90,10 @@ fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool
     ) |> count()) == 0)
 }
 
-test fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
+// On-demand instrument, not a DiscoverySelection floor witness: O(corpus) exact-head join
+// of production_census over dag ∪ src/v2. Re-derive:
+// gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/evaluation_store_address_census_witness_test.dag --function evaluation_store_address_census_joins_exact_head_declaration_graph
+fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
   match evaluation_store_address_production_census() {
     ResolvedCallEdgeCensusRefused { cause: _ } => false
     ResolvedCallEdgeCensusObserved { edges } =>
