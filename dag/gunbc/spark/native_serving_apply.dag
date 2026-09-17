@@ -122,7 +122,7 @@ fn spark_native_apply_plans() -> List<SparkPairHostApplyPlan>? {
       HeadFound { value: head_plan } =>
         match list_tail(xs: present) {
           TailAbsent => none
-          TailFound { tail: workers } => Present { value: concat(workers, [head_plan]) }
+          TailFound { tail: workers } => Present { value: concat([head_plan], workers) }
         }
     }
   }
