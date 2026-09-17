@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_live_deploy_emit_witness_spec_listen_port_is_8080_deployment_spec_srv1
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data test_claim_live_deploy_emit_witness_spec_listen_port_is_8080_deployment_spec_srv1: TransitionAdmission = TransitionAdmission {
+  label: "CONVERGENCE-ONE C2 deployment_spec_srv1 home gunbc.live_deploy.desired" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.live_deploy.emit", "witness_spec_listen_port_is_8080"),
+    spelling: "deployment_spec_srv1" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.live_deploy.desired", "deployment_spec_srv1")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11425 as UInt32,
+}

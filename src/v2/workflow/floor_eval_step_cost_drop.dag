@@ -7,14 +7,16 @@ import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import std.types { NonEmptyStr }
 
-// THE POLICY HALF OF THE DECLARED 4b(3) DROP `gunbc.rung_drop`
-// `roadmap_live_projection_new_witness_eval_step_cost`. The drop's loss is a WORKFLOW fact -- which
+// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Two bounded populations share one
+// membership test (`floor_eval_step_cost_drop_members` / `_holds`): the live-roadmap four
+// (`gunbc.rung_drop` `roadmap_live_projection_new_witness_eval_step_cost`) and the two
+// live-deploy apply-render readers (`gunbc.rung_drop`
+// `live_deploy_apply_render_new_witness_eval_step_cost`). The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
-// `v2.workflow.required_floor` decides with it. The rung-drop row DERIVES its population from this
-// list; the seed runner MIRRORS the membership test by reading `floor_eval_step_cost_drop_members`
-// through the policy frame. One list, three readers, no second copy (DESIGN section 3: interface,
-// realization and policy are three facts).
+// `v2.workflow.required_floor` decides with it. Each rung-drop row DERIVES its population from
+// ITS list; the seed runner MIRRORS the union via `floor_eval_step_cost_drop_members`.
+// Growing a drop's own list is a new drop, never a row on the other drop's list.
 //
 // IT IS NOT A THIRD TIER AND IT IS NOT COST-DEBT. Members are planned, executed and measured on
 // every run, their eval_steps are recorded, and a semantic red or a wall-clock crossing still
@@ -22,7 +24,7 @@ import std.types { NonEmptyStr }
 // `EvalStepsOverBudgetUnderDeclaredDrop` instead of refusing. The budget itself is not raised.
 //
 // MEMBERSHIP IS BY WHOLE QUALIFIED IDENTITY, NEVER BY PREFIX OR MODULE. A module-grain exemption
-// would silently cover every witness later added beside these four, which is the widening the
+// would silently cover every witness later added beside a named list, which is the widening the
 // drop's bounded population exists to forbid.
 //
 // THE ROW CARRIES NO TRANSCRIBED COUNT, AND THAT IS THE POINT. An earlier revision held an
@@ -34,10 +36,10 @@ import std.types { NonEmptyStr }
 // the producing run and artifact. Whether a member still overruns is read from a LIVE floor's
 // `required_floor_claim_cost.tsv`, out of band, with `tools.floor_cost_distribution_instrument`.
 //
-// IT MAY ONLY SHRINK. A row leaves when its identity measures inside the new-witness budget on the
-// acceptance path and the prepared-input capability the drop's trigger names has landed; a row is
-// never added to cover a newly expensive witness -- that would be a new declared drop with its own
-// reason, not growth of this one.
+// THE ROADMAP LIST MAY ONLY SHRINK. A row leaves when its identity measures inside the new-witness
+// budget on the acceptance path and the prepared-input capability THAT drop's trigger names has
+// landed. A newly expensive witness is a new declared drop with its own list, not growth of this
+// one. The apply-render list is that second drop.
 type EvalStepCostDropMeasurement {
   identity: NonEmptyStr
   measured_by: NonEmptyStr
@@ -62,23 +64,45 @@ data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
   },
 ]
 
+// SECOND DROP, SAME MEMBERSHIP TEST. These two identities string-inspect the production apply
+// script. When the module is a changed witness they pay live_deploy_apply_script_for in-frame
+// (required floor run 35174104379, artifact required-floor-claim-cost). Yesterday's green C2 head
+// billed the same render to preparation because gunbc#11204's warm share rows still resolved in
+// that subject's changed set; gunbc#11457 unrostered those rows because a dag/test/claim
+// producer is outside every ordinary required-gate subject. The predicates did not get more
+// expensive; the fill left.
+data floor_eval_step_cost_drop_apply_render_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.live_deploy.emit.apply_script_stays_within_ci_runner_grants" as NonEmptyStr,
+    measured_by: "required floor run 35174104379, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, eval_steps billed to live_deploy_apply_script_for after gunbc#11457 unrostered the warm share fill" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback" as NonEmptyStr,
+    measured_by: "required floor run 35174104379, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, eval_steps billed to live_deploy_apply_script_for after gunbc#11457 unrostered the warm share fill" as NonEmptyStr,
+  },
+]
+
+fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
+  fold(floor_eval_step_cost_drop_apply_render_rows, init: floor_eval_step_cost_drop_rows, f: fn(acc, row) { concat(acc, [row]) })
+}
+
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or
 // duplicated decode of this list rather than applying it, so a failed read can never widen into an
 // exemption.
 fn floor_eval_step_cost_drop_members() -> List<String> {
-  list_map(xs: floor_eval_step_cost_drop_rows, f: fn(row) { row.identity })
+  list_map(xs: floor_eval_step_cost_drop_all_rows(), f: fn(row) { row.identity })
 }
 
 fn floor_eval_step_cost_drop_holds(name: String) -> Bool {
-  any(xs: floor_eval_step_cost_drop_rows, predicate: fn(row) { row.identity == name })
+  any(xs: floor_eval_step_cost_drop_all_rows(), predicate: fn(row) { row.identity == name })
 }
 
 // AMBIGUITY IS A DEFECT, NOT A HARMLESS REPEAT: a duplicated identity makes the population overstate
 // what is dropped, and the second copy survives removal of the first.
 fn floor_eval_step_cost_drop_has_duplicate() -> Bool {
-  any(xs: floor_eval_step_cost_drop_rows, predicate: fn(row) {
+  any(xs: floor_eval_step_cost_drop_all_rows(), predicate: fn(row) {
     int_gt(
-      a: count_where(xs: floor_eval_step_cost_drop_rows, predicate: fn(other) { other.identity == row.identity }),
+      a: count_where(xs: floor_eval_step_cost_drop_all_rows(), predicate: fn(other) { other.identity == row.identity }),
       b: 1,
     )
   })

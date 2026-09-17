@@ -1,6 +1,6 @@
 module extdeps.python
 
-import std.types { FilePath, List, Unit }
+import std.types { FilePath, List, Unit, NonEmptyStr }
 import std.string_type { String }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
 import extdeps.external_authority { ExternalAuthority }
@@ -28,6 +28,27 @@ service python.Interpreter {
       nonzero => String "python3 script exited nonzero"
     }
   }
+}
+
+// ── THE `-c` FLAG IS AN INTERFACE FACT ABOUT THIS INTERPRETER ─────────────────────────────────
+//
+// A CALLER THAT HAS A PROGRAM RATHER THAN A FILE runs it with `python3 -c <program>`, and that flag
+// belongs here for the same reason `RunFile`'s argv does: it is what the interpreter's own command
+// line accepts. Spelled in a product module it becomes a second place the interpreter's CLI is
+// known, and the embedded program travels as a bare string with nothing naming what it is.
+//
+// THE PROGRAM IS CARRIED AS A SECOND MEDIUM AND THIS MODULE DOES NOT MODEL IT. `PythonProgramText`
+// names that honestly rather than letting a `String` imply otherwise: what is inside is Python, and
+// nothing on this side parses it. TRIGGER for closing that: a Python emission target under
+// extdeps/languages, after which a caller hands a modeled program and this renders it. SUFFICIENT
+// FOR: a one-line probe cannot carry a syntax error past this boundary undetected.
+type PythonProgramText = NonEmptyStr
+
+data python_program_flag: String = "-c"
+data python_interpreter_command: String = "python3"
+
+fn python_run_program_argv(program: PythonProgramText) -> List<String> {
+  [python_interpreter_command, python_program_flag, program as String]
 }
 
 // WORKSPACE FOOTPRINT. Running any Python script leaves CPython's bytecode cache in the

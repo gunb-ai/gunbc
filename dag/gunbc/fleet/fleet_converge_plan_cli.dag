@@ -162,7 +162,8 @@ import gunbc.fleet_converge_plan {
 }
 import extdeps.git
 import gunbc.live_deploy.apply { live_deploy_apply_srv1_operator_local_wet }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_host_identity }
+import gunbc.live_deploy.spec { deployment_plan_host_identity }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.fleet_request { live_deploy_host_only_request_refusal_reason }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repository { gunbc_repository }

@@ -300,7 +300,7 @@ test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool {
 // side, this reds — which is the only mechanical thing standing between the two readings drifting into
 // disagreeing about which bytes the deploy installs.
 test fn the_rsync_flags_derive_from_the_same_exclusion_set_the_filter_reads() -> Bool {
-  let expected_flags = "--exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts"
+  let expected_flags = "--exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts --exclude /dag/gunbc/recurring_failure_mode/roster.dag"
   deployed_tree_rsync_exclude_flags() == expected_flags
     && length(deployed_tree_excluded_prefixes) == 8
     && join(deployed_tree_excluded_prefixes, ",") == "target,.git,.claude,.gunbc,target-codex,.cargo-home,.gunbc-build-receipts,.gunbc-converge-receipts"
@@ -348,4 +348,12 @@ test fn the_appended_dotted_prefixes_still_match_segments_not_character_runs() -
   path_is_deployed(path: ".claudex/x.dag")
     && path_is_deployed(path: "dag/.claude/x.dag")
     && path_is_deployed(path: "target-codexish/x")
+}
+
+// THE COMPILER-DERIVED ROSTER IS NOT SHIPPED AND ITS SIBLING ROWS ARE: the exclusion is the exact
+// derived path, so the authored row files beside it stay in the deployed tree.
+test fn the_derived_failure_mode_roster_is_excluded_as_a_file_not_a_prefix() -> Bool {
+  !path_is_deployed(path: "dag/gunbc/recurring_failure_mode/roster.dag")
+    && path_is_deployed(path: "dag/gunbc/recurring_failure_mode/empty_capture_read_as_clean_result.dag")
+    && path_is_deployed(path: "dag/gunbc/recurring_failure_mode/roster.dag.bak")
 }

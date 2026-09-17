@@ -627,3 +627,22 @@ test fn a_member_of_the_declared_drop_still_blocks_on_the_wall() -> Bool {
 test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
   floor_eval_step_cost_drop_has_duplicate() == false
 }
+
+// THE APPLY-RENDER LIST IS A SECOND DROP, SAME TEST. If membership is only the live-roadmap four,
+// this identity stays EvalStepsOverBudget and the C2 changed-witness floor refuses.
+fn apply_render_drop_member_identity() -> String {
+  "test.claim.live_deploy.emit.apply_script_stays_within_ci_runner_grants"
+}
+
+test fn an_over_budget_apply_render_drop_member_is_reported_not_refused() -> Bool {
+  floor_eval_step_cost_drop_holds(name: apply_render_drop_member_identity())
+    && match claim_eval_step_standing_for_identity(
+      identity: apply_render_drop_member_identity(),
+      observed_eval_steps: drop_probe_steps(),
+      budget_steps: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
+    ) {
+      EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
+      EvalStepsOverBudget { observed_steps: _, budget_steps: _ } => false
+      EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: _, budget_steps: _ } => true
+    }
+}

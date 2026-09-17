@@ -251,6 +251,7 @@ use crate::v1_std_core::CompilerDiagnostic::{
     VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
     ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
@@ -313,9 +314,9 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
-    Connective, DeclRefCoords, DeclaredCallableIdentity, DeclaredFuncEnv, DeclaredFuncSig,
-    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary,
-    FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
+    Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity, DeclaredFuncEnv,
+    DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
+    FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
     MethodSemantics, NewlineIndex, Node, ResolvedCallFormal, ResolvedFormal, ServiceConfigField,
     StringPart, UnaryOpKind, VarBindingKind,
 };
@@ -876,6 +877,7 @@ pub fn nominal_ref_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2269,6 +2271,7 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
     has_non_tail_self_call: sf.has_non_tail_self_call.clone(),
     match_pattern: sf.match_pattern.clone(),
     module_item_kind: sf.module_item_kind.clone(),
+    declaration_marker: sf.declaration_marker.clone(),
     expr_data: sf.expr_data.clone(),
     ident: None,
 }));
@@ -8228,6 +8231,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -8972,6 +8976,7 @@ let fold_callable = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+    declaration_marker: DeclarationMarker::Unmarked,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 });
@@ -9591,6 +9596,7 @@ pub fn elaborated_expr_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -10841,6 +10847,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     .clone(),
                                                 match_pattern: receiver.match_pattern.clone(),
                                                 module_item_kind: receiver.module_item_kind.clone(),
+                                                declaration_marker: receiver
+                                                    .declaration_marker
+                                                    .clone(),
                                                 expr_data: receiver.expr_data.clone(),
                                                 ident: None,
                                             })
@@ -12520,6 +12529,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             has_non_tail_self_call: pn.has_non_tail_self_call.clone(),
                             match_pattern: pn.match_pattern.clone(),
                             module_item_kind: pn.module_item_kind.clone(),
+                            declaration_marker: pn.declaration_marker.clone(),
                             expr_data: pn.expr_data.clone(),
                         })
                     });
@@ -14384,6 +14394,7 @@ Rc::new(FieldInferResult {
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                            declaration_marker: DeclarationMarker::Unmarked,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }));
@@ -14409,6 +14420,7 @@ Rc::new(FieldInferResult {
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -16818,6 +16830,7 @@ crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_s
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    declaration_marker: body.declaration_marker.clone(),
                     expr_data: Rc::new(ExprData::ExprCall {
                         call_semantics: cs.clone(),
                         descent_evidence: Some(evidence.clone()),
@@ -17131,6 +17144,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    declaration_marker: body.declaration_marker.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -17257,6 +17271,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    declaration_marker: body.declaration_marker.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -17349,6 +17364,7 @@ Rc::new(BlockAnnotateAcc {
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    declaration_marker: body.declaration_marker.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -17623,6 +17639,7 @@ Rc::new(BlockAnnotateAcc {
                             has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                             match_pattern: body.match_pattern.clone(),
                             module_item_kind: body.module_item_kind.clone(),
+                            declaration_marker: body.declaration_marker.clone(),
                             expr_data: body.expr_data.clone(),
                             ident: None,
                         })
@@ -17718,6 +17735,7 @@ Rc::new(BlockAnnotateAcc {
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    declaration_marker: body.declaration_marker.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -19570,6 +19588,7 @@ pub fn infer_property_values(
                             has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                             match_pattern: p.match_pattern.clone(),
                             module_item_kind: p.module_item_kind.clone(),
+                            declaration_marker: p.declaration_marker.clone(),
                             expr_data: p.expr_data.clone(),
                             ident: None,
                         }),
@@ -19681,6 +19700,7 @@ Rc::new(PropertyInferenceResult {
     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
     match_pattern: p.match_pattern.clone(),
     module_item_kind: p.module_item_kind.clone(),
+    declaration_marker: p.declaration_marker.clone(),
     expr_data: p.expr_data.clone(),
     ident: None,
 }),
@@ -19755,6 +19775,7 @@ pub fn infer_transport_node(
                     has_non_tail_self_call: t.has_non_tail_self_call.clone(),
                     match_pattern: t.match_pattern.clone(),
                     module_item_kind: t.module_item_kind.clone(),
+                    declaration_marker: t.declaration_marker.clone(),
                     expr_data: t.expr_data.clone(),
                     ident: None,
                 })),
@@ -19808,6 +19829,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: item.module_item_kind.clone(),
+                    declaration_marker: item.declaration_marker.clone(),
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -19946,6 +19968,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             ),
                             match_pattern: std::option::Option::None,
                             module_item_kind: item.module_item_kind.clone(),
+                            declaration_marker: item.declaration_marker.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
@@ -20016,6 +20039,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: item.module_item_kind.clone(),
+                                declaration_marker: item.declaration_marker.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -20061,6 +20085,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: item.module_item_kind.clone(),
+                                declaration_marker: item.declaration_marker.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -20102,6 +20127,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: item.module_item_kind.clone(),
+                                declaration_marker: item.declaration_marker.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -20656,6 +20682,7 @@ pub fn substitute_generics_apply(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 module_item_kind: n.module_item_kind.clone(),
+                                declaration_marker: n.declaration_marker.clone(),
                                 expr_data: n.expr_data.clone(),
                                 ident: None,
                             })
@@ -21233,6 +21260,7 @@ pub fn local_binding_for_item(
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
                         module_item_kind: item.module_item_kind.clone(),
+                        declaration_marker: item.declaration_marker.clone(),
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     });
@@ -21269,6 +21297,7 @@ pub fn local_binding_for_item(
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: item.module_item_kind.clone(),
+                            declaration_marker: item.declaration_marker.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -21306,6 +21335,7 @@ pub fn local_binding_for_item(
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: item.module_item_kind.clone(),
+                                declaration_marker: item.declaration_marker.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             });
@@ -21366,6 +21396,7 @@ pub fn local_binding_for_item(
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
                                         module_item_kind: item.module_item_kind.clone(),
+                                        declaration_marker: item.declaration_marker.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     });
@@ -22933,6 +22964,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22955,6 +22987,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22980,6 +23013,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -23105,6 +23139,7 @@ pub fn build_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                declaration_marker: DeclarationMarker::Unmarked,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -23140,6 +23175,7 @@ pub fn build_type_env(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -23167,6 +23203,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23189,6 +23226,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23211,6 +23249,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23233,6 +23272,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23868,6 +23908,7 @@ pub fn build_type_env_unresolved(
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                declaration_marker: DeclarationMarker::Unmarked,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -23897,6 +23938,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23919,6 +23961,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23941,6 +23984,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23963,6 +24007,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -24073,6 +24118,7 @@ pub fn build_type_env_unresolved(
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
                                         module_item_kind: item.module_item_kind.clone(),
+                                        declaration_marker: item.declaration_marker.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     });
@@ -24114,6 +24160,7 @@ pub fn build_type_env_unresolved(
                                             has_non_tail_self_call: false,
                                             match_pattern: std::option::Option::None,
                                             module_item_kind: item.module_item_kind.clone(),
+                                            declaration_marker: item.declaration_marker.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
                                             ident: None,
                                         });
@@ -25600,6 +25647,7 @@ pub fn typecheck_module(
                             has_non_tail_self_call: item.has_non_tail_self_call.clone(),
                             match_pattern: item.match_pattern.clone(),
                             module_item_kind: item.module_item_kind.clone(),
+                            declaration_marker: item.declaration_marker.clone(),
                             expr_data: item.expr_data.clone(),
                             ident: None,
                         })
@@ -26915,6 +26963,7 @@ pub fn compiler_kernel_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                declaration_marker: DeclarationMarker::Unmarked,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -26950,6 +26999,7 @@ pub fn compiler_kernel_type_env(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -26977,6 +27027,7 @@ pub fn compiler_kernel_type_env(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -26999,6 +27050,7 @@ pub fn compiler_kernel_type_env(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -27021,6 +27073,7 @@ pub fn compiler_kernel_type_env(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -27043,6 +27096,7 @@ pub fn compiler_kernel_type_env(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });

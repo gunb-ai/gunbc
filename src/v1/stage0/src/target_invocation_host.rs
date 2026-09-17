@@ -154,6 +154,7 @@ pub enum TargetProducer {
     BehavioralReceiptCensus,
     BehavioralReceiptSelftest,
     CompileCleanDiagnosticCensus,
+    EvaluationStoreAddressExactHead,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -206,6 +207,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-cli"),
             TargetProducer::V2NativeCli,
+        ),
+        (
+            instrument_label("evaluation-store-address-exact-head"),
+            TargetProducer::EvaluationStoreAddressExactHead,
         ),
     ]
 }
@@ -398,6 +403,104 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
+        TargetProducer::EvaluationStoreAddressExactHead => {
+            run_evaluation_store_address_exact_head()
+        }
+    }
+}
+
+fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
+    const ENTRY: &str = "dag/gunbc/evaluation_store_address_census.dag";
+    const FUNCTION: &str = "evaluation_store_address_census_joins_exact_head_declaration_graph";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "evaluation-store-address-exact-head: refused: could not anchor at the workspace root: {e}"
+            ),
+        };
+    }
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "evaluation-store-address-exact-head: resolve failed for {ENTRY}: {cause}"
+                ),
+            };
+        }
+    };
+    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+        graph.diagnostics.clone(),
+    );
+    if !blocking.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "evaluation-store-address-exact-head: {ENTRY} has blocking diagnostics: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    }
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &[], true) {
+        Ok(value) => exact_head_standing_outcome(&ctx, FUNCTION, &value),
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!("evaluation-store-address-exact-head: eval failed: {cause}"),
+        },
+    }
+}
+
+fn exact_head_standing_outcome(
+    ctx: &crate::v1_interpreter::InterpContext,
+    function: &str,
+    value: &crate::v1_interpreter::Value,
+) -> InvocationOutcome {
+    match value {
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "ExactHeadHeld") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationHeld,
+                message: format!("evaluation-store-address-exact-head: held ({function})"),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "ExactHeadDidNotHold") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationDidNotHold,
+                message: format!(
+                    "evaluation-store-address-exact-head: {}",
+                    ctx.format_value(value)
+                ),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "ExactHeadRefused") =>
+        {
+            InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "evaluation-store-address-exact-head: {}",
+                    ctx.format_value(value)
+                ),
+            }
+        }
+        other => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "evaluation-store-address-exact-head: {function} returned a non-standing value: {}",
+                ctx.format_value(other)
+            ),
+        },
     }
 }
 

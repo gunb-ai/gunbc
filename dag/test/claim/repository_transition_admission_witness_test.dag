@@ -6,6 +6,7 @@ import gunbc.live_deploy.apply {
   live_deploy_wet_with_access_for_realization,
   live_deploy_transaction_wet_with_access_for_realization,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access, ci_deploy_srv1_operator_access }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
@@ -83,10 +84,12 @@ fn exit_refusal_reason(e: ProcessExit) -> String {
 test fn both_direct_apply_principals_consult_repository_transition_admission() -> Bool {
   let expected = refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
   exit_refusal_reason(e: live_deploy_wet_with_access_for_realization(
+    spec: deployment_spec_srv1(),
     access: ci_deploy_srv1_access,
     realization: LegacyGitFileSync,
   )) == expected
     && exit_refusal_reason(e: live_deploy_wet_with_access_for_realization(
+      spec: deployment_spec_srv1(),
       access: ci_deploy_srv1_operator_access,
       realization: LegacyGitFileSync,
     )) == expected
@@ -94,6 +97,7 @@ test fn both_direct_apply_principals_consult_repository_transition_admission() -
 
 test fn receipted_transaction_ingress_consults_repository_transition_admission() -> Bool {
   exit_refusal_reason(e: live_deploy_transaction_wet_with_access_for_realization(
+    spec: deployment_spec_srv1(),
     access: ci_deploy_srv1_access,
     realization: LegacyGitFileSync,
   )) == refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
