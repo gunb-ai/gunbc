@@ -13,13 +13,15 @@ import std.integer { Int }
 // particular, no command line, function name, or execution closure is carried here: selecting a
 // transport belongs to the later realization layer, not to either side of this model relation.
 type TargetProducer
-  = RequiredFloorProducer
+  = SelfHostProducer
+  | RequiredFloorProducer
   | BazelProducer
   | BehavioralReceiptPlanProducer
   | BehavioralReceiptCensusProducer
   | BehavioralReceiptSelftestProducer
   | HeadsReadingDifferentialProducer
   | CompileCleanDiagnosticCensusProducer
+  | V2NativeCliProducer
 
 type TargetBinding {
   target: Label

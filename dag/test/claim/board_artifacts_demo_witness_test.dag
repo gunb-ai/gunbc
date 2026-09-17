@@ -1,0 +1,77 @@
+module test.claim.board_artifacts_demo_witness
+
+import std.types { String, List, list_length }
+import gunbc.demo.board_artifacts {
+  ArtifactArticleNotAdmitted,
+  ArtifactRefusedByTarget,
+  ArtifactRendered,
+  BoardArtifactRendering,
+  board_artifact_renderings,
+  rendering_is_rendered,
+  rendering_path,
+  rendering_source_or_empty,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEMO LAYER'S EXECUTING CONSUMER (review 66759). `write_artifacts` was reachable only by a human
+// running the entry and looking at the filesystem, which DESIGN section 3c calls dangling: the
+// declaration existed and nothing in the tree consumed it. The production half is now a pure fold and
+// this claim evaluates it, so deleting the wiring breaks a control rather than a habit.
+//
+// WHAT IT ASSERTS IS THE JOIN, NOT THE BYTES. Each target's exact output is already pinned by its own
+// projection witness -- the Verilog module frame, the SPICE deck, the constraint file, the truth
+// table -- and restating those bytes here would be a second oracle for facts that already have one
+// (DESIGN section 2). What has no other home is that the DEMO reaches all five targets through the
+// admitted article and renders every one of them, so that is what this checks: five renderings, all
+// rendered, each at a distinct path, and each carrying the marker that identifies its own target
+// rather than another's.
+
+fn renderings() -> List<BoardArtifactRendering> {
+  board_artifact_renderings()
+}
+
+fn source_at(path: String) -> String {
+  fold(renderings(), init: "", f: fn(acc, r) {
+    if rendering_path(r: r) == path { rendering_source_or_empty(r: r) } else { acc }
+  })
+}
+
+test fn w_the_demo_renders_five_artifacts_and_refuses_none() -> Bool {
+  let rs = renderings()
+  (list_length(items: rs) == 5)
+    && fold(rs, init: true, f: fn(acc, r) { acc && rendering_is_rendered(r: r) })
+}
+
+// EVERY PATH IS DISTINCT, because two rows pointing at one path would silently overwrite and the
+// demo would show four files while claiming five.
+fn path_count(path: String) -> Int {
+  fold(renderings(), init: 0, f: fn(acc, r) { if rendering_path(r: r) == path { acc + 1 } else { acc } })
+}
+
+test fn w_every_demo_artifact_has_its_own_path() -> Bool {
+  fold(renderings(), init: true, f: fn(acc, r) { acc && (path_count(path: rendering_path(r: r)) == 1) })
+}
+
+// EACH TARGET'S OWN MARKER AT ITS OWN PATH. This is what a count cannot establish: five renderings
+// could all be the same target's bytes under five names, and the demo's whole claim is that these are
+// five different projections of one article.
+test fn w_each_demo_path_carries_its_own_targets_output() -> Bool {
+  string_contains(s: source_at(path: "target/demo/board_power_interlock.v"), pattern: "module board_power_interlock (")
+    && string_contains(s: source_at(path: "target/demo/conditioning_network.spice"), pattern: "Rpg_top pg_raw pg_cond 30k")
+    && string_contains(s: source_at(path: "target/demo/conditioning_network.cir"), pattern: ".op")
+    && string_contains(s: source_at(path: "target/demo/board_power_interlock.pcf"), pattern: "set_io conditioned_good 1")
+    && string_contains(s: source_at(path: "target/demo/board_power_interlock_truth_table.md"), pattern: "| conditioned_good | fault | power_permit | reset_release |")
+}
+
+// THE DIGITAL EDIT REACHES EXACTLY THE TARGETS THAT DEPEND ON IT, which is the demonstration's actual
+// thesis and the one thing a reader is asked to believe. The Verilog carries the negation the board's
+// equation states; the SPICE circuit and the pin file do not mention it at all, because neither
+// depends on the digital equation. A projection that leaked the equation into the analog deck would
+// pass every claim above and fail this one.
+test fn w_the_digital_equation_reaches_only_the_digital_targets() -> Bool {
+  string_contains(s: source_at(path: "target/demo/board_power_interlock.v"), pattern: "(conditioned_good & ~fault)")
+    && !string_contains(s: source_at(path: "target/demo/conditioning_network.spice"), pattern: "conditioned_good")
+    && !string_contains(s: source_at(path: "target/demo/conditioning_network.cir"), pattern: "conditioned_good")
+}

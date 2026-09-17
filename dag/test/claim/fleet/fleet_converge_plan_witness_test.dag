@@ -114,6 +114,7 @@ import gunbc.fleet_converge_plan {
   LaunchEnvironment,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  LiveDeploy,
   FullHostConverge,
   FabricExecutionCellsConverge,
   fleet_converge_request_scope,
@@ -1913,6 +1914,7 @@ fn line_is_a_scope_row(l: String) -> Bool {
   l == fleet_converge_scope_wire(scope: FullHost)
     || l == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
     || l == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)
+    || l == fleet_converge_scope_wire(scope: LiveDeploy)
 }
 
 // #9746 added FabricAllocationStoreOnly to the scope sum and left these two predicates behind, so
@@ -1925,6 +1927,7 @@ fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
     LaunchEnvironment => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    LiveDeploy => false
   }
 }
 
@@ -1934,6 +1937,7 @@ fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
     FullHost => false
     LaunchEnvironment => false
     FabricAllocationStoreOnly => false
+    LiveDeploy => false
   }
 }
 

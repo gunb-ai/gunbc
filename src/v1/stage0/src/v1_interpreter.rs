@@ -19217,6 +19217,26 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
+            // ISSUANCE, THE KEY HOLDER'S OWN OPERATION, and a second primitive rather than a
+            // widening of verify: the verify arm above deliberately yields one bit, so a verifier
+            // is never handed a computed tag to compare in variable time. Minting is the only
+            // purpose a computed tag has, and with a symmetric MAC only the key holder (the
+            // broker) can perform it (extdeps.crypto.mac symmetric_verification_is_issuance_note).
+            //
+            // Same RustCrypto Hmac<Sha256>, same hex key spelling as verify. A key that is not
+            // hex answers ABSENT (the optional's null), never a tag: there is no key to have
+            // signed with, and a fabricated tag would be a plausible output standing where a
+            // refusal belongs. extdeps.crypto.mac mac_sign turns that absence into its typed arm.
+            arm "free_call.hmac_sha256_hex" { "hmac_sha256_hex" } => {
+                Ok(Some(match hmac_sha256_hex_tag(
+                    expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
+                    expect_value_str($positional.get(1).copied(), "hmac_sha256_hex message")?.as_str(),
+                ) {
+                    Some(tag) => str_value(tag),
+                    None => Value::Null,
+                }))
+            },
+
             arm "free_call.string_length" { "string_length" } => {
                 let s = expect_value_str($positional.first().copied(), "string_length")?;
                 Ok(Some(Value::Int(s.string_length())))
@@ -21043,7 +21063,8 @@ fn record_call_frequency(func_name: &str) {
         "parse_table_record_miss",
         "parse_table_lookup",
         "parse_table_insert",
-        "parse_choice_residue_backtrack",
+        "parse_choice_plan",
+        "parse_choice_ordered_backtrack",
         "uri_percent_encode_scalar_fragment",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
@@ -21801,6 +21822,48 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
         _ => Err(InterpError::TypeError {
             msg: format!("{} expects a string, got {}", context, val.type_label()),
         }),
+    }
+}
+
+/// The `hmac_sha256_hex` builtin's computation: the lowercase hex HMAC-SHA256 tag of `message`
+/// under the hex-encoded key, or `None` when the key is not hex -- no key, no tag.
+fn hmac_sha256_hex_tag(key_hex: &str, message: &str) -> Option<String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let key = hex::decode(key_hex).ok()?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(&key).ok()?;
+    mac.update(message.as_bytes());
+    Some(hex::encode(mac.finalize().into_bytes()))
+}
+
+#[cfg(test)]
+mod hmac_sha256_hex_tests {
+    use super::hmac_sha256_hex_tag;
+
+    // RFC 4231 publishes these so an implementation is checked against values it did not produce.
+    #[test]
+    fn rfc4231_case1_tag_is_produced() {
+        assert_eq!(
+            hmac_sha256_hex_tag("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b", "Hi There").as_deref(),
+            Some("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"),
+        );
+    }
+
+    #[test]
+    fn rfc4231_case2_tag_is_produced() {
+        assert_eq!(
+            hmac_sha256_hex_tag("4a656665", "what do ya want for nothing?").as_deref(),
+            Some("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"),
+        );
+    }
+
+    #[test]
+    fn a_key_that_is_not_hex_yields_no_tag() {
+        assert_eq!(
+            hmac_sha256_hex_tag("Jefe", "what do ya want for nothing?"),
+            None
+        );
+        assert_eq!(hmac_sha256_hex_tag("0b0", "Hi There"), None);
     }
 }
 
