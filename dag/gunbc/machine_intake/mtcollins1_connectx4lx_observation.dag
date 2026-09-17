@@ -1,0 +1,119 @@
+module gunbc.machine_intake_mtcollins1_connectx4lx_observation
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { bandwidth_count }
+import extdeps.ethernet.link_mode { LinkMode, ieee_25gbase_cr }
+import extdeps.linux.mlx5_core { mlx5_core_module_name }
+import extdeps.mikrotik.crs812 { crs812_lane_speed_for_link_mode, Crs812LaneSpeedForMode, NoLaneSpeedForMode }
+import extdeps.network.ibm_01ft753 { Ibm01ft753, ibm_01ft753 }
+import extdeps.network.mcx4121a_acat { Mcx4121aAcat, mcx4121a_acat }
+import extdeps.network.mikrotik_crs812 { crs812_catalog }
+import extdeps.standards.nic_attachment { NicAttachmentClass, PcieCem }
+import product.cable_order_admission {
+  CableLegCodingEvidence, CableLinkRequirement, CableOrderAdmission,
+  LegCodingUndeclared, admit_cable_order, cable_link_requirement,
+}
+
+// Operator 2026-09-17: OEM Mellanox ConnectX-4 Lx MCX4121A-ACAT seated in Mt. Collins unit 1.
+// Host mid first-boot; this lane does not touch the host and does not cable it. Observations live
+// here, never as Unobserved properties on the extdeps card. Consumer:
+// gunbc.machine_intake_mtcollins1_expansion_candidates.expansion_candidates (InstalledUnobserved)
+// and test.claim.mtcollins1_connectx4lx_observation_witness_test.
+// Discharge is the first EDAC-pass boot (mtcollins1_boot, gunbc#11484): PCIe enumeration of the
+// seated CEM slot plus mlx5_core bind. Until those artifacts exist, the arm is Unobserved.
+type Connectx4LxHostObservation
+  = Connectx4LxHostUnobserved {
+      seated_report: NonEmptyStr
+      pcie_read_obligation: NonEmptyStr
+      driver_read_obligation: NonEmptyStr
+      discharges_at: NonEmptyStr
+    }
+
+data connectx4lx_host_observation: Connectx4LxHostObservation = Connectx4LxHostUnobserved {
+  seated_report: "operator 2026-09-17: OEM Mellanox ConnectX-4 LX MCX4121A-ACAT PCIe x8 3.0 25GbE SFP28 seated in Mt. Collins unit 1; far end unconnected; host mid first-boot so lspci and ethtool are not yet observable",
+  pcie_read_obligation: "first EDAC-pass boot artifacts (mtcollins1_boot, gunbc#11484) carry a PCIe enumeration of the seated CEM slot that identifies ConnectX-4 Lx / MCX4121A-ACAT; the row flips by consuming that artifact, never by editing this arm by hand",
+  driver_read_obligation: "the same boot artifacts show the kernel module named by extdeps.linux.mlx5_core.mlx5_core_module_name bound to that function",
+  discharges_at: "mtcollins1_boot / gunbc#11484",
+}
+
+data mlx5_core_is_the_bind_instrument: Bool = (mlx5_core_module_name as NonEmptyStr) == ("mlx5_core" as NonEmptyStr)
+
+// A transceiver is seated. Identity is unread. fs_145681 is a 400G QSFP-DD breakout and is not this part.
+type SeatedTransceiverObservation
+  = SeatedTransceiverUnobserved { read_obligation: NonEmptyStr }
+
+data seated_transceiver_observation: SeatedTransceiverObservation = SeatedTransceiverUnobserved {
+  read_obligation: "after the first EDAC-pass Linux boot, read the seated SFP28 cage (ethtool -m / mlx5 EEPROM) and author a receipt here; do not assume extdeps.transceiver.fs_145681",
+}
+
+// CRS812 SFP56 published rates include 25 Gbit/s; NIC cages are SFP28. That is class match, not a link.
+// DAC required mode is ieee_25gbase_cr. Optic 25GBASE-SR is not a link_mode row. RouterOS lane-speed
+// map has no 25G-baseCR wire (crs812_lane_speed_for_link_mode is NoLaneSpeedForMode). extdeps.network.reach
+// is OpenSSH host reach, not physical media, and is not this question.
+type LinkMediaStanding
+  = DacCopper { required_mode: LinkMode }
+  | OpticLinkModeUnmodeled { read_obligation: NonEmptyStr }
+  | MediaUnchosen { reason: NonEmptyStr }
+
+type MtCollins1ToCrs812LinkPlan {
+  nic_port_connector: NonEmptyStr
+  switch_port_connector: NonEmptyStr
+  switch_publishes_25g_on_sfp56: Bool
+  media: LinkMediaStanding
+  switch_lane_speed_for_dac: Crs812LaneSpeedForMode
+  actuation: NonEmptyStr
+}
+
+fn sfp56_group_publishes_25g() -> Bool {
+  fold(crs812_catalog.port_inventory, init: false, f: (acc, group) =>
+    acc || (group.connector == "SFP56" && fold(group.data_rates, init: false, f: (hit, rate) =>
+      hit || (bandwidth_count(b: rate) == 25000000000))))
+}
+
+data mtcollins1_to_crs812_link_plan: MtCollins1ToCrs812LinkPlan = MtCollins1ToCrs812LinkPlan {
+  nic_port_connector: mcx4121a_acat.port_connector,
+  switch_port_connector: "SFP56",
+  switch_publishes_25g_on_sfp56: sfp56_group_publishes_25g(),
+  media: MediaUnchosen {
+    reason: "transceiver seated, far end unconnected; DAC vs optic is not chosen, and optic 25GBASE-SR is not a link_mode row",
+  },
+  switch_lane_speed_for_dac: crs812_lane_speed_for_link_mode(m: ieee_25gbase_cr),
+  actuation: "typed plan only; do not cable the host or the CRS812 from this module",
+}
+
+data crs812_has_no_25gbase_cr_lane_speed: Bool = match mtcollins1_to_crs812_link_plan.switch_lane_speed_for_dac {
+  NoLaneSpeedForMode { mode: _ } => true
+  _ => false
+}
+
+// No vendor claim for a 25G SFP28 DAC or optic is authored. admit_cable_order on LegCodingUndeclared refuses.
+data mtcollins1_crs812_cable_requirement: CableLinkRequirement = cable_link_requirement(
+  required_mode: ieee_25gbase_cr,
+  purpose: "Mt. Collins unit 1 ConnectX-4 Lx SFP28 to CRS812 SFP56, unactuated plan",
+)
+
+fn mtcollins1_crs812_cable_order_with(evidence: CableLegCodingEvidence) -> CableOrderAdmission {
+  admit_cable_order(evidence: evidence, requirement: mtcollins1_crs812_cable_requirement)
+}
+
+data mtcollins1_crs812_cable_order_today: CableOrderAdmission = mtcollins1_crs812_cable_order_with(evidence: LegCodingUndeclared)
+
+// fleet_intent_network names mtcollins1 without executor enrollment. The 1U brief states i350 1 GbE
+// onboard and 10G only via the OCP 3.0 slot. Neither declares why this PCIe 25G card is fitted.
+type NicFleetIntentStanding
+  = NicIntentUndeclared { host: NonEmptyStr, asked_of: NonEmptyStr }
+
+data mtcollins1_connectx4lx_fleet_intent: NicFleetIntentStanding = NicIntentUndeclared {
+  host: "mtcollins1",
+  asked_of: "eager-owl-205 / operator: which declared fleet intent this seated MCX4121A-ACAT serves",
+}
+
+data arrived_card: Mcx4121aAcat = mcx4121a_acat
+data ordered_catalog: Ibm01ft753 = ibm_01ft753
+
+fn arrived_is_pcie_cem() -> Bool {
+  match arrived_card.attachment {
+    PcieCem => true
+    _ => false
+  }
+}
