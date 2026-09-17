@@ -25,8 +25,12 @@ type NicAttachmentClass
   | PcieCem
   | VendorDaughterCard { form_authority: ExternalAuthority, form_name: NonEmptyStr }
 
+type OnboardControllerIdentity
+  = NamedOnboardController { part: NonEmptyStr }
+  | OnboardControllerUnstated { read_obligation: NonEmptyStr }
+
 type OnboardNetworkController {
-  controller: NonEmptyStr
+  controller: OnboardControllerIdentity
   port_count: Nat
   per_port_bandwidth: Bandwidth
   purpose: NonEmptyStr

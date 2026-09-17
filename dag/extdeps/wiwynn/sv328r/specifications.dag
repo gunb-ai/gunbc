@@ -9,7 +9,7 @@ import std.measure {
   millimeter, rack_unit,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
-import extdeps.standards.nic_attachment { OnboardNetworkController }
+import extdeps.standards.nic_attachment { OnboardControllerUnstated, OnboardNetworkController }
 import extdeps.wiwynn.sv328r.subject {
   WiwynnSv328rProduct, sv328r_datasheet_authority, wiwynn_sv328r_product,
 }
@@ -66,7 +66,9 @@ data sv328r_crps_ac_inlet: CitedFigureStanding = TranscribedUncited {
 }
 
 data sv328r_bmc_manageability_network: OnboardNetworkController = OnboardNetworkController {
-  controller: "dedicated BMC port (datasheet: One GbE Dedicated BMC Port; iKVM over IP)",
+  controller: OnboardControllerUnstated {
+    read_obligation: "The SV328R datasheet names One GbE Dedicated BMC Port and iKVM over IP. It does not name a PHY or MAC controller OPN. Discriminator: a board silkscreen, FRU, or lspci/ethtool census of a unit of this class.",
+  },
   port_count: 1,
   per_port_bandwidth: bandwidth(count: 1000000000),
   purpose: "BMC manageability",

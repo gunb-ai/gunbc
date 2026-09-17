@@ -21,6 +21,7 @@ import extdeps.wiwynn.sv328r.specifications {
   sv328r_storage,
   sv328r_weight_grams,
 }
+import extdeps.standards.nic_attachment { OnboardControllerUnstated, NamedOnboardController }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -60,6 +61,10 @@ test fn w_cooling_is_six_60_by_56_and_power_is_dual_crps_with_owed_inlet() -> Bo
 test fn w_bmc_port_is_dedicated_one_gigabit() -> Bool {
   sv328r_bmc_manageability_network.port_count == 1
     && bandwidth_count(b: sv328r_bmc_manageability_network.per_port_bandwidth) == 1000000000
+    && match sv328r_bmc_manageability_network.controller {
+      OnboardControllerUnstated { read_obligation: _ } => true
+      NamedOnboardController { part: _ } => false
+    }
 }
 
 test fn w_memory_is_32_rdimm_slots_ddr4_3200() -> Bool {

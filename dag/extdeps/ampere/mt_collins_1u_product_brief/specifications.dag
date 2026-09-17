@@ -12,7 +12,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.ampere.mt_collins_1u_product_brief.subject {
   MtCollins1UPublicProductBrief, mt_collins_1u_public_product_brief, mt_collins_1u_brief_authority,
 }
-import extdeps.standards.nic_attachment { OnboardNetworkController }
+import extdeps.standards.nic_attachment { NamedOnboardController, OnboardNetworkController }
 
 data extdeps_external_authority_anchor: ExternalAuthority = mt_collins_1u_brief_authority
 
@@ -40,14 +40,14 @@ data mt_collins_1u_specifications_subject: MtCollins1UPublicProductBrief = mt_co
 // optical zone, which is evidence the chassis is wired for one, not evidence a card is fitted.
 
 data mt_collins_1u_onboard_data_network: OnboardNetworkController = OnboardNetworkController {
-  controller: "Intel i350",
+  controller: NamedOnboardController { part: "Intel i350" },
   port_count: 2,
   per_port_bandwidth: bandwidth(count: 1000000000),
   purpose: "host data networking",
 }
 
 data mt_collins_1u_bmc_manageability_network: OnboardNetworkController = OnboardNetworkController {
-  controller: "Realtek RTL8211E",
+  controller: NamedOnboardController { part: "Realtek RTL8211E" },
   port_count: 1,
   per_port_bandwidth: bandwidth(count: 1000000000),
   purpose: "BMC manageability port",

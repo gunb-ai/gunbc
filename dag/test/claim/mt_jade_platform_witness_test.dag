@@ -30,6 +30,7 @@ import extdeps.ocp.mt_jade.subject {
   mt_jade_specification_version_label,
 }
 import extdeps.bmc.aspeed_ast2500 { aspeed_ast2500_catalog }
+import extdeps.standards.nic_attachment { NamedOnboardController }
 import extdeps.ocp.mt_jade.platform {
   BaseboardManagementController,
   CpuBmcGpioVoltageIsolation,
@@ -310,7 +311,10 @@ test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Boo
 }
 
 test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e() -> Bool {
-  (mt_jade_bmc_management_network.network.controller as String) == "RTL8211E"
+  match mt_jade_bmc_management_network.network.controller {
+    NamedOnboardController { part } => (part as String) == "RTL8211E"
+    _ => false
+  }
     && mt_jade_bmc_management_network.network.port_count == 1
     && bandwidth_count(b: mt_jade_bmc_management_network.network.per_port_bandwidth) == 1000000000
     && (mt_jade_bmc_management_network.location_label as String) == "rear RJ45, power-supply / bottom-side I/O"

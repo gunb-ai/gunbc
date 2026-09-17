@@ -2,6 +2,7 @@ module extdeps.ocp.mt_jade.platform
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.integer { Int }
+import std.nat { Nat }
 import std.measure {
   Bandwidth,
   Hertz,
@@ -19,7 +20,7 @@ import std.measure {
   millimeter,
   rack_unit,
 }
-import extdeps.standards.nic_attachment { OnboardNetworkController }
+import extdeps.standards.nic_attachment { NamedOnboardController, OnboardNetworkController }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, CitedFigureStanding, TranscribedUncited }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.ocp.mt_jade.subject {
@@ -389,7 +390,7 @@ fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: Refe
 // chassis uses eight 4056 dual-rotor fans. PWM/TACH in Table 9 restates the same split.
 type MtJadeFanConnectorPopulation {
   chassis_height: RackUnit
-  connector_count: Int
+  connector_count: Nat
   frame_width: Millimeter
   frame_thickness: Millimeter
   dual_rotor: Bool
@@ -440,7 +441,7 @@ type MtJadeBmcManagementNetwork {
 
 data mt_jade_bmc_management_network: MtJadeBmcManagementNetwork = MtJadeBmcManagementNetwork {
   network: OnboardNetworkController {
-    controller: "RTL8211E",
+    controller: NamedOnboardController { part: "RTL8211E" },
     port_count: 1,
     per_port_bandwidth: bandwidth(count: 1000000000),
     purpose: "BMC manageability",

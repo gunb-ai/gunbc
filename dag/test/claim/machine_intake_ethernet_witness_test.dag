@@ -55,6 +55,7 @@ test fn w_one_port_can_bind_host_data_and_bmc_ncsi() -> Bool {
         function: FunctionUnobserved { discriminator: "fixture: function unobserved" },
       },
     )
+    && ethernet_ports_are_distinct(a: jade_upper_left, b: jade_upper_left) == false
 }
 
 test fn w_dedicated_bmc_jack_is_not_the_upper_host_module() -> Bool {
