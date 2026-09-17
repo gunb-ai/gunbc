@@ -1,16 +1,21 @@
 module extdeps.zhipu.glm_5_3_flash
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value,
-  ByteSize, byte_size, byte_size_count,
-  Gibibyte, gibibyte, Mebibyte, mebibyte, Second, second,
+import std.measure {
+  TokenCount,
+  token_count,
+  ByteSize,
+  byte_size,
+  byte_size_count,
+  Gibibyte,
+  gibibyte,
+  second,
   gibibyte_scale_factor_bytes,
 }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.optional { Present, Absent }
 
 // THE GLM-5.3-FLASH FAMILY, as its own extdeps authority for the reason extdeps.deepseek.deepseek_v4
 // is one: an independently versioned upstream model, governed by Z.ai, is not a property of whatever
@@ -105,21 +110,6 @@ data glm_5_3_flash_vllm_tool_call_parser: NonEmptyStr = "glm47" as NonEmptyStr
 data glm_5_3_flash_vllm_reasoning_parser: NonEmptyStr = "glm45" as NonEmptyStr
 
 data glm_5_3_flash_vllm_integration_commit: NonEmptyStr = "385dce36bcee42309924a5ece951a96db3dce7f2" as NonEmptyStr
-
-// THE ENGINE READY TIMEOUT IS UPSTREAM'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it
-// is carried because its absence is independently fatal on a cold multi-node start. torch's
-// distributed rendezvous defaults to 601 seconds; a four-rank group whose members are still
-// materialising exceeds that and dies with "Timed out waiting for clients", which is a different
-// failure from anything about the model and reports nothing about it.
-data glm_5_3_flash_vllm_engine_ready_timeout: Second = second(count: 3600)
-
-// A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
-// vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
-// sparse-indexer logits allocation, with two independent mitigations offered. That report used a
-// different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
-// measurement of it -- which is why the figure is carried here as an upstream observation and the
-// decision to apply it is a deployment's own.
-data glm_5_3_flash_gb10_sparse_indexer_max_logits: Mebibyte = mebibyte(count: 64)
 
 // ── THE CHECKPOINT MANIFEST AT AN EXACT REVISION, WHICH IS UPSTREAM'S OWN STATEMENT ───────────
 //

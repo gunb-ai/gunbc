@@ -8,9 +8,8 @@ import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_tool_call_parser,
   glm_5_3_flash_vllm_reasoning_parser,
-  glm_5_3_flash_vllm_engine_ready_timeout,
-  glm_5_3_flash_gb10_sparse_indexer_max_logits,
 }
+import extdeps.vllm.server { vllm_engine_ready_timeout_multi_node, vllm_gb10_sparse_indexer_max_logits }
 import gunbc.spark.fabric_switch_observed {
   FabricGroup,
   FabricGroupA,
@@ -367,8 +366,8 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
       DockerEnvAssignment { name: "NCCL_DEBUG" as NonEmptyStr, value: "INFO" },
       DockerEnvAssignment { name: "NCCL_DEBUG_SUBSYS" as NonEmptyStr, value: "INIT,NET" },
       DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: render_ipv4_address(addr: node.rail) as String },
-      DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: to_string(second_count(s: glm_5_3_flash_vllm_engine_ready_timeout)) },
-      DockerEnvAssignment { name: "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr, value: to_string(mebibyte_count(m: glm_5_3_flash_gb10_sparse_indexer_max_logits)) },
+      DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: to_string(second_count(s: vllm_engine_ready_timeout_multi_node)) },
+      DockerEnvAssignment { name: "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr, value: to_string(mebibyte_count(m: vllm_gb10_sparse_indexer_max_logits)) },
     ], transport_plan_env(p: node.transport)),
     command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
   }

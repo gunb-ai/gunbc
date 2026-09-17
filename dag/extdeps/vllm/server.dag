@@ -1,6 +1,7 @@
 module extdeps.vllm.server
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { Second, second, Mebibyte, mebibyte }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -297,3 +298,27 @@ fn vllm_capacity_source_decision(kind: VllmCapacitySourceKind) -> VllmCapacitySo
       }
   }
 }
+
+// ── TWO ENVIRONMENT KNOBS THIS SERVER READS, WHICH ARE NOT FACTS ABOUT ANY MODEL ───────────────
+//
+// WHY THEY LIVE HERE AND NOT BESIDE A CHECKPOINT. Both were minted inside
+// extdeps.zhipu.glm_5_3_flash, Z.ai's model authority, and neither is a property of GLM-5.3-Flash.
+// VLLM_ENGINE_READY_TIMEOUT_S and VLLM_SPARSE_INDEXER_MAX_LOGITS_MB are vLLM's naming surface, so a
+// second model served by this engine would have had to re-mint them or import Z.ai's module to reach
+// an engine setting -- the layer inversion DESIGN section 3 names, where a workflow or engine fact is
+// modelled inside an upstream that does not govern it.
+//
+// THE READY TIMEOUT IS GROUNDED IN TORCH, NOT IN vLLM's OWN DEFAULT, and that is worth stating rather
+// than smoothing over: torch's distributed rendezvous times out at 601 seconds, and a multi-rank group
+// whose members are still materialising exceeds it and dies with "Timed out waiting for clients". The
+// figure is therefore an accommodation of a THIRD upstream, carried here because vLLM is what reads
+// the variable, and it is a deployment's to choose rather than a published vLLM default.
+data vllm_engine_ready_timeout_multi_node: Second = second(count: 3600)
+
+// THE SPARSE-INDEXER CAP IS A HARDWARE MITIGATION CITED TO AN UPSTREAM REPORT. vllm-project/vllm#55569
+// reports unified-memory exhaustion on a GB10 at roughly 230K context from sparse-indexer logits
+// allocation. That report used a different quantisation and tensor-parallel shape, so this is a
+// RELEVANT RISK for a GB10 deployment rather than a measurement of any particular arm -- which is why
+// it is a figure a deployment may apply, not a default this module asserts vLLM carries.
+data vllm_gb10_sparse_indexer_max_logits: Mebibyte = mebibyte(count: 64)
+
