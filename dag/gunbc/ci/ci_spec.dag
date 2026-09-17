@@ -108,7 +108,7 @@ import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
 }
-import std.types { GitRef }
+import std.types { GitRef, NonEmptyStr }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
