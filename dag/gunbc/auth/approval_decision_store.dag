@@ -94,8 +94,9 @@ import gunbc.auth.approval_broker {
 // THE MAC KEY IS A SECRET MANAGER SECRET, MINTED 2026-09-16 UNDER OPERATOR AUTHORIZATION
 // ("yes you can mint it"): 32 random bytes rendered as 64 lowercase hex, version 1 ENABLED, with
 // roles/secretmanager.secretAccessor granted to fleet-cloud-convergence@gunbai-secrets only. The
-// value never touched this repository or a session transcript; its sha256 prefix 113a3274bd95 is
-// how a materialized copy is checked without printing it. Version is PINNED because a keyring that
+// value never touched this repository or a session transcript; a materialized copy is checked
+// against gunbc.auth.approval_keyring_pins approval_mac_key_payload_sha256_prefix without printing
+// the key. Version is PINNED because a keyring that
 // followed `latest` would let a rotation invalidate every link in flight (approval_capability:
 // "key_id -- which key to check, so rotation does not invalidate what is in flight").
 data approval_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
