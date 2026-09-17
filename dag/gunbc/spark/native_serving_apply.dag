@@ -22,7 +22,21 @@ import gunbc.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
   fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
   SshTarget, portable_remote_words,
+  FleetSshExecutionContext, fleet_ssh_execution_context_of,
 }
+import gunbc.fleet_ssh_credential_verify {
+  FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
+  fleet_ssh_credential_verification_refusal_reason,
+}
+import gunbc.fleet_multi_principal_probe { probe_agent_credential_verification }
+import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, spark_managed_grant_sudoers_command }
+import gunbc.spark.managed_grant_reconcile {
+  SparkManagedGrantStanding, GrantHeld, GrantNotHeld, GrantStandingUnobserved,
+  spark_managed_grant_standing_from_outcome,
+}
+import gunbc.spark.managed_grant_install { spark_grant_probe_outcome }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.serving_offer { spark_serving_offer_required_grants }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_apply {
@@ -106,9 +120,11 @@ fn spark_native_host_plan(host: HostIdentity, render: GlmNativeUnitRender) -> Sp
   }
 }
 
-// WORKERS BEFORE THE HEAD. glm_native_all_unit_renders returns the head first (it is rank 0), so
-// the plan order is the tail followed by the head -- the head's engine starts last and finds its
-// ranks already waiting at the rendezvous.
+// HEAD BEFORE THE WORKERS. glm_native_all_unit_renders returns the head first (it is rank 0) and
+// the plan order keeps it: the head's engine starts first, so its rendezvous store's incarnation
+// is the one every worker's restart then joins -- workers restarted BEFORE the head's new store
+// existed were observed (2026-09-16) connecting to the PREVIOUS epoch's store and the head
+// crash-looping on DistStoreError waiting for ranks that would never arrive.
 fn spark_native_apply_plans() -> List<SparkPairHostApplyPlan>? {
   let hosts = glm_native_ranked_hosts()
   let renders = glm_native_all_unit_renders()
@@ -126,6 +142,104 @@ fn spark_native_apply_plans() -> List<SparkPairHostApplyPlan>? {
         }
     }
   }
+}
+
+// ── THE TRANSPORT VERDICT GATE ───────────────────────────────────────────────────────────────
+//
+// THE HARD DEPENDENCY ON THE DIRECT FABRIC LINE, RULED A CORRECTNESS ISSUE BY THE OPERATOR ON
+// 2026-09-17. The arm's collective transport plan is RoceOverInterface; NCCL, denied a verbs
+// device, does not refuse -- it silently binds `Using network Socket` and serves. A deployment
+// that intends the fabric line and carries the collective over TCP is a wrong answer about which
+// transport is in use, so the fallback is a refusal here, never an accepted degradation.
+//
+// WHY A POST-PASS AND NOT A LINE IN THE APPLY SCRIPT. NCCL prints its transport verdict when the
+// communicator initializes, and the communicator initializes only when EVERY rank has joined --
+// the head's verdict cannot exist before the workers' engines start. The apply runs host plans
+// sequentially, head first, so an inline verdict wait in the head's script would wait on a fact
+// its own sequencing forbids. The gate therefore runs as a second round of legs after every host
+// has been restarted: each leg polls its rank's log for NCCL's `Using network` line (bounded),
+// refuses if the bound transport is Socket, and requires the IB plugin's verdict.
+fn spark_native_transport_gate_script(log_path: NonEmptyStr) -> String {
+  join([
+    "set -e\n",
+    "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 216 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240; do if grep -q \"Using network\" ", log_path as String, " 2>/dev/null; then break; fi; sleep 5; done\n",
+    "grep -q \"Using network\" ", log_path as String, "\n",
+    "if grep -q \"Using network Socket\" ", log_path as String, "; then echo TRANSPORT-REFUSED-socket-bound-under-roce-plan; exit 1; fi\n",
+    "grep -q \"Using network IB\" ", log_path as String, "\n",
+    "echo transport-verdict-ib\n",
+  ], "")
+}
+
+fn spark_native_transport_gate_plan(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyPlan {
+  SparkPairHostApplyPlan {
+    host: plan.host,
+    unit_name: plan.unit_name,
+    script: spark_native_transport_gate_script(
+      log_path: if (plan.unit_name as String) == (glm_native_head_unit_name as String) { glm_native_head_log_path } else { glm_native_rank_log_path },
+    ),
+  }
+}
+
+// ── THE OFFER'S GRANT PREFLIGHT ──────────────────────────────────────────────────────────────
+//
+// THE DEPENDENCY EDGE THE 2026-09-17 CONVERGE EXPOSED. The apply restarted all four engines onto
+// the derived image while the offer COULD NOT OPEN afterward: the incarnation obligation reads
+// the live container through a grant that was modeled and operator-admitted but installed on none
+// of the four hosts, and the failure surfaced only in the harness probe afterward. The lanes stay
+// separate -- sudoers is a different privilege domain with its own operator basis -- so the
+// consolidation is ORDERING, not merging: before any host is touched, probe the grants the OFFER
+// declares it needs (gunbc.spark.serving_offer spark_serving_offer_required_grants -- the edge's
+// single authority, so a new requirement there reaches this preflight without an edit here) on
+// every host of the arm, and refuse with the remedy named if any is not held.
+type SparkNativeGrantPreflight
+  = SparkNativeGrantHeld { host: HostIdentity }
+  | SparkNativeGrantPreflightRefused { host: HostIdentity, detail: String }
+
+// ONE PROBE PER HOST, EVERY REQUIRED GRANT CLASSIFIED FROM IT: `sudo -n -l` enumerates the whole
+// passwordless set in one leg, so per-grant probes would re-read one fact N times.
+fn spark_native_grant_standing_detail(standing: SparkManagedGrantStanding) -> String? {
+  match standing {
+    GrantHeld { grant: _ } => none
+    GrantNotHeld { grant: g } => Present {
+      value: join(["grant [", spark_managed_grant_sudoers_command(grant: g) as String, "] is not installed, so the offer's incarnation observe cannot bind the answering container to the declared unit and the route would refuse after the restart. Remedy: fleet-converge mode=spark_grants target=<this host>, then re-run this apply"], ""),
+    }
+    GrantStandingUnobserved { grant: g, cause: c } => Present {
+      value: join(["the standing of grant [", spark_managed_grant_sudoers_command(grant: g) as String, "] could not be read, and restarting on an unread precondition is the failure this preflight exists against: ", c as String], ""),
+    }
+  }
+}
+
+fn spark_native_grant_preflight_host(context: FleetSshExecutionContext, host: HostIdentity) -> SparkNativeGrantPreflight
+  uses net: Network
+{
+  let outcome = spark_grant_probe_outcome(context: context, host: host)
+  let details = flat_map(
+    spark_serving_offer_required_grants(group: FabricGroupB),
+    g => match spark_native_grant_standing_detail(standing: spark_managed_grant_standing_from_outcome(grant: g, outcome: outcome)) {
+      Absent => [] as List<String>
+      Present { value: d } => [d]
+    },
+  )
+  if details.length() == 0 {
+    SparkNativeGrantHeld { host: host }
+  } else {
+    SparkNativeGrantPreflightRefused { host: host, detail: join(details, " AND ") }
+  }
+}
+
+fn spark_native_grant_preflight_wire(p: SparkNativeGrantPreflight) -> String {
+  match p {
+    SparkNativeGrantHeld { host: h } => join(["  held host=", h as String, "\n"], "")
+    SparkNativeGrantPreflightRefused { host: h, detail: d } =>
+      join(["  REFUSED host=", h as String, " ", d, "\n"], "")
+  }
+}
+
+fn spark_native_grant_preflight_refusals(ps: List<SparkNativeGrantPreflight>) -> List<SparkNativeGrantPreflight> {
+  filter(ps, p => match p {
+    SparkNativeGrantHeld { host: _ } => false
+    SparkNativeGrantPreflightRefused { host: _, detail: _ } => true
+  })
 }
 
 fn spark_native_serving_apply_wet() -> ProcessExit
@@ -148,6 +262,23 @@ fn spark_native_serving_apply_wet() -> ProcessExit
                   match fleet_openssh_trust_policy_of(outcome: materialization) {
                     Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
                     Present { value: trust } =>
+                      match probe_agent_credential_verification(attempt: attempt) {
+                        FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+                          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+                        FleetSshCredentialDerivationRefused { cause: cause } =>
+                          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+                        FleetSshCredentialVerified { binding: binding } =>
+                          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+                            Absent => exit_failure(reason: "the execution context could not be sealed for the grant preflight")
+                            Present { value: preflight_context } => {
+                              let preflight = map(glm_native_ranked_hosts(), h => spark_native_grant_preflight_host(context: preflight_context, host: h))
+                              let refusals = spark_native_grant_preflight_refusals(ps: preflight)
+                              if refusals.length() > 0 {
+                                exit_failure(reason: join([
+                                  "spark_native_serving_apply preflight: the offer's grant is not in place on every host of the arm; NO HOST WAS TOUCHED.\n",
+                                  join(map(preflight, p => spark_native_grant_preflight_wire(p: p)), ""),
+                                ], ""))
+                              } else {
                       match with_materialized_ssh_key_file(
                         identity_file_name: "gunbc-spark-native-apply-admin-password" as NonEmptyStr,
                         secret_bytes: administrator as Secret,
@@ -162,11 +293,34 @@ fn spark_native_serving_apply_wet() -> ProcessExit
                           if !wr.success {
                             exit_failure(reason: join(["spark native apply receipt write failed: ", wr.error], ""))
                           } else if spark_pair_apply_all_applied(outcomes: outcomes) {
-                            ExitSuccess
+                            match with_materialized_ssh_key_file(
+                              identity_file_name: "gunbc-spark-native-transport-gate-admin-password" as NonEmptyStr,
+                              secret_bytes: administrator as Secret,
+                              use: fn(file) {
+                                map(map(plans, p => spark_native_transport_gate_plan(plan: p)), g => spark_pair_privileged_leg(trust: trust, path: path, plan: g, admin_credential: administrator as Secret, admin_credential_file: file))
+                              },
+                            ) {
+                              MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                              MaterializedSshKeyFileBracketCompleted { value: gate_outcomes } => {
+                                let gate_body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: gate_outcomes)
+                                if spark_pair_apply_all_applied(outcomes: gate_outcomes) {
+                                  ExitSuccess
+                                } else {
+                                  exit_failure(reason: join([
+                                    "spark native serving apply TRANSPORT GATE REFUSED: a rank did not bind the RoCE plan's IB transport (NCCL's socket fallback is a correctness refusal on this arm, never an accepted degradation). The engines are restarted; the route stays closed until a converge binds every rank to the fabric line:\n",
+                                    gate_body,
+                                  ], ""))
+                                }
+                              }
+                            }
                           } else {
                             exit_failure(reason: join(["spark native serving apply did not converge:\n", body], ""))
                           }
                         }
+                      }
+                              }
+                            }
+                          }
                       }
                   }
                 }

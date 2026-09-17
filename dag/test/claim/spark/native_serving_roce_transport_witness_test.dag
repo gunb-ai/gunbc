@@ -1,0 +1,104 @@
+module test.claim.spark.native_serving_roce_transport_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_for_host }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
+import gunbc.spark.collective_transport_plan {
+  CollectiveTransportPlan, SocketOverInterface, RoceOverInterface, transport_plan_interface,
+}
+import gunbc.spark.native_serving_realization {
+  glm_native_transport_plan, glm_native_container_argv, glm_native_head_log_path,
+}
+import gunbc.spark.native_serving_apply { spark_native_transport_gate_script, spark_native_apply_plans }
+import product.placement_supply { host_identity_eq }
+
+// THE 2026-09-17 CORRECTNESS RULING, ENROLLED. The GLM native arm ran every rank on TCP sockets
+// for days -- `NET/IB : No device found.` then `Using network Socket` -- because its container was
+// created without the verbs device, the capability, the lock and the endpoint env, and nothing
+// refused. The operator ruled the socket fallback a correctness issue: the deployment intends the
+// direct fabric line, so these claims pin (a) the arm's plan IS the RoCE arm keyed by the lane
+// census, (b) the rendered container line carries every projection of that plan, and (c) the
+// apply's post-pass gate refuses a rank that bound Socket.
+
+// THE LANE IS THE REAL CENSUS ROW, NOT A FIXTURE: the claim is precisely that the arm reads the
+// interface and the verbs device from fabric_switch_observed, so a fixture here would assert
+// nothing about the fleet.
+fn srv9_lane() -> FabricLaneObserved {
+  match fabric_lane_for_host(host: operator_host_srv9) {
+    Absent => FabricLaneObserved { cage: 0, lane: 0, host: operator_host_srv9, spark_hostname: "absent" as NonEmptyStr, leg_netdev: "absent" as NonEmptyStr, leg_netdev_twin: "absent" as NonEmptyStr, leg_rdma_device: "absent" as NonEmptyStr }
+    Present { value: l } => l
+  }
+}
+
+fn argv_has(argv: List<String>, word: String) -> Bool {
+  any(argv, w => w == word)
+}
+
+// ── THE PLAN IS THE RoCE ARM, KEYED BY THE LANE ───────────────────────────────────────────────
+test fn w_the_native_plan_is_the_roce_arm_keyed_by_the_lane() -> Bool {
+  let lane = srv9_lane()
+  match glm_native_transport_plan(lane: lane) {
+    SocketOverInterface { interface: _ } => false
+    RoceOverInterface { interface: i, rdma_device: d, gid_selection: _ } =>
+      (i as String) == (lane.leg_netdev as String)
+        && (d as String) == (lane.leg_rdma_device as String)
+        && (d as String) == "rocep1s0f1"
+  }
+}
+
+// ── THE CONTAINER LINE CARRIES EVERY PROJECTION ───────────────────────────────────────────────
+//
+// One missing word is exactly the failure shape this claim exists against: the arm that fell back
+// had the interface env and nothing else. The device, the capability, the lock and BOTH endpoint
+// env assignments are asserted individually so a loss names itself.
+test fn w_the_container_argv_carries_the_roce_projections() -> Bool {
+  let lane = srv9_lane()
+  let argv = glm_native_container_argv(lane: lane, rank: 0, ranks: 4, master: fabric_rail_address_of(o: lane))
+  argv_has(argv: argv, word: "--device")
+    && argv_has(argv: argv, word: "/dev/infiniband:/dev/infiniband:rwm")
+    && argv_has(argv: argv, word: "--cap-add")
+    && argv_has(argv: argv, word: "IPC_LOCK")
+    && argv_has(argv: argv, word: "--ulimit")
+    && argv_has(argv: argv, word: "memlock=-1:-1")
+    && argv_has(argv: argv, word: "NCCL_IB_HCA=rocep1s0f1")
+    && argv_has(argv: argv, word: "UCX_NET_DEVICES=rocep1s0f1:1")
+    && argv_has(argv: argv, word: "NCCL_SOCKET_IFNAME=enp1s0f1np1")
+}
+
+// ── THE GATE REFUSES THE FALLBACK AND REQUIRES THE VERDICT ────────────────────────────────────
+//
+// The gate is a post-pass because the head's verdict cannot exist before the workers join; these
+// rows pin the script's three obligations: it waits for NCCL's `Using network` line, it refuses
+// the Socket arm by name, and it requires the IB plugin's verdict.
+test fn w_the_gate_script_refuses_socket_and_requires_ib() -> Bool {
+  let script = spark_native_transport_gate_script(log_path: glm_native_head_log_path)
+  string_contains(s: script, pattern: "Using network")
+    && string_contains(s: script, pattern: "TRANSPORT-REFUSED-socket-bound-under-roce-plan")
+    && string_contains(s: script, pattern: "grep -q \"Using network IB\"")
+}
+
+// ── THE ARM'S ROSTER IS PLANNED HERE, HEAD FIRST ─────────────────────────────────────────────
+//
+// Group B left the pair roster on 2026-09-08 (spark_pair_serving_groups = [FabricGroupA]); this
+// apply is its authority. The head-first order is load-bearing: workers restarted before the
+// head's new rendezvous store existed were observed joining the PREVIOUS epoch's store while the
+// head crash-looped on DistStoreError (2026-09-16).
+test fn w_the_native_apply_plans_the_whole_arm_head_first() -> Bool {
+  match spark_native_apply_plans() {
+    Absent => false
+    Present { value: plans } =>
+      length(plans) == 4 && match first(plans) {
+        Absent => false
+        Present { value: head_plan } => host_identity_eq(a: head_plan.host, b: operator_host_srv9)
+      }
+  }
+}
+
+test fn w_all_native_roce_transport_claims_hold() -> Bool {
+  w_the_native_plan_is_the_roce_arm_keyed_by_the_lane()
+    && w_the_container_argv_carries_the_roce_projections()
+    && w_the_gate_script_refuses_socket_and_requires_ib()
+    && w_the_native_apply_plans_the_whole_arm_head_first()
+}

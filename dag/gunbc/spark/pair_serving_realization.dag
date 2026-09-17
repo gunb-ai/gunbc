@@ -27,11 +27,8 @@ import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names,
 }
 import gunbc.spark.collective_transport_plan {
-  CollectiveTransportPlan, RoceOverInterface, SocketOverInterface,
+  CollectiveTransportPlan, RoceOverInterface, SocketOverInterface, spark_rail_gid_selection,
   transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited, transport_plan_env,
-}
-import extdeps.nvidia.nccl {
-  NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2,
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Installable, SystemdServiceDirective,
@@ -258,7 +255,9 @@ fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignmen
 // RoCE v2 and NCCL finds the slot itself. A slot number is what the image baked, and it went stale
 // the first time the link flapped (extdeps.docker.images.sparkrun_vllm_ds4_gb10
 // sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names).
-data spark_pair_rail_gid_selection: NcclRoceGidSelection = NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 }
+// THE GID SELECTION'S HOME is gunbc.spark.collective_transport_plan spark_rail_gid_selection (a
+// fabric fact, RoCEv2/IPv4 on both cages' rails); it moved out of this module on 2026-09-17 when
+// the GLM native arm took the same plan.
 
 // ── THIS ROUTE'S TRANSPORT IS ONE VALUE, AND THE CONTAINER FIELDS ARE ITS PROJECTION ──────────
 //
@@ -274,7 +273,7 @@ fn spark_pair_transport_plan(lane: FabricLaneObserved) -> CollectiveTransportPla
   RoceOverInterface {
     interface: lane.leg_netdev,
     rdma_device: lane.leg_rdma_device,
-    gid_selection: spark_pair_rail_gid_selection,
+    gid_selection: spark_rail_gid_selection,
   }
 }
 

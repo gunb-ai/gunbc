@@ -22,6 +22,11 @@ import extdeps.zhipu.glm_5_3_flash {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, FabricLaneObserved, fabric_group_hosts, fabric_lane_for_host }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
+import gunbc.spark.collective_transport_plan {
+  CollectiveTransportPlan, RoceOverInterface, spark_rail_gid_selection,
+  transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited, transport_plan_env,
+}
+import extdeps.docker.cli { docker_device_words, docker_cap_add_words, docker_memlock_unlimited_words }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.model_snapshot_acquisition { glm_5_3_flash_snapshot, spark_hub_cache_root, ModelSnapshotPinned, ModelSnapshotUnpinned }
 import gunbc.spark.serving_arm {
@@ -88,10 +93,10 @@ data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
 data glm_native_head_log_path: NonEmptyStr = "/var/log/gunbc/glm-native-head.log" as NonEmptyStr
 data glm_native_rank_log_path: NonEmptyStr = "/var/log/gunbc/glm-native-rank.log" as NonEmptyStr
 
-// THE RAIL INTERFACE, BECAUSE A RENDEZVOUS ADDRESS DOES NOT DECIDE THE PAYLOAD PATH. GLOO and NCCL
-// each want the interface named explicitly; enp1s0f1np1 is the first fabric leg on every Spark
-// (gunbc.spark.fabric_switch_observed leg_netdev).
-data glm_native_rail_interface_name: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
+// THE RAIL INTERFACE AND VERBS DEVICE COME FROM THE LANE CENSUS, not a literal: an earlier
+// revision carried `glm_native_rail_interface_name = "enp1s0f1np1"` beside the census's own
+// leg_netdev, a second authority for one fact, deleted 2026-09-17 when the arm took the
+// collective-transport plan (which reads both leg_netdev and leg_rdma_device from the lane row).
 
 // THE DECLARED MODEL PATH IN THE CONTAINER, derived from the pinned snapshot rather than spelled:
 // the hub cache directory naming is extdeps.huggingface.hub's, the revision is
@@ -147,28 +152,54 @@ fn glm_native_engine_argv(rank: Nat, ranks: Nat, master: Ipv4Address) -> List<St
   }
 }
 
+// THE ARM'S COLLECTIVE TRANSPORT IS ONE VALUE, CONSUMED FROM THE SAME AUTHORITY AS GROUP A.
+// Until 2026-09-17 this renderer hand-set NCCL_SOCKET_IFNAME/GLOO_SOCKET_IFNAME and nothing else:
+// no /dev/infiniband mapping, no IPC_LOCK, no memlock, no NCCL_IB_HCA -- so NCCL found no verbs
+// device in the container (`NET/IB : No device found.`) and silently bound `Using network Socket`
+// on every rank while the host's RoCE device sat ACTIVE on the very rail interface the container
+// was told to use. The fallback was observed serving, but the operator ruled it a correctness
+// issue, not a performance one: the deployment intends the direct fabric line, and a silent
+// downgrade is a wrong answer about which transport carries the collective. The plan below is the
+// same RoceOverInterface arm group A's pair route consumes, keyed by the same lane census row.
+fn glm_native_transport_plan(lane: FabricLaneObserved) -> CollectiveTransportPlan {
+  RoceOverInterface {
+    interface: lane.leg_netdev,
+    rdma_device: lane.leg_rdma_device,
+    gid_selection: spark_rail_gid_selection,
+  }
+}
+
 // THE CONTAINER LINE. NCCL_DEBUG_SUBSYS is narrowed to INIT,NET because VOLUME is the reason to
 // hesitate: bare INFO narrates every channel of every collective; INIT,NET keeps the topology and
-// transport lines and drops the per-collective traffic. Measured on a two-rank no-weights probe in
-// this exact image on srv9 and srv10: NCCL reported "NET/IB : No device found" and bound
-// "NET/Socket : Using [0]enp1s0f1np1", the socket spelling the observer greps for.
+// transport lines and drops the per-collective traffic -- and the transport verdict lines are what
+// the apply's readback gate greps for. The device mapping, capability, memlock and env are the
+// plan's projections, spelled through extdeps.docker.cli 's shared word shapes.
 fn glm_native_container_argv(lane: FabricLaneObserved, rank: Nat, ranks: Nat, master: Ipv4Address) -> List<String> {
-  concat([
+  let plan = glm_native_transport_plan(lane: lane)
+  concat(concat(concat([
     "/usr/bin/docker", "run", "--rm",
     "--name", glm_native_container_name as String,
     "--gpus", "all",
     "--network", "host",
     "--ipc", "host",
-    "-e", join(["GLOO_SOCKET_IFNAME=", glm_native_rail_interface_name as String], ""),
-    "-e", join(["NCCL_SOCKET_IFNAME=", glm_native_rail_interface_name as String], ""),
-    "-e", "NCCL_DEBUG=INFO",
-    "-e", "NCCL_DEBUG_SUBSYS=INIT,NET",
-    "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String], ""),
-    "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
-    "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),
-    "-v", join([spark_hub_cache_root as String, ":", glm_native_weights_container_dir as String, ":ro"], ""),
-    glm_native_image_reference as String,
-  ], glm_native_engine_argv(rank: rank, ranks: ranks, master: master))
+  ], concat(
+    flat_map(transport_plan_devices(p: plan), d => docker_device_words(d: d)),
+    concat(
+      flat_map(transport_plan_cap_add(p: plan), c => docker_cap_add_words(c: c)),
+      if transport_plan_memlock_unlimited(p: plan) { docker_memlock_unlimited_words() } else { [] },
+    ),
+  )), concat(
+    flat_map(transport_plan_env(p: plan), e => ["-e", join([e.name as String, "=", e.value], "")]),
+    [
+      "-e", "NCCL_DEBUG=INFO",
+      "-e", "NCCL_DEBUG_SUBSYS=INIT,NET",
+      "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String], ""),
+      "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
+      "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),
+      "-v", join([spark_hub_cache_root as String, ":", glm_native_weights_container_dir as String, ":ro"], ""),
+      glm_native_image_reference as String,
+    ],
+  )), glm_native_engine_argv(rank: rank, ranks: ranks, master: master))
 }
 
 // A systemd Exec line is argv joined by spaces; a word carrying whitespace or a quote would need

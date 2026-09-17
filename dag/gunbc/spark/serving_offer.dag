@@ -11,7 +11,9 @@ import product.fabric.provider_route { ProviderRoute }
 import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
 import extdeps.currency.currency { Usd }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.fabric_switch_observed { fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire, FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer }
+import gunbc.spark.native_serving_realization { glm_native_container_name }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.first_party_serving {
   spark_fleet_site_allocation, spark_site_uncovered_units, spark_first_party_route,
@@ -29,7 +31,7 @@ import gunbc.spark.vllm_serving_launch {
   LaunchUnitProvenance, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
   launch_unit_provenance, launch_wire,
 }
-import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_container_name }
 import gunbc.spark.rendezvous_participation {
   ServingGroupParticipation, GroupAtRendezvous, GroupRanksAdrift, GroupParticipationUnobserved,
   serving_group_participation_line,
@@ -348,6 +350,25 @@ type DeclaredUnitDigestStanding
 data spark_pair_head_unit_digest_unavailable_obligation: NonEmptyStr = "gunbc.spark.serving_offer: no operation available to this path computes a SHA-256 over the rendered bytes of gunbc.spark.pair_serving_realization spark_pair_head_unit_file, so there is no declared unit digest in the family the host's unit_sha is read in, and whether the answering incarnation was launched from our declaration cannot be compared. TRIGGER: a SHA-256 digest of the rendered head unit bytes, SUFFICIENT FOR DeclaredUnitDigested to be compared with VllmServingLaunch.unit_digest through gunbc.spark.vllm_serving_launch launch_unit_provenance"
 
 data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark.serving_offer: the engine incarnation the answering endpoint process belongs to was not observed on this bind. gunbc.spark.serving_incarnation_observe is the producer -- it binds the answering exporter to a gunbc.spark.vllm_serving_launch VllmServingLaunch over the fleet key session -- and this standing is reached when that producer returned no observation for a specific reason it names: no fleet ssh context on this bind, the process not found or ambiguous at the exported start instant, hidepid hiding /proc, or the container image id unread. That last needs gunbc.spark.managed_access_bootstrap InspectServingContainer (installed through gunbc.spark.managed_grant_install): the unprivileged facts -- unit, start-tick identity, cgroup container id -- are established without it, but the image digest that completes the launch is read only through the inspect leg, so a host without that grant fails the inspect command (sudo denies) with the container named"
+
+// ── THE EDGE, DECLARED AT THE OFFER ──────────────────────────────────────────────────────────
+//
+// WHICH GRANTS AN ARM'S OFFER NEEDS HELD ON ITS HOSTS is a fact about the OFFER, because the
+// offer is what knows why: the incarnation chain above reads the live container through
+// InspectServingContainer, so the offer for an arm cannot open on a host where that arm's
+// container inspect is not granted. Until 2026-09-17 this edge existed only in the obligation
+// TEXT above, and the native arm's apply restarted four engines while the grant was installed on
+// none of them -- discovered by the harness probe afterward. Declared here as data, the edge has
+// one authority that both directions consume: the apply's preflight (gunbc.spark.native_serving_apply)
+// asks it what to probe BEFORE restarting anything, and the grants lane's population
+// (managed_access_bootstrap spark_managed_grant_population) is the same grants seen from the
+// install side. Keyed by fabric group because the arm determines the container.
+fn spark_serving_offer_required_grants(group: FabricGroup) -> List<SparkManagedGrant> {
+  match group {
+    FabricGroupA => [InspectServingContainer { container: spark_pair_container_name }]
+    FabricGroupB => [InspectServingContainer { container: glm_native_container_name }]
+  }
+}
 
 fn spark_launch_unit_provenance_text(provenance: LaunchUnitProvenance) -> String {
   match provenance {

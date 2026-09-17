@@ -86,6 +86,18 @@ fn docker_mount_flag(m: DockerMount) -> List<String> {
   }
 }
 
+// THE WORD SHAPES, ONE AUTHORITY. docker create's structured renderer and the raw word-list
+// renderers (the GLM native arm's systemd Exec line) must spell a device mapping, a capability
+// and the memlock ulimit identically; extracted 2026-09-17 when the native arm took the RoCE
+// collective-transport plan and would otherwise have re-typed the three literals.
+fn docker_memlock_unlimited_words() -> List<String> { ["--ulimit", "memlock=-1:-1"] }
+
+fn docker_device_words(d: DockerDeviceMapping) -> List<String> {
+  ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]
+}
+
+fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as String] }
+
 fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
   concat(
     concat(
@@ -100,14 +112,14 @@ fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
               "--shm-size", to_string(spec.shm_size_bytes),
               "--restart", docker_restart_policy_wire(p: spec.restart) as String,
             ],
-            if spec.memlock_unlimited { ["--ulimit", "memlock=-1:-1"] } else { [] },
+            if spec.memlock_unlimited { docker_memlock_unlimited_words() } else { [] },
           ),
           if spec.gpus_all { ["--gpus", "all"] } else { [] },
         ),
-        flat_map(spec.devices, d => ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]),
+        flat_map(spec.devices, d => docker_device_words(d: d)),
       ),
       concat(
-        flat_map(spec.cap_add, c => ["--cap-add", c as String]),
+        flat_map(spec.cap_add, c => docker_cap_add_words(c: c)),
         concat(
           flat_map(spec.mounts, m => docker_mount_flag(m: m)),
           flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
