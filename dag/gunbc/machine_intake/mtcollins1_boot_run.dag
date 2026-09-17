@@ -20,10 +20,13 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
 }
 import gunbc.auth.approval_request_client {
   stored_request_from_authorization, sign_stored_request,
-  approval_submit_url, approval_status_url, parse_filed_approval_status,
+  approval_submit_url, approval_status_url,
   approval_poll_standing, approval_post_admits_poll,
   SubmissionMacReady, SubmissionMacKeyNotHex,
-  FiledApprovalStatus, StatusUnreadable, PollStillPending,
+  PollStillPending,
+}
+import gunbc.auth.approval_status_wire {
+  parse_filed_approval_status, FiledApprovalStatus, StatusUnreadable,
 }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }

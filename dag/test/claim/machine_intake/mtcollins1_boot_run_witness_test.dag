@@ -15,7 +15,10 @@ import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import std.process { ExitSuccess }
 import std.scoped_authorization { authorization_claim_key }
 import gunbc.auth.approval_request_client {
-  StatusUnreadable, StatusPending, parse_filed_approval_status, approval_poll_standing, PollExpired, PollUnreadable,
+  approval_poll_standing, PollExpired, PollUnreadable,
+}
+import gunbc.auth.approval_status_wire {
+  StatusUnreadable, StatusPending, parse_filed_approval_status,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

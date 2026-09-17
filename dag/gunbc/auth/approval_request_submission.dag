@@ -15,6 +15,10 @@ import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_deployment
 import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
 import std.algebra { trim }
+import gunbc.auth.approval_status_wire {
+  FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
+  filed_approval_status_text, submission_filed_text,
+}
 import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal,
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
@@ -248,6 +252,23 @@ type SubmissionOutcome
   | SubmissionRefused { refusal: SubmissionRefusal }
   | SubmissionFiledCapabilityKeyUnavailable { escalation_id: NonEmptyStr, cause: ApprovalKeyringRefusal }
 
+fn submission_outcome_admits_poll(o: SubmissionOutcome) -> Bool {
+  match o {
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => true
+    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => true
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => true
+    SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => true
+    SubmissionAlreadyFiled { escalation_id: _ } => true
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => true
+    SubmissionStoreRefused { detail: _ } => false
+    SubmissionRefused { refusal: _ } => false
+  }
+}
+
+fn submission_outcome_http_body(o: SubmissionOutcome) -> String {
+  submission_filed_text(filed: submission_outcome_admits_poll(o: o), reason: concat("approval submission: ", submission_outcome_reason(o: o)))
+}
+
 fn submission_outcome_reason(o: SubmissionOutcome) -> String {
   match o {
     SubmissionFiledAndNotified { escalation_id: e, message_id: m } => join(["filed ", e as String, " and notified (ntfy message ", m as String, ")"], "")
@@ -377,30 +398,35 @@ fn submit_parsed_submission(
 
 // WHAT A POLLING RUN MAY LEARN OVER HTTP: the slot's standing and, once decided, who decided and
 // when. Not the purpose, not the requester -- the run filed those and does not need them back --
-// WHAT A POLLING RUN MAY LEARN OVER HTTP: the slot's standing and, once decided, who decided and
-// when. Not the purpose, not the requester -- the run filed those and does not need them back --
 // and never a link. The grant join is grant_from_approved_decision over these fields: the runner
 // never opens the 0600 store.
 // THE STATUS A POLLING RUN READS, with its wire status beside it: an answer about the slot --
 // not filed, pending, decided -- is 200, and a store that could not be read is 503, because the
 // HTTP status is the channel the filer reads first and a failed read on the success channel is
-// a warning where a refusal was owed.
+// a warning where a refusal was owed. The BODY is the kv grammar of approval_status_wire.
 type EscalationStatus {
   status: HttpStatus
   body: String
 }
 
+fn filed_status_of_slot(slot: EscalationSlot) -> FiledApprovalStatus {
+  match slot {
+    EscalationNotFiled => StatusNotFiled
+    EscalationUnreadable { detail: d } => StatusUnreadable { detail: d }
+    EscalationPending { request: r } => StatusPending { expires_at: r.expires_at }
+    EscalationDecided { decision: d } => match d {
+      BrokerApproved { escalation_id: _, revision: rev, decided_by: by, decided_at: at, obligation: o } =>
+        StatusApproved { revision: rev, decided_by: by, decided_at: at, execute_by: o.execute_by }
+      BrokerDenied { escalation_id: _, revision: rev, decided_by: by, decided_at: at, reason: why } =>
+        StatusDenied { revision: rev, decided_by: by, decided_at: at, reason: why }
+    }
+  }
+}
+
 fn escalation_status_of(slot: EscalationSlot) -> EscalationStatus {
   match slot {
-    EscalationNotFiled => EscalationStatus { status: 200, body: "standing=not-filed\n" }
-    EscalationUnreadable { detail: d } => EscalationStatus { status: 503, body: join(["standing=unreadable\ndetail=", d as String, "\n"], "") }
-    EscalationPending { request: r } => EscalationStatus { status: 200, body: join(["standing=pending\nexpires_at=", r.expires_at, "\n"], "") }
-    EscalationDecided { decision: d } => EscalationStatus { status: 200, body: match d {
-      BrokerApproved { escalation_id: _, revision: rev, decided_by: by, decided_at: at, obligation: o } =>
-        join(["standing=approved\nrevision=", rev as String, "\ndecided_by=", by as String, "\ndecided_at=", at, "\nexecute_by=", o.execute_by, "\n"], "")
-      BrokerDenied { escalation_id: _, revision: rev, decided_by: by, decided_at: at, reason: why } =>
-        join(["standing=denied\nrevision=", rev as String, "\ndecided_by=", by as String, "\ndecided_at=", at, "\nreason=", why as String, "\n"], "")
-    } }
+    EscalationUnreadable { detail: _ } => EscalationStatus { status: 503, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    _ => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
   }
 }
 
