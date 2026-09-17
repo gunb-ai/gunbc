@@ -108,6 +108,18 @@ type FabricLegCableObserved {
   linked_speed_gbps: Nat
 }
 
+// SUPERSEDED READING, MARKED ON THE CARRIER (2026-09-17). The two observed values below --
+// nic_supported_speeds and linked_speed_gbps -- are the PRE-RECODE state, and they are now false of
+// the fleet: after the operator re-flashed the QSFP56 host ends to NVIDIA(ETH), byte 192 read 0x40
+// (was 0x0B), mstlink reports `Supported Cable Speed: 100G_2X` (this row still says 50G_2X), and the
+// NIC advertises 100GBASE-CR2. The link is still 50G, but for a switch-side reason, not because the
+// NIC is capped -- so linked_speed_gbps: 50 remains true by coincidence while nic_supported_speeds
+// is now WRONG. This is the a_live_authority_name_carries_a_superseded_claim class: the fix is to
+// model the recode as an EVENT rather than a single mutable reading (gap G12, docs/plans/
+// fabric-switch-100g-convergence-gap-analysis.md), which supersedes this row instead of overwriting
+// it. TRIGGER: that event model lands and this row's fields become derived from the latest event.
+// Until then this annotation is the mark that the value is stale, so a reader does not consume
+// nic_supported_speeds as current.
 data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
   vendor: "FS" as NonEmptyStr,
   part_number: "QDD-400G-4QPC015" as NonEmptyStr,
