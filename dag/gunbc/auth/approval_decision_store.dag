@@ -106,9 +106,10 @@ data approval_mac_key_id: MacKeyId = "approval-capability-mac-key/1" as MacKeyId
 data approval_mac_key_suite: MacSuite = HmacSha256
 
 // WHERE THE KEY LIVES ON THE HOST THAT SERVES /approve: a file under the roadmap server's config
-// directory, the same shape as /etc/gunbc-ntfy/publisher-token, written by fleet-converge mode
-// approval_keyring_converge from the SecretRef above and readable by the unit's user only. The
-// server reads the PATH from this row and the material into a Secret; nothing renders it.
+// directory, the same shape as /etc/gunbc-ntfy/publisher-token, materialized from the SecretRef
+// above by the converge step approval_keyring_materialization_frontier names, readable by the
+// unit's user only. The server reads the PATH from this row and the material into a Secret;
+// nothing renders it.
 data approval_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-mac-key"
 
 // ABSENT AND UNREADABLE ARE TWO REFUSALS WITH TWO REMEDIES (review 66990;
@@ -723,5 +724,18 @@ fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Su
 // change, gated on that primitive.
 data approval_issuance_frontier: DissolutionCondition = unbound_dissolution(
   description: "a MAC issuance primitive (hmac_sha256_hex) and extdeps.crypto.mac mac_sign, so that gunbc.auth.approval_capability can mint an ApprovalCapability for claims_for(request, ProposeApprove) and claims_for(request, ProposeDeny) -- SUFFICIENT FOR filing a request into this store and publishing gunbc.auth.approval_notification with capability_path_segment links; in flight as the approval-loop part A lane (eager-owl-205, 2026-09-16). NOT satisfied by a hand-computed tag committed as a fixture, which is what the witness uses to exercise the verify side until then.",
+)
+
+// THE KEYS ON THE HOST: a converge step materializes approval_mac_key_secret_ref into
+// approval_mac_key_path AND gunbc.auth.approval_request_submission
+// approval_submission_mac_key_secret_ref into its approval_submission_mac_key_path, 0640, owned by
+// root and readable by the roadmap unit's user, the same shape as /etc/gunbc-ntfy/publisher-token.
+// Until that step lands the keyrings read absent and every redemption refuses
+// RedemptionKeyringUnavailable and every filing SubmissionKeyUnavailable -- loud, never a
+// fabricated key. The step is gunbc.auth.approval_keyring_converge in #11484 (fleet-converge mode
+// approval_keyring_converge, writing over the fleet SSH edge as the administrator); its first live
+// receipt is fleet-converge run 35181154197 on srv1 (2026-09-17), from an integration tree.
+data approval_keyring_materialization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a fleet-converge step that reads approval_mac_key_secret_ref and approval_submission_mac_key_secret_ref through the WIF-backed convergence account and writes approval_mac_key_path and approval_submission_mac_key_path (0640 root:<roadmap unit user>) on the host that serves /approve and /approvals, over the fleet SSH administrator edge rather than a job-user sudo -- SUFFICIENT FOR both keyrings to read ApprovalKeyLoaded on that host; lands as gunbc.auth.approval_keyring_converge (#11484)",
 )
 
