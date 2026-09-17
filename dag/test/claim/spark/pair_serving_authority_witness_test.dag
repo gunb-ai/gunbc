@@ -10,7 +10,7 @@ import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation,
   SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
   PairRealizationUnestablished,
-  pair_serving_apply_admits, pair_serving_commits_hosts, pair_serving_holds_placement,
+  pair_serving_apply_admits, pair_serving_commits_hosts,
   pair_serving_capacity_subject, pair_serving_successor_may_launch, pair_serving_may_finish,
   pair_serving_authority_group, spark_pair_serving_authorities,
   CapacityOrdinarySubject, CapacitySuspendedSubject, CapacityReleasedSubject,

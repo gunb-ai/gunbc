@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_authority
 import std.types { Bool, NonEmptyStr, List }
 import std.content_hash { ContentHash }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, held_lease_observed_verdict }
-import std.observation { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible }
+import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 
@@ -157,6 +157,25 @@ fn pair_serving_capacity_subject(a: PairServingGroupAuthority) -> PairServingCap
 // take a host with no cleanup; expiry restoring the prior authority may restart convergence over
 // drifted, foreign or unread state; expiry changing nothing makes "bounded" a word rather than a
 // property. Splitting the question into may-start and may-finish is what leaves all three closed.
+// WHICH OBSERVED LEASE STATES COUNT AS A LIVE HOLD IS NOT THIS MODULE'S FACT. std.upsert_decision
+// ObservationVerdict is the closed answer and std.temporal_effect held_lease_observed_verdict is the
+// mapping onto it, so a second five-arm match over HeldLeaseObservedState here would be a fork that
+// drifts silently: reclassify an arm in std and this module keeps answering the old way with nothing
+// to notice. This consumes the canonical fold and adds only the local question. UnknownRefused is
+// listed rather than folded into a default because a refusal to observe is not a dead lease -- it is
+// an unread one, and treating unread as expired is how a live successor loses its launch authority to
+// a reading failure.
+fn pair_serving_lease_is_live(o: HeldLeaseObservedState) -> Bool {
+  match held_lease_observed_verdict(observed: o) {
+    Converged => true
+    Absent => false
+    Drifted => false
+    Conflict => false
+    Inaccessible => false
+    UnknownRefused => false
+  }
+}
+
 fn pair_serving_successor_may_launch(a: PairServingGroupAuthority) -> Bool {
   match a {
     PairServingActive { group: _, exact_realization: _ } => false
