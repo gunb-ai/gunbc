@@ -1158,11 +1158,9 @@ type ParsedModuleItemKind
 // code from serving code. Every node the parser did not construct from a marked item carries
 // Unmarked; constructions that rebuild a node propagate the marker from the node they rebuild.
 //
-// NO RESOLVER READS THIS YET, and that is a declared frontier rather than a finished consumer.
-// Its consumer is the v1 resolve-stage refusal of any reference to a TestMarked declaration, and
-// of any dependency from serving code on test code, which cannot be written until the parse
-// carries the marker. That refusal retires this frontier. The text scanners that read `test fn`
-// from source today are not its consumer: the v2 one is blocked on v2's grammar, not on v1.
+// ITS CONSUMER IS v1.compiler.compile test_reference_diagnostics, which refuses any reference to
+// a TestMarked declaration and any dependency of serving code on test code. The text scanners that
+// read `test fn` from source are not its consumer: the v2 one is blocked on v2's grammar, not on v1.
 type DeclarationMarker = Unmarked | TestMarked
 
 type Node {

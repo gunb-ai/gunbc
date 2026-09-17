@@ -547,6 +547,44 @@ mod compiler_tests {
         assert!(tags.is_empty(), "{:?}", tags);
     }
 
+    // IDENTITY GRAIN: swapping a row's target for another test fn under the same referrer keeps the
+    // count equal and must still refuse -- a new target has no row. Its own row is then paid down too.
+    #[test]
+    fn a_new_target_under_a_rostered_referrer_is_refused() {
+        let debt = crate::v1_compiler_compile::test_reference_debt();
+        let row = debt
+            .iter()
+            .find(|r| r.referrer != "<import>" && r.occurrences == 1)
+            .cloned()
+            .expect("a single-call row");
+        let body = format!("test fn zz_swapped_in() -> Bool {{\n  true\n}}\n\nfn {}() -> Bool {{\n  zz_swapped_in()\n}}\n", row.referrer);
+        let tags = test_reference_tags(&row.module_name, &body);
+        assert!(
+            tags.contains(&"referenced blocking=true".to_string()),
+            "{:?}",
+            tags
+        );
+        assert!(
+            tags.contains(&format!(
+                "mismatch declared={} observed=0 blocking=true",
+                row.occurrences
+            )),
+            "{:?}",
+            tags
+        );
+    }
+
+    // A test fn taken as a function VALUE is a reference: it is how a test reaches a caller
+    // without a call site.
+    #[test]
+    fn a_test_fn_used_as_a_value_is_refused() {
+        let tags = test_reference_tags(
+            "wall.fixture.value",
+            "test fn leaf() -> Bool {\n  true\n}\n\nfn pick() -> fn() -> Bool {\n  leaf\n}\n",
+        );
+        assert_eq!(tags, vec!["referenced blocking=true".to_string()]);
+    }
+
     // THE RATCHET: a ledger row whose module compiles with a different count refuses, here in the
     // paid-down direction (the row declares references, the module now has none).
     #[test]
@@ -554,12 +592,20 @@ mod compiler_tests {
         let debt = crate::v1_compiler_compile::test_reference_debt();
         let row = debt.get(0).cloned().expect("ledger has rows");
         let tags = test_reference_tags(&row.module_name, "fn helper() -> Bool {\n  true\n}\n");
+        let expected: Vec<String> = debt
+            .iter()
+            .filter(|r| r.module_name == row.module_name)
+            .map(|r| {
+                format!(
+                    "mismatch declared={} observed=0 blocking=true",
+                    r.occurrences
+                )
+            })
+            .collect();
+        assert!(!expected.is_empty());
         assert_eq!(
-            tags,
-            vec![format!(
-                "mismatch declared={} observed=0 blocking=true",
-                row.occurrences
-            )]
+            tags, expected,
+            "every row of a paid-down module refuses at identity grain"
         );
     }
 
