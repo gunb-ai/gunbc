@@ -675,18 +675,19 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
 // dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts is a replay
 // projection only. Authored seal count/digest are deleted. Merge-base prior_history parses carrier
 // content via git.Core.Show — never prior_history = [] on a changed carrier
-// (PriorHistoryRevisionEvaluationRequired dissolved). The hermetic contract plants each operator
-// red control: deleted events, prefix law on non-empty observed prior, empty-prior bypass
-// discriminant (proves the old authority-changed path would admit deletion), digest-omitted field
-// mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation
-// admit, criteria rewrite, git-refusal observation, and typed load/projection refusal chain. Live
-// git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness
-// (ReadsLiveTree, bin_witness_wet_entries).
+// (PriorHistoryRevisionEvaluationRequired dissolved). The bound contract is the inhabitance leaf
+// witness_deleted_history_event_refuses (a removed record with no withdrawal refuses). The other
+// operator reds named in red_control — prefix law on non-empty observed prior, empty-prior bypass
+// discriminant, digest-omitted field mutation, wrong prior digest, revocation while live, duplicate
+// revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed
+// load/projection refusal chain — are separate test fns in the same entry, discovered by the floor,
+// not re-executed by this contract. Live git-observed integrity executes in
+// test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries).
 
 fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/roadmap_receipt_continuity_acceptance_test.dag" as FilePath,
-    function: "roadmap_receipt_continuity_acceptance_contract_holds" as NonEmptyStr,
+    function: "witness_deleted_history_event_refuses" as NonEmptyStr,
   )
 }
 
