@@ -21,6 +21,15 @@ import extdeps.transports.rest {
   RestExchangeCommitAmbiguous,
   classify_rest_outcome,
 }
+import gunbc.review_sheet_projection {
+  ReviewSheetSchema,
+  ReviewColumn,
+  ReviewColumnKind,
+  DerivedField,
+  OperatorEntered,
+  ListingStanding,
+  DerivedErasureMark,
+}
 import extdeps.google.sheets
 import extdeps.google.sheets {
   SheetsColor,
@@ -106,10 +115,62 @@ fn header_foreground_color() -> SheetsColorReading {
 
 data review_sheet_header_row_count: Int = 1
 
-data review_sheet_column_count: Int = 17
+// THE SHEET'S SHAPE IS NOT THIS MODULE'S FACT AND AN EARLIER REVISION AUTHORED IT TWICE OVER. It
+// carried `review_sheet_column_count: Int = 17` and `standing_column_index: Int = 3` as bare
+// literals, while gunbc.review_sheet_projection ReviewSheetSchema already owns the column roster
+// and marks the standing column with the ListingStanding kind. Two sources for "how wide is this
+// sheet" and "which column is Standing" can produce different answers, and this pair would have
+// drifted SILENTLY: format_is_converged checks frozen rows, header colours and a rule count, never
+// extent or column position, so adding one derived column would leave the header band stopping
+// short and the conditional rule painting a column that is no longer Standing -- with every call
+// answering success and the converge still reporting converged.
+//
+// Both are derived from the supplied schema now. A schema with no ListingStanding column cannot be
+// formatted and says so, rather than colouring index 3 and hoping.
+fn schema_column_count(schema: ReviewSheetSchema) -> Int {
+  count(schema.columns)
+}
 
-// The Standing column, zero-indexed: Rank, Repository, Owner, Standing -> index 3.
-data standing_column_index: Int = 3
+type StandingColumnIndex
+  = StandingColumnAt { index: Int }
+  | StandingColumnAbsent
+
+type StandingScan {
+  next_index: Int
+  found: StandingColumnIndex
+}
+
+// The FIRST ListingStanding column wins and later ones are ignored rather than refused, because a
+// schema carrying two is a defect in the schema and this module is not its validator. The scan
+// keeps counting after a hit so next_index stays the true column position rather than freezing.
+fn advance_standing_scan(acc: StandingScan, col: ReviewColumn) -> StandingScan {
+  match acc.found {
+    StandingColumnAt { index: i } =>
+      StandingScan { next_index: acc.next_index + 1, found: StandingColumnAt { index: i } }
+    StandingColumnAbsent =>
+      match col.kind {
+        ListingStanding =>
+          StandingScan {
+            next_index: acc.next_index + 1,
+            found: StandingColumnAt { index: acc.next_index },
+          }
+        DerivedField { source_field: _ } =>
+          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
+        OperatorEntered =>
+          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
+        DerivedErasureMark =>
+          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
+      }
+  }
+}
+
+fn standing_column_index(schema: ReviewSheetSchema) -> StandingColumnIndex {
+  fold_list(
+    schema.columns,
+    StandingScan { next_index: 0, found: StandingColumnAbsent },
+    (acc, col) => advance_standing_scan(acc: acc, col: col),
+  ).found
+}
 
 type FormatStepOutcome
   = FormatStepApplied { step: NonEmptyStr }
@@ -153,7 +214,7 @@ fn freeze_header(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Net
   classify_format_step(step: "freeze header row" as NonEmptyStr, outcome: r.outcome)
 }
 
-fn format_header_band(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Network {
+fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) -> FormatStepOutcome uses net: Network {
   match header_background_color() {
     SheetsColorUnderivable { cause: c } =>
       FormatStepRefused { step: "header band" as NonEmptyStr, cause: c }
@@ -168,7 +229,7 @@ fn format_header_band(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net
             start_row: 0,
             end_row: review_sheet_header_row_count,
             start_col: 0,
-            end_col: review_sheet_column_count,
+            end_col: schema_column_count(schema: schema),
             background: bg,
             foreground: fg,
             bold: true,
@@ -184,6 +245,7 @@ fn color_standing(
   match_text: String,
   color: SheetsColorReading,
   rule_index: Int,
+  standing_col: Int,
 ) -> FormatStepOutcome uses net: Network {
   match color {
     SheetsColorUnderivable { cause: c } =>
@@ -192,7 +254,8 @@ fn color_standing(
         cause: c,
       }
     SheetsColorDerived { color: fg } => color_standing_derived(
-      spreadsheet_id: spreadsheet_id, match_text: match_text, color: fg, rule_index: rule_index)
+      spreadsheet_id: spreadsheet_id, match_text: match_text, color: fg,
+      rule_index: rule_index, standing_col: standing_col)
   }
 }
 
@@ -201,13 +264,14 @@ fn color_standing_derived(
   match_text: String,
   color: SheetsColor,
   rule_index: Int,
+  standing_col: Int,
 ) -> FormatStepOutcome uses net: Network {
   let r = sheets.Spreadsheets.AddTextColorRule(
     spreadsheet_id: spreadsheet_id as String,
     sheet_id: spreadsheet_first_sheet_id,
     start_row: review_sheet_header_row_count,
-    start_col: standing_column_index,
-    end_col: standing_column_index + 1,
+    start_col: standing_col,
+    end_col: standing_col + 1,
     match_text: match_text,
     foreground: color,
     rule_index: rule_index,
@@ -269,25 +333,25 @@ type FormatReport {
 // The steps are named individually rather than folded over the roster because each is an EFFECT
 // and the report names which one refused. A fold would answer "one of five failed", which is the
 // shape of diagnostic this session has repeatedly had to go back and re-derive.
-fn format_review_sheet(spreadsheet_id: NonEmptyStr) -> FormatReport uses net: Network {
+fn format_review_sheet(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema, standing_col: Int) -> FormatReport uses net: Network {
   FormatReport {
     freeze: freeze_header(spreadsheet_id: spreadsheet_id),
-    header: format_header_band(spreadsheet_id: spreadsheet_id),
+    header: format_header_band(spreadsheet_id: spreadsheet_id, schema: schema),
     opportunity: color_standing(
       spreadsheet_id: spreadsheet_id, match_text: "Opportunity",
-      color: standing_admitted_color(), rule_index: 0),
+      color: standing_admitted_color(), rule_index: 0, standing_col: standing_col),
     arbitrage: color_standing(
       spreadsheet_id: spreadsheet_id, match_text: "Arbitrage",
-      color: standing_admitted_color(), rule_index: 1),
+      color: standing_admitted_color(), rule_index: 1, standing_col: standing_col),
     incompatible: color_standing(
       spreadsheet_id: spreadsheet_id, match_text: "Incompatible",
-      color: standing_refused_color(), rule_index: 2),
+      color: standing_refused_color(), rule_index: 2, standing_col: standing_col),
     required: color_standing(
       spreadsheet_id: spreadsheet_id, match_text: "Required",
-      color: standing_refused_color(), rule_index: 3),
+      color: standing_refused_color(), rule_index: 3, standing_col: standing_col),
     replay: color_standing(
       spreadsheet_id: spreadsheet_id, match_text: "Replay",
-      color: standing_refused_color(), rule_index: 4),
+      color: standing_refused_color(), rule_index: 4, standing_col: standing_col),
   }
 }
 
@@ -520,7 +584,25 @@ type FormatConvergeOutcome
 // THE READBACK IS THE SAME READ THE CONVERGE OPENED WITH, not a trusted echo of the writes. A
 // batchUpdate answering 200 has told us what it did, not what the sheet now carries, and the
 // distance between those two is where the first live run lost an hour.
-fn converge_review_sheet_format(spreadsheet_id: NonEmptyStr) -> FormatConvergeOutcome uses net: Network {
+fn converge_review_sheet_format(
+  spreadsheet_id: NonEmptyStr,
+  schema: ReviewSheetSchema,
+) -> FormatConvergeOutcome uses net: Network {
+  match standing_column_index(schema: schema) {
+    StandingColumnAbsent =>
+      FormatConvergeRefused {
+        cause: "the supplied schema carries no ListingStanding column, so there is no column to colour by standing and painting a positional guess would colour whatever now sits there" as NonEmptyStr
+      }
+    StandingColumnAt { index: standing_col } =>
+      converge_format_with_standing(spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col)
+  }
+}
+
+fn converge_format_with_standing(
+  spreadsheet_id: NonEmptyStr,
+  schema: ReviewSheetSchema,
+  standing_col: Int,
+) -> FormatConvergeOutcome uses net: Network {
   match uint8_channel_inclusive_max_value_derived() {
     Absent =>
       FormatConvergeRefused {
@@ -533,7 +615,9 @@ fn converge_review_sheet_format(spreadsheet_id: NonEmptyStr) -> FormatConvergeOu
           match header_foreground_color() {
             SheetsColorUnderivable { cause: c } => FormatConvergeRefused { cause: c }
             SheetsColorDerived { color: fg } =>
-              converge_with_desired(spreadsheet_id: spreadsheet_id, inclusive_max: m, header_bg: bg, header_fg: fg)
+              converge_with_desired(
+                spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col,
+                inclusive_max: m, header_bg: bg, header_fg: fg)
           }
       }
   }
@@ -541,6 +625,8 @@ fn converge_review_sheet_format(spreadsheet_id: NonEmptyStr) -> FormatConvergeOu
 
 fn converge_with_desired(
   spreadsheet_id: NonEmptyStr,
+  schema: ReviewSheetSchema,
+  standing_col: Int,
   inclusive_max: Int,
   header_bg: SheetsColor,
   header_fg: SheetsColor,
@@ -557,7 +643,7 @@ fn converge_with_desired(
       } else {
         verify_applied_format(
           spreadsheet_id: spreadsheet_id,
-          report: format_review_sheet(spreadsheet_id: spreadsheet_id),
+          report: format_review_sheet(spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col),
           inclusive_max: inclusive_max,
           header_bg: header_bg,
           header_fg: header_fg,

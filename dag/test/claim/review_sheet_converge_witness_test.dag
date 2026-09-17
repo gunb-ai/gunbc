@@ -116,6 +116,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.review_sheet_operator {
   admit_review_sheet_operator,
   review_sheet_residency,
+  SheetInOwnerMyDrive,
+  review_sheet_access_intervention,
   fleet_review_sheet_operator_admission,
   buyer_review_spreadsheet,
   buyer_review_workspace_domain_sharing,
@@ -1576,7 +1578,7 @@ test fn admit_observe_only_refuses_disabled_api_instead_of_needing_enable() -> B
     enablement: w_observed_disabled(),
     enablement_policy: EnsureObserveOnly,
     spreadsheet: SpreadsheetAwaitingCreation,
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -1629,7 +1631,7 @@ test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> B
     enablement: w_observed_disabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetAwaitingCreation,
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -1652,7 +1654,7 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetAwaitingCreation,
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -1681,7 +1683,7 @@ test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -1968,7 +1970,7 @@ test fn discharged_share_for_another_spreadsheet_does_not_admit() -> Bool {
       spreadsheet_id: "sheet-other" as NonEmptyStr,
       owner: "operator" as NonEmptyStr,
     },
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -2033,7 +2035,7 @@ test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -2055,7 +2057,7 @@ test fn enabled_api_does_not_demand_serviceusage_enable_iam() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(
       project: w_fixture_project(),
       writer: w_fixture_writer(),
@@ -2079,7 +2081,7 @@ test fn disabled_api_awaits_serviceusage_enable_iam_before_enable() -> Bool {
     enablement: w_observed_disabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetAwaitingCreation,
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(
       project: w_fixture_project(),
       writer: w_fixture_writer(),
@@ -2107,7 +2109,7 @@ test fn discharged_iam_for_another_project_does_not_need_enable() -> Bool {
     enablement: w_observed_disabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetAwaitingCreation,
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam_for(
       project: "other-api-project",
       writer: w_fixture_writer(),
@@ -2135,7 +2137,7 @@ test fn unread_workspace_sharing_policy_refuses() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingPolicyUnobserved,
@@ -2158,7 +2160,7 @@ test fn domain_policy_forbidding_sa_share_refuses() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingForbidsExternalPrincipals,
@@ -2181,7 +2183,7 @@ test fn admitted_admission_opens_live_access() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
-    residency: review_sheet_residency,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -2198,5 +2200,82 @@ test fn admitted_admission_opens_live_access() -> Bool {
   ) {
     ReviewSheetLiveOpen { access: a } => a.spreadsheet_id == id
     ReviewSheetLiveNotAdmitted { admission: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE RESIDENCY BUG, and it is here because nothing in this file could
+// have gone red for it. The validator used to build its expectation as a My Drive FILE share while
+// the entry supplied a shared-drive MEMBER step for the live residency, so an identified
+// spreadsheet in a shared drive refused forever -- and every witness above passes a My Drive
+// fixture, so every one of them agreed with the broken validator. This claim supplies the
+// mismatch on purpose: a discharged FILE share under a SHARED DRIVE residency is not the access
+// step that residency requires, and admitting it would be admitting the wrong human action.
+test fn a_file_share_does_not_admit_a_shared_drive_residency() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: review_sheet_residency,
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: _ } => true
+    ReviewSheetAwaitingHuman { intervention: _ } => true
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+// AND THE POSITIVE CONTROL, so the row above cannot be satisfied by a validator that refuses
+// everything: the shared-drive residency admits when the MEMBER step is the discharged one.
+test fn a_discharged_drive_membership_admits_a_shared_drive_residency() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: review_sheet_residency,
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_drive_member(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorAdmitted { spreadsheet_id: sid } => sid == id
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+fn w_discharged_drive_member() -> HumanIntervention {
+  let pending = review_sheet_access_intervention(
+    residency: review_sheet_residency,
+    spreadsheet: SpreadsheetIdentified {
+      spreadsheet_id: "sheet-abc" as NonEmptyStr,
+      owner: "operator" as NonEmptyStr,
+    },
+    writer: w_fixture_writer(),
+  )
+  HumanIntervention {
+    identity: pending.identity,
+    frequency: pending.frequency,
+    subject: pending.subject,
+    instruction: pending.instruction,
+    completion_evidence: DischargedAt {
+      evidence: DeclarationRef {
+        module_path: "test.claim.review_sheet_converge_witness",
+        decl_name: "w_discharged_drive_member",
+        field: WholeDeclaration,
+      },
+    },
   }
 }

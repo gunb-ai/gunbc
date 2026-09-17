@@ -7,6 +7,7 @@ import gunbc.review_sheet_format_actuator {
   format_converge_text,
   format_converge_is_converged,
 }
+import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -356,8 +357,8 @@ type FormatDisposition
 
 fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
   match o {
-    SpreadsheetAdopted { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id) }
-    SpreadsheetCreatedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id) }
+    SpreadsheetAdopted { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
+    SpreadsheetCreatedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
     SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
   }
