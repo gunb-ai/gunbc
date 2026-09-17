@@ -3,8 +3,10 @@
 
 use self::RealizationGround::*;
 use self::RealizationRefusalCause::*;
+use self::ReferenceIdentityUnavailableCause::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
+use self::TypeReferenceIdentity::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -28,6 +30,33 @@ pub enum TypeDeclarationProvenance {
     CorpusDeclared { decl_file: String },
     KernelMinted { minted_name: String },
     DeclarationIdentityAbsent,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeReferenceIdentity {
+    ReferenceResolvedToDeclaration {
+        provenance: Rc<TypeDeclarationProvenance>,
+    },
+    ReferenceIsTheDeclaration {
+        provenance: Rc<TypeDeclarationProvenance>,
+    },
+    ReferenceIsTypeVariableBinder {
+        binder_name: String,
+    },
+    ReferenceIdentityUnavailable {
+        cause: ReferenceIdentityUnavailableCause,
+    },
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ReferenceIdentityUnavailableCause {
+    NoResolutionBoundAtReference,
+    ResolvedNodeIsNotADeclaration,
+    DeclarationNodeCarriesNoSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -162,6 +191,12 @@ pub fn is_dag_cast_domain_type(name: String) -> bool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NoResolutionBoundAtReference;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedNodeIsNotADeclaration;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeclarationNodeCarriesNoSpan;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GroundedByCheckpointRow;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

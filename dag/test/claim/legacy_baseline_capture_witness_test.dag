@@ -49,11 +49,13 @@ import v2.workflow.legacy_baseline_capture {
   LegacyBaselineRepairRosterMalformed,
   LegacyBaselineRepairSubjectDiverged,
   LegacyBaselineExecutionRefused,
+  LegacyBaselineObservedTransportRefused,
   subject_field_label,
   legacy_baseline_capture_capability,
   CaptureBlocked,
   CaptureAvailable
 }
+import v2.workflow.legacy_repair_observation { repair_subject_field_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -239,6 +241,7 @@ fn lbc_run(
                   LegacyBaselineRepairSubjectDiverged { field: f } => concat("repair-subject-diverged:", repair_subject_field_label(f: f) as String)
                   LegacyBaselineRepairIncomplete { completeness: _ } => "repair-incomplete"
                   LegacyBaselineExecutionRefused { phase: _, cause: _ } => "execution-refused"
+                  LegacyBaselineObservedTransportRefused { refusal: _ } => "observed-transport-refused"
                 }
               }
             }
@@ -450,10 +453,18 @@ test fn a_roster_whose_identity_is_not_the_subject_digest_refuses_as_repair_rost
   }
 }
 
-test fn the_reported_capability_is_blocked_until_a_live_repair_tap_exists() -> Bool {
+// THE CAPABILITY REPORTS EXECUTED EVIDENCE: it read CaptureBlocked while the Observed arm had no
+// required route (reviews 66841, 66891), and flipped to CaptureAvailable on the receipt of that
+// arm executing on the required floor over the measured fixture root (gunbc#11461 run
+// 35181521483). This is the former expecting-red probe turned permanent regression control
+// (DESIGN 4b(4)): it reads the constant, and the controls that make the constant honest are
+// a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings and
+// the_live_census_over_the_measured_fixture_root_counts_its_rows in
+// test.claim.legacy_repair_tap_live_bridge_witness - delete the Observed arm and THOSE red.
+test fn the_reported_capability_is_available_because_the_observed_arm_executes_on_the_required_floor() -> Bool {
   match legacy_baseline_capture_capability() {
-    CaptureAvailable => false
-    CaptureBlocked { phase: _, cause: _ } => true
+    CaptureAvailable => true
+    CaptureBlocked { phase: _, cause: _ } => false
   }
 }
 

@@ -1,9 +1,9 @@
 module product.fabric.candidate_field
 
-import std.types { List }
+import std.types { List, EpochSecs }
 import std.decl_ref { DeclarationRef }
 import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
-import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision }
+import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseRefusal, admit_provider_use,
 }
@@ -12,6 +12,10 @@ import product.fabric.offer_route {
   OfferRouteModeled, OfferRouteNotModeled, OfferRouteAmbiguous, OfferRouteFactsNameAnotherRoute,
 }
 import product.fabric.supply { SupplierOffer }
+import product.fabric.route_readiness {
+  RouteExercise, RouteReadinessRequirement, route_readiness,
+  RouteReady, RouteAdmittedForItsOwnExercise, RouteNeverExercised, RouteExerciseExpired,
+}
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate,
   CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
@@ -94,6 +98,8 @@ type FieldExclusionCause<P>
   = FieldRouteNotModeled
   | FieldRouteAmbiguous { claimed: List<ProviderRoute> }
   | FieldRouteFactsNameAnotherRoute { facts_route: ProviderRoute, offer_route: ProviderRoute }
+  | FieldRouteNeverExercised { route: ProviderRoute }
+  | FieldRouteExerciseExpired { route: ProviderRoute, latest_valid_through: EpochSecs, at: EpochSecs }
   | FieldUseRefused { cause: ProviderUseRefusal }
   | FieldDispatchInputsNameAnotherOffer { inputs_name: FabricIdentity<P, OfferKey> }
   | FieldPermitNamesAnotherOffer { permit_names: FabricIdentity<P, OfferKey> }
@@ -128,9 +134,10 @@ fn excluded_entry<P>(
   FieldExcluded { exclusion: FieldExclusion { offer: offer, cause: cause } }
 }
 
-// THE ORDER IS CORRESPONDENCE, THEN ADMISSION, THEN BINDING, AND IT IS THE ONLY ORDER THAT CAN BE
-// WRITTEN. admit_provider_use cannot be called without ProviderRouteFacts, and the correspondence
-// is the only producer of them here; bind_candidate cannot be called without the admission's
+// THE ORDER IS CORRESPONDENCE, THEN READINESS, THEN ADMISSION, THEN BINDING, AND IT IS THE ONLY
+// ORDER THAT CAN BE WRITTEN. Readiness and admit_provider_use both need the route the facts row
+// governs, and the correspondence is the only producer of them here; admission sits behind readiness
+// in field_entry_admitted; bind_candidate cannot be called without the admission's
 // result. So the sequence is enforced by what each step needs rather than by a comment saying to
 // run them in order - the same construction-over-validation move sole_constructor makes on the
 // permit itself.
@@ -147,6 +154,9 @@ fn field_entry<P>(
   active: CompliancePostureRevision,
   scope: ProviderUseScope<P>,
   decision_receipt: DeclarationRef,
+  exercises: List<RouteExercise>,
+  readiness: RouteReadinessRequirement<P>,
+  at: EpochSecs,
   request: FieldRequest<P>,
 ) -> FieldEntry<P> {
   match correspond_offer_route(
@@ -160,40 +170,69 @@ fn field_entry<P>(
         cause: FieldRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr },
       )
     OfferRouteModeled { facts: facts } =>
-      match bind_candidate(
-        offer: request.offer,
-        dispatch: request.dispatch,
-        admission: admit_provider_use(
-          roster: sanctions,
-          facts: facts,
-          active: active,
-          scope: scope,
-          offer: request.offer.id,
-          decision_receipt: decision_receipt,
-        ),
-        demand: scope.demand,
-        work: scope.work,
-      ) {
-        CandidateBound { candidate: c } => FieldAdmitted { candidate: c }
-        DispatchInputsNameAnotherOffer { offer: o, inputs_name: n } =>
-          excluded_entry(offer: o, cause: FieldDispatchInputsNameAnotherOffer { inputs_name: n })
-        OfferNotAdmittedForUse { offer: o, cause: c } =>
-          excluded_entry(offer: o, cause: FieldUseRefused { cause: c })
-        PermitNamesAnotherOffer { offer: o, permit_names: n } =>
-          excluded_entry(offer: o, cause: FieldPermitNamesAnotherOffer { permit_names: n })
-        PermitNamesAnotherRoute { offer: o } =>
-          excluded_entry(offer: o, cause: FieldPermitNamesAnotherRoute)
-        PermitNamesAnotherWork { permit_work: pw, subject_work: sw } =>
+      match route_readiness(
+        exercises: exercises, requirement: readiness, route: facts.route, work: scope.work, at: at) {
+        RouteNeverExercised { route: r } =>
+          excluded_entry(offer: request.offer.id, cause: FieldRouteNeverExercised { route: r })
+        RouteExerciseExpired { route: r, latest_valid_through: v, at: t } =>
           excluded_entry(
             offer: request.offer.id,
-            cause: FieldPermitNamesAnotherWork { permit_work: pw, subject_work: sw },
+            cause: FieldRouteExerciseExpired { route: r, latest_valid_through: v, at: t },
           )
-        PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } =>
-          excluded_entry(
-            offer: request.offer.id,
-            cause: FieldPermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd },
-          )
+        RouteReady { exercise: _ } => field_entry_admitted(
+          sanctions: sanctions, active: active, scope: scope,
+          decision_receipt: decision_receipt, facts: facts, request: request)
+        RouteAdmittedForItsOwnExercise { route: _ } => field_entry_admitted(
+          sanctions: sanctions, active: active, scope: scope,
+          decision_receipt: decision_receipt, facts: facts, request: request)
       }
+  }
+}
+
+// ADMISSION AND BINDING, reached only once the route is modeled AND ready. Readiness is decided
+// before admission so an unexercised route is reported as unexercised - a thing to go and run -
+// rather than masked behind whatever the use admission would have said.
+fn field_entry_admitted<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  request: FieldRequest<P>,
+) -> FieldEntry<P> {
+  match bind_candidate(
+    offer: request.offer,
+    dispatch: request.dispatch,
+    admission: admit_provider_use(
+      roster: sanctions,
+      facts: facts,
+      active: active,
+      scope: scope,
+      offer: request.offer.id,
+      decision_receipt: decision_receipt,
+    ),
+    demand: scope.demand,
+    work: scope.work,
+  ) {
+    CandidateBound { candidate: c } => FieldAdmitted { candidate: c }
+    DispatchInputsNameAnotherOffer { offer: o, inputs_name: n } =>
+      excluded_entry(offer: o, cause: FieldDispatchInputsNameAnotherOffer { inputs_name: n })
+    OfferNotAdmittedForUse { offer: o, cause: c } =>
+      excluded_entry(offer: o, cause: FieldUseRefused { cause: c })
+    PermitNamesAnotherOffer { offer: o, permit_names: n } =>
+      excluded_entry(offer: o, cause: FieldPermitNamesAnotherOffer { permit_names: n })
+    PermitNamesAnotherRoute { offer: o } =>
+      excluded_entry(offer: o, cause: FieldPermitNamesAnotherRoute)
+    PermitNamesAnotherWork { permit_work: pw, subject_work: sw } =>
+      excluded_entry(
+        offer: request.offer.id,
+        cause: FieldPermitNamesAnotherWork { permit_work: pw, subject_work: sw },
+      )
+    PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } =>
+      excluded_entry(
+        offer: request.offer.id,
+        cause: FieldPermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd },
+      )
   }
 }
 
@@ -230,6 +269,9 @@ fn assemble_candidate_field<P>(
   active: CompliancePostureRevision,
   scope: ProviderUseScope<P>,
   decision_receipt: DeclarationRef,
+  exercises: List<RouteExercise>,
+  readiness: RouteReadinessRequirement<P>,
+  at: EpochSecs,
   requests: List<FieldRequest<P>>,
 ) -> CandidateField<P> {
   let entries = map(requests, request =>
@@ -239,6 +281,9 @@ fn assemble_candidate_field<P>(
       active: active,
       scope: scope,
       decision_receipt: decision_receipt,
+      exercises: exercises,
+      readiness: readiness,
+      at: at,
       request: request,
     ))
   CandidateField {

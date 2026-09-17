@@ -1,0 +1,10 @@
+module test.probe.declaring_identity_spelling_unresolvable_probe
+
+// THIS MODULE MUST NOT RESOLVE. It is the XL-3 declaring-identity spelling census's
+// unresolvable-mention fixture: a type-position name declared nowhere, read as source by
+// v2.test.claim.declaring_identity_spelling.production_ingest through the ingest route
+// (never as a module in a closure), so the census's IdentityUnbound verdict has an
+// authorable subject. It lives under dag/test/probe/ because the required floor's
+// prepared subject excludes that roster by design (floor_prepared_subject_exclusions).
+
+data row: ThisNameIsNotDeclaredInThisFixture = 0

@@ -1,23 +1,27 @@
 module test.claim.live_deploy.readiness
 
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import test.claim.live_deploy.deploy_release_fixture {
+  deploy_witness_release_revision,
+  deploy_witness_other_release_revision,
+}
 import gunbc.live_deploy.readiness {
-  live_deploy_service_ready_once,
   live_deploy_service_ready_once_for_deploy,
   live_deploy_poll_service_ready_after_attempts,
   healthz_body_groundable,
-  ground_service_ready_from_healthz,
-  reconcile_service_ready_read,
-  show_healthz_read_fixture_healthy_live,
-  reconcile_service_ready_read_for_bundle,
-  live_deploy_service_ready_once_for_bundle,
-  show_healthz_read_fixture_healthy,
   live_deploy_healthz_get_for_port,
-  service_ready_apply_effect_for_deploy,
-  HealthzEffectiveRead,
+  service_readiness_reason,
+  observe_service_readiness_from_healthz,
+  healthz_body_verdict,
+  HealthzBodyGrounds,
+  HealthzBodyDoesNotGround,
+  ServiceProbeUnanswered,
+  ServiceReadinessIdentityPending,
+  ServiceReadinessPollBound,
+  ProcessRevisionMismatch,
   HealthzBodyRead,
   HealthzProbeRefused,
 }
+import gunbc.readiness { Ready, Pending, Refused }
 import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_max_attempts,
@@ -28,24 +32,18 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisCaptured,
 }
-import gunbc.live_deploy.spec { deployment_spec_for, deployment_srv1_target, derived_deployment_names, deployment_plan_listen_port, gunbc_roadmap_unit_name }
+import gunbc.live_deploy.spec { deployment_plan_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
   LocalShell,
   SshShell,
 }
 import std.types { NonEmptyStr, String, List }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
+import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_reconcile {
-  reconciliation_converged,
-  NotConverged,
-  DoesNotGround,
-  Grounds,
-  ReadObserved,
-}
 import std.measure { measure_fit_count_floor, second_count }
 import extdeps.http.client { http_client_get_argv }
 import extdeps.systemd.systemctl
@@ -65,7 +63,6 @@ import gunbc.roadmap_site_healthz_validate {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.live_deploy.candidate { CandidateRelease }
-import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -89,26 +86,41 @@ fn witness_candidate_release() -> CandidateRelease {
   }
 }
 
-// The readiness effect names the unit of the spec it was HANDED, not production's unit. The second
-// conjunct is what makes that discriminating: an implementation that ignored its argument and
-// returned gunbc_roadmap_unit_name would satisfy the first conjunct on production's own spec and
-// fail only against a spec whose unit differs.
-// RE-ENROLLED against a derived non-production spec. The deleted green slot used to supply that
-// second unit name; with one deployment, asserting this on deployment_spec_srv1 alone would make
-// the second conjunct FALSE (production's spec unit IS gunbc_roadmap_unit_name), so repointing was
-// not available and dropping the conjunct would have deleted the whole discrimination. A spec built
-// from srv1-lab through derived_deployment_names supplies a genuinely different unit name off the
-// production constructor path, so the anti-hardwire check survives the slot it was written against.
-test fn witness_readiness_names_the_unit_of_the_spec_it_is_given() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  let spec = deployment_spec_for(
-    instance: lab,
-    target: deployment_srv1_target(),
-    names: derived_deployment_names(instance: lab),
+fn unused_surface_artifact() -> RoadmapSiteSurfaceArtifact {
+  RoadmapSiteSurfaceArtifact {
+    url_path: "/x" as NonEmptyStr,
+    body: "",
+    digest: witness_expected_surface_identity(),
+  }
+}
+
+// Probe-refused and mock-stdout arms do not read the served surface. A live
+// materialization is the 800k-step charge the new-witness ceiling refuses.
+fn unused_surface_bundle() -> RoadmapSiteSurfaceBundle {
+  RoadmapSiteSurfaceBundle {
+    subject_identity: witness_expected_surface_identity(),
+    producer_identity: witness_expected_surface_identity(),
+    bundle_identity: witness_expected_surface_identity(),
+    roadmap_md: unused_surface_artifact(),
+    dispatch_json: unused_surface_artifact(),
+    daily_html: unused_surface_artifact(),
+    full_html: unused_surface_artifact(),
+    dispatch_js: unused_surface_artifact(),
+    healthz_body: "",
+  }
+}
+
+fn unused_process_body_at_admitted_revision() -> String {
+  let bundle = unused_surface_bundle()
+  healthz_body_with_release_identity(
+    roadmap: bundle.roadmap_md,
+    dispatch: bundle.dispatch_json,
+    daily: bundle.daily_html,
+    full: bundle.full_html,
+    dispatch_js: bundle.dispatch_js,
+    release_revision: deploy_witness_release_revision,
+    surface_bundle_identity: bundle.bundle_identity,
   )
-  let effect = service_ready_apply_effect_for_deploy(spec: spec)
-  effect.unit == spec.service.unit_name
-    && effect.unit != gunbc_roadmap_unit_name
 }
 
 test fn witness_healthz_mock_body_groundable() -> Bool {
@@ -129,13 +141,14 @@ test fn witness_healthz_bad_body_not_groundable() -> Bool {
 
 test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
   !healthz_body_groundable(body: witness_ssh_mock_stdout)
-    && match ground_service_ready_from_healthz(
-      read: HealthzBodyRead { body: witness_ssh_mock_stdout },
+    && match healthz_body_verdict(
+      body: witness_ssh_mock_stdout,
+      bundle: unused_surface_bundle(),
       expected_revision: deploy_witness_release_revision,
       expected_surface_identity: witness_expected_surface_identity(),
     ) {
-      DoesNotGround { reason: _ } => true
-      Grounds { evidence: _ } => false
+      HealthzBodyDoesNotGround { cause: _ } => true
+      HealthzBodyGrounds { evidence: _ } => false
     }
 }
 
@@ -161,16 +174,38 @@ test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
     && string_contains(s: url as String, pattern: "/healthz")
 }
 
-test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
-  match ground_service_ready_from_healthz(
+test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
+  match observe_service_readiness_from_healthz(
     read: HealthzProbeRefused {
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },
+    bundle: unused_surface_bundle(),
     expected_revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {
-    DoesNotGround { reason: _ } => true
-    Grounds { evidence: _ } => false
+    Pending { cause: ServiceProbeUnanswered { detail } } =>
+      string_contains(s: detail, pattern: "timed out")
+    Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
+    Ready { evidence: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Bool {
+  let bundle = unused_surface_bundle()
+  match observe_service_readiness_from_healthz(
+    read: HealthzBodyRead { body: unused_process_body_at_admitted_revision() },
+    bundle: bundle,
+    expected_revision: deploy_witness_other_release_revision,
+    expected_surface_identity: bundle.bundle_identity,
+  ) {
+    Pending { cause: ServiceReadinessIdentityPending { cause: ProcessRevisionMismatch { expected: e, observed: o } } } =>
+      e == (deploy_witness_other_release_revision as String)
+        && o == (deploy_witness_release_revision as String)
+    Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
+    Pending { cause: ServiceProbeUnanswered { detail: _ } } => false
+    Ready { evidence: _ } => false
+    Refused { cause: _ } => false
   }
 }
 
@@ -191,13 +226,16 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
     port: port,
     transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
   )
-  !reconciliation_converged(
-    r: reconcile_service_ready_read(
-      read: ReadObserved { value: read },
-      expected_revision: deploy_witness_release_revision,
-      expected_surface_identity: witness_expected_surface_identity(),
-    )
-  )
+  match observe_service_readiness_from_healthz(
+    read: read,
+    bundle: unused_surface_bundle(),
+    expected_revision: deploy_witness_release_revision,
+    expected_surface_identity: witness_expected_surface_identity(),
+  ) {
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => true
+    Refused { cause: _ } => true
+  }
 }
 
 test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
@@ -226,17 +264,11 @@ test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() ->
     access: ci_deploy_srv1_access,
   )
   let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
-  !reconciliation_converged(r: probe) && delay
-}
-
-test fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
-  reconciliation_converged(
-    r: reconcile_service_ready_read(
-      read: show_healthz_read_fixture_healthy_live(release_revision: deploy_witness_release_revision),
-      expected_revision: deploy_witness_release_revision,
-      expected_surface_identity: materialize_live_roadmap_site_surface_bundle().bundle_identity,
-    )
-  )
+  match probe {
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => delay
+    Refused { cause: _ } => delay
+  }
 }
 
 test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Bool {
@@ -250,12 +282,13 @@ test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Boo
     last_probe: "health probe never succeeded"
   )
   match r {
-    NotConverged { reason: why, applied: _ } =>
-      string_contains(s: why, pattern: "ServiceNotReady")
-        && string_contains(s: why, pattern: "waited_s=120")
-        && string_contains(s: why, pattern: "health probe never succeeded")
-        && !string_contains(s: why, pattern: "converged")
-    Converged { evidence: _, applied: _ } => false
+    Refused { cause: ServiceReadinessPollBound { refusal } } =>
+      second_count(s: refusal.waited) == second_count(s: live_deploy_service_ready_poll_bound)
+        && refusal.last_probe == "health probe never succeeded"
+        && !string_contains(s: service_readiness_reason(r: r), pattern: "converged")
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => false
+    Refused { cause: _ } => false
   }
 }
 

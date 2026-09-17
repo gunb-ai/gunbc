@@ -1,11 +1,11 @@
 module test.claim.decl_fact_value_projection_witness
 
 import v2.std.decl_index { DeclFact, decl_facts_at }
-import v2.std.fn_index { atom_identities_in_node, fn_index_symbol_eq }
+import v2.std.fn_index { atom_identities_in_node }
 import v2.std.algebra { contains, fold_list, for_all, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_eq }
 import v2.std.text { String }
 
 // WHAT THIS FILE MEASURES. A consumer that asks "which declarations name v1" keys on the
@@ -45,7 +45,7 @@ fn same_atoms(a: String, b: String) -> Bool {
   let xs = atoms_at(qn: a)
   let ys = atoms_at(qn: b)
   (length(xs: xs) == length(xs: ys))
-    && for_all(xs: xs, predicate: fn(s) { contains(xs: ys, item: s, eq: fn_index_symbol_eq) })
+    && for_all(xs: xs, predicate: fn(s) { contains(xs: ys, item: s, eq: symbol_eq) })
 }
 
 fn distinct_values_project_distinct_atoms(a: String, b: String) -> Bool {
