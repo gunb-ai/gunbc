@@ -1,21 +1,32 @@
-# A ONE-OFF EMPIRICAL PROBE, not a lane. It answers one question the docs are read two ways on:
-# does a standard GitHub-hosted runner consume billable minutes in a PUBLIC repository?
+# A ONE-OFF EMPIRICAL PROBE, not a lane. Round two settles the ARM SKU: gunbc.extdeps.pricing
+# github_actions actions_runner_class deliberately REFUSES to classify the 2-core ARM runner,
+# because GitHub has shipped ARM under both standard and larger terms and a price alone does not
+# say which. ~19k public repositories declare an ARM runner label, so that refusal now decides
+# whether a large population is a cost prospect or a queue-depth prospect.
 #
-# It is scoped to this branch by its push trigger, so it never runs on a pull request, never joins
-# the required-lane roster, and never competes for a runner with real work. Delete the branch and
-# it is gone. The measurement is the run's timing endpoint: billable is per runner OS and stays
-# empty when the minutes are free.
+# The x86 job is the control. It already answered zero on this repository, so if it answers zero
+# again while ARM answers non-zero, the difference is the SKU and not the repository, the plan, or
+# the day. A probe with no control would leave that unargued.
+#
+# Scoped to this branch by its push trigger: no pull-request trigger, no required-lane membership,
+# no competition for a runner with real work.
 name: billing-probe
 on:
   push:
     branches: [billing-probe]
 permissions: {}
 jobs:
-  standard-hosted-runner:
+  standard-x86-control:
     runs-on: ubuntu-latest
     steps:
-      - name: identify the runner and burn a measurable slice of a minute
-        run: |
-          echo "runner_os=$RUNNER_OS arch=$(uname -m)"
-          echo "hosted runner, public repository"
+      - run: |
+          echo "control: standard x86 hosted runner, public repository"
+          uname -m
+          sleep 25
+  arm-hosted:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - run: |
+          echo "subject: ubuntu-24.04-arm hosted runner, public repository"
+          uname -m
           sleep 25
