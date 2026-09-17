@@ -45,7 +45,7 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 // THE HEADER ABOVE RESERVED THIS LIST for "the first identity that would otherwise be appended as a
 // string after this PR", and `v2.workflow.floor_enrolment_margin` states that its own end-to-end
 // execution waits on the first attempt appearing here -- "emptiness of today's list is not coverage".
-// These twenty-three are that first population.
+// These twenty-four are that first population.
 //
 // WHAT THEY ARE. Every row of `test.claim.spark.relaunch_capture_witness_test` decodes at least one
 // 18 KB `docker inspect` document captured verbatim off the Group B serving arm on 2026-09-16. Those
@@ -71,9 +71,15 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 // it is the second kind.
 //
 // EVERY FIGURE IS MEASURED, NOT ESTIMATED, and named by its producer rather than only transcribed:
-// `claim_batch --source-root dag --source-root src/v2 --entry
-// dag/test/claim/spark/relaunch_capture_witness_test.dag --functions <the seventeen>` prints
-// `[witness] <name>: cpu=<n>ms ... eval_steps=<k>` per row, which is the same reading
+// the recipe below re-derives every figure, and it is written out rather than gestured at because
+// forty-six transcribed numbers are licensed by it:
+//
+//   ROWS=$(grep -oP '^test fn \K[a-z0-9_]+(?=\(\))' \
+//     dag/test/claim/spark/relaunch_capture_witness_test.dag | paste -sd,)
+//   claim_batch --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/spark/relaunch_capture_witness_test.dag --functions "$ROWS"
+//
+// It prints `[witness] <name>: cpu=<n>ms ... eval_steps=<k>` per row, which is the same reading
 // `required-floor-claim-cost` publishes -- cross-checked against run 35150370426, where the four rows
 // that survived unrenamed read 2183/2166/529/554 ms there against 2311/2343/596/606 ms here. THE
 // SPREAD BETWEEN THE TWO IS THE HOST, not the rows: these readings are taken on a shared session
@@ -83,118 +89,123 @@ fn floor_cost_debt_typed_admission_attempts() -> List<FloorCostDebtReadingAttemp
   [
     relaunch_capture_reading(
       name: "w_every_captured_inspect_document_decodes",
-      cpu_ms: 2311,
-      eval_steps: 1591601,
+      cpu_ms: 2270,
+      eval_steps: 1591773,
     ),
     relaunch_capture_reading(
       name: "w_the_socket_incarnation_reads_as_missing_the_verbs_shape",
-      cpu_ms: 596,
-      eval_steps: 394269,
+      cpu_ms: 570,
+      eval_steps: 394413,
     ),
     relaunch_capture_reading(
       name: "w_the_roce_incarnation_reads_as_carrying_the_verbs_shape",
-      cpu_ms: 1186,
-      eval_steps: 814184,
+      cpu_ms: 1274,
+      eval_steps: 814335,
     ),
     relaunch_capture_reading(
       name: "w_the_daemon_reads_the_capability_back_with_its_cap_prefix",
-      cpu_ms: 606,
-      eval_steps: 410829,
+      cpu_ms: 749,
+      eval_steps: 410973,
     ),
     relaunch_capture_reading(
       name: "w_a_null_member_reads_absent_and_an_empty_array_reads_empty",
-      cpu_ms: 576,
-      eval_steps: 394231,
+      cpu_ms: 641,
+      eval_steps: 394375,
     ),
     relaunch_capture_reading(
       name: "w_the_node_rank_is_read_from_the_containers_own_argv",
-      cpu_ms: 2343,
-      eval_steps: 1593069,
+      cpu_ms: 2483,
+      eval_steps: 1593234,
     ),
     relaunch_capture_reading(
       name: "w_the_two_incarnations_differ_in_batching_and_utilization_as_read_back",
-      cpu_ms: 1308,
-      eval_steps: 802862,
+      cpu_ms: 1276,
+      eval_steps: 803013,
     ),
     relaunch_capture_reading(
       name: "w_the_successor_spec_differs_from_the_roce_incarnation_only_on_declared_axes",
-      cpu_ms: 640,
-      eval_steps: 423872,
+      cpu_ms: 639,
+      eval_steps: 424016,
     ),
     relaunch_capture_reading(
       name: "w_the_socket_incarnation_is_refused_against_the_successor_spec",
-      cpu_ms: 596,
-      eval_steps: 405451,
+      cpu_ms: 608,
+      eval_steps: 405595,
     ),
     relaunch_capture_reading(
       name: "w_the_three_incident_fields_differ_on_the_transport_axis",
-      cpu_ms: 606,
-      eval_steps: 406072,
+      cpu_ms: 607,
+      eval_steps: 406216,
     ),
     relaunch_capture_reading(
       name: "w_the_engine_argv_names_both_axes_it_moved_on",
-      cpu_ms: 595,
-      eval_steps: 405770,
+      cpu_ms: 587,
+      eval_steps: 405914,
     ),
     relaunch_capture_reading(
       name: "w_a_field_no_axis_explains_refuses_the_whole_delta",
-      cpu_ms: 592,
-      eval_steps: 405497,
+      cpu_ms: 597,
+      eval_steps: 405641,
     ),
     relaunch_capture_reading(
       name: "w_the_shm_size_agrees_with_every_captured_incarnation",
-      cpu_ms: 1192,
-      eval_steps: 817173,
+      cpu_ms: 1161,
+      eval_steps: 817324,
     ),
     relaunch_capture_reading(
       name: "w_the_two_captured_incarnations_are_a_transport_flip",
-      cpu_ms: 1172,
-      eval_steps: 807983,
+      cpu_ms: 1168,
+      eval_steps: 808146,
     ),
     relaunch_capture_reading(
       name: "w_one_incarnation_read_twice_is_not_a_flip",
-      cpu_ms: 1156,
-      eval_steps: 807997,
+      cpu_ms: 1148,
+      eval_steps: 808160,
     ),
     relaunch_capture_reading(
       name: "w_a_new_incarnation_on_the_same_transport_is_not_a_flip",
-      cpu_ms: 1155,
-      eval_steps: 804992,
+      cpu_ms: 1145,
+      eval_steps: 805155,
     ),
     relaunch_capture_reading(
       name: "w_a_transport_delta_that_flipped_is_as_intended",
-      cpu_ms: 1159,
-      eval_steps: 807998,
+      cpu_ms: 1132,
+      eval_steps: 808161,
     ),
     relaunch_capture_reading(
       name: "w_a_batching_only_relaunch_whose_transport_held_is_as_intended",
-      cpu_ms: 1159,
-      eval_steps: 805027,
+      cpu_ms: 1119,
+      eval_steps: 805190,
     ),
     relaunch_capture_reading(
       name: "w_a_transport_change_nobody_asked_for_is_refused",
-      cpu_ms: 1206,
-      eval_steps: 808010,
+      cpu_ms: 1126,
+      eval_steps: 808173,
     ),
     relaunch_capture_reading(
       name: "w_a_transport_delta_that_did_not_flip_is_refused",
-      cpu_ms: 1195,
-      eval_steps: 805023,
+      cpu_ms: 1114,
+      eval_steps: 805186,
     ),
     relaunch_capture_reading(
       name: "w_one_incarnation_read_twice_is_refused_on_every_axis",
-      cpu_ms: 1228,
-      eval_steps: 807984,
+      cpu_ms: 1108,
+      eval_steps: 808147,
     ),
     relaunch_capture_reading(
       name: "w_the_moved_axes_are_derived_from_the_comparisons",
-      cpu_ms: 619,
-      eval_steps: 405691,
+      cpu_ms: 585,
+      eval_steps: 405835,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_narrow_roce_selection_agrees_with_the_archived_document",
+      cpu_ms: 628,
+      eval_steps: 458240,
     ),
     relaunch_capture_reading(
       name: "w_two_incarnations_preserve_under_two_distinct_names",
-      cpu_ms: 1173,
-      eval_steps: 808012,
+      cpu_ms: 1105,
+      eval_steps: 808175,
     )
   ]
 }
@@ -213,6 +224,32 @@ fn relaunch_capture_reading(name: String, cpu_ms: Int, eval_steps: Int) -> Floor
   }
 }
 
+// ── WHAT THIS DECLARATION DOES NOT COVER, AND THE AXIS THAT STILL BLOCKS ──────────────────────
+//
+// THIS LIST IS THE CPU AXIS AND THERE IS A SECOND ONE. The required floor also bounds EVAL STEPS,
+// at `required_floor_new_witness_envelope_ms` x `steps_per_ms` -- about 72,300 steps for a
+// non-grandfathered identity -- and these rows read 394,269 to 1,591,601. Declaring the cpu axis and
+// staying silent about the step axis would be the rung inflation DESIGN section 4b(1) names: a
+// class's rung is the minimum across its paths, and citing the stronger one is not a reading.
+//
+// NEITHER AVAILABLE ARM CLOSES IT. The step budget's own drop roster declares that it MAY ONLY
+// SHRINK, so twenty-three new rows are not admissible there; and the cost is the JSON parse of a
+// verbatim 18 KB capture, which cannot be reduced below the budget without trimming the capture --
+// which would turn a receipt into an authored fixture, the one thing these files exist not to be.
+//
+// WHAT WAS DONE ABOUT IT RATHER THAN DECLARED AROUND IT. The rows that could be brought under the
+// bound WERE, by asking the daemon a narrower question rather than by trimming a capture: `docker
+// inspect --format` over `.HostConfig` is 1.6 KB against 17.7 KB, and the three fields the incident
+// was about all live there. Those eight rows moved to
+// `test.claim.spark.relaunch_hostconfig_witness_test` and measure 126 to 57,642 steps, so the
+// discriminating pair for the defect runs on every pull request and needs nothing from this list.
+//
+// WHAT REMAINS HERE IS WHAT GENUINELY NEEDS THE WHOLE DOCUMENT: the ContainerInspect decoder's own
+// inhabitance, the argv readback, the delta comparison and the flip. For those the home is an OPEN
+// QUESTION ABOVE THIS AUTHOR'S AUTHORITY, recorded rather than resolved quietly: an executing cadence
+// for capture-driven witnesses is a standing claim on a paid runner, which DESIGN's own build section
+// reserves for operator sign-off. What is declared here is true and measured; what is NOT declared is
+// stated in the same breath.
 fn floor_cost_debt_typed_admitted_identities(ceiling_ms: Millisecond) -> List<String> {
   reverse(fold(
     floor_cost_debt_admit_attempts(

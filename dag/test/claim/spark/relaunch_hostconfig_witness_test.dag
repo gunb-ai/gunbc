@@ -1,0 +1,262 @@
+module test.claim.spark.relaunch_hostconfig_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.docker.container_inspect {
+  HostConfig, HostConfigRead, HostConfigDecoded, HostConfigMalformed, docker_inspect_host_config,
+  DockerInspectDevice, DockerInspectUlimit, docker_capability_canonical, docker_memlock_ulimit_name,
+}
+
+// ── THE THREE FIELDS THE INCIDENT WAS ABOUT, ON THE EXECUTING FLOOR ───────────────────────────
+//
+// WHY THIS MODULE EXISTS SEPARATELY, AND IT IS A MEASUREMENT RATHER THAN A PREFERENCE. The required
+// floor bounds eval steps at about 72,300 for a new identity. Parsing a whole 18 KB `docker inspect`
+// document costs 394,269 steps, so the rows that do it cannot run here at all. A `HostConfig`
+// subtree costs 44,414 -- measured, by the same `claim_batch` reading the floor publishes -- and
+// `HostConfig` is where all three incident fields live. So the discriminating pair for the defect
+// this whole change exists to make detectable runs on every pull request, and only the rows that
+// genuinely need the whole document sit with the population awaiting a cadence decision.
+//
+// THIS IS NOT THE CAPTURE TRIMMED TO FIT. the daemon's own narrow-format query for .HostConfig is the
+// daemon answering a narrower question, which is a different thing from a file cut down until it
+// parses cheaply -- and the difference is the whole reason the provenance below is modelled rather
+// than assumed.
+data narrow_root: String = "artifacts/spark/glm-group-b-2026-09-16/narrow/"
+
+// ── PROVENANCE IS A FIELD, BECAUSE THESE TWO HALVES ARE NOT ONE KIND OF EVIDENCE ──────────────
+//
+// THE SOCKET FILES ARE FRESH DAEMON OUTPUT and the RoCE files are NOT. The RoCE containers no longer
+// exist: they were created 2026-09-16 and the arm was destroyed and recreated without the device
+// mapping later the same evening, so no container on Group B answers `Devices=1` today and `docker
+// inspect` cannot be asked that question again at any width. The RoCE narrow files are the
+// `HostConfig` subtree SELECTED from the archived full capture and re-serialised.
+//
+// LETTING THE SELECTION INHERIT THE FRESH HALF'S STANDING IS THE EXACT SUBSTITUTION THIS CHANGE WAS
+// BUILT TO REFUSE, one layer up from the engine: a value that was READ and a value that was DERIVED
+// are different facts, and a carrier that cannot tell them apart is the one that lies. So each
+// reading names how it was obtained, and the row that gives the archival half its standing -- the one
+// that decodes the archived document and checks the selection agrees with it -- lives with the
+// full-document rows, because it necessarily pays the full-document parse.
+type CaptureProvenance
+  = DaemonStdout { command: NonEmptyStr, observed_on: NonEmptyStr }
+  | SelectedFromArchivedCapture { source_capture: NonEmptyStr, selected_subtree: NonEmptyStr }
+
+type NarrowCapture sole_constructor {
+  file: String
+  provenance: CaptureProvenance
+}
+
+data socket_rank0_hostconfig: NarrowCapture = NarrowCapture {
+  file: "socket-rank0-hostconfig.json",
+  provenance: DaemonStdout {
+    command: "docker inspect glm-native-tp4-socket --format (json .HostConfig as a Go template)" as NonEmptyStr,
+    observed_on: "192.168.1.236, 2026-09-17" as NonEmptyStr,
+  },
+}
+
+data socket_rank1_hostconfig: NarrowCapture = NarrowCapture {
+  file: "socket-rank1-hostconfig.json",
+  provenance: DaemonStdout {
+    command: "docker inspect glm-native-tp4-socket --format (json .HostConfig as a Go template)" as NonEmptyStr,
+    observed_on: "192.168.1.237, 2026-09-17" as NonEmptyStr,
+  },
+}
+
+data roce_rank0_hostconfig: NarrowCapture = NarrowCapture {
+  file: "roce-rank0-hostconfig.json",
+  provenance: SelectedFromArchivedCapture {
+    source_capture: "artifacts/spark/glm-group-b-2026-09-16/inspect-roce-rank0.json" as NonEmptyStr,
+    selected_subtree: "HostConfig" as NonEmptyStr,
+  },
+}
+
+data roce_rank1_hostconfig: NarrowCapture = NarrowCapture {
+  file: "roce-rank1-hostconfig.json",
+  provenance: SelectedFromArchivedCapture {
+    source_capture: "artifacts/spark/glm-group-b-2026-09-16/inspect-roce-rank1.json" as NonEmptyStr,
+    selected_subtree: "HostConfig" as NonEmptyStr,
+  },
+}
+
+data narrow_captures_read_here: List<NarrowCapture> = [
+  socket_rank0_hostconfig, socket_rank1_hostconfig, roce_rank0_hostconfig, roce_rank1_hostconfig,
+]
+
+type CaptureRead
+  = CaptureBytes { text: String }
+  | CaptureUnread { path: String }
+
+fn read_capture(c: NarrowCapture) -> CaptureRead {
+  let path = join([narrow_root, c.file], "")
+  let read = Filesystem.Read(path: path)
+  if read.success { CaptureBytes { text: read.content } } else { CaptureUnread { path: path } }
+}
+
+// NO ROW MAY BE GREEN WHILE A CAPTURE IS MISSING, so this is a conjunct of every row rather than a
+// row of its own: an unread file substituted by empty bytes is the fabricated default section 5
+// forbids, and containment that depends on how each assertion happens to be written is not
+// containment.
+fn captures_present() -> Bool {
+  all(narrow_captures_read_here, c =>
+    match read_capture(c: c) {
+      CaptureUnread { path: _ } => false
+      CaptureBytes { text: t } => t != ""
+    })
+}
+
+fn decoded(c: NarrowCapture) -> HostConfig? {
+  match read_capture(c: c) {
+    CaptureUnread { path: _ } => none
+    CaptureBytes { text: t } =>
+      match parse_json_document(s: t) {
+        JsonDocumentUnreadable { gap: _ } => none
+        JsonDocumentParsed { value: v } =>
+          match docker_inspect_host_config(v: v) {
+            HostConfigMalformed { causes: _ } => none
+            HostConfigDecoded { host_config: hc } => Present { value: hc }
+          }
+      }
+  }
+}
+
+fn with_host_config(c: NarrowCapture, f: fn(HostConfig) -> Bool) -> Bool {
+  match decoded(c: c) {
+    Absent => false
+    Present { value: hc } => f(hc)
+  }
+}
+
+// ── INHABITANCE: THE HOSTCONFIG DECODER RUNS ON WHAT THE DAEMON ACTUALLY ANSWERS ──────────────
+//
+// THE SOCKET HALF IS THE ONE THAT DISCHARGES SECTION 3'S PAIRING OBLIGATION HERE, because it is
+// daemon stdout: the real producer emitted this shape, at this width, tonight. The RoCE half is a
+// selection and is asserted as such.
+// SPLIT BY INCARNATION RATHER THAN ASSERTED OVER ALL FOUR AT ONCE, and the reason is the budget
+// rather than the coverage: four decodes in one row measures 108,828 steps against the floor's
+// ~72,300 bound, and two measures 53,007. Splitting loses nothing -- the two halves are independent
+// claims about independent documents -- and it is the shape DESIGN section 3's standing rule names
+// when it says a conjunction of independent cases should not be forced through one budget.
+test fn w_the_fresh_socket_host_configs_decode() -> Bool {
+  captures_present()
+    && decodes(c: socket_rank0_hostconfig) && decodes(c: socket_rank1_hostconfig)
+}
+
+test fn w_the_archived_roce_host_configs_decode() -> Bool {
+  captures_present()
+    && decodes(c: roce_rank0_hostconfig) && decodes(c: roce_rank1_hostconfig)
+}
+
+fn decodes(c: NarrowCapture) -> Bool {
+  match decoded(c: c) { Absent => false, Present { value: _ } => true }
+}
+
+test fn w_a_fresh_daemon_reading_is_not_a_selection() -> Bool {
+  captures_present()
+    && provenance_is_daemon(c: socket_rank0_hostconfig)
+    && provenance_is_daemon(c: socket_rank1_hostconfig)
+    && !provenance_is_daemon(c: roce_rank0_hostconfig)
+    && !provenance_is_daemon(c: roce_rank1_hostconfig)
+}
+
+fn provenance_is_daemon(c: NarrowCapture) -> Bool {
+  match c.provenance {
+    DaemonStdout { command: _, observed_on: _ } => true
+    SelectedFromArchivedCapture { source_capture: _, selected_subtree: _ } => false
+  }
+}
+
+// ── THE DISCRIMINATING PAIR, ON THE FLOOR ─────────────────────────────────────────────────────
+//
+// THIS IS THE DEFECT MADE DETECTABLE. Before `devices` and `ulimits` existed on HostConfig, a
+// readback of the socket incarnation could see only `cap_add` -- and would have found it agreeing
+// with a plan that asked for nothing, because a container with no capabilities and a plan wanting
+// none agree perfectly. The two fields that carried the whole difference had nowhere to land.
+test fn w_the_socket_host_config_maps_no_device_and_cannot_lock_memory() -> Bool {
+  captures_present()
+    && socket_shape_is(c: socket_rank0_hostconfig, verbs: false)
+    && socket_shape_is(c: socket_rank1_hostconfig, verbs: false)
+}
+
+test fn w_the_roce_host_config_maps_the_device_and_can_lock_memory() -> Bool {
+  captures_present()
+    && socket_shape_is(c: roce_rank0_hostconfig, verbs: true)
+    && socket_shape_is(c: roce_rank1_hostconfig, verbs: true)
+}
+
+// ONE DECODE PER DOCUMENT AND ALL THREE FIELDS ASSERTED OFF IT, because the parse is the expense and
+// asking three questions separately would pay it three times.
+fn socket_shape_is(c: NarrowCapture, verbs: Bool) -> Bool {
+  with_host_config(c: c, f: hc =>
+    (maps_verbs_device(hc: hc) == verbs)
+      && (adds_ipc_lock(hc: hc) == verbs)
+      && (memlock_is_unlimited(hc: hc) == verbs))
+}
+
+fn maps_verbs_device(hc: HostConfig) -> Bool {
+  match hc.devices {
+    Absent => false
+    Present { value: ds } => count(filter(ds, d => (d.path_on_host as String) == "/dev/infiniband")) == 1
+  }
+}
+
+// THE DAEMON READS THE CAPABILITY BACK WITH ITS `CAP_` PREFIX for a plan that spells `IPC_LOCK`, so a
+// literal comparison would report a disagreement on every correctly-created container.
+fn adds_ipc_lock(hc: HostConfig) -> Bool {
+  match hc.cap_add {
+    Absent => false
+    Present { value: cs } =>
+      count(filter(cs, c => docker_capability_canonical(name: c) == docker_capability_canonical(name: "IPC_LOCK"))) == 1
+  }
+}
+
+fn memlock_is_unlimited(hc: HostConfig) -> Bool {
+  match hc.ulimits {
+    Absent => false
+    Present { value: us } =>
+      count(filter(us, u => (u.name as String) == docker_memlock_ulimit_name && u.soft == -1 && u.hard == -1)) == 1
+  }
+}
+
+// A NULL CapAdd AND AN EMPTY Devices ARE DIFFERENT FACTS, and the socket capture carries one of each.
+// Collapsing them would erase the difference between a field the daemon did not set and one it set to
+// nothing.
+test fn w_a_null_member_reads_absent_and_an_empty_array_reads_empty() -> Bool {
+  captures_present()
+    && with_host_config(c: socket_rank0_hostconfig, f: hc =>
+      match hc.cap_add {
+        Present { value: _ } => false
+        Absent =>
+          match hc.devices {
+            Absent => false
+            Present { value: ds } => count(ds) == 0
+          }
+      })
+}
+
+// ── THE FIELD THAT WAS INVISIBLE IN BOTH DIRECTIONS ───────────────────────────────────────────
+//
+// `shm_size` HAD NO READBACK FIELD AT ALL until this change, and the spec carried the pair route's
+// 10737418240 while every captured container carries 67108864. It is asserted on BOTH incarnations
+// because a field that agrees only on the one the spec was reconciled against is a field that was
+// fitted rather than read.
+test fn w_the_socket_incarnation_carries_the_captured_shm_size() -> Bool {
+  captures_present()
+    && shm_size_is(c: socket_rank0_hostconfig) && shm_size_is(c: socket_rank1_hostconfig)
+}
+
+test fn w_the_roce_incarnation_carries_the_same_shm_size() -> Bool {
+  captures_present()
+    && shm_size_is(c: roce_rank0_hostconfig) && shm_size_is(c: roce_rank1_hostconfig)
+}
+
+fn shm_size_is(c: NarrowCapture) -> Bool {
+  with_host_config(c: c, f: hc =>
+    match hc.shm_size {
+      Absent => false
+      Present { value: b } => byte_size_count(b: b) == 67108864
+    })
+}

@@ -25,9 +25,11 @@ import gunbc.spark.collective_transport_plan { transport_env_names }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
 }
+import extdeps.tools.sleep { SleepArgvRendering, SleepArgv, SleepDurationRefused, sleep_seconds_argv }
 import gunbc.spark.serving_rank_observe {
   ObservedRankSubject, observed_rank_subject, observed_rank_subject_text,
   RankObservationRefusal, rank_observation_refusal, rank_observation_refusal_text,
+  refusal_is_absent_announcement,
   RankInspectReading, RankInspected, RankInspectRefused, observe_rank_container,
   ContainerPresence, ContainerPresent, ContainerAbsent, ContainerPresenceUnread, observe_container_presence,
   RankTransportObservation, RankTransportObserved, RankTransportRefused, RankTransportVerdict,
@@ -1433,28 +1435,32 @@ fn await_rank_announcement(c: ArmCapture, remaining: Nat) -> RankTransportObserv
 fn await_after_interval(c: ArmCapture, remaining: Nat) -> RankTransportObservation
   uses net: Network
 {
-  match spark_remote_run(ctx: c.rank.ctx, argv: ["sleep", to_string(second_count(s: relaunch_announcement_poll_interval))]) {
-    RemoteUnreachable { cause: why } => RankTransportRefused { refusal: rank_observation_refusal(
+  match sleep_seconds_argv(duration: relaunch_announcement_poll_interval) {
+    SleepDurationRefused { seconds: n } => RankTransportRefused { refusal: rank_observation_refusal(
       subject: c.rank.subject,
       step: relaunch_step_wire(s: StepAwaitAnnouncement),
-      cause: join(["the wait between announcement polls could not be taken: ", why], "") as NonEmptyStr,
+      cause: join(["the poll interval renders as ", to_string(n), " seconds, which is not a wait"], "") as NonEmptyStr,
     ) }
-    RemoteRan { exit_code: _, stdout: _, stderr: _ } => await_rank_announcement(c: c, remaining: remaining - 1)
+    SleepArgv { words: words } =>
+      match spark_remote_run(ctx: c.rank.ctx, argv: words) {
+        RemoteUnreachable { cause: why } => RankTransportRefused { refusal: rank_observation_refusal(
+          subject: c.rank.subject,
+          step: relaunch_step_wire(s: StepAwaitAnnouncement),
+          cause: join(["the wait between announcement polls could not be taken: ", why], "") as NonEmptyStr,
+        ) }
+        RemoteRan { exit_code: _, stdout: _, stderr: _ } => await_rank_announcement(c: c, remaining: remaining - 1)
+      }
   }
 }
 
-// THE ONLY RETRYABLE REFUSAL IS THE ONE THAT MEANS "NOTHING HAS BEEN SAID YET", and it is recognised
-// by the text extdeps.nvidia.nccl itself produces for `NcclNoAnnouncement` rather than by a second
-// classification of the same fact here. That is a string join across a module boundary and it is the
-// weakest seam in this fold; TRIGGER for closing it: gunbc.spark.serving_rank_observe carries the
-// typed NcclTransportRefusal through RankObservationRefusal instead of rendering it, so this test is
-// a match on the arm. SUFFICIENT FOR: a refusal whose text changes upstream cannot silently stop
-// being retryable, which would turn a healthy slow start back into a rollback.
+// THE ONLY RETRYABLE REFUSAL IS THE ONE THAT MEANS "NOTHING HAS BEEN SAID YET", and it is asked of
+// the TYPE. A first cut matched a substring of the rendered sentence, which made a retry-versus-roll-
+// back decision about a live four-host arm depend on upstream prose -- and both ends of that seam are
+// authored by this change, so there was nothing to be compatible with and the construction was
+// available from the start. gunbc.spark.serving_rank_observe carries the arm now.
 fn refusal_is_not_yet(r: RankObservationRefusal) -> Bool {
-  string_contains(s: r.cause as String, pattern: nccl_no_announcement_marker)
+  refusal_is_absent_announcement(r: r)
 }
-
-data nccl_no_announcement_marker: String = "no communicator announced a transport"
 
 fn verification_cause(c: ArmCapture, after: RankTransportVerdict, standing: SuccessorStanding) -> NonEmptyStr {
   join([

@@ -2,9 +2,13 @@ module test.claim.spark.relaunch_capture_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import extdeps.languages.json.emit { JsonValue }
 import extdeps.docker.container_inspect {
   ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
-  container_inspect_from_stdout, docker_capability_canonical,
+  container_inspect_from_stdout, docker_capability_canonical, docker_memlock_ulimit_name,
+  HostConfig, HostConfigRead, HostConfigDecoded, HostConfigMalformed, docker_inspect_host_config,
   VerbsShapeReading, VerbsShapePresent, VerbsShapeAbsent, VerbsShapeUnreported,
   container_maps_device, container_adds_capability, container_unlocks_memlock,
 }
@@ -85,17 +89,73 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // the same for both would pass a single-sided check and establish nothing.
 data capture_root: String = "artifacts/spark/glm-group-b-2026-09-16/"
 
-fn capture(name: String) -> String {
-  let read = Filesystem.Read(path: join([capture_root, name], ""))
-  if read.success { read.content } else { "" }
+// THE HELPER IS SHARED PROSE AND IS COPIED DELIBERATELY, because two modules that each read the same
+// captures must each say what they do when a capture is not there -- and what they do is REFUSE.
+//
+// AN UNREAD FILE USED TO BECOME `""`. Every row happened to red on empty bytes, but that containment
+// was a property of how the assertions were written rather than of the helper, and the diagnostic was
+// mislabelled: a missing capture reported as a decoder failure. A substituted empty input is the
+// fabricated default DESIGN section 5 forbids, in the modules whose own header says a figure authored
+// rather than executed is the thing this change exists to make impossible.
+type CaptureRead
+  = CaptureBytes { text: String }
+  | CaptureUnread { path: String }
+
+fn capture(name: String) -> CaptureRead {
+  let path = join([capture_root, name], "")
+  let read = Filesystem.Read(path: path)
+  if read.success { CaptureBytes { text: read.content } } else { CaptureUnread { path: path } }
 }
 
-fn inspect_socket_rank0() -> String { capture(name: "inspect-socket-rank0.json") }
-fn inspect_socket_rank1() -> String { capture(name: "inspect-socket-rank1.json") }
-fn inspect_roce_rank0() -> String { capture(name: "inspect-roce-rank0.json") }
-fn inspect_roce_rank1() -> String { capture(name: "inspect-roce-rank1.json") }
-fn nccl_socket_rank0() -> String { capture(name: "nccl-socket-rank0.txt") }
-fn nccl_roce_rank0() -> String { capture(name: "nccl-roce-rank0.txt") }
+// EVERY ROW GOES THROUGH THIS, so "the capture is missing" is false everywhere rather than a shape
+// each assertion has to defend against on its own.
+fn with_capture(name: String, f: fn(String) -> Bool) -> Bool {
+  match capture(name: name) {
+    CaptureUnread { path: _ } => false
+    CaptureBytes { text: t } => f(t)
+  }
+}
+
+data capture_names_read_here: List<String> = [
+  "inspect-socket-rank0.json",
+  "inspect-socket-rank1.json",
+  "inspect-roce-rank0.json",
+  "inspect-roce-rank1.json",
+  "nccl-socket-rank0.txt",
+  "nccl-roce-rank0.txt",
+]
+
+// ── NO ROW MAY BE GREEN WHILE A CAPTURE IS MISSING ────────────────────────────────────────────
+//
+// THIS IS A CONJUNCT OF EVERY ROW IN THE MODULE, not a row of its own, and that is the difference
+// between construction and containment. An unread file used to become `""`; every assertion happened
+// to red on empty bytes, but that was a property of how each assertion was written rather than of the
+// helper, and the diagnostic was mislabelled -- a missing capture reported as a decoder failure.
+//
+// IT COSTS A READ AND NOT A PARSE. The expense in this corpus is the JSON decode, not the
+// Filesystem.Read, so asking whether the bytes are there before asserting anything about them does
+// not move any row's measured cost into another class.
+fn captures_present() -> Bool {
+  all(capture_names_read_here, n =>
+    match capture(name: n) {
+      CaptureUnread { path: _ } => false
+      CaptureBytes { text: t } => t != ""
+    })
+}
+
+fn capture_text(name: String) -> String {
+  match capture(name: name) {
+    CaptureUnread { path: _ } => ""
+    CaptureBytes { text: t } => t
+  }
+}
+
+fn inspect_socket_rank0() -> String { capture_text(name: "inspect-socket-rank0.json") }
+fn inspect_socket_rank1() -> String { capture_text(name: "inspect-socket-rank1.json") }
+fn inspect_roce_rank0() -> String { capture_text(name: "inspect-roce-rank0.json") }
+fn inspect_roce_rank1() -> String { capture_text(name: "inspect-roce-rank1.json") }
+fn nccl_socket_rank0() -> String { capture_text(name: "nccl-socket-rank0.txt") }
+fn nccl_roce_rank0() -> String { capture_text(name: "nccl-roce-rank0.txt") }
 
 fn decoded(text: String) -> ContainerInspect? {
   match container_inspect_from_stdout(stdout: text) {
@@ -118,6 +178,8 @@ fn with_decoded(text: String, f: fn(ContainerInspect) -> Bool) -> Bool {
 // reading, because it asserts that the REAL producer's output inhabits the shape -- four separate
 // `docker inspect` documents, from two incarnations on two hosts, all four decoding.
 test fn w_every_captured_inspect_document_decodes() -> Bool {
+  captures_present()
+    &&
   all([inspect_socket_rank0(), inspect_socket_rank1(), inspect_roce_rank0(), inspect_roce_rank1()],
     t => match decoded(text: t) { Absent => false, Present { value: _ } => true })
 }
@@ -132,6 +194,8 @@ test fn w_every_captured_inspect_document_decodes() -> Bool {
 // SAME FOLD, TWO REAL DOCUMENTS, OPPOSITE ANSWERS. That is what makes this a wall: its RED is not
 // authorable only in principle, it is sitting in the repository as `inspect-socket-rank0.json`.
 test fn w_the_socket_incarnation_reads_as_missing_the_verbs_shape() -> Bool {
+  captures_present()
+    &&
   with_decoded(text: inspect_socket_rank0(), f: c =>
     verbs_absent(r: container_maps_device(inspect: c, host_path: "/dev/infiniband"))
       && verbs_absent(r: container_adds_capability(inspect: c, capability: "IPC_LOCK"))
@@ -139,6 +203,8 @@ test fn w_the_socket_incarnation_reads_as_missing_the_verbs_shape() -> Bool {
 }
 
 test fn w_the_roce_incarnation_reads_as_carrying_the_verbs_shape() -> Bool {
+  captures_present()
+    &&
   all([inspect_roce_rank0(), inspect_roce_rank1()], t => with_decoded(text: t, f: c =>
     verbs_present(r: container_maps_device(inspect: c, host_path: "/dev/infiniband"))
       && verbs_present(r: container_adds_capability(inspect: c, capability: "IPC_LOCK"))
@@ -168,6 +234,8 @@ fn verbs_absent(r: VerbsShapeReading) -> Bool {
 // this row from being a false red -- and it is asserted against the captured spelling rather than
 // against itself.
 test fn w_the_daemon_reads_the_capability_back_with_its_cap_prefix() -> Bool {
+  captures_present()
+    &&
   docker_capability_canonical(name: "IPC_LOCK") == "CAP_IPC_LOCK"
     && docker_capability_canonical(name: "CAP_IPC_LOCK") == "CAP_IPC_LOCK"
     && with_decoded(text: inspect_roce_rank0(), f: c =>
@@ -185,6 +253,8 @@ test fn w_the_daemon_reads_the_capability_back_with_its_cap_prefix() -> Bool {
 // Collapsing them would erase the difference between a field the daemon did not set and a field it set
 // to nothing.
 test fn w_a_null_member_reads_absent_and_an_empty_array_reads_empty() -> Bool {
+  captures_present()
+    &&
   with_decoded(text: inspect_socket_rank0(), f: c =>
     match c.host_config {
       Absent => false
@@ -208,6 +278,8 @@ test fn w_a_null_member_reads_absent_and_an_empty_array_reads_empty() -> Bool {
 // that the rank is recovered from the document at all, and that the two incarnations of one host --
 // which differ in batching and utilization -- agree on it.
 test fn w_the_node_rank_is_read_from_the_containers_own_argv() -> Bool {
+  captures_present()
+    &&
   argv_rank_is(text: inspect_socket_rank0(), expected: 0)
     && argv_rank_is(text: inspect_roce_rank0(), expected: 0)
     && argv_rank_is(text: inspect_socket_rank1(), expected: 1)
@@ -226,6 +298,8 @@ fn argv_rank_is(text: String, expected: Nat) -> Bool {
 // the same grammar that renders them. 0.84 is 8400 basis points and 0.8567 is 8567 -- the padding
 // rule is what makes those two numbers rather than 84 and 8567.
 test fn w_the_two_incarnations_differ_in_batching_and_utilization_as_read_back() -> Bool {
+  captures_present()
+    &&
   incarnation_argv_is(text: inspect_socket_rank0(), seqs: "1", basis_points: 8400)
     && incarnation_argv_is(text: inspect_roce_rank0(), seqs: "16", basis_points: 8567)
 }
@@ -304,6 +378,8 @@ fn delta_against(text: String, f: fn(RelaunchDelta) -> Bool) -> Bool {
 // it nowhere a declared axis does not explain. A red here means the planner and the running arm have
 // drifted -- which is the whole question this comparison exists to ask, asked against real bytes.
 test fn w_the_successor_spec_differs_from_the_roce_incarnation_only_on_declared_axes() -> Bool {
+  captures_present()
+    &&
   delta_against(text: inspect_roce_rank0(), f: d =>
     match d {
       DeltaRefused { comparisons: _, unobservable: _ } => false
@@ -316,6 +392,8 @@ test fn w_the_successor_spec_differs_from_the_roce_incarnation_only_on_declared_
 // Same fold, same spec, the other capture. It must refuse -- and the rows below assert WHY, because a
 // refusal for any reason would pass a bare `DeltaRefused` check while the axis attribution was wrong.
 test fn w_the_socket_incarnation_is_refused_against_the_successor_spec() -> Bool {
+  captures_present()
+    &&
   delta_against(text: inspect_socket_rank0(), f: d =>
     match d {
       DeltaOnlyIntended { comparisons: _, unobservable: _ } => false
@@ -328,6 +406,8 @@ test fn w_the_socket_incarnation_is_refused_against_the_successor_spec() -> Bool
 // attribution being real rather than decorative: the socket container maps no device, adds no
 // capability and leaves memlock at its default, and all three are the ONE decision moving.
 test fn w_the_three_incident_fields_differ_on_the_transport_axis() -> Bool {
+  captures_present()
+    &&
   socket_comparisons(f: cs =>
     field_differs_on_axis(cs: cs, field: SpecDevices, axis: TransportAxis)
       && field_differs_on_axis(cs: cs, field: SpecCapAdd, axis: TransportAxis)
@@ -339,6 +419,8 @@ test fn w_the_three_incident_fields_differ_on_the_transport_axis() -> Bool {
 // reporting only the first differing word's axis would say "batching" and stay silent about the
 // utilization change that is in the same list -- reporting less than it read.
 test fn w_the_engine_argv_names_both_axes_it_moved_on() -> Bool {
+  captures_present()
+    &&
   socket_comparisons(f: cs =>
     field_differs_on_axis(cs: cs, field: SpecCommand, axis: BatchingAxis)
       && field_differs_on_axis(cs: cs, field: SpecCommand, axis: UtilizationAxis))
@@ -348,6 +430,8 @@ test fn w_the_engine_argv_names_both_axes_it_moved_on() -> Bool {
 // rather than an admitted three-axis change: that capture was taken after the incumbent was renamed
 // aside, so it no longer holds the name the spec asks for, and no declared axis explains a name.
 test fn w_a_field_no_axis_explains_refuses_the_whole_delta() -> Bool {
+  captures_present()
+    &&
   socket_comparisons(f: cs => field_differs_off_axis(cs: cs, field: SpecName))
 }
 
@@ -357,6 +441,8 @@ test fn w_a_field_no_axis_explains_refuses_the_whole_delta() -> Bool {
 // side too, because a field that agrees only on the incarnation the spec was reconciled against is a
 // field that was fitted rather than read.
 test fn w_the_shm_size_agrees_with_every_captured_incarnation() -> Bool {
+  captures_present()
+    &&
   socket_comparisons(f: cs => field_agrees(cs: cs, field: SpecShmSize))
     && roce_comparisons(f: cs => field_agrees(cs: cs, field: SpecShmSize))
 }
@@ -429,12 +515,16 @@ fn both_verdicts(f: fn(RankTransportVerdict, RankTransportVerdict) -> Bool) -> B
 }
 
 test fn w_the_two_captured_incarnations_are_a_transport_flip() -> Bool {
+  captures_present()
+    &&
   both_verdicts(f: (before, after) => transport_flipped(before: before, after: after))
 }
 
 // NEITHER CONJUNCT ALONE IS THE FLIP, and these two rows are what keep the predicate from being
 // satisfiable by a readback taken before the daemon replaced the object.
 test fn w_one_incarnation_read_twice_is_not_a_flip() -> Bool {
+  captures_present()
+    &&
   both_verdicts(f: (before, after) =>
     !transport_flipped(before: before, after: before) && !transport_flipped(before: after, after: after))
 }
@@ -443,6 +533,8 @@ test fn w_one_incarnation_read_twice_is_not_a_flip() -> Bool {
 // RoCE container with the SOCKET log, which is a verdict carrying the new incarnation and the old
 // transport -- exactly the state a relaunch that changed nothing would produce.
 test fn w_a_new_incarnation_on_the_same_transport_is_not_a_flip() -> Bool {
+  captures_present()
+    &&
   verdict_from(inspect_text: inspect_socket_rank0(), log_text: nccl_socket_rank0(), f: before =>
     verdict_from(inspect_text: inspect_roce_rank0(), log_text: nccl_socket_rank0(), f: sideways =>
       !transport_flipped(before: before, after: sideways)))
@@ -471,6 +563,8 @@ fn standing_is(s: SuccessorStanding, expect: String) -> Bool {
 // A TRANSPORT RELAUNCH THAT FLIPPED IS INTENDED; the same pair under a batching-only delta is ALSO
 // intended only if the transport held, which the next row is the negative of.
 test fn w_a_transport_delta_that_flipped_is_as_intended() -> Bool {
+  captures_present()
+    &&
   both_verdicts(f: (before, after) =>
     standing_is(s: successor_standing(before: before, after: after, moved_axes: [TransportAxis]), expect: "as-intended"))
 }
@@ -478,6 +572,8 @@ test fn w_a_transport_delta_that_flipped_is_as_intended() -> Bool {
 // THE ROW THE BLOCKER WAS ABOUT. A batching-only relaunch whose transport held is a SUCCESS, and the
 // predicate this replaces would have rolled it back.
 test fn w_a_batching_only_relaunch_whose_transport_held_is_as_intended() -> Bool {
+  captures_present()
+    &&
   verdict_from(inspect_text: inspect_socket_rank0(), log_text: nccl_socket_rank0(), f: before =>
     verdict_from(inspect_text: inspect_roce_rank0(), log_text: nccl_socket_rank0(), f: after =>
       standing_is(s: successor_standing(before: before, after: after, moved_axes: [BatchingAxis]), expect: "as-intended")))
@@ -487,6 +583,8 @@ test fn w_a_batching_only_relaunch_whose_transport_held_is_as_intended() -> Bool
 // different network changed something nobody requested, which is the same unread difference the delta
 // proof exists to break, one phase later.
 test fn w_a_transport_change_nobody_asked_for_is_refused() -> Bool {
+  captures_present()
+    &&
   both_verdicts(f: (before, after) =>
     standing_is(s: successor_standing(before: before, after: after, moved_axes: [BatchingAxis]), expect: "moved-unasked"))
 }
@@ -494,6 +592,8 @@ test fn w_a_transport_change_nobody_asked_for_is_refused() -> Bool {
 // A TRANSPORT DELTA THAT DID NOT FLIP IS STILL A FAILURE, which is the arm the old predicate got right
 // and this one must not lose.
 test fn w_a_transport_delta_that_did_not_flip_is_refused() -> Bool {
+  captures_present()
+    &&
   verdict_from(inspect_text: inspect_socket_rank0(), log_text: nccl_socket_rank0(), f: before =>
     verdict_from(inspect_text: inspect_roce_rank0(), log_text: nccl_socket_rank0(), f: after =>
       standing_is(s: successor_standing(before: before, after: after, moved_axes: [TransportAxis]), expect: "did-not-flip")))
@@ -502,6 +602,8 @@ test fn w_a_transport_delta_that_did_not_flip_is_refused() -> Bool {
 // AND A READBACK THAT NAMES THE SAME INCARNATION IS REFUSED WHATEVER THE DELTA MOVED, because it is
 // one container read twice rather than a successor.
 test fn w_one_incarnation_read_twice_is_refused_on_every_axis() -> Bool {
+  captures_present()
+    &&
   both_verdicts(f: (before, after) =>
     standing_is(s: successor_standing(before: before, after: before, moved_axes: [TransportAxis]), expect: "not-replaced")
       && standing_is(s: successor_standing(before: after, after: after, moved_axes: [BatchingAxis]), expect: "not-replaced"))
@@ -511,6 +613,8 @@ test fn w_one_incarnation_read_twice_is_refused_on_every_axis() -> Bool {
 // capture against the successor spec moves the transport, the batching bound and the utilization
 // figure, and all three must come back.
 test fn w_the_moved_axes_are_derived_from_the_comparisons() -> Bool {
+  captures_present()
+    &&
   socket_comparisons(f: cs => {
     let moved = delta_moved_axes(comparisons: cs)
     count(moved) == 3
@@ -520,12 +624,95 @@ test fn w_the_moved_axes_are_derived_from_the_comparisons() -> Bool {
   })
 }
 
+// ── THE ROW THAT GIVES THE ARCHIVAL NARROW CAPTURES THEIR STANDING ────────────────────────────
+//
+// THE RoCE NARROW FILES ARE A SELECTION, NOT A READING. The RoCE containers no longer exist -- the
+// arm was destroyed and recreated without the device mapping the same evening -- so `docker inspect`
+// cannot be asked that question again at any width, and `roce-rank0-hostconfig.json` is the
+// `HostConfig` subtree lifted out of the archived full document. `test.claim.spark.
+// relaunch_hostconfig_witness_test` reads those files and declares their provenance; THIS row is what
+// makes that declaration checkable, and it lives here rather than there because it necessarily pays
+// the full-document parse the other module exists to avoid.
+//
+// A SELECTION IS ONLY AS GOOD AS ITS AGREEMENT WITH ITS SOURCE. Without this, a transcription error
+// in the narrow file would read as a fact about the RoCE incarnation on every run of the cheap
+// module, which is the archival half silently inheriting the fresh half's standing -- the exact
+// substitution this whole change exists to refuse, one layer up from the engine.
+test fn w_the_narrow_roce_selection_agrees_with_the_archived_document() -> Bool {
+  captures_present()
+    && with_decoded(text: inspect_roce_rank0(), f: full =>
+      match full.host_config {
+        Absent => false
+        Present { value: archived } => host_config_agrees(archived: archived, narrow: "roce-rank0-hostconfig.json")
+      })
+}
+
+// THE FIELDS COMPARED ARE THE ONES THE CHEAP MODULE ASSERTS ON, because those are the ones a
+// transcription error would put a false fact behind. A field it never reads needs no agreement here.
+fn host_config_agrees(archived: HostConfig, narrow: String) -> Bool {
+  match narrow_host_config(file: narrow) {
+    Absent => false
+    Present { value: selected } =>
+      device_paths(hc: archived) == device_paths(hc: selected)
+        && cap_names(hc: archived) == cap_names(hc: selected)
+        && memlock_pair(hc: archived) == memlock_pair(hc: selected)
+        && shm_size_text(hc: archived) == shm_size_text(hc: selected)
+  }
+}
+
+fn narrow_host_config(file: String) -> HostConfig? {
+  let read = Filesystem.Read(path: join(["artifacts/spark/glm-group-b-2026-09-16/narrow/", file], ""))
+  if !read.success {
+    none
+  } else {
+    match parse_json_document(s: read.content) {
+      JsonDocumentUnreadable { gap: _ } => none
+      JsonDocumentParsed { value: v } =>
+        match docker_inspect_host_config(v: v) {
+          HostConfigMalformed { causes: _ } => none
+          HostConfigDecoded { host_config: hc } => Present { value: hc }
+        }
+    }
+  }
+}
+
+fn device_paths(hc: HostConfig) -> String {
+  match hc.devices {
+    Absent => "<absent>"
+    Present { value: ds } => join(map(ds, d => join([d.path_on_host as String, ":", d.path_in_container as String, ":", d.cgroup_permissions as String], "")), ",")
+  }
+}
+
+fn cap_names(hc: HostConfig) -> String {
+  match hc.cap_add {
+    Absent => "<absent>"
+    Present { value: cs } => join(map(cs, c => docker_capability_canonical(name: c)), ",")
+  }
+}
+
+fn memlock_pair(hc: HostConfig) -> String {
+  match hc.ulimits {
+    Absent => "<absent>"
+    Present { value: us } => join(map(filter(us, u => (u.name as String) == docker_memlock_ulimit_name),
+      u => join([to_string(u.soft), ":", to_string(u.hard)], "")), ",")
+  }
+}
+
+fn shm_size_text(hc: HostConfig) -> String {
+  match hc.shm_size {
+    Absent => "<absent>"
+    Present { value: b } => to_string(byte_size_count(b: b))
+  }
+}
+
 // ── THE PRESERVED NAME CANNOT COLLIDE WITH ITS OWN PREDECESSOR ────────────────────────────────
 //
 // The two captures are two incarnations of one container name, so the names derived for them must
 // differ -- which is the property a transport-only name did NOT have, and which collided on this
 // transaction's first contact with the fleet it was written for.
 test fn w_two_incarnations_preserve_under_two_distinct_names() -> Bool {
+  captures_present()
+    &&
   both_verdicts(f: (before, after) =>
     (preserved_container_name(name: "glm-native-tp4" as NonEmptyStr, incumbent: before.reading.transport, incarnation: before.incarnation) as String)
       != (preserved_container_name(name: "glm-native-tp4" as NonEmptyStr, incumbent: after.reading.transport, incarnation: after.incarnation) as String))

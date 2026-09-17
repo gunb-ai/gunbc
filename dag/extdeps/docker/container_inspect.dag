@@ -1070,23 +1070,10 @@ fn docker_inspect_nested_network_settings(obj: JsonValue) -> NestedObjectRead<Ne
   }
 }
 
-fn nested_host_config_value(r: NestedObjectRead<HostConfig>) -> HostConfig? {
-  match r {
-    NestedAbsent => none
-    NestedMalformed { causes: _ } => none
-    NestedRead { value: v } => Present { value: v }
-  }
-}
-
-fn nested_config_value(r: NestedObjectRead<ContainerConfig>) -> ContainerConfig? {
-  match r {
-    NestedAbsent => none
-    NestedMalformed { causes: _ } => none
-    NestedRead { value: v } => Present { value: v }
-  }
-}
-
-fn nested_network_settings_value(r: NestedObjectRead<NetworkSettings>) -> NetworkSettings? {
+// ONE FOLD, NOT THREE INSTANTIATIONS OF IT. A first cut carried a byte-identical copy per nested
+// type because the field access at ONE call site could not infer `T` -- and the answer to that is
+// to name the type at that site, not to mint three declarations of one concept in a shared decoder.
+fn nested_value(r: NestedObjectRead<T>) -> T? {
   match r {
     NestedAbsent => none
     NestedMalformed { causes: _ } => none
@@ -1099,6 +1086,16 @@ fn nested_causes(r: NestedObjectRead<T>) -> List<String> {
     NestedAbsent => []
     NestedMalformed { causes: cs } => cs
     NestedRead { value: _ } => []
+  }
+}
+
+// THE ONE SITE THAT NAMES THE TYPE, because it reads a FIELD off the nested value and the generic
+// fold's `T` is not inferable from a field access.
+fn config_hostname(config: NestedObjectRead<ContainerConfig>) -> String? {
+  match config {
+    NestedAbsent => none
+    NestedMalformed { causes: _ } => none
+    NestedRead { value: c } => c.hostname
   }
 }
 
@@ -1125,10 +1122,7 @@ fn docker_inspect_object(obj: JsonValue) -> ContainerInspectRead {
     ContainerStateMalformed { causes: cs } => cs
     ContainerStateDecoded { state: _ } => []
   }
-  let hostname = match nested_config_value(r: config) {
-    Absent => none
-    Present { value: c } => c.hostname
-  }
+  let hostname = config_hostname(config: config)
   let causes = concat(
     concat(
       present_strings(xs: [
@@ -1169,9 +1163,9 @@ fn docker_inspect_object(obj: JsonValue) -> ContainerInspectRead {
                       restart_count: json_field_value(r: restart_count),
                       driver: json_field_value(r: driver),
                       platform: json_field_value(r: platform),
-                      config: nested_config_value(r: config),
-                      network_settings: nested_network_settings_value(r: network_settings),
-                      host_config: nested_host_config_value(r: host_config),
+                      config: nested_value(r: config),
+                      network_settings: nested_value(r: network_settings),
+                      host_config: nested_value(r: host_config),
                     } }
                 }
             }

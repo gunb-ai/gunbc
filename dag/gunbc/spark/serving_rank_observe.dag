@@ -6,6 +6,7 @@ import std.algebra { trim }
 import std.measure { TokenCount, ConcurrentRequestHundredths }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.python { PythonProgramText, python_run_program_argv }
 import extdeps.docker.cli {
   docker_container_inspect_command, docker_logs_command,
   docker_container_inspect_names_no_such_container,
@@ -21,6 +22,8 @@ import extdeps.nvidia.nccl {
   NcclTransportVerdict, NcclTransportRead, NcclTransportRefused, NcclTransportReading,
   NcclRealizedTransport, nccl_realized_transport_wire, nccl_transport_verdict,
   nccl_transport_refusal_text,
+  NcclTransportRefusal, NcclNoAnnouncement, NcclAnnouncementsDisagree, NcclUnknownNetworkName,
+  NcclChannelDisagreesWithAnnouncement, NcclChannelUnreadableLines,
 }
 import extdeps.vllm.log_lines {
   VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency,
@@ -70,10 +73,17 @@ fn observed_rank_subject_text(s: ObservedRankSubject) -> String {
 
 // EVERY REFUSAL NAMES THE STEP AND THE SUBJECT. "the readback failed" is a sentence an operator
 // cannot act on; "container-inspect on spark-0c75 exited 1 with 'No such container'" is one they can.
+// THE TRANSPORT REFUSAL TRAVELS AS ITS OWN ARM, NOT ONLY AS THE SENTENCE IT RENDERS TO. A caller
+// deciding whether to KEEP WAITING or ROLL BACK A FOUR-HOST ARM needs to know whether NCCL said
+// nothing yet or said something definite, and that is the difference between two variants of
+// extdeps.nvidia.nccl NcclTransportRefusal. Rendering it to prose here and re-parsing the prose there
+// was validation standing where the construction was available -- on a seam whose BOTH ends this
+// change authors, so there was nothing to be compatible with.
 type RankObservationRefusal sole_constructor {
   subject: ObservedRankSubject
   step: NonEmptyStr
   cause: NonEmptyStr
+  transport_cause: NcclTransportRefusal?
 }
 
 // THE CONSTRUCTOR IS EXPORTED BECAUSE A CALLER OUTSIDE THIS MODULE HAS REFUSALS OF ITS OWN TO NAME.
@@ -82,7 +92,38 @@ type RankObservationRefusal sole_constructor {
 // of this module's steps -- which is the mislabelled diagnostic the same transaction was already
 // corrected for once.
 fn rank_observation_refusal(subject: ObservedRankSubject, step: NonEmptyStr, cause: NonEmptyStr) -> RankObservationRefusal {
-  RankObservationRefusal { subject: subject, step: step, cause: cause }
+  RankObservationRefusal { subject: subject, step: step, cause: cause, transport_cause: none }
+}
+
+// THE ARM IS CARRIED AND THE SENTENCE IS DERIVED FROM IT, so the two cannot disagree.
+fn rank_transport_observation_refusal(
+  subject: ObservedRankSubject,
+  step: NonEmptyStr,
+  cause: NcclTransportRefusal,
+) -> RankObservationRefusal {
+  RankObservationRefusal {
+    subject: subject,
+    step: step,
+    cause: nccl_transport_refusal_text(c: cause),
+    transport_cause: Present { value: cause },
+  }
+}
+
+// WHETHER THE LOG HAS SPOKEN YET, ASKED OF THE TYPE RATHER THAN OF ITS PROSE. This is the one
+// question a bounded wait may retry on: every other refusal is a fact about a log that HAS spoken,
+// and waiting longer cannot change it.
+fn refusal_is_absent_announcement(r: RankObservationRefusal) -> Bool {
+  match r.transport_cause {
+    Absent => false
+    Present { value: c } =>
+      match c {
+        NcclNoAnnouncement => true
+        NcclAnnouncementsDisagree { names: _ } => false
+        NcclUnknownNetworkName { names: _ } => false
+        NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+        NcclChannelUnreadableLines { lines: _, causes: _ } => false
+      }
+  }
 }
 
 fn rank_observation_refusal_text(r: RankObservationRefusal) -> String {
@@ -106,15 +147,15 @@ fn rank_leg(
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
     RemoteUnreachable { cause: why } =>
-      RankLegFailed { refusal: RankObservationRefusal { subject: subject, step: step, cause: why as NonEmptyStr }, stderr: "" }
+      RankLegFailed { refusal: rank_observation_refusal(subject: subject, step: step, cause: why as NonEmptyStr), stderr: "" }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {
         RankLegFailed {
-          refusal: RankObservationRefusal {
+          refusal: rank_observation_refusal(
             subject: subject,
             step: step,
             cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") as NonEmptyStr,
-          },
+          ),
           stderr: err,
         }
       } else {
@@ -156,7 +197,7 @@ fn observe_container_presence(ctx: SparkMaterializeContext, subject: ObservedRan
     RankLegRan { stdout: out } =>
       match container_inspect_from_stdout(stdout: out) {
         ContainerInspectUnreadable { cause: why } =>
-          ContainerPresenceUnread { refusal: RankObservationRefusal { subject: subject, step: rank_inspect_step, cause: why as NonEmptyStr } }
+          ContainerPresenceUnread { refusal: rank_observation_refusal(subject: subject, step: rank_inspect_step, cause: why as NonEmptyStr) }
         ContainerInspectDecoded { container: c } => ContainerPresent { container: c }
       }
   }
@@ -169,11 +210,11 @@ fn observe_rank_container(ctx: SparkMaterializeContext, subject: ObservedRankSub
 {
   match observe_container_presence(ctx: ctx, subject: subject) {
     ContainerPresenceUnread { refusal: r } => RankInspectRefused { refusal: r }
-    ContainerAbsent => RankInspectRefused { refusal: RankObservationRefusal {
+    ContainerAbsent => RankInspectRefused { refusal: rank_observation_refusal(
       subject: subject,
       step: rank_inspect_step,
       cause: "the daemon names no container by this name on this host" as NonEmptyStr,
-    } }
+    ) }
     ContainerPresent { container: c } => RankInspected { subject: subject, container: c }
   }
 }
@@ -273,15 +314,15 @@ fn rank_transport_from_log(
 ) -> RankTransportObservation {
   match observed_rank_identity(c: container) {
     RankIdentityUnread { cause: why } =>
-      RankTransportRefused { refusal: RankObservationRefusal { subject: subject, step: rank_transport_step, cause: why } }
+      RankTransportRefused { refusal: rank_observation_refusal(subject: subject, step: rank_transport_step, cause: why) }
     RankIdentityRead { incarnation: id, node_rank: rank } =>
       match nccl_transport_verdict(captured_text: captured) {
         NcclTransportRefused { cause: c } =>
-          RankTransportRefused { refusal: RankObservationRefusal {
+          RankTransportRefused { refusal: rank_transport_observation_refusal(
             subject: subject,
             step: rank_transport_step,
-            cause: nccl_transport_refusal_text(c: c),
-          } }
+            cause: c,
+          ) }
         NcclTransportRead { reading: reading } =>
           RankTransportObserved { verdict: RankTransportVerdict {
             subject: subject,
@@ -335,7 +376,11 @@ fn nccl_transport_read_from(t: NcclRealizedTransport) -> NonEmptyStr {
 data rank_revision_step: NonEmptyStr = "vllm-revision-readback" as NonEmptyStr
 data rank_startup_step: NonEmptyStr = "vllm-startup-lines" as NonEmptyStr
 
-data vllm_version_probe_argv: List<String> = ["python3", "-c", "import vllm;print(vllm.__version__)"]
+// THE INTERPRETER'S COMMAND LINE COMES FROM extdeps.python, not from a literal here: `-c` is an
+// interface fact about python3 and the program it carries is a second medium this module does not
+// model. What is authored here is the PROGRAM -- which vLLM attribute answers the question -- and
+// that is a fact about vLLM rather than about the interpreter that runs it.
+data vllm_version_program: NonEmptyStr = "import vllm;print(vllm.__version__)" as NonEmptyStr
 data vllm_repository: NonEmptyStr = "github.com/vllm-project/vllm" as NonEmptyStr
 
 type RankRevisionReading
@@ -349,17 +394,17 @@ fn observe_rank_vllm_revision(ctx: SparkMaterializeContext, subject: ObservedRan
     ctx: ctx,
     subject: subject,
     step: rank_revision_step,
-    command: docker_exec_command(name: subject.container, env: [], argv: vllm_version_probe_argv),
+    command: docker_exec_command(name: subject.container, env: [], argv: python_run_program_argv(program: vllm_version_program)),
   ) {
     RankLegFailed { refusal: r, stderr: _ } => RankRevisionRefused { refusal: r }
     RankLegRan { stdout: out } => {
       let text = trim(s: out)
       if text == "" {
-        RankRevisionRefused { refusal: RankObservationRefusal {
+        RankRevisionRefused { refusal: rank_observation_refusal(
           subject: subject,
           step: rank_revision_step,
           cause: "the engine's own vllm.__version__ answered with nothing, so the revision these readings were taken at is unobserved" as NonEmptyStr,
-        } }
+        ) }
       } else {
         RankRevisionRead { revision: vllm_source_revision(repository: vllm_repository, full_revision: text as NonEmptyStr) }
       }
@@ -399,7 +444,7 @@ fn rank_startup_from_log(
 ) -> RankStartupObservation {
   match observed_rank_identity(c: container) {
     RankIdentityUnread { cause: why } =>
-      RankStartupRefused { refusal: RankObservationRefusal { subject: subject, step: rank_startup_step, cause: why } }
+      RankStartupRefused { refusal: rank_observation_refusal(subject: subject, step: rank_startup_step, cause: why) }
     RankIdentityRead { incarnation: id, node_rank: rank } =>
       RankStartupObserved { reading: rank_startup_reading(
         subject: subject, incarnation: id, node_rank: rank, revision: revision, captured: captured) }
