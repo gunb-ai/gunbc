@@ -61,20 +61,7 @@ type OfflineLocalRecipeRow {
   mode: ExecutionMode
 }
 
-// THE GLM RELAUNCH CAPTURE WITNESSES ARE THE NEWEST ROW BELOW. Every one of their claims decodes at
-// least one whole 18 KB `docker inspect` document captured verbatim off the Group B serving arm,
-// which puts each over the required floor's new-witness eval-step envelope by a large multiple -- so
-// the file lives in the long home and its row here is the command that runs it. Its selection is
-// caller-chosen because that module's rows are enumerated from the file rather than restated here,
-// which is the same reason this carrier exists: one spelling of the invocation, and it moves when the
-// file does.
 data offline_local_recipes: List<OfflineLocalRecipeRow> = [
-  OfflineLocalRecipeRow {
-    policy: "long_lane_exclusion_note",
-    subject: RecipeEntry { path: "dag/test/claim/long/spark_relaunch_capture_witness_test.dag" },
-    selection: RecipeCallerChosen,
-    mode: Hermetic
-  },
   OfflineLocalRecipeRow {
     policy: "wet_integration_offline_note",
     subject: RecipeEntry { path: "dag/test/claim/host/host_effect_apply_witness_test.dag" },

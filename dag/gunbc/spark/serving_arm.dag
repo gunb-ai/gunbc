@@ -7,7 +7,10 @@ import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_integration_commit,
 }
-import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804 }
+import extdeps.vllm.runtime_defaults {
+  ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804,
+  defaults_source_revision, defaults_gpu_utilization,
+}
 import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_version,
@@ -66,9 +69,6 @@ fn serving_topology_rank_count(t: ServingTopology) -> Nat {
   }
 }
 
-// ONE GB10's UNIFIED POOL, read off a live member on 2026-09-08 (`free -g` on spark-0c75 reported
-// 121 GiB total). It is carried as a per-unit figure because aggregate admissibility is the product
-// of this and the rank count, and stating the aggregate directly would hide which half moved.
 // ── THE RANK COUNT BACK TO A TOPOLOGY, DERIVED FROM THE FORWARD MAP AND TOTAL ─────────────────
 //
 // WHY THIS IS A SEARCH OVER THE ROSTER AND NOT A SECOND TABLE. `serving_topology_rank_count` above
@@ -125,6 +125,9 @@ fn serving_topology_wire(t: ServingTopology) -> NonEmptyStr {
   }
 }
 
+// ONE GB10's UNIFIED POOL, read off a live member on 2026-09-08 (`free -g` on spark-0c75 reported
+// 121 GiB total). It is carried as a per-unit figure because aggregate admissibility is the product
+// of this and the rank count, and stating the aggregate directly would hide which half moved.
 data gb10_unified_pool_gib: Nat = 121
 
 fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
@@ -218,7 +221,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
 data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   checkpoint: Glm53NativeFp8,
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
-  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
   weight_gib: glm_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
@@ -452,8 +455,8 @@ type ReasoningResponseProjection
 data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: Gitcommit90Sm121Exl3,
   artifact: runtime_artifact_identity(
-    pin: PinnedByDigest { reference: "ghcr.io/gitcommit90/glm-5.3-one-spark@sha256:ba6db0547b24162854948fb16cda68dd4408360e03aeba480edb8d3d876eaeef" as NonEmptyStr },
-    source_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
+    pin: PinnedByDigest { reference: gitcommit90_glm_53_one_spark_pinned_reference() },
+    source_revision: (defaults_source_revision(r: Vllm487ecf187)).full_revision,
     patch_set: [],
     provenance: "a community image taken as published; the revision is what it self-reports as its vLLM build, not a comparison of its bytes against that tree" as NonEmptyStr,
   ),
@@ -468,13 +471,10 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
 data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcSparkrunVllmDs4Gb10,
   artifact: runtime_artifact_identity(
-    pin: PinnedElsewhere {
-      reference: "aidendle94/sparkrun-vllm-ds4-gb10" as NonEmptyStr,
-      pin_authority: "extdeps.docker.images.sparkrun_vllm_ds4_gb10" as NonEmptyStr,
-    },
-    source_revision: "1967a5627bc3" as NonEmptyStr,
+    pin: PinnedByDigest { reference: sparkrun_vllm_ds4_gb10_pinned_reference() },
+    source_revision: (defaults_source_revision(r: Vllm1967a5627)).full_revision,
     patch_set: [],
-    provenance: "this row previously carried the sentence \"digest pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10\" INSIDE the reference string, which read as a pin and was prose about one. The pin lives in that module; this row names it rather than restating it" as NonEmptyStr,
+    provenance: "the digest is READ FROM its authority rather than restated: extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference builds repository@sha256:digest from the rows that module owns. Two earlier shapes were both wrong in opposite directions -- one carried the SENTENCE \"digest pinned in extdeps.docker.images...\" inside the reference string, which read as a pin and was prose about one; the correction for it answered PinnedElsewhere and dropped the digest out of the VALUE, which left runtime_artifact_wire handing docker a bare repository name that resolves to :latest. Naming an authority and calling it are different acts, and only the second puts the bytes in the launch" as NonEmptyStr,
   ),
   hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
   vllm_version: sparkrun_vllm_ds4_gb10_vllm_version,
@@ -539,6 +539,11 @@ type ServingArmVerdict
 
 
 
+// THE FOOTPRINT ALLOWANCE IS DELIBERATELY NOT A UTILISATION FRACTION. Weights are not the whole
+// requirement: the engine also needs KV, activations and graph memory, and the recipe's own runtime
+// minimum for native FP8 exceeds its weight size by a quarter. A checkpoint is admitted only when
+// the aggregate pool exceeds the weights with headroom, and the headroom is stated rather than
+// tuned away.
 data serving_arm_headroom_numerator: Nat = 5
 data serving_arm_headroom_denominator: Nat = 4
 
@@ -582,6 +587,23 @@ fn runtime_registers(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> Bool
 // row still looks measured, the provenance string still reads convincingly, and the fact underneath
 // it has moved. A refusal here costs one probe; the other arm costs an engine that will not start
 // and a receipt claiming it should.
+// THIS CHECK IS NOT EQUALLY STRONG FOR EVERY ROW, AND THE WEAK CASE IS NAMED RATHER THAN LEFT TO
+// BE DISCOVERED.
+//
+// It asks whether a row's registry reading was taken inside the image the row names, and it is a real
+// join wherever the two sides come from independent places: gitcommit90 and sparkrun take their
+// reference from an extdeps image module and their reading from a separate probe, so a drift between
+// them reddens here.
+//
+// FOR THE NoPE-DERIVED ROW IT IS TAUTOLOGICAL, because that image has no extdeps authority -- it is a
+// local build, not an upstream product -- so its digest has exactly one home, the registry reading
+// itself, and the pin now reads it. Two independently editable spellings of one content id were the
+// alternative, and a fork that a later equality check might catch is worse than a check that cannot
+// fail: the fork is wrong the moment it drifts, the tautology is merely uninformative.
+//
+// WHAT WOULD MAKE IT INFORMATIVE AGAIN is an independent authority for that image's bytes -- the
+// modelled build that produces it, which is not in this change. Until then this row's currency is
+// asserted by construction and establishes nothing about the image.
 fn runtime_reading_is_current(rrow: ServingRuntimeRow) -> Bool {
   match rrow.registry_reading {
     Present { value: r } => reading_applies_to(r: r, desired_reference: runtime_artifact_wire(a: rrow.artifact))
@@ -676,74 +698,27 @@ type ServingLaunchProfile sole_constructor {
   max_num_seqs: Nat
   decided_gpu_memory_basis_points: BasisPoint
   kv_cache_dtype_wire: NonEmptyStr
-  speculation_enabled: Bool
   serve_port: Port
   served_alias: NonEmptyStr
   prefix_caching: VllmPrefixCachingRequest
 }
 
-// THE FROZEN INITIAL NORMAL PROFILE FOR THE NATIVE ARM, every value an operator decision rather than a
-// derivation, and the identity string is what a compatibility receipt names. Changing any field here changes
-// the identity, which changes the subject, which means a refusal recorded against the old profile does not
-// silently cover the new one.
-// THE PROFILE'S IDENTITY IS DERIVED FROM ITS FIELDS, NEVER AUTHORED BESIDE THEM. It used to be a
-// hand-written `identity` string, and the two drifted immediately: the EXL3 row said "tp4 ... 32seq" while
-// the running engine was tp1 with one sequence, so the very carrier introduced to stop a borrowed profile
-// carried a label describing a different launch. A review named this correctly -- a hand-authored identity is
-// a second authority for what the record already says.
-//
-// SO THE KEY IS A FOLD OVER EVERY FIELD THAT REACHES THE WIRE. Change any of them and the key changes, which
-// changes the compatibility subject, which means a refusal recorded against one profile cannot silently
-// cover another. Nothing can edit the label to make two different launches compare equal, because there is
-// no label.
-// THE SEAL STAYS AND A NAMED MINT IS ADDED, which is the distinction the seal exists to make. Sealing
-// stopped a caller from spelling a profile with fields it invented -- but the profile is an ordinary value
-// that witnesses and future callers legitimately build, so the answer is one constructor here rather than a
-// record literal in every module. A caller still cannot omit a field or reorder the meaning of one.
-fn serving_launch_profile(
-  max_model_len: TokenCount,
-  max_num_batched_tokens: TokenCount,
-  max_num_seqs: Nat,
-  decided_gpu_memory_basis_points: BasisPoint,
-  kv_cache_dtype_wire: NonEmptyStr,
-  speculation_enabled: Bool,
-  serve_port: Port,
-  served_alias: NonEmptyStr,
-  prefix_caching: VllmPrefixCachingRequest,
-) -> ServingLaunchProfile {
-  ServingLaunchProfile {
-    max_model_len: max_model_len,
-    max_num_batched_tokens: max_num_batched_tokens,
-    max_num_seqs: max_num_seqs,
-    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
-    kv_cache_dtype_wire: kv_cache_dtype_wire,
-    speculation_enabled: speculation_enabled,
-    serve_port: serve_port,
-    served_alias: served_alias,
-    prefix_caching: prefix_caching,
-  }
-}
-
-// AND A FIELD-AT-A-TIME VARIANT, because the thing a caller actually wants is "this profile but one value
-// different" -- a mutation control, a retry at a lower fraction. Spelling seven fields to change one is how
-// a copy drifts from its original, which is the failure the profile type was introduced to end.
-fn profile_with_memory_basis_points(p: ServingLaunchProfile, decided_gpu_memory_basis_points: BasisPoint) -> ServingLaunchProfile {
-  ServingLaunchProfile {
-    max_model_len: p.max_model_len,
-    max_num_batched_tokens: p.max_num_batched_tokens,
-    max_num_seqs: p.max_num_seqs,
-    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
-    kv_cache_dtype_wire: p.kv_cache_dtype_wire,
-    speculation_enabled: p.speculation_enabled,
-    serve_port: p.serve_port,
-    served_alias: p.served_alias,
-    prefix_caching: p.prefix_caching,
-  }
-}
-
 // THE PREFIX-CACHING REQUEST IS PART OF THE IDENTITY. Two launches differing only in whether they asked
 // for prefix caching are two different launches, and a compatibility receipt recorded against one must not
 // cover the other -- which is precisely what a key omitting this field would let it do.
+// SPECULATION IS ABSENT FROM THIS KEY BECAUSE IT WAS ABSENT FROM THE LAUNCH.
+//
+// The profile carried `speculation_enabled: Bool` and this key spelled it `spec=on`/`spec=off`, so
+// two subjects differing only in that flag were different subjects -- while arm_engine_argv rendered
+// no speculative flag under either value. A profile set true planned an argv identical to false, so a
+// compatibility receipt attached to that subject would have claimed a speculative configuration for
+// an engine that never speculated: the borrowed-profile substitution this type exists to stop,
+// committed by the type itself.
+//
+// A Bool COULD NOT HAVE BEEN REALIZED ANYWAY. vLLM's --speculative-config needs a method and a
+// draft-token count; "true" names neither. When this arm wants speculation it arrives as the modelled
+// policy that already exists -- extdeps.vllm.engine_args VllmSpeculativePolicy, and the argv shape
+// gunbc.spark.glm_canary_converge renders from SpeculationPolicy -- carrying the basis a Bool drops.
 fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
   join([
     "len=", to_string(token_count_value(t: p.max_model_len)),
@@ -751,7 +726,6 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
     " seqs=", to_string(p.max_num_seqs),
     " util_bp=", to_string(basis_point_count(bp: p.decided_gpu_memory_basis_points)),
     " kv=", p.kv_cache_dtype_wire as String,
-    " spec=", if p.speculation_enabled { "on" } else { "off" },
     " port=", to_string(p.serve_port),
     " alias=", p.served_alias as String,
     " prefix=", match p.prefix_caching {
@@ -767,7 +741,6 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_num_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
-  speculation_enabled: false,
   serve_port: 30000,
   served_alias: "glm-5.3-flash" as NonEmptyStr,
   prefix_caching: PrefixCachingExplicit { enabled: true },
@@ -801,7 +774,6 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   max_num_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8567),
   kv_cache_dtype_wire: "auto" as NonEmptyStr,
-  speculation_enabled: false,
   serve_port: glm_native_initial_profile.serve_port,
   served_alias: glm_native_initial_profile.served_alias,
   prefix_caching: PrefixCachingExplicit { enabled: true },
@@ -816,15 +788,22 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
 // `docker inspect` reported on 2026-09-10. That is the borrowed-profile
 // substitution this profile type exists to stop, committed inside the type itself.
 //
-// THE MEMORY FRACTION IS THE ENGINE'S DEFAULT, BECAUSE THE LINE NAMES NONE. Recording a decided 0.82 here
-// would claim an argument the launch never sent.
+// THE MEMORY FRACTION IS THE ENGINE'S DEFAULT, BECAUSE THE LINE NAMES NONE -- verified against the
+// container: glm-canary on spark-0c75 carries no --gpu-memory-utilization in its argv. Recording a
+// decided 0.82 here would claim an argument the launch never sent.
+//
+// AND THE FIGURE IS NOW READ FROM THE DEFAULT RATHER THAN TRANSCRIBED. This row said 9000, which is
+// neither the decision parameters' 0.82 nor the engine's default: at Vllm487ecf187
+// defaults_gpu_utilization answers 9200. So the annotation was right about the PRINCIPLE and the
+// value beneath it was a third number nobody sent -- the row warned against claiming an unsent
+// argument and then claimed a different one. Deriving it means the profile cannot drift from the
+// revision whose default it is describing.
 data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 7168),
   max_num_seqs: 1,
-  decided_gpu_memory_basis_points: basis_point(count: 9000),
+  decided_gpu_memory_basis_points: defaults_gpu_utilization(r: Vllm487ecf187),
   kv_cache_dtype_wire: "fp8" as NonEmptyStr,
-  speculation_enabled: false,
   serve_port: 30001,
   served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
   prefix_caching: PrefixCachingOmitted,
@@ -853,8 +832,8 @@ data glm53_nope_derived_vllm_version: NonEmptyStr = "0.1.dev1+g8d09804c8" as Non
 data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcGlm53NopeDerivedGb10,
   artifact: runtime_artifact_identity(
-    pin: PinnedByDigest { reference: "sha256:41366caf73e4c430f44c44c4eeb7ecebd182e191f68a05e7c96975079fbeaf9d" as NonEmptyStr },
-    source_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
+    pin: PinnedByDigest { reference: glm53_nope_derived_registry_reading.image_reference },
+    source_revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
     patch_set: [
       "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
       "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,

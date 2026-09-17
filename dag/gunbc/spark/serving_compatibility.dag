@@ -3,22 +3,36 @@ module gunbc.spark.serving_compatibility
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import gunbc.spark.serving_arm {
-  ServingCheckpoint, Glm53NativeFp8, Glm53Exl3_205, DeepseekV4FlashIq3sSplit,
-  ServingRuntime, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3, VllmOpenaiGlm53Flash,
-  ServingTopology, SingleSparkTp1, FourSparkTp4,
-  ServingLaunchProfile, glm_native_initial_profile, glm_exl3_canary_profile,
-  serving_launch_profile_key, ServingRuntimeRow, serving_runtime_row,
-  RuntimeArtifactIdentity, runtime_artifact_key, runtime_artifact_wire,
-  serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+  ServingCheckpoint,
+  Glm53NativeFp8,
+  Glm53Exl3_205,
+  ServingRuntime,
+  Gitcommit90Sm121Exl3,
+  VllmOpenaiGlm53Flash,
+  GunbcGlm53NopeDerivedGb10,
+  ServingTopology,
+  SingleSparkTp1,
+  FourSparkTp4,
+  ServingLaunchProfile,
+  glm_native_initial_profile,
+  glm_exl3_canary_profile,
+  serving_launch_profile_key,
+  ServingRuntimeRow,
+  serving_runtime_row,
+  runtime_artifact_key,
+  serving_checkpoint_wire,
+  serving_runtime_wire,
+  serving_topology_wire,
 }
 
 // ── COMPATIBILITY IS A RELATION, AND ATTACHING IT TO A RUNTIME ROW WAS THE DEFECT ───────────────
 //
-// gunbc.spark.serving_arm carries NativeRuntimeStanding as a FIELD OF ServingRuntimeRow, which says that
-// loading-and-serving is a property an image has. It is not. The branch contains its own counterexample: the
+// gunbc.spark.serving_arm USED TO CARRY a native-runtime standing as a FIELD OF ServingRuntimeRow, which
+// said that loading-and-serving is a property an image has. It is not, and that field is deleted rather
+// than left standing beside this relation. The counterexample is in this corpus: the
 // gitcommit90 image cannot load the native FP8 checkpoint and serves the EXL3 checkpoint of the same model
-// perfectly. Storing NativeRuntimeRefused on that image's row asserts a fact about the image when the
-// measurement was about a PAIR -- and the row's own prose says so, which is how the mismatch survived review.
+// perfectly. Storing a refusal on that image's row asserted a fact about the image when the measurement
+// was about a PAIR -- and the row's own prose said so, which is how the mismatch survived review.
 //
 // SO THE SUBJECT IS THE TUPLE THAT ACTUALLY DECIDES. Compatibility on this fleet has turned on every one of
 // these, each discovered by a failure attributable to it and nothing else:
@@ -106,12 +120,34 @@ fn standing_subject(st: RuntimeCompatibilityStanding) -> ServingCompatibilitySub
   }
 }
 
+// WHAT "REFUSES" MEANS IS DECIDED IN ONE PLACE, AND IT IS compatibility_admits.
+//
+// A PREVIOUS SHAPE RE-MATCHED THE STANDING COPRODUCT HERE and hard-coded that
+// ExecutionIncompatible is the refusing arm and the other three are not. That made two authorities
+// on one fact, and the failure it admits is this module's own reason for existing: add a fifth
+// standing that admits nothing -- which the prose above anticipates, since new failure classes are
+// expected -- and this predicate answers false for it, measured_subject_refuses answers false, and
+// plan_arm_launch_for skips the refusal gate and plans a subject execution has already ruled out.
+// That is the nine-attempts defect with a new arm in place of the old one.
+//
+// SO THE PREDICATE ASKS THE FOLD. A standing refuses a subject when it is ABOUT that subject and its
+// admission is AdmitsNothing; a fifth arm is refused the moment compatibility_admits says so, with
+// nothing here to update.
+fn admission_refusal_text(a: CompatibilityAdmission) -> String? {
+  match a {
+    AdmitsNothing { because: b } => Present { value: b as String }
+    AdmitsNormalServing => none
+    AdmitsBoundedExperimentOnly => none
+  }
+}
+
 fn standing_refuses_subject(st: RuntimeCompatibilityStanding, subject: ServingCompatibilitySubject) -> Bool {
-  match st {
-    ExecutionIncompatible { subject: sub, failure: _, receipt: _ } => compatibility_subject_eq(a: sub, b: subject)
-    ExecutionCompatible { subject: _, receipt: _ } => false
-    StaticallyPlausible { subject: _, evidence: _ } => false
-    CompatibilityUnknown { subject: _ } => false
+  if !compatibility_subject_eq(a: standing_subject(st: st), b: subject) { false }
+  else {
+    match admission_refusal_text(a: compatibility_admits(s: st)) {
+      Present { value: _ } => true
+      Absent => false
+    }
   }
 }
 
@@ -152,12 +188,15 @@ fn measured_subject_refuses(subject: ServingCompatibilitySubject) -> Bool {
   count(refusing_standings_for(subject: subject)) > 0
 }
 
+// THE CAUSE COMES FROM THE SAME FOLD, so there is no arm here that has to invent a value for a
+// standing that does not refuse. The previous shape emitted "" for the two admitting arms, which is
+// an empty string standing in for "this case cannot arise" -- and an unreachable arm that fabricates
+// a value is how an arm that DOES arise later goes unnoticed.
 fn measured_refusal_cause(subject: ServingCompatibilitySubject) -> NonEmptyStr {
-  join(map(refusing_standings_for(subject: subject),
-    st => match compatibility_admits(s: st) {
-      AdmitsNothing { because: b } => b as String
-      AdmitsNormalServing => ""
-      AdmitsBoundedExperimentOnly => ""
+  join(flat_map(refusing_standings_for(subject: subject),
+    st => match admission_refusal_text(a: compatibility_admits(s: st)) {
+      Present { value: t } => [t]
+      Absent => [] as List<String>
     }), "; ") as NonEmptyStr
 }
 
@@ -382,7 +421,6 @@ data glm_native_on_gitcommit90_standing: RuntimeCompatibilityStanding = Executio
   },
   receipt: "measured on group B 2026-09-10: this image's vLLM predates the GLM-5.3 native loader integration, so the native checkpoint's tensor names have no mapping" as NonEmptyStr,
 }
-
 
 // ── THE DERIVED NoPE RUNTIME AGAINST THE NATIVE CHECKPOINT, NOT YET EXECUTED ──────────────────
 //

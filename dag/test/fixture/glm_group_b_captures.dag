@@ -24,9 +24,9 @@ fn glm_group_b_narrow_path(name: String) -> String {
   join([glm_group_b_narrow_root, name], "")
 }
 
-// THE WHOLE-DOCUMENT CAPTURES, verbatim `docker inspect` stdout per incarnation and rank.
-data glm_group_b_inspect_socket_rank0: String = "inspect-socket-rank0.json"
-data glm_group_b_inspect_socket_rank1: String = "inspect-socket-rank1.json"
+// THE WHOLE-DOCUMENT CAPTURES, verbatim `docker inspect` stdout per incarnation and rank. Only the
+// RoCE pair is named here: the socket pair is captured in this directory too, and the rows naming it
+// land with the whole-document witness that reads them, so no name here is without a reader.
 data glm_group_b_inspect_roce_rank0: String = "inspect-roce-rank0.json"
 data glm_group_b_inspect_roce_rank1: String = "inspect-roce-rank1.json"
 

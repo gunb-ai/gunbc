@@ -1,6 +1,6 @@
 module extdeps.tools.sleep
 
-import std.types { NonEmptyStr, Bool, Unit, List, Int }
+import std.types { NonEmptyStr, Bool, Unit, List }
 import std.string_type { String }
 import std.measure { Second, second_count }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -52,12 +52,12 @@ fn sleep_delay_seconds_second_carrier_projection(duration: Second) -> Bool {
 // against a remote daemon.
 type SleepArgvRendering
   = SleepArgv { words: List<String> }
-  | SleepDurationRefused { seconds: Int }
+  | SleepDurationRefused { duration: Second }
 
 fn sleep_seconds_argv(duration: Second) -> SleepArgvRendering {
   let seconds = second_count(s: duration)
   if seconds <= 0 {
-    SleepDurationRefused { seconds: seconds }
+    SleepDurationRefused { duration: duration }
   } else {
     SleepArgv { words: [sleep_cli_tool.name, to_string(seconds)] }
   }

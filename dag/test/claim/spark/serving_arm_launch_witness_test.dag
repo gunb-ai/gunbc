@@ -11,7 +11,7 @@ import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOv
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.serving_arm {
-  glm_native_concurrent_profile,
+  ServingLaunchProfile, glm_native_concurrent_profile,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
   GunbcSparkrunVllmDs4Gb10,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
@@ -26,12 +26,20 @@ import gunbc.spark.serving_arm_launch {
 // deployment: the four ranks that were found serving on TCP sockets. A synthetic group would test
 // the renderer and say nothing about the arm that was wrong.
 fn planned_lines(f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
+  planned_lines_for(profile: glm_native_initial_profile, f: f)
+}
+
+// THE CONCURRENT PROFILE IS PLANNED THROUGH THE SAME FOLD, not merely read for a field. It is the
+// configuration this arm is intended to run -- sixteen admitted sequences at 8567 basis points --
+// and a profile that only ever appears inside an equality check is a row nothing produces a launch
+// from. Planning it is what makes its subject reachable.
+fn planned_lines_for(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
   match plan_arm_launch(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     group: FabricGroupB,
-    profile: glm_native_initial_profile,
+    profile: profile,
   ) {
     ArmLaunchRefused { cause: _ } => false
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
@@ -197,8 +205,34 @@ test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_ans
 test fn w_the_utilisation_argv_is_the_profiles_value_at_full_precision() -> Bool {
   planned_lines(f: ls => all(ls, l =>
     argv_pair_is(argv: l.engine_argv, flag: "--gpu-memory-utilization", value: "0.84")))
-    && (vllm_basis_point_fraction_wire(bp: glm_native_concurrent_profile.decided_gpu_memory_basis_points) == "0.8567")
-    && (vllm_basis_point_fraction_wire(bp: glm_native_initial_profile.decided_gpu_memory_basis_points) == "0.84")
+    && planned_experiment_lines(profile: glm_native_concurrent_profile, f: ls => all(ls, l =>
+        argv_pair_is(argv: l.engine_argv, flag: "--gpu-memory-utilization", value: "0.8567")
+          && argv_pair_is(argv: l.engine_argv, flag: "--max-num-seqs", value: "16")))
+}
+
+// THE CONCURRENT PROFILE IS PLANNED AS AN EXPERIMENT, BECAUSE THAT IS WHAT IT IS ENTITLED TO.
+//
+// A FIRST VERSION OF THE ROW ABOVE PLANNED IT FOR NORMAL SERVING AND WENT RED, which is the wall in
+// this module doing its job against its own author. That subject carries no execution receipt --
+// nobody has observed an engine serving sixteen sequences at 8567 basis points -- so
+// intent_refusal admits it for a bounded experiment and refuses it for production traffic. The
+// witness was asserting the opposite of the rule the same change added.
+//
+// SO THE ROW ASKS FOR WHAT THE SUBJECT ALLOWS, and the argv it yields is still the thing under test:
+// the utilisation must render 0.8567 rather than the 0.85 a two-digit renderer produced, whichever
+// intent asked for it.
+fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
+  match plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    group: FabricGroupB,
+    intent: ArmBoundedExperiment,
+    profile: profile,
+  ) {
+    ArmLaunchRefused { cause: _ } => false
+    ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
+  }
 }
 
 test fn w_all_serving_arm_launch_claims_hold() -> Bool {

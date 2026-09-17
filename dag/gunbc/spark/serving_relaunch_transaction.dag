@@ -1535,10 +1535,10 @@ fn await_after_interval(c: ArmCapture, remaining: Nat) -> RankTransportObservati
   uses net: Network
 {
   match sleep_seconds_argv(duration: relaunch_announcement_poll_interval) {
-    SleepDurationRefused { seconds: n } => RankTransportRefused { refusal: rank_observation_refusal(
+    SleepDurationRefused { duration: d } => RankTransportRefused { refusal: rank_observation_refusal(
       subject: c.rank.subject,
       step: relaunch_step_wire(s: StepAwaitAnnouncement),
-      cause: join(["the poll interval renders as ", to_string(n), " seconds, which is not a wait"], "") as NonEmptyStr,
+      cause: join(["the poll interval renders as ", to_string(second_count(s: d)), " seconds, which is not a wait"], "") as NonEmptyStr,
     ) }
     SleepArgv { words: words } =>
       match spark_remote_run(ctx: c.rank.ctx, argv: words) {

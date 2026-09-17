@@ -1,56 +1,90 @@
 module gunbc.spark.serving_arm_launch
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String, Port }
 import std.nat { Nat }
 import product.placement_supply { HostIdentity, host_identity_eq }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq, render_ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.zhipu.glm_5_3_flash {
-  glm_5_3_flash_vllm_tool_call_parser, glm_5_3_flash_vllm_reasoning_parser,
-  glm_5_3_flash_vllm_engine_ready_timeout,
-  glm_5_3_flash_gb10_sparse_indexer_max_logits,
+  glm_5_3_flash_vllm_tool_call_parser,
+  glm_5_3_flash_vllm_reasoning_parser,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, FabricLaneObserved, fabric_lane_for_host }
+import extdeps.vllm.server { vllm_engine_ready_timeout_multi_node, vllm_gb10_sparse_indexer_max_logits }
+import gunbc.spark.fabric_switch_observed {
+  FabricGroup,
+  FabricGroupA,
+  FabricGroupB,
+  fabric_group_hosts,
+  FabricLaneObserved,
+  fabric_lane_for_host,
+}
 import extdeps.docker.cli {
-  DockerCreateSpec, DockerEnvAssignment, DockerMount, BindMount,
-  DockerNamespaceMode, NamespaceHost, DockerRestartPolicy, RestartNo,
+  DockerCreateSpec,
+  DockerEnvAssignment,
+  BindMount,
+  NamespaceHost,
+  RestartNo,
   docker_create_command,
 }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.nvidia.nccl { NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2 }
 import gunbc.spark.collective_transport_plan {
-  CollectiveTransportPlan, RoceOverInterface,
-  transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited, transport_plan_env,
+  CollectiveTransportPlan,
+  RoceOverInterface,
+  transport_plan_devices,
+  transport_plan_cap_add,
+  transport_plan_memlock_unlimited,
+  transport_plan_env,
 }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.serving_arm {
-  ServingCheckpoint, ServingRuntime, ServingTopology,
-  ServingCheckpointRow, serving_checkpoint_row,
-  CheckpointQuantization,
-  checkpoint_quantization_on_argv, checkpoint_quantization_argv,
-  ServingRuntimeRow, serving_runtime_row, runtime_artifact_wire,
+  ServingCheckpoint,
+  ServingRuntime,
+  ServingTopology,
+  ServingCheckpointRow,
+  serving_checkpoint_row,
+  checkpoint_quantization_argv,
+  ServingRuntimeRow,
+  serving_runtime_row,
+  runtime_artifact_wire,
   serving_topology_rank_count,
-  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
-  ArmIntent, ArmNormalServing, serving_arm_admits,
-  ServingLaunchProfile, glm_native_initial_profile,
+  ServingArmAdmitted,
+  ServingArmRefused,
+  ArmIntent,
+  ArmNormalServing,
+  ArmBoundedExperiment,
+  serving_arm_admits,
+  ServingLaunchProfile,
 }
 import gunbc.spark.serving_compatibility {
-  RuntimeCompatibilityStanding, CompatibilityUnknown, StaticallyPlausible,
-  ExecutionCompatible, ExecutionIncompatible,
-  CompatibilityAdmission, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing,
-  compatibility_admits, measured_admission_for, measured_serving_compatibility,
-  ServingCompatibilitySubject, compatibility_subject_text,
-  measured_subject_refuses, measured_refusal_cause, spark_gb10_accelerator,
+  CompatibilityAdmission,
+  AdmitsNormalServing,
+  AdmitsBoundedExperimentOnly,
+  AdmitsNothing,
+  measured_admission_for,
+  ServingCompatibilitySubject,
+  measured_subject_refuses,
+  measured_refusal_cause,
+  spark_gb10_accelerator,
   serving_compatibility_subject,
 }
-import std.measure { TokenCount, token_count, BasisPoint, basis_point, basis_point_count,
-  ByteSize, byte_size, byte_size_count, second_count, mebibyte_count,
+import std.measure {
+  ByteSize,
+  byte_size,
+  byte_size_count,
+  second_count,
+  mebibyte_count,
+  token_count_value,
 }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { decl_ref }
 import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire }
-import extdeps.vllm.runtime_defaults { defaults_source_revision }
-import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
+
+import gunbc.spark.model_snapshot_acquisition {
+  SnapshotPlacement,
+  HubCachePlacement,
+  LocalDirectoryPlacement,
+}
 
 // ── THIS MODULE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER, AND THE TRIGGER IS NAMED ────────
 //
@@ -213,14 +247,8 @@ fn arm_node_roster(group: FabricGroup, expected_ranks: Nat) -> ArmNodeRoster {
 
 // ── THE LAUNCH LINE ────────────────────────────────────────────────────────────────────────────
 
-// THESE TWO DERIVE FROM THE PROFILE RATHER THAN RESTATING IT, because the readback probe, the semantic probe
-// and the launch line must name one port and one alias. Two rows agreeing today is a fork that disagrees the
-// first time one of them is edited.
-data glm_native_served_model_alias: NonEmptyStr = glm_native_initial_profile.served_alias
-data glm_native_serve_port: Port = glm_native_initial_profile.serve_port
 data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_master_port: Port = 29501
-data glm_native_weights_host_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
 
 data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
 
@@ -276,20 +304,29 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // Args[0]=serve, with the model path at Args[1] -- so a line that also spelled "serve" would reach the
 // engine as `vllm serve serve <path>` and refuse.
 //
-// `--quantization` IS SPELLED EXPLICITLY EVEN THOUGH THE ENGINE WOULD INFER IT. The checkpoint's own
-// config declares quant_method fp8, so vLLM resolves it unaided -- but an omitted flag makes the RUNNING
-// LINE unable to say which weights it loaded, and the convergence reader that decides whether the
-// desired arm is serving reads exactly that line. Omitting it would make every such read report an
-// incomplete identity and withhold. A launch line that names its own artifact is what makes the arm
-// observable at all -- and that reader is a later change, not a module in this tree today.
+// `--quantization` IS SPELLED ONLY WHERE THE CHECKPOINT SAYS IT SHOULD BE, and for the native FP8
+// checkpoint that means NOT AT ALL. Its row answers QuantizationResolvedFromCheckpointConfig: the
+// config.json carries quant_method fp8 with a weight_block_size and a 1509-entry
+// modules_to_not_convert list, and passing a bare `--quantization fp8` would override that structure
+// with a scheme name. The live arm agrees -- the container that served from 2026-09-13 carries no
+// --quantization in its argv.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH SAID THE OPPOSITE, asserting the flag "IS SPELLED EXPLICITLY
+// EVEN THOUGH THE ENGINE WOULD INFER IT". That was written when the launch spelled it
+// unconditionally, and it survived the move to checkpoint_quantization_argv, which emits the flag
+// only for a checkpoint whose quantization is spelled on argv. The EXL3 canary is such a checkpoint;
+// this arm's is not.
 //
 // `--master-addr` IS THE HEAD'S RAIL ADDRESS, WHICH IS THE WHOLE POINT OF THE FABRIC. Tensor-parallel
 // collectives cross this address on every forward pass; pointing it at a management address would route
 // them over the wireless LAN while a 200G switched fabric sat idle, and nothing would report an error --
 // the group would simply be slow. The rail address is derived from the lane observation via
 // gunbc.spark.fabric_rail_desired rather than authored here.
-// THE PROFILE'S PREFIX-CACHING REQUEST REACHES THE ENGINE HERE, which until now it could not: this argv
-// named no prefix-caching flag at all, so every launch took whatever the engine inferred. At the revision
+// THE PROFILE'S PREFIX-CACHING REQUEST REACHES THE ENGINE HERE, which until now it could not: THIS
+// MODULE's argv named no prefix-caching flag at all, so any launch it rendered took whatever the
+// engine inferred. That is a statement about this renderer and NOT about the arm now running: the
+// live container was created out of band and does carry --enable-prefix-caching, which is why the
+// profile records PrefixCachingExplicit and its receipt is not describing a different request. At the revision
 // this fleet runs that inference goes through the MODEL configuration rather than a declared default, so
 // "nothing said" was not a stable request -- it was a different request per checkpoint.
 // THE TWO NCCL_DEBUG ASSIGNMENTS ARE AN OBSERVATION OBLIGATION, NOT A TUNING KNOB, and they exist for a
@@ -338,8 +375,8 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
       DockerEnvAssignment { name: "NCCL_DEBUG" as NonEmptyStr, value: "INFO" },
       DockerEnvAssignment { name: "NCCL_DEBUG_SUBSYS" as NonEmptyStr, value: "INIT,NET" },
       DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: render_ipv4_address(addr: node.rail) as String },
-      DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: to_string(second_count(s: glm_5_3_flash_vllm_engine_ready_timeout)) },
-      DockerEnvAssignment { name: "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr, value: to_string(mebibyte_count(m: glm_5_3_flash_gb10_sparse_indexer_max_logits)) },
+      DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: to_string(second_count(s: vllm_engine_ready_timeout_multi_node)) },
+      DockerEnvAssignment { name: "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr, value: to_string(mebibyte_count(m: vllm_gb10_sparse_indexer_max_logits)) },
     ], transport_plan_env(p: node.transport)),
     command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
   }
@@ -359,7 +396,6 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
 // readback comparing plan against observation reports disagreement on exactly this field, which is
 // how it was found.
 data glm_native_shm_size: ByteSize = byte_size(count: 67108864)
-
 
 // ── THE ENGINE'S OWN ARGUMENTS, NAMED APART FROM THE DOCKER LINE THAT CARRIES THEM ─────────────
 //
@@ -565,31 +601,6 @@ fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
     create: docker_create_command(spec: spec),
     engine_argv: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
     image_reference: runtime_artifact_wire(a: rrow.artifact),
-  }
-}
-
-// ── THE PLAN AS TEXT, FOR READING BEFORE ANYTHING RUNS ────────────────────────────────────────
-//
-// A launch that stops a live engine should be legible before it is performed, and the thing worth
-// reading is the ARGV THE MODEL PRODUCES rather than a description of it. This renders exactly what
-// would be executed, so a reviewer compares the real line against the arm's declared facts instead of
-// against prose about them. It performs nothing and reaches no host.
-fn arm_launch_line_text(l: ArmNodeLaunch) -> String {
-  join([
-    "rank ", to_string(l.node.node_rank), " on ", l.node.host as String,
-    " (rail ", render_ipv4_address(addr: l.node.rail) as String, "): ",
-    join(concat([l.create.program as String], l.create.arguments), " "),
-  ], "")
-}
-
-fn arm_launch_plan_render(plan: ArmLaunchPlan) -> String {
-  match plan {
-    ArmLaunchRefused { cause: c } => join(["REFUSED: ", c as String], "")
-    ArmLaunchPlanned { lines: ls, master: m } =>
-      join([
-        "master ", render_ipv4_address(addr: m) as String, " port ", to_string(glm_native_master_port), "\n",
-        join(map(ls, l => arm_launch_line_text(l: l)), "\n"),
-      ], "")
   }
 }
 
