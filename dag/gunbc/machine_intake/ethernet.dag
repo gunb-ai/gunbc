@@ -31,20 +31,11 @@ type EthernetFunctionBinding {
   function: EthernetFunction
 }
 
-fn ethernet_function_eq(a: EthernetFunction, b: EthernetFunction) -> Bool {
-  match a {
-    BmcDedicated => match b { BmcDedicated => true, _ => false }
-    BmcNcsi => match b { BmcNcsi => true, _ => false }
-    HostData => match b { HostData => true, _ => false }
-    PrebootNetwork => match b { PrebootNetwork => true, _ => false }
-  }
-}
-
 fn ethernet_port_may_carry_multiple_functions(
   a: EthernetFunctionBinding,
   b: EthernetFunctionBinding,
 ) -> Bool {
   (a.port.panel_label as String) == (b.port.panel_label as String)
     && (a.port.connector_label as String) == (b.port.connector_label as String)
-    && ethernet_function_eq(a: a.function, b: b.function) == false
+    && (a.function == b.function) == false
 }

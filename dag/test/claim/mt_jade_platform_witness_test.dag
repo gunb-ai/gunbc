@@ -59,8 +59,9 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_platform_subject,
   mt_jade_bmc_chip_catalog,
   mt_jade_bmc_management_network,
-  mt_jade_cited_bmc_firmware_includes_megarac,
-  mt_jade_cited_bmc_firmware_includes_openbmc,
+  CitedAmiMegaRac,
+  CitedOpenBmc,
+  mt_jade_cited_bmc_firmware_options_include,
   mt_jade_cited_bmc_firmware_options,
   mt_jade_crps_ac_inlet,
   mt_jade_crps_power,
@@ -307,6 +308,12 @@ test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e() -> Bool {
 }
 
 test fn w_cited_bmc_firmware_is_a_disjunction_not_a_default() -> Bool {
-  mt_jade_cited_bmc_firmware_includes_megarac(options: mt_jade_cited_bmc_firmware_options)
-    && mt_jade_cited_bmc_firmware_includes_openbmc(options: mt_jade_cited_bmc_firmware_options)
+  mt_jade_cited_bmc_firmware_options_include(
+    options: mt_jade_cited_bmc_firmware_options,
+    wanted: CitedAmiMegaRac,
+  )
+    && mt_jade_cited_bmc_firmware_options_include(
+      options: mt_jade_cited_bmc_firmware_options,
+      wanted: CitedOpenBmc,
+    )
 }

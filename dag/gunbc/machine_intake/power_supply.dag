@@ -1,18 +1,19 @@
 module gunbc.machine_intake_power_supply
 
-import std.types { Bool, Int, NonEmptyStr }
+import std.types { Bool, NonEmptyStr }
+import std.measure { RevolutionsPerMinute, Watt }
 
 // EXTRACTED FROM gunbc.machine_intake_mtcollins1_platform_observation WHEN A SECOND DUAL-PSU
 // PLATFORM ARRIVED. Presence and AC input are independent: a supply can be installed with no
-// cord. Redundancy is a property of powered supplies, never of installed count. Output watts
-// and fan RPM are the corroborating sensors, not a second health flag.
+// cord. Redundancy is a property of powered supplies, never of installed count. Output and fan
+// speed are the corroborating sensors, not a second health flag.
 
 type PowerSupplyStanding {
   sensor_name: NonEmptyStr
   present: Bool
   ac_input_present: Bool
-  output_watts: Int
-  fan_rpm: Int
+  output: Watt
+  fan_speed: RevolutionsPerMinute
 }
 
 fn power_supplies_redundant(a: PowerSupplyStanding, b: PowerSupplyStanding) -> Bool {

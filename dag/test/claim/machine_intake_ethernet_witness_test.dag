@@ -1,6 +1,7 @@
 module test.claim.machine_intake_ethernet_witness
 
 import std.types { Bool, String }
+import std.measure { rpm, watt }
 import extdeps.boards.types { AmpereMtCollins, AmpereMtJade }
 import gunbc.machine_intake_ethernet {
   AttachmentUnobserved,
@@ -13,6 +14,9 @@ import gunbc.machine_intake_ethernet {
 import gunbc.machine_intake_power_supply {
   PowerSupplyStanding,
   power_supplies_redundant,
+}
+import gunbc.machine_intake_mtcollins1_platform_observation {
+  mtcollins1_bmc_interfaces_are_distinct_ports,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -49,27 +53,31 @@ test fn w_dedicated_bmc_jack_is_not_the_upper_host_module() -> Bool {
   (jade_lower_bmc.panel_label as String) != (jade_upper_left.panel_label as String)
 }
 
+test fn w_collins_bmc_lans_are_distinct_ports() -> Bool {
+  mtcollins1_bmc_interfaces_are_distinct_ports()
+}
+
 test fn w_present_without_ac_is_not_redundant() -> Bool {
   let powered = PowerSupplyStanding {
     sensor_name: "PSU1",
     present: true,
     ac_input_present: true,
-    output_watts: 100,
-    fan_rpm: 4000,
+    output: watt(count: 100),
+    fan_speed: rpm(count: 4000),
   }
   let installed_dark = PowerSupplyStanding {
     sensor_name: "PSU2",
     present: true,
     ac_input_present: false,
-    output_watts: 0,
-    fan_rpm: 0,
+    output: watt(count: 0),
+    fan_speed: rpm(count: 0),
   }
   let both_live = PowerSupplyStanding {
     sensor_name: "PSU2",
     present: true,
     ac_input_present: true,
-    output_watts: 80,
-    fan_rpm: 4000,
+    output: watt(count: 80),
+    fan_speed: rpm(count: 4000),
   }
   power_supplies_redundant(a: powered, b: installed_dark) == false
     && power_supplies_redundant(a: powered, b: both_live)

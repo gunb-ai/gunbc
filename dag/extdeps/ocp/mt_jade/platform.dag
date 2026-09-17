@@ -448,22 +448,11 @@ data mt_jade_cited_bmc_firmware_options: List<MtJadeCitedBmcFirmwareOption> = [
   CitedOpenBmc,
 ]
 
-fn mt_jade_cited_bmc_firmware_includes_megarac(options: List<MtJadeCitedBmcFirmwareOption>) -> Bool {
-  fold(options, init: false, f: fn(acc, o) {
-    acc || match o {
-      CitedAmiMegaRac => true
-      CitedOpenBmc => false
-    }
-  })
-}
-
-fn mt_jade_cited_bmc_firmware_includes_openbmc(options: List<MtJadeCitedBmcFirmwareOption>) -> Bool {
-  fold(options, init: false, f: fn(acc, o) {
-    acc || match o {
-      CitedAmiMegaRac => false
-      CitedOpenBmc => true
-    }
-  })
+fn mt_jade_cited_bmc_firmware_options_include(
+  options: List<MtJadeCitedBmcFirmwareOption>,
+  wanted: MtJadeCitedBmcFirmwareOption,
+) -> Bool {
+  fold(options, init: false, f: fn(acc, o) { acc || o == wanted })
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope
