@@ -42,6 +42,7 @@ import gunbc.live_deploy.fleet_request {
   LiveDeployFleetRequestAdmission,
   LiveDeployFleetRequestAdmitted,
   LiveDeployFleetRequestIdentityMismatch,
+  LiveDeployFleetRequestUnitMismatch,
   LiveDeployFleetRequestUnknownInstance,
   LiveDeployFleetRequestRosterRefused,
   LiveDeployFleetRequestBasisRefused,
@@ -95,6 +96,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn desired_tree() -> MemberIdentity { TreeIdentity { tree: TreePublicationIdentity { revision: rev_a(), tracked_projection_clean: true } } }
 fn desired_bin() -> MemberIdentity { ExecutableIdentity { digest: bin_a() } }
 fn desired_file() -> MemberIdentity { UnitFileAt { file: UnitFileIdentity { unit: unit_name(), document: unit_a() } } }
+fn desired_file_for(unit: NonEmptyStr) -> MemberIdentity { UnitFileAt { file: UnitFileIdentity { unit: unit, document: unit_a() } } }
 fn desired_manager() -> MemberIdentity { UnitManagerAt { standing: ManagerLoadedCurrent } }
 fn desired_process() -> MemberIdentity { ProcessAt { process: ProcessRunningRelease { revision: rev_a() } } }
 
@@ -109,8 +111,23 @@ fn desired_for(m: ConvergedMember) -> MemberIdentity {
   }
 }
 
+fn desired_for_unit(unit: NonEmptyStr, m: ConvergedMember) -> MemberIdentity {
+  match m {
+    Executable => desired_bin()
+    TreePublication => desired_tree()
+    UnitFile => desired_file_for(unit: unit)
+    UnitManager => desired_manager()
+    ServiceProcess => desired_process()
+    DirectoryRoot { path: _ } => desired_bin()
+  }
+}
+
 fn matching_obs() -> List<ObservedMember> {
   map(release_member_roster(), m => MemberObserved { identity: desired_for(m: m) })
+}
+
+fn matching_obs_for(unit: NonEmptyStr) -> List<ObservedMember> {
+  map(release_member_roster(), m => MemberObserved { identity: desired_for_unit(unit: unit, m: m) })
 }
 
 fn admit_obs(observed: List<ObservedMember>) -> gunbc.live_deploy.fleet_request.LiveDeployMemberBasisAdmission {
@@ -230,14 +247,17 @@ test fn live_deploy_is_a_decodable_fleet_converge_scope() -> Bool {
   }
 }
 
-fn admit_production_live_deploy_request() -> LiveDeployFleetRequestAdmission {
+fn admit_live_deploy_request_for(row: DesiredDeployment) -> LiveDeployFleetRequestAdmission {
   admit_live_deploy_fleet_request(
-    desired: srv1_production_desired_deployment(),
+    desired: row,
     candidate: candidate(),
-    target: target(),
-    observed: matching_obs(),
-    desired_member: m => desired_for(m: m),
+    observed: matching_obs_for(unit: row.names.unit_name),
+    desired_member: m => desired_for_unit(unit: row.names.unit_name, m: m),
   )
+}
+
+fn admit_production_live_deploy_request() -> LiveDeployFleetRequestAdmission {
+  admit_live_deploy_request_for(row: srv1_production_desired_deployment())
 }
 
 test fn a_host_only_live_deploy_request_has_no_spelling() -> Bool {
@@ -247,12 +267,14 @@ test fn a_host_only_live_deploy_request_has_no_spelling() -> Bool {
 
 test fn admit_binds_the_request_to_the_roster_selected_identity() -> Bool {
   match admit_production_live_deploy_request() {
-    LiveDeployFleetRequestAdmitted { desired, basis: _ } =>
+    LiveDeployFleetRequestAdmitted { desired, basis } =>
       declaration_ref_eq(a: desired.selected_identity, b: srv1_production_selected_identity())
+        && basis.effects.target.unit == desired.names.unit_name
     LiveDeployFleetRequestIdentityMismatch { carried: _, rostered: _ } => false
     LiveDeployFleetRequestUnknownInstance { instance_id: _ } => false
     LiveDeployFleetRequestRosterRefused { refusal: _ } => false
     LiveDeployFleetRequestBasisRefused { cause: _ } => false
+    _ => false
   }
 }
 
@@ -266,9 +288,8 @@ test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool {
       selected_identity: srv1_lab_selected_identity(),
     },
     candidate: candidate(),
-    target: target(),
-    observed: matching_obs(),
-    desired_member: m => desired_for(m: m),
+    observed: matching_obs_for(unit: live.names.unit_name),
+    desired_member: m => desired_for_unit(unit: live.names.unit_name, m: m),
   ) {
     LiveDeployFleetRequestIdentityMismatch { carried, rostered } =>
       declaration_ref_eq(a: carried, b: srv1_lab_selected_identity())
@@ -277,6 +298,24 @@ test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool {
     LiveDeployFleetRequestUnknownInstance { instance_id: _ } => false
     LiveDeployFleetRequestRosterRefused { refusal: _ } => false
     LiveDeployFleetRequestBasisRefused { cause: _ } => false
+    _ => false
+  }
+}
+
+test fn admit_refuses_a_desired_unit_that_is_not_the_roster_row_unit() -> Bool {
+  let live = srv1_production_desired_deployment()
+  match admit_live_deploy_fleet_request(
+    desired: live,
+    candidate: candidate(),
+    observed: matching_obs(),
+    desired_member: m => desired_for(m: m),
+  ) {
+    LiveDeployFleetRequestUnitMismatch { carried, rostered } =>
+      (carried as String) == (unit_name() as String)
+        && rostered == live.names.unit_name
+        && !(carried == rostered)
+    LiveDeployFleetRequestAdmitted { desired: _, basis: _ } => false
+    _ => false
   }
 }
 
@@ -291,6 +330,7 @@ test fn live_deploy_converge_is_the_live_deploy_scope_and_names_the_selected_ide
           string_contains(s: baseline, pattern: "scope:live-deploy")
             && string_contains(s: baseline, pattern: key)
             && string_contains(s: baseline, pattern: "member-observed:")
+            && string_contains(s: baseline, pattern: desired.names.unit_name as String)
         _ => false
       }
     }
@@ -301,13 +341,7 @@ test fn live_deploy_converge_is_the_live_deploy_scope_and_names_the_selected_ide
 test fn production_and_lab_live_deploy_requests_on_the_same_host_fingerprint_differently() -> Bool {
   match admit_production_live_deploy_request() {
     LiveDeployFleetRequestAdmitted { desired: prod, basis: prod_basis } =>
-      match admit_live_deploy_fleet_request(
-        desired: srv1_lab_desired_deployment(),
-        candidate: candidate(),
-        target: target(),
-        observed: matching_obs(),
-        desired_member: m => desired_for(m: m),
-      ) {
+      match admit_live_deploy_request_for(row: srv1_lab_desired_deployment()) {
         LiveDeployFleetRequestAdmitted { desired: lab, basis: lab_basis } => {
           let prod_req = live_deploy_converge_request(desired: prod, basis: prod_basis)
           let lab_req = live_deploy_converge_request(desired: lab, basis: lab_basis)
@@ -315,6 +349,9 @@ test fn production_and_lab_live_deploy_requests_on_the_same_host_fingerprint_dif
           let lab_fp = serialize_content_hash(hash: fleet_converge_plan_subject(request: lab_req).member_set_fingerprint) as String
           !(prod_fp == lab_fp)
             && fleet_converge_plan_subject(request: prod_req).host == fleet_converge_plan_subject(request: lab_req).host
+            && prod_basis.effects.target.unit == prod.names.unit_name
+            && lab_basis.effects.target.unit == lab.names.unit_name
+            && !(prod_basis.effects.target.unit == lab_basis.effects.target.unit)
         }
         _ => false
       }

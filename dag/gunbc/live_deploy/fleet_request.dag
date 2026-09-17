@@ -38,6 +38,8 @@ import gunbc.live_deploy.member_identity {
   Executable,
   DirectoryRoot,
   MemberIdentity,
+  ExecutableIdentity,
+  UnitFile,
   UnitFileAt,
   UnitFileIdentity,
   RootAt,
@@ -345,12 +347,41 @@ type LiveDeployFleetRequestAdmission
   | LiveDeployFleetRequestUnknownInstance { instance_id: String }
   | LiveDeployFleetRequestRosterRefused { refusal: DesiredRosterRefusal }
   | LiveDeployFleetRequestIdentityMismatch { carried: DeclarationRef, rostered: DeclarationRef }
+  | LiveDeployFleetRequestUnitMismatch { carried: NonEmptyStr, rostered: NonEmptyStr }
+  | LiveDeployFleetRequestUnitFileUnbound
+  | LiveDeployFleetRequestExecutableUnbound
   | LiveDeployFleetRequestBasisRefused { cause: LiveDeployAdmissionRefusal }
+
+// THE UNIT IS THE ROW'S, NOT A SECOND ARGUMENT. ReleaseTarget.unit and DesiredDeployment.names.unit_name
+// answered the same question; a caller-supplied target made a different unit undetectable (review 67399).
+// The executable digest is the candidate bytes named by desired_member(Executable); the unit is
+// taken from the bound roster row. first_foreign / unit_owned_by_target then key on that same unit.
+fn release_target_refusal_for_desired(
+  row: DesiredDeployment,
+  desired_member: fn(ConvergedMember) -> MemberIdentity,
+) -> LiveDeployFleetRequestAdmission? {
+  match desired_member(UnitFile) {
+    UnitFileAt { file } =>
+      if (file.unit as String) != (row.names.unit_name as String) {
+        Present {
+          value: LiveDeployFleetRequestUnitMismatch {
+            carried: file.unit,
+            rostered: row.names.unit_name,
+          },
+        }
+      } else {
+        match desired_member(Executable) {
+          ExecutableIdentity { digest: _ } => none
+          _ => Present { value: LiveDeployFleetRequestExecutableUnbound }
+        }
+      }
+    _ => Present { value: LiveDeployFleetRequestUnitFileUnbound }
+  }
+}
 
 fn admit_live_deploy_fleet_request(
   desired: DesiredDeployment,
   candidate: CandidateRelease,
-  target: ReleaseTarget,
   observed: List<ObservedMember>,
   desired_member: fn(ConvergedMember) -> MemberIdentity,
 ) -> LiveDeployFleetRequestAdmission {
@@ -362,16 +393,28 @@ fn admit_live_deploy_fleet_request(
     DesiredSelectedIdentityMismatch { carried, rostered } =>
       LiveDeployFleetRequestIdentityMismatch { carried: carried, rostered: rostered }
     DesiredSelectedIdentityBound { row } =>
-      match admit_live_deploy_member_basis(
-        candidate: candidate,
-        target: target,
-        observed: observed,
-        desired: desired_member,
-      ) {
-        LiveDeployBasisRefused { cause } =>
-          LiveDeployFleetRequestBasisRefused { cause: cause }
-        LiveDeployBasisAdmitted { basis } =>
-          LiveDeployFleetRequestAdmitted { desired: row, basis: basis }
+      match release_target_refusal_for_desired(row: row, desired_member: desired_member) {
+        Present { value: refusal } => refusal
+        Absent =>
+          match desired_member(Executable) {
+            ExecutableIdentity { digest } =>
+              match admit_live_deploy_member_basis(
+                candidate: candidate,
+                target: ReleaseTarget {
+                  revision: candidate.revision,
+                  executable: digest,
+                  unit: row.names.unit_name,
+                },
+                observed: observed,
+                desired: desired_member,
+              ) {
+                LiveDeployBasisRefused { cause } =>
+                  LiveDeployFleetRequestBasisRefused { cause: cause }
+                LiveDeployBasisAdmitted { basis } =>
+                  LiveDeployFleetRequestAdmitted { desired: row, basis: basis }
+              }
+            _ => LiveDeployFleetRequestExecutableUnbound
+          }
       }
   }
 }

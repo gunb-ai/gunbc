@@ -1902,6 +1902,7 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
             concat("host:", desired.target.host.identity as String),
             concat("instance:", instance_id_text(id: desired.instance.instance_id)),
             concat("selected:", declaration_ref_display_key(ref: desired.selected_identity)),
+            concat("unit:", desired.names.unit_name as String),
           ],
           live_deploy_member_basis_baseline_rows(basis: basis),
         ),
