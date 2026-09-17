@@ -9,6 +9,7 @@ import gunbc.auth.approval_keyring_converge {
   sha256_prefix_compare, Sha256PrefixMatches, Sha256PrefixMismatch, Sha256Unavailable,
   keyring_host_must_be_srv1,
   approval_keyring_converge_refuses_off_srv1, approval_capability_digest_standing,
+  approval_submission_digest_standing,
   keyring_mkdir_argv,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
@@ -46,6 +47,8 @@ test fn keyring_converge_is_srv1_only() -> Bool {
 test fn digest_standing_admits_the_modeled_prefix_and_refuses_a_mismatch() -> Bool {
   match approval_capability_digest_standing(observed_hex: "113a3274bd95aabb") { ExitSuccess => true  _ => false }
     && match approval_capability_digest_standing(observed_hex: "000000000000aabb") { ExitSuccess => false  _ => true }
+    && match approval_submission_digest_standing(observed_hex: "01f19b2e2c7aaabb") { ExitSuccess => true  _ => false }
+    && match approval_submission_digest_standing(observed_hex: "000000000000aabb") { ExitSuccess => false  _ => true }
 }
 
 test fn keyring_mkdir_is_install_not_a_local_sudo() -> Bool {

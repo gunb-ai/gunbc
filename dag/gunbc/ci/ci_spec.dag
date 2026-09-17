@@ -24,7 +24,6 @@ import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.auth.approval_keyring_pins {
   approval_capability_mac_access_url,
   approval_submission_mac_access_url,
-  approval_mac_key_payload_sha256_prefix,
   approval_submission_mac_key_path_env,
   approval_capability_mac_key_path_env,
 }
@@ -1968,7 +1967,6 @@ fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
     Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$CAP_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_capability_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$CAP_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("OBS=$(sha256sum \"$CAP_FILE\" | cut -d' ' -f1); python3 -c 'import sys; raise SystemExit(0 if sys.argv[1].startswith(sys.argv[2]) else 1)' \"$OBS\" \"", concat(approval_mac_key_payload_sha256_prefix as String, "\" || ( echo ApprovalMacKeySha256Mismatch >&2; exit 1 )"))) },
     Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_capability_mac_key_path_env as String, "=\"$CAP_FILE\""))) },

@@ -53,7 +53,8 @@ import gunbc.auth.approval_decision_store {
 
 // MINTED 2026-09-17 THROUGH gunbc.auth.approval_mac_key_provision under the operator's token: the
 // container was created for attempt approval-mac-keys-2026-09-16, version 1 added from a
-// digested snapshot and read back (payload sha256 prefix 01f19b2e2c7a). Pinned to that version
+// digested snapshot and read back (payload sha256 prefix owned by
+// gunbc.auth.approval_keyring_pins approval_submission_mac_key_payload_sha256_prefix). Pinned to that version
 // for the same reason the capability key is: a keyring following `latest` would let a rotation
 // invalidate filings in flight, and the provisioning run refuses to add a version beside a pin.
 data approval_submission_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
@@ -426,5 +427,9 @@ data approval_submission_authority_policy_frontier: DissolutionCondition = unbou
 // THE FILING ROUTES ARE NOW ON THE SERVE TABLE (POST /approvals, GET /approvals/\{escalation_id\}).
 // Remaining dissolution is the same path used by every approval-gated fleet action, not one host's boot.
 data approval_submission_client_frontier: DissolutionCondition = unbound_dissolution(
+<<<<<<< HEAD
   description: "every approval-gated fleet action files through POST /approvals and GET /approvals/\{id\}, then joins the grant with grant_from_approved_decision over those standing fields; SUFFICIENT FOR that HTTP client path (runners never open the 0600 store), not one host's boot and not grant_from_store; the srv3 source-declared grant dissolves into the same run.",
+=======
+  description: "every approval-gated fleet action files through POST /approvals and GET /approvals/ plus the escalation id, then joins the grant with grant_from_approved_decision over those standing fields; SUFFICIENT FOR that HTTP client path (runners never open the 0600 store), not one host's boot and not grant_from_store; the srv3 source-declared grant dissolves into the same run.",
+>>>>>>> 9513f2a495 (Digest both staged MAC keys before install and name the boot POST bound as Second.)
 )

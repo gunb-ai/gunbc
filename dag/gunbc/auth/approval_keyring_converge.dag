@@ -18,6 +18,7 @@ import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_key_path_env,
   approval_capability_mac_key_path_env,
   approval_mac_key_payload_sha256_prefix,
+  approval_submission_mac_key_payload_sha256_prefix,
 }
 import gunbc.runner_host_grants { executor_bootstrap_principal }
 import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user }
@@ -66,6 +67,31 @@ fn approval_capability_digest_standing(observed_hex: String) -> ProcessExit {
       exit_failure(reason: concat("approval keyring: capability MAC key sha256 prefix mismatch (expected ", concat(e as String, concat(", observed ", o as String)), ")"))
     Sha256Unavailable { detail: d } =>
       exit_failure(reason: concat("approval keyring: capability MAC key digest unusable: ", d as String))
+  }
+}
+
+fn approval_submission_digest_standing(observed_hex: String) -> ProcessExit {
+  match sha256_prefix_compare(observed_hex: observed_hex, expected_prefix: approval_submission_mac_key_payload_sha256_prefix) {
+    Sha256PrefixMatches { prefix: _ } => ExitSuccess
+    Sha256PrefixMismatch { expected: e, observed: o } =>
+      exit_failure(reason: concat("approval keyring: submission MAC key sha256 prefix mismatch (expected ", concat(e as String, concat(", observed ", o as String)), ")"))
+    Sha256Unavailable { detail: d } =>
+      exit_failure(reason: concat("approval keyring: submission MAC key digest unusable: ", d as String))
+  }
+}
+
+fn approval_keyring_staged_digest_ok(path: NonEmptyStr, expected_prefix: NonEmptyStr, role: String) -> ProcessExit {
+  match sha256sum_file_digest_via_shell(path: path) {
+    Sha256FileDigestUnavailable { path: _, reason: r } =>
+      exit_failure(reason: concat("approval keyring: could not digest the staged ", concat(role, concat(" MAC key: ", r))))
+    Sha256FileDigest { digest: d } =>
+      match sha256_prefix_compare(observed_hex: d.hex as String, expected_prefix: expected_prefix) {
+        Sha256PrefixMatches { prefix: _ } => ExitSuccess
+        Sha256PrefixMismatch { expected: e, observed: o } =>
+          exit_failure(reason: concat("approval keyring: ", concat(role, concat(" MAC key sha256 prefix mismatch (expected ", concat(e as String, concat(", observed ", o as String)), ")"))))
+        Sha256Unavailable { detail: dtl } =>
+          exit_failure(reason: concat("approval keyring: ", concat(role, concat(" MAC key digest unusable: ", dtl as String))))
+      }
   }
 }
 
@@ -183,26 +209,29 @@ fn approval_keyring_converge_on_host() -> ProcessExit
     } else if !sub.success {
       exit_failure(reason: concat("approval keyring: staged submission MAC key unreadable: ", sub.error))
     } else {
-      match prepare_fleet_ssh_agent_context(attempt_raw: approval_keyring_converge_attempt_raw) {
-        FleetSshContextRefused { cause: c } => exit_failure(reason: concat("approval keyring: ", c))
-        FleetSshContextReady { context: context, receipt: _ } => {
-          let target = keyring_ssh_target()
-          match keyring_elevated_exec(target: target, context: context, command: ["true"], step: "administrator-privilege") {
+      match approval_keyring_staged_digest_ok(path: cap_path as NonEmptyStr, expected_prefix: approval_mac_key_payload_sha256_prefix, role: "capability") {
+        ExitSuccess =>
+          match approval_keyring_staged_digest_ok(path: sub_path as NonEmptyStr, expected_prefix: approval_submission_mac_key_payload_sha256_prefix, role: "submission") {
             ExitSuccess =>
-              match keyring_elevated_exec(target: target, context: context, command: keyring_mkdir_argv(), step: "mkdir") {
-                ExitSuccess =>
-                  match keyring_install_file(target: target, context: context, dest: approval_mac_key_path, content: cap.content, step: "capability-key") {
+              match prepare_fleet_ssh_agent_context(attempt_raw: approval_keyring_converge_attempt_raw) {
+                FleetSshContextRefused { cause: c } => exit_failure(reason: concat("approval keyring: ", c))
+                FleetSshContextReady { context: context, receipt: _ } => {
+                  let target = keyring_ssh_target()
+                  match keyring_elevated_exec(target: target, context: context, command: ["true"], step: "administrator-privilege") {
                     ExitSuccess =>
-                      match keyring_install_file(target: target, context: context, dest: approval_submission_mac_key_path, content: sub.content, step: "submission-key") {
+                      match keyring_elevated_exec(target: target, context: context, command: keyring_mkdir_argv(), step: "mkdir") {
                         ExitSuccess =>
-                          match keyring_elevated_exec(target: target, context: context, command: keyring_chown_argv(path: approval_publisher_token_path), step: "publisher-token-chown") {
+                          match keyring_install_file(target: target, context: context, dest: approval_mac_key_path, content: cap.content, step: "capability-key") {
                             ExitSuccess =>
-                              match keyring_elevated_exec(target: target, context: context, command: keyring_chmod_argv(path: approval_publisher_token_path), step: "publisher-token-chmod") {
+                              match keyring_install_file(target: target, context: context, dest: approval_submission_mac_key_path, content: sub.content, step: "submission-key") {
                                 ExitSuccess =>
-                                  match sha256sum_file_digest_via_shell(path: cap_path as NonEmptyStr) {
-                                    Sha256FileDigestUnavailable { path: _, reason: r } =>
-                                      exit_failure(reason: concat("approval keyring: could not digest the staged capability MAC key: ", r))
-                                    Sha256FileDigest { digest: d } => approval_capability_digest_standing(observed_hex: d.hex as String)
+                                  match keyring_elevated_exec(target: target, context: context, command: keyring_chown_argv(path: approval_publisher_token_path), step: "publisher-token-chown") {
+                                    ExitSuccess =>
+                                      match keyring_elevated_exec(target: target, context: context, command: keyring_chmod_argv(path: approval_publisher_token_path), step: "publisher-token-chmod") {
+                                        ExitSuccess => ExitSuccess
+                                        other => other
+                                      }
+                                    other => other
                                   }
                                 other => other
                               }
@@ -212,11 +241,11 @@ fn approval_keyring_converge_on_host() -> ProcessExit
                       }
                     other => other
                   }
-                other => other
+                }
               }
             other => other
           }
-        }
+        other => other
       }
     }
   }

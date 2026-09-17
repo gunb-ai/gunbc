@@ -11,6 +11,8 @@ data approval_capability_mac_key_path_env: NonEmptyStr = "GUNBC_APPROVAL_CAPABIL
 
 data approval_mac_key_payload_sha256_prefix: NonEmptyStr = "113a3274bd95"
 
+data approval_submission_mac_key_payload_sha256_prefix: NonEmptyStr = "01f19b2e2c7a"
+
 fn approval_capability_mac_access_url() -> String {
   secret_ref_access_url(ref: approval_mac_key_secret_ref)
 }

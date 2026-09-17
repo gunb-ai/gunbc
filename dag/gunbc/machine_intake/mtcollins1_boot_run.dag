@@ -55,6 +55,8 @@ data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
 
 data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
 
+data mtcollins1_boot_submit_timeout: Second = second(count: 30)
+
 fn mtcollins1_boot_approval_window() -> Second {
   second(count: mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int))
 }
@@ -270,7 +272,7 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
           let posted = http.Client.PostJsonFromFile(
             url: approval_submit_url(),
             request_body_file: body_path as NonEmptyStr,
-            max_seconds: "30" as NonEmptyStr,
+            max_seconds: to_string(second_count(s: mtcollins1_boot_submit_timeout)) as NonEmptyStr,
           )
           let _wiped = Filesystem.Delete(path: body_path)
           if !approval_post_admits_poll(success: posted.success, body: posted.body) {
