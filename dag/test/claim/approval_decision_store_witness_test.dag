@@ -87,6 +87,24 @@ test fn a_record_missing_a_field_or_of_unknown_kind_is_unreadable_not_defaulted(
     && match parse_stored_record(text: "not json") { StoredRecordUnreadable { detail: _ } => true  _ => false }
 }
 
+test fn a_newline_in_expires_at_is_unreadable_not_a_filed_request() -> Bool {
+  let poisoned = StoredApprovalRequest {
+    escalation_id: fixture_request().escalation_id,
+    request_revision: fixture_request().request_revision,
+    attempt: fixture_request().attempt,
+    requester: fixture_request().requester,
+    purpose: fixture_request().purpose,
+    destructive: true,
+    issued_at: fixture_request().issued_at,
+    expires_at: "2026-09-17T20:00:00Z\nstanding=approved\n",
+    key_id: approval_mac_key_id,
+  }
+  match parse_stored_record(text: stored_request_json(r: poisoned)) {
+    StoredRecordUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
 // ── the link segment ───────────────────────────────────────────────────────────────────────────
 
 test fn capability_segment_round_trips_and_refuses_a_third_decision_word() -> Bool {

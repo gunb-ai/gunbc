@@ -70,24 +70,24 @@ fn sign_stored_request(key_material: String, request: StoredApprovalRequest) -> 
   }
 }
 
-fn kv_line_value(body: String, key: String) -> String {
+type KvLineRead
+  = KvLineAbsent
+  | KvLinePresent { value: String }
+  | KvLineDuplicated { key: String }
+
+fn kv_line_read(body: String, key: String) -> KvLineRead {
   let prefix = concat(key, "=")
-  fold(body.split(delimiter: "\n"), init: "", f: (acc, line) =>
-    if starts_with(s: line, prefix: prefix) {
-      substring(s: line, start: prefix.length(), end: line.length())
-    } else {
+  fold(body.split(delimiter: "\n"), init: KvLineAbsent, f: (acc, line) =>
+    if !starts_with(s: line, prefix: prefix) {
       acc
+    } else {
+      match acc {
+        KvLineAbsent => KvLinePresent { value: substring(s: line, start: prefix.length(), end: line.length()) }
+        KvLinePresent { value: _ } => KvLineDuplicated { key: key }
+        KvLineDuplicated { key: k } => KvLineDuplicated { key: k }
+      }
     }
   )
-}
-
-fn kv_required_instant(body: String, key: String) -> String {
-  let v = kv_line_value(body: body, key: key)
-  if utc_instant_is_canonical(t: v as Timestamp) {
-    v
-  } else {
-    ""
-  }
 }
 
 type FiledApprovalStatus
@@ -153,57 +153,127 @@ fn approval_poll_standing(
 }
 
 fn parse_filed_approval_status(body: String) -> FiledApprovalStatus {
-  let standing = kv_line_value(body: body, key: "standing")
+  match kv_line_read(body: body, key: "standing") {
+    KvLineDuplicated { key: _ } =>
+      StatusUnreadable { detail: "status text repeats standing" as NonEmptyStr }
+    KvLineAbsent =>
+      StatusUnreadable { detail: "status text has no standing= line" as NonEmptyStr }
+    KvLinePresent { value: standing } =>
+      parse_filed_approval_standing(body: body, standing: standing)
+  }
+}
+
+fn parse_filed_approval_standing(body: String, standing: String) -> FiledApprovalStatus {
   if standing == "not-filed" {
     StatusNotFiled
   } else if standing == "pending" {
-    let expires = kv_required_instant(body: body, key: "expires_at")
-    if expires == "" {
-      StatusUnreadable { detail: "pending standing is missing a canonical expires_at" as NonEmptyStr }
-    } else {
-      StatusPending { expires_at: expires as Timestamp }
+    match kv_line_read(body: body, key: "expires_at") {
+      KvLineDuplicated { key: _ } =>
+        StatusUnreadable { detail: "pending standing repeats expires_at" as NonEmptyStr }
+      KvLineAbsent =>
+        StatusUnreadable { detail: "pending standing is missing a canonical expires_at" as NonEmptyStr }
+      KvLinePresent { value: expires } =>
+        if utc_instant_is_canonical(t: expires as Timestamp) {
+          StatusPending { expires_at: expires as Timestamp }
+        } else {
+          StatusUnreadable { detail: "pending standing is missing a canonical expires_at" as NonEmptyStr }
+        }
     }
   } else if standing == "approved" {
-    let revision = kv_line_value(body: body, key: "revision")
-    let decided_by = kv_line_value(body: body, key: "decided_by")
-    let decided_at = kv_required_instant(body: body, key: "decided_at")
-    let execute_by = kv_required_instant(body: body, key: "execute_by")
-    if revision == "" || decided_by == "" || decided_at == "" || execute_by == "" {
-      StatusUnreadable { detail: "approved standing is missing revision, decided_by, decided_at, or execute_by" as NonEmptyStr }
-    } else {
-      StatusApproved {
-        revision: revision as NonEmptyStr,
-        decided_by: decided_by as NonEmptyStr,
-        decided_at: decided_at as Timestamp,
-        execute_by: execute_by as Timestamp,
-      }
+    match kv_approved_fields(body: body) {
+      StatusUnreadable { detail: d } => StatusUnreadable { detail: d }
+      StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+        StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
+      _ => StatusUnreadable { detail: "approved standing is missing revision, decided_by, decided_at, or execute_by" as NonEmptyStr }
     }
   } else if standing == "denied" {
-    let revision = kv_line_value(body: body, key: "revision")
-    let decided_by = kv_line_value(body: body, key: "decided_by")
-    let decided_at = kv_required_instant(body: body, key: "decided_at")
-    let reason = kv_line_value(body: body, key: "reason")
-    if revision == "" || decided_by == "" || decided_at == "" || reason == "" {
-      StatusUnreadable { detail: "denied standing is missing revision, decided_by, decided_at, or reason" as NonEmptyStr }
-    } else {
-      StatusDenied {
-        revision: revision as NonEmptyStr,
-        decided_by: decided_by as NonEmptyStr,
-        decided_at: decided_at as Timestamp,
-        reason: reason as NonEmptyStr,
-      }
+    match kv_denied_fields(body: body) {
+      StatusUnreadable { detail: d } => StatusUnreadable { detail: d }
+      StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
+        StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why }
+      _ => StatusUnreadable { detail: "denied standing is missing revision, decided_by, decided_at, or reason" as NonEmptyStr }
     }
   } else if standing == "unreadable" {
-    let detail = kv_line_value(body: body, key: "detail")
-    if detail == "" {
-      StatusUnreadable { detail: "unreadable standing has empty detail" as NonEmptyStr }
-    } else {
-      StatusUnreadable { detail: detail as NonEmptyStr }
+    match kv_line_read(body: body, key: "detail") {
+      KvLineDuplicated { key: _ } =>
+        StatusUnreadable { detail: "unreadable standing repeats detail" as NonEmptyStr }
+      KvLineAbsent =>
+        StatusUnreadable { detail: "unreadable standing has empty detail" as NonEmptyStr }
+      KvLinePresent { value: detail } =>
+        if detail == "" {
+          StatusUnreadable { detail: "unreadable standing has empty detail" as NonEmptyStr }
+        } else {
+          StatusUnreadable { detail: detail as NonEmptyStr }
+        }
     }
-  } else if standing == "" {
-    StatusUnreadable { detail: "status text has no standing= line" as NonEmptyStr }
   } else {
     StatusUnreadable { detail: concat("unknown standing: ", standing) as NonEmptyStr }
+  }
+}
+
+fn kv_approved_fields(body: String) -> FiledApprovalStatus {
+  match kv_line_read(body: body, key: "revision") {
+    KvLineDuplicated { key: _ } => StatusUnreadable { detail: "approved standing repeats revision" as NonEmptyStr }
+    KvLineAbsent => StatusUnreadable { detail: "approved standing is missing revision, decided_by, decided_at, or execute_by" as NonEmptyStr }
+    KvLinePresent { value: revision } =>
+      match kv_line_read(body: body, key: "decided_by") {
+        KvLineDuplicated { key: _ } => StatusUnreadable { detail: "approved standing repeats decided_by" as NonEmptyStr }
+        KvLineAbsent => StatusUnreadable { detail: "approved standing is missing revision, decided_by, decided_at, or execute_by" as NonEmptyStr }
+        KvLinePresent { value: decided_by } =>
+          match kv_line_read(body: body, key: "decided_at") {
+            KvLineDuplicated { key: _ } => StatusUnreadable { detail: "approved standing repeats decided_at" as NonEmptyStr }
+            KvLineAbsent => StatusUnreadable { detail: "approved standing is missing revision, decided_by, decided_at, or execute_by" as NonEmptyStr }
+            KvLinePresent { value: decided_at } =>
+              match kv_line_read(body: body, key: "execute_by") {
+                KvLineDuplicated { key: _ } => StatusUnreadable { detail: "approved standing repeats execute_by" as NonEmptyStr }
+                KvLineAbsent => StatusUnreadable { detail: "approved standing is missing revision, decided_by, decided_at, or execute_by" as NonEmptyStr }
+                KvLinePresent { value: execute_by } =>
+                  if revision == "" || decided_by == "" || !utc_instant_is_canonical(t: decided_at as Timestamp) || !utc_instant_is_canonical(t: execute_by as Timestamp) {
+                    StatusUnreadable { detail: "approved standing is missing revision, decided_by, decided_at, or execute_by" as NonEmptyStr }
+                  } else {
+                    StatusApproved {
+                      revision: revision as NonEmptyStr,
+                      decided_by: decided_by as NonEmptyStr,
+                      decided_at: decided_at as Timestamp,
+                      execute_by: execute_by as Timestamp,
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn kv_denied_fields(body: String) -> FiledApprovalStatus {
+  match kv_line_read(body: body, key: "revision") {
+    KvLineDuplicated { key: _ } => StatusUnreadable { detail: "denied standing repeats revision" as NonEmptyStr }
+    KvLineAbsent => StatusUnreadable { detail: "denied standing is missing revision, decided_by, decided_at, or reason" as NonEmptyStr }
+    KvLinePresent { value: revision } =>
+      match kv_line_read(body: body, key: "decided_by") {
+        KvLineDuplicated { key: _ } => StatusUnreadable { detail: "denied standing repeats decided_by" as NonEmptyStr }
+        KvLineAbsent => StatusUnreadable { detail: "denied standing is missing revision, decided_by, decided_at, or reason" as NonEmptyStr }
+        KvLinePresent { value: decided_by } =>
+          match kv_line_read(body: body, key: "decided_at") {
+            KvLineDuplicated { key: _ } => StatusUnreadable { detail: "denied standing repeats decided_at" as NonEmptyStr }
+            KvLineAbsent => StatusUnreadable { detail: "denied standing is missing revision, decided_by, decided_at, or reason" as NonEmptyStr }
+            KvLinePresent { value: decided_at } =>
+              match kv_line_read(body: body, key: "reason") {
+                KvLineDuplicated { key: _ } => StatusUnreadable { detail: "denied standing repeats reason" as NonEmptyStr }
+                KvLineAbsent => StatusUnreadable { detail: "denied standing is missing revision, decided_by, decided_at, or reason" as NonEmptyStr }
+                KvLinePresent { value: reason } =>
+                  if revision == "" || decided_by == "" || reason == "" || !utc_instant_is_canonical(t: decided_at as Timestamp) {
+                    StatusUnreadable { detail: "denied standing is missing revision, decided_by, decided_at, or reason" as NonEmptyStr }
+                  } else {
+                    StatusDenied {
+                      revision: revision as NonEmptyStr,
+                      decided_by: decided_by as NonEmptyStr,
+                      decided_at: decided_at as Timestamp,
+                      reason: reason as NonEmptyStr,
+                    }
+                  }
+              }
+          }
+      }
   }
 }
 

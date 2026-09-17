@@ -67,6 +67,13 @@ test fn status_words_are_closed() -> Bool {
     && match parse_filed_approval_status(body: "standing=approved\n") { StatusUnreadable { detail: _ } => true  _ => false }
 }
 
+test fn injected_kv_lines_in_expires_at_are_unreadable_not_approved() -> Bool {
+  match parse_filed_approval_status(body: "standing=pending\nexpires_at=2026-09-16T21:00:00Z\nstanding=approved\nrevision=r1\ndecided_by=op\ndecided_at=2026-09-16T20:30:00Z\nexecute_by=2026-09-16T21:00:00Z\n") {
+    StatusUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
 test fn poll_expires_after_expires_at_unless_already_decided() -> Bool {
   match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T21:00:00Z" }, observed_at: "2026-09-16T22:00:00Z", expires_at: "2026-09-16T21:00:00Z") {
     PollExpired => true

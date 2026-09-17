@@ -47,6 +47,7 @@ import gunbc.auth.approval_capability {
   ProposeDeny,
   approval_capability_signing_input,
   proposed_decision_name,
+  utc_instant_is_canonical,
 }
 import gunbc.auth.approval_broker {
   BrokerDecision, IdentityAttribution, HeaderAttributedToProxy, HeaderUnattributed,
@@ -364,17 +365,24 @@ fn parse_stored_request(v: JsonValue) -> StoredRecordParse {
                   Absent => StoredRecordUnreadable { detail: "stored request lacks expires_at" }
                   Present { value: expires } => match json_field_string(v: v, key: "key_id") {
                     Absent => StoredRecordUnreadable { detail: "stored request lacks key_id" }
-                    Present { value: kid } => StoredRequestParsed { request: StoredApprovalRequest {
-                      escalation_id: e as NonEmptyStr,
-                      request_revision: rev as NonEmptyStr,
-                      attempt: att as AttemptIdentity,
-                      requester: req as NonEmptyStr,
-                      purpose: purpose as NonEmptyStr,
-                      destructive: destructive,
-                      issued_at: issued,
-                      expires_at: expires,
-                      key_id: kid as MacKeyId,
-                    } }
+                    Present { value: kid } =>
+                      if !utc_instant_is_canonical(t: issued as Timestamp) {
+                        StoredRecordUnreadable { detail: "stored request issued_at is not a canonical UTC instant" }
+                      } else if !utc_instant_is_canonical(t: expires as Timestamp) {
+                        StoredRecordUnreadable { detail: "stored request expires_at is not a canonical UTC instant" }
+                      } else {
+                        StoredRequestParsed { request: StoredApprovalRequest {
+                          escalation_id: e as NonEmptyStr,
+                          request_revision: rev as NonEmptyStr,
+                          attempt: att as AttemptIdentity,
+                          requester: req as NonEmptyStr,
+                          purpose: purpose as NonEmptyStr,
+                          destructive: destructive,
+                          issued_at: issued,
+                          expires_at: expires,
+                          key_id: kid as MacKeyId,
+                        } }
+                      }
                   }
                 }
               }
@@ -396,26 +404,38 @@ fn parse_stored_decision(v: JsonValue, kind: String) -> StoredRecordParse {
         Present { value: by } => match json_field_string(v: v, key: "decided_at") {
           Absent => StoredRecordUnreadable { detail: "stored decision lacks decided_at" }
           Present { value: at } =>
-            if kind == "approved" {
+            if !utc_instant_is_canonical(t: at as Timestamp) {
+              StoredRecordUnreadable { detail: "stored decision decided_at is not a canonical UTC instant" }
+            } else if kind == "approved" {
               match json_field_string(v: v, key: "obligation_authority") {
                 Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_authority" }
                 Present { value: oa } => match json_field_string(v: v, key: "obligation_intent_revision") {
                   Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_intent_revision" }
                   Present { value: oi } => match json_field_string(v: v, key: "obligation_execute_by") {
                     Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_execute_by" }
-                    Present { value: ob } => StoredDecisionParsed { decision: BrokerApproved {
-                      escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at,
-                      obligation: ExecutionObligation { authority: oa as NonEmptyStr, intent_revision: oi as NonEmptyStr, execute_by: ob },
-                    } }
+                    Present { value: ob } =>
+                      if !utc_instant_is_canonical(t: ob as Timestamp) {
+                        StoredRecordUnreadable { detail: "stored approval obligation_execute_by is not a canonical UTC instant" }
+                      } else {
+                        StoredDecisionParsed { decision: BrokerApproved {
+                          escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at,
+                          obligation: ExecutionObligation { authority: oa as NonEmptyStr, intent_revision: oi as NonEmptyStr, execute_by: ob },
+                        } }
+                      }
                   }
                 }
               }
             } else {
               match json_field_string(v: v, key: "reason") {
                 Absent => StoredRecordUnreadable { detail: "stored denial lacks reason" }
-                Present { value: why } => StoredDecisionParsed { decision: BrokerDenied {
-                  escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at, reason: why as NonEmptyStr,
-                } }
+                Present { value: why } =>
+                  if (why as String).contains("\n") || (why as String).contains("\r") {
+                    StoredRecordUnreadable { detail: "stored denial reason is not a single kv line" }
+                  } else {
+                    StoredDecisionParsed { decision: BrokerDenied {
+                      escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at, reason: why as NonEmptyStr,
+                    } }
+                  }
               }
             }
         }
