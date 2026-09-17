@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.field_carried_on_arms_where_it_has_no_meaning
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data field_carried_on_arms_where_it_has_no_meaning: RecurringFailureMode = RecurringFailureMode {
+  identity: "field_carried_on_arms_where_it_has_no_meaning" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a carrier is a RECORD whose fields are computed independently, and one field is meaningful on only SOME of the situations the carrier represents. Because the record has no arms, that field must be given a value in every situation -- including the ones where it denotes nothing -- so the author supplies whatever the type admits, and the resulting pairing is a claim nobody made and nothing refuses. The two fields are not a value and a summary of it (which is `subject_and_its_digest_as_independent_parameters`), so no derivation joins them; they are independent facts, one of which is only defined WHEN THE OTHER EXISTS.",
+
+    "RECEIPT, review 57275 on gunbc#10560, in gunbc.cli_wire. CliWireResponse was `{ write: TerminalWriteProjection, exit: ProcessExit }`. A projection that REFUSED could therefore be paired with `ExitSuccess`, so a verb printed NOTHING and reported SUCCESS -- the fail-open DESIGN section 5 forbids outright, at the output boundary where an operator's only signal is the exit status. It was reachable and not theoretical: a commit message is an unrestricted `String` on `CommitLogRow` and is rendered directly into a log row, so a message carrying an ESC byte makes `project_terminal_write` refuse while the READ answered fine.",
+
+    "WHAT THE RECORD GOT RIGHT AND WHERE IT OVERREACHED, because the repair is not `derive the exit from the bytes`. Bytes and exit status genuinely ARE two facts -- a refused repository must print its diagnostic AND exit nonzero -- which is why the printable arm still carries its own ProcessExit. What does not follow, and what the record asserted BY ITS SHAPE, is that the exit is independent of whether there are bytes AT ALL. `the exit is not derivable from what the bytes SAY` and `the exit is unconstrained by WHETHER there are bytes` are different claims; the first is true and the second is false. Conflating them is what makes this class survive review: the defence of the record is a true sentence about a neighbouring question.",
+
+    "THE REPAIR IS SUBTRACTION, WHICH IS WHY IT IS NOT THE OPTIONAL-PAYLOAD ROW. `CliWireResponse` is now `CliWirePrintable { bytes, exit } | CliWireUnprintable { cause }`. The refusal arm has no exit field TO SET to success, so the illegal pairing is not validated, it is unwritable -- construction over validation, DESIGN section 4b rung 4, with no check to run because there is nothing to check. Contrast `gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional`, the dual: there an arm NEEDS a field the carrier does not guarantee and the repair REQUIRES it; here an arm carries a field it must not have and the repair DELETES it. Same law -- a carrier's field set belongs to its arms -- read from opposite ends, and filing either under the other would make one identity a nickname for both.",
+
+    "RECOGNITION RULE, and it is asked of the CARRIER rather than of any call site: for every field of a record, enumerate the situations the record represents and name what the field MEANS in each. A situation where the honest answer is `nothing` is an arm the record is missing, and the value currently supplied there is a fabrication with a type. The tell that survives longest is a field whose only defensible value on some situation is a NEUTRAL-LOOKING one -- success, zero, empty -- because that is the value a reader who sorts, thresholds or branches on the field will read as a measurement rather than as an absence.",
+
+    "CEILING structurally impossible, and this instance REACHED it, so what is enrolled here is the class rather than a stall. NEXT-RUNG TRIGGER for the corpus population, a capability and not an artifact: a census that, for each record carrier, resolves the situations its producers can be in and refuses a field that is unconstrained on one of them -- which is the same fold `kind_carried_but_its_fields_stay_optional` names from its end, and neither row retires until it can ask both directions.",
+  ],
+
+  evidence: [],
+}
