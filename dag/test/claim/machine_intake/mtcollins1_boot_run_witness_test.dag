@@ -6,6 +6,7 @@ import std.measure { second_count }
 import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
+  mtcollins1_boot_poll_unreadable_streak_budget, mtcollins1_boot_poll_unreadable_is_retryable,
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_boot_submit_timeout,
   mtcollins1_status_from_get, mtcollins1_boot_instant_from_probe, mtcollins1_boot_sol_is_held,
@@ -16,7 +17,7 @@ import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import std.process { ExitSuccess }
 import std.scoped_authorization { authorization_claim_key }
 import gunbc.auth.approval_request_client {
-  approval_poll_standing, PollExpired, PollUnreadable,
+  approval_poll_standing, PollExpired, PollUnreadable, PollStillPending,
 }
 import gunbc.auth.approval_status_wire {
   StatusUnreadable, StatusPending, parse_filed_approval_status,
@@ -50,6 +51,52 @@ test fn a_zero_window_expires_on_the_next_observation() -> Bool {
     PollExpired => true
     _ => false
   }
+}
+
+test fn an_unreadable_status_get_retries_inside_the_window() -> Bool {
+  let unread = PollUnreadable { detail: "approval store slot unreadable" as NonEmptyStr }
+  mtcollins1_boot_poll_unreadable_is_retryable(
+    standing: unread,
+    remaining: mtcollins1_boot_poll_tick_budget,
+    unreadable_streak: 0,
+    observed_at: "2026-09-17T22:03:46Z",
+    expires_at: "2026-09-17T22:26:00Z",
+  )
+    && mtcollins1_boot_poll_unreadable_is_retryable(
+      standing: unread,
+      remaining: 2,
+      unreadable_streak: mtcollins1_boot_poll_unreadable_streak_budget - 2,
+      observed_at: "2026-09-17T22:03:46Z",
+      expires_at: "2026-09-17T22:26:00Z",
+    )
+    && !mtcollins1_boot_poll_unreadable_is_retryable(
+      standing: unread,
+      remaining: 2,
+      unreadable_streak: mtcollins1_boot_poll_unreadable_streak_budget - 1,
+      observed_at: "2026-09-17T22:03:46Z",
+      expires_at: "2026-09-17T22:26:00Z",
+    )
+    && !mtcollins1_boot_poll_unreadable_is_retryable(
+      standing: unread,
+      remaining: 1,
+      unreadable_streak: 0,
+      observed_at: "2026-09-17T22:03:46Z",
+      expires_at: "2026-09-17T22:26:00Z",
+    )
+    && !mtcollins1_boot_poll_unreadable_is_retryable(
+      standing: unread,
+      remaining: mtcollins1_boot_poll_tick_budget,
+      unreadable_streak: 0,
+      observed_at: "2026-09-17T22:26:01Z",
+      expires_at: "2026-09-17T22:26:00Z",
+    )
+    && !mtcollins1_boot_poll_unreadable_is_retryable(
+      standing: PollStillPending,
+      remaining: mtcollins1_boot_poll_tick_budget,
+      unreadable_streak: 0,
+      observed_at: "2026-09-17T22:03:46Z",
+      expires_at: "2026-09-17T22:26:00Z",
+    )
 }
 
 test fn a_failed_status_get_is_unreadable_not_pending() -> Bool {

@@ -21,9 +21,9 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
 import gunbc.auth.approval_request_client {
   stored_request_from_authorization, sign_stored_request,
   approval_submit_url, approval_status_url,
-  approval_poll_standing,
+  approval_poll_standing, ApprovalPollStanding,
   SubmissionMacReady, SubmissionMacKeyNotHex,
-  PollStillPending,
+  PollStillPending, PollUnreadable,
 }
 import gunbc.auth.approval_status_wire {
   parse_filed_approval_status, FiledApprovalStatus, StatusUnreadable, submission_body_admits_poll,
@@ -63,6 +63,8 @@ data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.t
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
 data mtcollins1_boot_poll_tick_budget: Int = 90
+
+data mtcollins1_boot_poll_unreadable_streak_budget: Int = 3
 
 data mtcollins1_boot_sol_settle: Second = second(count: 2)
 
@@ -317,8 +319,25 @@ fn mtcollins1_unterminated_claim_exit(outcome: ProcessExit, detail: String) -> P
   )
 }
 
+fn mtcollins1_boot_poll_unreadable_is_retryable(
+  standing: ApprovalPollStanding,
+  remaining: Int,
+  unreadable_streak: Int,
+  observed_at: Timestamp,
+  expires_at: Timestamp,
+) -> Bool {
+  match standing {
+    PollUnreadable { detail: _ } =>
+      remaining > 1
+        && (unreadable_streak + 1) < mtcollins1_boot_poll_unreadable_streak_budget
+        && !(observed_at > expires_at)
+    _ => false
+  }
+}
+
 fn mtcollins1_boot_poll_ticks(
   remaining: Int,
+  unreadable_streak: Int,
   request: AuthorizationRequest<MtCollins1BootSubject>,
   expires_at: Timestamp,
 ) -> MtCollins1BootGate
@@ -336,12 +355,33 @@ fn mtcollins1_boot_poll_ticks(
         let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: request.escalation_id))
         let status = mtcollins1_status_from_get(success: got.success, body: got.body)
         let standing = approval_poll_standing(status: status, observed_at: observed, expires_at: expires_at)
-        match standing {
-          PollStillPending => {
-            let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
-            mtcollins1_boot_poll_ticks(remaining: remaining - 1, request: request, expires_at: expires_at)
+        if mtcollins1_boot_poll_unreadable_is_retryable(
+          standing: standing,
+          remaining: remaining,
+          unreadable_streak: unreadable_streak,
+          observed_at: observed,
+          expires_at: expires_at,
+        ) {
+          let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+          mtcollins1_boot_poll_ticks(
+            remaining: remaining - 1,
+            unreadable_streak: unreadable_streak + 1,
+            request: request,
+            expires_at: expires_at,
+          )
+        } else {
+          match standing {
+            PollStillPending => {
+              let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+              mtcollins1_boot_poll_ticks(
+                remaining: remaining - 1,
+                unreadable_streak: 0,
+                request: request,
+                expires_at: expires_at,
+              )
+            }
+            _ => mtcollins1_boot_gate_from_poll(poll: standing, request: request, observed_at: observed)
           }
-          _ => mtcollins1_boot_gate_from_poll(poll: standing, request: request, observed_at: observed)
         }
       }
   }
@@ -441,6 +481,7 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
           }
           let gate = mtcollins1_boot_poll_ticks(
             remaining: mtcollins1_boot_poll_tick_budget,
+            unreadable_streak: 0,
             request: request,
             expires_at: expires,
           )
