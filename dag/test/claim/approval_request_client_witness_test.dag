@@ -13,7 +13,7 @@ import gunbc.auth.approval_status_wire {
 }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
-import gunbc.auth.approval_decision_store { approval_mac_key_id, approval_capability_authority }
+import gunbc.auth.approval_decision_store { approval_mac_key_id }
 import std.scoped_authorization { AttemptIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -29,7 +29,6 @@ fn fixture_stored() -> StoredApprovalRequest {
     issued_at: "2026-09-16T20:00:00Z",
     expires_at: "2026-09-16T21:00:00Z",
     key_id: approval_mac_key_id,
-    authority: approval_capability_authority,
   }
 }
 

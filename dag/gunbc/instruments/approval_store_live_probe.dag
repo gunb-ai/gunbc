@@ -64,7 +64,6 @@ fn probe_request() -> StoredApprovalRequest {
     issued_at: "2026-09-16T20:00:00Z",
     expires_at: "2026-09-17T20:00:00Z",
     key_id: approval_mac_key_id,
-    authority: approval_capability_authority,
   }
 }
 

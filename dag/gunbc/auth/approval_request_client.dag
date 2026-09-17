@@ -9,7 +9,7 @@ import gunbc.auth.approval_status_wire {
   FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
 }
 import gunbc.auth.approval_decision_store {
-  StoredApprovalRequest, request_revision_of, approval_mac_key_id, approval_capability_authority,
+  StoredApprovalRequest, request_revision_of, approval_mac_key_id,
 }
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id, sign_submission,
@@ -53,7 +53,6 @@ fn stored_request_from_authorization<Subject>(
     issued_at: issued_at,
     expires_at: expires_at,
     key_id: approval_mac_key_id,
-    authority: approval_capability_authority,
   }
 }
 
