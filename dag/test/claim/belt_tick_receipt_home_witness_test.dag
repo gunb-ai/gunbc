@@ -19,10 +19,10 @@ import gunbc.live_deploy.spec {
   DeploymentArtifactStep,
   gunbc_service_user,
   BeltTimerUnit,
-  deployment_spec_srv1,
   deployment_belt_timer_unit_path,
   srv1_live_deployment_names,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.types { List, NonEmptyStr, CommitSha }
 import v2.std.orchestration { PipelineStep, Do, Run }
 

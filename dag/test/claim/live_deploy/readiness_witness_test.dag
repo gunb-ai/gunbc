@@ -32,7 +32,8 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisCaptured,
 }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_listen_port }
+import gunbc.live_deploy.spec { deployment_plan_listen_port }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
   LocalShell,
