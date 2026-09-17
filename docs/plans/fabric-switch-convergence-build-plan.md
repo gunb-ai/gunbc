@@ -33,10 +33,11 @@ Mirror `gunbc.spark.bootstrap_credential` / `grant_privileged_operation`:
   - Add `auto_negotiation` to the lane intent/reading (G1).
   - Add `Crs812LinkOutcome` (negotiated speed, link state:
     LinkUp|Polling|AutoInitFailed|Down, fec-locked) as a two-ended live fact (G3, G4).
-  - Record the FEC-codeword fact honestly (G2): fec91 = RS(528,514); 100GBASE-CR2's
-    50G-PAM4 lanes use RS(544,514); the CRS812 REST surface exposes only fec74/fec91/off/
-    auto. Model this as a stated capability fact so the converge intent can refuse if the
-    switch cannot offer the FEC the mode needs, rather than trying and hanging in Polling.
+  - Carry the FEC codeword the RouterOS label maps to (G2), a modeling nicety not a
+    capability gap: MikroTik documents `fec91` as the FEC for its `100G-baseCR2` mode, so
+    `fec91` is the desired FEC and there is no switch FEC limitation (the earlier RS(544,514)
+    "may not expose it" claim was an ungrounded IEEE inference, retracted). The converge
+    intent's FEC is `fec91`; it does not need a capability-refusal arm for FEC.
   - `FabricSwitchCredentialStanding` + the two SecretRef rows.
   - Update `gunbc.spark.fabric_switch_observed` (G12): the 2026-09-17 recode is an EVENT
     (byte 192 0x0B->0x40, NIC Supported Cable Speed 50G_2X->100G_2X) plus the live 50G

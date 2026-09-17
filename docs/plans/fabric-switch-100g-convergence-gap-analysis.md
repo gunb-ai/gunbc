@@ -170,12 +170,17 @@ Each is a place the `.dag` model does not yet express something the real path re
 - **G1 — no autonegotiation dimension.** The lane model carries speed and FEC but NOT
   auto-negotiation on/off. Copper (BASE-CR) bring-up is entirely governed by autoneg
   state; the whole experiment turned on it. `Crs812LaneIntent` needs an autoneg field.
-- **G2 — FEC enum cannot express what 100GBASE-CR2 needs.** `Crs812FecMode =
-  FecAuto|FecOff|Fec74|Fec91`. `fec91` = RS(528,514) clause 91 (25G/50G-per-lane).
-  100GBASE-CR2 uses 50G-PAM4 lanes whose RS-FEC is RS(544,514) (KP4 / clause 134). The
-  model conflates "RS-FEC" without the codeword distinction, and the CRS812 REST surface
-  only exposes fec74/fec91/off/auto — it may not offer RS(544,514) at all. This is both a
-  modeling gap AND a possible switch capability limitation worth recording as a fact.
+- **G2 — the FEC enum names FEC by RouterOS label, not by codeword.** `Crs812FecMode =
+  FecAuto|FecOff|Fec74|Fec91` carries RouterOS's own strings and not the RS codeword
+  (528,514 vs 544,514) each implies. That is a modeling nicety, NOT a capability gap.
+  RETRACTED (§4d): an earlier head of this gap asserted that 100GBASE-CR2 needs RS(544,514)
+  from the IEEE 50G-PAM4 lane FEC and concluded the CRS812 "may not expose it at all." That
+  was an inference from the IEEE standard stated as a fact about this switch, not grounded
+  in the vendor's implementation — and it is wrong: MikroTik documents `fec91` as the FEC
+  for its `100G-baseCR2` mode (side-chat review, 2026-09-17). So `fec91` IS the desired FEC
+  for the converge, `crs812_desired_fec` returning it is correct, and there is no switch FEC
+  capability limitation. The residual is only that the enum should eventually carry the
+  codeword the label maps to, so a cross-vendor consumer is not left to know it out of band.
 - **G3 — the live link OUTCOME is unmodeled.** The assessment models intent-vs-observed
   lane divergence, but the observed reading needs: negotiated speed, link state
   (up / polling / down / auto-init-failed), and FEC-locked, read from BOTH ends. RouterOS
