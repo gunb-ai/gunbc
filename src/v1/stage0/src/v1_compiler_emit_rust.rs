@@ -23828,6 +23828,13 @@ pub fn call_target_is_runtime_primitive(target: Rc<CallTargetIdentity>) -> bool 
     (call_target_runtime_primitive_name(target.clone()) != std::option::Option::None)
 }
 
+pub fn call_target_unrealized_primitive_name(target: Rc<CallTargetIdentity>) -> String {
+    match call_target_runtime_primitive_name(target.clone()) {
+        Some(primitive_name) => primitive_name.clone(),
+        std::option::Option::None => "".to_string(),
+    }
+}
+
 pub fn call_target_is_unrealized_primitive(target: Rc<CallTargetIdentity>) -> bool {
     match call_target_runtime_primitive_name(target.clone()) {
         std::option::Option::None => false,
@@ -24908,6 +24915,7 @@ pub fn emit_typed_call_expr(
                 emit_typed_call(
                     func.clone(),
                     args.clone(),
+                    inferred.clone(),
                     call_semantics.clone(),
                     callee_is_function_value.clone(),
                     call_target.clone(),
@@ -25142,6 +25150,7 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
+    inferred: Option<Rc<InferredNode>>,
     call_semantics: Option<Rc<CallSemantics>>,
     callee_is_function_value: bool,
     call_target: Rc<CallTargetIdentity>,
@@ -25666,7 +25675,10 @@ pub fn emit_typed_call(
             func_ident.clone()
         };
         let call_str = if unrealized_primitive_call.clone() {
-            func_ident.clone()
+            match inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: ret_type, .. }) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("v1_rt::unrealized_host_seam::<".to_string(), render_rust_type(ret_type.clone(), shared_types.clone(), si.clone(), emit_info.clone())), ">(\"".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(v1_rt::concat(v1_rt::concat("primitive ".to_string(), call_target_unrealized_primitive_name(call_target.clone())), " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers".to_string()))), "\")".to_string()),
+    _ => func_ident.clone(),
+}
         } else {
             if ((is_rt.clone() && (func.clone() == "concat".to_string()))
                 && ((all_args.clone().len() as i64) > 2))
@@ -33013,6 +33025,7 @@ pub fn emit_rust_tco_non_self_call(
             let call_str = emit_typed_call(
                 f.clone(),
                 frame.expr.clone().children.clone(),
+                frame.expr.clone().inferred.clone(),
                 cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
                 crate::v1_std_core::call_semantics_target(cs.clone()),
