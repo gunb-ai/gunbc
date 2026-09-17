@@ -3,7 +3,7 @@ module test.claim.fabric.spill_candidate_field_witness
 import std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat }
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, EpochSecs }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import std.measure {
@@ -31,6 +31,9 @@ import product.fabric.provider_admission {
   DispositionStanding, DispositionCleared,
 }
 import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.route_readiness {
+  RouteExercise, RouteReadinessRequirement, RequireExercisedRoute, ExerciseOfRoute,
+}
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedPerHour, ObservedSupply,
   GrantDuration, ExactGrantDuration, StableRosterOrder, PlacementAffinityKey,
@@ -105,6 +108,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // extdeps.cloud.hetzner, at which point this row is deleted and the citation moves upstream.
 data spill_hetzner_helsinki_region: NonEmptyStr = "spill-hetzner-region-helsinki"
 data spill_hetzner_nuremberg_region: NonEmptyStr = "spill-hetzner-region-nuremberg"
+// THE EXERCISE RECEIPT every witness route exercise cites. Like the region rows it is this witness's
+// declared input, not a reading of any real run on any real vendor.
+data spill_route_exercise: NonEmptyStr = "spill-route-exercise-witness-input"
 
 // THE THREE PROVIDERS WITH NO MODELED ROUTE. NO ROUTE FACTS ARE MODELED FOR ANY OF THESE THREE
 // ANYWHERE IN THIS CORPUS: no data-path closure, no downstream population, no contract terms. That
@@ -386,10 +392,34 @@ fn s_modeled_routes() -> List<OfferRouteRow<NonEmptyStr>> {
   ]
 }
 
-fn s_field(
+// THE DECISION INSTANT every field below is taken at, and the Hetzner exercise that makes that
+// route ready at it. The claims about correspondence and admission are not about readiness, so they
+// run with every route exercised; the readiness claims supply their own exercises.
+data s_at: EpochSecs = 1000
+
+fn s_exercise(route: ProviderRoute, valid_through: EpochSecs) -> RouteExercise {
+  RouteExercise {
+    route: route,
+    exercised_at: 100,
+    valid_through: valid_through,
+    receipt: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_route_exercise"),
+  }
+}
+
+fn s_hetzner_exercise(valid_through: EpochSecs) -> RouteExercise {
+  s_exercise(route: s_hetzner_route(), valid_through: valid_through)
+}
+
+fn s_every_route_exercised() -> List<RouteExercise> {
+  map([s_scaleway_route(), s_oracle_route(), s_google_route(), s_hetzner_route()], r => s_exercise(route: r, valid_through: 2000))
+}
+
+fn s_field_with_readiness(
   routes: List<OfferRouteRow<NonEmptyStr>>,
   sanctions: List<RouteScopeSanction>,
   requests: List<FieldRequest<NonEmptyStr>>,
+  exercises: List<RouteExercise>,
+  readiness: RouteReadinessRequirement<NonEmptyStr>,
 ) -> CandidateField<NonEmptyStr> {
   assemble_candidate_field(
     routes: routes,
@@ -397,7 +427,24 @@ fn s_field(
     active: s_posture(),
     scope: s_scope(),
     decision_receipt: s_receipt(),
+    exercises: exercises,
+    readiness: readiness,
+    at: s_at,
     requests: requests,
+  )
+}
+
+fn s_field(
+  routes: List<OfferRouteRow<NonEmptyStr>>,
+  sanctions: List<RouteScopeSanction>,
+  requests: List<FieldRequest<NonEmptyStr>>,
+) -> CandidateField<NonEmptyStr> {
+  s_field_with_readiness(
+    routes: routes,
+    sanctions: sanctions,
+    requests: requests,
+    exercises: s_every_route_exercised(),
+    readiness: RequireExercisedRoute,
   )
 }
 
@@ -450,6 +497,8 @@ fn s_exclusion_tag(c: FieldExclusionCause<NonEmptyStr>) -> String {
     FieldRouteNotModeled => "route-not-modeled"
     FieldRouteAmbiguous { claimed: _ } => "route-ambiguous"
     FieldRouteFactsNameAnotherRoute { facts_route: _, offer_route: _ } => "facts-name-another-route"
+    FieldRouteNeverExercised { route: _ } => "route-never-exercised"
+    FieldRouteExerciseExpired { route: _, latest_valid_through: _, at: _ } => "route-exercise-expired"
     FieldUseRefused { cause: _ } => "use-refused"
     FieldDispatchInputsNameAnotherOffer { inputs_name: _ } => "inputs-name-another-offer"
     FieldPermitNamesAnotherOffer { permit_names: _ } => "permit-names-another-offer"
@@ -691,4 +740,52 @@ test fn w_the_surviving_permit_names_the_work_and_demand_it_was_admitted_for() -
     init: false,
     f: (acc, p) => (p.work.key as NonEmptyStr) == "spill-work-1" && (p.demand.key as NonEmptyStr) == "spill-demand-1",
   )
+}
+
+// ── READINESS: A SANCTIONED ROUTE THAT HAS NEVER RUN WORK IS NOT CAPACITY ─────────────────────────
+
+fn s_readiness_field(exercises: List<RouteExercise>, readiness: RouteReadinessRequirement<NonEmptyStr>) -> CandidateField<NonEmptyStr> {
+  s_field_with_readiness(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: s_requests(),
+    exercises: exercises,
+    readiness: readiness,
+  )
+}
+
+// The discriminating red for the whole stage: the SAME modeled, sanctioned route that wins above
+// is refused by name once its exercise is removed, and the field then selects nothing.
+test fn w_a_sanctioned_route_never_exercised_is_not_capacity() -> Bool {
+  let field = s_readiness_field(exercises: [], readiness: RequireExercisedRoute)
+  s_excluded_keys(field: field, tag: "route-never-exercised") == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: field) == []
+    && s_selected_key(s: s_select(candidates: field.admitted)) == "none"
+}
+
+test fn w_an_expired_exercise_refuses_by_name() -> Bool {
+  let field = s_readiness_field(exercises: [s_hetzner_exercise(valid_through: 999)], readiness: RequireExercisedRoute)
+  s_excluded_keys(field: field, tag: "route-exercise-expired") == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: field) == []
+}
+
+// Readiness is monotone in the exercise set: an expired and a live exercise of one route admit in
+// either order.
+test fn w_any_unexpired_exercise_admits_in_either_order() -> Bool {
+  let live = s_hetzner_exercise(valid_through: 2000)
+  let stale = s_hetzner_exercise(valid_through: 10)
+  s_admitted_keys(field: s_readiness_field(exercises: [stale, live], readiness: RequireExercisedRoute)) == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: s_readiness_field(exercises: [live, stale], readiness: RequireExercisedRoute)) == ["spill-hetzner-cax41"]
+}
+
+// The exercise arm admits its own work onto its own route, and nothing wider: naming another work
+// falls back to requiring an exercise, which this route does not have.
+test fn w_an_exercise_admits_only_its_own_work_on_its_own_route() -> Bool {
+  let own = s_readiness_field(exercises: [], readiness: ExerciseOfRoute { route: s_hetzner_route(), work: s_work() })
+  let other_work = s_readiness_field(
+    exercises: [],
+    readiness: ExerciseOfRoute { route: s_hetzner_route(), work: FabricIdentity { principal: "gunbc", key: "some-other-work" } },
+  )
+  s_admitted_keys(field: own) == ["spill-hetzner-cax41"]
+    && s_excluded_keys(field: other_work, tag: "route-never-exercised") == ["spill-hetzner-cax41"]
 }
