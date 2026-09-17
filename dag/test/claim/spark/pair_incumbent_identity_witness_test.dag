@@ -7,14 +7,14 @@ import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_co
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv1 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
 import gunbc.spark.vllm_serving_launch { vllm_serving_launch, EndpointIncarnationObservation, endpoint_incarnation_observation }
 import gunbc.spark.serving_incarnation_observe { IncarnationUnitNotActive }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
 import gunbc.spark.pair_incumbent_identity {
   DeclaredRankUnit, DeclaredPairRealization, declared_pair_realization_of,
-  DeclaredPairRealizationStanding, DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization,
+  DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable,
   ObservedRankUnit, ObservedPairRealization, observed_pair_realization_of,
   ObservedPairRealizationReading, ObservedPairRealizationRead, ObservedPairRealizationRefused,
   PairWorkerUnitRefused,
@@ -25,9 +25,10 @@ import gunbc.spark.pair_incumbent_identity {
 
 // THE CLAIMS DISCRIMINATE AT ONE INTERFACE EACH (DESIGN §3 witness rule). The agreement fold takes
 // a declared standing and an observed reading as SUPPLIED VALUES; the fixtures below construct
-// them, so no claim re-renders a unit or opens an ssh session to ask what the fold answers. The
-// pairing obligation is discharged at the declared boundary by the one inhabitance claim at the
-// bottom, which runs the PRODUCTION declared producer over Group A and asserts the route it takes.
+// them, so no claim re-renders a unit or opens an ssh session to ask what the fold answers, and
+// every row here is hermetic. The pairing obligation is discharged at the declared boundary by
+// test.claim.spark.pair_incumbent_identity_wet_witness, which runs the PRODUCTION declared producer
+// over Group A on the local-repo wet lane (it reaches sha256sum DigestStdin, which has no mock).
 // The observed boundary's producer reads four Sparks over the fleet key session and has no CI
 // route: its inhabitance is the operator-run instrument gunbc.instruments.pair_incumbent_identity_standing
 // and the receipt it writes, the same boundary gunbc.spark.serving_incarnation_observe's witness draws.
@@ -243,29 +244,4 @@ test fn the_receipt_renders_one_line_per_drifted_rank() -> Bool {
     let lines = pair_realization_agreement_lines(a: t_agreement(declared: t_declared(head_digest: a, worker_digest: b), observed: t_observed(head_digest: a, image: img, workers: workers)))
     length(lines) == 3
   })
-}
-
-// ── INHABITANCE: THE PRODUCTION DECLARED PRODUCER, OVER THE REAL GROUP A DECLARATION ───────────
-//
-// This is the one claim that runs the real declared route: it renders Group A's four units from
-// gunbc.spark.pair_serving_realization and digests them. It asserts the ROUTE -- Keyed, one head,
-// three workers, and a key that is stable across two derivations -- not merely the shape. Deleting
-// the integration (say, declared_pair_realization returning Unavailable for a realized group) fails
-// it. Group B has no pair realization and must say so rather than key an empty pair.
-test fn the_production_declaration_keys_group_a_and_refuses_group_b() -> Bool {
-  match declared_pair_realization(group: FabricGroupA) {
-    DeclaredPairRealizationUnavailable { group: _, obligation: _ } => false
-    DeclaredPairRealizationKeyed { declared: d } =>
-      length(d.workers) == 3
-        && (d.head.unit_name as String) == (spark_pair_head_unit_name as String)
-        && all(d.workers, w => (w.unit_name as String) == (spark_pair_worker_unit_name as String))
-        && (match declared_pair_realization(group: FabricGroupA) {
-              DeclaredPairRealizationKeyed { declared: again } => hashes_equal(l: again.key, r: d.key)
-              DeclaredPairRealizationUnavailable { group: _, obligation: _ } => false
-            })
-        && (match declared_pair_realization(group: FabricGroupB) {
-              DeclaredPairRealizationUnavailable { group: _, obligation: _ } => true
-              DeclaredPairRealizationKeyed { declared: _ } => false
-            })
-  }
 }
