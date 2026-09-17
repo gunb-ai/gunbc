@@ -104,8 +104,6 @@ fn program_assembly_fold_state_from_located(
   }
 }
 
-fn program_assembly_read_to_normalized_root_prepared(
-
 // THE PER-FILE FRONT END, ONE DECLARATION PER PHASE. The composition below is unchanged in
 // meaning: each phase takes the PREVIOUS PHASE'S OUTCOME and binds it, so diagnostic merging and
 // refusal propagation stay inside `.dag` and a caller that enters the phases separately gets
