@@ -1,0 +1,43 @@
+module gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-13 (direction vivid-bee-814, on gunbc#11265 review 65400). Whole-root compile
+// admission became a join on the ROOT's own measured row (gunbc.whole_corpus_compile_admission). The
+// cross-shard seam probe's MONOLITH CONTROL, M in tools.dag_compile_clean_seam_transport, compiles a
+// relocated copy of the whole dag tree with one seam module mutated, as a whole root. Under a
+// population-blind 16 GiB constant it executed on any host whose budget cleared that figure. It now
+// always refuses as an unmeasured root -- correctly: a mutated copy of the whole tree has no stable
+// identity a measured row can name, because its content digest changes with every base main sha, so
+// the arm is not bent for it.
+//
+// WHAT IS LOST: the control that the SAME seam diagnostic class appears when nothing is sharded. The
+// shard arms Y and X moved to --entry grain and keep executing; M does not.
+//
+// WHAT THIS IS NOT: the pre-existing refusal of the probe's /tmp stages as outside the workspace root,
+// which already kept cross_shard_seam_preservation_holds_on_live_tree false before this change. That
+// is a separate inert-instrument class, routed by the direction, and it is not declared here.
+
+data seam_monolith_control_unmeasured_derived_root_population: List<String> = [
+  "tools.dag_compile_clean_seam_transport run_cross_shard_seam_probe monolith control M (the stage-less cross_shard_seam_compile_args whole-root compile of the mutated dag copy)",
+]
+
+data seam_monolith_control_unmeasured_derived_root: RungDrop = RungDrop {
+  identity: "seam_monolith_control_unmeasured_derived_root" as NonEmptyStr,
+
+  subject: "The cross-shard seam probe's monolith control as an executing whole-root compile of a derived root",
+
+  declared: "2026-09-13",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: seam_monolith_control_unmeasured_derived_root_population,
+    restoration_trigger: "THE MONOLITH CONTROL EXECUTES AGAIN ON ITS SUBJECT: either M is re-expressed at --entry grain against the seam it actually tests, so that an unsharded compile of the importer's closure over the mutated tree reds naming the seam class; or a measured-demand row for derived roots is recorded per base, keyed on the derived root's identity at that base and measured once with its receipt, so that whole-root admission admits M on a row. Never by a per-source or per-byte coefficient, and never by a bigger budget or a placement that skips admission",
+  }
+}

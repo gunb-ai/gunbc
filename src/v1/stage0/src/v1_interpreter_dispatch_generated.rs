@@ -22,6 +22,7 @@ pub enum EvalBuiltinArm {
     FreeCallCount,
     FreeCallReverse,
     FreeCallHmacSha256VerifyHex,
+    FreeCallHmacSha256Hex,
     FreeCallStringLength,
     FreeCallSubstring,
     FreeCallCharAt,
@@ -160,6 +161,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "count" => Some(EvalBuiltinArm::FreeCallCount),
         "reverse" => Some(EvalBuiltinArm::FreeCallReverse),
         "hmac_sha256_verify_hex" => Some(EvalBuiltinArm::FreeCallHmacSha256VerifyHex),
+        "hmac_sha256_hex" => Some(EvalBuiltinArm::FreeCallHmacSha256Hex),
         "string_length" => Some(EvalBuiltinArm::FreeCallStringLength),
         "substring" => Some(EvalBuiltinArm::FreeCallSubstring),
         "char_at" => Some(EvalBuiltinArm::FreeCallCharAt),
@@ -302,6 +304,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCount };
     ("free_call.reverse") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallReverse };
     ("free_call.hmac_sha256_verify_hex") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHmacSha256VerifyHex };
+    ("free_call.hmac_sha256_hex") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHmacSha256Hex };
     ("free_call.string_length") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStringLength };
     ("free_call.substring") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallSubstring };
     ("free_call.char_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCharAt };
