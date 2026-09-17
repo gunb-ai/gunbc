@@ -243,10 +243,18 @@ type Xl1LiveRepairTapCensus
   = Xl1LiveRepairTapRows { count: Int }
   | Xl1LiveRepairTapUnavailable { cause: String }
 
-fn xl1_live_repair_tap_census(source_roots: List<String>) -> Xl1LiveRepairTapCensus {
-  match emit_rust_reference_derived_rows_bridge(source_roots, whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path()) {
+// The census is a fold over a TAP VALUE so a prepared (floor-acquired) tap serves it without a
+// second compile; the source-roots entry composes the live bridge with it.
+fn xl1_live_repair_tap_census_of(tap: Xl1PrimaryRootTap) -> Xl1LiveRepairTapCensus {
+  match tap {
     Xl1PrimaryRootRefused { cause: c } => Xl1LiveRepairTapUnavailable { cause: c }
     Xl1PrimaryRootObserved { repair_rows: rows, primary_root: _, occurrence_transport: _, binding_rows: _ } =>
       Xl1LiveRepairTapRows { count: list_length(items: rows) }
   }
+}
+
+fn xl1_live_repair_tap_census(source_roots: List<String>) -> Xl1LiveRepairTapCensus {
+  xl1_live_repair_tap_census_of(
+    tap: emit_rust_reference_derived_rows_bridge(source_roots, whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path())
+  )
 }

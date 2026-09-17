@@ -1,0 +1,21 @@
+module gunbc.namespace.transition_admission.reference_deps_reference_declared_module_prefix_facts_symbol_eq
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, PullRequest }
+
+// gunbc#11461 (review 67052): the module-local symbol_eq copy in v2.lens.reference_deps is
+// deleted and the spelling now resolves to the one authority v2.std.node symbol_eq.
+data reference_deps_reference_declared_module_prefix_facts_symbol_eq: TransitionAdmission = TransitionAdmission {
+  label: "gunbc#11461 v2.lens.reference_deps reference_declared_module_prefix_facts symbol_eq: v2.lens.reference_deps -> v2.std.node" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("v2.lens.reference_deps", "reference_declared_module_prefix_facts"),
+    spelling: "symbol_eq" as NonEmptyStr,
+    expected_candidates: [decl_ref("v2.std.node", "symbol_eq")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: PullRequest { number: 11466 as UInt32 },
+  owner_pull_request: 11461 as UInt32,
+}
