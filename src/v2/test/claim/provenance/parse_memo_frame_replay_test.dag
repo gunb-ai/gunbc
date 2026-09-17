@@ -234,12 +234,11 @@ test fn parse_memo_hit_carries_no_abandoned_path_provenance() -> Bool {
 
 // A HIT WHOSE FRAME HOLDS A NESTED MEMOIZED FRAME.
 //
-//   S = X z | X y      X = W b      W = a      tokens: a b y
+//   S = X z | (X y) z*      X = W b      W = a      tokens: a b y
 //
-// Alternative one parses X at position 0 -- a memo miss, inside which W is a memo miss too, so X's
-// stored frame holds W's frame as a FrameNested -- and fails at z. Alternative two starts again from
-// the rolled-back provenance and hits X's entry; the ids of W's nodes are reachable only through the
-// nested frame. A replay that skips nested frames loses them and reds on the entry check.
+// The second alternative is nested so it does not share a sequence-left atom with the first.
+// SharedPrefix would parse X once and never hit the memo. OrderedBacktrack tries X z (miss,
+// nested W miss, fail at z), then (X y) z* (hit X, whose stored frame holds W).
 fn nested_frame_root() -> GrammarRoot {
   GrammarRoot {
     start: ^nested_frame_s,
@@ -252,8 +251,11 @@ fn nested_frame_root() -> GrammarRoot {
             right: abandoned_terminal(token_class: ^nested_tok_z)
           },
           right: Sequence {
-            left: Nonterminal { production: ^nested_frame_x },
-            right: abandoned_terminal(token_class: ^nested_tok_y)
+            left: Sequence {
+              left: Nonterminal { production: ^nested_frame_x },
+              right: abandoned_terminal(token_class: ^nested_tok_y)
+            },
+            right: Repeat { element: abandoned_terminal(token_class: ^nested_tok_z) }
           }
         },
         emitted: grammar_atom(identity: ^nested_frame_s)

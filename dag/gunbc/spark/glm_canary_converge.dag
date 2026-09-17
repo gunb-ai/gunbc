@@ -158,6 +158,8 @@ type SpeculationPolicy
 // name. Prefix caching resolves to ENABLED here, which is a sharing consequence nobody chose;
 // recording the partition as unestablished is what lets the tenancy slice find it rather than infer
 // it.
+data glm_canary_declared_unit_artifact_obligation: NonEmptyStr = "gunbc.spark.glm_canary_converge: the canary arm is a native argv launch, not a pair-serving systemd unit, and it has no rendered unit artifact to digest. Pair-serving unit bytes must not stand in for this realization." as NonEmptyStr
+
 data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
   checkpoint: Glm53Exl3_205,
   runtime: Gitcommit90Sm121Exl3,
