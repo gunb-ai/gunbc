@@ -54,8 +54,14 @@ Mirror `gunbc.spark.bootstrap_credential` / `grant_privileged_operation`:
   step's outcome typed, exit folds over the report. Run via `fleet-converge.yml` with the
   switch credential materialized/removed in-step. Refuses (never hangs) when the intent's
   FEC exceeds the switch's capability. Two-ended convergence: success only when BOTH the
-  switch monitor AND the host mstlink report the negotiated speed, not one end's local
-  "link-ok".
+  switch monitor AND the host report the negotiated speed, not one end's local "link-ok".
+  The host-side READ of negotiated speed is UNPRIVILEGED (`ethtool <dev>` reports Speed
+  without root), so PR-3's success criterion does NOT depend on PR-4: reading a speed and
+  forcing a speed are different privileges. What PR-3 CANNOT do without PR-4 is FORCE the
+  host end, and forced-both is what actually trains 100G on this hardware -- so PR-3 and
+  PR-4 together ACHIEVE convergence, while PR-3 alone can already OBSERVE both ends and
+  refuse honestly. If PR-3 lands first it converges the switch and reports the host still
+  at 50G (host unforced); it does not claim success off the switch's local link-ok.
 
 - **PR-4 (host side): mstlink authority + set grant.** `extdeps.mellanox` for mstlink
   (G9), the 2-lane-force fact (G10: ethtool cannot pin CR2), and the host-side set grant

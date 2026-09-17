@@ -45,15 +45,25 @@ cages, NOT the qsfp56 cages. This corrects the pre-read assumption. Running fabr
     qsfp56-dd-2-1  qsfp56-dd-2-3  qsfp56-dd-2-5  qsfp56-dd-2-7
 
 Per-lane state (qsfp56-dd-1-1 shown, all 8 identical in the fields that matter):
-    speed            = 50G-baseCR2      <- THE ONLY WRONG FIELD
-    auto-negotiation = false            (already forced; correct for passive DAC)
-    fec-mode         = fec91            (RS-FEC / clause 91; correct for 100GBASE-CR2)
+    speed            = 50G-baseCR2      <- forcing 50G
+    auto-negotiation = false            (forced; the passive-DAC mode the model records)
+    fec-mode         = fec91            (RS(528,514) / clause 91; the FEC RUNNING AT 50G)
     slave            = true             (hardware-switched)
-    rs-fec-corrected=1 uncorrected=6 over ~1e13 codewords (RS-FEC live and clean)
+    rs-fec-corrected=1 uncorrected=6 over ~1e13 codewords (RS-FEC live and clean at 50G)
 
-So the switch is FORCING 50G. FEC and autoneg are already right. The fix is one field
-per lane: speed 50G-baseCR2 -> 100G-baseCR2. Maps to Crs812LaneSpeed.Lane100GCr2 +
-Crs812FecMode.Fec91.
+So the switch is FORCING 50G. The speed field is wrong for 100G; whether fec91 is also
+wrong for 100G is NOT established here -- see the CORRECTION below.
+
+CORRECTION (added with G2): an earlier head of this block called fec91 "correct for
+100GBASE-CR2" and said "FEC and autoneg are already right", mapping the 100G intent to
+Crs812FecMode.Fec91. That was a 50G observation promoted into a 100G requirement (DESIGN
+§4d), and a meaning fork with G2 of this PR's gap analysis. What is actually observed is
+that fec91 = RS(528,514) is the FEC the lane runs at 50G. 100GBASE-CR2 (50G-PAM4 lanes)
+uses RS(544,514) / KP4 / clause 134, which the CRS812 REST surface does not appear to
+offer (only fec74/fec91/off/auto). So fec91 is NOT established as the 100G intent; it is a
+candidate the converge path must not assume, and G2 obligates converge to refuse if the
+switch cannot offer the codeword the mode needs. The autoneg half of this same sentence
+got its own correction lower in this log; this is the FEC half.
 
 ### Actuation 2026-09-17 — single-lane experiment: qsfp56-dd-1-1 (srv5)
 

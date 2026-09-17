@@ -32,6 +32,13 @@ The discriminator is the EEPROM bytes plus the NIC's supported-speed set. Neithe
 (§1). Establishing which cause holds is the **first** work item; everything downstream is premised
 on it.
 
+> **SUPERSEDED 2026-09-17 (see G12).** This §0 was written before the read grant landed and the
+> bytes were read. They have since been read: byte 192 = `0x40` (attests 100GBASE-CR2) and the NIC
+> reports `Supported Cable Speed: 100G_2X`. So cause (1) is ruled out — **the re-flash took** — and
+> "the first work item" is done. The current standing fact lives in **G12** and the actuation log;
+> the two paragraphs above are retained as the original framing, not a current open question. The
+> live blocker is now the switch-side QSFP-DD end, not the host coding.
+
 ## 1. Gap: the host end cannot be read or set
 
 `sudo -n -l` on spark-a3ee, 2026-09-17, shows `gunbc-automation` holds exactly:
