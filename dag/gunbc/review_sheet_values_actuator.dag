@@ -76,22 +76,23 @@ fn value_range_row_count(r: ValueRange) -> Int {
   count(value_range_rows(r: r))
 }
 
-// Equality is over the ROWS, not the response envelope: values.get returns the range string it
-// resolved, which may be spelled differently from the one requested (a bare tab name comes back as
-// an explicit A1 span), and comparing envelopes would report a difference the sheet does not have.
 // EQUALITY IS LINEAR AND IT REFUSES RATHER THAN ASSUMING. Indexing one list while folding the
 // other is O(n^2) because skip walks, and DESIGN section 6 fixes a proven quadratic regardless of
 // the realized n -- this table is 58 rows today and the reason it is 58 is not a stable fact.
 // So both sides are serialised once and compared, which is linear.
+//
+// The separators are printable sentinels rather than the ASCII unit separators they would ideally
+// be, because the lexer does not admit a unicode escape and a raw control byte in source is worse
+// than a long implausible string that is checked anyway.
 //
 // The serialisation is only sound while no cell contains the separator, and that is a property of
 // the DATA, not of this code: a repository description can contain anything. So the fold does not
 // assume it -- cells_carry_separator answers whether any cell does, and the caller refuses on true
 // rather than reporting an equality it cannot establish. A false equality here would skip a write
 // the sheet needs; a false difference would rewrite an identical sheet forever.
-data rows_field_separator: String = "\u001f"
+data rows_field_separator: String = "<<gunbc-field-sep>>"
 
-data rows_record_separator: String = "\u001e"
+data rows_record_separator: String = "<<gunbc-record-sep>>"
 
 fn cells_carry_separator(rows: List<List<String>>) -> Bool {
   any(rows, row =>
