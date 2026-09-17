@@ -47,13 +47,23 @@ counter is read (`vllm:generation_tokens_total` / job completion events); what t
 are.
 
 ## The seven parts, each with the failure it prevents
+### 1. The window is a TERMED lease, and the first draft cited the wrong one
+A throughput probe puts real load on a shared resource, so "we reserve a period" is a lease -- and the
+term is the whole point, because a prober that dies must not hold the subject out of service forever.
+This design first cited `std.temporal_effect::HeldLease`, which was wrong and is recorded rather than
+quietly corrected: `HeldLease` carries an epoch (lease key, resource and owner fingerprints,
+generation) and an observed state, and **no deadline anywhere**. It fences a running holder by
+identity; it does not bound one by time.
 
-### 1. The window is a lease, not a convention
-A throughput probe puts real load on a shared resource. "We reserve a period" is a **lease with a
-declared deadline**, and its home already exists: `std.temporal_effect::HeldLease`, with
-`std.durable_compare_and_set::CasExpectation` for the linearization where two probes could collide.
+The termed home is `gunbc.product.capacity.lease::LeaseGrant`, which carries `granted_at`,
+`maximum_duration_seconds`, `expires_at` and a fence. DESIGN §3b already draws exactly this
+distinction under fabric/compute -- serving settles a **termed** `LeaseGrant`, compute a **timeless**
+`LeaseIdentity` -- so the error was failing to read a distinction the roster already states.
+`std.durable_compare_and_set::CasExpectation` remains the linearizer where two probes could collide.
 Admission refuses when the subject carries foreign in-flight work (`vllm:num_requests_running > 0`;
 a runner pool with queued PR jobs). *Prevents:* a probe that measures someone else's contention and
+reports it as the subject's capacity, two probes measuring each other, and a crashed prober holding a
+serving arm reserved indefinitely. (Correction raised by the side-chat review, 2026-09-17.)
 reports it as the subject's capacity, and two probes measuring each other.
 
 ### 2. Offered load is declared, never inferred
@@ -74,12 +84,21 @@ measured at it unattributable. (Raised by the side-chat review, 2026-09-17.)
 ### 3. Saturation standing is part of the reading, and this is the subtle one
 If nothing queued, the probe measured the LOAD IT OFFERED, not the subject's capacity. Those are
 different facts and collapsing them is the §5 absorbing-fallback shape: a comfortable number that
-silently answers a question nobody asked. The reading is three-valued —
-`SaturatedAtOfferedLoad` (queue depth > 0 throughout) | `UnsaturatedAtOfferedLoad` (never queued, so
-this is a floor on capacity and not a measurement of it) | `SaturationUnread`.
-*Applies to today's figures:* per-stream barely moved from 8 to 16 streams (3.41 → 3.20) while
-aggregate nearly doubled, so 51.19 tok/s is almost certainly `UnsaturatedAtOfferedLoad` — a lower
-bound on what that arm can do on sockets, and it must not be recorded as its capacity.
+silently answers a question nobody asked.
+
+**Saturation is not decidable from one run, and an earlier draft of this section pretended it was.**
+Queue presence is neither necessary nor sufficient: a queue can be briefly non-empty while the subject
+is nowhere near capacity, and a subject exactly matched by its offered load can saturate with an empty
+queue. A single point cannot separate them. What establishes saturation is a **sweep** -- two or more
+offered-load levels where aggregate rate stops rising while per-unit rate degrades. So the standing is
+`SaturatedByPlateau { levels }` | `UnsaturatedAtOfferedLoad` (rate still rising at the highest level
+offered, which is a LOWER BOUND on capacity and never a measurement of it) | `SaturationUndetermined`
+(one level only, or levels that do not separate). A single-point probe reports the third and is
+honest; it does not get to infer the first from a queue reading.
+*Applies to today's figures:* aggregate nearly doubled from 8 to 16 streams (27.31 to 51.19) while
+per-stream barely moved (3.41 to 3.20), which is a rate still rising -- `UnsaturatedAtOfferedLoad`.
+51.19 tok/s is a lower bound on what that arm does on sockets and is not its capacity.
+(Correction raised by the side-chat review, 2026-09-17.)
 
 ### 4. Completion accounting is fail-closed
 A unit that errors consumes wall clock and contributes nothing. My hand harness divided a counter
@@ -103,6 +122,22 @@ class, toolchain revision, and **cache state**, which is the one most likely to 
 one most able to produce a meaningless comparison: a cold-sccache run and a warm one are different
 subjects, not a regression. Per DESIGN §3's external-decomposition rule these are two subject
 authorities inhabiting one shape, not one enum with a product column.
+
+### 6b. The engine subject is not the whole comparability key
+`serving_performance_subject`'s twelve axes describe the ENGINE. They say nothing about the request
+shape the rate was measured with, and two readings at one configuration are not comparable if one
+decoded 128 tokens from a short prompt and the other 4,096 from a long one -- prefill share, batch
+occupancy and cache behaviour all move. Today's figures are the case in point: 128-token decodes with
+`min_tokens` pinned, one fixed prompt, non-streaming, over the OpenAI-compatible completions route.
+None of that is in the twelve axes.
+
+So a reading is comparable only when **both** the subject axes and a declared **load identity** agree:
+unit size and stopping rule, prompt shape, protocol and route, streaming or not, and the concurrency
+level. The CI side has the same requirement wearing different clothes -- target set, clean versus
+incremental tree, cache state -- which is why the CI work in stage 3 derives its load identity
+alongside its axes rather than after them. A rate carried without its load identity is a number whose
+experiment cannot be repeated. (Raised by the side-chat review, 2026-09-17.)
+
 
 ### 7. The floor is not a copy of the last reading
 DESIGN §5 is explicit: a merge-blocking test may compare to a numeric literal only when that literal
@@ -133,8 +168,10 @@ direction §3b asks for:
   `gunbc.product.capacity.lease::LeaseGrant`, `gunbc.product.fabric.selection::select_supply`. The §3b
   row already covers both compute cells and inference serving and already states the sharing is
   partial, which is the same partial sharing this design has.
-- **leasing / locking / grants** — the reserved window. Homes: `std.temporal_effect::HeldLease`,
-  `std.durable_compare_and_set::CasExpectation`.
+- **leasing / locking / grants** — the reserved window, as a TERMED grant. Homes:
+  `gunbc.product.capacity.lease::LeaseGrant` (carries the term),
+  `std.durable_compare_and_set::CasExpectation` (the linearizer). `std.temporal_effect::HeldLease` is
+  the timeless fenced form and is NOT this row's home, which the first draft of this design got wrong.
 - **process observability / reporting** — the receipt, at occurrence grain. Homes:
   `std.observation::ObservationEvent`, `std.observation::RecordedObservation`.
 - **decision / selection** — NOT touched in the first stages, and saying so is part of the design. A
