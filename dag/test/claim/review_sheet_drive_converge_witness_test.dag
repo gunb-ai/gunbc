@@ -406,3 +406,61 @@ test fn a_partial_file_page_refuses_rather_than_adopting() -> Bool {
     Apply { plan: _ } => false
   }
 }
+
+// THE DISCRIMINATING RED FOR THE SECOND FAIL-OPEN, which the first repair of the principal-type gap
+// introduced and its own annotation denied. An unreadable TYPE on a row carrying the writer's
+// address used to be filtered out before any role decode, so the matched set emptied and the
+// observation answered Absent -- and Absent under EnsureMayApply is Apply, a create against a
+// principal that may already hold access. This is the same shape the unmodeled-ROLE claim above
+// covers, one field over, and it had no claim at all.
+test fn writer_present_under_unreadable_type_is_unreadable_not_absent() -> Bool {
+  match membership_from_permissions(
+    list: DrivePermissionList {
+      permissions: Present {
+        value: [
+          DrivePermission {
+            id: "perm-fixture",
+            emailAddress: Present { value: w_writer() as String },
+            role: "fileOrganizer",
+            type: "serviceAccountSomethingNew"
+          }
+        ]
+      },
+      nextPageToken: none
+    },
+    writer: w_writer(),
+  ) {
+    MembershipUnreadable { reason: r } => string_contains(s: r as String, pattern: "cannot read")
+    MembershipAbsent => false
+    MembershipObserved { role: _ } => false
+    MembershipPageIncomplete { next_page_token: _ } => false
+  }
+}
+
+// AND THE CONTROL THAT KEEPS THE ROW ABOVE FROM BEING FREE. An unreadable type on a row that does
+// NOT name the writer is genuinely not about this membership: it must not poison the observation,
+// or any drive carrying one exotic permission would become permanently unreadable and the converge
+// could never proceed.
+test fn an_unreadable_type_for_another_principal_does_not_poison_the_read() -> Bool {
+  match membership_from_permissions(
+    list: DrivePermissionList {
+      permissions: Present {
+        value: [
+          DrivePermission {
+            id: "perm-other",
+            emailAddress: Present { value: "someone-else@example.com" },
+            role: "reader",
+            type: "serviceAccountSomethingNew"
+          }
+        ]
+      },
+      nextPageToken: none
+    },
+    writer: w_writer(),
+  ) {
+    MembershipAbsent => true
+    MembershipUnreadable { reason: _ } => false
+    MembershipObserved { role: _ } => false
+    MembershipPageIncomplete { next_page_token: _ } => false
+  }
+}

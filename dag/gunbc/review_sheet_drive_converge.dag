@@ -99,20 +99,58 @@ type MembershipGrantPlan {
   role: DrivePermissionRole
 }
 
-// A ROW NAMES THE WRITER ONLY IF IT IS A USER GRANT TO THAT ADDRESS. Matching the email alone was
-// not enough and the gap was real rather than theoretical: Drive permissions of type domain and
-// anyone carry a role exactly as a user grant does, so a role-satisfying `anyone` row would have
-// read as the writer being a member of the drive -- a world-writable drive reported as converged.
-// An unrecognised type is not a user and does not match; it is also not silently dropped, because
-// membership_from_matched_rows answers Absent only when NO row matched, and a principal type this
-// model cannot read is a row it must not claim to have understood.
-fn permission_names_writer(p: DrivePermission, writer: ServiceAccountEmail) -> Bool {
+// A ROW NAMES THE WRITER ONLY IF IT IS A USER GRANT TO THAT ADDRESS, and a row this model cannot
+// classify is neither a match nor a miss. Matching the email alone was not enough: Drive
+// permissions of type domain and anyone carry a role exactly as a user grant does, so a
+// role-satisfying `anyone` row would have read as the writer being a member -- a world-writable
+// drive reported as converged.
+//
+// THE FIRST REPAIR OF THAT GAP INTRODUCED A SECOND ONE, and the annotation here asserted it had
+// not. An unreadable type answered false, which filtered the row out before any role decode, so a
+// row carrying the WRITER'S OWN EMAIL under a type this model could not read left the matched set
+// empty -- MembershipAbsent, and under EnsureMayApply that is Apply: a create against a principal
+// that may already be present. The previous text claimed such a row "is also not silently dropped";
+// dropping it from the filter is exactly a silent drop, and the sibling role path refuses the
+// identical shape one fold below.
+//
+// So a row is now classified rather than filtered, and the three outcomes are different facts. An
+// unreadable type on a row that does NOT name the writer is genuinely not about this membership and
+// is skipped; an unreadable type on a row that DOES name the writer makes the whole observation
+// unreadable, because absence would authorize the create.
+type PermissionRowStanding
+  = RowNamesWriter
+  | RowNamesWriterUnderUnreadableType { raw: String }
+  | RowIsNotWriter
+
+fn permission_row_standing(p: DrivePermission, writer: ServiceAccountEmail) -> PermissionRowStanding {
   match drive_principal_type_from_wire(raw: p.type) {
-    Absent => false
-    Present { value: PrincipalUser } => permission_email_is_writer(p: p, writer: writer)
-    Present { value: PrincipalGroup } => false
-    Present { value: PrincipalDomain } => false
-    Present { value: PrincipalAnyone } => false
+    Present { value: PrincipalUser } =>
+      if permission_email_is_writer(p: p, writer: writer) { RowNamesWriter } else { RowIsNotWriter }
+    Present { value: PrincipalGroup } => RowIsNotWriter
+    Present { value: PrincipalDomain } => RowIsNotWriter
+    Present { value: PrincipalAnyone } => RowIsNotWriter
+    Absent =>
+      if permission_email_is_writer(p: p, writer: writer) {
+        RowNamesWriterUnderUnreadableType { raw: p.type }
+      } else {
+        RowIsNotWriter
+      }
+  }
+}
+
+fn permission_names_writer(p: DrivePermission, writer: ServiceAccountEmail) -> Bool {
+  match permission_row_standing(p: p, writer: writer) {
+    RowNamesWriter => true
+    RowNamesWriterUnderUnreadableType { raw: _ } => false
+    RowIsNotWriter => false
+  }
+}
+
+fn permission_type_is_unreadable_for_writer(p: DrivePermission, writer: ServiceAccountEmail) -> Bool {
+  match permission_row_standing(p: p, writer: writer) {
+    RowNamesWriterUnderUnreadableType { raw: _ } => true
+    RowNamesWriter => false
+    RowIsNotWriter => false
   }
 }
 
@@ -169,9 +207,15 @@ fn membership_from_complete_page(
         reason: "permissions field absent from the response; an unread list is not an empty one" as NonEmptyStr
       }
     Present { value: rows } =>
-      membership_from_matched_rows(
-        matched: filter(rows, p => permission_names_writer(p: p, writer: writer))
-      )
+      if count(filter(rows, p => permission_type_is_unreadable_for_writer(p: p, writer: writer))) > 0 {
+        MembershipUnreadable {
+          reason: "a permission row carries the writer's address under a principal type this model cannot read, so whether the writer is already a member is unknown; reporting absence here would authorize a create against a principal that may already hold access" as NonEmptyStr
+        }
+      } else {
+        membership_from_matched_rows(
+          matched: filter(rows, p => permission_names_writer(p: p, writer: writer))
+        )
+      }
   }
 }
 
