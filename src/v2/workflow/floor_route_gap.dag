@@ -1059,9 +1059,26 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
 // (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), which is the inhabitance half of
 // DESIGN section 3's supplied-input pairing obligation.
 //
-// THE ROWS OF THOSE SAME FILES THAT REACH A VERDICT WITHOUT A DIGEST ARE NOT ENROLLED HERE, because
-// they take no route gap: the region-unobserved and declared-unit-unavailable arms are decided
-// before the mint is reached, and the withdrawn-roster row is handed its standing.
+// WHAT DECIDES MEMBERSHIP HERE IS WHETHER THE ROW REACHES THE MINT, NOT WHICH ARM THE FOLD ANSWERS
+// ON. An earlier spelling of this paragraph said the declared-unit-unavailable rows are omitted
+// "because the arm is decided before the mint is reached", and that is FALSE as a rule and misread
+// once already (review 67105 asked for a correct enrollment to be deleted on the strength of it).
+// The fold's refusal order says nothing about what the row EVALUATED to build its arguments: a row
+// can hand in DeclaredUnitDigestUnavailable and still reach DigestStdin through its INCARNATION
+// fixture, because that launch's unit_digest is taken from the production mint so the agreeing and
+// disagreeing arms compare real bytes.
+//
+// THE TWO t_unit_unavailable ROWS ARE EXACTLY THAT CONTRAST, and they are the reason to state this
+// precisely rather than by arm name:
+//   an_observed_incarnation_without_a_declared_unit_digest_refuses -- supplies the unavailable
+//     standing AND an observed incarnation built from t_incarnation(), which routes through
+//     t_declared_digest() to spark_pair_declared_head_digest. It gaps. ENROLLED.
+//   the_declared_unit_is_refused_before_the_incarnation -- supplies the unavailable standing over a
+//     bare t_covered_matching() with no incarnation fixture. It never reaches the mint. OMITTED.
+// Read the row's whole argument closure, not the arm it asserts.
+//
+// The withdrawn-roster row in the bind witness is omitted for the different reason that it is HANDED
+// its standing and constructs no launch fixture.
 fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.hashing_the_same_rendered_bytes_is_stable", operation: "DigestStdin", ground: NoMockResponse {} },
