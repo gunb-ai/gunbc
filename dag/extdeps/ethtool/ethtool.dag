@@ -53,33 +53,27 @@ fn ethtool_binary_path() -> NonEmptyStr {
 // subject of the read, so it is carried, not defaulted.
 data ethtool_module_info_flag: NonEmptyStr = "-m" as NonEmptyStr
 
-fn ethtool_module_info_argv(device: NonEmptyStr) -> List<String> {
-  [ethtool_binary_name as String, ethtool_module_info_flag as String, device as String]
-}
-
-fn ethtool_module_info_command(device: NonEmptyStr) -> NonEmptyStr {
-  join([
-    ethtool_binary_path() as String,
-    " ", ethtool_module_info_flag as String,
-    " ", device as String,
-  ], "") as NonEmptyStr
-}
-
-// THE RAW FORM IS A DIFFERENT COMMAND, NOT A MODE OF THE ONE ABOVE, and the distinction is
-// load-bearing for this fleet rather than pedantic. `ethtool -m <dev>` prints ethtool's own DECODING
-// of the EEPROM, and gunbc.spark.fabric_switch_observed records that decoding fabricating a
-// measurement: byte 140 holds FFh, the SFF-8636 escape meaning "the real rate is in byte 222", and
-// ethtool rendered it as "BR, nominal: 25500 Mb/s" -- 255 x 100, the sentinel multiplied out and
-// printed as though it were a reading.
+// ONLY THE RAW FORM IS MODELED, AND THE DECODED FORM IS ABSENT ON PURPOSE. `ethtool -m <dev>` alone
+// prints ethtool's own DECODING of the EEPROM, and gunbc.spark.fabric_switch_observed records that
+// decoding fabricating a measurement: byte 140 holds FFh, the SFF-8636 escape meaning "the real rate
+// is in byte 222", and ethtool rendered it as "BR, nominal: 25500 Mb/s" -- 255 x 100, the sentinel
+// multiplied out and printed as though it were a reading.
 //
 // `raw on` returns the BYTES, which is the only form from which byte 116, byte 192 and byte 222 can
 // be read as themselves and decoded by extdeps.transceiver.sff_8636, whose decoders this repository
 // owns and can be asked questions. So the raw form is what the compliance-coding question is
-// actually answered from, and the decoded form is kept only because it names the vendor and part.
+// actually answered from, and it is the only form any consumer here needs.
 //
-// Both spellings are rendered from the same rows below, so the argv a grant executes and the
-// Cmnd_Spec that authorizes it cannot drift apart -- the fork measured on srv5/srv6 2026-08-22,
-// where the sudoers line carried a subject the argv did not.
+// An earlier head of this module also carried builders for the decoded spelling, on the reasoning
+// that it names the vendor and part. Nothing called them. That is the dangling declaration DESIGN
+// §3c makes red, and "names the vendor and part" is a use nobody has, not a consumer -- so they are
+// deleted rather than kept against a need no change in flight has. A decoded reader lands with the
+// consumer that wants those fields.
+//
+// Both spellings of the raw command -- bare argv and absolute Cmnd_Spec -- are rendered from the same
+// rows below, so the argv a grant executes and the sudoers line that authorizes it cannot drift
+// apart: the fork measured on srv5/srv6 2026-08-22, where the sudoers line carried a subject the
+// argv did not.
 data ethtool_module_info_raw_keyword: NonEmptyStr = "raw" as NonEmptyStr
 data ethtool_module_info_raw_on: NonEmptyStr = "on" as NonEmptyStr
 
