@@ -1272,6 +1272,13 @@ type FleetConvergeApplyTerminal
 // count there could only ever be zero and would read as a measurement nobody took. This is where
 // fleet_converge_allocation_store_plan_artifact used to write the literal; it now asks here, so
 // there is one authority for what a terminal means.
+//
+// THE LIVE-DEPLOY ARM IS THE SAME SHAPE, FOR A DIFFERENT CONSTRUCTION. An admitted
+// LiveDeployMemberBasis cannot carry a MemberRefused: derive_member_plan answers EffectsRefused on
+// any refused decision, and admit_live_deploy_member_basis refuses that as LiveDeployEffectsRefused
+// before LiveDeployConverge is minted. There is therefore no refusal axis this terminal could count.
+// A count of zero would read as a measurement nobody took. If a later refusal axis is added to the
+// basis that admission does not refuse on, this arm is a silent lie until it is revisited here.
 fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConvergeApplyTerminal {
   match request {
     FullHostConverge {
