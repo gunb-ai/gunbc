@@ -318,6 +318,13 @@ type MtJadeReferencePartRow {
 // retyping the part number as the only source of chip identity.
 data mt_jade_bmc_chip_catalog: AspeedAst2500CatalogRow = aspeed_ast2500_catalog
 
+data mt_jade_bmc_ethernet_phy: MtJadeReferencePartRow = MtJadeReferencePartRow {
+  ordering_part_number: "RTL8211E",
+  vendor_label: "Realtek",
+  role: BmcEthernetPhy,
+  authority: mt_jade_subject_authority_anchor,
+}
+
 data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   MtJadeReferencePartRow {
     ordering_part_number: "AST2500",
@@ -343,12 +350,7 @@ data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
     role: BmcSpiFlash,
     authority: mt_jade_subject_authority_anchor,
   },
-  MtJadeReferencePartRow {
-    ordering_part_number: "RTL8211E",
-    vendor_label: "Realtek",
-    role: BmcEthernetPhy,
-    authority: mt_jade_subject_authority_anchor,
-  },
+  mt_jade_bmc_ethernet_phy,
   MtJadeReferencePartRow {
     ordering_part_number: "9FGV1006B",
     vendor_label: "Renesas (IDT)",
@@ -441,7 +443,7 @@ type MtJadeBmcManagementNetwork {
 
 data mt_jade_bmc_management_network: MtJadeBmcManagementNetwork = MtJadeBmcManagementNetwork {
   network: OnboardNetworkController {
-    controller: NamedOnboardController { part: "RTL8211E" },
+    controller: NamedOnboardController { part: mt_jade_bmc_ethernet_phy.ordering_part_number },
     port_count: 1,
     per_port_bandwidth: bandwidth(count: 1000000000),
     purpose: "BMC manageability",

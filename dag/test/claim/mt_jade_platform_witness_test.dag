@@ -62,6 +62,7 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_dimm_speed_at_two_dpc,
   mt_jade_platform_subject,
   mt_jade_bmc_chip_catalog,
+  mt_jade_bmc_ethernet_phy,
   mt_jade_bmc_management_network,
   CitedAmiMegaRac,
   CitedOpenBmc,
@@ -312,7 +313,7 @@ test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Boo
 
 test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e() -> Bool {
   match mt_jade_bmc_management_network.network.controller {
-    NamedOnboardController { part } => (part as String) == "RTL8211E"
+    NamedOnboardController { part } => part == mt_jade_bmc_ethernet_phy.ordering_part_number
     _ => false
   }
     && mt_jade_bmc_management_network.network.port_count == 1
