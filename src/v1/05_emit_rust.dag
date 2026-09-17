@@ -11236,26 +11236,6 @@ fn call_target_is_runtime_primitive(target: CallTargetIdentity) -> Bool {
 // `v1.compiler.tokenize source_code_point` -- an ordinary bridged function -- and the rebuilt binary
 // panicked on its own first tokenize. A predicate that is only correct when every caller remembers
 // to pre-filter it is a wall with a hole per consumer, so the filter moved inside.
-// ONE SHAPE, NOT TWO: THE SEAM RENDERS THE SAME CALL WHETHER OR NOT THE SITE'S TYPE IS RESOLVED.
-// The typed arm takes its turbofish from the call's own `inferred`; an unresolved site renders
-// `::<_>` and asks rustc for the same answer from the consuming context. That is deliberately NOT a
-// second arm falling back to the authored spelling: `unrealized_host_seam` diverges either way, so
-// the refusal is the same refusal, and where the context cannot determine T the target answers
-// E0282 -- loud, at the site, naming the type it could not infer. The alternative the earlier shape
-// carried was `func_ident`, which at this arm is `emit_error_expr` (`panic!`) by construction --
-// already a refusal rather than a silent widen, but one that cannot stand in receiver position
-// (E0599, and every argument after it `unreachable`), which is the whole defect the typed seam was
-// built to remove. Keeping it for the unresolved case would have kept that defect for exactly the
-// population the emitter knows least about.
-//
-// AND THE REFUSAL STAYS AT THIS ARM RATHER THAN CLIMBING TO A PRE-EMISSION COLLECTOR. Refusing the
-// MODULE (the EmissionConstructUnprojectable route) would be the higher rung if the question were
-// decidable at body grain -- it is not, for the reason recorded above this predicate: a body walk
-// cannot see which primitives the dedicated arms realize, and the one that was built called
-// `v1.compiler.tokenize source_code_point` unrealized and panicked the rebuilt seed on its own first
-// tokenize. The climb this class is waiting on is a realizability roster the emitter can consult --
-// the same capability `call_target_is_unrealized_primitive`'s note names -- not a second consumer of
-// this predicate placed earlier.
 // The seam's own name, for the refusal text. Empty when the target is not a runtime primitive at
 // all, which the predicate beside this one has already excluded at every call site that asks.
 fn call_target_unrealized_primitive_name(target: CallTargetIdentity) -> String {
@@ -11265,6 +11245,15 @@ fn call_target_unrealized_primitive_name(target: CallTargetIdentity) -> String {
   }
 }
 
+// THE REFUSAL STAYS AT THE CALL ARM RATHER THAN CLIMBING TO A PRE-EMISSION COLLECTOR. Refusing
+// the MODULE (the EmissionConstructUnprojectable route) would be the higher rung if the question
+// were decidable at body grain, and it is not: a body walk sees a call, not a realization, so it
+// cannot tell an unrealized primitive from one the emitter renders through a dedicated arm. The
+// collector that was built called `v1.compiler.tokenize source_code_point` unrealized and panicked
+// the rebuilt seed on its own first tokenize. The climb this class is waiting on is a realizability
+// roster -- `extdeps.languages.rust.emit` `rt_functions` is NOT that roster, since the collection
+// folds, the pipelines and the operators are realized with no bridge row -- and not a second
+// consumer of this predicate placed earlier.
 fn call_target_is_unrealized_primitive(target: CallTargetIdentity) -> Bool {
   match call_target_runtime_primitive_name(target: target) {
     Absent => false
@@ -11858,6 +11847,18 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // because a BARE leaf can name two modules, which is precisely the state a resolved owner rules
 // out. An undetermined target has no identifier to emit and gets a located refusal rather than
 // a fall back to the authored spelling, which is the re-lookup this carrier exists to remove.
+//
+// ONE SHAPE, NOT TWO: THE SEAM RENDERS THE SAME CALL WHETHER OR NOT THE SITE'S TYPE IS RESOLVED.
+// The typed arm takes its turbofish from the call's own `inferred`; an unresolved site renders
+// `::<_>` and asks rustc for the same answer from the consuming context. That is deliberately NOT a
+// second arm falling back to the authored spelling: `unrealized_host_seam` diverges either way, so
+// the refusal is the same refusal, and where the context cannot determine T the target answers
+// E0282 -- loud, at the site, naming the type it could not infer. The alternative the earlier shape
+// carried was `func_ident`, which at this arm is `emit_error_expr` (`panic!`) by construction --
+// already a refusal rather than a silent widen, but one that cannot stand in receiver position
+// (E0599, and every argument after it `unreachable`), which is the whole defect the typed seam was
+// built to remove. Keeping it for the unresolved case would have kept that defect for exactly the
+// population the emitter knows least about.
 fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
