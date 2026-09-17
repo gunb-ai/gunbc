@@ -189,9 +189,17 @@ evidence, never provenance for it. The honest standing follows what was retained
 
 The 2026-09-17 socket figures are a **historical reported reading**: summarized aggregate and
 per-stream rates, no retained raw carrier, no queue trace. They are worth recording as that, and they
-are not a `RecordedObservation`. The arm they were taken against is additionally
-`AdoptedOutOfBandRealization` — converged by a lane outside the modelled transaction — so a floor set
-from them grounds a claim about the SUBJECT and never about a transaction that did not run.
+are not a `RecordedObservation`.
+
+The arm they were taken against was converged by a lane outside the modelled transaction, so a floor
+set from them grounds a claim about the SUBJECT and never about a transaction that did not run.
+`AdoptedOutOfBandRealization` is this document's PROPOSED name for that standing and has no home in
+the tree — it is used here in the indicative and is not yet vocabulary (review 67372). Its nearest
+neighbour is `docs/plans/scaffold-admission-doctrine.md`, which owns out-of-band ACTUATION, and the
+two are adjacent rather than the same question: that doctrine governs whether a hand-authored actuator
+may merge, while this standing labels how an OBSERVATION OF ITS RESULT may be cited. Either it is
+given a home when the design settles, or it is dropped in favour of whatever already answers that —
+and until one of those happens, naming it in the indicative here is a §3 nickname waiting to happen.
 
 ## Staging
 
