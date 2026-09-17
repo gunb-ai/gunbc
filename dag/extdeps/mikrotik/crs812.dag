@@ -126,12 +126,16 @@ data crs812_rest_monitor_path: NonEmptyStr = "/rest/interface/ethernet/monitor" 
 // silent default, so a switch that reports a speed or FEC the corpus has not seen refuses loudly at
 // the boundary rather than being coerced into the nearest known value.
 
+// The fields the reader CONSUMES, and only those: name (the lane), speed and fec-mode (the two
+// values a lane intent constrains), disabled (admin state), comment (the fabric-leg marker the
+// filter reads). The RouterOS response also carries auto-negotiation and running; they are NOT
+// modeled here because nothing reads them yet (DESIGN §3c: a field no fold reads is red). They
+// return with their consumers -- auto-negotiation with the autoneg axis (gap G1), running with the
+// live link-state outcome (gap G3) -- not before.
 type Crs812EthernetWire {
   name: NonEmptyStr
   speed: String
   fec_mode: String
-  auto_negotiation: String
-  running: String
   disabled: String
   comment: String
 }
