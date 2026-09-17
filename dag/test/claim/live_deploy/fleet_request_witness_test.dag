@@ -55,6 +55,7 @@ import gunbc.fleet_converge_plan {
   observed_baseline_text,
   fleet_converge_apply_artifact_admits,
   fleet_converge_apply_shell,
+  fleet_converge_apply_shell_axis_lines,
   fleet_converge_apply_terminal,
   fleet_converge_plan_artifact_of_request,
   live_deploy_converge_request,
@@ -343,7 +344,8 @@ test fn the_plan_fold_consumes_live_deploy_converge_without_emitting_host_effect
               string_contains(s: artifact.plan_body, pattern: "scope:live-deploy")
                 && string_contains(s: artifact.plan_body, pattern: declaration_ref_display_key(ref: srv1_production_selected_identity()))
                 && string_contains(s: shell, pattern: "emits no host effects")
-                && !string_contains(s: shell, pattern: "systemctl")
+                && count(fleet_converge_apply_shell_axis_lines(request: req)) == 0
+                && !string_contains(s: shell, pattern: "sudo -n ")
             ApplyMemberSetMismatch => false
             _ => false
           }
