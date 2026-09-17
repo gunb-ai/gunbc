@@ -2,7 +2,11 @@ module extdeps.pricing.github_actions
 
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.currency.currency { CurrencyCode, Usd }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure {
+  Minute,
+  minute,
   HardwareThreadCount,
   hardware_thread_count,
   MoneyPerMinute,
@@ -210,20 +214,24 @@ fn actions_usage_is_billable(
   }
 }
 
+// The allowance is a DURATION and std.measure already owns that concept -- this module imports
+// MoneyPerMinute from it three lines above. A bare Int here would be a second authority for
+// minutes, which is the failed decomposition DESIGN section 2 names: a fresh leaf minted for a
+// concept that exists.
 type ActionsPlanAllowance {
   plan: NonEmptyStr
-  included_minutes_per_month: Int
+  included_per_month: Minute
 }
 
 // Read 2026-09-17 from the cited billing page. These are PRIVATE-repository minutes; the page
 // states the allowance and the public-repository exemption in the same section, and conflating
 // them is the error this roster is written to prevent.
 data github_actions_plan_allowances: List<ActionsPlanAllowance> = [
-  ActionsPlanAllowance { plan: "GitHub Free" as NonEmptyStr, included_minutes_per_month: 2000 },
-  ActionsPlanAllowance { plan: "GitHub Pro" as NonEmptyStr, included_minutes_per_month: 3000 },
-  ActionsPlanAllowance { plan: "GitHub Free for organizations" as NonEmptyStr, included_minutes_per_month: 2000 },
-  ActionsPlanAllowance { plan: "GitHub Team" as NonEmptyStr, included_minutes_per_month: 3000 },
-  ActionsPlanAllowance { plan: "GitHub Enterprise Cloud" as NonEmptyStr, included_minutes_per_month: 50000 }
+  ActionsPlanAllowance { plan: "GitHub Free" as NonEmptyStr, included_per_month: minute(count: 2000) },
+  ActionsPlanAllowance { plan: "GitHub Pro" as NonEmptyStr, included_per_month: minute(count: 3000) },
+  ActionsPlanAllowance { plan: "GitHub Free for organizations" as NonEmptyStr, included_per_month: minute(count: 2000) },
+  ActionsPlanAllowance { plan: "GitHub Team" as NonEmptyStr, included_per_month: minute(count: 3000) },
+  ActionsPlanAllowance { plan: "GitHub Enterprise Cloud" as NonEmptyStr, included_per_month: minute(count: 50000) }
 ]
 
 // Larger-runner usage never draws on the allowance, which the page states directly: charged "even
@@ -233,6 +241,24 @@ fn allowance_applies(sku: GithubActionsBillingSku) -> Bool {
     StandardRunner => true
     LargerRunner => false
     RunnerClassUnread { obligation: _ } => false
+  }
+}
+
+// NOTHING IN THIS REPOSITORY CONSUMES THE BILLABILITY FOLD, and that is the §3c state this row
+// exists to declare rather than leave for a reader to discover. Its consumer is the prospect
+// standing in strategy.ci_acquisition, which lives in gunbc-private and cannot be imported here,
+// so every consumption check this corpus runs sees these declarations as dangling and is right to.
+//
+// The trigger is a consumer INSIDE this corpus. The honest one is not "someone imports it" but the
+// thing that would make importing it necessary: a public census producer that classifies observed
+// runner usage, at which point actions_usage_is_billable is what separates a payer from a
+// free-tier user and this row goes.
+data actions_billability_consumer_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.pricing.github_actions",
+    decl_name: "actions_usage_is_billable",
+    field: WholeDeclaration
   }
 }
 
