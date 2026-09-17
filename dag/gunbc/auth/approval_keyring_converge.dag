@@ -11,8 +11,7 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 
 data approval_keyring_config_dir: NonEmptyStr = "/etc/gunbc-roadmap"
 
