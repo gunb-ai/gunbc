@@ -173,7 +173,7 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
     ApprovalKeyLoaded { key: key } => {
       let verification: MacVerification = mac_verify(key: key, message: submission_message(request: request), tag_hex: tag_hex)
       let enrolled = match verification { MacVerified { verified: v } => v.message == submission_message(request: request)  _ => false }
-      match admit_submission(requester: request.requester, authority: approval_capability_authority, requester_enrolled: enrolled, authority_permitted: true) {
+      match admit_submission(requester: request.requester, authority: approval_capability_authority, requester_enrolled: enrolled, authority_permitted: approval_submission_authority_permitted) {
         SubmissionRequesterNotEnrolled { requester: _ } => SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: mac_verification_reason(v: verification) } }
         SubmissionAuthorityNotPermittedForRequester { requester: rq, authority: a } => SubmissionNotAdmitted { refusal: SubmissionAuthorityRefused { requester: rq, authority: a } }
         SubmissionAdmitted { requester: _, authority: _ } => SubmissionVerified { request: request }
@@ -391,6 +391,20 @@ fn escalation_status(root: NonEmptyStr, escalation_id: NonEmptyStr) -> Escalatio
 }
 
 // ── the frontier ───────────────────────────────────────────────────────────────────────────────
+
+// THE AUTHORITY-PERMISSION HALF OF ADMISSION IS A CONSTANT TODAY, AND THIS ROW SAYS SO. The
+// store brokers exactly one authority (approval_capability_authority) and a stored request cannot
+// name another, so requester->authority policy has one cell and admit_submission's
+// authority_permitted parameter is wired to it as a row rather than a literal at the call site.
+// SubmissionAuthorityNotPermittedForRequester therefore has no authorable RED on the live route
+// yet (DESIGN 4b: a check whose RED cannot be written is a decoration) -- it is kept because the
+// broker's rule (approval_broker submission_is_not_approval_note) is the reason the arm exists,
+// and it becomes a wall when this frontier dissolves.
+data approval_submission_authority_permitted: Bool = true
+
+data approval_submission_authority_policy_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a requester -> authority policy roster (which enrolled filers may put which brokered authority in front of the operator) consumed by admit_parsed_submission in place of approval_submission_authority_permitted, with a witness whose unrostered requester answers SubmissionAuthorityRefused -- SUFFICIENT FOR the authority half of admission to refuse on the live route; triggered by the first second brokered authority or the first filer class other than the fleet-converge runner",
+)
 
 // THE RUN THAT FILES. This module is the server side; the client -- a fleet-converge mode that
 // materializes the submission key in-run, builds the request from a source-declared
