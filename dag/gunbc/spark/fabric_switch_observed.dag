@@ -97,29 +97,31 @@ import gunbc.fleet_intent_network {
 // where it belongs.
 
 // WHAT THE LINK REPORTS, which is a different subject from what the EEPROM says. The negotiated
-// speed and the NIC's advertised set are read from the HOST, per fleet and not per module, so they
-// stay here. The per-module EEPROM bytes are receipts and live in fabric_leg_eeprom_observations,
-// one row per acquisition -- an earlier head carried a `coding` field here as well, which made the
-// same bytes answerable from two places.
+// speed is read from the HOST, per fleet and not per module, so it stays here as linked_speed_gbps.
+// The NIC's advertised MODE SET is also a host-read link fact, but it is NOT carried as a field here:
+// it wants a typed List<LinkMode> with a cited instrument, and until a consumer needs it that is an
+// unread field this module declines to hold (see the deletion note on fabric_leg_cable_observed).
+// The per-module EEPROM bytes are receipts and live in fabric_leg_eeprom_observations, one row per
+// acquisition -- an earlier head carried a `coding` field here as well, which made the same bytes
+// answerable from two places.
 type FabricLegCableObserved {
   vendor: NonEmptyStr
   part_number: NonEmptyStr
-  nic_supported_speeds: NonEmptyStr
   linked_speed_gbps: Nat
 }
 
-// THE LINK OBSERVATION, AT ITS CURRENT (POST-RECODE) VALUE. These are host-read facts about the
-// link, not bytes off the module. After the operator re-flashed the QSFP56 host ends to NVIDIA(ETH)
-// on 2026-09-17 (byte 192 0x0B -> 0x40), mstlink reports Supported Cable Speed 100G_2X, so
-// nic_supported_speeds carries that set. linked_speed_gbps stays 50 because the LINK still trains at
-// 50G -- for a switch-side reason, not a NIC cap -- so the two fields are independently true rather
-// than one implying the other. This is a single mutable reading; gap G12 (docs/plans/
-// fabric-switch-100g-convergence-gap-analysis.md) will model the recode as an EVENT so the value is
-// derived from the latest observation rather than hand-edited, and this row supersedes then.
+// nic_supported_speeds WAS REMOVED HERE, not re-valued. It was a `String` leaf hiding named parts
+// -- a set of link modes this module already imports as extdeps.ethernet.link_mode LinkMode rows
+// (ieee_100gbase_cr2, ieee_50gbase_cr2, ...), plus the reading instrument and the observation date.
+// Spelling those as "100G_2X, 50G_1X, ..." is the nicknaming DESIGN §3 forbids and the anemic leaf
+// §2 forbids, and correcting its stale value only grew what it hid. Nothing read it (only
+// linked_speed_gbps is consumed, by fabric_rail_desired and the witness), so it is deleted rather
+// than enriched into a List<LinkMode> nothing would read. The NIC-supported-mode observation itself
+// -- post-recode 100G_2X, read by mstlink -- lives in the actuation log and lands as a typed set,
+// cited to its instrument (§6), when gap G12's event model gives it a consumer.
 data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
   vendor: "FS" as NonEmptyStr,
   part_number: "QDD-400G-4QPC015" as NonEmptyStr,
-  nic_supported_speeds: "100G_2X, 50G_1X, 50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028, post-recode 2026-09-17)" as NonEmptyStr,
   linked_speed_gbps: 50,
 }
 
