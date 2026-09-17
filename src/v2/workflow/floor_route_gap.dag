@@ -1059,8 +1059,115 @@ fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
   Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_engram_runtime_witness.the_live_storage_backed_patches_are_digestfile_of_committed_bytes", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_runtime_candidate_witness.observed_patches_do_not_mint_a_patched_source_tree", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_runtime_candidate_witness.the_live_candidate_is_unestablished_and_names_every_missing_axis", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.digestfile_inhabits_the_committed_patch_population", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.empty_diff_has_a_real_digest", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Empty {} } } } } }
 }
 
+// THE DECLARED-UNIT DIGEST MINT IS THE ONE ROUTE GAP THESE IDENTITIES SHARE.
+// gunbc.spark.pair_serving_realization spark_pair_rendered_unit_digest calls
+// extdeps.tools.sha256sum Sha256.DigestStdin, which declares no mock_response, so the hermetic
+// floor has no route that can run it. DeclaredUnitDigestEvidence is a sole_constructor record, so
+// no fixture can route around that by authoring a standing -- which is the point rather than a
+// cost: every identity below executes the REAL producer on the local-repo wet lane
+// (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), which is the inhabitance half of
+// DESIGN section 3's supplied-input pairing obligation.
+//
+// WHAT DECIDES MEMBERSHIP HERE IS WHETHER THE ROW REACHES THE MINT, NOT WHICH ARM THE FOLD ANSWERS
+// ON. An earlier spelling of this paragraph said the declared-unit-unavailable rows are omitted
+// "because the arm is decided before the mint is reached", and that is FALSE as a rule and misread
+// once already (review 67105 asked for a correct enrollment to be deleted on the strength of it).
+// The fold's refusal order says nothing about what the row EVALUATED to build its arguments: a row
+// can hand in DeclaredUnitDigestUnavailable and still reach DigestStdin through its INCARNATION
+// fixture, because that launch's unit_digest is taken from the production mint so the agreeing and
+// disagreeing arms compare real bytes.
+//
+// THE TWO t_unit_unavailable ROWS ARE EXACTLY THAT CONTRAST, and they are the reason to state this
+// precisely rather than by arm name:
+//   an_observed_incarnation_without_a_declared_unit_digest_refuses -- supplies the unavailable
+//     standing AND an observed incarnation built from t_incarnation(), which routes through
+//     t_declared_digest() to spark_pair_declared_head_digest. It gaps. ENROLLED.
+//   the_declared_unit_is_refused_before_the_incarnation -- supplies the unavailable standing over a
+//     bare t_covered_matching() with no incarnation fixture. It never reaches the mint. OMITTED.
+// Read the row's whole argument closure, not the arm it asserts.
+//
+// The withdrawn-roster row in the bind witness is omitted for the different reason that it is HANDED
+// its standing and constructs no launch fixture.
+fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.hashing_the_same_rendered_bytes_is_stable", operation: "DigestStdin", ground: NoMockResponse {} },
+    tail: Cons {
+      head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.unit_text_differing_by_one_byte_gives_a_different_digest", operation: "DigestStdin", ground: NoMockResponse {} },
+      tail: Cons {
+        head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit", operation: "DigestStdin", ground: NoMockResponse {} },
+        tail: Cons {
+          head: FloorRouteGapExpectation { identity: "test.claim.serving.serving_availability_bind_wet_witness.the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier", operation: "DigestStdin", ground: NoMockResponse {} },
+      tail: Cons {
+        head: FloorRouteGapExpectation { identity: "test.claim.serving.serving_availability_bind_wet_witness.a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path", operation: "DigestStdin", ground: NoMockResponse {} },
+          tail: Cons {
+            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_different_reported_path_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
+            tail: Cons {
+              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_different_reported_path_refuses_the_service_without_claiming_a_different_launch", operation: "DigestStdin", ground: NoMockResponse {} },
+              tail: Cons {
+                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_host_outside_the_allocation_refuses_and_names_it", operation: "DigestStdin", ground: NoMockResponse {} },
+                tail: Cons {
+                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_matching_configuration_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
+                  tail: Cons {
+                    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_matching_configuration_does_not_establish_the_specific_service", operation: "DigestStdin", ground: NoMockResponse {} },
+                    tail: Cons {
+                      head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_agreeing_unit_digest_without_an_observation_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                      tail: Cons {
+                        head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_incarnation_from_a_different_unit_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                        tail: Cons {
+                          head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_incarnation_on_another_host_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                          tail: Cons {
+                            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_observation_about_a_replaced_endpoint_process_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                            tail: Cons {
+                              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_observed_declared_incarnation_with_a_disagreeing_readback_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                              tail: Cons {
+                                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_observed_digest_in_another_family_is_incomparable_and_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                                tail: Cons {
+                                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_observed_incarnation_without_a_declared_unit_digest_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                                  tail: Cons {
+                                    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_unidentified_service_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
+                                    tail: Cons {
+                                      head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_unreadable_group_membership_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
+                                      tail: Cons {
+                                        head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_the_region", operation: "DigestStdin", ground: NoMockResponse {} },
+                                        tail: Cons {
+                                          head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation", operation: "DigestStdin", ground: NoMockResponse {} },
+                                          tail: Cons {
+                                            head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.fixture_evidence_of_all_three_facts_binds_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
+                                            tail: Cons {
+                                              head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.the_allocation_survives_a_service_refusal_with_its_date", operation: "DigestStdin", ground: NoMockResponse {} },
+                                              tail: Cons {
+                                                head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.the_production_route_consumes_an_observed_incarnation", operation: "DigestStdin", ground: NoMockResponse {} },
+                                                tail: Cons {
+                                                  head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.the_production_route_refuses_because_no_incarnation_is_observed", operation: "DigestStdin", ground: NoMockResponse {} },
+                                                  tail: Empty {}
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  }}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Empty {} } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Empty {} } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
