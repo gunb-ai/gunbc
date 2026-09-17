@@ -250,23 +250,25 @@ type FabricLegEepromObservation {
 
 // Each row states what ITS dump returned, written out rather than pointing at a shared value.
 //
-// SUPERSEDED 2026-09-17: these two rows are the PRE-RECODE acquisition (`ethtool -m raw on`,
-// 2026-09-08), so primary_compliance_code: 11 (0x0B) was true THEN. After the 2026-09-17 recode,
-// spark-a3ee's byte 192 reads 0x40 (=64); spark-ac79 was not re-read. The rows are NOT re-valued,
-// because a receipt is a dated snapshot and overwriting it would falsify the historical record --
-// the post-recode reading is a NEW acquisition, which lands as an additional row when gap G12's
-// event model supports multiple dated acquisitions per leg (PR-1). Until then these rows ARE the
-// pre-recode coding and the current coding for spark-a3ee is byte 192 = 0x40 (docs/plans/
-// fabric-switch-actuation-log.md); the "agree byte for byte" derivation below is likewise a
-// pre-recode fact.
+// ONE LEG RE-READ POST-RECODE, ONE NOT -- exactly the state this model was built to represent.
+// spark-a3ee carries the POST-RECODE dump (`ethtool -m raw on` after the 2026-09-17 re-flash):
+// byte 192 = 0x40 = 64 (attests 100GBASE-CR2), date_code 260914. Because .first() is the LIVE plant
+// reading (FabricLegEepromObservation has no acquisition timestamp), this row IS re-valued to the
+// current coding rather than left false behind a comment -- a stale LegReadingTaken would be silent
+// wrongness on the plant path (§5), which a `//` note cannot discharge (§4c). spark-ac79 keeps its
+// last ACTUAL reading (byte 192 = 0x0B = 11, date_code 260728): the operator re-flashed it too, but
+// it was not re-read, so re-valuing it would fabricate an observation nobody took. The two legs
+// therefore now DISAGREE by coding, which the distinct-serial witness exists to keep representable.
+// When gap G12's event model lands (PR-1), each leg carries dated acquisitions and a re-read of
+// ac79 appends a row rather than overwriting this one.
 data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
   FabricLegEepromObservation {
     host: "spark-a3ee" as NonEmptyStr,
     vendor_serial: "S2630771509-2" as NonEmptyStr,
-    date_code: "260728" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
-      primary_compliance_code: 11,
+      primary_compliance_code: 64,
       secondary_compliance: SecondaryObserved { code: 0 },
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
