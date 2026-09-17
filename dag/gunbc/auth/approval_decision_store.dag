@@ -18,6 +18,8 @@ import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.rung_drop { RungDrop }
+import gunbc.rung_drop.approval_identity_header_on_host_client { approval_identity_header_on_host_client_drop }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
@@ -206,22 +208,27 @@ data approval_operator_login: NonEmptyStr = fleet_operator_email
 // from (approval_identity_trust_for) -- not a flag a handler defaults and not a second row.
 type IdentityTrustStanding
   = IdentityHeaderTrustEstablished { evidence: NonEmptyStr }
+  | IdentityHeaderTrustByDeclaredDrop { drop: RungDrop, residual: NonEmptyStr }
   | IdentityHeaderTrustNotEstablished { blocker: NonEmptyStr }
 
 // THE TRUST STANDING IS DERIVED FROM THE ROW THE UNIT IS EMITTED FROM, never asserted beside it
-// (review 67264): gunbc.roadmap_dashboard_instance srv1_live_dashboard_instance.listen_host is the
-// one fact live_deploy turns into the unit's --host, so the standing reads that field. A loopback
-// bind means every request reaches the handler through the tailscale serve proxy
-// (https://srv1.tailecbe08.ts.net/ -> 127.0.0.1:8080, measured 2026-09-16 and 2026-09-17) and the
-// Tailscale-User-Login header is the proxy's; any other bind means the header is self-assertable
-// by whoever can reach the port, and the gate stays closed. A later edit of the row back to
-// 0.0.0.0 therefore closes the gate in the same commit, with no second row to forget.
+// (review 67264), AND A LOOPBACK BIND IS A BET, NOT A PROOF (review 67306):
+// gunbc.roadmap_dashboard_instance srv1_live_dashboard_instance.listen_host is the one fact
+// live_deploy turns into the unit's --host, so the standing reads that field. Any bind other than
+// loopback keeps the gate closed: the header is self-assertable by whoever reaches the port. A
+// loopback bind rules out off-host callers only; an on-host process under another POSIX user can
+// still present a forged header, and nothing at the serve boundary attributes the peer yet. So the
+// loopback arm is IdentityHeaderTrustByDeclaredDrop, carrying the rostered drop
+// (gunbc.rung_drop.approval_identity_header_on_host_client) whose trigger is peer attribution;
+// IdentityHeaderTrustEstablished is minted by nothing until that trigger fires. A later edit of
+// the row back to 0.0.0.0 closes the gate in the same commit, with no second row to forget.
 fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStanding {
   match parse_ipv4_address(text: listen_host as String) {
     Ipv4Parsed { address: a } =>
       if ip_address_is_loopback(addr: IpV4 { v4: a }) {
-        IdentityHeaderTrustEstablished {
-          evidence: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host), reachable only through tailscale serve https://srv1.tailecbe08.ts.net/ -> loopback, so the identity header is the proxy's"], "") as NonEmptyStr,
+        IdentityHeaderTrustByDeclaredDrop {
+          drop: approval_identity_header_on_host_client_drop,
+          residual: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host) behind tailscale serve https://srv1.tailecbe08.ts.net/, so off-host callers cannot reach it; an on-host process under another POSIX user still can, and its header is not attributed"], "") as NonEmptyStr,
         }
       } else {
         IdentityHeaderTrustNotEstablished {
@@ -607,53 +614,65 @@ fn redeem_over_store(
 ) -> StoreRedemption {
   match trust {
     IdentityHeaderTrustNotEstablished { blocker: b } => RedemptionIdentityUntrusted { blocker: b }
-    IdentityHeaderTrustEstablished { evidence: _ } =>
-      match parse_capability_segment(segment: segment) {
-        CapabilitySegmentMalformed { detail: d } => RedemptionSegmentMalformed { detail: d }
-        CapabilitySegmentParsed { escalation_id: e, decision: proposed, tag_hex: tag } =>
-          match observe_escalation(root: root, escalation_id: e) {
-            EscalationNotFiled => RedemptionEscalationNotFiled { escalation_id: e }
-            EscalationUnreadable { detail: d } => RedemptionStoreUnreadable { detail: d }
-            EscalationDecided { decision: d } => AlreadyDecided { decision: d }
-            EscalationPending { request: req } =>
-              match keyring {
-                ApprovalKeyLoaded { key: key } => {
-                  let claims = claims_for(request: req, decision: proposed)
-                  let mac_result: MacVerification = mac_verify(key: key, message: approval_capability_signing_input(c: claims), tag_hex: tag)
-                  match redeem_capability(
-                    method: method,
-                    capability: ApprovalCapability { claims: claims, tag_b64url: tag },
-                    expectation: approval_capability_expectation,
-                    mac_result: mac_result,
-                    presented_identity: presented_identity,
-                    expected_operator: approval_operator_login,
-                    observed_at: observed_at,
-                  ) {
-                    RedemptionRefused { cause: c } => RedemptionBrokerRefused { cause: c }
-                    RedemptionAdmitted { claims: cl, decided_by: by } => {
-                      let decision = match cl.decision {
-                        ProposeApprove => BrokerApproved {
-                          escalation_id: cl.escalation_id, revision: cl.request_revision, decided_by: by, decided_at: observed_at,
-                          obligation: ExecutionObligation { authority: cl.authority, intent_revision: cl.request_revision, execute_by: req.expires_at },
-                        }
-                        ProposeDeny => BrokerDenied {
-                          escalation_id: cl.escalation_id, revision: cl.request_revision, decided_by: by, decided_at: observed_at,
-                          reason: "denied by the operator through the approval link",
-                        }
-                      }
-                      match commit_broker_decision(root: root, decision: decision) {
-                        StoreWritten => match decision {
-                          BrokerApproved { escalation_id: _, revision: _, decided_by: _, decided_at: _, obligation: _ } => RedeemedApproved { decision: decision }
-                          BrokerDenied { escalation_id: _, revision: _, decided_by: _, decided_at: _, reason: _ } => RedeemedDenied { decision: decision }
-                        }
-                        StoreSlotOccupied => RedemptionLostTheRace
-                        StoreRefused { detail: d } => RedemptionCommitRefused { detail: d }
-                      }
+    IdentityHeaderTrustByDeclaredDrop { drop: _, residual: _ } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, presented_identity: presented_identity, observed_at: observed_at)
+    IdentityHeaderTrustEstablished { evidence: _ } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, presented_identity: presented_identity, observed_at: observed_at)
+  }
+}
+
+// THE REDEMPTION PAST THE TRUST GATE, one fold for both admitting arms.
+fn redeem_trusted_over_store(
+  root: NonEmptyStr,
+  keyring: ApprovalKeyringRead,
+  method: HttpMethod,
+  segment: String,
+  presented_identity: TailnetIdentity,
+  observed_at: Timestamp,
+) -> StoreRedemption {
+  match parse_capability_segment(segment: segment) {
+    CapabilitySegmentMalformed { detail: d } => RedemptionSegmentMalformed { detail: d }
+    CapabilitySegmentParsed { escalation_id: e, decision: proposed, tag_hex: tag } =>
+      match observe_escalation(root: root, escalation_id: e) {
+        EscalationNotFiled => RedemptionEscalationNotFiled { escalation_id: e }
+        EscalationUnreadable { detail: d } => RedemptionStoreUnreadable { detail: d }
+        EscalationDecided { decision: d } => AlreadyDecided { decision: d }
+        EscalationPending { request: req } =>
+          match keyring {
+            ApprovalKeyLoaded { key: key } => {
+              let claims = claims_for(request: req, decision: proposed)
+              let mac_result: MacVerification = mac_verify(key: key, message: approval_capability_signing_input(c: claims), tag_hex: tag)
+              match redeem_capability(
+                method: method,
+                capability: ApprovalCapability { claims: claims, tag_b64url: tag },
+                expectation: approval_capability_expectation,
+                mac_result: mac_result,
+                presented_identity: presented_identity,
+                expected_operator: approval_operator_login,
+                observed_at: observed_at,
+              ) {
+                RedemptionRefused { cause: c } => RedemptionBrokerRefused { cause: c }
+                RedemptionAdmitted { claims: cl, decided_by: by } => {
+                  let decision = match cl.decision {
+                    ProposeApprove => BrokerApproved {
+                      escalation_id: cl.escalation_id, revision: cl.request_revision, decided_by: by, decided_at: observed_at,
+                      obligation: ExecutionObligation { authority: cl.authority, intent_revision: cl.request_revision, execute_by: req.expires_at },
+                    }
+                    ProposeDeny => BrokerDenied {
+                      escalation_id: cl.escalation_id, revision: cl.request_revision, decided_by: by, decided_at: observed_at,
+                      reason: "denied by the operator through the approval link",
                     }
                   }
+                  match commit_broker_decision(root: root, decision: decision) {
+                    StoreWritten => match decision {
+                      BrokerApproved { escalation_id: _, revision: _, decided_by: _, decided_at: _, obligation: _ } => RedeemedApproved { decision: decision }
+                      BrokerDenied { escalation_id: _, revision: _, decided_by: _, decided_at: _, reason: _ } => RedeemedDenied { decision: decision }
+                    }
+                    StoreSlotOccupied => RedemptionLostTheRace
+                    StoreRefused { detail: d } => RedemptionCommitRefused { detail: d }
+                  }
                 }
-                ApprovalKeyringRefused { cause: c } => RedemptionKeyringUnavailable { cause: c }
               }
+            }
+            ApprovalKeyringRefused { cause: c } => RedemptionKeyringUnavailable { cause: c }
           }
       }
   }

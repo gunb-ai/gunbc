@@ -1,0 +1,36 @@
+module gunbc.rung_drop.approval_identity_header_on_host_client
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
+
+// DECLARED 2026-09-17 FOR THE APPROVE ROUTE (review 67306). A loopback bind establishes that the
+// roadmap port is unreachable from off-host; it does NOT establish that tailscale serve is the only
+// on-host client. Every other POSIX user on srv1 -- the CI job user ghrunner among them -- can POST
+// to 127.0.0.1:8080/approve/<segment> with a forged Tailscale-User-Login header, and the store would
+// record the operator's consent for something they never saw. With the gate closed the loop cannot
+// run at all (every redemption refused: Mitigatable); with it open on the loopback bind alone the
+// forged-header state is writable and silent, which is outside the ladder. The operator accepts
+// that state for the first Mt. Collins boot under this declared drop; the row is what makes the
+// bet typed rather than deduced, and it is retired by its trigger and by nothing else.
+data approval_identity_header_on_host_client_drop: RungDrop = RungDrop {
+  identity: "approval_identity_header_on_host_client" as NonEmptyStr,
+
+  subject: "the identity header the approve route trusts on a loopback-bound roadmap unit, without attribution of the on-host peer that presented it",
+
+  declared: "2026-09-17",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "peer attribution at the serve boundary: the loopback client's socket owner (the kernel's /proc/net/tcp uid for the peer port) must be tailscaled's, and redeem_over_store refuses any other peer" },
+    population: [
+      "gunbc.auth.approval_decision_store approval_identity_trust_for",
+      "gunbc.auth.approval_decision_store redeem_over_store",
+      "gunbc.roadmap_serve approval_decide_response",
+    ],
+    restoration_trigger: "the serve runtime exposes the connecting peer's address and the handler joins it to the socket owner's uid, refusing every peer that is not the tailscale proxy -- SUFFICIENT FOR the header to be evidence of the tailnet login on every request the route admits, at which point approval_identity_trust_for answers IdentityHeaderTrustEstablished from that attribution and the ByDeclaredDrop arm is deleted",
+  }
+}

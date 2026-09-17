@@ -14,7 +14,7 @@ import gunbc.auth.approval_decision_store {
   RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionSegmentMalformed, RedemptionEscalationNotFiled,
   RedemptionBrokerRefused, RedemptionLostTheRace, RedemptionStoreUnreadable, RedemptionKeyringUnavailable,
   RedemptionIdentityUntrusted, RedemptionCommitRefused,
-  IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
+  IdentityHeaderTrustEstablished, IdentityHeaderTrustByDeclaredDrop, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
   parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
 }
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
@@ -595,10 +595,12 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+    IdentityHeaderTrustByDeclaredDrop { drop: _, residual: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
   }
   let keyring = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_mac_key_path } }
     IdentityHeaderTrustEstablished { evidence: _ } => read_approval_keyring()
+    IdentityHeaderTrustByDeclaredDrop { drop: _, residual: _ } => read_approval_keyring()
   }
   let outcome = redeem_over_store(
     root: approval_decision_store_root,
