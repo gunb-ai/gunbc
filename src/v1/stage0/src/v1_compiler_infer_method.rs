@@ -271,6 +271,20 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: bool_type(),
     }));
+                __m.insert("hmac_sha256_hex".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "key_hex".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "message".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: crate::v1_std_core::with_optional_cardinality(string_type()),
+    }));
                 __m.insert("string_length".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),
@@ -956,6 +970,30 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     })]),
         returns: list_of_type_variable("ordinary_compile_structural_admission_elem".to_string()),
+    }));
+                __m.insert("emit_rust_reference_derived_rows_bridge".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "source_roots".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "repository".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "measured_root_demands".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: type_variable_node("xl1_primary_root_tap".to_string()),
     }));
                 __m.insert("extdeps_shape_transport_policy_facts_for_qualified_name".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {

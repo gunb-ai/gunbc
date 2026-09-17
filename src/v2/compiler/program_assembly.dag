@@ -25,7 +25,7 @@ import v2.std.cross_tree.resolution {
   source_root_index_insert
 }
 import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list, list_map, list_snoc_item }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -48,8 +48,50 @@ type ProgramAssemblyFoldState
       diagnostics: NonEmptyDiagnostics
     }
 
+// A normalized root together with the path of the read that produced it. The assembly fold
+// iterates the reads, so it is the one place the path-to-tree association exists by
+// construction; a consumer that needs it reads this pair, never a positional zip of two lists
+// across this module's boundary (DESIGN 5: completeness is an identity join, not a count
+// equality). The tree-only fold state above is a projection of the located one. A plain
+// record, not sole_constructor: the pair carries no invariant beyond its fields, and the
+// v2 grammar realization (v2.extdeps.languages.dag dag_grammar_type_decl_expr) admits no
+// modifier between the type name and its field block, so the emitted compiler refused this
+// file with parse_g0_tokens_remain (gunbc#11461 srv2 pair, fold11461g) - a load-bearing
+// stage must stay native-readable.
+type LocatedNormalizedTree {
+  path: String,
+  tree: NormalizedTree
+}
+
+type ProgramAssemblyLocatedFoldState
+  = ProgramAssemblyLocatedFoldOk {
+      located: FreeMonoid<LocatedNormalizedTree>,
+      index: SourceRootIndex
+    }
+  | ProgramAssemblyLocatedFoldFailed {
+      diagnostics: NonEmptyDiagnostics
+    }
+
 fn program_assembly_empty_roots() -> FreeMonoid<NormalizedTree> {
   Empty
+}
+
+fn program_assembly_empty_located_roots() -> FreeMonoid<LocatedNormalizedTree> {
+  Empty
+}
+
+fn program_assembly_fold_state_from_located(
+  state: ProgramAssemblyLocatedFoldState
+) -> ProgramAssemblyFoldState {
+  match state {
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+      ProgramAssemblyFoldFailed { diagnostics: d }
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx } =>
+      ProgramAssemblyFoldOk {
+        roots: list_map(xs: located, f: fn(item) { item.tree }),
+        index: idx
+      }
+  }
 }
 
 fn program_assembly_read_to_normalized_root_prepared(
@@ -99,29 +141,32 @@ fn program_assembly_read_to_normalized_root(
 }
 
 fn program_assembly_fold_step(
-  state: ProgramAssemblyFoldState,
+  state: ProgramAssemblyLocatedFoldState,
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
   residue: Diagnostics
-) -> ProgramAssemblyFoldState {
+) -> ProgramAssemblyLocatedFoldState {
   match state {
-    ProgramAssemblyFoldFailed { diagnostics: d } =>
-      ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyFoldOk { roots: acc, index: idx } =>
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+      ProgramAssemblyLocatedFoldFailed { diagnostics: d }
+    ProgramAssemblyLocatedFoldOk { located: acc, index: idx } =>
       match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
         Accepted { value: root, diagnostics: _ } =>
           match qualified_name_from_module_node(root: root.root) {
             Accepted { value: qn, diagnostics: _ } =>
-              ProgramAssemblyFoldOk {
-                roots: list_snoc_item(xs: acc, item: root),
+              ProgramAssemblyLocatedFoldOk {
+                located: list_snoc_item(
+                  xs: acc,
+                  item: LocatedNormalizedTree { path: read.artifact.file_path, tree: root }
+                ),
                 index: source_root_index_insert(index: idx, module: qn, root: read.source_root)
               }
             Rejected { diagnostics: d } =>
-              ProgramAssemblyFoldFailed { diagnostics: d }
+              ProgramAssemblyLocatedFoldFailed { diagnostics: d }
           }
         Rejected { diagnostics: d } =>
-          ProgramAssemblyFoldFailed { diagnostics: d }
+          ProgramAssemblyLocatedFoldFailed { diagnostics: d }
       }
   }
 }
@@ -152,25 +197,25 @@ fn dag_prepared_grammar() -> Outcome<PreparedGrammar> {
   prepare_grammar(grammar: dag_grammar())
 }
 
-fn program_assembly_fold_ingest(
+fn program_assembly_fold_ingest_located(
   ingest: SourceRootIngest,
   lm: LanguageModel
-) -> ProgramAssemblyFoldState {
+) -> ProgramAssemblyLocatedFoldState {
   match ingest {
     Empty =>
-      ProgramAssemblyFoldOk {
-        roots: program_assembly_empty_roots(),
+      ProgramAssemblyLocatedFoldOk {
+        located: program_assembly_empty_located_roots(),
         index: source_root_index_empty()
       }
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
-          ProgramAssemblyFoldFailed { diagnostics: d }
+          ProgramAssemblyLocatedFoldFailed { diagnostics: d }
         Accepted { value: prepared, diagnostics: residue } =>
           fold_list(
             xs: ingest,
-            empty: ProgramAssemblyFoldOk {
-              roots: program_assembly_empty_roots(),
+            empty: ProgramAssemblyLocatedFoldOk {
+              located: program_assembly_empty_located_roots(),
               index: source_root_index_empty()
             },
             cons: fn(state, read) {
@@ -178,6 +223,27 @@ fn program_assembly_fold_ingest(
             }
           )
       }
+  }
+}
+
+fn program_assembly_fold_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> ProgramAssemblyFoldState {
+  program_assembly_fold_state_from_located(
+    state: program_assembly_fold_ingest_located(ingest: ingest, lm: lm)
+  )
+}
+
+fn located_module_roots_from_source_root_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<FreeMonoid<LocatedNormalizedTree>> {
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldOk { located: located, index: _ } =>
+      outcome_accepted(value: located)
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+      Rejected { diagnostics: d }
   }
 }
 

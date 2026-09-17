@@ -43,8 +43,8 @@ import gunbc.host_convergence_census {
 // structurally impossible in std.goal_assessment.
 // HostEffectDomainProjection is observe, assess, decide. inspect_via consumes
 // observe/assess this cut. decide is a §3c declared frontier typed onto
-// std.upsert_decision UpsertDecision. C3/C4 fleet_plan / fleet_apply:
-// those cuts route member decisions through this projection.
+// std.upsert_decision UpsertDecision. C3 named live_deploy_inspect_member and
+// admit_live_deploy_member_basis as plan-side consumers; apply stays C4.
 // Readiness is NOT a field: there is no Ready/Pending/Refused algebra yet
 // (modeling obligation, C5). A generic Reconciliation field would let
 // readiness inhabit a convergence verdict. C5 trigger: C5 establishes a
@@ -271,12 +271,27 @@ fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence
   )
 }
 
+// C3 plan-side discharge. named_consumer is the function that actually calls the declaration.
+// trigger_capability is a remaining capability, not the consumer: inspect_via still observes via
+// supplied ObservedMember rather than wet observe_executable; HostEffectDomainProjection is used
+// by admit but does not yet mint fleet_converge_plan_artifact (no LiveDeploy request arm until C2).
+// host_effect_decide_apply_frontier is untouched — C4. bind_declared_frontiers stays Unbound.
+data live_deploy_inspect_member_id: DeclarationRef = decl_ref(
+  module_path: "gunbc.live_deploy.fleet_request",
+  decl_name: "live_deploy_inspect_member",
+)
+
+data admit_live_deploy_member_basis_id: DeclarationRef = decl_ref(
+  module_path: "gunbc.live_deploy.fleet_request",
+  decl_name: "admit_live_deploy_member_basis",
+)
+
 data host_effect_observe_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
   declaration: decl_ref(
     module_path: "gunbc.host_convergence_protocol",
     decl_name: "inspect_via_host_effect_projection",
   ),
-  named_consumer: observe_executable_id,
+  named_consumer: live_deploy_inspect_member_id,
   trigger_capability: observe_executable_id,
 }
 
@@ -285,7 +300,7 @@ data host_effect_decide_plan_frontier: ProtocolDeclaredFrontier = ProtocolDeclar
     module_path: "gunbc.host_convergence_protocol",
     decl_name: "HostEffectDomainProjection",
   ),
-  named_consumer: fleet_plan(),
+  named_consumer: admit_live_deploy_member_basis_id,
   trigger_capability: fleet_plan(),
 }
 

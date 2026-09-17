@@ -438,8 +438,21 @@ data type_reference_decl_file_adjacent_findings: List<AdjacentFinding> = [
 // the authority arriving, which is exactly the condition that row named. The two CorrectAsPosition
 // classes are unchanged and were never debt. The sibling-fallback class dissolved with the helper.
 //
-// WHAT IS NOT DISCHARGED: CorpusDeclared still carries a path matched by contains, so the surviving
-// arm answers WHAT a declaration realizes as positionally. That is the residue both decided classes
+// WHAT IS NOT DISCHARGED HERE, AND WHERE IT WAS DISCHARGED INSTEAD (XL-0B/C, 2026-09-12).
+// CorpusDeclared still carries a path matched by contains, so on the v1 route the surviving arm
+// answers WHAT a declaration realizes as positionally. THE DeclarationRef CARRIER THE ROW ABOVE
+// ASKS FOR NOW EXISTS, ON THE v2 ROUTE: std.repair_input_origin RepairInputDeclarationProvenance
+// carries the declaration as a DeclarationRef and nothing positional, filled by
+// v2.compiler.repair_input_origin_roster from the resolver's own answers -- so the deferral that
+// row records against std.repair_input_origin is closed.
+//
+// THE v1 POSITION IS NOT CONVERTED AND WILL NOT BE. Holding both a DeclarationRef and a decl_file
+// for one declaration is the two-identities fork this census exists to warn about, and converting
+// the v1 arm would be building on a route scheduled for deletion -- DESIGN section 3's replacement
+// migration doctrine prices an intermediate representation destined to be discarded as redundant
+// work. THE RETIREMENT TRIGGER IS THEREFORE THE DELETION OF v1.compiler.emit_rust AND ITS CLOSURE,
+// not a conversion and not a later carrier edit: the position dies with the only route that reads
+// it. That is the residue both decided classes
 // named, and its successor is the key v1.compiler.infer_env global_bare_fallback_invariant already
 // declares. This carrier's own dissolution condition is likewise NOT satisfied by the discharge: it
 // names a derived lens, and a hand roster that has been repaired is still a hand roster.

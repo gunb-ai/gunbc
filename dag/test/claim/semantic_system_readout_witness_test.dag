@@ -1,0 +1,224 @@
+module test.claim.semantic_system_readout_witness
+
+import gunbc.demo.semantic_system_readout {
+  LiveVerdict,
+  MechanismNote,
+  NotClaimed,
+  ReadoutRefused,
+  ReadoutSection,
+  RecordedRunJoined,
+  any_line_fails,
+  line_fails,
+  live,
+  note,
+  open,
+  recorded,
+  refused,
+  render,
+  standing_tag,
+  workflow_line,
+  workflow_line_for,
+  workflow_line_text,
+}
+import gunbc.generated_artifact { Fci1BoundedExecutionContextArtifact, GitignoreArtifact, WitnessFloorYamlArtifact, artifact_directory }
+import gunbc.generated_artifact_observation {
+  observe_directory_listings,
+  observe_generated_artifact_with,
+}
+import gunbc.generated_artifact_assessment {
+  GeneratedArtifactCommittedAbsent,
+  GeneratedArtifactObservation,
+  GeneratedArtifactObservationRefused,
+  GeneratedArtifactObserved,
+}
+import std.types { List, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// THIS ENTRY READS THE LIVE HOST TREE, and an earlier revision declared SubstrateInputsOnly while
+// doing it (review 66861). The claims below call `workflow_line()`, which reaches
+// `observe_directory_listings` -> Filesystem.List and `observe_generated_artifact_with` ->
+// Filesystem.Read of a committed artifact -- so a claim here evaluates against filesystem state
+// outside its resolved substrate closure. The disposition is an ENTRY-grain fact for exactly that reason: it holds no matter how
+// far the read hides behind imports, and the producer module this one calls declares ReadsLiveTree
+// itself.
+//
+// THE DAMAGE OF THE WRONG VALUE IS SPECIFIC, not cosmetic: a row declaring SubstrateInputsOnly is
+// re-checked by nothing, and affected-set selection may skip it on a diff that changes the workflow
+// projection -- which is the one case the dogfooding line exists to catch. Declaring the weaker
+// disposition would have made the claim quietly skippable on precisely the change it guards.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The readout's exit verdict is a function of its lines, discriminated in both directions over
+// supplied sections: the real witnesses it reads are exercised by the readout's own entry.
+fn section_of(first: Bool, joined: Bool) -> ReadoutSection {
+  ReadoutSection {
+    title: "S",
+    lines: [
+      live(text: "a", holds: first),
+      recorded(text: "b", joined: joined),
+      open(text: "c"),
+      note(text: "d"),
+    ],
+  }
+}
+
+test fn w_a_failing_live_line_fails_the_readout() -> Bool {
+  any_line_fails(sections: [section_of(first: false, joined: true)])
+}
+
+test fn w_a_stale_receipt_fails_the_readout() -> Bool {
+  any_line_fails(sections: [section_of(first: true, joined: false)])
+}
+
+// Open and note lines carry no verdict, so a section made of them cannot fail and cannot pass a
+// live line it does not have.
+test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
+  !any_line_fails(sections: [section_of(first: true, joined: true)])
+}
+
+// THE INHABITANCE CLAIM THE SUPPLIED-SECTION CONTROLS OWE (DESIGN section 3, review 66755). Every
+// other claim in this file hands `any_line_fails` and `render` sections it CONSTRUCTED, which
+// establishes the exit rule and nothing about the readout's live wiring: deleting the real
+// producers would leave all of them green. This one calls the real `workflow_line`, so the route it
+// exercises is the host-touching one -- a directory listing, a committed read folded through
+// `filesystem_read_outcome`, and the adorned projection generated through the same boundary -- and
+// it asserts the ROUTE and not only the answer, because a LiveVerdict here can only be reached
+// through `observe_generated_artifact_with` returning `GeneratedArtifactObserved`.
+//
+// DELETING THE INTEGRATION MAKES THIS FAIL, which is the test the pairing obligation states. Revert
+// the dogfooding line to a raw `Filesystem.Read(...).content == expected` and an unreadable file
+// silently becomes a drift FAIL rather than a REFUSED, so the second assertion below goes red;
+// remove the observer call entirely and the line cannot be constructed at all.
+//
+// WHAT REMAINS UNCOVERED, stated plainly: `readout_sections()` and `render_demo` are both consumed by
+// the entry point rather than by a claim. The join is not re-asserted here because every producer it
+// folds already carries its own claim, and `render_demo`'s delivery half -- the filesystem write and
+// the exit code -- is a host effect rather than a fact about the readout; a claim that wrote a file to
+// assert an exit code would be testing the transport.
+// THE ROUTE IS EXERCISED ON THE CHEAPEST ARTIFACT THAT PROVES IT, which is the enrolment refusal's
+// own first remedy: reduce what the witness reaches for. The route this claim exists to establish is
+// listing -> committed read folded through filesystem_read_outcome -> adorned projection through the
+// same bytes boundary -> the readout's standing. Nothing about that route is specific to any one
+// artifact, so the subject is chosen to be a full registry member -- location, commit policy,
+// generator -- whose GENERATOR is cheapest to run.
+//
+// THE AXIS IS THE GENERATOR'S FOLD, NOT THE OUTPUT SIZE, and an earlier revision of this comment got
+// that wrong in a way worth recording rather than quietly deleting. It justified .gitattributes at
+// 5.6KB against witnesses.yml at 82KB, reasoning that a smaller projection costs less. But
+// observe_generated_artifact_with calls artifact_generate on the read path, and
+// gunbc.gitattributes_emit expected_gitattributes folds deterministic_generated_projection_paths ->
+// committed_generated_artifact_paths, i.e. EVERY artifact in the registry, to produce its 5.6KB. Its
+// cost tracks the registry's size, which grows, and not its own output. So the output-size reading
+// picked an artifact whose generator is one of the most expensive in the roster while claiming it was
+// the cheap one. gunbc.fci1_bounded_execution_context_emit carries ZERO registry references and
+// projects a handful of systemd properties off one slot declaration, so the identical fold runs end
+// to end against a generator that walks nothing. The directory listing falls out cheaper as well --
+// tools/ holds 5 entries against the repository root's 27 -- but that is incidental, and on its own
+// it would not have moved a number this size.
+//
+// WHAT THIS DOES NOT WEAKEN: the production line still observes witnesses.yml, unchanged. This claim
+// asserts the OBSERVER ROUTE executes and reaches a live verdict; the supplied-arm claims above
+// assert what each observation MEANS; and readout_sections() -- which does fold the real workflow
+// line -- has no claim of its own. Deleting observe_generated_artifact_with from the readout fails this,
+// which is the pairing obligation reviews 66755 and 66759 asked for.
+test fn w_the_observer_route_executes_and_reaches_a_live_verdict() -> Bool {
+  let a = Fci1BoundedExecutionContextArtifact
+  let rows = observe_directory_listings(directories: [artifact_directory(a: a)])
+  match workflow_line_for(observation: observe_generated_artifact_with(a: a, rows: rows)).standing {
+    LiveVerdict { holds: h } => h
+    ReadoutRefused { cause: _ } => false
+    RecordedRunJoined { inputs_match_today: _ } => false
+    NotClaimed => false
+    MechanismNote => false
+  }
+}
+
+// THE MAPPING, DISCRIMINATED AT ITS OWN INTERFACE. Each of these supplies one
+// GeneratedArtifactObservation arm and asserts what the readout makes of it. They reach nothing: no
+// listing, no committed read, no projection of the workflow. That is DESIGN section 3's standing
+// rule applied to the rows the floor measured at 383k and 396k eval steps -- the evaluation was
+// dominated by one call whose RESULT SHAPE was all the claim inspected, so the shape is supplied and
+// the call is left to the one live claim below.
+fn observed(generated: String, committed: String) -> GeneratedArtifactObservation {
+  GeneratedArtifactObserved {
+    artifact: GitignoreArtifact,
+    path: "supplied/observation",
+    generated_content: generated,
+    committed_content: committed,
+    extra_validation: true,
+  }
+}
+
+test fn w_matching_content_is_a_live_pass() -> Bool {
+  let l = workflow_line_for(observation: observed(generated: "same", committed: "same"))
+  (l.text == workflow_line_text) && (standing_tag(s: l.standing) == "  PASS      ") && !line_fails(l: l)
+}
+
+// DIFFERING CONTENT IS A FAIL AND NOT A REFUSAL, which is the distinction the whole line exists to
+// keep: drift is an answer, and it is not the same fact as being unable to look.
+test fn w_differing_content_is_a_live_fail_not_a_refusal() -> Bool {
+  let l = workflow_line_for(observation: observed(generated: "authority", committed: "hand edited"))
+  (standing_tag(s: l.standing) == "  FAIL      ") && line_fails(l: l)
+}
+
+test fn w_an_absent_committed_artifact_refuses_and_names_the_path() -> Bool {
+  let l = workflow_line_for(observation: GeneratedArtifactCommittedAbsent {
+    artifact: WitnessFloorYamlArtifact,
+    path: ".github/workflows/witnesses.yml",
+    detail: "no such entry in the directory listing",
+  })
+  (standing_tag(s: l.standing) == "  REFUSED   ")
+    && line_fails(l: l)
+    && string_contains(s: render(sections: [ReadoutSection { title: "S", lines: [l] }]), pattern: ".github/workflows/witnesses.yml")
+}
+
+// AN UNREADABLE ARTIFACT REFUSES RATHER THAN REPORTING DRIFT, which is the arm review 66747 was
+// about: a verdict about the repository must never be established from the failure of our own read.
+test fn w_an_unreadable_artifact_refuses_rather_than_reporting_drift() -> Bool {
+  let l = workflow_line_for(observation: GeneratedArtifactObservationRefused {
+    artifact: WitnessFloorYamlArtifact,
+    path: ".github/workflows/witnesses.yml",
+    cause: "permission denied",
+  })
+  (standing_tag(s: l.standing) == "  REFUSED   ")
+    && line_fails(l: l)
+    && !string_contains(s: render(sections: [ReadoutSection { title: "S", lines: [l] }]), pattern: "FAIL")
+}
+
+// WHY THERE IS NO WHOLE-JOIN CLAIM HERE, stated because the absence is a design decision rather than
+// an omission. A claim over `readout_sections()` transitively executes THIRTEEN claim functions that
+// live in five other witness modules -- the python-to-typescript compile, three Verilog witnesses,
+// three complexity-gate snippets, five simulation-receipt joins -- plus four board emissions and the
+// full workflow projection. Measured on this PR's floor: 1,212,647 eval steps, 3,743ms, against a
+// 302ms enrolment margin.
+//
+// EVERY ONE OF THOSE THIRTEEN IS ALREADY A CLAIM IN ITS OWN MODULE, with its own subject and its own
+// discriminating red. Re-running them here asserts nothing they do not already assert and pays for
+// all of them again -- DESIGN section 2's duplicated work wearing a test's clothes. It also inverts
+// section 3's standing rule: a witness discriminates at ONE interface, and the interface this module
+// owns is the fold from line VALUES to a report, not the truth of the fifteen producers those values
+// came from.
+//
+// SO THE LINE VALUES ARE SUPPLIED, which is what every claim in this file does, and the single
+// real-path execution the pairing obligation requires is
+// `w_the_observer_route_executes_and_reaches_a_live_verdict` -- one artifact, one listing, one read,
+// one projection. `render_demo` is the executing consumer of the whole join, run by hand.
+
+// A LINE THAT COULD NOT BE ANSWERED STOPS THE RUN, and it is distinguishable from a line that was
+// answered wrongly. Both fail, so a refusal can never be mistaken for a green readout; they print
+// under different tags, so a reader repairing one is never sent after the other.
+test fn w_a_refused_line_fails_the_readout() -> Bool {
+  any_line_fails(sections: [
+    ReadoutSection { title: "S", lines: [refused(text: "a", cause: "host read refused")] }
+  ])
+}
+
+test fn w_a_refusal_renders_under_its_own_tag_with_its_cause() -> Bool {
+  render(sections: [
+    ReadoutSection { title: "S", lines: [refused(text: "a", cause: "host read refused")] }
+  ]) == "ONE AUTHORITY, MANY REALIZATIONS\n\nS\n  REFUSED   a — host read refused\n\n"
+}
+
+test fn w_an_open_frontier_never_renders_as_pass() -> Bool {
+  render(sections: [ReadoutSection { title: "S", lines: [open(text: "c")] }]) == "ONE AUTHORITY, MANY REALIZATIONS\n\nS\n  OPEN      c\n\n"
+}

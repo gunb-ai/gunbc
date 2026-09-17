@@ -26,7 +26,6 @@ import product.compute_board.device_binding {
   interlock_device_realization,
   pin_refusal_set_count,
 }
-import product.compute_board.spice_projection { SpiceProjectionRefusal }
 import product.compute_board.emission_entry {
   BoardArticleNotAdmitted,
   BoardEmission,
@@ -39,6 +38,8 @@ import product.compute_board.emission_entry {
   emit_verilog,
   emit_verilog_for,
   emit_pin_constraints_for,
+  emit_truth_table,
+  emit_truth_table_for,
 }
 import product.compute_board.digital_control {
   conditioned_good_signal,
@@ -54,8 +55,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // caller receives as an ordinary result — the fabricated plausible output DESIGN section 5
 // forbids, at the seam furthest from the model. The arms are typed now, and this witness executes
 // all three, because an arm nothing calls is a claim rather than a behaviour.
+//
+// THE HELPER IS GENERIC IN THE REFUSAL TYPE, and it was not before: it was declared at
+// BoardEmission<SpiceProjectionRefusal>, so the Verilog entry could not use it and the claim below
+// carried an inline copy of its match for that one target. Adding a fourth target made that copy a
+// second thing to keep in step, and the entry type is parameterized precisely so a reader of one
+// target's emission is a reader of all of them -- so the helper takes the parameter and the copy is
+// gone. One helper now reads every entry, which is the shape BoardEmission<R> exists to permit.
 
-fn is_emitted(e: BoardEmission<SpiceProjectionRefusal>) -> Bool {
+fn is_emitted<R>(e: BoardEmission<R>) -> Bool {
   match e {
     BoardEmitted { source: s } => s != ""
     BoardArticleNotAdmitted { causes: _ } => false
@@ -66,11 +74,8 @@ fn is_emitted(e: BoardEmission<SpiceProjectionRefusal>) -> Bool {
 test fn w_the_production_article_emits_through_every_entry() -> Bool {
   is_emitted(e: emit_spice())
     && is_emitted(e: emit_ngspice_run())
-    && match emit_verilog() {
-      BoardEmitted { source: s } => s != ""
-      BoardArticleNotAdmitted { causes: _ } => false
-      BoardTargetRefused { cause: _ } => false
-    }
+    && is_emitted(e: emit_truth_table())
+    && is_emitted(e: emit_verilog())
 }
 
 // AN INCOHERENT BOARD REACHES THE ADMISSION ARM, not the target arm. The two are separated
@@ -100,7 +105,12 @@ test fn w_an_incoherent_board_reaches_the_admission_arm_on_every_entry() -> Bool
       match emit_ngspice_run_for(article: incoherent_article) {
         BoardArticleNotAdmitted { causes: _ } =>
           match emit_verilog_for(article: incoherent_article) {
-            BoardArticleNotAdmitted { causes: _ } => true
+            BoardArticleNotAdmitted { causes: _ } =>
+              match emit_truth_table_for(article: incoherent_article) {
+                BoardArticleNotAdmitted { causes: _ } => true
+                BoardEmitted { source: _ } => false
+                BoardTargetRefused { cause: _ } => false
+              }
             BoardEmitted { source: _ } => false
             BoardTargetRefused { cause: _ } => false
           }

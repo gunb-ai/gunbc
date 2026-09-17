@@ -354,10 +354,6 @@ fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> 
   )
 }
 
-fn dashboard_instance_service_session_name(instance: HostDashboardInstance) -> NonEmptyStr {
-  join(["gunbc-dashboard-", instance.instance_id as String], "") as NonEmptyStr
-}
-
 fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> NonEmptyStr {
   replace(
     s: instance.local_origin_publish_ref as String,
@@ -1532,15 +1528,6 @@ type DashboardInstanceProvisionOp
       repo: FilePath,
       anchor_ref: NonEmptyStr,
     }
-  | DashboardEnsureService {
-      instance_id: NonEmptyStr,
-      binary: FilePath,
-      workdir: FilePath,
-      handler: NonEmptyStr,
-      host: NonEmptyStr,
-      port: Int,
-      tmux_server: TmuxServerScope,
-    }
   | DashboardVerifyProviderRuntime {
       executable: FilePath,
       state_root: FilePath,
@@ -1549,8 +1536,18 @@ type DashboardInstanceProvisionOp
       executable: FilePath,
       state_root: FilePath,
     }
-  | DashboardVerifyHealth { host: NonEmptyStr, port: Port }
 
+// live_deploy CreateRoot's DispatchWorktreeRoot and AttemptStateRoot, and systemd-launches the
+// dashboard process, only for deployment_spec_srv1 (srv1_live). deployment_spec_for has no
+// production caller. srv1_lab, srv2_lab, srv2_deploy and macbook_local still consume the dispatch
+// paths through dispatch/belt, and this plan is the only creator those instances have for those
+// directories. Naming live_deploy as owner without keeping that creator is the serve-binary
+// deadlock. Service launch is the other half of the same gap, and restoring tmux would re-fork
+// srv1_live (systemd plus a session). This plan therefore keeps the mkdirs and does not poll
+// health after launch: it does not start the process. Production process start is live_deploy
+// ServiceProcess. For every other instance, start is an operator act until deployment_spec_for
+// is a real caller — the same declared-outside-the-modeled-guarantee arm C7 is given for
+// provider-state mkdir, not a silent requirement this apply cannot discharge.
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
@@ -1618,21 +1615,9 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  concat(controller_source_ops, concat(common, concat(source_ops, concat(
+  concat(controller_source_ops, concat(common, concat(source_ops,
     dashboard_instance_provider_verification_ops(instance: instance),
-    [
-      DashboardEnsureService {
-        instance_id: instance.instance_id,
-        binary: instance.serve_binary,
-        workdir: instance.repo_root,
-        handler: instance.serve_function,
-        host: instance.listen_host,
-        port: instance.listen_port,
-        tmux_server: instance.tmux_server,
-      },
-      DashboardVerifyHealth { host: instance.listen_host, port: instance.listen_port },
-    ],
-  ))))
+  )))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -1734,30 +1719,6 @@ fn dashboard_instance_provision_op_row(
         target: repo as String,
         detail: join([origin as String, " @ ", anchor_ref as String], ""),
       }
-    DashboardEnsureService {
-      instance_id,
-      binary,
-      workdir,
-      handler,
-      host,
-      port,
-      tmux_server: _,
-    } =>
-      DashboardInstanceProvisionPlanRow {
-        kind: "ensure-service" as NonEmptyStr,
-        target: instance_id as String,
-        detail: join([
-          binary as String,
-          " · ",
-          workdir as String,
-          " · ",
-          handler as String,
-          " · ",
-          host as String,
-          ":",
-          to_string(port),
-        ], ""),
-      }
     DashboardVerifyProviderRuntime { executable, state_root } =>
       DashboardInstanceProvisionPlanRow {
         kind: "verify-provider-runtime" as NonEmptyStr,
@@ -1773,12 +1734,6 @@ fn dashboard_instance_provision_op_row(
         kind: "verify-provider-auth" as NonEmptyStr,
         target: state_root as String,
         detail: executable as String,
-      }
-    DashboardVerifyHealth { host, port } =>
-      DashboardInstanceProvisionPlanRow {
-        kind: "verify-health" as NonEmptyStr,
-        target: join([host as String, ":", to_string(port)], ""),
-        detail: "/instance.json must name the intended instance within the bounded readiness poll",
       }
   }
 }
@@ -1826,7 +1781,6 @@ type DashboardInstanceObserved {
   provider_runtime_detail: String
   provider_authenticated: Bool
   provider_auth_detail: String
-  service_present: Bool
   health_current: Bool
   production_untouched: Bool
   source_anchor_matches: Bool
@@ -1898,8 +1852,7 @@ fn dashboard_instance_reconcile(
         observed.source_revision_detail,
       ], "") as NonEmptyStr,
     }
-  } else if observed.health_current
-      && observed.root_present
+  } else if observed.root_present
       && observed.ownership_marker_present
       && dashboard_source_seed_ready(instance: instance, observed: observed)
       && observed.origin_present
@@ -1908,7 +1861,6 @@ fn dashboard_instance_reconcile(
       && observed.attempt_state_present
       && observed.provider_runtime_ready
       && observed.provider_authenticated
-      && observed.service_present
       && observed.source_anchor_matches
       && observed.source_revision_current {
     DashboardInstanceConverged
@@ -1918,11 +1870,7 @@ fn dashboard_instance_reconcile(
 }
 
 type DashboardInstanceRetractOp
-  = DashboardStopService {
-      instance_id: NonEmptyStr,
-      tmux_server: TmuxServerScope,
-    }
-  | DashboardRefuseUnlessAttemptsEmpty { path: FilePath }
+  = DashboardRefuseUnlessAttemptsEmpty { path: FilePath }
   | DashboardRemoveSourceRepo { path: FilePath }
   | DashboardRemoveLocalOrigin { path: FilePath }
   | DashboardPreserveSourceBundle { path: FilePath }
@@ -1933,10 +1881,11 @@ type DashboardInstanceRetract
 
 // Retraction is modeled independently from provisioning and is deliberately narrower than recursive
 // deletion. Existing-repo instances (including production) are not owned by this model and refuse
-// retraction. Isolated bundle-seeded instances stop only their named service, refuse while any
+// retraction. Isolated bundle-seeded instances refuse while any
 // attempt worktree remains, remove the reproducible source clone and local origin, and preserve the
-// staged bundle as the recovery anchor. Provider state is referenced secret state and is never in
-// the retract plan.
+// staged bundle as the recovery anchor. Service stop is live_deploy retract over the systemd
+// ServiceProcess member, not a tmux kill in this plan. Provider state is referenced secret
+// state and is never in the retract plan.
 
 fn dashboard_instance_retract_plan(
   instance: HostDashboardInstance,
@@ -1958,10 +1907,6 @@ fn dashboard_instance_retract_plan(
         history_remote: _,
       } =>
         DashboardInstanceRetractPlan { plan: [
-          DashboardStopService {
-            instance_id: instance.instance_id,
-            tmux_server: instance.tmux_server,
-          },
           DashboardRefuseUnlessAttemptsEmpty { path: dashboard_instance_dispatch_worktree_root(instance: instance) },
           DashboardRemoveSourceRepo { path: instance.repo_root },
           DashboardRemoveLocalOrigin { path: instance.local_origin_root },

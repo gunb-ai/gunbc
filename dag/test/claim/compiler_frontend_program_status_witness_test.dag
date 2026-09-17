@@ -53,6 +53,7 @@ import gunbc.namespace_cut_stage {
   StageXL0Denominator,
   StageXL1BaselineCapture,
   StageXL2RootDeletionRehearsal,
+  StageXL3DeclaringIdentitySpelling,
   StageXL4ReferenceDerivedGraph,
   StageAct0ActivationGate,
   stage_prerequisites,
@@ -571,13 +572,19 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL5Waves))
 }
 
-// F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR AND NOTHING ELSE ANSWERS IT.
+// F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR, AND IT MAY NOT READ CLEAR OFF AN INSTRUMENT
+// THAT IS EMPTY ON THE CORPUS.
 //
-// The arm this replaced read the subject roster's unobservable host probes, so making every host
-// probe observable would have flipped XL-0 to CLEAR while no repair-input origin roster had been
-// produced. That is the falsifier stated as a rule: XL-0's standing may not be a function of probe
-// observability at all. Asserting NOT-DERIVABLE with this exact cause holds it, because a rewiring
-// back onto any observable population would have to abandon the cause to change the standing.
+// THIS PROBE HAS NOW BEEN FALSIFIED TWICE AND BOTH FALSIFICATIONS ARE THE SAME RULE. The original
+// arm read gunbc.namespace_cut_subject_roster's unobservable host probes, so repairing probe
+// observability would have flipped XL-0 while no denominator existed. A later arm -- landed on this
+// branch and withdrawn on it -- read a STAGE DELIVERY RECEIPT, which was earned against hand-built
+// Node trees while the producer returned NO sites over the tree production actually yields. Both
+// made XL-0's standing a function of something that is not the denominator.
+//
+// So the assertion is NOT-DERIVABLE with this exact cause, which is the one statement that survives
+// both: a rewiring onto any other observable population has to abandon the cause to move the
+// standing, and a receipt re-landed before the producer answers non-empty reds this witness.
 test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bool {
   standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
     && any(stages_awaiting(i: RepairInputOriginRosterProducer),
@@ -585,12 +592,22 @@ test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bo
     && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
 }
 
+// XL-3 stays NotDerivable while the usable class -- qualified cross-module
+// mentions -- is invisible on the production ingest route. Bare PARAMETER
+// type names are not that class: they reach. Bare FIELD type names are a
+// fourth missing class, not a dotted case, and are also not the usable class.
+test fn xl3_is_not_derivable_while_qualified_cross_module_mentions_are_invisible() -> Bool {
+  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL3DeclaringIdentitySpelling))
+    && any(stages_awaiting(i: DeclaringIdentitySpellingCensus),
+         l => l == namespace_cut_stage_label(s: StageXL3DeclaringIdentitySpelling))
+}
+
 // F2 -- XL-1 IS THE CAPABILITY, THE BASELINE MILESTONE IS THE BASE-SPECIFIC FACT, AND THEY ARE NOT
 // THE SAME QUESTION. XL-1 used to delegate to NamespaceBaselineObservationComplete outright, which
 // made "the capture transaction can succeed" and "a capture has been taken against THIS base" one
 // row. They separate exactly on the CaptureAvailable arm: the stage clears (its deliverable is the
-// capability) while the milestone reads persisted_legacy_baseline_outstanding (unpinned live pin,
-// so outstanding until ACT-0 names a base). This arm asserts the contract on whichever arm is live.
+// capability) while the milestone reads persisted_legacy_baseline_outstanding (production pin
+// unpinned until ACT-0 names a base). This arm asserts the contract on whichever arm is live.
 test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base() -> Bool {
   match legacy_baseline_capture_capability() {
     CaptureBlocked { phase: p, cause: c } =>
