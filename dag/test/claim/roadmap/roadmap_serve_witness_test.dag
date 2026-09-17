@@ -357,9 +357,9 @@ test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
 }
 
 // THE POST IS A DIFFERENT ROUTE, and the hermetic frame can reach it only up to the first host
-// read: with approval_identity_trust established (2026-09-17, loopback bind + tailscale serve),
-// a well-formed segment goes on to Clock.Now, the keyring and the store, none of which has a
-// hermetic arm. So this witness posts a segment that is not <escalation>.<decision>.<hex> and
+// read: once approval_identity_trust is established (it is derived from the instance bind, and
+// opens with the loopback row), a well-formed segment goes on to Clock.Now, the keyring and the
+// store, none of which has a hermetic arm. So this witness posts a segment that is not <escalation>.<decision>.<hex> and
 // pins that the refusal is 400 BEFORE any of those reads -- the ordering that also protects the
 // live route from spending effects on the way to a refusal. Redemption of a real segment is
 // covered by the store witness (redeem_over_store) and the live probe.

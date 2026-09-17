@@ -572,8 +572,9 @@ fn approval_confirm_page_response(
 // THE SEGMENT IS PARSED BEFORE ANY HOST READ, AND THE CLOCK AND KEYRING ARE READ ONLY PAST THE
 // TRUST GATE. All three are ordered so that a refusal costs no effect it should have prevented: a
 // segment that is not <escalation>.<decision>.<hex> is 400 with the clock, the keyring and the
-// store untouched -- which is also what keeps the hermetic witness able to reach this handler now
-// that the trust row is established, since Clock.Now has no hermetic arm.
+// store untouched -- which is also what keeps the hermetic witness able to reach this handler
+// whether or not the trust standing is established (it is derived from the instance bind and is
+// closed while srv1_live_dashboard_instance binds 0.0.0.0), since Clock.Now has no hermetic arm.
 fn approval_decide_response(
   request: ServeHttpRequest,
   params: List<PathParamBinding>,

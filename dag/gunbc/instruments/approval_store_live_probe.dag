@@ -33,7 +33,8 @@ import gunbc.auth.approval_decision_store {
 //
 // THE IDENTITY TRUST IS A FIXTURE HERE, deliberately: this probe exercises the store, not the
 // deployment, so it passes IdentityHeaderTrustEstablished with the probe named as its evidence.
-// The production row (approval_identity_trust) carries the deployment's own evidence since 2026-09-17.
+// The production row (approval_identity_trust) is derived from srv1_live_dashboard_instance.listen_host
+// and stays NotEstablished while that row binds 0.0.0.0; the loopback row (#11484) opens it.
 
 // The same fixture the hermetic witness uses: tags computed outside the substrate over the
 // signing input under this key (approval_issuance_frontier), so a tag the store did not mint
