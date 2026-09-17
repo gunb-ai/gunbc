@@ -1982,6 +1982,20 @@ fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
   ]
 }
 
+fn mtcollins1_sol_activate_ipmitool_command() -> String {
+  match mtcollins1_bmc_username {
+    Absent => "echo MtCollins1BmcUsernameUnobserved >&2; exit 1"
+    Present { value: user } =>
+      concat(
+        "ipmitool -I lanplus -H ",
+        concat(
+          mtcollins1_endpoint.host as String,
+          concat(" -U ", concat(user as String, " -f \"$DEST_FILE\" sol activate >> \"$SOL_OUT\" 2>&1 < /dev/zero & echo $! > \"$SOL_PID_FILE\"")),
+        ),
+      )
+  }
+}
+
 fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
@@ -2002,7 +2016,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
     Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
     Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
-    Do { run: ci_retry_body_run(command: concat("ipmitool -I lanplus -H ", concat(mtcollins1_endpoint.host as String, concat(" -U ", concat(mtcollins1_bmc_username as String, " -f \"$DEST_FILE\" sol activate >> \"$SOL_OUT\" 2>&1 < /dev/zero & echo $! > \"$SOL_PID_FILE\""))))) },
+    Do { run: ci_retry_body_run(command: mtcollins1_sol_activate_ipmitool_command()) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_capture_path_env as String, "=\"$SOL_OUT\""))) },
     Do { run: ci_retry_body_run(command: "sleep 2") },
   ]
