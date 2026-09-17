@@ -450,7 +450,7 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
         crate::v1_interpreter::ExecutionMode::Wet,
     );
     match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &[], true) {
-        Ok(value) => exact_head_standing_outcome(FUNCTION, &value),
+        Ok(value) => exact_head_standing_outcome(&ctx, FUNCTION, &value),
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: format!("evaluation-store-address-exact-head: eval failed: {cause}"),
@@ -459,33 +459,48 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
 }
 
 fn exact_head_standing_outcome(
+    ctx: &crate::v1_interpreter::InterpContext,
     function: &str,
     value: &crate::v1_interpreter::Value,
 ) -> InvocationOutcome {
-    let rendered = value.to_string();
-    if rendered == "ExactHeadHeld" {
-        return InvocationOutcome {
-            termination: Termination::ObservationHeld,
-            message: format!("evaluation-store-address-exact-head: held ({function})"),
-        };
-    }
-    if rendered.starts_with("ExactHeadDidNotHold") {
-        return InvocationOutcome {
-            termination: Termination::ObservationDidNotHold,
-            message: format!("evaluation-store-address-exact-head: {rendered}"),
-        };
-    }
-    if rendered.starts_with("ExactHeadRefused") {
-        return InvocationOutcome {
+    match value {
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "ExactHeadHeld") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationHeld,
+                message: format!("evaluation-store-address-exact-head: held ({function})"),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "ExactHeadDidNotHold") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationDidNotHold,
+                message: format!(
+                    "evaluation-store-address-exact-head: {}",
+                    ctx.format_value(value)
+                ),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "ExactHeadRefused") =>
+        {
+            InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "evaluation-store-address-exact-head: {}",
+                    ctx.format_value(value)
+                ),
+            }
+        }
+        other => InvocationOutcome {
             termination: Termination::Refused,
-            message: format!("evaluation-store-address-exact-head: {rendered}"),
-        };
-    }
-    InvocationOutcome {
-        termination: Termination::Refused,
-        message: format!(
-            "evaluation-store-address-exact-head: {function} returned a non-standing value: {rendered}"
-        ),
+            message: format!(
+                "evaluation-store-address-exact-head: {function} returned a non-standing value: {}",
+                ctx.format_value(other)
+            ),
+        },
     }
 }
 

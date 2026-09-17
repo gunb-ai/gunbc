@@ -176,6 +176,11 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     },
     DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
+      decl_name: "exact_head_standing_outcome",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
       decl_name: "test_verb",
       field: WholeDeclaration
     },
