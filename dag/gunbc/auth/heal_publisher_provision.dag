@@ -1,0 +1,360 @@
+module gunbc.auth.heal_publisher_provision
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { NonEmptyStr, String, Secret, FilePath, List, Bool }
+import std.resources { Network }
+import v2.std.optional { Present, Absent }
+import extdeps.cloud.gcp.iam {
+  GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
+  GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
+  reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in
+}
+import extdeps.cloud.gcp.iam_admin
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import gunbc.auth.access_token_source {
+  read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable,
+  AccessTokenSource, OperatorSuppliedToken, secret_access_token_path_env
+}
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, github_wif_issuer_uri }
+import gunbc.auth.heal_publisher_federation {
+  heal_publisher_wif_pool_id, heal_publisher_wif_pool_display_name,
+  heal_publisher_wif_provider_id, heal_publisher_wif_attribute_mapping, heal_publisher_wif_attribute_condition,
+  heal_publisher_wif_principal_set, heal_publisher_service_account, heal_publisher_service_account_id,
+  heal_publisher_service_account_display_name, heal_publisher_service_account_member,
+  heal_publisher_app_key_secret
+}
+import gunbc.auth.gcp_secret_access { secret_accessor_grant, secret_access_ensure_for_member }
+import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
+import gunbc.secret_provision { SecretProvisionAttemptIdentity }
+import gunbc.secret_provision_actuator {
+  snapshot_credential, CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
+  create_secret_for_attempt, SecretCreatedForAttempt, SecretCreationRefused, SecretCreationOutcomeUnknown,
+  add_initial_version, VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown,
+  VersionAddedButUnverified
+}
+import extdeps.shell
+
+// ONE-TIME PROVISIONING OF THE PUBLISHER'S OWN IDENTITY, run by an operator with a control-plane
+// token (gunbc.auth.access_token_source secret_access_token_path_env). It is two entries because they
+// need different things and fail differently: the federation half needs no key material at all, and
+// the key half must not run until an operator holds the App's private key on disk.
+//
+// NEITHER ENTRY IS A ONE-SHOT IN THE SENSE THAT MATTERS. Three creates cannot be one request, so a
+// failure at the third leaves the first two committed and the operator reruns. That rerun is the
+// case the shape below is built for: a 409 is carried as an unverified presence, the reconcilable
+// step still runs, and the run refuses at the end naming what nobody read -- rather than aborting at
+// the first create and leaving the rest to be done by hand.
+
+data heal_publisher_key_source_env: NonEmptyStr = "GUNBC_HEAL_PUBLISHER_APP_KEY_FILE"
+
+data heal_publisher_secret_attempt: SecretProvisionAttemptIdentity = "heal-publisher-app-key-provision"
+
+fn rest_refusal_text(o: RestOutcome) -> String {
+  match o {
+    RestOk => "ok"
+    RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
+    RestTransportRefused { cause } => concat("transport: ", cause as String)
+    RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
+  }
+}
+
+fn rest_ok(o: RestOutcome) -> Bool {
+  match o {
+    RestOk => true
+    RestStatusRefused { status: _, body: _ } => false
+    RestTransportRefused { cause: _ } => false
+    RestBodyUndecodable { status: _, cause: _ } => false
+  }
+}
+
+// THE ONE CELL THIS ENTRY OWNS on the service account's own policy: who may act as it. The member is
+// the publisher pool, so the only identity that can impersonate this account is a token that already
+// satisfied the provider's condition.
+fn heal_publisher_impersonation_cell() -> GcpIamBindingCell {
+  GcpIamBindingCell {
+    role: role_iam_workload_identity_user,
+    member: heal_publisher_wif_principal_set(),
+    condition: none
+  }
+}
+
+fn heal_publisher_impersonation_owned() -> GcpIamOwnedCellUniverse {
+  GcpIamOwnedCellUniverse { cells: [heal_publisher_impersonation_cell()] }
+}
+
+// A WHOLE-POLICY REPLACE THAT RETURNED 200 HAS NOT BEEN SHOWN TO CONTAIN THE CELL IT WAS WRITTEN FOR,
+// so the write is followed by looking for that cell in what came back.
+fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
+  gcp_cell_in(c: heal_publisher_impersonation_cell(), xs: gcp_policy_cells(p: policy))
+}
+
+fn bind_publisher_impersonation(token: Secret) -> ProcessExit
+  uses net: Network
+{
+  let observed = gcp.IamAdmin.GetServiceAccountIamPolicy(
+    access_token: token,
+    project_id: fleet_secrets_project_id,
+    service_account: heal_publisher_service_account
+  )
+  if !rest_ok(o: observed.outcome) {
+    exit_failure(reason: concat("heal publisher provision: the service account's policy could not be read: ", rest_refusal_text(o: observed.outcome)))
+  } else {
+    let observed_policy = GcpPolicy { bindings: observed.bindings, etag: observed.etag, version: observed.version }
+    match reconcile_gcp_policy(
+      observed: observed_policy,
+      desired_owned: [heal_publisher_impersonation_cell()],
+      owned_universe: heal_publisher_impersonation_owned()
+    ) {
+      GcpPolicyRepresentationLossy { conditional_roles: _ } =>
+        exit_failure(reason: "heal publisher provision: the service account's policy was read at a representation that mangles conditional bindings, so reconciling against it could replace somebody's restricted access. Refusing.")
+      GcpPolicyAlreadyConverged { policy: p } =>
+        if impersonation_binding_present(policy: p) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: "heal publisher provision: reconciliation reported the service account policy converged, but the impersonation cell is absent from the policy it reported")
+        }
+      GcpPolicyDeltaRequired { policy: desired_policy, added: _, removed: _, preserved: _ } => {
+        let written = gcp.IamAdmin.SetServiceAccountIamPolicy(
+          access_token: token,
+          project_id: fleet_secrets_project_id,
+          service_account: heal_publisher_service_account,
+          policy: desired_policy
+        )
+        if !rest_ok(o: written.outcome) {
+          exit_failure(reason: concat("heal publisher provision: the service account's policy could not be written: ", rest_refusal_text(o: written.outcome)))
+        } else if impersonation_binding_present(policy: GcpPolicy { bindings: written.bindings, etag: written.etag, version: written.version }) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: "heal publisher provision: setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell")
+        }
+      }
+    }
+  }
+}
+
+// WHAT ONE CREATE ESTABLISHED. Created is the only arm this run may call converged on its own
+// evidence. AlreadyPresentUnverified is a 409: a resource with that id exists and this run did not
+// observe its CONFIGURATION, which for the provider is the attribute condition -- the single fact
+// that decides which workflows may federate at all -- so reporting it as converged would be this
+// run asserting a security property it never read. CreateRefused is everything else.
+type SubjectCreation
+  = SubjectCreated
+  | SubjectAlreadyPresentUnverified
+  | SubjectCreateRefused { cause: String }
+
+fn subject_creation(o: RestOutcome) -> SubjectCreation {
+  match o {
+    RestOk => SubjectCreated
+    RestStatusRefused { status, body } =>
+      if (status as Int) == 409 {
+        SubjectAlreadyPresentUnverified
+      } else {
+        SubjectCreateRefused { cause: join(["status ", to_string(status as Int), ": ", body], "") }
+      }
+    RestTransportRefused { cause } => SubjectCreateRefused { cause: concat("transport: ", cause as String) }
+    RestBodyUndecodable { status, cause } =>
+      SubjectCreateRefused { cause: join(["status ", to_string(status as Int), " undecodable: ", cause as String], "") }
+  }
+}
+
+fn creation_refusal(subject: String, c: SubjectCreation) -> String {
+  match c {
+    SubjectCreated => ""
+    SubjectAlreadyPresentUnverified => ""
+    SubjectCreateRefused { cause } => join([subject, ": ", cause, ". "], "")
+  }
+}
+
+fn creation_unverified(subject: String, c: SubjectCreation) -> String {
+  match c {
+    SubjectCreated => ""
+    SubjectAlreadyPresentUnverified => join([subject, " "], "")
+    SubjectCreateRefused { cause: _ } => ""
+  }
+}
+
+// THE IMPERSONATION BINDING IS REACHED EVEN WHEN A SUBJECT WAS ALREADY PRESENT, because it is a
+// read-reconcile-write with its own readback: it is the one step here that is safe to repeat and
+// that establishes its own result. A run that skipped it on a 409 would leave the binding unmade in
+// exactly the rerun case this shape exists for. It is NOT reached when a create was refused, which
+// is why this decides first and the caller performs second -- an argument position would have run
+// the binding against an account this run just failed to create.
+type FederationDisposition
+  = FederationBindable
+  | FederationStopped { reason: String }
+
+fn federation_verdict(
+  pool: SubjectCreation,
+  provider: SubjectCreation,
+  account: SubjectCreation
+) -> FederationDisposition {
+  let refusals = join([
+    creation_refusal(subject: "the pool", c: pool),
+    creation_refusal(subject: "the provider", c: provider),
+    creation_refusal(subject: "the service account", c: account)
+  ], "")
+  if refusals != "" {
+    FederationStopped { reason: concat("heal publisher provision: a subject could not be created -- ", refusals) }
+  } else {
+    FederationBindable
+  }
+}
+
+// A 409 DOES NOT STOP THE RUN AND DOES NOT LET IT REPORT SUCCESS. The binding is still reconciled --
+// that is the whole point of rerunning -- and the run then refuses, naming the subjects whose
+// configuration nobody read, so the operator's next move is a classification rather than a guess.
+fn unverified_subjects(pool: SubjectCreation, provider: SubjectCreation, account: SubjectCreation) -> String {
+  join([
+    creation_unverified(subject: "pool", c: pool),
+    creation_unverified(subject: "provider", c: provider),
+    creation_unverified(subject: "service-account", c: account)
+  ], "")
+}
+
+fn bound_verdict(unverified: String, bound: ProcessExit) -> ProcessExit {
+  if unverified == "" {
+    bound
+  } else {
+    match bound {
+      ExitSuccess =>
+        exit_failure(reason: join([
+          "heal publisher provision: the impersonation binding is reconciled and read back, but these subjects already ",
+          "existed and this run did not read their configuration: ", unverified,
+          "-- classify them against gunbc.gcp_estate_adoption gcp_estate_desired_roster before treating this federation ",
+          "as provisioned. A provider whose attribute condition differs from the declared one admits workflows this ",
+          "model never authorized, and a 409 establishes only that the id is taken."
+        ], ""))
+      _ => bound
+    }
+  }
+}
+
+fn provision_federation(token: Secret) -> ProcessExit
+  uses net: Network
+{
+  let pool = gcp.IamAdmin.CreateWorkloadIdentityPool(
+    access_token: token,
+    project_id: fleet_secrets_project_id,
+    pool_id: heal_publisher_wif_pool_id,
+    display_name: heal_publisher_wif_pool_display_name
+  )
+  let provider = gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(
+    access_token: token,
+    project_id: fleet_secrets_project_id,
+    pool_id: heal_publisher_wif_pool_id,
+    provider_id: heal_publisher_wif_provider_id,
+    issuer_uri: github_wif_issuer_uri,
+    attribute_mapping: heal_publisher_wif_attribute_mapping,
+    attribute_condition: heal_publisher_wif_attribute_condition() as NonEmptyStr
+  )
+  let account = gcp.IamAdmin.CreateServiceAccount(
+    access_token: token,
+    project_id: fleet_secrets_project_id,
+    account_id: heal_publisher_service_account_id,
+    display_name: heal_publisher_service_account_display_name
+  )
+  let pool_c = subject_creation(o: pool.outcome)
+  let provider_c = subject_creation(o: provider.outcome)
+  let account_c = subject_creation(o: account.outcome)
+  match federation_verdict(pool: pool_c, provider: provider_c, account: account_c) {
+    FederationStopped { reason: r } => exit_failure(reason: r)
+    FederationBindable =>
+      match account_c {
+        SubjectCreated =>
+          if (account.email as String) != (heal_publisher_service_account as String) {
+            exit_failure(reason: join([
+              "heal publisher provision: the created service account is ", account.email as String,
+              ", not the declared ", heal_publisher_service_account as String,
+              " -- the federation declares the account the workflow presents, so a different address would leave the workflow federating to nothing"
+            ], ""))
+          } else {
+            bound_verdict(
+              unverified: unverified_subjects(pool: pool_c, provider: provider_c, account: account_c),
+              bound: bind_publisher_impersonation(token: token)
+            )
+          }
+        _ =>
+          bound_verdict(
+            unverified: unverified_subjects(pool: pool_c, provider: provider_c, account: account_c),
+            bound: bind_publisher_impersonation(token: token)
+          )
+      }
+  }
+}
+
+// ENTRY ONE: the pool, its single provider, the service account, and who may act as it.
+fn heal_publisher_federation_provision_with_supplied_token() -> ProcessExit
+  uses net: Network
+{
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+    SuppliedTokenReady { token: t } => provision_federation(token: t)
+  }
+}
+
+// ENTRY TWO: the key. The snapshot is taken BEFORE any container exists, so a run that cannot read or
+// digest the operator's key file has created nothing; the version is verified by reading it back, and
+// only a verified version is followed by the accessor binding -- a binding to a container holding
+// bytes nobody verified would authorize the publisher to read a key it cannot use.
+fn provision_key(token: Secret, source: FilePath) -> ProcessExit
+  uses net: Network
+{
+  match snapshot_credential(source: source) {
+    CredentialSnapshotRefused { cause: c } =>
+      exit_failure(reason: concat("heal publisher key provision: no key material, nothing created: ", c as String))
+    CredentialSnapshotRefusedResidueRemains { workspace: w, cause: c } =>
+      exit_failure(reason: join([
+        "heal publisher key provision: no key material, nothing created, and plaintext may remain at ",
+        w as String, ": ", c as String
+      ], ""))
+    CredentialSnapshotTaken { snapshot: snapshot } =>
+      match create_secret_for_attempt(
+        attempt: heal_publisher_secret_attempt,
+        project: heal_publisher_app_key_secret.project,
+        secret_id: heal_publisher_app_key_secret.secret as NonEmptyStr,
+        snapshot: snapshot,
+        token: token
+      ) {
+        SecretCreationRefused { cause: c } =>
+          exit_failure(reason: concat("heal publisher key provision: the secret container was refused: ", c as String))
+        SecretCreationOutcomeUnknown { cause: c } =>
+          exit_failure(reason: concat("heal publisher key provision: the create outcome is unknown, so this run will not create again -- reconcile by reading the container: ", c as String))
+        SecretCreatedForAttempt { capability: capability } =>
+          match add_initial_version(capability: capability, token: token) {
+            VersionAdditionRefused { cause: c } =>
+              exit_failure(reason: concat("heal publisher key provision: the version was refused: ", c as String))
+            VersionAdditionOutcomeUnknown { cause: c } =>
+              exit_failure(reason: concat("heal publisher key provision: the add-version outcome is unknown; a version may already hold this payload and this run will not write again: ", c as String))
+            VersionAddedButUnverified { version: v, cause: c } =>
+              exit_failure(reason: join([
+                "heal publisher key provision: a version landed at ", v as String,
+                " but did not verify: ", c as String,
+                " -- disable that version rather than rewriting it"
+              ], ""))
+            VersionAddedAndVerified { verified: _ } =>
+              secret_access_ensure_for_member(
+                grant: secret_accessor_grant(target: heal_publisher_app_key_secret),
+                member: heal_publisher_service_account_member(),
+                token_source: OperatorSuppliedToken { token: token }
+              )
+          }
+      }
+  }
+}
+
+fn heal_publisher_key_provision_with_supplied_token() -> ProcessExit
+  uses net: Network
+{
+  match shell.Env.Get(name: heal_publisher_key_source_env).value {
+    Absent =>
+      exit_failure(reason: join([
+        "heal publisher key provision: ", heal_publisher_key_source_env as String,
+        " is not set -- this entry needs the path of the App private key file an operator downloaded from the App's settings page"
+      ], ""))
+    Present { value: raw } =>
+      match read_supplied_access_token() {
+        SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+        SuppliedTokenReady { token: t } => provision_key(token: t, source: trim(s: raw) as FilePath)
+      }
+  }
+}

@@ -4,7 +4,9 @@ module extdeps.cloud.gcp.iam_admin
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
-import std.types { Map, NonEmptyStr, Secret, String }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
+import std.types { Int, List, Map, NonEmptyStr, Secret, String }
+import extdeps.transports.rest { RestOutcome }
 import v2.std.network { POST }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -13,6 +15,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE TWO SERVICE-ACCOUNT POLICY OPERATIONS READ AND WRITE WHO MAY ACT AS AN ACCOUNT, which is a
+// different resource from the project policy that says what the account may do
+// (cloud.google.com/iam/docs/reference/rest, projects.serviceAccounts getIamPolicy / setIamPolicy).
+// Both are POST on the account resource, and getIamPolicy is a POST rather than a GET because the
+// upstream declares it so.
+//
+// EVERY OPERATION HERE CARRIES A RestOutcome, INCLUDING THE CREATES, and the reason is 409. A
+// provisioning run that creates a pool, a provider and an account performs three writes that cannot
+// be one request, so a failure at the third leaves the first two committed; without an outcome the
+// rerun aborts at the first 409 and can never reach the step that failed, which is precisely the
+// pressure that turns a modelled provisioning route into an operator doing the rest by hand. A 409
+// is a fact the caller must be able to read and decide about -- it establishes that a resource with
+// that id exists, and NOT that its configuration is the desired one, so the honest consumer treats
+// it as an unverified presence and refuses to call the run converged on the strength of it.
 service gcp.IamAdmin {
   config {
     endpoint: "https://iam.googleapis.com"
@@ -30,6 +46,7 @@ service gcp.IamAdmin {
     output {
       email: ServiceAccountEmail
       sa_name: String from "name"
+      outcome: RestOutcome
     }
 
     idempotent
@@ -48,6 +65,55 @@ service gcp.IamAdmin {
     }
   }
 
+  operation GetServiceAccountIamPolicy {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      service_account: ServiceAccountEmail
+    }
+    output { bindings: List<GcpBinding>, etag: String, version: Int, outcome: RestOutcome }
+
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/projects/\{project_id\}/serviceAccounts/\{service_account\}:getIamPolicy"
+    }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation SetServiceAccountIamPolicy {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      service_account: ServiceAccountEmail
+      policy: GcpPolicy
+    }
+    output { bindings: List<GcpBinding>, etag: String, version: Int, outcome: RestOutcome }
+
+    transport rest {
+      method: POST,
+      path: "/v1/projects/\{project_id\}/serviceAccounts/\{service_account\}:setIamPolicy",
+      body: { policy: policy }
+    }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      409 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
   operation CreateWorkloadIdentityPool {
     input {
       access_token: Secret
@@ -55,7 +121,7 @@ service gcp.IamAdmin {
       pool_id: NonEmptyStr
       display_name: NonEmptyStr
     }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", outcome: RestOutcome }
 
     idempotent
     transport rest {
@@ -84,7 +150,7 @@ service gcp.IamAdmin {
       attribute_mapping: Map<String, String>
       attribute_condition: NonEmptyStr
     }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", outcome: RestOutcome }
 
     idempotent
     transport rest {

@@ -1,0 +1,182 @@
+module test.claim.heal_publisher_provision_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
+import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
+import gunbc.auth.heal_publisher_federation { heal_publisher_wif_principal_set }
+import gunbc.auth.heal_publisher_provision {
+  SubjectCreation, SubjectCreated, SubjectAlreadyPresentUnverified, SubjectCreateRefused,
+  subject_creation, FederationDisposition, FederationBindable, FederationStopped,
+  federation_verdict, unverified_subjects, bound_verdict,
+  heal_publisher_impersonation_cell, impersonation_binding_present
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE PROVISIONING DECISION, not the network calls around it. Three creates cannot be
+// one request, so what this module decides on a PARTIAL result is the whole safety content: which
+// outcomes may be called converged, which must stop the run, and which must reconcile-then-refuse.
+
+fn ok() -> RestOutcome { RestOk }
+fn conflict() -> RestOutcome { RestStatusRefused { status: 409, body: "{\"error\":{\"status\":\"ALREADY_EXISTS\"}}" } }
+fn denied() -> RestOutcome { RestStatusRefused { status: 403, body: "caller lacks iam.workloadIdentityPools.create" } }
+
+fn succeeded(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+fn refusal_text(e: ProcessExit) -> String {
+  match e {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason } => reason
+  }
+}
+
+// ── what one create outcome established ─────────────────────────────────────────────────────
+
+// THE POSITIVE CONTROL. A 200 is a creation this run performed and may rely on; without this arm
+// answering Created, every refusal below is satisfied by a classifier that admits nothing.
+test fn witness_a_created_subject_is_created() -> Bool {
+  match subject_creation(o: ok()) {
+    SubjectCreated => true
+    SubjectAlreadyPresentUnverified => false
+    SubjectCreateRefused { cause: _ } => false
+  }
+}
+
+// A 409 IS NOT A REFUSAL AND NOT A CONVERGENCE. It says the id is taken and says nothing about the
+// configuration behind it, which for the provider is the attribute condition -- the one fact that
+// decides which workflows may federate at all.
+test fn witness_a_conflict_is_an_unverified_presence() -> Bool {
+  match subject_creation(o: conflict()) {
+    SubjectAlreadyPresentUnverified => true
+    SubjectCreated => false
+    SubjectCreateRefused { cause: _ } => false
+  }
+}
+
+test fn witness_a_denied_create_is_a_refusal_carrying_its_cause() -> Bool {
+  match subject_creation(o: denied()) {
+    SubjectCreateRefused { cause } => string_contains(s: cause, pattern: "403")
+    SubjectCreated => false
+    SubjectAlreadyPresentUnverified => false
+  }
+}
+
+test fn witness_an_unreached_service_is_a_refusal_not_a_presence() -> Bool {
+  match subject_creation(o: RestTransportRefused { cause: "connection reset" }) {
+    SubjectCreateRefused { cause } => string_contains(s: cause, pattern: "transport")
+    SubjectCreated => false
+    SubjectAlreadyPresentUnverified => false
+  }
+}
+
+// ── what the run does with three of them ────────────────────────────────────────────────────
+
+fn disposition_stopped(d: FederationDisposition) -> Bool {
+  match d {
+    FederationStopped { reason: _ } => true
+    FederationBindable => false
+  }
+}
+
+fn disposition_reason(d: FederationDisposition) -> String {
+  match d {
+    FederationStopped { reason } => reason
+    FederationBindable => ""
+  }
+}
+
+// THREE CREATES, NO REFUSAL, SO THE BINDING IS REACHED. This is the control for every stop below.
+test fn witness_three_created_subjects_reach_the_binding() -> Bool {
+  !disposition_stopped(d: federation_verdict(
+    pool: SubjectCreated, provider: SubjectCreated, account: SubjectCreated
+  ))
+}
+
+// A CONFLICT DOES NOT STOP THE RUN, and that is the rerun this shape exists for: the operator's
+// second attempt must still reach the one step that is safe to repeat.
+test fn witness_a_conflict_still_reaches_the_binding() -> Bool {
+  !disposition_stopped(d: federation_verdict(
+    pool: SubjectAlreadyPresentUnverified, provider: SubjectAlreadyPresentUnverified, account: SubjectCreated
+  ))
+}
+
+// A REFUSED CREATE STOPS BEFORE THE BINDING, naming the subject: binding a policy on an account this
+// run just failed to create is a call that can only fail, and its failure would be reported in place
+// of the create's, which is the cause the operator needs.
+test fn witness_a_refused_create_stops_and_names_its_subject() -> Bool {
+  let d = federation_verdict(
+    pool: SubjectCreated,
+    provider: SubjectCreateRefused { cause: "status 403: denied" },
+    account: SubjectCreated
+  )
+  disposition_stopped(d: d) && string_contains(s: disposition_reason(d: d), pattern: "the provider")
+}
+
+// ── what a reconciled binding may report when a subject was unread ──────────────────────────
+
+test fn witness_no_conflict_leaves_the_binding_result_alone() -> Bool {
+  succeeded(e: bound_verdict(
+    unverified: unverified_subjects(pool: SubjectCreated, provider: SubjectCreated, account: SubjectCreated),
+    bound: ExitSuccess
+  ))
+}
+
+// THE CLAIM THIS MODULE EXISTS FOR. The binding succeeded and a subject's configuration was never
+// read, so the run REFUSES rather than reporting the federation provisioned. Reporting success here
+// would be this run asserting that a pre-existing provider carries the declared attribute condition,
+// which it has no observation of -- the provider could admit every workflow in the org.
+test fn witness_an_unverified_subject_refuses_even_when_the_binding_succeeded() -> Bool {
+  let e = bound_verdict(
+    unverified: unverified_subjects(pool: SubjectCreated, provider: SubjectAlreadyPresentUnverified, account: SubjectCreated),
+    bound: ExitSuccess
+  )
+  !succeeded(e: e)
+    && string_contains(s: refusal_text(e: e), pattern: "provider")
+    && string_contains(s: refusal_text(e: e), pattern: "attribute condition")
+}
+
+// A FAILED BINDING IS NEVER UPGRADED. The unverified wording must not replace a real failure's cause,
+// or the operator loses the reason the write did not land.
+test fn witness_a_failed_binding_keeps_its_own_cause() -> Bool {
+  let e = bound_verdict(
+    unverified: unverified_subjects(pool: SubjectAlreadyPresentUnverified, provider: SubjectCreated, account: SubjectCreated),
+    bound: exit_failure(reason: "the service account's policy could not be read: status 404")
+  )
+  !succeeded(e: e) && string_contains(s: refusal_text(e: e), pattern: "404")
+}
+
+// ── the cell this run writes ────────────────────────────────────────────────────────────────
+
+// THE BINDING IS TO THE POOL, NOT TO A USER OR A KEY. Every identity that can impersonate the
+// publisher service account is one that already satisfied the provider's attribute condition, so
+// widening this member is how the whole federation stops being tight.
+test fn witness_the_impersonation_cell_binds_the_publisher_pool_as_workload_identity_user() -> Bool {
+  let c = heal_publisher_impersonation_cell()
+  (c.role as String) == (role_iam_workload_identity_user as String)
+    && (c.member as String) == heal_publisher_wif_principal_set()
+}
+
+fn policy_with(bindings: List<GcpBinding>) -> GcpPolicy {
+  GcpPolicy { bindings: bindings, etag: "BwYabc123=", version: 3 }
+}
+
+// THE READBACK DISCRIMINATES. A 200 that returned a policy without this cell must not read as
+// present, or the readback after setIamPolicy is a decoration.
+test fn witness_the_readback_distinguishes_a_policy_carrying_the_cell_from_one_that_does_not() -> Bool {
+  let c = heal_publisher_impersonation_cell()
+  impersonation_binding_present(policy: policy_with(bindings: [
+    GcpBinding { role: c.role, members: [c.member], condition: none }
+  ]))
+    && !impersonation_binding_present(policy: policy_with(bindings: [
+      GcpBinding { role: "roles/viewer", members: [c.member], condition: none }
+    ]))
+    && !impersonation_binding_present(policy: policy_with(bindings: []))
+}

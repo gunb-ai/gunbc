@@ -29,7 +29,7 @@ import gunbc.heal_workflow {
   heal_workflow_name, heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
 }
 import gunbc.heal_publication_boundary {
-  heal_repair_candidate_artifact_name, heal_repair_candidate_manifest_file_name, candidate_file_path,
+  heal_repair_candidate_artifact_name, heal_repair_candidate_blob_file_prefix,
   phase_isolation, phases_are_isolated
 }
 import gunbc.heal_publication { heal_publication_candidate_directory_env }
@@ -97,17 +97,6 @@ fn heal_publisher_job_condition() -> String {
   ], "")
 }
 
-// THE GATE FOR EVERY EXPENSIVE OR CREDENTIALED STEP. A heal run that found nothing to repair uploads
-// no artifact, so the download leaves the directory empty and `hashFiles` answers the empty string;
-// the job then does nothing but the download, which is what a clean tree should cost.
-fn heal_publisher_candidate_present_condition() -> String {
-  join([
-    "hashFiles('",
-    candidate_file_path(directory: heal_publisher_candidate_directory, file_name: heal_repair_candidate_manifest_file_name as String),
-    "') != ''"
-  ], "")
-}
-
 fn heal_publisher_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout the default branch this publisher runs from" },
@@ -150,7 +139,26 @@ fn heal_publisher_download_step() -> Step {
   }
 }
 
-fn heal_publisher_gated(step_name: String, run: String, env: List<YamlKeyValue>?, id: String?) -> Step {
+// A CANDIDATE THAT NAMES PATHS HAS BLOBS BESIDE ITS MANIFEST, AND THAT IS WHAT THE CREDENTIALED
+// STEPS GATE ON. The manifest itself is written on EVERY successful heal run -- an empty entries list
+// is how a clean tree says so -- which is exactly why its presence cannot gate anything: it is there
+// either way. The blob files are written only for paths that actually drifted, so their presence is
+// the candidate's own statement that there is something to publish.
+//
+// WHAT THIS BUYS IS NOT A SAVED MINUTE. Gating the mint means a token for the publisher identity, and
+// an installation token for the App, come into existence only on runs where a repair is owed. Every
+// other run of this job holds no publication credential at any moment, which is the same property the
+// candidate phase has by construction -- so the credentialed window is as narrow as the repair
+// population rather than as wide as the pull-request population.
+fn heal_publisher_candidate_has_entries_condition() -> String {
+  join([
+    "hashFiles('",
+    heal_publisher_candidate_directory, "/", heal_repair_candidate_blob_file_prefix as String, "*",
+    "') != ''"
+  ], "")
+}
+
+fn heal_publisher_gated(step_name: String, run: String, env: List<YamlKeyValue>?, id: String?, if_condition: String?) -> Step {
   RunStep {
     name: Present { value: step_name },
     id: id,
@@ -158,7 +166,7 @@ fn heal_publisher_gated(step_name: String, run: String, env: List<YamlKeyValue>?
     shell: none,
     env: env,
     working_directory: none,
-    if_condition: Present { value: heal_publisher_candidate_present_condition() },
+    if_condition: if_condition,
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -168,8 +176,11 @@ fn heal_publisher_candidate_directory_env_row() -> YamlKeyValue {
   kv(key: heal_publication_candidate_directory_env as String, value: yaml_string(s: heal_publisher_candidate_directory))
 }
 
-// THE CREDENTIAL-FREE GATE. It reads the event, the candidate and the forge with the job's own
-// read-only token, and refuses before anything can be minted.
+// THE CREDENTIAL-FREE GATE, AND THE ONE STEP HERE THAT IS NEVER CONDITIONAL. It reads the event, the
+// candidate and the forge with the job's own read-only token, and refuses before anything can be
+// minted. It runs unconditionally because a MISSING manifest is its subject: the triggering run
+// concluded success, so a candidate was owed, and a job that skipped this step on a missing file
+// would report the same quiet green for "nothing drifted" and "the candidate never arrived".
 fn heal_publisher_admit_step() -> Step {
   heal_publisher_gated(
     step_name: "Admit the candidate against this checkout's policy, with no publication credential",
@@ -180,7 +191,8 @@ fn heal_publisher_admit_step() -> Step {
         kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))
       ]
     },
-    id: none
+    id: none,
+    if_condition: none
   )
 }
 
@@ -200,7 +212,7 @@ fn heal_publisher_wif_auth_step() -> Step {
       ]
     },
     env: none,
-    if_condition: Present { value: heal_publisher_candidate_present_condition() },
+    if_condition: Present { value: heal_publisher_candidate_has_entries_condition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -216,7 +228,8 @@ fn heal_publisher_publish_step() -> Step {
         kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", heal_publisher_wif_step_id, ".outputs.access_token }}"], "")))
       ]
     },
-    id: none
+    id: none,
+    if_condition: Present { value: heal_publisher_candidate_has_entries_condition() }
   )
 }
 

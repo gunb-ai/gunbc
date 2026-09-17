@@ -21,7 +21,7 @@ import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { committed_generated_artifact_paths, artifact_path, HealWorkflowYamlArtifact }
 import gunbc.heal_candidate { blob_id_of, BlobIdComputed, BlobIdRefused }
 import gunbc.heal_publication_boundary {
-  HealRepairCandidate, decode_heal_repair_candidate, CandidateDecoded, CandidateUndecodable,
+  HealRepairCandidate, candidate_names_no_paths, decode_heal_repair_candidate, CandidateDecoded, CandidateUndecodable,
   heal_repair_candidate_manifest_file_name, candidate_blob_file_name, candidate_file_path,
   heal_publication_refusal_token, heal_publication_refusal_detail, HealPublicationRefusal,
   HeadRefNotAddressable, BranchRefUnreadable, ExpectedHeadUnreadable, BaseTreeUnreadable, head_ref_is_addressable,
@@ -56,8 +56,14 @@ data heal_publication_receipt_path: String = "target/heal-publication-receipt.tx
 
 // ── Observation ─────────────────────────────────────────────────────────────────────────────
 
+// NOTHING TO PUBLISH IS ITS OWN ARM, NOT A REFUSAL AND NOT AN ADMISSION. gunbc.heal_candidate writes
+// a manifest on every run that concluded success, so a manifest carrying zero entries is the phase
+// saying the tree was clean -- a fact it observed, and one this publisher may act on. A manifest that
+// is ABSENT after a successful heal is the opposite: the candidate was owed and did not arrive, and
+// that stays a refusal. Collapsing the two is what made a missed repair look like a quiet green.
 type PublisherRun
   = PublisherRunAdmitted { admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent> }
+  | PublisherRunNothingToPublish
   | PublisherRunRefused { cause: String }
 
 type ObservedBlobContent {
@@ -149,7 +155,9 @@ fn observe_and_admit_wet() -> PublisherRun
                   CandidateUndecodable { refusal } =>
                     PublisherRunRefused { cause: refusal_line(refusal: refusal) }
                   CandidateDecoded { candidate } =>
-                    if !head_ref_is_addressable(head_ref: candidate.head_ref as String) {
+                    if candidate_names_no_paths(c: candidate) {
+                      PublisherRunNothingToPublish
+                    } else if !head_ref_is_addressable(head_ref: candidate.head_ref as String) {
                       PublisherRunRefused {
                         cause: refusal_line(refusal: HeadRefNotAddressable { head_ref: candidate.head_ref as String })
                       }
@@ -258,6 +266,7 @@ fn heal_publication_admit_wet() -> ProcessExit
 {
   match observe_and_admit_wet() {
     PublisherRunRefused { cause } => exit_failure(reason: cause)
+    PublisherRunNothingToPublish => ExitSuccess
     PublisherRunAdmitted { admitted: _, blobs: _ } => ExitSuccess
   }
 }
@@ -461,6 +470,7 @@ fn heal_publication_publish_wet() -> ProcessExit
 {
   match observe_and_admit_wet() {
     PublisherRunRefused { cause } => exit_failure(reason: cause)
+    PublisherRunNothingToPublish => ExitSuccess
     PublisherRunAdmitted { admitted, blobs } => publish_admitted_wet(admitted: admitted, blobs: blobs)
   }
 }

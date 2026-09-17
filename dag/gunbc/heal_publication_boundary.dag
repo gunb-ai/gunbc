@@ -199,6 +199,17 @@ type HealPublicationRefusal
 
 // ONE SPELLING PER ARM, PRODUCED BY THE MATCH. A log line names the arm by this token and the
 // payload beside it, so a reader can recover the arm without a second vocabulary.
+// ONE PREDICATE FOR "THIS CANDIDATE NAMES NO PATHS", because two consumers ask it and they must not
+// answer differently. admit_heal_publication asks it to REFUSE -- publishing a commit over zero paths
+// records a repair that repaired nothing. gunbc.heal_publication asks it to take the no-op arm before
+// admitting at all, because gunbc.heal_candidate now writes a manifest on every successful run and an
+// empty entries list is how a clean tree says so. Same question, opposite dispositions, and the
+// dispositions are the callers' to make; spelling `count(entries) == 0` at both sites would be one
+// predicate with two homes, and the day it gains a nuance only one of them would get it.
+fn candidate_names_no_paths(c: HealRepairCandidate) -> Bool {
+  count(c.entries) == 0
+}
+
 fn heal_publication_refusal_token(r: HealPublicationRefusal) -> NonEmptyStr {
   match r {
     CandidateUnreadable { detail: _ } => "CandidateUnreadable"
@@ -812,7 +823,7 @@ fn admit_heal_publication(
     HealPublicationRefused { refusal: HeadMoved { expected: c.expected_head_sha as String, observed: o.branch_head_sha } }
   } else if trim(s: c.repair_declaration) == "" {
     HealPublicationRefused { refusal: RepairDeclarationMissing }
-  } else if count(c.entries) == 0 {
+  } else if candidate_names_no_paths(c: c) {
     HealPublicationRefused { refusal: CandidateEntriesEmpty }
   } else if o.base_tree_truncated {
     HealPublicationRefused { refusal: BaseTreeTruncated { tree_sha: o.base_tree_sha } }

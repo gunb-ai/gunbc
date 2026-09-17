@@ -332,10 +332,17 @@ fn heal_candidate_declaration_wet() -> RequiredEnv {
   }
 }
 
-// THE ENTRY THE HEAL WORKFLOW INVOKES. A clean tree writes no manifest and exits zero -- the upload
-// step then finds nothing, and the publisher's run finds nothing to download. A drifted tree writes
-// a complete, reread candidate and exits zero. Every other state refuses with a located cause and
-// writes no manifest, so no partial candidate can reach the publisher.
+// THE ENTRY THE HEAL WORKFLOW INVOKES, AND IT WRITES A MANIFEST WHETHER OR NOT ANYTHING DRIFTED.
+// The earlier shape wrote one only when the tree was dirty, which made the manifest's ABSENCE carry
+// two incompatible meanings downstream: the tree was clean, or the candidate was produced and did
+// not survive the artifact round trip. The publisher could not tell them apart, so it took the same
+// silent green for both -- a repair owed and never made, reported as nothing to do. An empty
+// entries list says "clean" in a way that cannot be confused with "missing", and the publisher
+// refuses on a manifest that is absent after a heal run that succeeded.
+//
+// A DRIFTED TREE STILL WRITES A COMPLETE, REREAD CANDIDATE. Every refusing state writes no manifest
+// at all, so no partial candidate can reach the publisher; but those states also exit non-zero, and
+// the publisher only runs when this phase concluded success.
 fn heal_candidate_produce_wet() -> ProcessExit {
   match prepare_candidate_directory() {
     CandidateWriteRefused { cause } => exit_failure(reason: cause)
@@ -344,15 +351,26 @@ fn heal_candidate_produce_wet() -> ProcessExit {
         DriftPopulationRefused { cause } => exit_failure(reason: cause)
         DriftPopulationObserved { drifted } =>
           if count(drifted) == 0 {
-            ExitSuccess
+            heal_candidate_write_wet(drifted: drifted, declaration: "")
           } else {
-            heal_candidate_write_wet(drifted: drifted)
+            match heal_candidate_declaration_wet() {
+              RequiredEnvRefused { cause } => exit_failure(reason: cause)
+              RequiredEnvFound { value: declaration } =>
+                heal_candidate_write_wet(drifted: drifted, declaration: declaration as String)
+            }
           }
       }
   }
 }
 
-fn heal_candidate_write_wet(drifted: List<DriftedEntry>) -> ProcessExit {
+// THE DECLARATION IS READ ONLY WHEN THERE IS SOMETHING TO DECLARE, and this is not a convenience.
+// The declaration step writes what the repair repaired; on a clean tree it has nothing to write, so
+// demanding one here would make every clean run refuse -- which is what the first draft of the
+// always-write-a-manifest change did, and it would have failed every pull request rather than the
+// rare one. The declaration stays MANDATORY for a candidate that names paths: a commit that does not
+// say what it repaired is refused at admission by RepairDeclarationMissing, and an empty candidate
+// never reaches admission because gunbc.heal_publication takes the no-op arm first.
+fn heal_candidate_write_wet(drifted: List<DriftedEntry>, declaration: String) -> ProcessExit {
   let head = git.Inspect.HeadCommit()
   if !head.success {
     exit_failure(reason: "HealCandidateContextUnreadable: the checked-out head did not resolve")
@@ -374,10 +392,7 @@ fn heal_candidate_write_wet(drifted: List<DriftedEntry>) -> ProcessExit {
                       RequiredEnvFound { value: base_ref } =>
                         match required_env(name: heal_candidate_run_id_env) {
                           RequiredEnvRefused { cause } => exit_failure(reason: cause)
-                          RequiredEnvFound { value: run_id } =>
-                            match heal_candidate_declaration_wet() {
-                              RequiredEnvRefused { cause } => exit_failure(reason: cause)
-                              RequiredEnvFound { value: declaration } => {
+                          RequiredEnvFound { value: run_id } => {
                                 let candidate = HealRepairCandidate {
                                   repository_full_name: repository,
                                   pull_number: pull_number,
@@ -385,7 +400,7 @@ fn heal_candidate_write_wet(drifted: List<DriftedEntry>) -> ProcessExit {
                                   expected_head_sha: trim(s: head.sha as String) as CommitSha,
                                   base_ref: base_ref,
                                   producer_run_id: run_id,
-                                  repair_declaration: declaration as String,
+                                  repair_declaration: declaration,
                                   entries: map(drifted, d => d.entry)
                                 }
                                 match write_candidate_blobs(drifted: drifted) {
@@ -396,8 +411,7 @@ fn heal_candidate_write_wet(drifted: List<DriftedEntry>) -> ProcessExit {
                                       CandidateWritten => ExitSuccess
                                     }
                                 }
-                              }
-                            }
+                          }
                         }
                     }
                 }

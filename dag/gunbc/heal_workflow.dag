@@ -162,10 +162,11 @@ fn heal_candidate_step() -> Step {
   }
 }
 
-// A CLEAN TREE UPLOADS NOTHING, AND THAT IS THE NO-CHANGE SIGNAL. `if-no-files-found: ignore` is the
-// arm that makes it: the producer writes no manifest when nothing drifted, the artifact is absent,
-// and the publisher's run finds nothing to download and does nothing. Retention is short because a
-// candidate is only meaningful while its expected head is still the branch head.
+// THE UPLOAD IS OWED ON EVERY SUCCESSFUL RUN, SO A MISSING FILE IS AN ERROR RATHER THAN A SIGNAL.
+// gunbc.heal_candidate writes a manifest whether or not anything drifted -- a clean tree is an empty
+// entries list, not an absent file -- so `if-no-files-found: ignore` would now hide a producer that
+// failed to write rather than describe a tree that was clean. Retention is short because a candidate
+// is only meaningful while its expected head is still the branch head.
 fn heal_candidate_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload the sealed repair candidate" },
@@ -175,7 +176,7 @@ fn heal_candidate_upload_step() -> Step {
       value: [
         kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name as String)),
         kv(key: "path", value: yaml_string(s: heal_candidate_directory)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "ignore")),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(key: "retention-days", value: yaml_int(n: heal_candidate_artifact_retention_days))
       ]
     },

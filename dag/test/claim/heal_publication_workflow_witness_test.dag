@@ -212,3 +212,44 @@ fn step_with_value(step: Step, key: String) -> String {
       }
   }
 }
+
+// ── which steps wait for a candidate that names paths ───────────────────────────────────────
+
+fn step_if_condition(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn condition_of_step_named(marker: String) -> String {
+  fold(heal_publisher_bound_steps(), init: "", f: fn(acc, b) {
+    if string_contains(s: step_name_of(s: b.step), pattern: marker) { step_if_condition(s: b.step) } else { acc }
+  })
+}
+
+// THE MINT WAITS FOR A REAL REPAIR. gunbc.heal_candidate writes a manifest on every successful run, so
+// the manifest cannot gate anything; the blob files exist only for paths that drifted. Both
+// credentialed steps must wait on those, or a token for the publisher identity comes into existence
+// on every pull-request push rather than only on the runs where a repair is owed.
+test fn witness_both_credentialed_steps_wait_for_a_candidate_that_names_paths() -> Bool {
+  string_contains(s: condition_of_step_named(marker: "Federate"), pattern: "heal-repair-candidate-blob-")
+    && string_contains(s: condition_of_step_named(marker: "Publish the admitted repair"), pattern: "heal-repair-candidate-blob-")
+}
+
+// AND THE CREDENTIAL-FREE GATE DOES NOT WAIT, which is the other half and the one a later author will
+// be tempted to "tidy" into the same condition. Its subject is a MISSING manifest: the triggering run
+// concluded success, so a candidate was owed, and a step that skipped itself on a missing file would
+// report the same green for "nothing drifted" as for "the candidate never arrived".
+test fn witness_the_credential_free_admission_step_runs_unconditionally() -> Bool {
+  condition_of_step_named(marker: "Admit the candidate") == ""
+}
+
+// THE DISCRIMINATOR FOR THE READER ABOVE. If step_if_condition answered "" for a step that HAS a
+// condition, the claim above would pass on a gated admission step -- so the condition it reads on a
+// known-gated step must be non-empty.
+test fn witness_a_gated_step_reads_back_a_non_empty_condition() -> Bool {
+  condition_of_step_named(marker: "Federate") != ""
+}
