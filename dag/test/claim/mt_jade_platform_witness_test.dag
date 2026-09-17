@@ -30,6 +30,7 @@ import extdeps.ocp.mt_jade.subject {
   mt_jade_specification_version_label,
 }
 import extdeps.bmc.aspeed_ast2500 { aspeed_ast2500_catalog }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import extdeps.standards.nic_attachment { NamedOnboardController }
 import extdeps.ocp.mt_jade.platform {
   BaseboardManagementController,
@@ -64,8 +65,6 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_bmc_chip_catalog,
   mt_jade_bmc_ethernet_phy,
   mt_jade_bmc_management_network,
-  CitedAmiMegaRac,
-  CitedOpenBmc,
   mt_jade_cited_bmc_firmware_options_include,
   mt_jade_cited_bmc_firmware_options,
   mt_jade_crps_ac_inlet,
@@ -324,10 +323,10 @@ test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e() -> Bool {
 test fn w_cited_bmc_firmware_is_a_disjunction_not_a_default() -> Bool {
   mt_jade_cited_bmc_firmware_options_include(
     options: mt_jade_cited_bmc_firmware_options,
-    wanted: CitedAmiMegaRac,
+    wanted: AmiMegaRac,
   )
     && mt_jade_cited_bmc_firmware_options_include(
       options: mt_jade_cited_bmc_firmware_options,
-      wanted: CitedOpenBmc,
+      wanted: OpenBmc,
     )
 }

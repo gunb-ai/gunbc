@@ -21,6 +21,7 @@ import extdeps.wiwynn.sv328r.specifications {
   sv328r_storage,
   sv328r_weight_grams,
 }
+import extdeps.memory.types { Registered }
 import extdeps.standards.nic_attachment { OnboardControllerUnstated, NamedOnboardController, OcpNic3 }
 import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
@@ -73,7 +74,7 @@ test fn w_memory_is_32_rdimm_slots_ddr4_3200() -> Bool {
     && sv328r_memory.dimms_per_processor == 16
     && sv328r_memory.channels_per_processor == 8
     && megatransfers_per_second_count(r: sv328r_memory.max_data_rate) == 3200
-    && (sv328r_memory.module_class_label as String) == "RDIMM"
+    && sv328r_memory.buffering == Registered
 }
 
 test fn w_processors_are_dual_altra_80_core_class() -> Bool {

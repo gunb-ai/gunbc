@@ -9,6 +9,7 @@ import std.measure {
   millimeter, rack_unit,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.memory.types { DimmBuffering, Registered }
 import extdeps.standards.nic_attachment { NicAttachmentClass, OcpNic3, OnboardControllerUnstated, OnboardNetworkController }
 import extdeps.standards.ocp_nic_3_0 { Sff }
 import extdeps.wiwynn.sv328r.subject {
@@ -94,7 +95,7 @@ type Sv328rMemoryConfiguration {
   dimms_per_processor: Nat
   channels_per_processor: Nat
   max_data_rate: MegatransfersPerSecond
-  module_class_label: NonEmptyStr
+  buffering: DimmBuffering
 }
 
 data sv328r_memory: Sv328rMemoryConfiguration = Sv328rMemoryConfiguration {
@@ -102,7 +103,7 @@ data sv328r_memory: Sv328rMemoryConfiguration = Sv328rMemoryConfiguration {
   dimms_per_processor: 16,
   channels_per_processor: 8,
   max_data_rate: megatransfers_per_second(count: 3200),
-  module_class_label: "RDIMM",
+  buffering: Registered,
 }
 
 type Sv328rStorageBays {

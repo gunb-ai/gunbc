@@ -23,6 +23,7 @@ import std.measure {
 import extdeps.standards.nic_attachment { NamedOnboardController, OnboardNetworkController }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, CitedFigureStanding, TranscribedUncited }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.ocp.mt_jade.subject {
   mt_jade_subject_authority_anchor,
   mt_jade_model_scope,
@@ -454,18 +455,14 @@ data mt_jade_bmc_management_network: MtJadeBmcManagementNetwork = MtJadeBmcManag
 // FEATURE LIST "BMC AMI MegaRAC, OpenBMC" IS A DISJUNCTION, NOT A DEFAULT. The specification
 // names both stacks. A unit's family is a workflow observation (gunbc.machine_intake_access),
 // never this row. megaRAC_* folds may run only after AmiMegaRac is observed.
-type MtJadeCitedBmcFirmwareOption
-  = CitedAmiMegaRac
-  | CitedOpenBmc
-
-data mt_jade_cited_bmc_firmware_options: List<MtJadeCitedBmcFirmwareOption> = [
-  CitedAmiMegaRac,
-  CitedOpenBmc,
+data mt_jade_cited_bmc_firmware_options: List<BmcFirmwareFamily> = [
+  AmiMegaRac,
+  OpenBmc,
 ]
 
 fn mt_jade_cited_bmc_firmware_options_include(
-  options: List<MtJadeCitedBmcFirmwareOption>,
-  wanted: MtJadeCitedBmcFirmwareOption,
+  options: List<BmcFirmwareFamily>,
+  wanted: BmcFirmwareFamily,
 ) -> Bool {
   fold(options, init: false, f: fn(acc, o) { acc || o == wanted })
 }
