@@ -45,7 +45,7 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 // THE HEADER ABOVE RESERVED THIS LIST for "the first identity that would otherwise be appended as a
 // string after this PR", and `v2.workflow.floor_enrolment_margin` states that its own end-to-end
 // execution waits on the first attempt appearing here -- "emptiness of today's list is not coverage".
-// These seventeen are that first population.
+// These twenty-three are that first population.
 //
 // WHAT THEY ARE. Every row of `test.claim.spark.relaunch_capture_witness_test` decodes at least one
 // 18 KB `docker inspect` document captured verbatim off the Group B serving arm on 2026-09-16. Those
@@ -66,97 +66,134 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 // wall execute nowhere. That is DESIGN section 6's inert lens, on the rows that discriminate the
 // actuation path of a four-host serving arm.
 //
+// THE READINGS ARE RE-TAKEN WHENEVER A ROW CHANGES, because a figure carried past the edit that
+// invalidated it is a transcription rather than a measurement -- and this list's whole claim is that
+// it is the second kind.
+//
 // EVERY FIGURE IS MEASURED, NOT ESTIMATED, and named by its producer rather than only transcribed:
 // `claim_batch --source-root dag --source-root src/v2 --entry
 // dag/test/claim/spark/relaunch_capture_witness_test.dag --functions <the seventeen>` prints
 // `[witness] <name>: cpu=<n>ms ... eval_steps=<k>` per row, which is the same reading
 // `required-floor-claim-cost` publishes -- cross-checked against run 35150370426, where the four rows
-// that survived unrenamed read 2183/2166/529/554 ms there against 2141/2126/533/571 ms here.
+// that survived unrenamed read 2183/2166/529/554 ms there against 2311/2343/596/606 ms here. THE
+// SPREAD BETWEEN THE TWO IS THE HOST, not the rows: these readings are taken on a shared session
+// container and CI's on a dedicated runner, which is why the class test is `> 500 ms` rather than an
+// equality and why every row here clears it by a margin rather than at it.
 fn floor_cost_debt_typed_admission_attempts() -> List<FloorCostDebtReadingAttempt> {
   [
     relaunch_capture_reading(
       name: "w_every_captured_inspect_document_decodes",
-      cpu_ms: 2141,
+      cpu_ms: 2311,
       eval_steps: 1591601,
     ),
     relaunch_capture_reading(
       name: "w_the_socket_incarnation_reads_as_missing_the_verbs_shape",
-      cpu_ms: 533,
+      cpu_ms: 596,
       eval_steps: 394269,
     ),
     relaunch_capture_reading(
       name: "w_the_roce_incarnation_reads_as_carrying_the_verbs_shape",
-      cpu_ms: 1099,
+      cpu_ms: 1186,
       eval_steps: 814184,
     ),
     relaunch_capture_reading(
       name: "w_the_daemon_reads_the_capability_back_with_its_cap_prefix",
-      cpu_ms: 571,
+      cpu_ms: 606,
       eval_steps: 410829,
     ),
     relaunch_capture_reading(
       name: "w_a_null_member_reads_absent_and_an_empty_array_reads_empty",
-      cpu_ms: 535,
+      cpu_ms: 576,
       eval_steps: 394231,
     ),
     relaunch_capture_reading(
       name: "w_the_node_rank_is_read_from_the_containers_own_argv",
-      cpu_ms: 2126,
+      cpu_ms: 2343,
       eval_steps: 1593069,
     ),
     relaunch_capture_reading(
       name: "w_the_two_incarnations_differ_in_batching_and_utilization_as_read_back",
-      cpu_ms: 1098,
+      cpu_ms: 1308,
       eval_steps: 802862,
     ),
     relaunch_capture_reading(
       name: "w_the_successor_spec_differs_from_the_roce_incarnation_only_on_declared_axes",
-      cpu_ms: 576,
+      cpu_ms: 640,
       eval_steps: 423872,
     ),
     relaunch_capture_reading(
       name: "w_the_socket_incarnation_is_refused_against_the_successor_spec",
-      cpu_ms: 555,
-      eval_steps: 405452,
+      cpu_ms: 596,
+      eval_steps: 405451,
     ),
     relaunch_capture_reading(
       name: "w_the_three_incident_fields_differ_on_the_transport_axis",
-      cpu_ms: 557,
+      cpu_ms: 606,
       eval_steps: 406072,
     ),
     relaunch_capture_reading(
       name: "w_the_engine_argv_names_both_axes_it_moved_on",
-      cpu_ms: 555,
+      cpu_ms: 595,
       eval_steps: 405770,
     ),
     relaunch_capture_reading(
       name: "w_a_field_no_axis_explains_refuses_the_whole_delta",
-      cpu_ms: 555,
+      cpu_ms: 592,
       eval_steps: 405497,
     ),
     relaunch_capture_reading(
       name: "w_the_shm_size_agrees_with_every_captured_incarnation",
-      cpu_ms: 1104,
+      cpu_ms: 1192,
       eval_steps: 817173,
     ),
     relaunch_capture_reading(
       name: "w_the_two_captured_incarnations_are_a_transport_flip",
-      cpu_ms: 1100,
-      eval_steps: 807977,
+      cpu_ms: 1172,
+      eval_steps: 807983,
     ),
     relaunch_capture_reading(
       name: "w_one_incarnation_read_twice_is_not_a_flip",
-      cpu_ms: 1106,
-      eval_steps: 807985,
+      cpu_ms: 1156,
+      eval_steps: 807997,
     ),
     relaunch_capture_reading(
       name: "w_a_new_incarnation_on_the_same_transport_is_not_a_flip",
-      cpu_ms: 1105,
-      eval_steps: 804986,
+      cpu_ms: 1155,
+      eval_steps: 804992,
+    ),
+    relaunch_capture_reading(
+      name: "w_a_transport_delta_that_flipped_is_as_intended",
+      cpu_ms: 1159,
+      eval_steps: 807998,
+    ),
+    relaunch_capture_reading(
+      name: "w_a_batching_only_relaunch_whose_transport_held_is_as_intended",
+      cpu_ms: 1159,
+      eval_steps: 805027,
+    ),
+    relaunch_capture_reading(
+      name: "w_a_transport_change_nobody_asked_for_is_refused",
+      cpu_ms: 1206,
+      eval_steps: 808010,
+    ),
+    relaunch_capture_reading(
+      name: "w_a_transport_delta_that_did_not_flip_is_refused",
+      cpu_ms: 1195,
+      eval_steps: 805023,
+    ),
+    relaunch_capture_reading(
+      name: "w_one_incarnation_read_twice_is_refused_on_every_axis",
+      cpu_ms: 1228,
+      eval_steps: 807984,
+    ),
+    relaunch_capture_reading(
+      name: "w_the_moved_axes_are_derived_from_the_comparisons",
+      cpu_ms: 619,
+      eval_steps: 405691,
     ),
     relaunch_capture_reading(
       name: "w_two_incarnations_preserve_under_two_distinct_names",
-      cpu_ms: 1115,
+      cpu_ms: 1173,
       eval_steps: 808012,
     )
   ]

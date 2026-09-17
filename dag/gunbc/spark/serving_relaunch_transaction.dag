@@ -3,7 +3,7 @@ module gunbc.spark.serving_relaunch_transaction
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { trim }
-import std.measure { Second, second, ByteSize, byte_size_count }
+import std.measure { Second, second, second_count, ByteSize, byte_size_count }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
@@ -12,6 +12,7 @@ import extdeps.docker.cli {
   docker_create_command, docker_start_command, docker_stop_command, docker_rename_command,
   docker_remove_force_command,
 }
+import extdeps.vllm.engine_args { vllm_max_num_seqs_flag, vllm_gpu_memory_utilization_flag }
 import extdeps.docker.container_inspect {
   ContainerInspect, HostConfig, ContainerConfig, DockerInspectDevice, DockerInspectUlimit,
   docker_capability_canonical, docker_memlock_ulimit_name,
@@ -492,6 +493,35 @@ fn delta_comparisons(d: RelaunchDelta) -> List<FieldComparison> {
   }
 }
 
+// ── WHICH AXES THE ADMITTED DELTA ACTUALLY MOVED ──────────────────────────────────────────────
+//
+// THE VERIFICATION IS DERIVED FROM THIS AND NOT FROM AN ASSUMPTION. `RelaunchAxis` has three arms and
+// a successor may legitimately move only batching and utilization -- leaving the transport exactly as
+// it is -- which is what a relaunch onto a new concurrency profile IS on an arm that is already on
+// verbs. A verification hardcoded to require a transport flip takes the four-host outage, gets a
+// truthful "the transport is what it was", and reports a failed flip for a change that never asked
+// for one. That is a diagnostic naming an operation that did not happen, which this module already
+// corrected once for its rollback step labels.
+fn delta_moved_axes(comparisons: List<FieldComparison>) -> List<RelaunchAxis> {
+  fold(comparisons, init: [], f: (acc, c) =>
+    match c {
+      FieldDiffersOnAxis { field: _, axes: axs, planned: _, observed: _ } =>
+        fold(axs, init: acc, f: (inner, a) =>
+          if count(filter(inner, x => (relaunch_axis_wire(a: x) as String) == (relaunch_axis_wire(a: a) as String))) > 0 {
+            inner
+          } else {
+            concat(inner, [a])
+          })
+      FieldAgrees { field: _ } => acc
+      FieldDiffersOffAxis { field: _, planned: _, observed: _ } => acc
+      FieldUnreadable { field: _, cause: _ } => acc
+    })
+}
+
+fn axes_include_transport(axes: List<RelaunchAxis>) -> Bool {
+  count(filter(axes, a => (relaunch_axis_wire(a: a) as String) == (relaunch_axis_wire(a: TransportAxis) as String))) > 0
+}
+
 fn delta_unclaimed_env(d: RelaunchDelta) -> List<String> {
   match d {
     DeltaOnlyIntended { comparisons: _, unobservable: _, unclaimed_env: ns } => ns
@@ -596,8 +626,11 @@ fn observed_restart_text(hc: HostConfig) -> String? {
 //
 // SO THE COMPARISON IS WORD-WISE AND THE ADMITTED DIFFERENCES ARE NAMED BY THE FLAG THEY FOLLOW.
 // A word that differs and does not sit immediately after one of the two named flags is off-axis.
-data relaunch_batching_flag: String = "--max-num-seqs"
-data relaunch_utilization_flag: String = "--gpu-memory-utilization"
+//
+// THE FLAG SPELLINGS COME FROM extdeps.vllm.engine_args AND ARE NOT REPEATED HERE. A first cut
+// declared its own `"--gpu-memory-utilization"` beside the one that module already carries, so the
+// axis attribution keyed on one literal while the value reader keyed on the other -- two authorities
+// for one flag, in the module whose entire job is detecting exactly that kind of drift.
 
 fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> FieldComparison {
   match observed_command_argv(c: observed) {
@@ -677,9 +710,9 @@ fn argv_difference_axis(planned: List<String>, d: ArgvDifference) -> RelaunchAxi
     match planned |> skip(d.index - 1) |> first {
       Absent => none
       Present { value: flag } =>
-        if flag == relaunch_batching_flag {
+        if flag == vllm_max_num_seqs_flag {
           Present { value: BatchingAxis }
-        } else if flag == relaunch_utilization_flag {
+        } else if flag == vllm_gpu_memory_utilization_flag {
           Present { value: UtilizationAxis }
         } else {
           none
@@ -884,17 +917,76 @@ fn rollback_restart_incumbent(ctx: SparkMaterializeContext, name: NonEmptyStr) -
   }
 }
 
-// ── THE FLIP, AND WHY THE INCARNATION IS PART OF IT ───────────────────────────────────────────
+// ── WHAT THE SUCCESSOR MUST HAVE BECOME, DERIVED FROM WHAT THE DELTA MOVED ────────────────────
 //
 // TWO VERDICTS NAMING ONE CONTAINER ID ARE TWO READINGS OF ONE INCARNATION, which is what a readback
 // taken before the daemon replaced the object would return -- and it would then compare a log to
-// itself and report no flip, or report one because the log still held the predecessor's lines. The id
-// is the discriminator that makes the comparison be about two containers rather than about one read
-// twice.
-fn transport_flipped(before: RankTransportVerdict, after: RankTransportVerdict) -> Bool {
+// itself and report no change, or report one because the log still held the predecessor's lines. So a
+// new incarnation is required whatever the delta moved: it is the discriminator that makes the
+// comparison be about two containers rather than about one read twice.
+//
+// WHAT THE TRANSPORT MUST HAVE DONE IS THE PART THAT IS NOT CONSTANT. If the admitted delta moved the
+// transport axis, the transport must have changed -- that is the flip this vertical exists for. If it
+// did NOT, the transport must be exactly what it was: a relaunch that moved only batching and came
+// back on a different network changed something nobody asked for, and reporting that as success is
+// the same silence the delta proof exists to break, one phase later.
+fn transport_changed(before: RankTransportVerdict, after: RankTransportVerdict) -> Bool {
+  (nccl_realized_transport_wire(t: after.reading.transport) as String)
+    != (nccl_realized_transport_wire(t: before.reading.transport) as String)
+}
+
+fn incarnation_replaced(before: RankTransportVerdict, after: RankTransportVerdict) -> Bool {
   (after.incarnation as String) != (before.incarnation as String)
-    && (nccl_realized_transport_wire(t: after.reading.transport) as String)
-      != (nccl_realized_transport_wire(t: before.reading.transport) as String)
+}
+
+fn transport_flipped(before: RankTransportVerdict, after: RankTransportVerdict) -> Bool {
+  incarnation_replaced(before: before, after: after) && transport_changed(before: before, after: after)
+}
+
+type SuccessorStanding
+  = SuccessorAsIntended
+  | SuccessorNotReplaced
+  | SuccessorTransportDidNotFlip
+  | SuccessorTransportMovedUnasked { from: NonEmptyStr, to: NonEmptyStr }
+
+fn successor_standing(
+  before: RankTransportVerdict,
+  after: RankTransportVerdict,
+  moved_axes: List<RelaunchAxis>,
+) -> SuccessorStanding {
+  if !incarnation_replaced(before: before, after: after) {
+    SuccessorNotReplaced
+  } else if axes_include_transport(axes: moved_axes) {
+    if transport_changed(before: before, after: after) { SuccessorAsIntended } else { SuccessorTransportDidNotFlip }
+  } else if transport_changed(before: before, after: after) {
+    SuccessorTransportMovedUnasked {
+      from: nccl_realized_transport_wire(t: before.reading.transport),
+      to: nccl_realized_transport_wire(t: after.reading.transport),
+    }
+  } else {
+    SuccessorAsIntended
+  }
+}
+
+fn successor_standing_text(s: SuccessorStanding, before: RankTransportVerdict, after: RankTransportVerdict) -> String {
+  match s {
+    SuccessorAsIntended => "the successor is what the admitted delta asked for"
+    SuccessorNotReplaced =>
+      join([
+        "the readback names the same incarnation as before (", before.incarnation as String,
+        "), so it is one container read twice rather than a successor",
+      ], "")
+    SuccessorTransportDidNotFlip =>
+      join([
+        "the admitted delta moved the collective transport and the successor announced the same one: before ",
+        rank_transport_verdict_text(v: before), " after ", rank_transport_verdict_text(v: after),
+      ], "")
+    SuccessorTransportMovedUnasked { from: f, to: t } =>
+      join([
+        "the admitted delta did NOT move the collective transport and the successor changed it anyway, from ",
+        f as String, " to ", t as String, ": ", rank_transport_verdict_text(v: after),
+      ], "")
+  }
 }
 
 // ── THE UNIT OF THIS TRANSACTION IS THE ARM, NOT THE RANK ────────────────────────────────────
@@ -939,6 +1031,7 @@ type ArmCapture sole_constructor {
   rank: RankPlan
   before: RankTransportVerdict
   preserved: NonEmptyStr
+  moved_axes: List<RelaunchAxis>
 }
 
 // HOW FAR THIS RANK GOT, WHICH IS WHAT ITS ROLLBACK IS DERIVED FROM. A rank that was stopped and not
@@ -988,7 +1081,7 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
               relaunch_delta_text(d: DeltaRefused { comparisons: cs, unobservable: us, unclaimed_env: ns }),
             ], "") as NonEmptyStr],
           }
-        DeltaOnlyIntended { comparisons: _, unobservable: _, unclaimed_env: _ } =>
+        DeltaOnlyIntended { comparisons: admitted, unobservable: _, unclaimed_env: _ } =>
           match observe_rank_transport(ctx: plan.ctx, subject: plan.subject, container: incumbent) {
             RankTransportRefused { refusal: r } =>
               CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr] }
@@ -1001,7 +1094,12 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
               match preserved_name_is_free(ctx: plan.ctx, subject: plan.subject, preserved: preserved) {
                 Present { value: why } => CaptureAcc { captures: [], causes: [why] }
                 Absent => CaptureAcc {
-                  captures: [ArmCapture { rank: plan, before: before, preserved: preserved }],
+                  captures: [ArmCapture {
+                    rank: plan,
+                    before: before,
+                    preserved: preserved,
+                    moved_axes: delta_moved_axes(comparisons: admitted),
+                  }],
                   causes: [],
                 }
               }
@@ -1308,8 +1406,11 @@ type ArmVerification {
 // THE OTHER REFUSALS DO NOT RETRY. Announcements that disagree, a network this module cannot name and
 // a channel wired elsewhere are all facts about a log that HAS spoken; waiting longer cannot change
 // them, and retrying would turn a definite answer into a timeout.
+// THE INTERVAL IS A `Second` FOR THE SAME REASON `docker stop -t` TAKES ONE: it multiplies against the
+// budget to decide how long a rank is waited on, and a bare scalar is a figure whose unit lives in a
+// name that nothing checks.
 data relaunch_announcement_poll_budget: Nat = 45
-data relaunch_announcement_poll_interval_seconds: Nat = 20
+data relaunch_announcement_poll_interval: Second = second(count: 20)
 
 fn await_rank_announcement(c: ArmCapture, remaining: Nat) -> RankTransportObservation
   uses net: Network
@@ -1332,7 +1433,7 @@ fn await_rank_announcement(c: ArmCapture, remaining: Nat) -> RankTransportObserv
 fn await_after_interval(c: ArmCapture, remaining: Nat) -> RankTransportObservation
   uses net: Network
 {
-  match spark_remote_run(ctx: c.rank.ctx, argv: ["sleep", to_string(relaunch_announcement_poll_interval_seconds)]) {
+  match spark_remote_run(ctx: c.rank.ctx, argv: ["sleep", to_string(second_count(s: relaunch_announcement_poll_interval))]) {
     RemoteUnreachable { cause: why } => RankTransportRefused { refusal: rank_observation_refusal(
       subject: c.rank.subject,
       step: relaunch_step_wire(s: StepAwaitAnnouncement),
@@ -1355,6 +1456,13 @@ fn refusal_is_not_yet(r: RankObservationRefusal) -> Bool {
 
 data nccl_no_announcement_marker: String = "no communicator announced a transport"
 
+fn verification_cause(c: ArmCapture, after: RankTransportVerdict, standing: SuccessorStanding) -> NonEmptyStr {
+  join([
+    observed_rank_subject_text(s: c.rank.subject), ": ",
+    successor_standing_text(s: standing, before: c.before, after: after),
+  ], "") as NonEmptyStr
+}
+
 fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
   uses net: Network
 {
@@ -1367,18 +1475,27 @@ fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
           failed_step: Present { value: if refusal_is_not_yet(r: r) { StepAwaitAnnouncement } else { StepReadBackSuccessor } },
         }
       RankTransportObserved { verdict: after } =>
-        if transport_flipped(before: c.before, after: after) {
-          ArmVerification { verdicts: concat(acc.verdicts, [after]), causes: acc.causes, failed_step: acc.failed_step }
-        } else {
-          ArmVerification {
-            verdicts: acc.verdicts,
-            failed_step: Present { value: StepVerifyTransport },
-            causes: concat(acc.causes, [join([
-              "the successor on ", observed_rank_subject_text(s: c.rank.subject),
-              " did not flip. before: ", rank_transport_verdict_text(v: c.before),
-              " after: ", rank_transport_verdict_text(v: after),
-            ], "") as NonEmptyStr]),
-          }
+        match successor_standing(before: c.before, after: after, moved_axes: c.moved_axes) {
+          SuccessorAsIntended =>
+            ArmVerification { verdicts: concat(acc.verdicts, [after]), causes: acc.causes, failed_step: acc.failed_step }
+          SuccessorNotReplaced =>
+            ArmVerification {
+              verdicts: acc.verdicts,
+              failed_step: Present { value: StepVerifyTransport },
+              causes: concat(acc.causes, [verification_cause(c: c, after: after, standing: SuccessorNotReplaced)]),
+            }
+          SuccessorTransportDidNotFlip =>
+            ArmVerification {
+              verdicts: acc.verdicts,
+              failed_step: Present { value: StepVerifyTransport },
+              causes: concat(acc.causes, [verification_cause(c: c, after: after, standing: SuccessorTransportDidNotFlip)]),
+            }
+          SuccessorTransportMovedUnasked { from: f, to: t } =>
+            ArmVerification {
+              verdicts: acc.verdicts,
+              failed_step: Present { value: StepVerifyTransport },
+              causes: concat(acc.causes, [verification_cause(c: c, after: after, standing: SuccessorTransportMovedUnasked { from: f, to: t })]),
+            }
         }
     })
 }

@@ -25,6 +25,8 @@ import gunbc.spark.serving_relaunch_transaction {
   SpecField, SpecName, SpecDevices, SpecCapAdd, SpecMemlock, SpecEnv, SpecCommand, SpecShmSize,
   RelaunchAxis, TransportAxis, BatchingAxis, UtilizationAxis,
   spec_field_wire, relaunch_axis_wire, transport_flipped, preserved_container_name,
+  SuccessorStanding, SuccessorAsIntended, SuccessorNotReplaced, SuccessorTransportDidNotFlip,
+  SuccessorTransportMovedUnasked, successor_standing, delta_moved_axes,
   delta_comparisons, delta_off_axis, delta_unreadable,
 }
 import gunbc.spark.serving_arm {
@@ -444,6 +446,78 @@ test fn w_a_new_incarnation_on_the_same_transport_is_not_a_flip() -> Bool {
   verdict_from(inspect_text: inspect_socket_rank0(), log_text: nccl_socket_rank0(), f: before =>
     verdict_from(inspect_text: inspect_roce_rank0(), log_text: nccl_socket_rank0(), f: sideways =>
       !transport_flipped(before: before, after: sideways)))
+}
+
+// ── WHAT THE SUCCESSOR MUST HAVE BECOME IS DERIVED FROM WHAT THE DELTA MOVED ──────────────────
+//
+// THE ARM THIS SET EXISTS FOR WOULD HAVE COST AN OUTAGE. `verify_arm` required a transport flip
+// UNCONDITIONALLY, so a relaunch that moved only batching and utilization -- which is exactly what a
+// new concurrency profile is on an arm already running verbs -- would have taken the full four-host
+// stop, read back a truthful "the transport is what it was", and rolled the whole thing back saying
+// the transport did not flip. A diagnostic naming an operation that did not happen, after the outage.
+//
+// ALL FOUR ARMS ARE BUILT FROM REAL VERDICTS. The socket capture, the RoCE capture, and the two
+// cross-pairings of one incarnation's container with the other's log give every combination of
+// (incarnation replaced or not) x (transport changed or not) without a fabricated value anywhere.
+fn standing_is(s: SuccessorStanding, expect: String) -> Bool {
+  match s {
+    SuccessorAsIntended => expect == "as-intended"
+    SuccessorNotReplaced => expect == "not-replaced"
+    SuccessorTransportDidNotFlip => expect == "did-not-flip"
+    SuccessorTransportMovedUnasked { from: _, to: _ } => expect == "moved-unasked"
+  }
+}
+
+// A TRANSPORT RELAUNCH THAT FLIPPED IS INTENDED; the same pair under a batching-only delta is ALSO
+// intended only if the transport held, which the next row is the negative of.
+test fn w_a_transport_delta_that_flipped_is_as_intended() -> Bool {
+  both_verdicts(f: (before, after) =>
+    standing_is(s: successor_standing(before: before, after: after, moved_axes: [TransportAxis]), expect: "as-intended"))
+}
+
+// THE ROW THE BLOCKER WAS ABOUT. A batching-only relaunch whose transport held is a SUCCESS, and the
+// predicate this replaces would have rolled it back.
+test fn w_a_batching_only_relaunch_whose_transport_held_is_as_intended() -> Bool {
+  verdict_from(inspect_text: inspect_socket_rank0(), log_text: nccl_socket_rank0(), f: before =>
+    verdict_from(inspect_text: inspect_roce_rank0(), log_text: nccl_socket_rank0(), f: after =>
+      standing_is(s: successor_standing(before: before, after: after, moved_axes: [BatchingAxis]), expect: "as-intended")))
+}
+
+// AND THE CONVERSE IS NOT SILENCE. A relaunch that did not ask for the transport and came back on a
+// different network changed something nobody requested, which is the same unread difference the delta
+// proof exists to break, one phase later.
+test fn w_a_transport_change_nobody_asked_for_is_refused() -> Bool {
+  both_verdicts(f: (before, after) =>
+    standing_is(s: successor_standing(before: before, after: after, moved_axes: [BatchingAxis]), expect: "moved-unasked"))
+}
+
+// A TRANSPORT DELTA THAT DID NOT FLIP IS STILL A FAILURE, which is the arm the old predicate got right
+// and this one must not lose.
+test fn w_a_transport_delta_that_did_not_flip_is_refused() -> Bool {
+  verdict_from(inspect_text: inspect_socket_rank0(), log_text: nccl_socket_rank0(), f: before =>
+    verdict_from(inspect_text: inspect_roce_rank0(), log_text: nccl_socket_rank0(), f: after =>
+      standing_is(s: successor_standing(before: before, after: after, moved_axes: [TransportAxis]), expect: "did-not-flip")))
+}
+
+// AND A READBACK THAT NAMES THE SAME INCARNATION IS REFUSED WHATEVER THE DELTA MOVED, because it is
+// one container read twice rather than a successor.
+test fn w_one_incarnation_read_twice_is_refused_on_every_axis() -> Bool {
+  both_verdicts(f: (before, after) =>
+    standing_is(s: successor_standing(before: before, after: before, moved_axes: [TransportAxis]), expect: "not-replaced")
+      && standing_is(s: successor_standing(before: after, after: after, moved_axes: [BatchingAxis]), expect: "not-replaced"))
+}
+
+// THE MOVED-AXIS SET IS READ OFF THE ADMITTED COMPARISONS, not supplied beside them: the socket
+// capture against the successor spec moves the transport, the batching bound and the utilization
+// figure, and all three must come back.
+test fn w_the_moved_axes_are_derived_from_the_comparisons() -> Bool {
+  socket_comparisons(f: cs => {
+    let moved = delta_moved_axes(comparisons: cs)
+    count(moved) == 3
+      && count(filter(moved, a => (relaunch_axis_wire(a: a) as String) == (relaunch_axis_wire(a: TransportAxis) as String))) == 1
+      && count(filter(moved, a => (relaunch_axis_wire(a: a) as String) == (relaunch_axis_wire(a: BatchingAxis) as String))) == 1
+      && count(filter(moved, a => (relaunch_axis_wire(a: a) as String) == (relaunch_axis_wire(a: UtilizationAxis) as String))) == 1
+  })
 }
 
 // ── THE PRESERVED NAME CANNOT COLLIDE WITH ITS OWN PREDECESSOR ────────────────────────────────

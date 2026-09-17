@@ -365,8 +365,13 @@ fn vllm_argv_value_text(r: VllmArgvValueRead, flag: String) -> String {
   }
 }
 
+// EVERY FLAG THIS MODULE RENDERS OR READS IS SPELLED HERE ONCE. A consumer that wants to reason about
+// one of these arguments -- which axis a changed word sits on, say -- takes the name from this module
+// rather than repeating the literal, because a second spelling of a flag is a second authority for
+// the grammar this module exists to own, and it drifts silently the first time upstream renames one.
 data vllm_node_rank_flag: String = "--node-rank"
 data vllm_gpu_memory_utilization_flag: String = "--gpu-memory-utilization"
+data vllm_max_num_seqs_flag: String = "--max-num-seqs"
 
 type VllmArgvNatRead
   = VllmArgvNat { value: Nat }
