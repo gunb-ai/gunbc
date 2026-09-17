@@ -25,6 +25,7 @@ pub enum CompilerEntryDriver {
     RetainedHostCliKernel,
     DirectIngestDriver,
     SourceRootEvalDriver,
+    NativeCliDriver,
 }
 
 #[derive(
@@ -228,6 +229,8 @@ pub struct RetainedHostCliKernel;
 pub struct DirectIngestDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRootEvalDriver;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeCliDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExclusiveLoad;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
