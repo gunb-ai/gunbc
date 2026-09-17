@@ -325,15 +325,15 @@ fn enrolment_margin_standing(
           }
         EnrolmentExpensivenessNotDeclared =>
           match r {
-            ObservedCpuReading { cpu_ms: c } =>
+            ObservedCpuReading { cpu_ms: c, eval_steps: _ } =>
               if millisecond_count(m: c) > millisecond_count(m: budget_ms) {
                 EnrolmentOverMargin { exact_cpu_ms: c, budget_ms: budget_ms }
               } else {
                 EnrolmentWithinMargin { exact_cpu_ms: c, budget_ms: budget_ms }
               }
-            CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b } =>
+            CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b, eval_steps_before_censor: _ } =>
               EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: b }
-            RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling } =>
+            RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling, eval_steps_before_censor: _ } =>
               EnrolmentCeilingCensored {
                 cpu_lower_bound_ms: b,
                 censoring_ceiling_ms: ceiling,

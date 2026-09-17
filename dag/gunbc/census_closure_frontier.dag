@@ -1,5 +1,6 @@
 module gunbc.census_closure_frontier
 
+import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -55,11 +56,13 @@ import product.data_class { data_class_frontier_rows }
 import product.data_category { data_category_frontier_rows }
 
 import product.fabric.job_admission { job_admission_frontier_rows }
+import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
     data_class_frontier_rows,
     data_category_frontier_rows,
+    buyer_review_ensure_projection_frontier_rows,
     hetzner_money_rate_frontier_rows,
     mac_address_anemic_brand_frontier_rows,
     container_state_detail_redundant_bools_frontier_rows,
@@ -101,6 +104,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     colo_types_frontier_rows,
     job_admission_frontier_rows,
     arm_ci_seller_census_later_consumer_frontier_rows,
+    runner_canary_executed_evidence_frontier,
   ]
 }
 

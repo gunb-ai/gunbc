@@ -1,0 +1,44 @@
+module gunbc.open_node_partial_evidence
+
+import std.decl_ref { DeclarationRef }
+import std.types { CommitSha, Int }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+
+// ONE CARRIER FOR EVIDENCE THAT LANDED UNDER A ROADMAP NODE THAT IS STILL OPEN.
+//
+// gunbc.native_witness_transition_receipt named this generalization as a trigger rather than
+// pre-building it: partial evidence under an open node is not native-witness-specific, but it had
+// exactly one inhabitant, and minting the general shape for one inhabitant is uninhabited
+// generality. The second subject has now arrived -- the wet execution of tools.scm_acceptance under
+// 2-scm-native-write-spine-acceptance -- so the shape the trigger predicted is built here and that
+// module becomes an instantiation.
+//
+// THIS IS NOT AN ACCEPTANCE AND MUST NOT BE READ AS ONE. gunbc.roadmap_model
+// RoadmapAcceptanceReceipt remains the only fact node_accepted consults, and it requires the node's
+// criteria digest plus executed red-control and delivered handback evidence. A receipt here records
+// that ONE piece of evidence landed under a node that REMAINS OPEN, and moves nothing on the
+// roadmap graph.
+//
+// THERE IS NO DERIVED STANDING HERE, AND ITS ABSENCE IS THE CORRECTION THAT PROMPTED THIS MODULE.
+// The predecessor carried TransitionEvidenceStanding, a two-arm fold over evaluated_head and
+// landed_merge_commit: equal meant executed-at-the-landed-commit, and ANY inequality meant
+// executed-before-landing. Two commits decide EQUALITY and nothing else. Direction is not
+// recoverable from them -- a head that ran after the merge, and a squash-merge or side-branch head
+// that is neither commit's ancestor, are both merely unequal -- so the fold answered "before" for
+// states it could not observe. It held only because its single inhabitant happened to be a
+// pre-merge run, which is a historical premise wearing a derivation's clothes.
+//
+// The wet SCM execution is the specimen that broke it: it ran AFTER its driver landed, at a
+// descendant two merges later, and would have been reported as executed-before-landing -- not
+// coarse but false, and false in the direction that reads weaker evidence as stronger's opposite.
+// So the fold is deleted rather than widened. The receipt keeps the raw commits, a consumer may
+// derive equality from them, and a consumer needing DIRECTION must obtain a subject-bound ancestry
+// observation rather than receive a stronger answer than the facts support (DESIGN section 4d: do
+// not assert as deduced what is only inferred). Found by external review of the second subject.
+type OpenNodePartialEvidenceReceipt {
+  node: RoadmapNodeIdentity
+  landed_pull_request: Int
+  landed_merge_commit: CommitSha
+  evaluated_head: CommitSha
+  executed_evidence: DeclarationRef
+}

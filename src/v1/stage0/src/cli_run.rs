@@ -94,7 +94,9 @@ mod required_floor_runner;
 mod required_lane_roster;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
-pub use native_lane_runner::run_required_v2_native;
+pub use native_lane_runner::{
+    run_required_v2_native, run_self_host, run_v2_native_cli, SelfHostHeld, V2NativeCliHeld,
+};
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,

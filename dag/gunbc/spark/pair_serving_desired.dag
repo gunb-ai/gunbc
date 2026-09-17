@@ -393,6 +393,22 @@ fn spark_pair_serving_unit_hosts(u: SparkPairServingUnit) -> List<HostIdentity> 
   }
 }
 
+// THE HEAD OF A GROUP'S DESIRED UNIT, for a reader that must ask the host whose engine exports the
+// group's endpoint. A refused unit has no head, and a group not on the roster has none either;
+// both are Absent rather than a fabricated host.
+fn spark_pair_group_head_host(group: FabricGroup) -> HostIdentity? {
+  fold(spark_pair_serving_desired, init: none, f: (acc, u) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match u {
+          SparkPairServingUnitReady { group: g, engine: _, head: h, workers: _ } =>
+            if (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String) { Present { value: h.host } } else { none }
+          SparkPairServingUnitRefused { group: _, cause: _ } => none
+        }
+    })
+}
+
 fn spark_pair_serving_desired_hosts() -> List<HostIdentity> {
   flat_map(spark_pair_serving_desired, u => spark_pair_serving_unit_hosts(u: u))
 }

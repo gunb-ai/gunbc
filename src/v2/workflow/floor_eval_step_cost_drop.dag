@@ -1,0 +1,85 @@
+module v2.workflow.floor_eval_step_cost_drop
+
+import v2.std.algebra { any, count_where, list_map }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.integer { Int, int_gt }
+import std.types { NonEmptyStr }
+
+// THE POLICY HALF OF THE DECLARED 4b(3) DROP `gunbc.rung_drop`
+// `roadmap_live_projection_new_witness_eval_step_cost`. The drop's loss is a WORKFLOW fact -- which
+// identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
+// ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
+// `v2.workflow.required_floor` decides with it. The rung-drop row DERIVES its population from this
+// list; the seed runner MIRRORS the membership test by reading `floor_eval_step_cost_drop_members`
+// through the policy frame. One list, three readers, no second copy (DESIGN section 3: interface,
+// realization and policy are three facts).
+//
+// IT IS NOT A THIRD TIER AND IT IS NOT COST-DEBT. Members are planned, executed and measured on
+// every run, their eval_steps are recorded, and a semantic red or a wall-clock crossing still
+// blocks. The ONLY thing membership changes is that an eval-step overrun is reported as
+// `EvalStepsOverBudgetUnderDeclaredDrop` instead of refusing. The budget itself is not raised.
+//
+// MEMBERSHIP IS BY WHOLE QUALIFIED IDENTITY, NEVER BY PREFIX OR MODULE. A module-grain exemption
+// would silently cover every witness later added beside these four, which is the widening the
+// drop's bounded population exists to forbid.
+//
+// THE ROW CARRIES NO TRANSCRIBED COUNT, AND THAT IS THE POINT. An earlier revision held an
+// `observed_eval_steps` figure per member. Its only consumer was a check comparing those numbers to
+// the budget -- both sides authored here, so it could never go red -- and when that check was
+// removed the field was left behind, read by nothing. DESIGN section 6 names the remedy: name the
+// instrument, never transcribe its output, because a copied number is unreachable from the thing
+// that owns it and rots without anyone touching either end. `measured_by` IS that citation: it names
+// the producing run and artifact. Whether a member still overruns is read from a LIVE floor's
+// `required_floor_claim_cost.tsv`, out of band, with `tools.floor_cost_distribution_instrument`.
+//
+// IT MAY ONLY SHRINK. A row leaves when its identity measures inside the new-witness budget on the
+// acceptance path and the prepared-input capability the drop's trigger names has landed; a row is
+// never added to cover a newly expensive witness -- that would be a new declared drop with its own
+// reason, not growth of this one.
+type EvalStepCostDropMeasurement {
+  identity: NonEmptyStr
+  measured_by: NonEmptyStr
+}
+
+data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges" as NonEmptyStr,
+    measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt" as NonEmptyStr,
+    measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal" as NonEmptyStr,
+    measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection" as NonEmptyStr,
+    measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
+  },
+]
+
+// THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or
+// duplicated decode of this list rather than applying it, so a failed read can never widen into an
+// exemption.
+fn floor_eval_step_cost_drop_members() -> List<String> {
+  list_map(xs: floor_eval_step_cost_drop_rows, f: fn(row) { row.identity })
+}
+
+fn floor_eval_step_cost_drop_holds(name: String) -> Bool {
+  any(xs: floor_eval_step_cost_drop_rows, predicate: fn(row) { row.identity == name })
+}
+
+// AMBIGUITY IS A DEFECT, NOT A HARMLESS REPEAT: a duplicated identity makes the population overstate
+// what is dropped, and the second copy survives removal of the first.
+fn floor_eval_step_cost_drop_has_duplicate() -> Bool {
+  any(xs: floor_eval_step_cost_drop_rows, predicate: fn(row) {
+    int_gt(
+      a: count_where(xs: floor_eval_step_cost_drop_rows, predicate: fn(other) { other.identity == row.identity }),
+      b: 1,
+    )
+  })
+}

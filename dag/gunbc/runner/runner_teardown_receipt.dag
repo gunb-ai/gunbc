@@ -1,0 +1,233 @@
+module gunbc.runner.runner_teardown_receipt
+
+import v2.std.optional { Optional, Present, Absent }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { ObservationInstant }
+import std.decl_ref { declaration_ref_eq }
+import gunbc.build_cache_instance { ProcessIdentity, process_identity_eq }
+import gunbc.runner.runner_job_initiator { RunnerEvidenceSource }
+import gunbc.runner.runner_usage_receipt {
+  RunnerAttemptSubject, runner_attempt_subject_eq, RunnerInstantPair, RunnerInstantOrderRefusal, runner_instant_order_refusal,
+}
+
+// Expected resources come from the launch allocation, not the observer's discovered population.
+// The product requires all eight declared inventory fields at construction. Coverage of the
+// teardown fold is checked separately by the independent resource fixtures; adding a resource
+// class requires extending both the inventory/readback and that coverage contract. The VMM
+// identity includes boot and start time; names and exit status cannot prove its absence.
+// The cgroup covers its descendants.
+type RunnerEnvironmentInventory {
+  vmm: ProcessIdentity
+  cgroup: NonEmptyStr
+  jail: NonEmptyStr
+  jail_mount: NonEmptyStr
+  jit_drive: NonEmptyStr
+  workspace: NonEmptyStr
+  tap: NonEmptyStr
+  firewall_table: NonEmptyStr
+}
+
+type RunnerResourceClass
+  = RunnerVmm
+  | RunnerCgroup
+  | RunnerJail
+  | RunnerJailMount
+  | RunnerJitDrive
+  | RunnerWorkspace
+  | RunnerTap
+  | RunnerFirewallTable
+
+// Parallel representation of RunnerResourceClass, not compiler-enforced enumeration.
+// Adding a variant and a readback_reading arm while omitting this roster can compile and
+// skip the new resource during teardown. The independent eight-class residue/unreadable
+// witness catches omission of a CURRENT class; it does not automatically cover future variants.
+// As in gunbc.systemd_property_directive_overlap.systemd_unit_property_members, a .dag source
+// module has no declared-coproduct variant-enumeration surface. Coverage is mitigated by the
+// independent fixtures, not mechanically prevented by the record or the exhaustive match.
+// NEXT-RUNG TRIGGER: a variant-enumeration surface over a declared coproduct, consumed here
+// to derive RunnerResourceClass coverage and delete this hand-authored roster. Preserve the
+// independent residue/unreadable witnesses after that migration; they establish refusal behavior.
+data runner_resource_classes: List<RunnerResourceClass> = [
+  RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
+]
+
+type RunnerResourceReading
+  = RunnerResourcePresent
+  | RunnerResourceAbsent
+  | RunnerResourceUnreadable { cause: NonEmptyStr }
+
+type RunnerEnvironmentReadback {
+  vmm: RunnerResourceReading
+  cgroup: RunnerResourceReading
+  jail: RunnerResourceReading
+  jail_mount: RunnerResourceReading
+  jit_drive: RunnerResourceReading
+  workspace: RunnerResourceReading
+  tap: RunnerResourceReading
+  firewall_table: RunnerResourceReading
+}
+
+type RunnerEnvironmentObservation<P> {
+  subject: RunnerAttemptSubject<P>
+  inventory: RunnerEnvironmentInventory
+  observer: ProcessIdentity
+  at: ObservationInstant
+  readback: RunnerEnvironmentReadback
+  evidence: RunnerEvidenceSource
+}
+
+type RunnerEnvironmentReading<P>
+  = RunnerEnvironmentObserved { observation: RunnerEnvironmentObservation<P> }
+  | RunnerEnvironmentUnobserved { cause: NonEmptyStr }
+
+type RunnerTeardownRequest<P> {
+  subject: RunnerAttemptSubject<P>
+  inventory: RunnerEnvironmentInventory
+  destroyer: ProcessIdentity
+  issued_at: ObservationInstant
+}
+
+type RunnerTeardownRefusal
+  = TeardownObservationMissing { cause: NonEmptyStr }
+  | TeardownSubjectMismatch
+  | TeardownInventoryMismatch
+  | TeardownSelfObservation
+  | TeardownObserverInsideEnvironment
+  | TeardownObserverChanged
+  | TeardownInstrumentChanged
+  | TeardownBootMismatch
+  | TeardownObservationOrderRefused { diagnostic: RunnerInstantOrderRefusal }
+  | TeardownPositiveControlMissing { resource: RunnerResourceClass }
+  | TeardownResourceSurvived { resource: RunnerResourceClass }
+  | TeardownResourceUnreadable { resource: RunnerResourceClass, cause: NonEmptyStr }
+
+// This is observation of the named inventory, not a containment assertion about the entire host.
+// The observer transport must be independent of the destroyer and preserve its own capture. Merely
+// choosing different pid literals in a fixture does not establish that external independence.
+type RunnerTeardownReceipt<P> sole_constructor {
+  request: RunnerTeardownRequest<P>
+  before: RunnerEnvironmentObservation<P>
+  after: RunnerEnvironmentObservation<P>
+}
+
+type RunnerTeardownResult<P>
+  = RunnerTeardownProduced { receipt: RunnerTeardownReceipt<P> }
+  | RunnerTeardownRefused { cause: RunnerTeardownRefusal }
+
+fn runner_environment_inventory_eq(a: RunnerEnvironmentInventory, b: RunnerEnvironmentInventory) -> Bool {
+  process_identity_eq(a: a.vmm, b: b.vmm) &&
+  (a.cgroup as String) == (b.cgroup as String) && (a.jail as String) == (b.jail as String) &&
+  (a.jail_mount as String) == (b.jail_mount as String) &&
+  (a.jit_drive as String) == (b.jit_drive as String) &&
+  (a.workspace as String) == (b.workspace as String) &&
+  (a.tap as String) == (b.tap as String) &&
+  (a.firewall_table as String) == (b.firewall_table as String)
+}
+
+type RunnerResourceTransition {
+  resource: RunnerResourceClass
+  before: RunnerResourceReading
+  after: RunnerResourceReading
+}
+
+fn readback_reading(class: RunnerResourceClass, readback: RunnerEnvironmentReadback) -> RunnerResourceReading {
+  match class {
+    RunnerVmm => readback.vmm
+    RunnerCgroup => readback.cgroup
+    RunnerJail => readback.jail
+    RunnerJailMount => readback.jail_mount
+    RunnerJitDrive => readback.jit_drive
+    RunnerWorkspace => readback.workspace
+    RunnerTap => readback.tap
+    RunnerFirewallTable => readback.firewall_table
+  }
+}
+
+fn runner_resource_transitions(before: RunnerEnvironmentReadback, after: RunnerEnvironmentReadback) -> List<RunnerResourceTransition> {
+  runner_resource_classes |> map(class => RunnerResourceTransition {
+    resource: class,
+    before: readback_reading(class: class, readback: before),
+    after: readback_reading(class: class, readback: after),
+  })
+}
+
+fn runner_resource_transition_refusal(row: RunnerResourceTransition) -> Optional<RunnerTeardownRefusal> {
+  match row.before {
+    RunnerResourceUnreadable { cause: c } =>
+      Present { value: TeardownResourceUnreadable { resource: row.resource, cause: c } }
+    RunnerResourceAbsent => Present { value: TeardownPositiveControlMissing { resource: row.resource } }
+    RunnerResourcePresent => match row.after {
+      RunnerResourcePresent => Present { value: TeardownResourceSurvived { resource: row.resource } }
+      RunnerResourceUnreadable { cause: c } =>
+        Present { value: TeardownResourceUnreadable { resource: row.resource, cause: c } }
+      RunnerResourceAbsent => Absent
+    }
+  }
+}
+
+fn runner_teardown_from_observations<P>(
+  request: RunnerTeardownRequest<P>,
+  before: RunnerEnvironmentObservation<P>,
+  after: RunnerEnvironmentObservation<P>,
+) -> RunnerTeardownResult<P> {
+  if !runner_attempt_subject_eq(a: request.subject, b: before.subject) ||
+     !runner_attempt_subject_eq(a: request.subject, b: after.subject) {
+    RunnerTeardownRefused { cause: TeardownSubjectMismatch }
+  } else if !runner_environment_inventory_eq(a: request.inventory, b: before.inventory) ||
+            !runner_environment_inventory_eq(a: request.inventory, b: after.inventory) {
+    RunnerTeardownRefused { cause: TeardownInventoryMismatch }
+  } else if process_identity_eq(a: request.destroyer, b: before.observer) ||
+            process_identity_eq(a: request.destroyer, b: after.observer) {
+    RunnerTeardownRefused { cause: TeardownSelfObservation }
+  } else if process_identity_eq(a: request.inventory.vmm, b: before.observer) ||
+            process_identity_eq(a: request.inventory.vmm, b: after.observer) {
+    RunnerTeardownRefused { cause: TeardownObserverInsideEnvironment }
+  } else if !declaration_ref_eq(a: before.evidence.producer, b: after.evidence.producer) {
+    RunnerTeardownRefused { cause: TeardownInstrumentChanged }
+  } else if !process_identity_eq(a: before.observer, b: after.observer) {
+    RunnerTeardownRefused { cause: TeardownObserverChanged }
+  } else if (request.inventory.vmm.boot_id as String) != (request.subject.boot_id as String) ||
+            (request.destroyer.boot_id as String) != (request.subject.boot_id as String) ||
+            (after.observer.boot_id as String) != (request.subject.boot_id as String) {
+    RunnerTeardownRefused { cause: TeardownBootMismatch }
+  } else {
+    match runner_instant_order_refusal(pairs: [
+      RunnerInstantPair { location: "before/issued_at", earlier: before.at, later: request.issued_at },
+      RunnerInstantPair { location: "issued_at/after", earlier: request.issued_at, later: after.at },
+    ]) {
+      Present { value: d } => RunnerTeardownRefused { cause: TeardownObservationOrderRefused { diagnostic: d } }
+      Absent => {
+        let refusal = runner_resource_transitions(before: before.readback, after: after.readback)
+          |> fold(init: Absent, f: fn(found, row) {
+            match found {
+              Present { value: _ } => found
+              Absent => runner_resource_transition_refusal(row: row)
+            }
+          })
+        match refusal {
+          Present { value: c } => RunnerTeardownRefused { cause: c }
+          Absent => RunnerTeardownProduced { receipt: RunnerTeardownReceipt {
+            request: request, before: before, after: after,
+          } }
+        }
+      }
+    }
+  }
+}
+
+fn produce_runner_teardown_receipt<P>(
+  request: RunnerTeardownRequest<P>,
+  before: RunnerEnvironmentReading<P>,
+  after: RunnerEnvironmentReading<P>,
+) -> RunnerTeardownResult<P> {
+  match before {
+    RunnerEnvironmentUnobserved { cause: c } =>
+      RunnerTeardownRefused { cause: TeardownObservationMissing { cause: c } }
+    RunnerEnvironmentObserved { observation: b } => match after {
+      RunnerEnvironmentUnobserved { cause: c } =>
+        RunnerTeardownRefused { cause: TeardownObservationMissing { cause: c } }
+      RunnerEnvironmentObserved { observation: a } =>
+        runner_teardown_from_observations(request: request, before: b, after: a)
+    }
+  }
+}

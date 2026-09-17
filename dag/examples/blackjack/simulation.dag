@@ -1,0 +1,8 @@
+module examples.blackjack.simulation
+
+// FILE MARKER FOR THE ONBOARDING PROJECT. The analysis pipeline -- SimulationPlan,
+// SimulatedRound, SimulationSummary, choose, play_round, simulate, summarize,
+// summary_reconciles -- is specified in docs/plans/blackjack-onboarding.md section 4.5
+// (authority gunbc.plans.blackjack_onboarding). The anchor is a teaching fixture and not
+// blackjack advice: the two thresholds the brief compares are both inhabitants of it.
+type Strategy = HitBelow { threshold: Int }

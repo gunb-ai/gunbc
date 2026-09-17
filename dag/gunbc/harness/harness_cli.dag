@@ -5,14 +5,14 @@ import std.nat { Nat }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
-import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum }
+import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum, harness_reasoning_level_wire }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label,
   harness_outcome_detail,
 }
@@ -31,7 +31,7 @@ import gunbc.harness.harness_reasoning_wire { HarnessServingUnit }
 import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
 }
-import gunbc.harness.harness_seat {
+import gunbc.harness.harness_seat { harness_turn_request,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
   harness_seat_release_wire, harness_release_held, harness_release_capability,
@@ -327,6 +327,30 @@ fn harness_probe_attempt(label: String) -> NonEmptyStr {
 // that re-derived the partition from the group would address a newer partition than the one holding
 // the seat the moment the ceiling is versioned again, and a bare reference names an entry without
 // establishing that its bearer is the holder.
+// ── THE NORMALIZED MODEL REQUEST IS RENDERED ONCE, AND ITS IDENTITY IS WHAT A TURN IS PLACED UNDER ──
+//
+// A turn's Work inputs are the parts of the request that can change the answer and are known
+// before any supplier is chosen: the role, the system instructions exactly as the model will see
+// them, the user input, the tool contract exactly as the wire carries it, and the generation
+// settings. They are collected HERE, by one function every entry calls, rather than hand-picked
+// per entry: the worker's system prompt is rendered from gunbc_program among other things, and an
+// entry that listed [worktree, repo_root, brief] gave two turns with different rendered prompts
+// one Work. Rendering the prompt once and hashing what was rendered removes the list to maintain.
+//
+// LEFT OUT, DELIBERATELY: the event file, the scratch path, the timeout program, the attempt (that
+// is the Demand), the selected endpoint and its model name (offer facts), and the context budget
+// (derived from the bound unit after selection -- a supplier-side limit).
+fn harness_model_request_inputs(role: String, shape: HarnessWireShape, system_prompt: String, user_input: String) -> List<String> {
+  [
+    role,
+    system_prompt,
+    user_input,
+    harness_tool_contract_wire(shape: shape),
+    to_string(harness_default_max_tokens),
+    harness_reasoning_level_wire(level: harness_reasoning_mode) as String,
+  ]
+}
+
 // ── WHICH CO-TENANCY CLASS EACH ENTRY DECLARES, AND WHY ──────────────────────────────────────
 //
 // The class is a statement about an entry point's CONSUMER, which is a thing the entry point knows
@@ -348,8 +372,21 @@ fn harness_probe_attempt(label: String) -> NonEmptyStr {
 // WHAT KEEPS THIS HONEST RATHER THAN CONVENIENT: the quality arm has a real production caller above,
 // so the wall it enforces is exercised rather than unreachable, and a tolerant turn arriving while
 // this entry holds a seat is refused by the law rather than by a count.
-fn harness_place_cli(actor: String, attempt: String, receipt: String) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
+// THE ROUTER SUPPLIES THE IDENTITY OF WHAT IT IS PLACING. gunbc.serving.router_realization permits
+// NormaliseRequestToDemand before AskPlacementAuthority, and this is where that normalization
+// arrives: an opaque content identity over the proxied request's answer-changing parts, never the
+// bytes. Without it every proxied request was one Work, distinguished only by attempt -- the
+// Demand standing in for the Work. An empty identity is refused, not defaulted.
+fn harness_place_cli(request: String, actor: String, attempt: String, receipt: String) -> ProcessExit {
+  if request == "" {
+    harness_backend_refusal_exit(detail: "place: the normalized request identity is empty; the router must normalize the request before asking for placement (gunbc.serving.router_realization NormaliseRequestToDemand)")
+  } else {
+    harness_place_for(request: request, actor: actor, attempt: attempt, receipt: receipt)
+  }
+}
+
+fn harness_place_for(request: String, actor: String, attempt: String, receipt: String) -> ProcessExit {
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: ["place", request], actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -425,7 +462,7 @@ fn harness_release_cli(partition: String, reference: String, grant: String, gene
 // bypass that only a diagnostic uses is still a bypass, and it is the one most likely to be run
 // while something else is in flight.
 fn harness_probe_cli() -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -469,8 +506,7 @@ fn harness_worker_config(
   backend_url: String,
   model: NonEmptyStr,
   unit: HarnessServingUnit,
-  repo_root: String,
-  gunbc_program: String,
+  system_prompt: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
@@ -479,7 +515,7 @@ fn harness_worker_config(
     serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_worker_system_prompt_at(worktree: worktree as String, repo_root: repo_root, gunbc_program: gunbc_program),
+    system_prompt: system_prompt,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -523,7 +559,8 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: join(["worker:", worktree, "@", events_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: join(["worker:", worktree, "@", events_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -537,8 +574,7 @@ fn harness_worker_cli(
           backend_url: url,
           model: bound_model,
           unit: bound_unit,
-          repo_root: repo_root,
-          gunbc_program: gunbc_program,
+          system_prompt: system_prompt,
         ),
         prompt: brief,
         step_budget: harness_worker_step_budget,
@@ -577,8 +613,8 @@ fn harness_reviewer_config(
   backend_url: String,
   model: NonEmptyStr,
   unit: HarnessServingUnit,
+  system_prompt: String,
 ) -> HarnessTurnConfig {
-  let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
     model: model as String,
@@ -586,7 +622,7 @@ fn harness_reviewer_config(
     serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_reviewer_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
+    system_prompt: system_prompt,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -610,7 +646,8 @@ fn harness_reviewer_cli(
   verdict_name: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let system_prompt = harness_reviewer_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "reviewer", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -626,6 +663,7 @@ fn harness_reviewer_cli(
           backend_url: url,
           model: bound_model,
           unit: bound_unit,
+          system_prompt: system_prompt,
         ),
         prompt: brief,
         step_budget: harness_reviewer_step_budget,
@@ -651,8 +689,8 @@ fn harness_auditor_config(
   backend_url: String,
   model: NonEmptyStr,
   unit: HarnessServingUnit,
+  system_prompt: String,
 ) -> HarnessTurnConfig {
-  let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
     model: model as String,
@@ -660,7 +698,7 @@ fn harness_auditor_config(
     serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_auditor_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
+    system_prompt: system_prompt,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -684,7 +722,8 @@ fn harness_auditor_cli(
   verdict_name: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let system_prompt = harness_auditor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "auditor", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -700,6 +739,7 @@ fn harness_auditor_cli(
           backend_url: url,
           model: bound_model,
           unit: bound_unit,
+          system_prompt: system_prompt,
         ),
         prompt: brief,
         step_budget: harness_reviewer_step_budget,
@@ -713,7 +753,7 @@ fn harness_auditor_cli(
 // AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall
 // with a door beside it.
 fn harness_probe_report() -> String {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     HarnessSeatPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")

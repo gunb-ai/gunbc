@@ -27,6 +27,7 @@ pub use crate::extdeps_units_iso_80000_3::{
     arcseconds_per_degree_derived, arcseconds_per_turn, cubic_millimetres_per_cubic_metre,
     degrees_per_turn, square_millimetres_per_square_metre,
 };
+pub use crate::std_algebra::FieldOfFractions;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
@@ -54,6 +55,7 @@ pub enum Quantity {
     DataRate,
     Frequency,
     Count,
+    HardwareThreadTime,
     Currency,
     Power,
     ApparentPower,
@@ -424,6 +426,9 @@ pub type Hertz = Rc<Measure<Frequency, One, i64>>;
 pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, i64>>;
 
 pub type HardwareThreadCount = Rc<Measure<Count, One, i64>>;
+
+pub type HardwareThreadMinute =
+    Rc<Measure<HardwareThreadTime, Sixty, Rc<crate::std_algebra::FieldOfFractions<i64>>>>;
 
 pub type PhysicalCoreCount = Rc<Measure<Count, One, i64>>;
 
@@ -1826,6 +1831,8 @@ pub struct DataRate;
 pub struct Frequency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Count;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HardwareThreadTime;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Currency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -812,9 +812,16 @@ fn run() -> Result<ExitCode, ExitCode> {
                             vocabulary.len()
                         ));
                     }
-                    match v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
-                        index,
-                    ) {
+                    let event_name = std::env::var("GITHUB_EVENT_NAME").ok();
+                    let adjudicated = v1_compiler::cli_run::namespace_wave_admission::adjudication_event_from_name(
+                        event_name.as_deref(),
+                    )
+                    .and_then(|event| {
+                        v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
+                            index, event,
+                        )
+                    });
+                    match adjudicated {
                         Ok(outcome) => {
                             if let Some(failure) = report_wave_admission_outcome(&outcome) {
                                 phase_failures.push(failure);
@@ -1914,6 +1921,7 @@ fn report_wave_admission_outcome(
             head,
             report,
             roster_touched: _,
+            event: _,
         } => {
             let p = &report.population;
             eprintln!(
@@ -1940,6 +1948,22 @@ fn report_wave_admission_outcome(
             }
             for consumed in &report.consumed_admissions {
                 eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
+            }
+            for owed in &report.used_without_follow_up {
+                eprintln!("required-ci: namespace-wave-admission FOLLOW-UP ABSENT {owed}");
+            }
+            for receipt in &report.owned_consumed_receipts {
+                eprintln!(
+                    "required-ci: namespace-wave-admission CONSUMED ROW RECEIPT row={:?} \
+                     owner=gunbc#{} follow_up=gunbc#{} -- follow-up number declared; its \
+                     existence, state, and deletion scope are not established by this run, and \
+                     whether this run refuses is wave_admission_refusal's verdict, not this \
+                     receipt's; no executing route in this repository reads the follow-up's forge \
+                     state",
+                    receipt.label,
+                    receipt.owner_pull_request,
+                    receipt.deletion_follow_up_pull_request
+                );
             }
             // THE VERDICT IS THE WALL'S, NOT THE PRINTER'S. This function owns the receipts
             // because it owns a stderr; `wave_admission_refusal` owns whether the run refuses,

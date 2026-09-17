@@ -136,11 +136,12 @@ fn t_unreadable_realization(hosts: List<HostIdentity>) -> SparkServingRealizatio
 
 // ── THE INCARNATION EVIDENCE, AND WHICH OF IT PRODUCTION HAS ─────────────────────────────────────
 //
-// The fixtures above carry EndpointIncarnationUnobserved, which is what production carries. The rows
-// at the end of this file build an EndpointIncarnationObservation through its sole constructor, and
-// that is FIXTURE EVIDENCE: no production producer constructs one. Those rows establish that the
-// standing's positive arm works and that each missing fact refuses it. They establish nothing about
-// production reaching the positive arm, which it cannot today.
+// The fixtures above carry EndpointIncarnationUnobserved, the standing production carries when its
+// producer -- gunbc.spark.serving_incarnation_observe, wired through harness_serving_realization --
+// returns no observation on a bind. The rows at the end of this file build an
+// EndpointIncarnationObservation through its sole constructor as FIXTURE EVIDENCE so the positive arm
+// can be driven without a live host; production reaches that same arm through the producer when the
+// observation is obtained, which the_production_route_consumes_an_observed_incarnation exercises.
 fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
   EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
 }
@@ -197,7 +198,7 @@ fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
     principal: "gunbc" as NonEmptyStr,
     executor: "spark-a" as NonEmptyStr,
     launch: t_launch(),
-    model: "test-model" as NonEmptyStr,
+    served_model: "test-model" as NonEmptyStr,
     trust_domain: "gunbc.trust.spark" as TrustDomainRef,
     isolation: IsolationProfile { guarantees: [] },
     seats: 1,
@@ -499,10 +500,11 @@ test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
 // ── ACCEPTANCE ROWS FOR THE INCARNATION JOIN ────────────────────────────────────────────────────
 
 // PRODUCTION ROUTE. This drives gunbc.harness.harness_seat harness_serving_route, the function
-// harness_bind_candidate calls, and asserts the constructor production returns today. If the harness
-// could not reach the refusal arms this change adds, the join would be dangling.
+// harness_bind_candidate calls, with the incarnation standing production passes when the observer
+// refuses, and asserts the constructor that yields. If the harness could not reach the refusal arms
+// this change adds, the join would be dangling.
 test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Bool {
-  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback) {
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_incarnation_unobserved()) {
     ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
       match c {
         ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
@@ -681,5 +683,27 @@ test fn an_observed_declared_incarnation_with_a_disagreeing_readback_refuses() -
   )) {
     Present { value: ServiceConfigurationDisagrees { configuration: _ } } => true
     _ => false
+  }
+}
+
+// THE HARNESS CONSUMES THE INCARNATION IT IS HANDED. With an observed fixture incarnation on the
+// answering endpoint, the production route moves PAST the incarnation refusal and stops at the next
+// missing fact -- the declared unit digest, which harness_serving_route still passes as unavailable.
+// RED: a harness that ignored its incarnation argument would keep returning
+// ServiceIncarnationUnobserved here.
+test fn the_production_route_consumes_an_observed_incarnation() -> Bool {
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())) {
+    ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
+      match c {
+        ServiceDeclaredUnitDigestUnavailable { obligation: _ } => true
+        ServiceIncarnationUnobserved { configuration: _, obligation: _ } => false
+        ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } => false
+        ServiceIncarnationOutsideRealization { incarnation: _ } => false
+        ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => false
+        ServiceConfigurationDisagrees { configuration: _ } => false
+      }
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
   }
 }

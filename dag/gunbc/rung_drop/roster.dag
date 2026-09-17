@@ -72,6 +72,7 @@ import gunbc.rung_drop.runner_host_file_apply_route_hermetic { runner_host_file_
 import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_cost_cpu_regression_at_constant_eval_steps }
 import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accumulator_copy_positive_controls_off_every_lane }
 import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
+import gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost { roadmap_live_projection_new_witness_eval_step_cost }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -127,6 +128,7 @@ data rung_drop_roster: List<RungDrop> = [
   floor_cost_cpu_regression_at_constant_eval_steps,
   accumulator_copy_positive_controls_off_every_lane,
   seed_whole_corpus_demand_population_blind,
+  roadmap_live_projection_new_witness_eval_step_cost,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
