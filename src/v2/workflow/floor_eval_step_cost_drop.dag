@@ -83,7 +83,7 @@ data floor_eval_step_cost_drop_apply_render_rows: List<EvalStepCostDropMeasureme
 ]
 
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  fold(floor_eval_step_cost_drop_apply_render_rows, init: floor_eval_step_cost_drop_rows, f: (acc, row) => concat(acc, [row]))
+  fold(floor_eval_step_cost_drop_apply_render_rows, init: floor_eval_step_cost_drop_rows, f: fn(acc, row) { concat(acc, [row]) })
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or
