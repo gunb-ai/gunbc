@@ -218,13 +218,3 @@ test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
 test fn verification_receipt_schema_is_v2() -> Bool {
   (verification_receipt_schema as String) == "roadmap-verification-receipt/v2"
 }
-
-test fn roadmap_verification_receipt_keystone_holds() -> Bool {
-  complete_exact_head_receipt_constructs_and_matches()
-    && passed_receipt_for_old_head_refuses_to_move_new_head_lamp()
-    && attempt_level_pass_is_typed_legacy_and_never_evidence()
-    && one_attempt_addresses_multiple_heads_without_overwrite()
-    && exact_head_receipt_round_trips_through_json_codec()
-    && change_window_refused_verdict_round_trips_through_json_codec()
-    && verification_receipt_schema_is_v2()
-}

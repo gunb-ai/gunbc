@@ -99,12 +99,3 @@ test fn dispatch_binding_projection_keeps_argv_clean() -> Bool {
     CursorSdkLocalCredentialRefused { reason: _ } => false
   }
 }
-
-test fn cursor_sdk_dispatch_bridge_witness_keystone_holds() -> Bool {
-  dispatch_secret_ref_admits_sdk_local_binding()
-    && dispatch_local_login_ref_refuses()
-    && dispatch_secret_ref_materializes_via_secret_ref_arm()
-    && environment_materialization_consumes_cli_env_var()
-    && dispatch_binding_refuses_latest_secret_version()
-    && dispatch_binding_projection_keeps_argv_clean()
-}

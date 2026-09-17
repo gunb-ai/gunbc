@@ -603,35 +603,3 @@ test fn witness_a_lowercase_separator_is_refused_rather_than_misordered() -> Boo
   }
   lowercase_t && canonical_still_orders
 }
-
-fn all_claims_hold() -> Bool {
-  witness_the_seam_refuses_a_row_from_another_surface()
-    && witness_a_lowercase_separator_is_refused_rather_than_misordered()
-    &&
-  witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs()
-    && witness_one_catalog_listing_a_label_twice_names_that_catalog()
-    && witness_the_untrusted_partition_is_readable_from_the_value()
-    &&
-  witness_an_unorderable_snapshot_is_not_reported_as_an_old_one()
-    &&
-  witness_every_surveyed_runs_on_label_resolves()
-    && witness_another_ci_systems_label_namespace_is_not_consulted()
-    && witness_two_catalogs_carrying_one_label_refuse_rather_than_race()
-    && witness_no_surveyed_label_is_carried_by_two_catalogs()
-    && witness_biome_selected_label_resolves_arm_from_depots_catalog()
-    && witness_the_unsuffixed_depot_label_derives_x64()
-    && witness_each_surveyed_providers_arm_and_x64_labels_resolve()
-    && witness_a_label_outside_every_catalog_yields_no_architecture()
-    && witness_an_unresolved_label_carries_both_readings_unresolved()
-    && witness_hosted_label_architecture_does_not_vary_with_repository_visibility()
-    && witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation()
-    && witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding()
-    && witness_every_snapshot_the_stale_arm_reports_predates_the_observation()
-    && witness_rfc3339_comparison_orders_utc_values_of_equal_precision()
-    && witness_rfc3339_comparison_refuses_mixed_precision_and_offsets()
-    && witness_a_resolved_label_carries_its_snapshot_provenance()
-}
-
-fn runner_label_resolution_witness_main() -> ProcessExit {
-  if all_claims_hold() { ExitSuccess } else { ExitFailure { code: 1, reason: "one or more runner-label resolution claims did not hold" } }
-}

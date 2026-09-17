@@ -185,14 +185,3 @@ test fn ensure_reconcile_carries_the_exact_after_mismatch_reason_onto_the_outcom
     EffectConverged { converged: _ } => false
   }
 }
-
-test fn generic_ensure_keystone_holds() -> Bool {
-  ensure_satisfied_is_noop_for_every_policy()
-    && ensure_known_absence_applies_only_with_authority_and_plan()
-    && ensure_inaccessible_never_mutates()
-    && ensure_reconcile_apply_applied_over_a_grounding_after_report_converges()
-    && ensure_reconcile_apply_applied_over_a_non_grounding_after_report_does_not_converge()
-    && ensure_reconcile_apply_not_applied_does_not_converge_even_over_a_grounding_report()
-    && ensure_reconcile_noop_not_applied_over_a_grounding_report_converges()
-    && ensure_reconcile_carries_the_exact_after_mismatch_reason_onto_the_outcome()
-}
