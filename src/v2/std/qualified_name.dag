@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -72,6 +72,29 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
   }
 }
 
+// THE SPINE LABEL SET, SPELLED ONCE. qn_fold_step consumes the role to choose its arm and
+// qualified_name_spine_shape_present consumes it to gate; neither names ^fold_list_node_head
+// or ^fold_list_node_tail itself (review 67072 on gunbc#11461: the gate had re-spelled the
+// set the fold owns, so a renamed or added spine label would have narrowed acceptance silently).
+type QnSpineRole
+  = QnSpineHead
+  | QnSpineTail
+  | QnNotSpine
+
+fn qn_spine_role(label: EdgeLabel) -> QnSpineRole {
+  match label {
+    Named { name: sym } =>
+      if sym == ^fold_list_node_head {
+        QnSpineHead
+      } else if sym == ^fold_list_node_tail {
+        QnSpineTail
+      } else {
+        QnNotSpine
+      }
+    Positional => QnNotSpine
+  }
+}
+
 fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldStatus {
   match acc {
     QnFoldError { diag: d } => QnFoldError { diag: d }
@@ -79,9 +102,8 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
       match child {
         QnFoldError { diag: d } => QnFoldError { diag: d }
         QnFoldDone { qn: child_qn } =>
-          match edge.label {
-            Named { name: ename } =>
-              if ename == ^fold_list_node_head {
+          match qn_spine_role(label: edge.label) {
+            QnSpineHead =>
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: _ } } =>
                     match child_qn {
@@ -115,7 +137,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                     correction: Unavailable { reason: ExternalContractUnknown }
                   }}
                 }
-              } else if ename == ^fold_list_node_tail {
+            QnSpineTail =>
                 match edge.target.kind {
                   TypeNode { connective: Conj } =>
                     match acc {
@@ -133,14 +155,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                     correction: Unavailable { reason: ExternalContractUnknown }
                   }}
                 }
-              } else {
-                QnFoldError { diag: Diagnostic {
-                  reason: ^qualified_name_structure_invalid,
-                  at: node_locus(node: edge.target),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }}
-              }
-            _ => QnFoldError { diag: Diagnostic {
+            QnNotSpine => QnFoldError { diag: Diagnostic {
               reason: ^qualified_name_structure_invalid,
               at: node_locus(node: edge.target),
               correction: Unavailable { reason: ExternalContractUnknown }
@@ -227,9 +242,9 @@ fn qualified_name_spine_shape_present(root: Node) -> Bool {
     TypeNode { connective: Conj } =>
       if count(root.children) == 2 {
         fold(root.children, init: true, f: fn(acc, edge) {
-          acc && (match edge.label {
-            Named { name: sym } => (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
-            Positional => false
+          acc && (match qn_spine_role(label: edge.label) {
+            QnNotSpine => false
+            _ => true
           })
         })
       } else {
