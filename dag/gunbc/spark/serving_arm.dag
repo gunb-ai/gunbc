@@ -7,7 +7,9 @@ import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_integration_commit,
 }
-import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804 }
+import extdeps.vllm.runtime_defaults {
+  ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804, defaults_source_revision,
+}
 import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_version,
@@ -218,7 +220,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
 data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   checkpoint: Glm53NativeFp8,
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
-  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
   weight_gib: glm_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
@@ -453,7 +455,7 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: Gitcommit90Sm121Exl3,
   artifact: runtime_artifact_identity(
     pin: PinnedByDigest { reference: gitcommit90_glm_53_one_spark_pinned_reference() },
-    source_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
+    source_revision: (defaults_source_revision(r: Vllm487ecf187)).full_revision,
     patch_set: [],
     provenance: "a community image taken as published; the revision is what it self-reports as its vLLM build, not a comparison of its bytes against that tree" as NonEmptyStr,
   ),
@@ -469,7 +471,7 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcSparkrunVllmDs4Gb10,
   artifact: runtime_artifact_identity(
     pin: PinnedByDigest { reference: sparkrun_vllm_ds4_gb10_pinned_reference() },
-    source_revision: "1967a5627bc3" as NonEmptyStr,
+    source_revision: (defaults_source_revision(r: Vllm1967a5627)).full_revision,
     patch_set: [],
     provenance: "the digest is READ FROM its authority rather than restated: extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference builds repository@sha256:digest from the rows that module owns. Two earlier shapes were both wrong in opposite directions -- one carried the SENTENCE \"digest pinned in extdeps.docker.images...\" inside the reference string, which read as a pin and was prose about one; the correction for it answered PinnedElsewhere and dropped the digest out of the VALUE, which left runtime_artifact_wire handing docker a bare repository name that resolves to :latest. Naming an authority and calling it are different acts, and only the second puts the bytes in the launch" as NonEmptyStr,
   ),
@@ -805,7 +807,7 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcGlm53NopeDerivedGb10,
   artifact: runtime_artifact_identity(
     pin: PinnedByDigest { reference: "sha256:41366caf73e4c430f44c44c4eeb7ecebd182e191f68a05e7c96975079fbeaf9d" as NonEmptyStr },
-    source_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
+    source_revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
     patch_set: [
       "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
       "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,

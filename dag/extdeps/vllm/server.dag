@@ -312,13 +312,25 @@ fn vllm_capacity_source_decision(kind: VllmCapacitySourceKind) -> VllmCapacitySo
 // than smoothing over: torch's distributed rendezvous times out at 601 seconds, and a multi-rank group
 // whose members are still materialising exceeds it and dies with "Timed out waiting for clients". The
 // figure is therefore an accommodation of a THIRD upstream, carried here because vLLM is what reads
-// the variable, and it is a deployment's to choose rather than a published vLLM default.
+// the variable.
+//
+// THIS ROW DOES NOT SAY A DEPLOYMENT CHOOSES IT, because no deployment in this corpus does. An
+// earlier wording called it "a deployment's to choose" while gunbc.spark.serving_arm_launch
+// arm_container_spec set it on every rank unconditionally -- prose describing a selection the code
+// does not offer. What is true is narrower: this is not a published vLLM default, nothing derives it,
+// and the one arm that reads it applies it always. A launch that wants a different timeout is a
+// change to that spec, not a value this module hands it.
 data vllm_engine_ready_timeout_multi_node: Second = second(count: 3600)
 
 // THE SPARSE-INDEXER CAP IS A HARDWARE MITIGATION CITED TO AN UPSTREAM REPORT. vllm-project/vllm#55569
 // reports unified-memory exhaustion on a GB10 at roughly 230K context from sparse-indexer logits
 // allocation. That report used a different quantisation and tensor-parallel shape, so this is a
-// RELEVANT RISK for a GB10 deployment rather than a measurement of any particular arm -- which is why
-// it is a figure a deployment may apply, not a default this module asserts vLLM carries.
+// RELEVANT RISK for a GB10 deployment rather than a measurement of any particular arm. It is not a
+// default this module asserts vLLM carries.
+//
+// AND THE SAME HONESTY APPLIES: the single consumer applies it to every rank unconditionally, so
+// calling it a figure a deployment MAY apply would describe an option nothing exercises. Whether to
+// apply it becomes a real choice when a second GB10 arm wants a different answer, and that choice
+// belongs on the launch profile with a realization -- not in an annotation here.
 data vllm_gb10_sparse_indexer_max_logits: Mebibyte = mebibyte(count: 64)
 
