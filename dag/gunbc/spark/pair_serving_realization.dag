@@ -36,7 +36,7 @@ import extdeps.nvidia.nccl {
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Installable, SystemdServiceDirective,
   Description, After, Requires,
-  ServiceType, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
+  ServiceType, SimpleMode, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
   WantedBy,
   serialize_systemd_unit_file,
 }
@@ -406,7 +406,7 @@ fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesire
                   Requires { target: "docker.service" as NonEmptyStr },
                 ],
                 service: concat(concat([
-                  ServiceType { mode: "simple" as NonEmptyStr },
+                  ServiceType { mode: SimpleMode },
                 ], lifecycle), [
                   ExecStartPre { command: stop_line },
                   ExecStartPre { command: ray_line },
@@ -447,7 +447,7 @@ fn spark_pair_worker_unit_file(head: FabricLaneObserved, self: FabricLaneObserve
                 Requires { target: "docker.service" as NonEmptyStr },
               ],
               service: concat(concat([
-                ServiceType { mode: "simple" as NonEmptyStr },
+                ServiceType { mode: SimpleMode },
               ], lifecycle), [
                 ExecStartPre { command: stop_line },
                 ExecStart { command: join_line },

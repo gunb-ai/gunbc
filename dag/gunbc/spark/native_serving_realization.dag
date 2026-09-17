@@ -10,7 +10,7 @@ import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Installable, SystemdServiceDirective,
   Description, After, Requires,
-  ServiceType, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
+  ServiceType, SimpleMode, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
   WantedBy,
   serialize_systemd_unit_file,
 }
@@ -207,7 +207,7 @@ fn glm_native_host_unit_file(host: HostIdentity, rank: Nat, ranks: Nat, master: 
                 Requires { target: "docker.service" as NonEmptyStr },
               ],
               service: [
-                ServiceType { mode: "simple" as NonEmptyStr },
+                ServiceType { mode: SimpleMode },
                 ExecStartPre { command: join(["-/usr/bin/docker rm -f ", glm_native_container_name as String], "") as NonEmptyStr },
                 ExecStart { command: run_line },
                 ExecStop { command: join(["/usr/bin/docker stop ", glm_native_container_name as String], "") as NonEmptyStr },
@@ -293,5 +293,25 @@ fn glm_native_head_unit_render_wet() -> ProcessExit {
         exit_failure(reason: join(["glm_native_head_unit_render_wet: scratch write failed: ", w.error], ""))
       }
     }
+  }
+}
+
+// THE ENDPOINT RENDERING SITS HERE, WITH THE FLAGS IT MUST AGREE WITH. The launch argv above writes
+// --master-addr and --master-port; anything observing participation must filter on exactly the pair
+// those two produce, so rendering them together is this module's job and putting it in the observer
+// would have made the launch authority depend on its own observer.
+fn glm_native_rendezvous_endpoint(master: Ipv4Address, port: Nat) -> NonEmptyStr {
+  join([render_ipv4_address(addr: master) as String, ":", to_string(port)], "") as NonEmptyStr
+}
+
+// THE RENDEZVOUS THIS ARM'S RANKS ARE POINTED AT, exported so a reader can observe participation
+// against the same endpoint the launch argv above actually names. Deriving the pair (address, port)
+// anywhere else would fork the launch authority: the master address is the head's rail address and
+// the port is glm_native_master_port, and both are already fixed here by --master-addr/--master-port.
+fn glm_native_master_endpoint() -> NonEmptyStr? {
+  match fabric_lane_for_host(host: spark_pair_serving_head(group: FabricGroupB)) {
+    Absent => none
+    Present { value: head_lane } =>
+      Present { value: glm_native_rendezvous_endpoint(master: fabric_rail_address_of(o: head_lane), port: glm_native_master_port) }
   }
 }

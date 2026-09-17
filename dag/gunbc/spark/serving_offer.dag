@@ -30,6 +30,10 @@ import gunbc.spark.vllm_serving_launch {
   launch_unit_provenance, launch_wire,
 }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
+import gunbc.spark.rendezvous_participation {
+  ServingGroupParticipation, GroupAtRendezvous, GroupRanksAdrift, GroupParticipationUnobserved,
+  serving_group_participation_line,
+}
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
 import gunbc.serving.serving_availability {
@@ -329,6 +333,7 @@ type SparkServiceIdentityCause
   | ServiceIncarnationOutsideRealization { incarnation: NonEmptyStr }
   | ServiceDeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
   | ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitProvenance }
+  | ServiceRanksAdriftFromTheRendezvous { detail: NonEmptyStr }
   | ServiceConfigurationDisagrees { configuration: SparkRealizationIdentity }
 
 // THE DECLARED SIDE OF THE UNIT COMPARISON IS ITSELF A STANDING, because nothing in .dag computes it.
@@ -363,6 +368,7 @@ fn spark_service_identity_cause_text(cause: SparkServiceIdentityCause, realizati
       join(["the observed incarnation ", i as String, " is not on this realization's group and hosts"], "")
     ServiceDeclaredUnitDigestUnavailable { obligation: o } => o as String
     ServiceIncarnationNotFromDeclaredUnit { provenance: p } => spark_launch_unit_provenance_text(provenance: p)
+    ServiceRanksAdriftFromTheRendezvous { detail: d } => d as String
     ServiceConfigurationDisagrees { configuration: _ } =>
       join(["the incarnation is observed and was launched from the declared unit, but the readback disagrees: ", spark_realization_identity_cause(realization: realization) as String], "")
   }
@@ -390,7 +396,7 @@ fn spark_configuration_matches(identity: SparkRealizationIdentity) -> Bool {
   }
 }
 
-fn spark_service_from_observation(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, observation: EndpointIncarnationObservation) -> SparkServingRoute {
+fn spark_service_from_observation(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, participation: ServingGroupParticipation?, observation: EndpointIncarnationObservation) -> SparkServingRoute {
   let observed_key = vllm_endpoint_process_launch_key(launch: observation.endpoint)
   let answering_key = vllm_endpoint_process_launch_key(launch: realization.endpoint)
   if (observed_key as String) != (answering_key as String) {
@@ -408,24 +414,62 @@ fn spark_service_from_observation(realization: SparkServingRealization, declared
             spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: o, declared: d } })
           LaunchUnitDigestsIncomparable =>
             spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable })
-          LaunchedFromDeclaredUnit { declared: _ } => {
-            let identity = spark_realization_identity(realization: realization)
-            if spark_configuration_matches(identity: identity) {
-              ServingRouteOperatorAsserted {
-                route: spark_first_party_route(),
-                allocation: spark_fleet_site_allocation.allocation,
-                answered_by: observation,
-              }
-            } else {
-              spark_service_unidentified(realization: realization, cause: ServiceConfigurationDisagrees { configuration: identity })
+          LaunchedFromDeclaredUnit { declared: _ } =>
+            match spark_ranks_adrift_detail(participation: participation) {
+              Present { value: detail } =>
+                spark_service_unidentified(realization: realization, cause: ServiceRanksAdriftFromTheRendezvous { detail: detail })
+              Absent => spark_service_after_rendezvous(realization: realization, observation: observation)
             }
-          }
         }
     }
   }
 }
 
-fn spark_serving_route_standing(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding) -> SparkServingRoute {
+// THE ADRIFT DETAIL, OR NOTHING TO SAY. `none` participation is an UNASKED question and `GroupAtRendezvous`
+// is an answered one; both continue, and only a roster with a demonstrably detached or unreadable rank
+// stops the line. GroupParticipationUnobserved stops it too, because a rendezvous we could not read is
+// not a rendezvous we found intact -- widening there would be the absorbing fallback DESIGN section 5
+// names, with the arm's assembly as the thing being assumed.
+fn spark_ranks_adrift_detail(participation: ServingGroupParticipation?) -> NonEmptyStr? {
+  match participation {
+    Absent => none
+    Present { value: p } =>
+      match p {
+        GroupAtRendezvous { epoch: _, ranks: _ } => none
+        GroupRanksAdrift { epoch: _, adrift: _, attached: _, expected: _ } =>
+          Present { value: join(["the answering incarnation is our declared arm, but its ranks are not assembled: ", serving_group_participation_line(p: p)], "") as NonEmptyStr }
+        GroupParticipationUnobserved { cause: c } =>
+          Present { value: join(["whether this arm's ranks are assembled could not be read, so it is not established that they are: ", c as String], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn spark_service_after_rendezvous(realization: SparkServingRealization, observation: EndpointIncarnationObservation) -> SparkServingRoute {
+  let identity = spark_realization_identity(realization: realization)
+  if spark_configuration_matches(identity: identity) {
+    ServingRouteOperatorAsserted {
+      route: spark_first_party_route(),
+      allocation: spark_fleet_site_allocation.allocation,
+      answered_by: observation,
+    }
+  } else {
+    spark_service_unidentified(realization: realization, cause: ServiceConfigurationDisagrees { configuration: identity })
+  }
+}
+
+// PARTICIPATION IS CHECKED AFTER THE UNIT PROVENANCE AND BEFORE THE CONFIGURATION, and the order is
+// the same reasoning the block above states. A rank roster is only meaningful once the answering
+// incarnation is known to be OUR declared arm: ranks adrift from a foreign engine's store is not a
+// fact about this deployment. And it precedes the configuration check because an arm missing ranks
+// cannot be expected to report a coherent configuration -- diagnosing the readback first would blame
+// the model path for an assembly failure.
+//
+// A GROUP WITH NO MODELED RENDEZVOUS PASSES THIS GATE, which is honest rather than lenient: group A's
+// ranks join through Ray and nothing here observes that, so `none` means UNASKED and the arm's
+// standing is decided by the checks that do apply. It is not a silent widen because the question is
+// not answerable for that arm at all -- the endpoint readback still gates it, exactly as before this
+// parameter existed.
+fn spark_serving_route_standing(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, participation: ServingGroupParticipation?) -> SparkServingRoute {
   let hosts = realization.hosts
   if count(hosts) == 0 {
     ServingRouteRegionUnobserved { obligation: spark_serving_route_hosts_unreadable_obligation }
@@ -441,7 +485,7 @@ fn spark_serving_route_standing(realization: SparkServingRealization, declared_u
             obligation: o,
           })
         EndpointIncarnationObserved { observation: obs } =>
-          spark_service_from_observation(realization: realization, declared_unit: declared_unit, observation: obs)
+          spark_service_from_observation(realization: realization, declared_unit: declared_unit, participation: participation, observation: obs)
       }
     }
   }

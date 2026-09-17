@@ -26,7 +26,7 @@ import extdeps.systemd.unit_file {
   After,
   Wants,
   StartLimitIntervalSec,
-  ServiceType,
+  ServiceType, SimpleMode,
   ServiceUser,
   WorkingDirectory,
   Environment,
@@ -315,7 +315,7 @@ fn runner_unit_file(
           service: concat(
             concat(
               [
-                ServiceType { mode: "simple" as NonEmptyStr },
+                ServiceType { mode: SimpleMode },
                 ServiceUser { name: deploy.runner_user },
                 WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
               ],

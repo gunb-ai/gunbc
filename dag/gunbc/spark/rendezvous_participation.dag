@@ -1,0 +1,285 @@
+module gunbc.spark.rendezvous_participation
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import v2.std.algebra { length, filter }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import extdeps.iproute2.ss { ss_established_to_peer_argv, ss_enumeration_line_count }
+import extdeps.systemd {
+  SystemdUnitProperty, InvocationIDProperty, systemd_unit_property_wire,
+}
+import extdeps.systemd.unit_file {
+  SystemdServiceMode, ActiveStateEstablishes, ExecStarted, ExecCompleted, ServiceAnnouncedReady,
+  ReadinessFromActiveState, ReadinessEstablishedByService, ReadinessNotEstablished,
+  systemd_readiness_from_active_state,
+}
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
+
+// WHETHER A DISTRIBUTED SERVING ARM IS PARTICIPATING, WHICH ITS SUPERVISOR CANNOT ANSWER.
+//
+// A four-rank tensor-parallel arm is one service whose liveness is a property of the GROUP: rank 0
+// opens a torch TCPStore and the other three must attach to THAT store, not to some earlier one.
+// Nothing in systemd can observe that. The ranks are declared Type=simple, so
+// extdeps.systemd.unit_file systemd_active_state_establishes reduces their ActiveState=active to
+// ExecStarted -- the manager forked a process -- and a process attached to a store that no longer
+// exists satisfies it perfectly.
+//
+// THE FAILURE THIS MODULE EXISTS FOR WAS MEASURED, NOT ANTICIPATED. On 2026-09-16 the group-B rail
+// dropped while its transceivers were reprogrammed. The head's unit restarted cleanly and opened a
+// fresh store; the three worker ranks stayed in the store they had joined 46 minutes earlier, spinning
+// on `Failed to check the "should dump" flag on TCPStore ... Broken pipe`. Every one of the four units
+// reported ActiveState=active throughout. Restart=always never fired, because from systemd's vantage
+// there was nothing wrong: four processes, four running services, zero participation. The arm could
+// not answer a request and no unit-level reading could say so. Recovery required a converge, which
+// is out-of-band actuation for an ordinary fault.
+//
+// THE OBSERVATION IS A CONNECTION TO THE CURRENT MASTER, and that choice is what makes a stale rank
+// distinguishable. A rank's own logs cannot settle it -- the line naming the store is printed once, at
+// join, and survives in the file long after the store is gone, so grepping it answers "did this rank
+// ever join a store" rather than "is it in this one". A live TCP connection to the master endpoint
+// cannot be stale by construction: when the head restarts, its listening socket is replaced and every
+// connection to the old one is gone. So an established connection to master:port IS attachment to the
+// store the head is serving now, and its absence IS detachment.
+//
+// WHAT THIS DOES NOT ESTABLISH, stated because the gap is real and the alternative is to overclaim. A
+// connected rank is attached to the current store; it is not thereby healthy, loaded, or able to serve
+// -- a rank can be connected and still be twenty minutes from a loaded checkpoint. Participation is
+// necessary and not sufficient, which is why it sits BESIDE the endpoint readback rather than
+// replacing it: the readback says the arm answers, this says which ranks are in the arm that would.
+
+// THE EPOCH IS THE HEAD'S INVOCATION, because the head's unit start is what creates the store. Two
+// ranks are in the same rendezvous exactly when they are attached to the store one invocation opened,
+// so the invocation id is the epoch's identity rather than a label chosen for it. It is already read
+// on the serving path (gunbc.spark.serving_incarnation_observe reads InvocationID off the head unit),
+// so this is a join onto an existing observation and not a second acquisition.
+//
+// THE MASTER ENDPOINT IS CARRIED BESIDE IT because the ranks are told to join an address and port, and
+// that is the peer the participation query filters on. Deriving it here from the head identity would
+// duplicate gunbc.spark.native_serving_realization's launch argv, which is the authority for what the
+// ranks were actually pointed at.
+type RendezvousEpoch sole_constructor {
+  head: HostIdentity
+  head_invocation: NonEmptyStr
+  master_endpoint: NonEmptyStr
+}
+
+// THE CONSTRUCTOR, because a sole_constructor type is not writable outside its module. That
+// restriction is the right one here: an epoch minted from anything other than a head unit's
+// invocation would be a second answer to "which start of the head is this", so every caller comes
+// through one door and the door's parameters say what an epoch is made of.
+fn rendezvous_epoch(head: HostIdentity, head_invocation: NonEmptyStr, master_endpoint: NonEmptyStr) -> RendezvousEpoch {
+  RendezvousEpoch { head: head, head_invocation: head_invocation, master_endpoint: master_endpoint }
+}
+
+// THE THREE ARMS ARE THREE DIFFERENT FACTS AND THE MIDDLE ONE IS THE POINT. A rank that is attached,
+// a rank that is demonstrably NOT attached, and a rank nobody could ask are three different repairs:
+// nothing, restart the epoch, fix the observation path. Folding the third into the second would make
+// an unreachable host look like a detached rank and send an operator to restart a healthy arm; folding
+// it into the first would be the fail-open this whole module is about.
+type RankParticipation
+  = RankAtRendezvous { host: HostIdentity, rank: Nat, connections: Int }
+  | RankDetached { host: HostIdentity, rank: Nat, peer: NonEmptyStr }
+  | RankParticipationUnread { host: HostIdentity, rank: Nat, cause: String }
+
+fn rank_participation_host(p: RankParticipation) -> HostIdentity {
+  match p {
+    RankAtRendezvous { host: h, rank: _, connections: _ } => h
+    RankDetached { host: h, rank: _, peer: _ } => h
+    RankParticipationUnread { host: h, rank: _, cause: _ } => h
+  }
+}
+
+fn rank_participation_is_attached(p: RankParticipation) -> Bool {
+  match p {
+    RankAtRendezvous { host: _, rank: _, connections: _ } => true
+    RankDetached { host: _, rank: _, peer: _ } => false
+    RankParticipationUnread { host: _, rank: _, cause: _ } => false
+  }
+}
+
+fn rank_participation_line(p: RankParticipation) -> String {
+  match p {
+    RankAtRendezvous { host: h, rank: r, connections: n } =>
+      join([h as String, " rank ", to_string(r), " attached (", to_string(n), " connection(s))"], "")
+    RankDetached { host: h, rank: r, peer: peer } =>
+      join([h as String, " rank ", to_string(r), " is NOT attached to ", peer as String], "")
+    RankParticipationUnread { host: h, rank: r, cause: c } =>
+      join([h as String, " rank ", to_string(r), " participation unread: ", c], "")
+  }
+}
+
+// ONE RANK'S READING. The leg not running and the leg running to an empty answer are kept apart for
+// the reason the engine scan beside it keeps them apart: a refused leg has no population to count,
+// and counting it as zero would report a detached rank on an ssh failure.
+fn observe_rank_participation(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  rank: Nat,
+  peer: NonEmptyStr,
+) -> RankParticipation {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ss_established_to_peer_argv(peer: peer)) {
+    TypedArgvExecRefused { reason: why } =>
+      RankParticipationUnread { host: host, rank: rank, cause: join(["the ss leg did not run: ", why], "") }
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        RankParticipationUnread { host: host, rank: rank, cause: join(["ss exited ", to_string(r.exit_code), ": ", r.stderr], "") }
+      } else {
+        let n = ss_enumeration_line_count(stdout: r.stdout)
+        if n == 0 {
+          RankDetached { host: host, rank: rank, peer: peer }
+        } else {
+          RankAtRendezvous { host: host, rank: rank, connections: n }
+        }
+      }
+  }
+}
+
+// THE GROUP'S STANDING, which is the subject the serving path should have been asking about all along.
+// `GroupAtRendezvous` requires EVERY ranked host to be attached -- a partial answer is not a weaker
+// yes, it is the exact state that produced the outage, so it gets its own arm carrying WHICH ranks are
+// adrift rather than a count. A count cannot be acted on; a host can.
+type ServingGroupParticipation
+  = GroupAtRendezvous { epoch: RendezvousEpoch, ranks: List<RankParticipation> }
+  | GroupRanksAdrift { epoch: RendezvousEpoch, adrift: List<RankParticipation>, attached: Int, expected: Int }
+  | GroupParticipationUnobserved { cause: NonEmptyStr }
+
+fn serving_group_participation(
+  context: FleetSshExecutionContext,
+  epoch: RendezvousEpoch,
+  ranked_hosts: List<HostIdentity>,
+) -> ServingGroupParticipation {
+  if length(ranked_hosts) == 0 {
+    GroupParticipationUnobserved { cause: "the arm has no ranked hosts, so there is no rendezvous to observe" as NonEmptyStr }
+  } else {
+    let readings = rank_participation_readings(context: context, epoch: epoch, hosts: ranked_hosts)
+    let adrift = filter(readings, p => rank_participation_is_attached(p: p) == false)
+    if length(adrift) == 0 {
+      GroupAtRendezvous { epoch: epoch, ranks: readings }
+    } else {
+      GroupRanksAdrift {
+        epoch: epoch,
+        adrift: adrift,
+        attached: length(filter(readings, p => rank_participation_is_attached(p: p))),
+        expected: length(ranked_hosts),
+      }
+    }
+  }
+}
+
+fn rank_participation_readings(
+  context: FleetSshExecutionContext,
+  epoch: RendezvousEpoch,
+  hosts: List<HostIdentity>,
+) -> List<RankParticipation> {
+  rank_readings_from(context: context, epoch: epoch, hosts: hosts, next: 0)
+}
+
+fn rank_readings_from(
+  context: FleetSshExecutionContext,
+  epoch: RendezvousEpoch,
+  hosts: List<HostIdentity>,
+  next: Nat,
+) -> List<RankParticipation> {
+  match hosts {
+    Empty => []
+    Cons { head: h, tail: t } =>
+      concat(
+        [observe_rank_participation(
+          target: fleet_locus_ssh_target(host: h),
+          context: context,
+          host: h,
+          rank: next,
+          peer: epoch.master_endpoint,
+        )],
+        rank_readings_from(context: context, epoch: epoch, hosts: t, next: next + 1))
+  }
+}
+
+fn serving_group_participation_line(p: ServingGroupParticipation) -> String {
+  match p {
+    GroupAtRendezvous { epoch: e, ranks: rs } =>
+      join(["all ", to_string(length(rs)), " rank(s) are attached to the store opened by invocation ", e.head_invocation as String, " at ", e.master_endpoint as String], "")
+    GroupRanksAdrift { epoch: e, adrift: ds, attached: a, expected: x } =>
+      join([
+        to_string(a), " of ", to_string(x), " rank(s) are attached to the store opened by invocation ",
+        e.head_invocation as String, " at ", e.master_endpoint as String,
+        "; adrift: ", join(map(ds, d => rank_participation_line(p: d)), "; "),
+      ], "")
+    GroupParticipationUnobserved { cause: c } => c as String
+  }
+}
+
+// ================= WHAT THE SUPERVISOR'S OWN SIGNAL IS WORTH =================
+//
+// THE READINESS QUESTION IS ANSWERED BY THE UNIT'S TYPE, NOT BY THIS MODULE. A caller holding a rank's
+// ActiveState wants to know whether it may conclude the rank is serving, and
+// extdeps.systemd.unit_file already decides that from the declared mode. This wrapper exists so the
+// serving path names the reason it needs a participation reading AT ALL, rather than the need being a
+// fact a reader has to rediscover: a Type=simple unit's active state establishes ExecStarted, so
+// something else must establish participation, and this module is that something.
+type ArmLivenessBasis
+  = LivenessFromServiceAnnouncement
+  | LivenessNeedsIndependentReading { because: NonEmptyStr }
+
+fn arm_liveness_basis(mode: SystemdServiceMode) -> ArmLivenessBasis {
+  match systemd_readiness_from_active_state(mode: mode) {
+    ReadinessEstablishedByService => LivenessFromServiceAnnouncement
+    ReadinessNotEstablished { mode: m, establishes: e } =>
+      LivenessNeedsIndependentReading {
+        because: join([
+          "the unit declares Type=", m as String,
+          ", whose ActiveState=active establishes ", active_state_establishes_wire(e: e) as String,
+          " and not that the service is participating",
+        ], "") as NonEmptyStr,
+      }
+  }
+}
+
+fn active_state_establishes_wire(e: ActiveStateEstablishes) -> NonEmptyStr {
+  match e {
+    ExecStarted => "that the manager started the exec" as NonEmptyStr
+    ExecCompleted => "that the exec ran to completion" as NonEmptyStr
+    ServiceAnnouncedReady => "that the service announced readiness" as NonEmptyStr
+  }
+}
+
+// ================= HOW THE ARM RECOVERS, DECLARED RATHER THAN DISCOVERED =================
+//
+// AN ARM THAT CANNOT SELF-HEAL IS NOT A DEFECT UNTIL IT IS UNDECLARED. Group B's ranks hang instead of
+// exiting, so Restart=always cannot rejoin them and only a converge restarts every rank into one
+// epoch. That is a real posture with a real cost -- an ordinary rail blip needs out-of-band actuation,
+// which DESIGN section 6 names as a tell -- and the answer is to SAY so, with the noticer named, rather
+// than to leave the operator to discover it during an outage.
+//
+// THE THIRD ARM IS THE ONE THAT WAS TRUE ON 2026-09-16 AND IT IS DELIBERATELY UGLY TO WRITE. An arm
+// that recovers only by converge, with nothing watching, is silently broken between the fault and
+// whenever a person happens to look. Naming the noticer is the obligation the arm carries; leaving it
+// unnamed is admissible only as ConvergeRecoveredUnnoticed, which exists so that state is
+// representable and countable instead of ambient.
+type ArmRecoveryPosture
+  = SelfHealingOnFault { because: NonEmptyStr }
+  | ConvergeRecovered { noticer: NonEmptyStr, converge_entry: NonEmptyStr }
+  | ConvergeRecoveredUnnoticed { obligation: NonEmptyStr }
+
+fn arm_recovery_is_noticed(posture: ArmRecoveryPosture) -> Bool {
+  match posture {
+    SelfHealingOnFault { because: _ } => true
+    ConvergeRecovered { noticer: _, converge_entry: _ } => true
+    ConvergeRecoveredUnnoticed { obligation: _ } => false
+  }
+}
+
+// THE GROUP-B ARM'S POSTURE AS IT STANDS. The participation reading above is the noticer: a
+// GroupRanksAdrift is a typed, located refusal naming the hosts, which is what a converge decision
+// needs. It is honest that the noticer only REPORTS -- nothing here restarts anything, because an
+// automatic converge that bounced four engines on an observation would be an actuator built on one
+// reading, and the reading landed tonight. The remaining climb is a rank that exits on rendezvous
+// loss, which makes the posture SelfHealingOnFault and retires the converge dependency entirely.
+data glm_native_arm_recovery_posture: ArmRecoveryPosture = ConvergeRecovered {
+  noticer: "gunbc.spark.rendezvous_participation serving_group_participation, whose GroupRanksAdrift arm names the detached hosts" as NonEmptyStr,
+  converge_entry: "gunbc.spark.native_serving_apply spark_native_serving_apply_wet, which restarts every rank into one epoch" as NonEmptyStr,
+}

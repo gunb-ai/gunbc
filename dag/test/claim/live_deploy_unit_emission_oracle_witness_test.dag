@@ -45,7 +45,7 @@ import extdeps.systemd.unit_file {
   After,
   Wants,
   SystemdServiceDirective,
-  ServiceType,
+  ServiceType, OneshotMode, SimpleMode,
   ExecStart,
   Restart,
   Environment,
@@ -366,7 +366,7 @@ test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
 
 // DECISION: the belt unit is Type=oneshot (it runs once per tick and exits).
 test fn belt_service_type_is_oneshot() -> Bool {
-  service_has(file: belt_service_file(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+  service_has(file: belt_service_file(), target: ServiceType { mode: OneshotMode })
 }
 
 // DECISION: the belt unit has a Description, After=network-online.target, and Wants=network-online.target.
@@ -475,7 +475,7 @@ test fn serve_unit_carries_user_manager_environment() -> Bool {
 
 // DECISION: the serve unit is Type=simple (long-running process).
 test fn serve_unit_type_is_simple() -> Bool {
-  service_has(file: serve_file(), target: ServiceType { mode: "simple" as NonEmptyStr })
+  service_has(file: serve_file(), target: ServiceType { mode: SimpleMode })
 }
 
 // DECISION: the serve unit restarts on failure.

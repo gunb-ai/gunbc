@@ -31,7 +31,7 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
   SystemdDropIn, SystemdDropInSection, DropInUnitSection,
   Description, After, Wants,
-  ServiceType, ExecStartPre, ExecStart, ExecStopPost, WorkingDirectory,
+  ServiceType, OneshotMode, ExecStartPre, ExecStart, ExecStopPost, WorkingDirectory,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
   WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in,
 }
@@ -259,7 +259,7 @@ fn runner_guest_agent_unit() -> SystemdUnitFile {
       After { target: "network-online.target" as NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceType { mode: OneshotMode },
       WorkingDirectory { path: actions_runner_base_dir as NonEmptyStr },
       ServiceStandardOutput { stream: OutputJournalAndConsole },
       ServiceStandardError { stream: OutputJournalAndConsole },

@@ -186,7 +186,7 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
     group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
     readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
     incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
-    route: harness_serving_route(group: FabricGroupA, launch: launch, readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 }, incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }, declared_unit: DeclaredUnitDigestUnavailable { obligation: spark_pair_head_unit_digest_unavailable_obligation }),
+    route: harness_serving_route(group: FabricGroupA, launch: launch, readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 }, incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }, declared_unit: DeclaredUnitDigestUnavailable { obligation: spark_pair_head_unit_digest_unavailable_obligation }, participation: none),
     subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 4,
   )

@@ -1,7 +1,8 @@
 module gunbc.spark.serving_group_launch
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_realization {
   spark_pair_head_unit_name, spark_pair_container_name, spark_pair_model_path_in_container,
@@ -9,7 +10,7 @@ import gunbc.spark.pair_serving_realization {
 }
 import gunbc.spark.native_serving_realization {
   glm_native_head_unit_name, glm_native_container_name, glm_native_engine_binary,
-  glm_native_model_path_in_container,
+  glm_native_model_path_in_container, glm_native_master_endpoint, glm_native_ranked_hosts,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
 
@@ -48,5 +49,31 @@ fn serving_group_launch(group: FabricGroup) -> ServingGroupLaunch {
       engine_binary: glm_native_engine_binary,
       declared_model_path: glm_native_model_path_in_container(),
     }
+  }
+}
+
+// THE RENDEZVOUS ROSTER, GROUP-KEYED LIKE EVERY OTHER LAUNCH FACT IN THIS MODULE. It answers "which
+// hosts must be attached to which endpoint for this arm to be assembled", and `none` for group A is
+// the honest answer rather than a gap: that arm's ranks join through a Ray cluster, which nothing in
+// this repository observes, so there is no roster to check and the module says so instead of
+// inventing a TCPStore for it. When Ray participation is modeled, group A gets a row here and every
+// consumer picks it up with no edit, which is the point of putting it on this authority.
+type GroupRendezvous sole_constructor {
+  master_endpoint: NonEmptyStr
+  ranked_hosts: List<HostIdentity>
+}
+
+fn serving_group_rendezvous(group: FabricGroup) -> GroupRendezvous? {
+  match group {
+    FabricGroupA => none
+    FabricGroupB =>
+      match glm_native_master_endpoint() {
+        Absent => none
+        Present { value: endpoint } =>
+          Present { value: GroupRendezvous {
+            master_endpoint: endpoint,
+            ranked_hosts: glm_native_ranked_hosts(),
+          } }
+      }
   }
 }
