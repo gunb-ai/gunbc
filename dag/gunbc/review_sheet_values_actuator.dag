@@ -1,0 +1,247 @@
+module gunbc.review_sheet_values_actuator
+
+import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.resources { Network }
+import extdeps.transports.rest {
+  RestReadExchange,
+  RestMutationExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.sheets
+import extdeps.google.sheets {
+  ValueRange,
+  SheetsValueInputOption,
+  InputRaw,
+  SheetsValueRenderOption,
+  RenderFormattedValue,
+}
+
+// THE TRANSPORT THAT live_sheets_transport_frontier RESERVED. Until this module executed, the
+// Sheets service was fully modelled and had zero call sites -- the frontier stated as a number.
+//
+// WHY RAW AND FORMATTED_VALUE, AND WHY THAT PAIRING IS NOT ARBITRARY. gunbc.review_sheet_sheets
+// already reasons it out: USER_ENTERED parses a derived string, so "1/2" becomes a date and a
+// leading = becomes a formula, and the FORMATTED_VALUE readback is then not the string this lane
+// wrote -- the next converge would see a difference it caused and report a conflict against its own
+// output. RAW stores the string as a string, and FORMATTED_VALUE reads cells back as strings, so
+// write and read are inverses. This module consumes that decision rather than restating it.
+//
+// THE READBACK IS NOT THE WRITE'S OWN RESPONSE. batchUpdate answers with counts of what it changed,
+// which is a statement about the request, not about the sheet. A separate values.get is what
+// establishes the cells now hold what was sent, and it is the same read the next converge performs.
+
+type ValuesWriteOutcome
+  = ValuesAlreadyMatch { rows: Int }
+  | ValuesWrittenAndVerified { updated_cells: Int, rows: Int }
+  | ValuesWriteUnverified { cause: NonEmptyStr }
+  | ValuesWriteRefused { cause: NonEmptyStr }
+
+type ValuesReadOutcome
+  = ValuesRead { range: ValueRange }
+  | ValuesUnreadable { cause: NonEmptyStr }
+
+fn read_values(spreadsheet_id: NonEmptyStr, a1: String) -> ValuesReadOutcome uses net: Network {
+  let read = sheets.Spreadsheets.GetValues(
+    spreadsheet_id: spreadsheet_id as String,
+    range: a1,
+    value_render_option: RenderFormattedValue,
+  )
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded => ValuesRead { range: read.value_range }
+    RestExchangeStatusRefused { status, body } =>
+      ValuesUnreadable {
+        cause: join(["values.get refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      ValuesUnreadable {
+        cause: join(["values.get never reached Sheets: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ValuesUnreadable {
+        cause: join(["values.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      ValuesUnreadable {
+        cause: join(["values.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+fn value_range_row_count(r: ValueRange) -> Int {
+  count(value_range_rows(r: r))
+}
+
+// Equality is over the ROWS, not the response envelope: values.get returns the range string it
+// resolved, which may be spelled differently from the one requested (a bare tab name comes back as
+// an explicit A1 span), and comparing envelopes would report a difference the sheet does not have.
+// EQUALITY IS LINEAR AND IT REFUSES RATHER THAN ASSUMING. Indexing one list while folding the
+// other is O(n^2) because skip walks, and DESIGN section 6 fixes a proven quadratic regardless of
+// the realized n -- this table is 58 rows today and the reason it is 58 is not a stable fact.
+// So both sides are serialised once and compared, which is linear.
+//
+// The serialisation is only sound while no cell contains the separator, and that is a property of
+// the DATA, not of this code: a repository description can contain anything. So the fold does not
+// assume it -- cells_carry_separator answers whether any cell does, and the caller refuses on true
+// rather than reporting an equality it cannot establish. A false equality here would skip a write
+// the sheet needs; a false difference would rewrite an identical sheet forever.
+data rows_field_separator: String = "\u001f"
+
+data rows_record_separator: String = "\u001e"
+
+fn cells_carry_separator(rows: List<List<String>>) -> Bool {
+  any(rows, row =>
+    any(row, cell =>
+      string_contains(s: cell, pattern: rows_field_separator)
+        || string_contains(s: cell, pattern: rows_record_separator)))
+}
+
+fn rows_fingerprint(rows: List<List<String>>) -> String {
+  join(map(rows, row => join(row, rows_field_separator)), rows_record_separator)
+}
+
+type RowsComparison
+  = RowsEqual
+  | RowsDiffer
+  | RowsIncomparable { cause: NonEmptyStr }
+
+fn compare_rows(a: List<List<String>>, b: List<List<String>>) -> RowsComparison {
+  if cells_carry_separator(rows: a) || cells_carry_separator(rows: b) {
+    RowsIncomparable {
+      cause: "a cell contains the record or field separator, so a serialised comparison cannot establish equality" as NonEmptyStr
+    }
+  } else {
+    if rows_fingerprint(rows: a) == rows_fingerprint(rows: b) {
+      RowsEqual
+    } else {
+      RowsDiffer
+    }
+  }
+}
+
+fn compare_value_ranges(a: ValueRange, b: ValueRange) -> RowsComparison {
+  compare_rows(a: value_range_rows(r: a), b: value_range_rows(r: b))
+}
+
+fn value_range_rows(r: ValueRange) -> List<List<String>> {
+  match r.values {
+    Absent => []
+    Present { value: rows } => rows
+  }
+}
+
+fn perform_values_write(
+  spreadsheet_id: NonEmptyStr,
+  a1: String,
+  desired: ValueRange,
+) -> ValuesWriteOutcome uses net: Network {
+  let written = sheets.Spreadsheets.BatchUpdateValues(
+    spreadsheet_id: spreadsheet_id as String,
+    value_input_option: InputRaw,
+    data: [desired],
+    include_values_in_response: false,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: written.outcome }) {
+    RestExchangeSucceeded =>
+      verify_written_values(
+        spreadsheet_id: spreadsheet_id,
+        a1: a1,
+        desired: desired,
+        detail: "values.batchUpdate answered success" as NonEmptyStr,
+      )
+    RestExchangeCommitAmbiguous { detail } =>
+      verify_written_values(
+        spreadsheet_id: spreadsheet_id,
+        a1: a1,
+        desired: desired,
+        detail: join(["values.batchUpdate left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
+      )
+    RestExchangeStatusRefused { status, body } =>
+      ValuesWriteRefused {
+        cause: join(["values.batchUpdate refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      ValuesWriteRefused {
+        cause: join(["values.batchUpdate never reached Sheets: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ValuesWriteRefused {
+        cause: join(["values.batchUpdate answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// A write that reports cells updated and then reads back different cells is NOT a success, and the
+// count is exactly what would hide it: batchUpdate reporting 2000 updated cells says the request
+// was applied, not that the sheet now holds these rows.
+fn verify_written_values(
+  spreadsheet_id: NonEmptyStr,
+  a1: String,
+  desired: ValueRange,
+  detail: NonEmptyStr,
+) -> ValuesWriteOutcome uses net: Network {
+  match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
+    ValuesUnreadable { cause: c } =>
+      ValuesWriteUnverified {
+        cause: join([detail as String, ", and the verifying read could not settle it: ", c as String], "") as NonEmptyStr
+      }
+    ValuesRead { range: got } =>
+      match compare_value_ranges(a: got, b: desired) {
+        RowsEqual =>
+          ValuesWrittenAndVerified {
+            updated_cells: value_range_row_count(r: desired),
+            rows: value_range_row_count(r: desired),
+          }
+        RowsIncomparable { cause: c } =>
+          ValuesWriteUnverified {
+            cause: join([detail as String, ", and the readback could not be compared: ", c as String], "") as NonEmptyStr
+          }
+        RowsDiffer =>
+          ValuesWriteUnverified {
+            cause: join(
+              [
+                detail as String,
+                ", but the readback does not equal what was sent: wrote ",
+                to_string(value_range_row_count(r: desired)),
+                " rows and read ",
+                to_string(value_range_row_count(r: got)),
+                " back",
+              ],
+              "",
+            ) as NonEmptyStr
+          }
+      }
+  }
+}
+
+// Read, compare, write only on difference, read again. An unchanged sheet costs one call and
+// writes nothing, which is what makes this safe to run on a schedule.
+fn converge_sheet_values(
+  spreadsheet_id: NonEmptyStr,
+  a1: String,
+  desired: ValueRange,
+) -> ValuesWriteOutcome uses net: Network {
+  match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
+    ValuesUnreadable { cause: c } => ValuesWriteRefused { cause: c }
+    ValuesRead { range: got } =>
+      match compare_value_ranges(a: got, b: desired) {
+        RowsEqual => ValuesAlreadyMatch { rows: value_range_row_count(r: desired) }
+        RowsIncomparable { cause: c } => ValuesWriteRefused { cause: c }
+        RowsDiffer => perform_values_write(spreadsheet_id: spreadsheet_id, a1: a1, desired: desired)
+      }
+  }
+}
+
+fn values_outcome_text(o: ValuesWriteOutcome) -> String {
+  match o {
+    ValuesAlreadyMatch { rows: n } => join(["already matches: ", to_string(n), " rows"], "")
+    ValuesWrittenAndVerified { updated_cells: _, rows: n } =>
+      join(["written and verified by readback: ", to_string(n), " rows"], "")
+    ValuesWriteUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
+    ValuesWriteRefused { cause: c } => join(["REFUSED: ", c as String], "")
+  }
+}

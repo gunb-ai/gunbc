@@ -3,6 +3,7 @@ module extdeps.google.sheets
 import std.types { NonEmptyStr, String, Int, List, Secret, Bool, HttpMethod, AuthScheme }
 import extdeps.transports.rest { RestOutcome }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
@@ -77,6 +78,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     sheets_oauth_scope_citation
   ]
 }
+
+// The same credential the Drive service reads, and for the same measured reason: gunbc run passes
+// arguments only as argv, and on this fleet an argv word is readable by any job payload a pull
+// request can influence. One variable serves both services because it is one operator credential
+// for one converge; splitting it would mean two secrets with the same blast radius and one more
+// thing to rotate. The literal is repeated here because the config parse extracts a literal --
+// gunbc.extdeps_google_sheets_token_pin is what keeps the two spellings from drifting.
+data sheets_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"
 
 data sheets_api_version: NonEmptyStr = "v4"
 
@@ -220,12 +229,11 @@ service sheets.Spreadsheets {
   config {
     endpoint: sheets_api_base
     auth: Bearer
-    auth_input: access_token
+    auth_source: EnvVar { name: "GUNBC_REVIEW_SHEET_TOKEN" }
   }
 
   operation GetValues {
     input {
-      access_token: Secret
       spreadsheet_id: String
       range: String
       value_render_option: SheetsValueRenderOption
@@ -253,7 +261,6 @@ service sheets.Spreadsheets {
 
   operation BatchUpdateValues {
     input {
-      access_token: Secret
       spreadsheet_id: String
       value_input_option: SheetsValueInputOption
       data: List<ValueRange>
