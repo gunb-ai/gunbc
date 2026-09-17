@@ -17,6 +17,15 @@ import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileRefusedBudgetBelowMeasuredDemand,
   WholeCorpusCompileRefusedBudgetUnreadable,
   WholeCorpusCompileRefusedUnmeasuredRoot,
+  WholeCorpusCompileRefusedDemandsForAnotherRepository,
+  WholeCorpusCompileDemand,
+  WholeCorpusCompileDemandsRead,
+  DemandsProjectionNotDeclared,
+  DemandsProjectionUnreadable,
+  DemandsProjectionRead,
+  NoDemandsProjectionDeclared,
+  DemandsProjectionNotRead,
+  NoRowForRoot,
   WholeCorpusCompileRootIdentity,
   MeasuredForRoot,
   UnmeasuredRoot,
@@ -45,11 +54,16 @@ fn public_root_peak() -> Int {
   }
 }
 
+// The rows as the seed receives them: a projection that read, at a fixture location.
+fn read_of(demands: List<WholeCorpusCompileDemand>) -> WholeCorpusCompileDemandsRead {
+  DemandsProjectionRead { location: "fixture/measured_root_demands.json" as NonEmptyStr, demands: demands }
+}
+
 fn admit_public_root(budget: HostBudgetResolution) -> WholeCorpusCompileAdmission {
   whole_corpus_compile_admission(
     budget: budget,
     root: whole_corpus_compile_public_root,
-    demands: whole_corpus_compile_measured_root_demands,
+    read: read_of(demands: whole_corpus_compile_measured_root_demands),
   )
 }
 
@@ -120,7 +134,8 @@ test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
       && string_contains(s: s as String, pattern: "memory.high")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, recipe: _ } => false
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+    WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
 }
 
@@ -215,7 +230,8 @@ test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> B
     WholeCorpusCompileRefusedBudgetUnreadable { reason: r } => !((r as String) == "")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, recipe: _ } => false
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+    WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
 }
 
@@ -232,14 +248,16 @@ fn ample_budget() -> HostBudgetResolution {
 
 fn refuses_as_unmeasured(a: WholeCorpusCompileAdmission, root: WholeCorpusCompileRootIdentity) -> Bool {
   match a {
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: r, recipe: rc } =>
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: r, cause: _, recipe: rc } =>
       (r.repository as String) == (root.repository as String)
         && (r.primary_root as String) == (root.primary_root as String)
         && string_contains(s: rc as String, pattern: concat("--source-root ", root.primary_root as String))
         && string_contains(s: rc as String, pattern: "MeasuredForRoot")
+        && string_contains(s: rc as String, pattern: "gunbc measure-root-demand")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+    WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
 }
 
@@ -251,7 +269,7 @@ test fn the_public_root_admits_at_an_ample_budget() -> Bool {
 
 test fn an_unmeasured_root_refuses_naming_its_measurement_recipe() -> Bool {
   let private_root = WholeCorpusCompileRootIdentity {
-    repository: "gunbc-private" as RepositoryIdentity,
+    repository: "gunbc" as RepositoryIdentity,
     primary_root: "strategy" as SourceRootIdentity,
     dependency_pools: ["dag" as SourceRootIdentity],
   }
@@ -259,27 +277,40 @@ test fn an_unmeasured_root_refuses_naming_its_measurement_recipe() -> Bool {
     a: whole_corpus_compile_admission(
       budget: ample_budget(),
       root: private_root,
-      demands: whole_corpus_compile_measured_root_demands,
+      read: read_of(demands: whole_corpus_compile_measured_root_demands),
     ),
     root: private_root,
   )
 }
 
 // The repository is part of the key: a second repository spelling the SAME roots does not join the
-// public row. This is the direction that would have admitted a larger root on an undercounting number.
-test fn the_same_root_spelling_in_another_repository_is_unmeasured() -> Bool {
+// public row. This repository's projection carries only its own repository, so handing it to that
+// compile is refused as ANOTHER REPOSITORY'S projection -- the direction that would have admitted a
+// larger root on an undercounting number.
+fn refuses_as_another_repository(a: WholeCorpusCompileAdmission, expect_projected: String) -> Bool {
+  match a {
+    WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: rs } =>
+      count(rs) > 0 && fold(rs, init: true, f: fn(acc, r) { acc && (r as String) == expect_projected })
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+  }
+}
+
+test fn the_same_root_spelling_in_another_repository_does_not_join_the_public_row() -> Bool {
   let same_spelling = WholeCorpusCompileRootIdentity {
     repository: "gunbc-private" as RepositoryIdentity,
     primary_root: "dag" as SourceRootIdentity,
     dependency_pools: ["src/v2" as SourceRootIdentity],
   }
-  refuses_as_unmeasured(
+  refuses_as_another_repository(
     a: whole_corpus_compile_admission(
       budget: ample_budget(),
       root: same_spelling,
-      demands: whole_corpus_compile_measured_root_demands,
+      read: read_of(demands: whole_corpus_compile_measured_root_demands),
     ),
-    root: same_spelling,
+    expect_projected: "gunbc",
   )
 }
 
@@ -297,11 +328,11 @@ test fn the_public_primary_root_with_different_pools_is_unmeasured() -> Bool {
     dependency_pools: ["dag" as SourceRootIdentity],
   }
   refuses_as_unmeasured(
-    a: whole_corpus_compile_admission(budget: ample_budget(), root: no_pools, demands: whole_corpus_compile_measured_root_demands),
+    a: whole_corpus_compile_admission(budget: ample_budget(), root: no_pools, read: read_of(demands: whole_corpus_compile_measured_root_demands)),
     root: no_pools,
   )
     && refuses_as_unmeasured(
-      a: whole_corpus_compile_admission(budget: ample_budget(), root: v2_primary, demands: whole_corpus_compile_measured_root_demands),
+      a: whole_corpus_compile_admission(budget: ample_budget(), root: v2_primary, read: read_of(demands: whole_corpus_compile_measured_root_demands)),
       root: v2_primary,
     )
 }
@@ -312,9 +343,9 @@ test fn the_public_primary_root_with_different_pools_is_unmeasured() -> Bool {
 test fn a_row_for_a_different_root_never_admits_this_one() -> Bool {
   let other_root_row = MeasuredForRoot {
     root: WholeCorpusCompileRootIdentity {
-      repository: "gunbc-private" as RepositoryIdentity,
-      primary_root: "dag" as SourceRootIdentity,
-      dependency_pools: ["src/v2" as SourceRootIdentity],
+      repository: "gunbc" as RepositoryIdentity,
+      primary_root: "src/v2" as SourceRootIdentity,
+      dependency_pools: ["dag" as SourceRootIdentity],
     },
     census: whole_corpus_compile_public_root_census,
     peak: byte_size(1),
@@ -324,7 +355,7 @@ test fn a_row_for_a_different_root_never_admits_this_one() -> Bool {
     a: whole_corpus_compile_admission(
       budget: ample_budget(),
       root: whole_corpus_compile_public_root,
-      demands: [other_root_row],
+      read: read_of(demands: [other_root_row]),
     ),
     root: whole_corpus_compile_public_root,
   )
@@ -376,7 +407,87 @@ test fn pool_order_and_element_boundaries_are_part_of_the_key() -> Bool {
     peak: byte_size(1),
     receipt: whole_corpus_compile_public_root_receipt,
   }
-  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: ample_budget(), root: listed, demands: [row]))
-    && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: reversed, demands: [row]), root: reversed)
-    && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: joined, demands: [row]), root: joined)
+  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: ample_budget(), root: listed, read: read_of(demands: [row])))
+    && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: reversed, read: read_of(demands: [row])), root: reversed)
+    && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: joined, read: read_of(demands: [row])), root: joined)
 }
+
+// THE READ OUTCOMES, EXECUTING. The rows reach the seed as a projection read from a location the
+// run is handed, so the admission is asked about the READ, not a list. Each arm holds the budget
+// ample and the root at the public root, whose row the positive control admits.
+fn unmeasured_cause_is(a: WholeCorpusCompileAdmission, expect: String) -> Bool {
+  match a {
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: c, recipe: _ } => match c {
+      NoDemandsProjectionDeclared => expect == "not-declared"
+      DemandsProjectionNotRead { location: l, reason: _ } => expect == concat("not-read:", l as String)
+      NoRowForRoot { location: l } => expect == concat("no-row:", l as String)
+    }
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+    WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
+  }
+}
+
+// No location handed: refused as unmeasured -- never the public row by default.
+test fn no_declared_projection_refuses_rather_than_defaulting_to_the_public_row() -> Bool {
+  unmeasured_cause_is(
+    a: whole_corpus_compile_admission(budget: ample_budget(), root: whole_corpus_compile_public_root, read: DemandsProjectionNotDeclared),
+    expect: "not-declared",
+  )
+}
+
+// A location that does not read carries its location and reason: a missing file is not a missing row.
+test fn an_unreadable_projection_refuses_naming_its_location() -> Bool {
+  unmeasured_cause_is(
+    a: whole_corpus_compile_admission(
+      budget: ample_budget(),
+      root: whole_corpus_compile_public_root,
+      read: DemandsProjectionUnreadable { location: "tools/absent.json" as NonEmptyStr, reason: "No such file or directory" as NonEmptyStr },
+    ),
+    expect: "not-read:tools/absent.json",
+  )
+}
+
+// A projection that read and holds rows of this repository but none for this root: unmeasured,
+// with the location it looked in.
+test fn a_read_projection_with_no_row_for_the_root_names_where_it_looked() -> Bool {
+  let v2_primary = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "src/v2" as SourceRootIdentity,
+    dependency_pools: ["dag" as SourceRootIdentity],
+  }
+  unmeasured_cause_is(
+    a: whole_corpus_compile_admission(budget: ample_budget(), root: v2_primary, read: read_of(demands: whole_corpus_compile_measured_root_demands)),
+    expect: "no-row:fixture/measured_root_demands.json",
+  )
+}
+
+// ANOTHER REPOSITORY'S PROJECTION handed to this compile: a row whose identity key is the public
+// root's in every coordinate but the repository, with a peak far below the budget, refuses with
+// the repository it carried rather than admitting or reading as merely unmeasured.
+test fn another_repositorys_projection_refuses_with_a_typed_mismatch() -> Bool {
+  let private_row = MeasuredForRoot {
+    root: WholeCorpusCompileRootIdentity {
+      repository: "gunbc-private" as RepositoryIdentity,
+      primary_root: "dag" as SourceRootIdentity,
+      dependency_pools: ["src/v2" as SourceRootIdentity],
+    },
+    census: whole_corpus_compile_public_root_census,
+    peak: byte_size(1),
+    receipt: whole_corpus_compile_public_root_receipt,
+  }
+  match whole_corpus_compile_admission(
+    budget: ample_budget(),
+    root: whole_corpus_compile_public_root,
+    read: read_of(demands: [private_row]),
+  ) {
+    WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: rs } =>
+      count(rs) == 1 && fold(rs, init: true, f: fn(acc, r) { acc && (r as String) == "gunbc-private" })
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+  }
+}
+

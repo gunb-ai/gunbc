@@ -132,6 +132,8 @@ import gunbc.live_deploy.spec {
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
 }
+// LiveDeploy is a FleetConvergeScope (C3 / #11468). C2 supplies DesiredDeployment here;
+// timer retirement still reads production names from that roster home, not a spec fork.
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.host_axis_caps {
   CapMember,
@@ -347,6 +349,7 @@ type FleetConvergeScope
   | LaunchEnvironment
   | FabricExecutionCellsOnly
   | FabricAllocationStoreOnly
+  | LiveDeploy
 
 type FleetConvergeRequest
   = FullHostConverge {
@@ -400,6 +403,7 @@ fn fleet_converge_scope_wire(scope: FleetConvergeScope) -> String {
     LaunchEnvironment => "scope:launch-environment"
     FabricExecutionCellsOnly => "scope:fabric-execution-cells-only"
     FabricAllocationStoreOnly => "scope:fabric-allocation-store-only"
+    LiveDeploy => "scope:live-deploy"
   }
 }
 
@@ -572,6 +576,8 @@ fn fleet_converge_scope_of_wire(wire: String) -> FleetConvergeScopeDecode {
     ScopeDecoded { scope: FabricExecutionCellsOnly }
   } else if w == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly) {
     ScopeDecoded { scope: FabricAllocationStoreOnly }
+  } else if w == fleet_converge_scope_wire(scope: LiveDeploy) {
+    ScopeDecoded { scope: LiveDeploy }
   } else {
     ScopeUndecodable {
       cause: concat("the planned scope artifact names no scope this build knows: ", w),

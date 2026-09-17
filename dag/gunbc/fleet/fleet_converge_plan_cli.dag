@@ -139,6 +139,7 @@ import gunbc.fleet_converge_plan {
   FullHost,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  LiveDeploy,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
   LaunchEnvironment,
@@ -163,6 +164,7 @@ import extdeps.git
 import gunbc.live_deploy.apply { live_deploy_apply_srv1_operator_local_wet }
 import gunbc.live_deploy.spec { deployment_plan_host_identity }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.fleet_request { live_deploy_host_only_request_refusal_reason }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repository { gunbc_repository }
 import gunbc.running_release_identity { release_revision_text_valid }
@@ -379,6 +381,10 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
         observed_timers: observe_timer_members_wet(),
       },
     }
+    ScopeDecoded { scope: LiveDeploy } =>
+      FleetConvergeRequestUnobserved {
+        reason: live_deploy_host_only_request_refusal_reason(),
+      }
     ScopeDecoded { scope: FullHost } =>
           match observe_runner_slot_members_with_provenance_wet(host: host) {
             RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }

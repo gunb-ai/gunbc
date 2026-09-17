@@ -99,11 +99,26 @@ data marker_arms: List<MarkerArm> = [
 // would make a broken harness read as an accepted source, which is the top-as-answer conflation
 // DESIGN section 5 forbids. Every expectation below is non-negative, so an unrunnable probe reds.
 
-fn arm_class_blocking_count(a: MarkerArm) -> Int {
+// ONE COMPILE PER ARM, READ TWICE. The targeted-class count and the blocking total are two reads
+// of ONE census over the same source, so the census is demanded once and both readings are carried
+// out of the same match (DESIGN section 2: carry at the least common ancestor, never re-demand the
+// same fact from the same producer). Review 66391 found the earlier form compiling every arm twice
+// and the baseline once per accepting arm.
+type ArmMeasure {
+  targeted: Int
+  total: Int
+}
+
+fn measure_arm(a: MarkerArm) -> ArmMeasure {
   match compile_dag_diagnostic_census(a.source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: a.expect_class))
-    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } => {
+      let blocking = census_blocking_rows(rows: rows)
+      ArmMeasure {
+        targeted: census_total_count(rows: census_rows_of_class(rows: blocking, wanted: a.expect_class)),
+        total: census_total_count(rows: blocking)
+      }
+    }
+    CensusNotRunnable { cause: _ } => ArmMeasure { targeted: 0 - 1, total: 0 - 1 }
   }
 }
 
@@ -141,27 +156,21 @@ fn arm_class_blocking_count(a: MarkerArm) -> Int {
 // cancels that background exactly: equality says inline_distinct introduced NO refusal of its own.
 // If the fixture ever starts failing for an unrelated reason, its total exceeds the baseline's and
 // the arm reds instead of passing on a vacuous zero.
-fn arm_agrees(a: MarkerArm) -> Bool {
-  let targeted = arm_class_blocking_count(a: a)
+fn arm_agrees(a: MarkerArm, baseline_total: Int) -> Bool {
+  let m = measure_arm(a: a)
   if a.expect_blocking {
-    targeted == 1
+    m.targeted == 1
   } else {
-    targeted == 0 && arm_blocking_total(a: a) == inline_baseline_blocking_total()
-  }
-}
-
-fn arm_blocking_total(a: MarkerArm) -> Int {
-  match compile_dag_diagnostic_census(a.source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
+    m.targeted == 0 && m.total == baseline_total
   }
 }
 
 // The baseline's own total, seeded to the could-not-measure value so a missing or renamed baseline
-// reds every accepting arm rather than silently comparing against nothing.
+// reds every accepting arm rather than silently comparing against nothing. Measured ONCE per test
+// and passed down, not re-derived inside each accepting arm.
 fn inline_baseline_blocking_total() -> Int {
   fold(filter(marker_arms, a => a.name == "inline_identical"), init: 0 - 1,
-       f: fn(acc, a) { arm_blocking_total(a: a) })
+       f: fn(acc, a) { measure_arm(a: a).total })
 }
 
 test fn m_all_four_arms_are_enrolled() -> Bool {
@@ -172,7 +181,8 @@ test fn m_all_four_arms_are_enrolled() -> Bool {
 }
 
 test fn m_every_arm_behaves_as_declared() -> Bool {
-  marker_arms |> all(a => arm_agrees(a: a))
+  let baseline = inline_baseline_blocking_total()
+  marker_arms |> all(a => arm_agrees(a: a, baseline_total: baseline))
 }
 
 // SELECT EXACTLY ONE ARM, AND RED WHEN THE SELECTION IS EMPTY. A by-name filter folded with `all`
@@ -183,9 +193,9 @@ test fn m_every_arm_behaves_as_declared() -> Bool {
 // count conjunct makes the empty selection RED instead, so a rename reddens here rather than
 // quietly retiring the property. Requiring exactly one also catches a duplicated arm name, where
 // `all` would silently range over two fixtures and report on neither in particular.
-fn exactly_one_arm_agrees(wanted: String) -> Bool {
+fn exactly_one_arm_agrees(wanted: String, baseline_total: Int) -> Bool {
   let selected = filter(marker_arms, a => a.name == wanted)
-  count(selected) == 1 && all(selected, a => arm_agrees(a: a))
+  count(selected) == 1 && all(selected, a => arm_agrees(a: a, baseline_total: baseline_total))
 }
 
 // NAMES ARE THE SELECTION KEY, SO THEIR UNIQUENESS IS PART OF THE WALL, not hygiene. The sibling
@@ -204,5 +214,7 @@ test fn m_arm_names_are_pairwise_distinct() -> Bool {
 // a reader consulting either alone would draw the opposite conclusion from the one the pair
 // supports. Joined, the only way to pass is for the line to sit exactly where these fixtures put it.
 test fn m_equality_reads_the_name_and_not_the_marker() -> Bool {
-  exactly_one_arm_agrees(wanted: "named_identical") && exactly_one_arm_agrees(wanted: "inline_distinct")
+  let baseline = inline_baseline_blocking_total()
+  exactly_one_arm_agrees(wanted: "named_identical", baseline_total: baseline)
+    && exactly_one_arm_agrees(wanted: "inline_distinct", baseline_total: baseline)
 }

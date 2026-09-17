@@ -61,10 +61,32 @@ import std.measure {
 // arm is a process refusal, not a printed string with exit 0. Re-run the emitted binary over
 // a universe file to re-derive the numbers.
 
+// NativeCliDriver -- the v2-exclusive front door, and the ONLY arm whose rendered main is a shim by
+// design rather than by how little it happens to do. Its `.dag` entry (v2.cli.compile_cli) parses
+// argv, decides the verb, decides every refusal, decides what to emit and decides the process exit;
+// the rendered main performs the four operations no `.dag` fold can -- reading argv, walking and
+// reading the source roots, writing stdout, and setting the status -- and hands each back as a
+// VALUE. That is deliberately the capability gunbc.source_root_eval_driver_seed_growth names as the
+// trigger retiring ITS row ("the rendered main becomes one call into that fold"), so this arm adds
+// a door without adding the debt the arm beside it carries.
+//
+// WHY IT IS A FOURTH ARM AND NOT A MODE ON SourceRootEvalDriver. One emitted crate has one entry
+// point, and the emitter admits exactly one compiler_pipeline_entry declaration per closure, so the
+// alternative was not "a mode" but "more rendered Rust inside the eval driver's main" -- for a verb
+// that wants none of its universe derivation, receipt admission or cost partition. The two entry
+// modules never meet: v2.cli.compile_cli's closure does not reach v2.compiler.compile, so
+// exactly-one holds by construction and not by a flag choosing between them.
+//
+// WHAT THIS ARM IS NOT. It is not the retained host kernel's replacement: `gunbc`'s verbs dispatch
+// into v1_compiler.cli_run, which a self-emitted crate does not contain, and nothing here reaches
+// them. It is the v2 -> v2 boundary's door -- the second generation the self-host instrument stops
+// short of -- and what it can do is exactly what its `.dag` entry declares.
+
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
   | SourceRootEvalDriver
+  | NativeCliDriver
 
 // MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED. The per-module
 // loop closed its prepare span and then let the module's resolved tree fall out of scope at the end

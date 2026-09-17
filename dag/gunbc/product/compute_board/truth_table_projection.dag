@@ -1,0 +1,341 @@
+module product.compute_board.truth_table_projection
+
+import std.types { String, NonEmptyStr, List, list_length }
+import std.integer { Int }
+import product.compute_board.digital_control {
+  Conjunction,
+  DigitalControlIntent,
+  DigitalEquation,
+  DigitalExpr,
+  DigitalInput,
+  DigitalOutput,
+  DigitalSignal,
+  Disjunction,
+  Negation,
+  SignalName,
+  SignalRef,
+  intent_declares_signal,
+  signal_direction_is_output,
+  signal_names_equal,
+}
+import product.compute_board.admission {
+  AdmittedBoardPowerInterfaceArticle,
+  admitted_article,
+}
+import product.compute_board.article { BoardArticleIdentity }
+import std.markdown {
+  AlignRight,
+  MarkdownAlignment,
+  MarkdownTableCell,
+  MarkdownTableRow,
+  TextInline,
+}
+import extdeps.languages.markdown { commonmark_gfm_spellings, md_table }
+import v2.std.optional { Absent, Present }
+
+// A THIRD TARGET FOR THE SAME DIGITAL INTENT, ADDED AS ONE PROJECTION AND NOT AS A CONVERTER. The
+// point of this module is what it does NOT contain: there is no Verilog-to-Markdown path, no
+// SPICE-to-Markdown path and no pin-file-to-Markdown path. It reads the same
+// product.compute_board.digital_control vocabulary the Verilog projection reads, so the cost of a
+// new target is one fold from the board's own equations rather than a converter per existing
+// target. That is the N+M claim discharged by construction: N media each bind to the semantic
+// authority, and no pair of media is ever joined directly.
+//
+// WHAT IT ADDS THAT NO OTHER PROJECTION HAS: evaluation. Verilog, SPICE and the pin file RENDER the
+// equations; a truth table ANSWERS them, so this module carries the first evaluator over
+// DigitalExpr in the corpus. Evaluation is the reason the refusal type below is not a copy of the
+// Verilog one -- rendering fails on lexical admission, evaluating fails on structure.
+
+// A ROW'S INPUT SIDE. One assignment per declared input, and the table's whole input population is
+// the exhaustive product of these, so a row is never a sample.
+type SignalAssignment {
+  signal: SignalName
+  value: Bool
+}
+
+// EVERY WAY EVALUATION CAN FAIL TO REACH A VALUE, each naming the signal that could not be
+// resolved. There is no arm for "assume false": an unresolvable reference is the one thing a truth
+// table must never guess, because a fabricated 0 is indistinguishable from a real one in the
+// output and would be read as behaviour of the board.
+type TruthTableRefusal
+  = TruthTableSignalUndeclared { signal: SignalName }
+  | TruthTableDrivenSignalHasNoEquation { signal: SignalName }
+  | TruthTableExpressionCycle { signal: SignalName }
+  | TruthTableNameUnrenderable { signal: SignalName }
+  | TruthTableInputPopulationTooWide { inputs: Int }
+
+type TruthTableEmissionReceipt {
+  source_article: BoardArticleIdentity
+  source: String
+}
+
+type TruthTableProjection
+  = TruthTableProjected { receipt: TruthTableEmissionReceipt }
+  | TruthTableRefused { cause: TruthTableRefusal }
+
+// Evaluation is a total function into a coproduct rather than a Bool, because three of the five
+// refusals above are only discoverable while walking an expression.
+type EvalResult
+  = EvalValue { value: Bool }
+  | EvalRefused { cause: TruthTableRefusal }
+
+fn signal_is_input(s: DigitalSignal) -> Bool {
+  !signal_direction_is_output(s: s)
+}
+
+fn intent_inputs(intent: DigitalControlIntent) -> List<DigitalSignal> {
+  filter(intent.signals, s => signal_is_input(s: s))
+}
+
+fn intent_outputs(intent: DigitalControlIntent) -> List<DigitalSignal> {
+  filter(intent.signals, s => signal_direction_is_output(s: s))
+}
+
+fn assignment_for(assignments: List<SignalAssignment>, name: SignalName) -> Bool? {
+  fold(assignments, init: none, f: fn(acc, a) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if signal_names_equal(a: a.signal, b: name) { Present { value: a.value } } else { none }
+    }
+  })
+}
+
+fn equation_for(intent: DigitalControlIntent, name: SignalName) -> DigitalEquation? {
+  fold(intent.equations, init: none, f: fn(acc, e) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if signal_names_equal(a: e.driven, b: name) { Present { value: e } } else { none }
+    }
+  })
+}
+
+// THE EVALUATOR, AND THE REASON IT TAKES A DEPTH. `reset_release` is driven by an expression that
+// references `power_permit`, which is itself a driven OUTPUT rather than an input -- so resolving a
+// reference means evaluating that signal's own equation, not looking it up in the row. A board whose
+// equations referenced each other in a cycle would make that recursion non-terminating, and the
+// substrate's bounded-execution rule (DESIGN section 4) forbids discovering that at runtime. The
+// depth is therefore supplied by the caller as one more than the equation count: any chain longer
+// than the number of equations must have revisited a driven signal, so exhausting it IS the cycle
+// and is reported as one rather than as a value.
+fn eval_expr(
+  intent: DigitalControlIntent,
+  e: DigitalExpr,
+  assignments: List<SignalAssignment>,
+  depth: Int
+) -> EvalResult {
+  match e {
+    SignalRef { signal: s } => eval_signal(intent: intent, name: s, assignments: assignments, depth: depth)
+    Negation { operand: o } =>
+      match eval_expr(intent: intent, e: o, assignments: assignments, depth: depth) {
+        EvalRefused { cause: c } => EvalRefused { cause: c }
+        EvalValue { value: v } => EvalValue { value: !v }
+      }
+    Conjunction { left: l, right: r } =>
+      match eval_expr(intent: intent, e: l, assignments: assignments, depth: depth) {
+        EvalRefused { cause: c } => EvalRefused { cause: c }
+        EvalValue { value: lv } =>
+          match eval_expr(intent: intent, e: r, assignments: assignments, depth: depth) {
+            EvalRefused { cause: c } => EvalRefused { cause: c }
+            EvalValue { value: rv } => EvalValue { value: lv && rv }
+          }
+      }
+    Disjunction { left: l, right: r } =>
+      match eval_expr(intent: intent, e: l, assignments: assignments, depth: depth) {
+        EvalRefused { cause: c } => EvalRefused { cause: c }
+        EvalValue { value: lv } =>
+          match eval_expr(intent: intent, e: r, assignments: assignments, depth: depth) {
+            EvalRefused { cause: c } => EvalRefused { cause: c }
+            EvalValue { value: rv } => EvalValue { value: lv || rv }
+          }
+      }
+  }
+}
+
+fn eval_signal(
+  intent: DigitalControlIntent,
+  name: SignalName,
+  assignments: List<SignalAssignment>,
+  depth: Int
+) -> EvalResult {
+  match assignment_for(assignments: assignments, name: name) {
+    Present { value: v } => EvalValue { value: v }
+    Absent =>
+      if !intent_declares_signal(intent: intent, name: name) {
+        EvalRefused { cause: TruthTableSignalUndeclared { signal: name } }
+      } else if depth <= 0 {
+        EvalRefused { cause: TruthTableExpressionCycle { signal: name } }
+      } else {
+        match equation_for(intent: intent, name: name) {
+          Absent => EvalRefused { cause: TruthTableDrivenSignalHasNoEquation { signal: name } }
+          Present { value: eq } =>
+            eval_expr(intent: intent, e: eq.expression, assignments: assignments, depth: depth - 1)
+        }
+      }
+  }
+}
+
+// THE INPUT POPULATION IS THE EXHAUSTIVE PRODUCT, built by doubling the row set once per input. It
+// is bounded because the table is emitted as text a person reads: eight inputs is 256 rows, and
+// past that the artifact stops being a document and the caller should say what it wants instead of
+// receiving a megabyte of Markdown.
+data truth_table_max_inputs: Int = 8
+
+fn extend_rows(rows: List<List<SignalAssignment>>, s: DigitalSignal) -> List<List<SignalAssignment>> {
+  concat(
+    map(rows, r => concat(r, [SignalAssignment { signal: s.name, value: false }])),
+    map(rows, r => concat(r, [SignalAssignment { signal: s.name, value: true }]))
+  )
+}
+
+fn input_rows(inputs: List<DigitalSignal>) -> List<List<SignalAssignment>> {
+  fold(inputs, init: [[]], f: fn(acc, s) { extend_rows(rows: acc, s: s) })
+}
+
+fn bit(v: Bool) -> String {
+  if v { "1" } else { "0" }
+}
+
+// A NAME CARRYING THE TABLE'S OWN DELIMITER WOULD SPLIT A COLUMN, so it refuses rather than
+// emitting a table whose shape disagrees with its header. This is the Markdown analogue of the
+// Verilog projection's lexical admission, and it is the only spelling rule this target has: the
+// logical name is used directly, because Markdown imposes no identifier grammar.
+fn name_is_renderable(name: SignalName) -> Bool {
+  !string_contains(s: (name as String), pattern: commonmark_gfm_spellings.table_pipe)
+}
+
+fn first_unrenderable(signals: List<DigitalSignal>) -> SignalName? {
+  fold(signals, init: none, f: fn(acc, s) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if name_is_renderable(name: s.name) { none } else { Present { value: s.name } }
+    }
+  })
+}
+
+fn text_cell(text: String) -> MarkdownTableCell {
+  MarkdownTableCell { inlines: [TextInline { text: text }] }
+}
+
+fn header_row(signals: List<DigitalSignal>) -> MarkdownTableRow {
+  MarkdownTableRow {
+    cells: map(signals, s => text_cell(text: (s.name as String)))
+  }
+}
+
+fn right_alignments(signals: List<DigitalSignal>) -> List<MarkdownAlignment> {
+  map(signals, _s => AlignRight)
+}
+
+type RowRender
+  = RowRendered { row: MarkdownTableRow }
+  | RowRefused { cause: TruthTableRefusal }
+
+// THE INPUT CELLS COME FROM THE ROW ITSELF, WHICH IS WHY THERE IS NO MISS TO HANDLE (review 66788).
+// An earlier revision folded over the declared inputs and looked each one up in the row, so the
+// lookup had an Absent arm -- and that arm returned the accumulator unchanged, which silently
+// dropped a column and produced a row with fewer cells than its header. That is the widen-instead-of
+// -refuse arm this module's own header forbids for outputs, wearing an input's clothes: a row that
+// does not line up with its header is a false document, and a reader cannot see which column went
+// missing. It was unreachable only because `input_rows` builds every row from the same list, which
+// is an argument about today's caller rather than about this function.
+//
+// Folding the ROW is the construction that removes the arm instead of typing it: every assignment
+// carries its value, so there is nothing to look up and nothing to miss, and `input_rows` already
+// appends in declaration order so the cells stay under their headers. DESIGN section 5 prefers this
+// to a refusal -- make the invalid state unwritable rather than checking for it.
+fn row_render(
+  intent: DigitalControlIntent,
+  outputs: List<DigitalSignal>,
+  assignments: List<SignalAssignment>
+) -> RowRender {
+  let depth = list_length(items: intent.equations) + 1
+  let input_cells = map(assignments, a => text_cell(text: bit(v: a.value)))
+  fold(outputs, init: RowRendered { row: MarkdownTableRow { cells: input_cells } }, f: fn(acc, s) {
+    match acc {
+      RowRefused { cause: c } => RowRefused { cause: c }
+      RowRendered { row: r } =>
+        match eval_signal(intent: intent, name: s.name, assignments: assignments, depth: depth) {
+          EvalRefused { cause: c } => RowRefused { cause: c }
+          EvalValue { value: v } =>
+            RowRendered {
+              row: MarkdownTableRow { cells: concat(r.cells, [text_cell(text: bit(v: v))]) }
+            }
+        }
+    }
+  })
+}
+
+type TableRender
+  = TableRendered { rows: List<MarkdownTableRow> }
+  | TableRefused { cause: TruthTableRefusal }
+
+fn render_truth_table_rows(
+  intent: DigitalControlIntent,
+  outputs: List<DigitalSignal>,
+  rows: List<List<SignalAssignment>>
+) -> TableRender {
+  fold(rows, init: TableRendered { rows: [] }, f: fn(acc, assignments) {
+    match acc {
+      TableRefused { cause: c } => TableRefused { cause: c }
+      TableRendered { rows: acc_rows } =>
+        match row_render(intent: intent, outputs: outputs, assignments: assignments) {
+          RowRefused { cause: c } => TableRefused { cause: c }
+          RowRendered { row: r } => TableRendered { rows: concat(acc_rows, [r]) }
+        }
+    }
+  })
+}
+
+// THE PROJECTION PROPER. Every refusal is reached before any bytes are produced except the two that
+// evaluation itself discovers, and those abandon the whole table rather than emitting the rows that
+// happened to succeed -- a partial truth table is a false document, since a reader cannot see which
+// rows are missing.
+fn project_intent_to_truth_table(
+  article_identity: BoardArticleIdentity,
+  intent: DigitalControlIntent
+) -> TruthTableProjection {
+  let inputs = intent_inputs(intent: intent)
+  let outputs = intent_outputs(intent: intent)
+  match first_unrenderable(signals: intent.signals) {
+    Present { value: bad } => TruthTableRefused { cause: TruthTableNameUnrenderable { signal: bad } }
+    Absent =>
+      if list_length(items: inputs) > truth_table_max_inputs {
+        TruthTableRefused {
+          cause: TruthTableInputPopulationTooWide { inputs: list_length(items: inputs) }
+        }
+      } else {
+        let columns = concat(inputs, outputs)
+        match render_truth_table_rows(
+          intent: intent,
+          outputs: outputs,
+          rows: input_rows(inputs: inputs)
+        ) {
+          TableRefused { cause: c } => TruthTableRefused { cause: c }
+          TableRendered { rows: body } =>
+            TruthTableProjected {
+              receipt: TruthTableEmissionReceipt {
+                source_article: article_identity,
+                source: md_table(
+                  header: header_row(signals: columns),
+                  alignments: right_alignments(signals: columns),
+                  rows: body,
+                  sp: commonmark_gfm_spellings
+                )
+              }
+            }
+        }
+      }
+  }
+}
+
+// Takes the ADMITTED article for the same reason the other projections do: a projection that
+// accepts any article has to trust that its caller checked the board's coherence first.
+fn project_article_to_truth_table(
+  admitted: AdmittedBoardPowerInterfaceArticle
+) -> TruthTableProjection {
+  let article = admitted_article(a: admitted)
+  project_intent_to_truth_table(
+    article_identity: article.identity,
+    intent: article.digital_control
+  )
+}
