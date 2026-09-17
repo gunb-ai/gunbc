@@ -171,6 +171,16 @@ fn pair_serving_lease_is_live(o: HeldLeaseObservedState) -> Bool {
   }
 }
 
+//
+// ITS CONSUMER IS A DECLARED FRONTIER, and saying so is owed rather than optional: the reasoning above
+// explains WHY the lease is consulted on this arm and never names who asks. Its sibling
+// pair_serving_may_finish carries a trigger and this did not, which is the inconsistency rather than a
+// judgement that one needed it less. TRIGGER: the Cut D D1a successor-launch actuator lands and asks
+// this before starting the candidate's serving process on the reclaimed hosts -- that actuator does not
+// exist today, and gunbc.spark.pair_serving_launch_receipt observes attempts rather than authorizing
+// them, so there is no fold to wire this into yet. SUFFICIENT FOR: an authorization whose lease has
+// expired cannot START a launch, while cleanup and fencing continue through pair_serving_may_finish --
+// the split that keeps an expiry mid-transaction from stranding the four hosts.
 fn pair_serving_successor_may_launch(a: PairServingGroupAuthority) -> Bool {
   match a {
     PairServingActive { group: _, exact_realization: _ } => false
