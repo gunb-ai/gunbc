@@ -39282,7 +39282,6 @@ mod sigs_env_flat_parents {
                 marker.to_string(),
                 crate::v1_std_core::kernel_span(marker.to_string()),
             ),
-            is_async: false,
             output_provenance: Rc::new(im::vector![]),
             variant_provenance: crate::v1_rt::rc_empty_map(),
         })

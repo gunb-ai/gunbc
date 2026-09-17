@@ -19337,7 +19337,6 @@ pub fn populate_output_provenance(
                                                                     .resolved_formals
                                                                     .clone(),
                                                                 inferred: sig.inferred.clone(),
-                                                                is_async: sig.is_async.clone(),
                                                                 output_provenance: provenance
                                                                     .clone(),
                                                                 variant_provenance: sig
@@ -19424,7 +19423,6 @@ pub fn populate_output_provenance(
                                                                 .resolved_formals
                                                                 .clone(),
                                                             inferred: sig.inferred.clone(),
-                                                            is_async: sig.is_async.clone(),
                                                             output_provenance: if has_scalar.clone()
                                                             {
                                                                 provenance.clone()
@@ -24505,7 +24503,6 @@ pub fn analyze_item(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc
                     ),
                     params: ritem.params.clone(),
                     inferred: declared_rt.clone(),
-                    is_async: ((ritem.uses.clone().len() as i64) > 0),
                     output_provenance: Rc::new(vec![]),
                     variant_provenance: v1_rt::rc_empty_map::<
                         String,
@@ -25226,7 +25223,6 @@ Rc::new(ResolvedFormal {
 }); } __result }),
 }),
     inferred: sig.inferred.clone(),
-    is_async: sig.is_async.clone(),
     output_provenance: sig.output_provenance.clone(),
     variant_provenance: sig.variant_provenance.clone(),
 }))

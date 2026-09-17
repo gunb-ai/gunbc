@@ -11081,7 +11081,7 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
                     Present { value: sig } =>
                       map_insert(acc, fn_name, ResolvedFuncSig {
                         name: sig.name, params: sig.params, resolved_formals: sig.resolved_formals, inferred: sig.inferred,
-                        is_async: sig.is_async, output_provenance: provenance,
+                        output_provenance: provenance,
                         variant_provenance: sig.variant_provenance
                       })
                     Absent => acc
@@ -11109,7 +11109,6 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
                   Present { value: sig } =>
                     map_insert(acc, fn_name, ResolvedFuncSig {
                       name: sig.name, params: sig.params, resolved_formals: sig.resolved_formals, inferred: sig.inferred,
-                      is_async: sig.is_async,
                       output_provenance: if has_scalar { provenance } else { sig.output_provenance },
                       variant_provenance: if has_variant { variant_prov } else { sig.variant_provenance }
                     })
@@ -13334,7 +13333,6 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
       name: authored_name_at(source_indices: env.source_indices, node: ritem),
       params: ritem.params,
       inferred: declared_rt,
-      is_async: ritem.uses |> count > 0,
       output_provenance: [],
       variant_provenance: empty_map()
     } }
@@ -13744,7 +13742,6 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
           }
         }) },
         inferred: sig.inferred,
-        is_async: sig.is_async,
         output_provenance: sig.output_provenance,
         variant_provenance: sig.variant_provenance
       })
