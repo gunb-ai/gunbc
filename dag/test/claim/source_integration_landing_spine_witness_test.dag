@@ -236,7 +236,7 @@ fn p0_provenance_claim(
   claim: LandingRequiredClaim,
 ) -> Bool {
   provenance.agent == "p0-validator"
-    && claim.bound == (p0_proposal().attempt as gunbc.source_integration_landing_spine.LandingClaimBound)
+    && claim.bound == p0_builds_claim().bound
 }
 
 fn p0_freshness_claim(
@@ -1375,7 +1375,7 @@ test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool
   }
 }
 
-fn p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
+test fn p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
   let early = p0_proposal_with(
     submitted_at: "2026-07-29T08:00:00Z",
     guarantees: LandingRequiredClaims {
