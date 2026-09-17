@@ -1099,6 +1099,8 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
           head: FloorRouteGapExpectation { identity: "test.claim.serving.serving_availability_bind_wet_witness.the_production_roster_carries_the_declared_digest_to_the_incarnation_frontier", operation: "DigestStdin", ground: NoMockResponse {} },
       tail: Cons {
         head: FloorRouteGapExpectation { identity: "test.claim.serving.serving_availability_bind_wet_witness.a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path", operation: "DigestStdin", ground: NoMockResponse {} },
+        tail: Cons {
+        head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_incumbent_identity_wet_witness.the_production_declaration_keys_group_a_and_refuses_group_b", operation: "DigestStdin", ground: NoMockResponse {} },
           tail: Cons {
             head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_different_reported_path_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
             tail: Cons {
@@ -1164,7 +1166,7 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
       }
     }
   }
-  }}
+  }}}
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
   Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Empty {} } } } } } } } } } } } } } } }
