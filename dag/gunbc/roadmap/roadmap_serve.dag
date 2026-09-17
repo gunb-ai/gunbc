@@ -17,9 +17,11 @@ import gunbc.auth.approval_decision_store {
   IdentityHeaderTrustEstablished, IdentityHeaderTrustByDeclaredDrop, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
   parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
 }
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
-import std.markup { Fragment }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { txt, el, el_attrs }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri_path {
@@ -537,17 +539,23 @@ fn approval_confirm_page_response(
   request: ServeHttpRequest,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
-  serve_text_response(
-    status: 200,
-    content_type: text_plain_utf8,
-    body: join([
-      "This page does not decide anything.\n\n",
-      "Opening a link -- by tapping it, previewing it, or having a scanner fetch it -- must never\n",
-      "spend an approval, so this route renders and stops. The button on this page POSTs to the\n",
-      "same path, and that request is the one that commits.\n\n",
-      "capability: ", path_param_value(params: params, name: "capability"), "\n",
-    ], ""),
-  )
+  let segment = path_param_value(params: params, name: "capability")
+  let decision_word = match parse_capability_segment(segment: segment) {
+    CapabilitySegmentParsed { escalation_id: _, decision: ProposeApprove, tag_hex: _ } => "APPROVE"
+    CapabilitySegmentParsed { escalation_id: _, decision: ProposeDeny, tag_hex: _ } => "DENY"
+    CapabilitySegmentMalformed { detail: _ } => "(malformed capability)"
+  }
+  serve_page_response(page: el("html", [
+    el("head", [ el("title", [ txt("gunbc approval") ]), el_attrs("meta", [ attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1") ], []) ]),
+    el("body", [
+      el("h1", [ txt(join(["Confirm: ", decision_word], "")) ]),
+      el("p", [ txt("This page does not decide anything. Opening a link -- by tapping it, previewing it, or having a scanner fetch it -- must never spend an approval, so this route renders and stops. The button below POSTs to the same path, and that request is the one that commits.") ]),
+      el("p", [ txt(join(["capability: ", segment], "")) ]),
+      el_attrs("form", [ attr(name: "method", value: "post"), attr(name: "action", value: join(["/approve/", segment], "")) ], [
+        el_attrs("button", [ attr(name: "type", value: "submit") ], [ txt(decision_word) ]),
+      ]),
+    ]),
+  ]))
 }
 
 // THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's or

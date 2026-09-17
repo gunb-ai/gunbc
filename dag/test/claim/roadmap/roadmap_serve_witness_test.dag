@@ -354,6 +354,8 @@ test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
   r.status == 200
     && string_contains(s: r.body, pattern: "does not decide anything")
     && string_contains(s: r.body, pattern: "abc123")
+    && string_contains(s: r.body, pattern: "method=\"post\"")
+    && string_contains(s: r.body, pattern: "action=\"/approve/abc123\"")
 }
 
 // THE POST IS A DIFFERENT ROUTE, and the hermetic frame can reach it only up to the first host
