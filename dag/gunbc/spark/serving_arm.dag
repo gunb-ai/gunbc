@@ -464,7 +464,14 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_num_batched_tokens: 2048,
   max_num_seqs: 16,
   decided_gpu_memory_basis_points: 8400,
-  kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+  // 2026-09-17: bf16, not fp8. On vLLM v0.28.1rc1 every fp8 KV-cache setting for this MLA
+  // model routes to the fp8_ds_mla kernel, which requires pe_dim == 64; GLM-5.3-Flash's
+  // positional-embedding dim is not 64, so both "auto" and "fp8" crash in CUDA-graph capture
+  // with cache_kernels.cu:928 "pe_dim must be 64 for fp8_ds_mla" (observed on the srv9 head
+  // at 01:46 EDT after the fp8 unit landed). bf16 is the model's native dtype and the only
+  // honest arm short of an alternate MLA backend; the memory cost is accepted until a
+  // backend supporting fp8 at this pe_dim is admitted.
+  kv_cache_dtype_wire: "bf16" as NonEmptyStr,
   speculation_enabled: false,
   serve_port: 30000,
   served_alias: "glm-5.3-flash" as NonEmptyStr,
