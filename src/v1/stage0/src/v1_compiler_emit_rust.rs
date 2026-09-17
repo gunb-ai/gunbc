@@ -25663,10 +25663,18 @@ pub fn emit_typed_call(
             func_ident.clone()
         };
         let call_str = if unrealized_primitive_call.clone() {
-            match inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: ret_type, .. }) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("v1_rt::unrealized_host_seam::<".to_string(), render_rust_type(ret_type.clone(), shared_types.clone(), si.clone(), emit_info.clone())), ">(\"".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(v1_rt::concat(v1_rt::concat("primitive ".to_string(), call_target_unrealized_primitive_name(call_target.clone())), " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers".to_string()))), "\")".to_string()),
-    _ => func_ident.clone(),
-}
+            {
+                let seam_type = match inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: ret_type, .. }) => render_rust_type(
+                        ret_type.clone(),
+                        shared_types.clone(),
+                        si.clone(),
+                        emit_info.clone(),
+                    ),
+                    _ => "_".to_string(),
+                };
+                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("v1_rt::unrealized_host_seam::<".to_string(), seam_type.clone()), ">(\"".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(v1_rt::concat(v1_rt::concat("primitive ".to_string(), call_target_unrealized_primitive_name(call_target.clone())), " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers".to_string()))), "\")".to_string())
+            }
         } else {
             if ((is_rt.clone() && (func.clone() == "concat".to_string()))
                 && ((all_args.clone().len() as i64) > 2))
