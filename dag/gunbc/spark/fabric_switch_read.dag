@@ -1,0 +1,78 @@
+module gunbc.spark.fabric_switch_read
+
+import std.types { String, Bool, List, NonEmptyStr }
+import v2.std.algebra { map, filter }
+import extdeps.mikrotik.crs812 {
+  Crs812EthernetWire,
+  Crs812LaneSpeedFromWire, LaneSpeedParsed, LaneSpeedWireUnmodelled, crs812_lane_speed_from_wire,
+  Crs812FecModeFromWire, FecModeParsed, FecModeWireUnmodelled, crs812_fec_mode_from_wire,
+  Crs812WireBool, WireBoolTrue, WireBoolFalse, WireBoolUnmodelled, crs812_wire_bool,
+}
+import gunbc.spark.fabric_switch_assessment { Crs812LaneReading, LaneReadingTaken }
+
+// TURNING THE SWITCH'S REST RESPONSE INTO ASSESSMENT READINGS. This is the workflow-layer decode:
+// extdeps.mikrotik.crs812 owns what each wire STRING means (the inverse parsers this consumes), and
+// this module owns the POLICY facts -- which interfaces are our fabric legs, and how a per-lane
+// wire record becomes the Crs812LaneReading the assessment already consumes. It is the producer
+// gunbc.spark.fabric_switch_assessment was written to receive: `fabric_switch_subject` passes
+// `readings: []` today, so every lane resolves to unknown; this closes that gap on the READ side.
+//
+// LIVE TRANSPORT IS NOT HERE, AND THAT IS DELIBERATE. Fetching the JSON over the switch's basic-auth
+// REST is blocked on the same capability extdeps.bmc.http declared as debt
+// (redfish_http_hardwired_transport_dissolution_trigger: the shared `transport rest` machinery does
+// not yet realize transport-level basic auth). So this module is the PURE decode -- wire records in,
+// typed readings out -- which is fully testable against a captured response with no network, and
+// the live fetch lands beside it on the BMC precedent. A pure decode is also the right seam: the
+// same function serves a live read and a replayed fixture without branching.
+
+// THE COMMENT ROUTEROS CARRIES ON EACH FABRIC LEG, set on the switch to mark the eight breakout
+// lanes. It is the discriminator between our legs and every other interface in the GET response.
+data crs812_fabric_leg_comment: NonEmptyStr = "gunbc fabric leg" as NonEmptyStr
+
+fn crs812_wire_is_fabric_leg(w: Crs812EthernetWire) -> Bool {
+  w.comment == (crs812_fabric_leg_comment as String)
+}
+
+// A LANE EITHER DECODES TO A READING OR REFUSES AT THE FIELD THAT DID NOT PARSE. There is no third
+// arm that guesses: an unmodelled speed, FEC or boolean is a located refusal naming the interface,
+// the field and the raw wire, so a switch that reports something the corpus has not seen stops the
+// read loudly instead of being coerced to the nearest known value (DESIGN §5, fail-closed).
+type Crs812LaneReadOutcome
+  = LaneReadOk { reading: Crs812LaneReading }
+  | LaneReadWireRefused { interface: NonEmptyStr, field: NonEmptyStr, wire: String }
+
+fn crs812_lane_read_one(w: Crs812EthernetWire) -> Crs812LaneReadOutcome {
+  match crs812_lane_speed_from_wire(w: w.speed) {
+    LaneSpeedWireUnmodelled { wire: s } =>
+      LaneReadWireRefused { interface: w.name, field: "speed" as NonEmptyStr, wire: s }
+    LaneSpeedParsed { speed: sp } =>
+      match crs812_fec_mode_from_wire(w: w.fec_mode) {
+        FecModeWireUnmodelled { wire: f } =>
+          LaneReadWireRefused { interface: w.name, field: "fec-mode" as NonEmptyStr, wire: f }
+        FecModeParsed { fec: fc } =>
+          match crs812_wire_bool(w: w.disabled) {
+            WireBoolUnmodelled { wire: d } =>
+              LaneReadWireRefused { interface: w.name, field: "disabled" as NonEmptyStr, wire: d }
+            WireBoolTrue =>
+              LaneReadOk { reading: LaneReadingTaken { interface: w.name, speed: sp, fec: fc, enabled: false } }
+            WireBoolFalse =>
+              LaneReadOk { reading: LaneReadingTaken { interface: w.name, speed: sp, fec: fc, enabled: true } }
+          }
+      }
+  }
+}
+
+// The fabric legs of a full ethernet GET, each decoded. Filtering by the leg comment is what keeps
+// the denominator OUR eight lanes rather than every interface the switch has -- the same expected
+// roster the assessment's intent declares, read from the switch's own marking rather than a second
+// hardcoded interface list.
+fn crs812_fabric_lane_read_outcomes(wires: List<Crs812EthernetWire>) -> List<Crs812LaneReadOutcome> {
+  map(filter(wires, w => crs812_wire_is_fabric_leg(w: w)), w => crs812_lane_read_one(w: w))
+}
+
+fn crs812_lane_read_outcome_refused(o: Crs812LaneReadOutcome) -> Bool {
+  match o {
+    LaneReadWireRefused { interface: _, field: _, wire: _ } => true
+    LaneReadOk { reading: _ } => false
+  }
+}
