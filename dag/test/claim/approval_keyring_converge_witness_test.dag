@@ -3,6 +3,7 @@ module test.claim.approval_keyring_converge_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
 import v2.std.algebra { list_head, HeadFound }
+import gunbc.fleet_posix_accounts { fleet_usermod_binary_path }
 import std.process { ExitSuccess }
 import gunbc.auth.approval_keyring_pins { approval_mac_key_payload_sha256_prefix, approval_submission_mac_key_payload_sha256_prefix }
 import gunbc.auth.approval_keyring_converge {
@@ -10,6 +11,7 @@ import gunbc.auth.approval_keyring_converge {
   keyring_host_must_be_srv1,
   approval_keyring_converge_refuses_off_srv1, approval_mac_key_digest_standing,
   keyring_mkdir_argv, store_root_mkdir_argv,
+  ntfy_group_admit_argv, roadmap_unit_restart_argv,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 
@@ -60,6 +62,20 @@ test fn keyring_mkdir_is_install_not_a_local_sudo() -> Bool {
 test fn store_root_mkdir_is_install_not_a_local_sudo() -> Bool {
   match list_head(xs: store_root_mkdir_argv()) {
     HeadFound { value: w } => w == "install"
+    _ => false
+  }
+}
+
+test fn ntfy_group_admit_is_usermod_not_a_token_chown() -> Bool {
+  match list_head(xs: ntfy_group_admit_argv()) {
+    HeadFound { value: w } => w == (fleet_usermod_binary_path as String)
+    _ => false
+  }
+}
+
+test fn roadmap_unit_restart_is_systemctl_restart() -> Bool {
+  match list_head(xs: roadmap_unit_restart_argv()) {
+    HeadFound { value: w } => w == "systemctl"
     _ => false
   }
 }

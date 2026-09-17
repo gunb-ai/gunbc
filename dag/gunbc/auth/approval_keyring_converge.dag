@@ -7,7 +7,6 @@ import std.resources { Network }
 import gunbc.auth.approval_decision_store { approval_mac_key_path, approval_decision_store_root }
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_path,
-  approval_publisher_token_path,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -21,7 +20,10 @@ import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_key_payload_sha256_prefix,
 }
 import gunbc.runner_host_grants { executor_bootstrap_principal }
-import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user }
+import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_usermod_binary_path }
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
+import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
+import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -136,6 +138,19 @@ fn keyring_chmod_argv(path: NonEmptyStr) -> List<String> {
   ["chmod", approval_keyring_file_mode as String, path as String]
 }
 
+fn ntfy_group_admit_argv() -> List<String> {
+  [
+    fleet_usermod_binary_path as String,
+    "-aG",
+    approval_ntfy_principal_name as String,
+    fleet_posix_operator_user.name as String,
+  ]
+}
+
+fn roadmap_unit_restart_argv() -> List<String> {
+  systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
+}
+
 fn keyring_ssh_target() -> SshTarget {
   SshTarget {
     endpoint: fleet_probe_endpoint_for(host: operator_host_srv1 as String) as NonEmptyStr,
@@ -236,9 +251,9 @@ fn approval_keyring_converge_on_host() -> ProcessExit
                             ExitSuccess =>
                               match keyring_install_file(target: target, context: context, dest: approval_submission_mac_key_path, content: sub.content, step: "submission-key") {
                                 ExitSuccess =>
-                                  match keyring_elevated_exec(target: target, context: context, command: keyring_chown_argv(path: approval_publisher_token_path), step: "publisher-token-chown") {
+                                  match keyring_elevated_exec(target: target, context: context, command: ntfy_group_admit_argv(), step: "ntfy-group-admit") {
                                     ExitSuccess =>
-                                      match keyring_elevated_exec(target: target, context: context, command: keyring_chmod_argv(path: approval_publisher_token_path), step: "publisher-token-chmod") {
+                                      match keyring_elevated_exec(target: target, context: context, command: roadmap_unit_restart_argv(), step: "roadmap-unit-restart") {
                                         ExitSuccess => ExitSuccess
                                         other => other
                                       }
