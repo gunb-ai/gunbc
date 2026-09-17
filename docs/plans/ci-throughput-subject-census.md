@@ -11,7 +11,8 @@ prior CI rate inapplicable** — and it answers it by naming carriers that exist
 
 ## The finding that motivates the rest
 
-**Nothing in the runner subsystem measures a rate.** 76 modules under `dag/gunbc/runner/` model slot
+**Nothing in the runner subsystem measures a rate, and nothing anywhere folds the timestamps that
+would yield one.** 76 modules under `dag/gunbc/runner/` model slot
 identity, width admission, microVM sizing, placement, connectivity repair, and receipts for nearly
 every step of an attempt's life. Searching them for a throughput quantity returns two hits, and
 neither is one: `runner_unit_file` `InvocationLocalCargo { jobs_per_slot }` is a **cargo invocation
@@ -59,11 +60,29 @@ a live specimen of exactly what an axis is for: two attempts on "the same fleet"
 revision depending on which population served them, so a rate compared across that boundary is
 comparing two subjects.
 
-**3. There is no join from an attempt to the exact work it performed.** A rate needs an operation
-ledger over homogeneous work (the parent design's point that a one-minute no-op and a fifteen-minute
-clean build are not interchangeable units). The attempt receipts are rich, but the census found no
-carrier binding an attempt to the exact Work identity and source tree it built, which is the
-precondition for denominating any CI rate at all.
+**3. The rate INPUTS largely exist and nothing folds them — which an earlier revision of this census
+missed, and the correction makes the CI probe cheaper rather than more expensive.**
+`extdeps.github.workflow_runs` `WorkflowJobRun` carries `created_at`, `started_at`, `completed_at`,
+`run_attempt`, `labels`, `status` and `conclusion`, and `gunbc.public_workload_census` already holds
+observed execution rows with those timestamps populated. So the claim to make is narrower and sharper
+than "nothing measures a rate": **every current consumer uses those timestamps as ORDERING
+PREDICATES, never as an interval.** `gunbc.run_disposition` asks whether `run_started_at` is strictly
+later than `created_at` to prove execution began; `gunbc.pr_base_freshness` asks whether a base commit
+landed after a run started. Neither subtracts. No fold in the tree derives a duration, a queue delay
+or a rate from a pair of these timestamps.
+
+Two consequences. The first is that a CI rate does not need a new observation substrate, only a fold
+over one that exists — a materially smaller job than this census first implied. The second is more
+interesting: because the substrate is a census of REAL production jobs, some CI rate questions can be
+answered without a synthetic probe at all, as a reading over observed work carrying
+`WindowSharedWithDeclaredTraffic` rather than an isolated window. That is a weaker standing and a much
+cheaper one, and for a trend it may be the right instrument.
+
+What remains genuinely absent is the **join from an attempt to the exact Work identity and source tree
+it built**. A rate needs an operation ledger over homogeneous work (a one-minute no-op and a
+fifteen-minute clean build are not interchangeable units), and job labels plus a run attempt do not
+establish what was compiled. That, not the timestamps, is the precondition still missing.
+(Correction raised by the side-chat review, 2026-09-17.)
 
 **4. Host class is implied by module paths rather than carried.** Mt Collins facts live in extdeps
 briefs and the runner modules observe individual hosts; nothing names "this host belongs to class C"
@@ -71,7 +90,7 @@ in a way a measurement could cite.
 
 ## What this census does NOT do
 
-It does not propose the CI subject type. Three of the four gaps above are modelling obligations
+It does not propose the CI subject type. The gaps above are modelling obligations
 (DESIGN §6) rather than conformance rows (§3b), because a row whose home does not exist is an
 obligation and not a domain — and coining a subject over carriers that do not exist would be the
 re-invention DESIGN §2's test names. The order is: close the cache-state and work-identity gaps, then
