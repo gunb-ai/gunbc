@@ -6,7 +6,7 @@ import std.measure { TokenCount, token_count, token_count_value, ConcurrentReque
 import extdeps.nvidia.nccl {
   NcclTransportVerdict, NcclTransportRead, NcclTransportRefused, NcclTransportRefusal,
   NcclNoAnnouncement, NcclAnnouncementsDisagree, NcclUnknownNetworkName,
-  NcclChannelDisagreesWithAnnouncement,
+  NcclChannelDisagreesWithAnnouncement, NcclChannelUnreadableLines, NcclAnnouncedWithoutChannels,
   NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
   nccl_realized_transport_wire, nccl_transport_verdict, nccl_log_lines,
 }
@@ -218,6 +218,7 @@ fn refuses_as_no_announcement(text: String) -> Bool {
         NcclUnknownNetworkName { names: _ } => false
         NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
         NcclChannelUnreadableLines { lines: _, causes: _ } => false
+        NcclAnnouncedWithoutChannels { announced: _, read_from: _ } => false
       }
   }
 }
@@ -237,6 +238,7 @@ test fn w_disagreeing_announcements_refuse_rather_than_picking_one() -> Bool {
         NcclUnknownNetworkName { names: _ } => false
         NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
         NcclChannelUnreadableLines { lines: _, causes: _ } => false
+        NcclAnnouncedWithoutChannels { announced: _, read_from: _ } => false
       }
   }
 }
@@ -256,6 +258,7 @@ test fn w_an_unmodelled_network_name_refuses() -> Bool {
         NcclAnnouncementsDisagree { names: _ } => false
         NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
         NcclChannelUnreadableLines { lines: _, causes: _ } => false
+        NcclAnnouncedWithoutChannels { announced: _, read_from: _ } => false
       }
   }
 }
@@ -279,6 +282,7 @@ test fn w_a_channel_wired_over_another_network_refuses() -> Bool {
         NcclAnnouncementsDisagree { names: _ } => false
         NcclUnknownNetworkName { names: _ } => false
         NcclChannelUnreadableLines { lines: _, causes: _ } => false
+        NcclAnnouncedWithoutChannels { announced: _, read_from: _ } => false
       }
   }
 }
@@ -305,8 +309,37 @@ test fn w_a_channel_over_an_unnameable_network_refuses() -> Bool {
         NcclAnnouncementsDisagree { names: _ } => false
         NcclUnknownNetworkName { names: _ } => false
         NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+        NcclAnnouncedWithoutChannels { announced: _, read_from: _ } => false
       }
   }
+}
+
+// ── AN ANNOUNCEMENT WITH NO DATA PATH IS NOT A TRANSPORT READING ──────────────────────────────
+//
+// THE VACUOUS SET THIS CLOSES. The channel cross-check refused a channel it could not name and a
+// channel wired elsewhere, and then returned a clean read when there were NO channels at all --
+// comparing the announcement against nothing and calling it agreement. NCCL writes the announcement
+// before the per-channel lines, so a log read between the two produces exactly this, and the
+// transaction would have taken it for a completed flip and committed a four-host relaunch on it.
+//
+// IT IS THE SAME NOT-YET CLASS AS A MISSING ANNOUNCEMENT, which is why the bounded wait retries it
+// rather than rolling back: the refusal says what is missing, and a settled log that still has no
+// channels is a real refusal rather than a timeout.
+test fn w_an_announcement_with_no_data_path_refuses() -> Bool {
+  captures_present()
+    && match nccl_transport_verdict(captured_text: "spark-0c75:346:346 [0] NCCL INFO Using network IB") {
+      NcclTransportRead { reading: _ } => false
+      NcclTransportRefused { cause: c } =>
+        match c {
+          NcclAnnouncedWithoutChannels { announced: a, read_from: l } =>
+            (a as String) == "IB" && string_contains(s: l as String, pattern: "Using network IB")
+          NcclNoAnnouncement => false
+          NcclAnnouncementsDisagree { names: _ } => false
+          NcclUnknownNetworkName { names: _ } => false
+          NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
+          NcclChannelUnreadableLines { lines: _, causes: _ } => false
+        }
+    }
 }
 
 // AND A `Channel` LINE WITH NO `via NET/` CLAUSE IS STILL NOT A REFUSAL, because NCCL uses it for

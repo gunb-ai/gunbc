@@ -518,6 +518,7 @@ type NcclTransportRefusal
   | NcclUnknownNetworkName { names: List<String> }
   | NcclChannelDisagreesWithAnnouncement { announced: NonEmptyStr, channel_lines: List<NonEmptyStr> }
   | NcclChannelUnreadableLines { lines: List<NonEmptyStr>, causes: List<NonEmptyStr> }
+  | NcclAnnouncedWithoutChannels { announced: NonEmptyStr, read_from: NonEmptyStr }
 
 // THE READING BINDS EVERY ANNOUNCEMENT IT SAW, NOT JUST THE ONE IT ANSWERS WITH. A capture that
 // announced the same network four times is a stronger reading than one that announced it once, and
@@ -558,6 +559,11 @@ fn nccl_transport_verdict(captured_text: String) -> NcclTransportVerdict {
           let wrong = filter(channels, c => !nccl_transports_agree(a: c.transport, b: head.transport))
           if count(scan.unreadable) > 0 {
             NcclTransportRefused { cause: NcclChannelUnreadableLines { lines: scan.unreadable, causes: scan.causes } }
+          } else if count(channels) == 0 {
+            NcclTransportRefused { cause: NcclAnnouncedWithoutChannels {
+              announced: nccl_realized_transport_wire(t: head.transport),
+              read_from: nccl_transport_read_from_line(t: head.transport),
+            } }
           } else if count(wrong) > 0 {
             NcclTransportRefused { cause: NcclChannelDisagreesWithAnnouncement {
               announced: nccl_realized_transport_wire(t: head.transport),
@@ -573,6 +579,25 @@ fn nccl_transport_verdict(captured_text: String) -> NcclTransportVerdict {
         }
       }
     }
+  }
+}
+
+// AN ANNOUNCEMENT WITH NO DATA PATH IS NOT A TRANSPORT READING, and reading it as one is the same
+// vacuous agreement this module already closed for a channel it could not name. `Using network IB`
+// says which network the communicator BUILT; the `via NET/...` lines say what each channel was
+// actually wired over, and with none of them present the cross-check compares the announcement
+// against nothing and reports agreement. A consumer deciding whether to commit a four-host relaunch
+// would take an announcement flushed a moment before its channel lines as a completed flip.
+//
+// IT IS A NOT-YET ARM, NOT A DEFECT ARM, and the distinction is what keeps it from being a worse
+// failure than the one it fixes: NCCL writes the announcement and the channels in that order, so a
+// log read between the two genuinely has an announcement and no channels. A caller waiting for a
+// communicator to come up retries this exactly as it retries a missing announcement; a caller reading
+// a settled log gets a refusal that names what is missing.
+fn nccl_transport_read_from_line(t: NcclRealizedTransport) -> NonEmptyStr {
+  match t {
+    NcclTransportIbVerbs { read_from: l } => l
+    NcclTransportSocket { read_from: l } => l
   }
 }
 
@@ -601,6 +626,11 @@ fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
       join(["NCCL announced the network(s) ", join(ns, ", "), ", which extdeps.nvidia.nccl does not model; a name this module cannot read is refused rather than defaulted"], "") as NonEmptyStr
     NcclChannelDisagreesWithAnnouncement { announced: a, channel_lines: ls } =>
       join(["the communicator announced ", a as String, " and ", to_string(count(ls)), " channel(s) were wired over a different network: ", join(map(ls, l => l as String), "; ")], "") as NonEmptyStr
+    NcclAnnouncedWithoutChannels { announced: a, read_from: l } =>
+      join([
+        "a communicator announced ", a as String, " and no data channel had been wired over any network yet, so the announcement is not cross-checked against a data path: ",
+        l as String,
+      ], "") as NonEmptyStr
     NcclChannelUnreadableLines { lines: ls, causes: cs } =>
       join([
         to_string(count(ls)), " channel line(s) could not be read, so the cross-check between the announcement and the data path was not made: ",

@@ -23,7 +23,7 @@ import extdeps.nvidia.nccl {
   NcclRealizedTransport, nccl_realized_transport_wire, nccl_transport_verdict,
   nccl_transport_refusal_text,
   NcclTransportRefusal, NcclNoAnnouncement, NcclAnnouncementsDisagree, NcclUnknownNetworkName,
-  NcclChannelDisagreesWithAnnouncement, NcclChannelUnreadableLines,
+  NcclChannelDisagreesWithAnnouncement, NcclChannelUnreadableLines, NcclAnnouncedWithoutChannels,
 }
 import extdeps.vllm.log_lines {
   VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency,
@@ -109,9 +109,10 @@ fn rank_transport_observation_refusal(
   }
 }
 
-// WHETHER THE LOG HAS SPOKEN YET, ASKED OF THE TYPE RATHER THAN OF ITS PROSE. This is the one
-// question a bounded wait may retry on: every other refusal is a fact about a log that HAS spoken,
-// and waiting longer cannot change it.
+// WHETHER THE LOG HAS FINISHED SPEAKING, ASKED OF THE TYPE RATHER THAN OF ITS PROSE. TWO arms mean
+// not-yet, and both are retryable for the same reason: NCCL writes the announcement and then the
+// per-channel lines, so a log read between them has an announcement and no data path. Every other
+// refusal is a fact about a log that has finished, and waiting longer cannot change it.
 fn refusal_is_absent_announcement(r: RankObservationRefusal) -> Bool {
   match r.transport_cause {
     Absent => false
@@ -122,6 +123,7 @@ fn refusal_is_absent_announcement(r: RankObservationRefusal) -> Bool {
         NcclUnknownNetworkName { names: _ } => false
         NcclChannelDisagreesWithAnnouncement { announced: _, channel_lines: _ } => false
         NcclChannelUnreadableLines { lines: _, causes: _ } => false
+        NcclAnnouncedWithoutChannels { announced: _, read_from: _ } => true
       }
   }
 }

@@ -1432,6 +1432,11 @@ fn await_rank_announcement(c: ArmCapture, remaining: Nat) -> RankTransportObserv
   }
 }
 
+// A FAILED SLEEP IS NOT A COMPLETED WAIT. A first cut matched `RemoteRan` and retried on any exit
+// code, so a `sleep` that could not run turned the bounded wait into a tight loop against `docker
+// logs` on a host already in an outage -- forty-five immediate round trips -- and then reported the
+// exhaustion as "the communicator never announced", which is a sentence about NCCL for a failure that
+// was ours. The refusal names the exit code and the step that actually failed.
 fn await_after_interval(c: ArmCapture, remaining: Nat) -> RankTransportObservation
   uses net: Network
 {
@@ -1448,7 +1453,19 @@ fn await_after_interval(c: ArmCapture, remaining: Nat) -> RankTransportObservati
           step: relaunch_step_wire(s: StepAwaitAnnouncement),
           cause: join(["the wait between announcement polls could not be taken: ", why], "") as NonEmptyStr,
         ) }
-        RemoteRan { exit_code: _, stdout: _, stderr: _ } => await_rank_announcement(c: c, remaining: remaining - 1)
+        RemoteRan { exit_code: code, stdout: _, stderr: err } =>
+          if code != 0 {
+            RankTransportRefused { refusal: rank_observation_refusal(
+              subject: c.rank.subject,
+              step: relaunch_step_wire(s: StepAwaitAnnouncement),
+              cause: join([
+                "the wait between announcement polls exited ", to_string(code),
+                ", so no wait was taken: ", trim(s: err),
+              ], "") as NonEmptyStr,
+            ) }
+          } else {
+            await_rank_announcement(c: c, remaining: remaining - 1)
+          }
       }
   }
 }
@@ -1469,10 +1486,24 @@ fn verification_cause(c: ArmCapture, after: RankTransportVerdict, standing: Succ
   ], "") as NonEmptyStr
 }
 
+// THE VERIFICATION FREEZES ON THE FIRST FAILURE, LIKE THE ACTUATION FOLD ABOVE IT. A first cut did
+// not, and that cost twice. It waited a fresh forty-five intervals on every later rank after rank
+// zero had already definitively disagreed -- fifteen minutes per rank, with the arm down and the
+// answer already known. And because each refusal assigned `failed_step` unconditionally, a later
+// rank's NOT-YET replaced the earlier rank's DEFINITE verdict, so the headline read "ROLLED BACK at
+// await-communicator-announcement" for an arm whose rank zero had announced the wrong network. That
+// is a step naming an operation that is not the one that failed -- the diagnostic this module was
+// already corrected for once, arriving in the report the operator reads.
+//
+// THE JOINED CAUSE TEXT KEEPS EVERY FACT; what freezing changes is that the STEP is the first
+// failure's, and no rank is waited on after the arm's fate is settled.
 fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
   uses net: Network
 {
   fold(start_order(captures: captures), init: ArmVerification { verdicts: [], causes: [], failed_step: none }, f: (acc, c) =>
+    match acc.failed_step {
+      Present { value: _ } => acc
+      Absent =>
     match await_rank_announcement(c: c, remaining: relaunch_announcement_poll_budget) {
       RankTransportRefused { refusal: r } =>
         ArmVerification {
@@ -1503,9 +1534,9 @@ fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
               causes: concat(acc.causes, [verification_cause(c: c, after: after, standing: SuccessorTransportMovedUnasked { from: f, to: t })]),
             }
         }
+    }
     })
 }
-
 // ── THE WHOLE TRANSACTION ─────────────────────────────────────────────────────────────────────
 //
 // AN EMPTY ROSTER IS NOT A RELAUNCH THAT SUCCEEDED, and it is the first thing this fold asks. Every
