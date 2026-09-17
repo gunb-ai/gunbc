@@ -1,58 +1,91 @@
 module gunbc.spark.serving_arm_launch
 
-import std.types { Bool, List, NonEmptyStr, String, Port }
+import std.types { List, NonEmptyStr, String, Port }
 import std.nat { Nat }
 import product.placement_supply { HostIdentity, host_identity_eq }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq, render_ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.zhipu.glm_5_3_flash {
-  glm_5_3_flash_vllm_tool_call_parser, glm_5_3_flash_vllm_reasoning_parser,
+  glm_5_3_flash_vllm_tool_call_parser,
+  glm_5_3_flash_vllm_reasoning_parser,
   glm_5_3_flash_vllm_engine_ready_timeout,
   glm_5_3_flash_gb10_sparse_indexer_max_logits,
 }
 import gunbc.spark.fabric_switch_observed {
-  FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, FabricLaneObserved, fabric_lane_for_host,
+  FabricGroup,
+  FabricGroupA,
+  FabricGroupB,
+  fabric_group_hosts,
+  FabricLaneObserved,
+  fabric_lane_for_host,
 }
 import extdeps.docker.cli {
-  DockerCreateSpec, DockerEnvAssignment, DockerMount, BindMount,
-  DockerNamespaceMode, NamespaceHost, DockerRestartPolicy, RestartNo,
+  DockerCreateSpec,
+  DockerEnvAssignment,
+  BindMount,
+  NamespaceHost,
+  RestartNo,
   docker_create_command,
 }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.nvidia.nccl { NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2 }
 import gunbc.spark.collective_transport_plan {
-  CollectiveTransportPlan, RoceOverInterface,
-  transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited, transport_plan_env,
+  CollectiveTransportPlan,
+  RoceOverInterface,
+  transport_plan_devices,
+  transport_plan_cap_add,
+  transport_plan_memlock_unlimited,
+  transport_plan_env,
 }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.serving_arm {
-  ServingCheckpoint, ServingRuntime, ServingTopology,
-  ServingCheckpointRow, serving_checkpoint_row,
-  CheckpointQuantization,
-  checkpoint_quantization_on_argv, checkpoint_quantization_argv,
-  ServingRuntimeRow, serving_runtime_row, runtime_artifact_wire,
+  ServingCheckpoint,
+  ServingRuntime,
+  ServingTopology,
+  ServingCheckpointRow,
+  serving_checkpoint_row,
+  checkpoint_quantization_argv,
+  ServingRuntimeRow,
+  serving_runtime_row,
+  runtime_artifact_wire,
   serving_topology_rank_count,
-  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
-  ArmIntent, ArmNormalServing, ArmBoundedExperiment, serving_arm_admits,
-  ServingLaunchProfile, glm_native_initial_profile,
+  ServingArmAdmitted,
+  ServingArmRefused,
+  ArmIntent,
+  ArmNormalServing,
+  ArmBoundedExperiment,
+  serving_arm_admits,
+  ServingLaunchProfile,
 }
 import gunbc.spark.serving_compatibility {
-  RuntimeCompatibilityStanding, CompatibilityUnknown, StaticallyPlausible,
-  ExecutionCompatible, ExecutionIncompatible,
-  CompatibilityAdmission, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing,
-  compatibility_admits, measured_admission_for, measured_serving_compatibility,
-  ServingCompatibilitySubject, compatibility_subject_text,
-  measured_subject_refuses, measured_refusal_cause, spark_gb10_accelerator,
+  CompatibilityAdmission,
+  AdmitsNormalServing,
+  AdmitsBoundedExperimentOnly,
+  AdmitsNothing,
+  measured_admission_for,
+  ServingCompatibilitySubject,
+  measured_subject_refuses,
+  measured_refusal_cause,
+  spark_gb10_accelerator,
   serving_compatibility_subject,
 }
-import std.measure { TokenCount, token_count, BasisPoint, basis_point, basis_point_count,
-  ByteSize, byte_size, byte_size_count, second_count, mebibyte_count, token_count_value,
+import std.measure {
+  ByteSize,
+  byte_size,
+  byte_size_count,
+  second_count,
+  mebibyte_count,
+  token_count_value,
 }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { decl_ref }
 import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire }
-import extdeps.vllm.runtime_defaults { defaults_source_revision }
-import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
+
+import gunbc.spark.model_snapshot_acquisition {
+  SnapshotPlacement,
+  HubCachePlacement,
+  LocalDirectoryPlacement,
+}
 
 // ── THIS MODULE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER, AND THE TRIGGER IS NAMED ────────
 //
@@ -355,7 +388,6 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
 // readback comparing plan against observation reports disagreement on exactly this field, which is
 // how it was found.
 data glm_native_shm_size: ByteSize = byte_size(count: 67108864)
-
 
 // ── THE ENGINE'S OWN ARGUMENTS, NAMED APART FROM THE DOCKER LINE THAT CARRIES THEM ─────────────
 //
