@@ -37,8 +37,14 @@ shape is a composition, not a redefinition:
     ThroughputAssessment  = GoalSatisfied | GoalDiverged | GoalIndeterminate | GoalAssessmentRefused
     OperationalQualification
       = RealizationQualified { configuration_receipt, throughput_assessment }
-      | ConfigurationNotConverged { .. }
-      | ThroughputNotQualified { .. }
+      | RealizationUnqualified { configuration: ConfigurationStanding, throughput: ThroughputAssessment }
+
+The negative arm CARRIES BOTH STANDINGS rather than naming one, and an earlier revision got this
+wrong by offering `ConfigurationNotConverged | ThroughputNotQualified` as alternatives. The two
+standings are independent: a realization can be configuration-diverged AND throughput-diverged at the
+same time, and a sum that makes the reader pick one discards half of what was observed -- the same
+collapse this document objects to everywhere else, committed in its own carrier. `RealizationQualified`
+is the conjunction and is mintable only when both sides are positive; everything else reports both.
 
 This also repairs the rung argument. A configuration convergence with no throughput result is a
 legitimate value, not a defect. The invalid state to remove is the positive carrier
