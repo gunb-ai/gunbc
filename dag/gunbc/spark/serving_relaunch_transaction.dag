@@ -1074,7 +1074,7 @@ type ArmRelaunchOutcome
       unobservable: List<UnobservableField>
       unclaimed_env: List<String>
     }
-  | ArmRefusedBeforeActuation { step: RelaunchStep, causes: List<NonEmptyStr> }
+  | ArmRefusedBeforeActuation { causes: List<RelaunchCause> }
   | ArmRolledBack { step: RelaunchStep, cause: NonEmptyStr, rollbacks: List<RollbackOutcome> }
 
 // ── PHASE 1: CAPTURE AND PROVE, TOUCHING NOTHING ──────────────────────────────────────────────
@@ -1082,15 +1082,48 @@ type ArmRelaunchOutcome
 // EVERY RANK IS CAPTURED AND EVERY REFUSAL IS COLLECTED, rather than stopping at the first. An
 // operator who has to fix four ranks one round trip at a time against a live arm is being made to
 // pay for the fold's convenience.
-// A CAUSE CARRIES THE STEP IT CAME FROM. All of these were reported as StepProveDelta, but this fold
-// accumulates an inspect refusal, a transport-observation refusal, a preserved-name collision and a
-// rank disagreement into one list -- and only one of those is the delta proof. Naming the others by it
-// is a diagnostic pointing at an operation that did not fail, which this module corrected once for its
-// rollback legs and once for its verification step.
+// ── A CAUSE CANNOT EXIST WITHOUT THE STEP THAT PRODUCED IT ────────────────────────────────────
+//
+// FIVE SEPARATE CORRECTIONS IN ONE CHANGE SAID THIS WAS A CONSTRUCTION PROBLEM, not five bugs. The
+// rollback legs named steps that did not run; the verification's post-budget arm labelled a log that
+// had spoken as a failed readback; a later rank's not-yet overwrote an earlier rank's definite
+// verdict; the capture phase reported an inspect refusal, a transport refusal, a name collision and a
+// rank disagreement all as the delta proof. Each was fixed where it was found, and the next one
+// appeared somewhere else -- which is the tell that the class was writable rather than that the author
+// was careless.
+//
+// SO THE STEP IS A FIELD OF THE CAUSE, and the fold has nothing left to assign. A cause is
+// constructed at the site that knows which operation failed, carrying that operation; a list of
+// causes is a list of located facts; and the verdict's step is READ from the first of them rather
+// than chosen. DESIGN section 5: correctness by construction, not validation -- a check that can be
+// satisfied by editing the declaration while the realization lies is the weaker of the two, and this
+// one had been satisfied five times.
+type RelaunchCause sole_constructor {
+  step: RelaunchStep
+  text: NonEmptyStr
+}
+
+fn relaunch_cause(step: RelaunchStep, text: NonEmptyStr) -> RelaunchCause {
+  RelaunchCause { step: step, text: text }
+}
+
+fn relaunch_cause_text(c: RelaunchCause) -> String {
+  join([relaunch_step_wire(s: c.step) as String, ": ", c.text as String], "")
+}
+
+// THE VERDICT'S STEP IS THE FIRST CAUSE'S, read rather than assigned. An empty list has no step and
+// no caller may invent one, which is why this returns the capture step only as a last resort at a
+// site that has already established there is nothing to report.
+fn first_cause_step(causes: List<RelaunchCause>) -> RelaunchStep? {
+  match causes |> first {
+    Absent => none
+    Present { value: c } => Present { value: c.step }
+  }
+}
+
 type CaptureAcc {
   captures: List<ArmCapture>
-  causes: List<NonEmptyStr>
-  step: RelaunchStep?
+  causes: List<RelaunchCause>
 }
 
 fn capture_rank(plan: RankPlan) -> CaptureAcc
@@ -1098,22 +1131,21 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
 {
   match observe_rank_container(ctx: plan.ctx, subject: plan.subject) {
     RankInspectRefused { refusal: r } =>
-      CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr], step: Present { value: StepCaptureIncumbent } }
+      CaptureAcc { captures: [], causes: [relaunch_cause(step: StepCaptureIncumbent, text: rank_observation_refusal_text(r: r) as NonEmptyStr)] }
     RankInspected { subject: _, container: incumbent } =>
       match relaunch_delta(spec: plan.spec, observed: incumbent, gid_selection: plan.gid_selection) {
         DeltaRefused { comparisons: cs, unobservable: us, unclaimed_env: ns } =>
           CaptureAcc {
             captures: [],
-            causes: [join([
+            causes: [relaunch_cause(step: StepProveDelta, text: join([
               observed_rank_subject_text(s: plan.subject), ": ",
               relaunch_delta_text(d: DeltaRefused { comparisons: cs, unobservable: us, unclaimed_env: ns }),
-            ], "") as NonEmptyStr],
-            step: Present { value: StepProveDelta },
+            ], "") as NonEmptyStr)],
           }
         DeltaOnlyIntended { comparisons: admitted, unobservable: not_compared, unclaimed_env: not_asked } =>
           match observe_rank_transport(ctx: plan.ctx, subject: plan.subject, container: incumbent) {
             RankTransportRefused { refusal: r } =>
-              CaptureAcc { captures: [], causes: [rank_observation_refusal_text(r: r) as NonEmptyStr], step: Present { value: StepCaptureIncumbent } }
+              CaptureAcc { captures: [], causes: [relaunch_cause(step: StepCaptureIncumbent, text: rank_observation_refusal_text(r: r) as NonEmptyStr)] }
             RankTransportObserved { verdict: before } => {
               let preserved = preserved_container_name(
                 name: plan.subject.container,
@@ -1121,9 +1153,8 @@ fn capture_rank(plan: RankPlan) -> CaptureAcc
                 incarnation: before.incarnation,
               )
               match preserved_name_is_free(ctx: plan.ctx, subject: plan.subject, preserved: preserved) {
-                Present { value: why } => CaptureAcc { captures: [], causes: [why], step: Present { value: StepPreserveIncumbent } }
+                Present { value: why } => CaptureAcc { captures: [], causes: [relaunch_cause(step: StepPreserveIncumbent, text: why)] }
                 Absent => CaptureAcc {
-                  step: none,
                   captures: [ArmCapture {
                     rank: plan,
                     before: before,
@@ -1196,26 +1227,20 @@ fn capture_rank_agrees(c: ArmCapture) -> NonEmptyStr? {
 fn capture_arm(ranks: List<RankPlan>) -> CaptureAcc
   uses net: Network
 {
-  let captured = fold(ranks, init: CaptureAcc { captures: [], causes: [], step: none }, f: (acc, plan) => {
+  let captured = fold(ranks, init: CaptureAcc { captures: [], causes: [] }, f: (acc, plan) => {
     let one = capture_rank(plan: plan)
     CaptureAcc {
       captures: concat(acc.captures, one.captures),
       causes: concat(acc.causes, one.causes),
-      step: match acc.step { Present { value: st } => Present { value: st }, Absent => one.step },
     }
   })
-  let disagreements = fold(captured.captures, init: [], f: (acc, c) =>
-    match capture_rank_agrees(c: c) {
-      Absent => acc
-      Present { value: why } => concat(acc, [why])
-    })
   CaptureAcc {
     captures: captured.captures,
-    causes: concat(captured.causes, disagreements),
-    step: match captured.step {
-      Present { value: st } => Present { value: st }
-      Absent => if count(disagreements) > 0 { Present { value: StepCaptureIncumbent } } else { none }
-    },
+    causes: concat(captured.causes, fold(captured.captures, init: [], f: (acc, c) =>
+      match capture_rank_agrees(c: c) {
+        Absent => acc
+        Present { value: why } => concat(acc, [relaunch_cause(step: StepCaptureIncumbent, text: why)])
+      })),
   }
 }
 
@@ -1245,8 +1270,7 @@ fn stop_order(captures: List<ArmCapture>) -> List<ArmCapture> {
 // rollback describes.
 type ArmProgressAcc {
   states: List<RankState>
-  failure: NonEmptyStr?
-  failed_step: RelaunchStep?
+  failure: RelaunchCause?
 }
 
 fn advance_rank(
@@ -1264,13 +1288,14 @@ fn advance_rank(
       match relaunch_leg(ctx: capture.rank.ctx, step: step, command: command) {
         Present { value: why } => ArmProgressAcc {
           states: acc.states,
-          failure: Present { value: join([observed_rank_subject_text(s: capture.rank.subject), ": ", why as String], "") as NonEmptyStr },
-          failed_step: Present { value: step },
+          failure: Present { value: relaunch_cause(
+            step: step,
+            text: join([observed_rank_subject_text(s: capture.rank.subject), ": ", why as String], "") as NonEmptyStr,
+          ) },
         }
         Absent => ArmProgressAcc {
           states: with_progress(states: acc.states, capture: capture, reached: reached),
           failure: none,
-          failed_step: none,
         }
       }
   }
@@ -1458,8 +1483,7 @@ fn rollback_arm(states: List<RankState>) -> List<RollbackOutcome>
 // nobody asked.
 type ArmVerification {
   verdicts: List<RankTransportVerdict>
-  causes: List<NonEmptyStr>
-  failed_step: RelaunchStep?
+  causes: List<RelaunchCause>
 }
 
 // ── A LOG THAT HAS NOT SPOKEN YET IS NOT A FAILED FLIP ────────────────────────────────────────
@@ -1574,49 +1598,60 @@ fn verification_cause(c: ArmCapture, after: RankTransportVerdict, standing: Succ
 // THE VERIFICATION FREEZES ON THE FIRST FAILURE, LIKE THE ACTUATION FOLD ABOVE IT. A first cut did
 // not, and that cost twice. It waited a fresh forty-five intervals on every later rank after rank
 // zero had already definitively disagreed -- fifteen minutes per rank, with the arm down and the
-// answer already known. And because each refusal assigned `failed_step` unconditionally, a later
+// answer already known. And because each refusal assigned a step of its own unconditionally, a later
 // rank's NOT-YET replaced the earlier rank's DEFINITE verdict, so the headline read "ROLLED BACK at
 // await-communicator-announcement" for an arm whose rank zero had announced the wrong network. That
 // is a step naming an operation that is not the one that failed -- the diagnostic this module was
 // already corrected for once, arriving in the report the operator reads.
 //
-// THE JOINED CAUSE TEXT KEEPS EVERY FACT; what freezing changes is that the STEP is the first
-// failure's, and no rank is waited on after the arm's fate is settled.
+// THE JOINED CAUSE TEXT KEEPS EVERY FACT; what freezing changes is that no rank is waited on after
+// the arm's fate is settled. The STEP is no longer chosen here at all: it rides on the cause that
+// was constructed at the site that knew which operation failed, so the headline is READ off the
+// first cause rather than assigned by the fold, and the overwrite that produced the wrong headline
+// has no expression left to write.
 fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
   uses net: Network
 {
-  fold(start_order(captures: captures), init: ArmVerification { verdicts: [], causes: [], failed_step: none }, f: (acc, c) =>
-    match acc.failed_step {
+  fold(start_order(captures: captures), init: ArmVerification { verdicts: [], causes: [] }, f: (acc, c) =>
+    match first_cause_step(causes: acc.causes) {
       Present { value: _ } => acc
       Absent =>
     match await_rank_announcement(c: c, remaining: relaunch_announcement_poll_budget) {
       RankTransportRefused { refusal: r } =>
         ArmVerification {
           verdicts: acc.verdicts,
-          causes: concat(acc.causes, [rank_observation_refusal_text(r: r) as NonEmptyStr]),
-          failed_step: Present { value: transport_refusal_step(r: r) },
+          causes: concat(acc.causes, [relaunch_cause(
+            step: transport_refusal_step(r: r),
+            text: rank_observation_refusal_text(r: r) as NonEmptyStr,
+          )]),
         }
       RankTransportObserved { verdict: after } =>
         match successor_standing(before: c.before, after: after, moved_axes: c.moved_axes) {
           SuccessorAsIntended =>
-            ArmVerification { verdicts: concat(acc.verdicts, [after]), causes: acc.causes, failed_step: acc.failed_step }
+            ArmVerification { verdicts: concat(acc.verdicts, [after]), causes: acc.causes }
           SuccessorNotReplaced =>
             ArmVerification {
               verdicts: acc.verdicts,
-              failed_step: Present { value: StepVerifyTransport },
-              causes: concat(acc.causes, [verification_cause(c: c, after: after, standing: SuccessorNotReplaced)]),
+              causes: concat(acc.causes, [relaunch_cause(
+                step: StepVerifyTransport,
+                text: verification_cause(c: c, after: after, standing: SuccessorNotReplaced),
+              )]),
             }
           SuccessorTransportDidNotFlip =>
             ArmVerification {
               verdicts: acc.verdicts,
-              failed_step: Present { value: StepVerifyTransport },
-              causes: concat(acc.causes, [verification_cause(c: c, after: after, standing: SuccessorTransportDidNotFlip)]),
+              causes: concat(acc.causes, [relaunch_cause(
+                step: StepVerifyTransport,
+                text: verification_cause(c: c, after: after, standing: SuccessorTransportDidNotFlip),
+              )]),
             }
           SuccessorTransportMovedUnasked { from: f, to: t } =>
             ArmVerification {
               verdicts: acc.verdicts,
-              failed_step: Present { value: StepVerifyTransport },
-              causes: concat(acc.causes, [verification_cause(c: c, after: after, standing: SuccessorTransportMovedUnasked { from: f, to: t })]),
+              causes: concat(acc.causes, [relaunch_cause(
+                step: StepVerifyTransport,
+                text: verification_cause(c: c, after: after, standing: SuccessorTransportMovedUnasked { from: f, to: t }),
+              )]),
             }
         }
     }
@@ -1643,33 +1678,30 @@ fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
   let captured = capture_arm(ranks: ranks)
   if count(ranks) == 0 {
     ArmRefusedBeforeActuation {
-      step: StepCaptureIncumbent,
-      causes: ["this arm has no ranks to relaunch; an empty roster is a group whose members are not observed, not a relaunch with nothing left to do" as NonEmptyStr],
+      causes: [relaunch_cause(
+        step: StepCaptureIncumbent,
+        text: "this arm has no ranks to relaunch; an empty roster is a group whose members are not observed, not a relaunch with nothing left to do" as NonEmptyStr,
+      )],
     }
   } else if count(captured.causes) > 0 {
-    ArmRefusedBeforeActuation {
-      step: match captured.step { Present { value: st } => st, Absent => StepCaptureIncumbent },
-      causes: captured.causes,
-    }
+    ArmRefusedBeforeActuation { causes: captured.causes }
   } else if count(captured.captures) != count(ranks) {
     ArmRefusedBeforeActuation {
-      step: StepCaptureIncumbent,
-      causes: [join([
+      causes: [relaunch_cause(step: StepCaptureIncumbent, text: join([
         "this arm holds ", to_string(count(ranks)), " ranks and only ", to_string(count(captured.captures)),
         " were captured; a tensor-parallel arm cannot be relaunched in part",
-      ], "") as NonEmptyStr],
+      ], "") as NonEmptyStr)],
     }
   } else {
     let initial = ArmProgressAcc {
       states: map(captured.captures, c => RankState { capture: c, progress: RankUntouched }),
       failure: none,
-      failed_step: none,
     }
     let preserved_phase = stop_and_preserve_arm(acc: initial, captures: captured.captures)
     let started = create_and_start_arm(acc: preserved_phase, captures: captured.captures)
     match started.failure {
       Present { value: why } => ArmRolledBack {
-        step: match started.failed_step { Present { value: s } => s, Absent => StepStartSuccessor },
+        step: why.step,
         cause: why,
         rollbacks: rollback_arm(states: started.states),
       }
@@ -1677,8 +1709,11 @@ fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
         let verification = verify_arm(captures: captured.captures)
         if count(verification.causes) > 0 {
           ArmRolledBack {
-            step: match verification.failed_step { Present { value: st } => st, Absent => StepVerifyTransport },
-            cause: join(map(verification.causes, c => c as String), "; ") as NonEmptyStr,
+            step: match first_cause_step(causes: verification.causes) {
+              Present { value: st } => st
+              Absent => StepVerifyTransport
+            },
+            cause: join(map(verification.causes, c => relaunch_cause_text(c: c)), "; ") as NonEmptyStr,
             rollbacks: rollback_arm(states: started.states),
           }
         } else {
@@ -1746,6 +1781,15 @@ fn committed_transport_text(verdicts: List<RankTransportVerdict>) -> String {
   }
 }
 
+// THE HEADLINE STEP IS READ OFF THE FIRST CAUSE. There is no arm in which a refusal has no cause, so
+// the fallback below is unreachable by construction and says so rather than naming a step.
+fn refusal_headline_step(causes: List<RelaunchCause>) -> String {
+  match first_cause_step(causes: causes) {
+    Present { value: st } => relaunch_step_wire(s: st) as String
+    Absent => "no step, because this refusal carries no cause -- which no arm constructs"
+  }
+}
+
 fn arm_relaunch_outcome_text(o: ArmRelaunchOutcome) -> String {
   match o {
     ArmCommitted { verdicts: vs, preserved: ps, moved_axes: axs, unobservable: us, unclaimed_env: ns } =>
@@ -1759,10 +1803,10 @@ fn arm_relaunch_outcome_text(o: ArmRelaunchOutcome) -> String {
         ], "")), "\n"),
         unclaimed_env_text(names: ns),
       ], "")
-    ArmRefusedBeforeActuation { step: s, causes: cs } =>
+    ArmRefusedBeforeActuation { causes: cs } =>
       join([
-        "REFUSED at ", relaunch_step_wire(s: s) as String, ", nothing on any host was changed:\n",
-        join(map(cs, c => join(["  ", c as String], "")), "\n"),
+        "REFUSED at ", refusal_headline_step(causes: cs), ", nothing on any host was changed:\n",
+        join(map(cs, c => join(["  ", relaunch_cause_text(c: c)], "")), "\n"),
       ], "")
     ArmRolledBack { step: s, cause: c, rollbacks: rs } =>
       join([

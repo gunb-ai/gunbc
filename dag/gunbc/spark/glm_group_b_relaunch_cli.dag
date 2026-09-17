@@ -434,7 +434,7 @@ fn glm_group_b_relaunch_wet() -> ProcessExit
         } else {
           match outcome {
             ArmCommitted { verdicts: _, preserved: _, moved_axes: _ } => ExitSuccess
-            ArmRefusedBeforeActuation { step: _, causes: _ } => exit_failure(reason: body)
+            ArmRefusedBeforeActuation { causes: _ } => exit_failure(reason: body)
             ArmRolledBack { step: _, cause: _, rollbacks: _ } => exit_failure(reason: body)
           }
         }
