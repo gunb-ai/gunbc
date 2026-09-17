@@ -205,6 +205,16 @@ fn actions_billability(
   }
 }
 
+// CHARGED-AGAINST-QUOTA IS NOT BILLABLE, AND SAYING IT WAS CONTRADICTED THIS MODULE'S OWN
+// ALLOWANCE MODEL. An earlier revision folded ChargedAgainstPlanQuota to billable: true, while
+// allowance_applicability answered AllowanceApplies for the same SKU -- one module giving two
+// answers about whether a private-repo standard job costs its owner anything. It does not, until
+// the account's included minutes are gone: GitHub Free ships 2,000 a month and Team 3,000, and
+// inside that allowance the marginal cost of a standard job is zero. For the prospect model this is
+// the difference that matters, because ranking every private repository as a payer is exactly the
+// false positive a census of actual spend must not produce. The third arm says the answer needs an
+// account fact this module does not observe, rather than guessing which way it falls.
+//
 // A Bool CANNOT SAY UNREAD, so this question is no longer published as one. The predicate here
 // answered false for BillabilityUnread and called that fail-closed; it is the trap DESIGN section 5
 // names by its own words, top-as-answer conflated with top-as-ignorance. "This SKU costs its owner
@@ -216,6 +226,7 @@ fn actions_billability(
 // caller cannot see or override.
 type ActionsBillableVerdict
   = BillingConfirmed { billable: Bool }
+  | BillingDependsOnConsumedAllowance { obligation: NonEmptyStr }
   | BillingUnread { obligation: NonEmptyStr }
 
 fn actions_usage_billable_verdict(
@@ -224,7 +235,10 @@ fn actions_usage_billable_verdict(
 ) -> ActionsBillableVerdict {
   match actions_billability(sku: sku, visibility: visibility) {
     AlwaysChargedPerMinute => BillingConfirmed { billable: true }
-    ChargedAgainstPlanQuota => BillingConfirmed { billable: true }
+    ChargedAgainstPlanQuota =>
+      BillingDependsOnConsumedAllowance {
+        obligation: "this SKU draws on the plan's included minutes, so whether it costs its owner anything depends on how many of those minutes the account has already consumed. That is an account fact this module does not observe: github_actions_plan_allowances says how many are included, and nothing here says how many are left" as NonEmptyStr
+      }
     FreeInPublicRepository => BillingConfirmed { billable: false }
     BillabilityUnread { obligation: o } => BillingUnread { obligation: o }
   }
@@ -259,13 +273,28 @@ data github_actions_plan_allowances: List<ActionsPlanAllowance> = [
 type AllowanceApplicability
   = AllowanceApplies
   | AllowanceDoesNotApply
+  | AllowanceNeverMetered
   | AllowanceApplicabilityUnread { obligation: NonEmptyStr }
 
-fn allowance_applicability(sku: GithubActionsBillingSku) -> AllowanceApplicability {
+// VISIBILITY IS AN INPUT BECAUSE THE ANSWER DEPENDS ON IT, and an earlier revision omitted it and
+// answered AllowanceApplies for every standard SKU. That was wrong in the free direction: the
+// allowances this module rosters are PRIVATE-repository minutes, and public standard usage never
+// touches them at all. Saying the allowance "applies" to a public standard job invites a consumer
+// to subtract minutes from a balance the job never drew on, which would report an account as
+// approaching exhaustion on usage that is free. AllowanceNeverMetered is that third state: not
+// charged, and not drawn from anything either.
+fn allowance_applicability(
+  sku: GithubActionsBillingSku,
+  visibility: RepositoryVisibility,
+) -> AllowanceApplicability {
   match actions_runner_class(sku: sku) {
-    StandardRunner => AllowanceApplies
     LargerRunner => AllowanceDoesNotApply
     RunnerClassUnread { obligation: o } => AllowanceApplicabilityUnread { obligation: o }
+    StandardRunner =>
+      match visibility {
+        PublicRepository => AllowanceNeverMetered
+        PrivateRepository => AllowanceApplies
+      }
   }
 }
 

@@ -23,6 +23,11 @@ import extdeps.google.sheets {
   InputRaw,
   SheetsValueRenderOption,
   RenderFormattedValue,
+  SheetsMajorDimension,
+  DimensionRows,
+  DimensionColumns,
+  sheets_major_dimension_wire,
+  sheets_major_dimension_from_wire,
 }
 
 // THE FIRST EXECUTED CALLER OF THE SHEETS SERVICE, which until this module ran had zero call sites.
@@ -100,11 +105,15 @@ fn read_values(spreadsheet_id: NonEmptyStr, a1: String) -> ValuesReadOutcome use
 // rather than a refusal: writing nothing to a range is a legitimate request, and the caller has
 // already decided a write is wanted.
 fn value_range_for_write(r: ValueRange, a1: String) -> ValueRangeWrite {
-  ValueRangeWrite { range: a1, majorDimension: "ROWS", values: value_range_rows(r: r) }
+  ValueRangeWrite {
+    range: a1,
+    majorDimension: sheets_major_dimension_wire(d: DimensionRows),
+    values: value_range_values_raw(r: r),
+  }
 }
 
 fn value_range_row_count(r: ValueRange) -> Int {
-  count(value_range_rows(r: r))
+  count(value_range_values_raw(r: r))
 }
 
 // EQUALITY IS LINEAR AND IT REFUSES RATHER THAN ASSUMING. Indexing one list while folding the
@@ -184,10 +193,48 @@ fn compare_rows(a: List<List<String>>, b: List<List<String>>) -> RowsComparison 
 }
 
 fn compare_value_ranges(a: ValueRange, b: ValueRange) -> RowsComparison {
-  compare_rows(a: value_range_rows(r: a), b: value_range_rows(r: b))
+  match value_range_row_major(r: a) {
+    RowsNotRowMajor { cause: c } => RowsIncomparable { cause: c }
+    RowsRead { rows: ar } =>
+      match value_range_row_major(r: b) {
+        RowsNotRowMajor { cause: c } => RowsIncomparable { cause: c }
+        RowsRead { rows: br } => compare_rows(a: ar, b: br)
+      }
+  }
 }
 
-fn value_range_rows(r: ValueRange) -> List<List<String>> {
+// A ValueRange IS NOT NECESSARILY ROW-MAJOR AND THIS MODULE USED TO ASSUME IT WAS. The upstream
+// resource permits majorDimension of ROWS or COLUMNS; reading r.values as rows without consulting
+// it means a COLUMNS-major range compares its columns against the desired rows, reports a
+// difference that is really a transposition, and then rewrites the sheet with the same nested list
+// under changed semantics. The private specimen happened to be row-major, so nothing caught it.
+//
+// ABSENT IS ROWS, and that is the upstream default rather than a guess: Sheets omits majorDimension
+// when it is ROWS, the same proto3 omission that hides a zero colour channel. An unrecognised
+// spelling is neither, and refuses.
+type RowMajorReading
+  = RowsRead { rows: List<List<String>> }
+  | RowsNotRowMajor { cause: NonEmptyStr }
+
+fn value_range_row_major(r: ValueRange) -> RowMajorReading {
+  match r.majorDimension {
+    Absent => RowsRead { rows: value_range_values_raw(r: r) }
+    Present { value: raw } =>
+      match sheets_major_dimension_from_wire(raw: raw) {
+        Absent =>
+          RowsNotRowMajor {
+            cause: join(["the range reports majorDimension '", raw, "', which is neither ROWS nor COLUMNS, so its nesting cannot be read as rows or as columns"], "") as NonEmptyStr
+          }
+        Present { value: DimensionRows } => RowsRead { rows: value_range_values_raw(r: r) }
+        Present { value: DimensionColumns } =>
+          RowsNotRowMajor {
+            cause: "the range is COLUMNS-major, so its outer list is columns and comparing it against row-major desired values would compare a transposition and then write it back as rows" as NonEmptyStr
+          }
+      }
+  }
+}
+
+fn value_range_values_raw(r: ValueRange) -> List<List<String>> {
   match r.values {
     Absent => []
     Present { value: rows } => rows

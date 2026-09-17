@@ -29,7 +29,7 @@ import extdeps.google.drive {
 // is not authority but duplication, and the answer is an identity chosen before the call rather
 // than a credential.
 
-// The key is private to this application (Drive scopes appProperties per-app), so it may be
+// The key is private to this application (Drive scopes properties per-app), so it may be
 // declared once and trusted: another application cannot read or collide with it.
 //
 // WHAT PINS THIS AND WHAT DOES NOT. This row is the SEARCH side: review_sheet_search_query builds
@@ -38,21 +38,21 @@ import extdeps.google.drive {
 // it -- the two spellings agreeing is checked on one side and asserted by reading on the other.
 // That asymmetry is the residue of a body builder that cannot take a field NAME from a parameter,
 // and it is stated here rather than described as a pin that covers both.
-data review_sheet_app_property_key: NonEmptyStr = "gunbcReviewSheet"
+data review_sheet_marker_property_key: NonEmptyStr = "gunbcReviewSheet"
 
 // WHY THE VALUE IS NOT THE SHEET'S NAME. A name is the one attribute a human will change without
 // telling anyone, and a rename must not make the next converge believe its sheet is gone and mint
 // a replacement beside it. This value never appears in the UI and nothing but this converge reads
 // it, so it is stable exactly because it is invisible.
-data ci_prospect_sheet_app_property_value: NonEmptyStr = "ci-prospect-sheet"
+data ci_prospect_sheet_marker_value: NonEmptyStr = "ci-prospect-sheet"
 
-fn review_sheet_search_query(app_value: NonEmptyStr) -> String {
+fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
   join(
     [
-      "appProperties has { key='",
-      review_sheet_app_property_key as String,
+      "properties has { key='",
+      review_sheet_marker_property_key as String,
       "' and value='",
-      app_value as String,
+      marker_value as String,
       "' } and mimeType='",
       google_sheet_mime_type as String,
       "' and trashed=false",
@@ -232,7 +232,7 @@ type ReviewSpreadsheetObservation
 type SpreadsheetCreatePlan {
   drive_id: NonEmptyStr
   name: NonEmptyStr
-  app_property_value: NonEmptyStr
+  marker_property_value: NonEmptyStr
 }
 
 // incompleteSearch true is its own arm, and this is the subtle one: Drive answering "I could not
@@ -288,7 +288,7 @@ fn ensure_review_spreadsheet(
   observed: ReviewSpreadsheetObservation,
   drive_id: NonEmptyStr,
   sheet_name: NonEmptyStr,
-  app_value: NonEmptyStr,
+  marker_value: NonEmptyStr,
 ) -> UpsertDecision<SpreadsheetCreatePlan> {
   match observed {
     SheetObservedOne { file_id: _ } => Noop
@@ -338,7 +338,7 @@ fn ensure_review_spreadsheet(
             plan: SpreadsheetCreatePlan {
               drive_id: drive_id,
               name: sheet_name,
-              app_property_value: app_value,
+              marker_property_value: marker_value,
             }
           }
       }

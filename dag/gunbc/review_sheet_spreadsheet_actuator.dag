@@ -33,7 +33,7 @@ import gunbc.review_sheet_drive_converge {
 // THE HARDER AMBIGUITY, AND THE REASON THE KEY IS CHOSEN BEFORE THE CALL. A lost answer from
 // files.create may have minted a spreadsheet whose id this process never saw. Nothing in the
 // response recovers it, because there was no response -- so the only way back to that file is a
-// property written ONTO it at creation time, which is exactly what app_properties_key is. The
+// property written ONTO it at creation time, which is exactly what marker_property_key is. The
 // recovery read is therefore not a nicety: it is the whole reason a create is allowed at all.
 //
 // Membership had the same shape but a milder consequence: a lost permissions.create leaves a
@@ -49,11 +49,11 @@ type SpreadsheetConvergeOutcome
 
 fn read_spreadsheet(
   drive_id: NonEmptyStr,
-  app_value: NonEmptyStr,
+  marker_value: NonEmptyStr,
 ) -> ReviewSpreadsheetObservation uses net: Network {
   let read = drive.Files.ListFiles(
     drive_id: drive_id as String,
-    query: review_sheet_search_query(app_value: app_value),
+    query: review_sheet_search_query(marker_value: marker_value),
   )
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
     RestExchangeSucceeded => spreadsheet_from_file_list(list: read.list)
@@ -83,10 +83,10 @@ fn read_spreadsheet(
 // operator must adjudicate, not one this converge may quietly pick from.
 fn verify_created_spreadsheet(
   drive_id: NonEmptyStr,
-  app_value: NonEmptyStr,
+  marker_value: NonEmptyStr,
   create_detail: NonEmptyStr,
 ) -> SpreadsheetConvergeOutcome uses net: Network {
-  match read_spreadsheet(drive_id: drive_id, app_value: app_value) {
+  match read_spreadsheet(drive_id: drive_id, marker_value: marker_value) {
     SheetObservedOne { file_id: id } => SpreadsheetCreatedAndVerified { file_id: id }
     SheetAbsent =>
       SpreadsheetCreateUnverified {
@@ -124,19 +124,19 @@ fn perform_spreadsheet_create(
     name: plan.name as String,
     mime_type: google_sheet_mime_type as String,
     parent_id: plan.drive_id as String,
-    app_properties_value: plan.app_property_value as String,
+    marker_property_value: plan.marker_property_value as String,
   )
   match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
     RestExchangeSucceeded =>
       verify_created_spreadsheet(
         drive_id: plan.drive_id,
-        app_value: plan.app_property_value,
+        marker_value: plan.marker_property_value,
         create_detail: "files.create answered success" as NonEmptyStr,
       )
     RestExchangeCommitAmbiguous { detail } =>
       verify_created_spreadsheet(
         drive_id: plan.drive_id,
-        app_value: plan.app_property_value,
+        marker_value: plan.marker_property_value,
         create_detail: join(["files.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
       )
     RestExchangeStatusRefused { status, body } =>
@@ -157,16 +157,16 @@ fn perform_spreadsheet_create(
 fn converge_review_spreadsheet(
   drive_id: NonEmptyStr,
   sheet_name: NonEmptyStr,
-  app_value: NonEmptyStr,
+  marker_value: NonEmptyStr,
   policy: EnsurePolicy,
 ) -> SpreadsheetConvergeOutcome uses net: Network {
-  let observed = read_spreadsheet(drive_id: drive_id, app_value: app_value)
+  let observed = read_spreadsheet(drive_id: drive_id, marker_value: marker_value)
   match ensure_review_spreadsheet(
     policy: policy,
     observed: observed,
     drive_id: drive_id,
     sheet_name: sheet_name,
-    app_value: app_value,
+    marker_value: marker_value,
   ) {
     Noop => spreadsheet_noop_outcome(observed: observed)
     Refuse { reason: r } => SpreadsheetConvergeRefused { cause: r }

@@ -4,7 +4,7 @@ import std.types { Bool, String }
 import extdeps.google.sheets { sheets_token_env }
 import extdeps.google.drive { drive_token_env }
 import gunbc.review_sheet_drive_converge {
-  review_sheet_app_property_key,
+  review_sheet_marker_property_key,
   review_sheet_search_query,
 }
 
@@ -47,7 +47,7 @@ test fn drive_and_sheets_read_one_credential() -> Bool {
 // covered both sides would be worse than this one, because it would be believed.
 test fn search_query_carries_the_declared_property_key() -> Bool {
   string_contains(
-    s: review_sheet_search_query(app_value: "ci-prospect-sheet"),
-    pattern: review_sheet_app_property_key as String,
+    s: review_sheet_search_query(marker_value: "ci-prospect-sheet"),
+    pattern: review_sheet_marker_property_key as String,
   )
 }

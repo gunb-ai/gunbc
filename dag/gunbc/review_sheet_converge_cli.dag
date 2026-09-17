@@ -1,6 +1,12 @@
 module gunbc.review_sheet_converge_cli
 
 import std.types { NonEmptyStr, String, Bool, Secret, List }
+import gunbc.review_sheet_format_actuator {
+  FormatConvergeOutcome,
+  converge_review_sheet_format,
+  format_converge_text,
+  format_converge_is_converged,
+}
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -53,7 +59,7 @@ import gunbc.review_sheet_spreadsheet_actuator {
   converge_review_spreadsheet,
   spreadsheet_outcome_text,
 }
-import gunbc.review_sheet_drive_converge { ci_prospect_sheet_app_property_value }
+import gunbc.review_sheet_drive_converge { ci_prospect_sheet_marker_value }
 
 // THE ONE ENTRY POINT. Everything an operator would otherwise do in a console is reachable from
 // here, and the sequence is the dependency order rather than a preference: the APIs cannot be
@@ -169,7 +175,7 @@ fn converge_review_sheet_all(
     spreadsheet: converge_review_spreadsheet(
       drive_id: drive_id,
       sheet_name: ci_prospect_sheet_name,
-      app_value: ci_prospect_sheet_app_property_value,
+      marker_value: ci_prospect_sheet_marker_value,
       policy: policy,
     ),
   }
@@ -305,7 +311,7 @@ fn converge_drive_half(
     spreadsheet: converge_review_spreadsheet(
       drive_id: drive_id,
       sheet_name: ci_prospect_sheet_name,
-      app_value: ci_prospect_sheet_app_property_value,
+      marker_value: ci_prospect_sheet_marker_value,
       policy: policy,
     ),
   }
@@ -339,9 +345,46 @@ fn converge_drive_half_cli() -> ProcessExit uses net: Network {
   }
 }
 
-fn drive_half_exit(report: DriveHalfReport) -> ProcessExit {
+// FORMATTING RUNS ONLY ON A SPREADSHEET THIS RUN ESTABLISHED, which is the whole reason it can be
+// reached from an argv-free entry at all: the id is not an argument, it is what the converge above
+// just verified by readback. A converge that refused has no id to format, and formatting a sheet
+// whose identity was not settled is how the first live run wrote properties into a file nobody
+// could find again.
+type FormatDisposition
+  = FormatAttempted { outcome: FormatConvergeOutcome }
+  | FormatSkipped { cause: NonEmptyStr }
+
+fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
+  match o {
+    SpreadsheetAdopted { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id) }
+    SpreadsheetCreatedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id) }
+    SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
+    SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
+  }
+}
+
+fn format_disposition_text(d: FormatDisposition) -> String {
+  match d {
+    FormatAttempted { outcome: o } => format_converge_text(o: o)
+    FormatSkipped { cause: c } => join(["formatting skipped, no converged spreadsheet: ", c as String], "")
+  }
+}
+
+fn format_disposition_is_applied(d: FormatDisposition) -> Bool {
+  match d {
+    FormatAttempted { outcome: o } => format_converge_is_converged(o: o)
+    FormatSkipped { cause: _ } => false
+  }
+}
+
+fn drive_half_exit(report: DriveHalfReport) -> ProcessExit uses net: Network {
   if drive_half_is_converged(r: report) {
-    ExitSuccess
+    let formatting = format_converged_spreadsheet(o: report.spreadsheet)
+    if format_disposition_is_applied(d: formatting) {
+      ExitSuccess
+    } else {
+      exit_failure(reason: format_disposition_text(d: formatting))
+    }
   } else {
     exit_failure(reason: drive_half_text(r: report))
   }

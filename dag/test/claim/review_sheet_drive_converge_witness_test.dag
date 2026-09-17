@@ -35,7 +35,7 @@ import gunbc.review_sheet_drive_converge {
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
-  review_sheet_app_property_key,
+  review_sheet_marker_property_key,
 }
 
 // EVERY CLAIM HERE SUPPLIES ITS INPUTS AT ONE BOUNDARY -- a Drive response shape -- rather than
@@ -68,7 +68,7 @@ fn w_file(id: String) -> DriveFile {
     id: id,
     name: "CI prospect sheet",
     mimeType: google_sheet_mime_type as String,
-    appProperties: none
+    properties: none
   }
 }
 
@@ -232,7 +232,7 @@ test fn incomplete_search_refuses_rather_than_creating() -> Bool {
     ),
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
-    app_value: "ci-prospect-sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
   ) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "not an observation of absence")
     Noop => false
@@ -255,10 +255,10 @@ test fn complete_search_with_no_files_creates() -> Bool {
     ),
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
-    app_value: "ci-prospect-sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
   ) {
     Apply { plan: p } =>
-      (p.app_property_value as String) == "ci-prospect-sheet"
+      (p.marker_property_value as String) == "ci-prospect-sheet"
         && (p.drive_id as String) == (w_drive() as String)
     Noop => false
     Refuse { reason: _ } => false
@@ -277,7 +277,7 @@ test fn exactly_one_match_adopts_without_writing() -> Bool {
     ),
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
-    app_value: "ci-prospect-sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
   ) {
     Noop => true
     Apply { plan: _ } => false
@@ -300,7 +300,7 @@ test fn duplicate_matches_refuse_and_name_both() -> Bool {
     ),
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
-    app_value: "ci-prospect-sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
   ) {
     Refuse { reason: r } =>
       string_contains(s: r as String, pattern: "sheet-one")
@@ -326,9 +326,9 @@ test fn absent_files_field_is_unreadable_not_absent() -> Bool {
 // The query names the app-properties key and the spreadsheet mime type, and excludes trashed
 // files -- a trashed sheet is not a sheet to adopt, and adopting one would write into a file the
 // operator has already thrown away.
-test fn search_query_keys_on_app_properties_and_excludes_trashed() -> Bool {
-  let q = review_sheet_search_query(app_value: "ci-prospect-sheet" as NonEmptyStr)
-  string_contains(s: q, pattern: review_sheet_app_property_key as String)
+test fn search_query_keys_on_properties_and_excludes_trashed() -> Bool {
+  let q = review_sheet_search_query(marker_value: "ci-prospect-sheet" as NonEmptyStr)
+  string_contains(s: q, pattern: review_sheet_marker_property_key as String)
     && string_contains(s: q, pattern: "trashed=false")
     && string_contains(s: q, pattern: google_sheet_mime_type as String)
     && !string_contains(s: q, pattern: "name=")
@@ -352,15 +352,15 @@ test fn drive_token_env_matches_the_configured_literal() -> Bool {
 
 // The property NAME is a literal in the create body because the body builder emits field names as
 // written. This claim has the SAME LIMIT as the env-var one above: it joins this declaration to a
-// third copy on the line below and never reads the appProperties literal in CreateFile's body, so a
+// third copy on the line below and never reads the properties literal in CreateFile's body, so a
 // drift confined to that literal stays green. It is kept beside the receipt that motivated it, and
 // the receipt is the reason to state the limit rather than imply coverage -- the first live run
 // failed exactly here, and a mismatch between the name written into the file and the name searched
 // for produces a file that exists and cannot be found, reading as "the create did not take" rather
 // than "the create wrote a different name". A claim cited as catching that, which cannot, is worse
 // than no claim at all.
-test fn app_property_key_matches_the_created_property() -> Bool {
-  (review_sheet_app_property_key as String) == "gunbcReviewSheet"
+test fn marker_property_key_matches_the_created_property() -> Bool {
+  (review_sheet_marker_property_key as String) == "gunbcReviewSheet"
 }
 
 
@@ -399,7 +399,7 @@ test fn a_partial_file_page_refuses_rather_than_adopting() -> Bool {
     ),
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
-    app_value: "ci-prospect-sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
   ) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "one page of several")
     Noop => false

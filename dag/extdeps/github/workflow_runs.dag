@@ -9,8 +9,7 @@ import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, Tran
 import extdeps.uri { Uri, Https }
 import extdeps.github.workflow_runs_contracts {
   workflow_run_status_wire_contract,
-  workflow_run_conclusion_wire_contract,
-  workflow_job_attempt_filter_wire_contract
+  workflow_run_conclusion_wire_contract
 }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -141,19 +140,31 @@ type WorkflowRunList {
 // input as `state: PullRequestState = Open`. Two variants and a fold make the bad spelling
 // unwritable rather than validated.
 //
-// THE WIRE SPELLING IS NOT WRITTEN HERE. extdeps.github.workflow_runs_contracts
-// workflow_job_attempt_filter_wire_contract carries it as a CoproductWireContract, the same
-// mechanism workflow_run_status_wire_contract already uses for this module's other coproducts, so
-// there is no hand-rolled fold beside the contract to drift from it. The variants carry an Attempts
-// prefix because bare Latest and All are two of the most collidable names in a tree that resolves
-// bare references, and StripPrefixAndSnakeCase turns them back into the latest and all the endpoint
-// documents. `latest` stays the default because it is the upstream's, and it is the right answer for
-// a caller asking what the current state is; a census of consumed capacity wants AttemptsAll,
-// because a re-run mutates a job's record in place and the attempts `latest` drops are execution
-// that really happened and really occupied a runner.
+// THE FOLD BELOW IS REQUIRED AND AN EARLIER REVISION OF THIS ANNOTATION DENIED IT. That revision
+// said a CoproductWireContract carried the spelling so no hand-written fold had to exist. It does
+// not, and believing it REGRESSED this operation: the interpreter builds a REST query with
+// format!("{}", value) and consults no contract, and Display for a nullary variant writes the
+// AUTHORED name, so the request went out as filter=AttemptsLatest where the base had correctly sent
+// filter=latest. A contract is read on the response-decode path, and `filter` never appears in a
+// response. Every other coproduct-valued query in this tree folds explicitly -- drive.Permissions
+// passes drive_permission_role_wire, sheets.Spreadsheets passes sheets_value_render_option_wire --
+// and this one now does too.
+//
+// The variants carry an Attempts prefix because bare Latest and All are two of the most collidable
+// names in a tree that resolves bare references. `latest` stays the default because it is the
+// upstream's, and it is the right answer for a caller asking what the current state is; a census of
+// consumed capacity wants AttemptsAll, because a re-run mutates a job's record in place and the
+// attempts `latest` drops are execution that really happened and really occupied a runner.
 type WorkflowJobAttemptFilter
   = AttemptsLatest
   | AttemptsAll
+
+fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
+  match f {
+    AttemptsLatest => "latest"
+    AttemptsAll => "all"
+  }
+}
 
 // A THIRD FIELD WAS DELETED HERE AND STAYS DELETED, and this annotation is the second attempt to
 // settle it. An earlier lane added runner_name because the vendor machine name is corroborating --
@@ -416,7 +427,7 @@ service github.WorkflowRuns {
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/jobs",
-      query: { per_page: per_page, filter: attempt_filter }
+      query: { per_page: per_page, filter: workflow_job_attempt_filter_wire(f: attempt_filter) }
     }
     response {
       200 => WorkflowJobRunList

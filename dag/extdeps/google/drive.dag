@@ -214,15 +214,30 @@ type DrivePermissionList {
   nextPageToken: String?
 }
 
-// appProperties is the idempotency carrier, and it is PRIVATE to the calling application, which is
-// why the key may be chosen once and trusted: another app writing the same key cannot collide with
-// ours because it cannot see or set ours. name is deliberately NOT the identity -- a human renaming
-// a sheet in a drive they own would otherwise cause the next converge to create a second one.
+// A FILE PROPERTY IS THE IDEMPOTENCY CARRIER, AND IT DELIBERATELY IS NOT appProperties. An earlier
+// revision used appProperties and said in this very annotation that it is PRIVATE to the calling
+// application -- then built a converge whose create and whose search were always going to run under
+// DIFFERENT OAuth clients: the bootstrap under an operator's Cloud SDK credential, the recurrence
+// under review-sheet-writer@. A property private to the creating app is invisible to the searching
+// app, so the search would have answered SheetAbsent against a file that exists and the converge
+// would have minted a second spreadsheet on its first run as the writer -- the exact duplicate this
+// design exists to make impossible. The live no-op that looked like proof used ONE credential for
+// both halves, so it could not have caught this.
+//
+// `properties` are visible to any application with access to the file, which is what makes the
+// marker survive the credential transition that is the whole point of the writer account. The cost
+// is that another app CAN see and in principle write the same key; the key is namespaced for that
+// reason, and a collision is a refusal here rather than a silent adoption because two files
+// carrying it is SheetDuplicated. Trading app-privacy for identity that outlives a credential is
+// the right trade for a marker whose only job is to be findable again.
+//
+// name is deliberately NOT the identity -- a human renaming a sheet in a drive they own would
+// otherwise cause the next converge to create a second one.
 type DriveFile {
   id: String
   name: String
   mimeType: String
-  appProperties: String?
+  properties: String?
 }
 
 type DriveFileList {
@@ -231,13 +246,13 @@ type DriveFileList {
   nextPageToken: String?
 }
 
-data structural_coverage_gap_drive_file_app_properties: List<CoverageClosureEntry> = [
+data structural_coverage_gap_drive_file_properties: List<CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "DriveFile" },
-      JsonPending { field: "appProperties map<string,string>" }
+      JsonPending { field: "properties map<string,string>" }
     ],
-    trigger: "a consumer needs to READ an appProperties value back rather than filter on it in the query"
+    trigger: "a consumer needs to READ an properties value back rather than filter on it in the query"
   }
 ]
 
@@ -340,17 +355,17 @@ service drive.Permissions {
 //
 // CreateFile IS NOT IDEMPOTENT. Every successful call mints a new file with a new id, and a
 // transport refusal leaves the caller unable to say whether one was minted. The recovery is the
-// app_properties_key supplied before the call: it is written onto the file at creation, so a later
+// marker_property_key supplied before the call: it is written onto the file at creation, so a later
 // ListFiles filtered on that key recovers the exact file a lost answer may have created. A key
 // derived from the RESPONSE would be unrecoverable in precisely the case it is needed.
-// appProperties IS A MAP OF NAME TO VALUE, not a record with key and value fields, and the first
+// properties IS A MAP OF NAME TO VALUE, not a record with key and value fields, and the first
 // live run proved the difference the expensive way: a body of { key: K, value: V } created two
 // properties literally named "key" and "value", so the file existed and no search for a property
 // NAMED K could ever find it. The property name is therefore a literal in the body -- the body
 // builder emits field names as written and cannot take one from a parameter -- and
-// gunbc.review_sheet_drive_converge review_sheet_app_property_key carries the same spelling for
+// gunbc.review_sheet_drive_converge review_sheet_marker_property_key carries the same spelling for
 // consumers. NOTHING PINS THE TWO TO EACH OTHER, and saying so is the point: the claim
-// test.claim.review_sheet_drive_converge_witness app_property_key_matches_the_created_property
+// test.claim.review_sheet_drive_converge_witness marker_property_key_matches_the_created_property
 // joins that declaration to a copy of the string inside the claim, not to the literal in the body
 // below, so editing the body literal alone leaves it green. The honest sibling is the search side,
 // where test.claim.review_sheet_transport_pin_witness search_query_carries_the_declared_property_key
@@ -395,7 +410,7 @@ service drive.Files {
       name: String
       mime_type: String
       parent_id: String
-      app_properties_value: String
+      marker_property_value: String
     }
     output { file_id: String from "id", outcome: RestOutcome }
     transport rest {
@@ -406,7 +421,7 @@ service drive.Files {
         name: name,
         mimeType: mime_type,
         parents: [parent_id],
-        appProperties: { gunbcReviewSheet: app_properties_value }
+        properties: { gunbcReviewSheet: marker_property_value }
       }
     }
     response {
