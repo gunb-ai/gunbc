@@ -275,7 +275,9 @@ test fn fixture_correspondence_does_not_establish_the_published_shards() -> Bool
                     Absent => false
                     Present { value: spec } => (spec.component.decl_name as String) == "deepseek_v4_1_engram_component"
                       && match v41_published_transform_standing() {
-                        V41PublishedTransformUnestablished { obligation: o } => (o as String).contains("published Engram shards")
+                        V41PublishedTransformUnestablished { obligation: o } =>
+                          (o as String).contains("published Engram shards")
+                            && (o as String).contains("have not been acquired")
                         V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
                         V41TransformUnfaithful { defects: _ } => false
                       }
@@ -447,6 +449,7 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
             V41StagingUnestablished { obligation: o } =>
               (o as String).contains("do not launch")
                 && (o as String).contains("v41_stage_rank_stores")
+                && (o as String).contains("acquisition")
                 && (o as String).contains("candidate_component_budget")
                 && (o as String).contains("engram_pool_relief")
                 && declaration_ref_eq(a: v41_engram_goes_to_disk_because(), b: id_component_budget_authority)
