@@ -7,7 +7,6 @@ import std.measure {
 }
 import extdeps.wiwynn.sv328r.subject { wiwynn_sv328r_product }
 import extdeps.wiwynn.sv328r.specifications {
-  OcpNic30SffSlotPresent,
   sv328r_bmc_manageability_network,
   sv328r_cooling,
   sv328r_crps_ac_inlet,
@@ -15,13 +14,15 @@ import extdeps.wiwynn.sv328r.specifications {
   sv328r_dimensions,
   sv328r_memory,
   sv328r_ocp_slot,
+  sv328r_ocp_slot_occupancy,
   sv328r_power,
   sv328r_processors,
   sv328r_stated_weight,
   sv328r_storage,
   sv328r_weight_grams,
 }
-import extdeps.standards.nic_attachment { OnboardControllerUnstated, NamedOnboardController }
+import extdeps.standards.nic_attachment { OnboardControllerUnstated, NamedOnboardController, OcpNic3 }
+import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -85,7 +86,14 @@ test fn w_storage_and_ocp_slot_match_the_sheet() -> Bool {
   sv328r_storage.front_u2_bays == 24
     && sv328r_storage.onboard_m2_nvme_slots == 2
     && match sv328r_ocp_slot {
-      OcpNic30SffSlotPresent { occupancy_note: n } =>
-        string_contains(s: n as String, pattern: "per-unit observation")
+      OcpNic3 { physical_variant } => match physical_variant {
+        Sff => true
+        Lff => false
+      }
+      _ => false
+    }
+    && match sv328r_ocp_slot_occupancy {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
     }
 }

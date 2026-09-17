@@ -416,7 +416,7 @@ data mt_jade_fan_connectors_1u: MtJadeFanConnectorPopulation = MtJadeFanConnecto
 // redundancy and does not name IEC 60320 sheet, AC voltage range, or a wattage rating of any
 // fitted module. Inventing C14 vs C20 from "CRPS" would be a fabricated inlet.
 type MtJadeCrpsPower {
-  psu_count: Int
+  psu_count: Nat
   redundancy_label: NonEmptyStr
   hot_plug: Bool
 }

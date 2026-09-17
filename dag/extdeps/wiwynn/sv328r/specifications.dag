@@ -9,7 +9,8 @@ import std.measure {
   millimeter, rack_unit,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
-import extdeps.standards.nic_attachment { OnboardControllerUnstated, OnboardNetworkController }
+import extdeps.standards.nic_attachment { NicAttachmentClass, OcpNic3, OnboardControllerUnstated, OnboardNetworkController }
+import extdeps.standards.ocp_nic_3_0 { Sff }
 import extdeps.wiwynn.sv328r.subject {
   WiwynnSv328rProduct, sv328r_datasheet_authority, wiwynn_sv328r_product,
 }
@@ -114,11 +115,12 @@ data sv328r_storage: Sv328rStorageBays = Sv328rStorageBays {
   onboard_m2_nvme_slots: 2,
 }
 
-type Sv328rOcpSlotStanding
-  = OcpNic30SffSlotPresent { occupancy_note: NonEmptyStr }
+// Datasheet: One PCI-E 4.0 x16 OCP NIC 3.0 (small form factor). Occupancy of that
+// slot, or of a PCIe riser NIC, is a per-unit observation, not a class fact.
+data sv328r_ocp_slot: NicAttachmentClass = OcpNic3 { physical_variant: Sff }
 
-data sv328r_ocp_slot: Sv328rOcpSlotStanding = OcpNic30SffSlotPresent {
-  occupancy_note: "Datasheet states One PCI-E 4.0 x16 OCP NIC 3.0 (small form factor). It does not state a bundled card. Occupancy of that slot, or of a PCIe riser NIC, is a per-unit observation.",
+data sv328r_ocp_slot_occupancy: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "The SV328R datasheet names an OCP NIC 3.0 SFF slot and does not name a bundled card. Discriminator: a photograph, FRU, or lspci census of a unit of this class.",
 }
 
 data sv328r_specifications_model_scope: ExternalModelScope = ExternalModelScope {
