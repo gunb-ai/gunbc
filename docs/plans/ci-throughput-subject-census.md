@@ -1,4 +1,4 @@
-# CI throughput subject — a census of the current tree
+# CI throughput comparability — a whole-path census of the current tree
 
 Stage 3 of [throughput-qualified convergence](throughput-qualified-convergence-design.md), which named
 the CI side a frontier rather than a bound subject and required its census to read the CURRENT tree.
@@ -71,12 +71,26 @@ later than `created_at` to prove execution began; `gunbc.pr_base_freshness` asks
 landed after a run started. Neither subtracts. No fold in the tree derives a duration, a queue delay
 or a rate from a pair of these timestamps.
 
-Two consequences. The first is that a CI rate does not need a new observation substrate, only a fold
-over one that exists — a materially smaller job than this census first implied. The second is more
-interesting: because the substrate is a census of REAL production jobs, some CI rate questions can be
-answered without a synthetic probe at all, as a reading over observed work carrying
-`WindowSharedWithDeclaredTraffic` rather than an isolated window. That is a weaker standing and a much
-cheaper one, and for a trend it may be the right instrument.
+**And the sentence above was itself wrong when first written, which is the correction worth reading.**
+A revision of this census asserted that "neither subtracts; no fold in the tree derives a duration, a
+queue delay or a rate". That is false. `gunbc.superseded_run_starvation_census` declares
+`timestamp_diff_seconds(end, start) -> DurationComputed { duration_seconds: Second }` and uses it for
+dead time under hold and for group hold after jobs — real timestamp arithmetic into a typed
+`std.measure` quantity, over live workflow-run and job API calls with paging and terminal
+classification. It is an executing precedent for acquisition and interval derivation, not a declared
+shape. The claim was over-stated from an incomplete grep and asserted as established, which is the
+§4d failure of asserting as deduced what was only inferred.
+
+The surviving claim is narrower and is the one that matters: **no fold derives an aggregate RATE** —
+completed homogeneous work per unit time, bound to an admitted subject, a declared protocol and an
+observed realization. Durations exist; a rate does not.
+
+Two consequences. A CI rate needs a fold over a substrate that exists, with an interval precedent
+already executing — a materially smaller job than this census first implied. And because that
+substrate is a census of REAL production jobs, some CI rate questions can be answered without a
+synthetic probe at all, as a reading over observed work carrying `WindowSharedWithDeclaredTraffic`
+rather than an isolated window: a weaker standing, much cheaper, and for a trend possibly the right
+instrument.
 
 What remains genuinely absent is the **join from an attempt to the exact Work identity and source tree
 it built**. A rate needs an operation ledger over homogeneous work (a one-minute no-op and a
@@ -87,6 +101,59 @@ establish what was compiled. That, not the timestamps, is the precondition still
 **4. Host class is implied by module paths rather than carried.** Mt Collins facts live in extdeps
 briefs and the runner modules observe individual hosts; nothing names "this host belongs to class C"
 in a way a measurement could cite.
+
+## Corrections after review (2026-09-17)
+
+**The census searched the wrong closure.** It read the 76 modules under `dag/gunbc/runner/` and drew a
+conclusion about CI, while the measurement substrate lives largely outside that subtree:
+`extdeps.github.workflow_runs::WorkflowJobRun` (exact run attempt, status, conclusion, observed runner
+labels, three timestamps, with exact-attempt and latest-attempt listings),
+`gunbc.public_workload_census::ObservedExecution` (which joins a job to repository, workflow path,
+workflow-blob SHA at the observed head, head SHA and an observed correctness standing — much closer to
+a homogeneous operation ledger than this census allowed), and
+`gunbc.superseded_run_starvation_census` (live API acquisition plus the interval derivation above). A
+subtree is not a closure, and "I searched `runner/`" does not ground a claim about CI.
+
+**A second run-record authority already exists.** `extdeps.github.actions_runs` is another
+workflow-runs projection with run timestamps and a `gh run list` transport, and `workflow_runs`
+already names the pair as a meaning fork awaiting consolidation. A CI probe must CHOOSE or consolidate
+that authority; introducing a third run record would make the fork three-way (§3).
+
+**The axis table conflates three layers.** Its test — does changing this make a prior rate
+inapplicable — identifies a comparability dimension but does not decide where the dimension lives, and
+the parent design already partitions subject / protocol / realization / window. Putting exact Work in
+the subject makes the runner a new subject every commit; putting cache POPULATION in the subject makes
+it change on every fill or eviction. Both are comparability facts and neither is stable configuration.
+
+| dimension | layer |
+|---|---|
+| host hardware class; configured slot width and resource envelope | subject |
+| runner agent, guest environment, toolchain identities | subject |
+| cache implementation, namespace/topology, configured policy | subject |
+| exact Work, source tree, workflow definition | protocol (operation identity) |
+| offered concurrency, stopping rule, required warm/cold condition | protocol |
+| exact cache population encountered; exact host, VM, runner and attempt population | realization |
+| ambient or foreign work during the window | window/isolation standing |
+
+So the cache finding splits three ways rather than being one missing axis: topology and policy are
+subject, the required condition is protocol, the observed hit state is realization.
+
+**The Work-identity gap is narrower than stated, and the repair is different.**
+`gunbc.runner_attempt_launch::plan_attempt_launch` already RECEIVES exact Work, Demand and Offer
+identities and calls `grant_authorizes_reservation` before planning the VM — so Work identity reaches
+the launch planner. The loss is downstream: `LaunchAuthorized` retains the coarse `GrantAuthorization`
+verdict and not the admitted identities, so later receipts cannot rejoin the attempt to the exact Work.
+The missing piece is a BRIDGE — admitted fabric Work identity → launched microVM attempt → observed
+`WorkflowJobRun` and terminal receipt — and the repair carries the existing admitted identity forward
+rather than coining a second CI-work identity.
+
+**Two "existing axes" are locators, not execution identities.** `RunnerGuestImage` carries
+distribution, release series, architecture and actions-runner release; none of that content-identifies
+the guest rootfs bytes, whatever its own comment calls itself. The launch planner likewise takes
+`firecracker_binary`, `kernel_source` and `rootfs_source` as paths, and one path can name different
+bytes across hosts or across time. So exact rootfs content identity, exact kernel content identity,
+Firecracker/jailer release identity, and a host execution class covering host kernel, CPU class/policy
+and storage realization are all REMAINING GAPS, not settled axes.
 
 ## What this census does NOT do
 
