@@ -1,6 +1,7 @@
 module gunbc.review_sheet_values_actuator
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
+import v2.std.algebra { fold_list }
 import std.resources { Network }
 import extdeps.transports.rest {
   RestReadExchange,
@@ -109,8 +110,36 @@ fn cells_carry_separator(rows: List<List<String>>) -> Bool {
         || string_contains(s: cell, pattern: rows_record_separator)))
 }
 
+// SHEETS DOES NOT STORE TRAILING BLANKS, and the first live write is what established it: 58 rows
+// went out at 17 cells each and came back at 15 or 17, the 15s being exactly the rows whose
+// Decision and Note are empty. The readback is therefore semantically identical and structurally
+// shorter, and a literal comparison reports a difference the sheet does not have -- which would
+// rewrite an identical sheet on every run, forever. Both sides are trimmed to their last non-empty
+// cell before comparison, which is the normalisation the API performs rather than a tolerance
+// invented to make a test pass: a cell that is empty in the middle of a row still compares.
 fn rows_fingerprint(rows: List<List<String>>) -> String {
-  join(map(rows, row => join(row, rows_field_separator)), rows_record_separator)
+  join(map(rows, row => join(trailing_trimmed(row: row), rows_field_separator)), rows_record_separator)
+}
+
+type TrimScan {
+  seen: Int
+  keep: Int
+}
+
+fn trailing_trimmed(row: List<String>) -> List<String> {
+  take(row, n: last_non_empty_count(row: row))
+}
+
+fn last_non_empty_count(row: List<String>) -> Int {
+  fold_list(row, TrimScan { seen: 0, keep: 0 }, (acc, cell) => trim_scan_step(acc: acc, cell: cell)).keep
+}
+
+fn trim_scan_step(acc: TrimScan, cell: String) -> TrimScan {
+  if cell == "" {
+    TrimScan { seen: acc.seen + 1, keep: acc.keep }
+  } else {
+    TrimScan { seen: acc.seen + 1, keep: acc.seen + 1 }
+  }
 }
 
 type RowsComparison
