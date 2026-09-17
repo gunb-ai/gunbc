@@ -15,7 +15,7 @@ import gunbc.secret_provision_actuator {
   observe_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused,
   create_secret_for_attempt, SecretCreatedForAttempt, SecretCreationRefused, SecretCreationOutcomeUnknown,
   ObservedSecretContainer, version_add_capability_for_observed_container, add_initial_version,
-  VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown, VersionAddedButUnverified,
+  VersionAdditionOutcome, VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown, VersionAddedButUnverified,
   snapshot_minted_secret, CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
   verified_version, verified_snapshot_identity,
 }
@@ -79,12 +79,18 @@ type KeyProvisionStanding
   = KeyAlreadyEnabled { secret_id: NonEmptyStr, version: NonEmptyStr }
   | KeyVersionAdded { secret_id: NonEmptyStr, version: NonEmptyStr, digest_prefix: String }
   | KeyProvisionRefused { secret_id: NonEmptyStr, cause: NonEmptyStr }
+  | KeyProvisionOutcomeUnknown { secret_id: NonEmptyStr, cause: NonEmptyStr }
 
+// REFUSED AND UNKNOWN ARE DIFFERENT FACTS ON A MINT PATH: refused means the store answered and
+// nothing changed; unknown means a create or add-version mutation may have landed without an
+// answer, so a container or version may now exist under this attempt's custody. The next run's
+// observation is the only thing that settles it, and the operator reads which of the two they are in.
 fn standing_line(s: KeyProvisionStanding) -> String {
   match s {
     KeyAlreadyEnabled { secret_id: id, version: v } => join(["secret=", id as String, " standing=already-enabled version=", v as String], "")
     KeyVersionAdded { secret_id: id, version: v, digest_prefix: d } => join(["secret=", id as String, " standing=version-added version=", v as String, " sha256_prefix=", d], "")
     KeyProvisionRefused { secret_id: id, cause: c } => join(["secret=", id as String, " standing=REFUSED cause=", c as String], "")
+    KeyProvisionOutcomeUnknown { secret_id: id, cause: c } => join(["secret=", id as String, " standing=OUTCOME-UNKNOWN cause=", c as String], "")
   }
 }
 
@@ -93,6 +99,7 @@ fn standing_ok(s: KeyProvisionStanding) -> Bool {
     KeyAlreadyEnabled { secret_id: _, version: _ } => true
     KeyVersionAdded { secret_id: _, version: _, digest_prefix: _ } => true
     KeyProvisionRefused { secret_id: _, cause: _ } => false
+    KeyProvisionOutcomeUnknown { secret_id: _, cause: _ } => false
   }
 }
 
@@ -128,6 +135,16 @@ fn pinned_version_standing(ref: SecretRef, token: Secret) -> PinnedVersionStandi
   }
 }
 
+fn standing_of_addition(secret_id: NonEmptyStr, added: VersionAdditionOutcome) -> KeyProvisionStanding {
+  match added {
+    VersionAddedAndVerified { verified: v } =>
+      KeyVersionAdded { secret_id: secret_id, version: verified_version(v), digest_prefix: (verified_snapshot_identity(v).hex as String).substring(start: 0, end: 12) }
+    VersionAdditionRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
+    VersionAdditionOutcomeUnknown { cause: c } => KeyProvisionOutcomeUnknown { secret_id: secret_id, cause: c }
+    VersionAddedButUnverified { version: _, cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: concat("added but unverified: ", c as String) as NonEmptyStr }
+  }
+}
+
 // MINT, SNAPSHOT, ADD, VERIFY -- for a container that exists and holds no enabled version, or one
 // this run just created.
 fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?, token: Secret) -> KeyProvisionStanding
@@ -140,28 +157,18 @@ fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?
       CredentialSnapshotRefusedResidueRemains { workspace: w, cause: c } =>
         KeyProvisionRefused { secret_id: secret_id, cause: concat(c as String, concat(" (residue remains at ", concat(w as String, ")"))) as NonEmptyStr }
       CredentialSnapshotTaken { snapshot: snap } => {
-        let outcome = match container {
+        match container {
           Absent =>
             match create_secret_for_attempt(attempt: approval_mac_key_provision_attempt, project: fleet_secrets_gcp_project, secret_id: secret_id, snapshot: snap, token: token) {
-              SecretCreatedForAttempt { capability: cap } => Present { value: add_initial_version(capability: cap, token: token) }
-              SecretCreationRefused { cause: _ } => none
-              SecretCreationOutcomeUnknown { cause: _ } => none
+              SecretCreatedForAttempt { capability: cap } => standing_of_addition(secret_id: secret_id, added: add_initial_version(capability: cap, token: token))
+              SecretCreationRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
+              SecretCreationOutcomeUnknown { cause: c } => KeyProvisionOutcomeUnknown { secret_id: secret_id, cause: c }
             }
           Present { value: c } =>
-            Present { value: add_initial_version(
+            standing_of_addition(secret_id: secret_id, added: add_initial_version(
               capability: version_add_capability_for_observed_container(container: c, attempt: approval_mac_key_provision_attempt, snapshot: snap),
               token: token,
-            ) }
-        }
-        match outcome {
-          Absent => KeyProvisionRefused { secret_id: secret_id, cause: "the container could not be created for this attempt" }
-          Present { value: added } => match added {
-            VersionAddedAndVerified { verified: v } =>
-              KeyVersionAdded { secret_id: secret_id, version: verified_version(v), digest_prefix: (verified_snapshot_identity(v).hex as String).substring(start: 0, end: 12) }
-            VersionAdditionRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
-            VersionAdditionOutcomeUnknown { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
-            VersionAddedButUnverified { version: _, cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: concat("added but unverified: ", c as String) as NonEmptyStr }
-          }
+            ))
         }
       }
     }

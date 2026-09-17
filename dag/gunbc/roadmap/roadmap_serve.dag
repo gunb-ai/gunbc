@@ -3,7 +3,7 @@ module gunbc.roadmap_serve
 import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_request_submission {
-  submit_parsed_submission, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status_text,
+  submit_parsed_submission, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status,
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
   SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionCapabilityKeyUnavailable,
@@ -663,11 +663,8 @@ fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
 // non-empty segment and empties never match), so this handler is only ever entered with an id and
 // carries no guard for the state the router already makes unreachable (review 67057).
 fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse {
-  serve_text_response(
-    status: 200,
-    content_type: text_plain_utf8,
-    body: escalation_status_text(root: approval_decision_store_root, escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr),
-  )
+  let standing = escalation_status(root: approval_decision_store_root, escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr)
+  serve_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body)
 }
 
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {

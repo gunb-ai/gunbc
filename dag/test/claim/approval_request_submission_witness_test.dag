@@ -6,14 +6,14 @@ import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex, MacVerified, mac_verify }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_decision_store {
-  ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, StoredApprovalRequest, stored_request_json, claims_for,
-  approval_mac_key_id, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed,
+  ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, StoredApprovalRequest, stored_request_json, claims_for,
+  approval_mac_key_id, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, EscalationUnreadable,
 }
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id,
   sign_submission, submission_envelope_json, parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
-  admit_approval_submission, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
-  issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status_text,
+  admit_parsed_submission, SubmissionVerdict, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
+  issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status, escalation_status_of,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -70,14 +70,23 @@ test fn a_non_canonical_record_is_refused_before_it_is_verified() -> Bool {
     && match parse_submission_envelope(text: "nope") { SubmissionEnvelopeUnreadable { detail: _ } => true  _ => false }
 }
 
+// THE ROUTE THE SERVER RUNS, composed the way gunbc.roadmap_serve composes it: parse, then admit
+// the parsed envelope. A wrapper doing this in the production module had no production caller.
+fn admit(text: String, keyring: ApprovalKeyringRead) -> SubmissionVerdict {
+  match parse_submission_envelope(text: text) {
+    SubmissionEnvelopeUnreadable { detail: d } => SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: d } }
+    SubmissionEnvelopeParsed { tag_hex: tag, request: r } => admit_parsed_submission(tag_hex: tag, request: r, keyring: keyring)
+  }
+}
+
 // ── admission: the submission key IS enrolment ─────────────────────────────────────────────────
 
 test fn a_correctly_signed_submission_is_admitted_and_a_wrong_key_is_not_enrolled() -> Bool {
   let other = MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: capability_key_hex as Secret }
-  match admit_approval_submission(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionVerified { request: r } => r.escalation_id == "esc-mtc1-boot-1"  _ => false }
-    && match admit_approval_submission(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: other }) { SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true  _ => false }
-    && match admit_approval_submission(text: signed_envelope(), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-submission-mac-key" } }) { SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: _ } } => true  _ => false }
-    && match admit_approval_submission(text: "garbage", keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: _ } } => true  _ => false }
+  match admit(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionVerified { request: r } => r.escalation_id == "esc-mtc1-boot-1"  _ => false }
+    && match admit(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: other }) { SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true  _ => false }
+    && match admit(text: signed_envelope(), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-submission-mac-key" } }) { SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: _ } } => true  _ => false }
+    && match admit(text: "garbage", keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: _ } } => true  _ => false }
 }
 
 // THE CAPABILITY KEY MUST NOT FILE: a runner holding only the key that mints consent is exactly
@@ -85,7 +94,7 @@ test fn a_correctly_signed_submission_is_admitted_and_a_wrong_key_is_not_enrolle
 test fn the_capability_key_cannot_file_a_request() -> Bool {
   match sign_submission(key: capability_key(), request: request()) {
     MacSigned { tag: t } =>
-      match admit_approval_submission(text: submission_envelope_json(request: request(), tag_hex: t.hex), keyring: ApprovalKeyLoaded { key: submission_key() }) {
+      match admit(text: submission_envelope_json(request: request(), tag_hex: t.hex), keyring: ApprovalKeyLoaded { key: submission_key() }) {
         SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true
         _ => false
       }
@@ -148,6 +157,9 @@ test fn a_non_hex_capability_key_issues_no_link() -> Bool {
 // the not-filed standing is the filesystem's absence, read through the CAS probe, never inferred
 // from empty content. The pending and decided renderings are covered by the live probe over a real
 // store; this is the one arm the hermetic frame can reach.
-test fn status_text_reports_not_filed_for_an_absent_slot() -> Bool {
-  escalation_status_text(root: "dag/test/claim", escalation_id: "esc-no-such-escalation") == "standing=not-filed\n"
+test fn status_text_reports_not_filed_for_an_absent_slot_and_unreadable_off_the_success_channel() -> Bool {
+  let absent = escalation_status(root: "dag/test/claim", escalation_id: "esc-no-such-escalation")
+  let unreadable = escalation_status_of(slot: EscalationUnreadable { detail: "gen1 record is not a request" })
+  absent.status == 200 && absent.body == "standing=not-filed\n"
+    && unreadable.status == 503 && contains(unreadable.body, "standing=unreadable")
 }
