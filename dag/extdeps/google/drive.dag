@@ -89,11 +89,25 @@ data drive_serviceusage_api_id: NonEmptyStr = "drive.googleapis.com"
 // is read by extract_string_value, which pulls a string LITERAL out of the node rather than
 // evaluating an expression, so a reference to this declaration resolves to nothing and the
 // transport reports AuthDeclaredButUnwired with the variable "absent". github.Workflows spells
-// GITHUB_TOKEN as a literal for the same reason. This row is the name consumers read, the literal
-// above is the name the transport reads, and
-// test.claim.review_sheet_drive_converge_witness drive_token_env_matches_the_configured_literal
-// is what stops the two drifting apart -- a duplication that cannot silently diverge, since the
-// alternative is a config the parser cannot see.
+// GITHUB_TOKEN as a literal for the same reason. This row is the name consumers read and the
+// literal above is the name the transport reads.
+//
+// WHAT PINS THEM IS WEAKER THAN THIS ANNOTATION ONCE CLAIMED, and the correction matters because
+// the overclaim was being cited as coverage in three places. drive_token_env_matches_the_configured_literal
+// compares THIS ROW to a third copy of the string written inside the claim. It cannot read the
+// auth_source literal in the config below -- no claim in this corpus can, because the config is a
+// declaration the parser consumes rather than a value any fold can reach. So editing the transport
+// literal ALONE, which is precisely the drift described, leaves the claim green. What the claim
+// really establishes is that this row did not move without the claim moving with it, which is worth
+// keeping and is not the wall that was advertised. DESIGN section 4b is the rule that was broken:
+// a check cited as coverage for a red it cannot produce is worse than an absent one.
+//
+// THE REAL WALL IS CONSTRUCTION AND IT IS A LANGUAGE-LAYER FIX. The duplicate exists only because
+// extract_string_value pulls a literal out of the node instead of evaluating a reference; a config
+// parse that resolved a declaration reference would make the second spelling UNWRITABLE rather than
+// merely watched, which is DESIGN section 5's preference for making a state unwritable over
+// checking for it afterwards. That capability is the next-rung trigger for this class, rostered as
+// gunbc.recurring_failure_mode a_pin_claim_compares_two_copies_while_a_third_drifts.
 data drive_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"
 
 data drive_full_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/drive"

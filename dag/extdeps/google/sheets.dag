@@ -83,8 +83,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // arguments only as argv, and on this fleet an argv word is readable by any job payload a pull
 // request can influence. One variable serves both services because it is one operator credential
 // for one converge; splitting it would mean two secrets with the same blast radius and one more
-// thing to rotate. The literal is repeated here because the config parse extracts a literal --
-// test.claim.review_sheet_transport_pin_witness sheets_token_env_matches_the_configured_literal pins it.
+// thing to rotate. The literal is repeated here because the config parse extracts a literal. What
+// test.claim.review_sheet_transport_pin_witness sheets_token_env_matches_the_configured_literal
+// pins is THIS ROW against a third copy inside the claim, not the auth_source literal in the config
+// below, which no fold can read -- so the claim cannot go red for a drift confined to the transport
+// spelling. The sibling claim drive_and_sheets_read_one_credential is the stronger of the two,
+// because it compares two DECLARATIONS with no third copy between them. See the matching note in
+// extdeps.google.drive for the construction fix that would make the duplicate unwritable.
 data sheets_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"
 
 data sheets_api_version: NonEmptyStr = "v4"
