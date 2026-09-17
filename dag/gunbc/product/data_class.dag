@@ -254,7 +254,7 @@ type DataHandlingMap sole_constructor {
 fn data_handling_map(authority: DeclarationRef, rows: List<DataHandlingRow>) -> DataHandlingMap
   admit_callers: [
     decl_ref(module_path: "strategy.data_map", decl_name: "data_handling_map_rows"),
-    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "fx_map"),
+    decl_ref(module_path: "test.fixture.data_handling_map_fixture", decl_name: "fx_map"),
   ]
   = DataHandlingMap { authority: authority, rows: rows }
 

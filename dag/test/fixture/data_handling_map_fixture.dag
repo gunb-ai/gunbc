@@ -1,0 +1,22 @@
+module test.fixture.data_handling_map_fixture
+
+import std.types { List }
+import std.decl_ref { decl_ref }
+import product.data_class { DataHandlingRow, DataHandlingMap, data_handling_map }
+
+// The admission witness's sealed fixture builder, held in an ordinary fixture module rather than in
+// the witness module itself: test.probe.self_authored_map_probe reaches for it to show that an
+// unadmitted caller refuses (ConstructorCallAdmissionRefused), and a probe may not import a test
+// module. Its admit_callers list still names only the witness's own fixtures and tests, and the
+// authority it stamps is unchanged.
+fn fx_map(rows: List<DataHandlingRow>) -> DataHandlingMap
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "fx_admitting_map"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_category_with_rows_for_another_sink_only_is_refused_at_the_sink"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_durable_row_on_another_route_is_refused_at_the_route"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_map_is_read"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "admitted_permit_for"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "the_standard_claims_survive_classification_intact"),
+  ]
+  = data_handling_map(authority: decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "fixture_map"), rows: rows)
+

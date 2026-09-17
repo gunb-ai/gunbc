@@ -20,7 +20,7 @@ import product.data_class {
   admit_data_effect, durable_origin_sink, personal_identity_category, data_handling_map, public_fabric_posture,
 }
 import gunbc.principal_projection { oidc_projection }
-import test.claim.fabric.data_class_admission_witness_test { fx_map }
+import test.fixture.data_handling_map_fixture { fx_map }
 
 fn claims() -> OidcIdTokenClaims {
   OidcIdTokenClaims {
