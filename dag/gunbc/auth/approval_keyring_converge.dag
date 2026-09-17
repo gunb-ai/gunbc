@@ -2,26 +2,21 @@ module gunbc.auth.approval_keyring_converge
 
 import std.types { Bool, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+import gunbc.secret_provision { secret_ref_pin_version }
 import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref, approval_mac_key_path }
+import gunbc.auth.approval_request_submission {
+  approval_submission_mac_key_path,
+  approval_submission_mac_key_secret_ref,
+}
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 
 data approval_keyring_config_dir: NonEmptyStr = "/etc/gunbc-roadmap"
 
-data approval_submission_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-submission-mac-key"
-
 data approval_submission_mac_key_path_env: NonEmptyStr = "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE"
 
-data approval_ntfy_publisher_token_path: NonEmptyStr = "/etc/gunbc-ntfy/publisher-token"
-
 data approval_mac_key_payload_sha256_prefix: NonEmptyStr = "113a3274bd95"
-
-data approval_submission_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
-  ref: fleet_secret_ref(secret_id: "approval-submission-mac-key"),
-  version: "1",
-)
 
 data approval_keyring_file_mode: NonEmptyStr = "0640"
 
@@ -34,7 +29,10 @@ fn approval_capability_mac_access_url() -> String {
 }
 
 fn approval_submission_mac_access_url() -> String {
-  secret_ref_access_url(ref: approval_submission_mac_key_secret_ref)
+  secret_ref_access_url(ref: secret_ref_pin_version(
+    ref: approval_submission_mac_key_secret_ref,
+    version: "1",
+  ))
 }
 
 type KeyringSha256Compare

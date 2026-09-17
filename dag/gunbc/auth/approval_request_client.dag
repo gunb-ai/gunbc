@@ -1,23 +1,19 @@
 module gunbc.auth.approval_request_client
 
-import std.types { NonEmptyStr, String, Timestamp, Secret }
+import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.scoped_authorization { AuthorizationRequest }
 import extdeps.crypto.mac {
-  MacKey, MacSigned, MacKeyMaterialNotHex, mac_sign, HmacSha256, MacKeyId,
-}
-import extdeps.languages.json.emit { JsonString, json_string, serialize_json }
-import extdeps.languages.json.parse {
-  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
-  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  MacKey, MacSigned, MacKeyMaterialNotHex, HmacSha256, MacKeyId,
 }
 import gunbc.auth.approval_decision_store {
-  StoredApprovalRequest, stored_request_json, request_revision_of, approval_mac_key_id,
+  StoredApprovalRequest, request_revision_of, approval_mac_key_id,
+}
+import gunbc.auth.approval_request_submission {
+  approval_submission_mac_key_id, sign_submission,
 }
 import gunbc.fleet_posix_accounts { fleet_operator_email }
 
 data approval_request_submit_path: NonEmptyStr = "/approvals"
-
-data approval_submission_mac_key_id: MacKeyId = "approval-submission-mac-key/1" as MacKeyId
 
 data approval_loopback_origin: NonEmptyStr = "http://127.0.0.1:8080"
 
@@ -57,27 +53,43 @@ fn sign_stored_request(key_material: String, request: StoredApprovalRequest) -> 
     suite: HmacSha256,
     material: key_material as Secret,
   }
-  match mac_sign(key: key, message: stored_request_json(r: request) as NonEmptyStr) {
+  match sign_submission(key: key, request: request) {
     MacKeyMaterialNotHex { key_id: k } => SubmissionMacKeyNotHex { key_id: k }
     MacSigned { tag: t } => SubmissionMacReady { tag_hex: t.hex }
   }
 }
 
-fn approval_submit_body_json(tag_hex: NonEmptyStr, request: StoredApprovalRequest) -> String {
-  join([
-    "{\"tag\":",
-    serialize_json(v: json_string(s: tag_hex as String)),
-    ",\"request\":",
-    stored_request_json(r: request),
-    "}",
-  ], "")
+fn kv_line_value(body: String, key: String) -> String {
+  let prefix = concat(key, "=")
+  fold(body.split(delimiter: "\n"), init: "", f: (acc, line) =>
+    if starts_with(s: line, prefix: prefix) {
+      substring(s: line, start: prefix.length(), end: line.length())
+    } else {
+      acc
+    }
+  )
+}
+
+fn kv_nonempty(body: String, key: String, fallback: NonEmptyStr) -> NonEmptyStr {
+  let v = kv_line_value(body: body, key: key)
+  if v == "" { fallback } else { v as NonEmptyStr }
 }
 
 type FiledApprovalStatus
   = StatusNotFiled
-  | StatusPending
-  | StatusApproved { decided_by: NonEmptyStr, decided_at: Timestamp }
-  | StatusDenied { decided_by: NonEmptyStr, decided_at: Timestamp }
+  | StatusPending { expires_at: Timestamp }
+  | StatusApproved {
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      execute_by: Timestamp
+    }
+  | StatusDenied {
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      reason: NonEmptyStr
+    }
   | StatusUnreadable { detail: NonEmptyStr }
 
 type ApprovalPollStanding
@@ -95,53 +107,54 @@ fn approval_poll_standing(
 ) -> ApprovalPollStanding {
   if observed_at > expires_at {
     match status {
-      StatusApproved { decided_by: _, decided_at: _ } => PollApproved
-      StatusDenied { decided_by: _, decided_at: _ } => PollDenied
+      StatusApproved { revision: _, decided_by: _, decided_at: _, execute_by: _ } => PollApproved
+      StatusDenied { revision: _, decided_by: _, decided_at: _, reason: _ } => PollDenied
       _ => PollExpired
     }
   } else {
     match status {
       StatusNotFiled => PollNotFiled
-      StatusPending => PollStillPending
-      StatusApproved { decided_by: _, decided_at: _ } => PollApproved
-      StatusDenied { decided_by: _, decided_at: _ } => PollDenied
+      StatusPending { expires_at: _ } => PollStillPending
+      StatusApproved { revision: _, decided_by: _, decided_at: _, execute_by: _ } => PollApproved
+      StatusDenied { revision: _, decided_by: _, decided_at: _, reason: _ } => PollDenied
       StatusUnreadable { detail: d } => PollUnreadable { detail: d }
     }
   }
 }
 
-fn status_from_state_word(word: String, decided_by: NonEmptyStr, decided_at: Timestamp) -> FiledApprovalStatus {
-  if word == "not-filed" {
+fn parse_filed_approval_status(body: String) -> FiledApprovalStatus {
+  let standing = kv_line_value(body: body, key: "standing")
+  if standing == "not-filed" {
     StatusNotFiled
-  } else if word == "pending" {
-    StatusPending
-  } else if word == "approved" {
-    StatusApproved { decided_by: decided_by, decided_at: decided_at }
-  } else if word == "denied" {
-    StatusDenied { decided_by: decided_by, decided_at: decided_at }
+  } else if standing == "pending" {
+    StatusPending { expires_at: kv_line_value(body: body, key: "expires_at") as Timestamp }
+  } else if standing == "approved" {
+    StatusApproved {
+      revision: kv_nonempty(body: body, key: "revision", fallback: "unspecified" as NonEmptyStr),
+      decided_by: kv_nonempty(body: body, key: "decided_by", fallback: "unspecified" as NonEmptyStr),
+      decided_at: kv_line_value(body: body, key: "decided_at") as Timestamp,
+      execute_by: kv_line_value(body: body, key: "execute_by") as Timestamp,
+    }
+  } else if standing == "denied" {
+    StatusDenied {
+      revision: kv_nonempty(body: body, key: "revision", fallback: "unspecified" as NonEmptyStr),
+      decided_by: kv_nonempty(body: body, key: "decided_by", fallback: "unspecified" as NonEmptyStr),
+      decided_at: kv_line_value(body: body, key: "decided_at") as Timestamp,
+      reason: kv_nonempty(body: body, key: "reason", fallback: "unspecified" as NonEmptyStr),
+    }
+  } else if standing == "unreadable" {
+    StatusUnreadable { detail: kv_nonempty(body: body, key: "detail", fallback: "unreadable standing with no detail" as NonEmptyStr) }
+  } else if standing == "" {
+    StatusUnreadable { detail: "status text has no standing= line" as NonEmptyStr }
   } else {
-    StatusUnreadable { detail: concat("unknown status state: ", word) as NonEmptyStr }
+    StatusUnreadable { detail: concat("unknown standing: ", standing) as NonEmptyStr }
   }
 }
 
-fn parse_filed_approval_status(body: String) -> FiledApprovalStatus {
-  match parse_json_document(s: body) {
-    JsonDocumentUnreadable { gap: g } => StatusUnreadable { detail: json_document_gap_text(gap: g) as NonEmptyStr }
-    JsonDocumentParsed { value: doc } =>
-      match json_object_unique_member(v: doc, key: "state") {
-        JsonMemberDuplicated { count: _ } => StatusUnreadable { detail: "status JSON has a duplicated state member" }
-        JsonMemberNotAnObject => StatusUnreadable { detail: "status JSON is not an object" }
-        JsonMemberAbsent => StatusUnreadable { detail: "status JSON has no state member" }
-        JsonMemberFound { value: st } =>
-          match st {
-            JsonString { value: word } =>
-              status_from_state_word(
-                word: word,
-                decided_by: "unspecified" as NonEmptyStr,
-                decided_at: "" as Timestamp,
-              )
-            _ => StatusUnreadable { detail: "status JSON state is not a string" }
-          }
-      }
-  }
+fn approval_post_already_filed(body: String) -> Bool {
+  string_contains(s: body, pattern: "already filed")
+}
+
+fn approval_post_admits_poll(success: Bool, body: String) -> Bool {
+  success || approval_post_already_filed(body: body)
 }

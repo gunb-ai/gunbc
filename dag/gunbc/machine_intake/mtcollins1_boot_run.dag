@@ -16,11 +16,13 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
   BootGateIntentMismatch, BootGateStoreUnreadable, BootGateAuthorizeRefused,
 }
 import gunbc.auth.approval_request_client {
-  stored_request_from_authorization, sign_stored_request, approval_submit_body_json,
+  stored_request_from_authorization, sign_stored_request,
   approval_submit_url, approval_status_url, parse_filed_approval_status,
-  approval_poll_standing, SubmissionMacReady, SubmissionMacKeyNotHex,
+  approval_poll_standing, approval_post_admits_poll,
+  SubmissionMacReady, SubmissionMacKeyNotHex,
   StatusPending, PollStillPending,
 }
+import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_converge { approval_submission_mac_key_path_env }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff }
@@ -109,7 +111,7 @@ fn mtcollins1_boot_poll_ticks(
   let status = if got.success {
     parse_filed_approval_status(body: got.body)
   } else {
-    StatusPending
+    StatusPending { expires_at: expires_at }
   }
   let standing = approval_poll_standing(status: status, observed_at: observed, expires_at: expires_at)
   match standing {
@@ -170,7 +172,7 @@ fn mtcollins1_boot_wet() -> ProcessExit
         return exit_failure(reason: "mtcollins1 boot: RUNNER_TEMP is unset; cannot write the submit body")
       }
       let body_path = concat(tmp, "/mtcollins1-approval-submit.json")
-      let body = approval_submit_body_json(tag_hex: tag, request: stored)
+      let body = submission_envelope_json(request: stored, tag_hex: tag)
       let written = Filesystem.WriteOwnerOnly(path: body_path, content: body)
       if !written.success {
         return exit_failure(reason: concat("mtcollins1 boot: could not write submit body: ", written.error))
@@ -181,8 +183,8 @@ fn mtcollins1_boot_wet() -> ProcessExit
         max_seconds: "30" as NonEmptyStr,
       )
       let _wiped = Filesystem.Delete(path: body_path)
-      if !posted.success {
-        return exit_failure(reason: concat("mtcollins1 boot: POST /approvals failed; controller untouched; body was: ", posted.body))
+      if !approval_post_admits_poll(success: posted.success, body: posted.body) {
+        return exit_failure(reason: concat("mtcollins1 boot: POST /approvals refused; controller untouched; ", posted.body))
       }
       let gate = mtcollins1_boot_poll_ticks(
         remaining: mtcollins1_boot_poll_tick_budget,

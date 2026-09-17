@@ -1,13 +1,14 @@
 module test.claim.approval_request_client_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, String }
 import gunbc.auth.approval_request_client {
-  approval_submit_url, approval_status_url, approval_submit_body_json,
+  approval_submit_url, approval_status_url,
   parse_filed_approval_status, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
-  approval_poll_standing, PollStillPending, PollApproved, PollDenied, PollExpired, PollNotFiled,
+  approval_poll_standing, approval_post_admits_poll, PollStillPending, PollApproved, PollExpired,
   StoredApprovalRequest,
 }
+import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_decision_store { approval_mac_key_id }
 import std.scoped_authorization { AttemptIdentity }
 
@@ -32,33 +33,61 @@ test fn submit_and_status_urls_are_loopback() -> Bool {
     && approval_status_url(escalation_id: "esc-1") as String == "http://127.0.0.1:8080/approvals/esc-1"
 }
 
-test fn submit_body_nests_the_stored_request_object() -> Bool {
-  let body = approval_submit_body_json(tag_hex: "ab", request: fixture_stored())
+test fn submit_body_nests_the_stored_request_as_a_json_string() -> Bool {
+  let body = submission_envelope_json(request: fixture_stored(), tag_hex: "ab")
   string_contains(s: body, pattern: "\"tag\"")
     && string_contains(s: body, pattern: "\"request\"")
-    && string_contains(s: body, pattern: "\"kind\":\"request\"")
-    && !string_contains(s: body, pattern: "\\\"kind\\\"")
+    && string_contains(s: body, pattern: "\\\"kind\\\"")
+    && !string_contains(s: body, pattern: "\"kind\":\"request\"")
 }
 
 test fn status_words_are_closed() -> Bool {
-  match parse_filed_approval_status(body: "{\"state\":\"pending\"}") { StatusPending => true  _ => false }
-    && match parse_filed_approval_status(body: "{\"state\":\"not-filed\"}") { StatusNotFiled => true  _ => false }
-    && match parse_filed_approval_status(body: "{\"state\":\"approved\"}") { StatusApproved { decided_by: _, decided_at: _ } => true  _ => false }
-    && match parse_filed_approval_status(body: "{\"state\":\"denied\"}") { StatusDenied { decided_by: _, decided_at: _ } => true  _ => false }
-    && match parse_filed_approval_status(body: "{\"state\":\"maybe\"}") { StatusUnreadable { detail: _ } => true  _ => false }
+  match parse_filed_approval_status(body: "standing=pending\nexpires_at=2026-09-16T21:00:00Z\n") {
+    StatusPending { expires_at: e } => e == "2026-09-16T21:00:00Z"
+    _ => false
+  }
+    && match parse_filed_approval_status(body: "standing=not-filed\n") { StatusNotFiled => true  _ => false }
+    && match parse_filed_approval_status(body: "standing=approved\nrevision=r1\ndecided_by=op\ndecided_at=2026-09-16T20:30:00Z\nexecute_by=2026-09-16T21:00:00Z\n") {
+      StatusApproved { revision: r, decided_by: by, decided_at: _, execute_by: _ } => r as String == "r1" && by as String == "op"
+      _ => false
+    }
+    && match parse_filed_approval_status(body: "standing=denied\nrevision=r1\ndecided_by=op\ndecided_at=2026-09-16T20:30:00Z\nreason=no\n") {
+      StatusDenied { revision: _, decided_by: _, decided_at: _, reason: why } => why as String == "no"
+      _ => false
+    }
+    && match parse_filed_approval_status(body: "standing=unreadable\ndetail=corrupt\n") {
+      StatusUnreadable { detail: d } => d as String == "corrupt"
+      _ => false
+    }
+    && match parse_filed_approval_status(body: "standing=maybe\n") { StatusUnreadable { detail: _ } => true  _ => false }
 }
 
 test fn poll_expires_after_expires_at_unless_already_decided() -> Bool {
-  match approval_poll_standing(status: StatusPending, observed_at: "2026-09-16T22:00:00Z", expires_at: "2026-09-16T21:00:00Z") {
+  match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T21:00:00Z" }, observed_at: "2026-09-16T22:00:00Z", expires_at: "2026-09-16T21:00:00Z") {
     PollExpired => true
     _ => false
   }
-    && match approval_poll_standing(status: StatusApproved { decided_by: "x" as NonEmptyStr, decided_at: "2026-09-16T20:30:00Z" }, observed_at: "2026-09-16T22:00:00Z", expires_at: "2026-09-16T21:00:00Z") {
+    && match approval_poll_standing(
+      status: StatusApproved {
+        revision: "r1" as NonEmptyStr,
+        decided_by: "x" as NonEmptyStr,
+        decided_at: "2026-09-16T20:30:00Z",
+        execute_by: "2026-09-16T21:00:00Z",
+      },
+      observed_at: "2026-09-16T22:00:00Z",
+      expires_at: "2026-09-16T21:00:00Z",
+    ) {
       PollApproved => true
       _ => false
     }
-    && match approval_poll_standing(status: StatusPending, observed_at: "2026-09-16T20:30:00Z", expires_at: "2026-09-16T21:00:00Z") {
+    && match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T21:00:00Z" }, observed_at: "2026-09-16T20:30:00Z", expires_at: "2026-09-16T21:00:00Z") {
       PollStillPending => true
       _ => false
     }
+}
+
+test fn post_409_already_filed_is_pollable() -> Bool {
+  approval_post_admits_poll(success: true, body: "approval submission: filed esc-1 and notified (ntfy message m)")
+    && approval_post_admits_poll(success: false, body: "approval submission: escalation esc-1 is already filed")
+    && !approval_post_admits_poll(success: false, body: "approval submission: requester not enrolled: bad tag")
 }
