@@ -853,6 +853,43 @@ fn git_status_porcelain_command(repository_dir: String) -> ArgvCommand {
   argv_command(program: git_binary_name, arguments: git_status_porcelain_args(repository_dir: repository_dir))
 }
 
+// APPLY IS AN UPSTREAM OPERATION, not a shell script. `git apply --check` / `--reverse --check`
+// observe whether a patch is applicable or already present without mutating; `git apply --index`
+// mutates working tree AND index. Without --index a create-file patch leaves the new path
+// untracked, and `git diff --binary HEAD` would omit it. `--binary` on `diff HEAD` is the
+// index-plus-worktree delta versus HEAD: staged adds are in it; untracked paths are not.
+fn git_apply_check_args(repository_dir: String, patch_path: String) -> List<String> {
+  ["-C", repository_dir, "apply", "--check", "--", patch_path]
+}
+
+fn git_apply_check_command(repository_dir: String, patch_path: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_apply_check_args(repository_dir: repository_dir, patch_path: patch_path))
+}
+
+fn git_apply_reverse_check_args(repository_dir: String, patch_path: String) -> List<String> {
+  ["-C", repository_dir, "apply", "--reverse", "--check", "--", patch_path]
+}
+
+fn git_apply_reverse_check_command(repository_dir: String, patch_path: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_apply_reverse_check_args(repository_dir: repository_dir, patch_path: patch_path))
+}
+
+fn git_apply_args(repository_dir: String, patch_path: String) -> List<String> {
+  ["-C", repository_dir, "apply", "--index", "--", patch_path]
+}
+
+fn git_apply_command(repository_dir: String, patch_path: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_apply_args(repository_dir: repository_dir, patch_path: patch_path))
+}
+
+fn git_diff_binary_head_args(repository_dir: String) -> List<String> {
+  ["-C", repository_dir, "diff", "--binary", "HEAD"]
+}
+
+fn git_diff_binary_head_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_diff_binary_head_args(repository_dir: repository_dir))
+}
+
 fn shape_git_config_get_argv(key: String) -> List<String> {
   ["git", "config", "--get", key]
 }

@@ -34,6 +34,7 @@ import gunbc.spark.vllm_runtime_image_build {
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 
 // ── ONE EXACT DeepSeek V4.1 RUNTIME CANDIDATE, AS IDENTITY ONLY ──────────────────────────────────
 //
@@ -279,7 +280,7 @@ fn v41_patch_application_standing(source: VllmSourceRevision, patches: V41PatchP
         V41PatchApplicationRefused { defects: defects }
       } else {
         V41PatchApplicationUnestablished {
-          obligation: "converge_vllm_source admits only a clean checkout at the recipe revision and has no apply step over V41EnginePatch; a patched source tree is not a modeled state yet, so this population does not mint a storage-backed image identity. Hand-applying on the builder is out of band." as NonEmptyStr,
+          obligation: "a patched source tree is minted only by converge_vllm_source growing desired state with caller-supplied P, DigestFile of each member, std.upsert_decision Noop|Apply|Refuse, git apply --index so create-file members are in the index, and a readback of the tree (git diff --binary HEAD) that grounds the image key; this fold does not choose P and does not treat the intended patch list as the consumed identity" as NonEmptyStr,
         }
       }
     }
@@ -709,13 +710,36 @@ fn v41_candidate() -> V41CandidateVerdict {
   v41_candidate_standing(c: v41_candidate_inputs)
 }
 
-// THE STORAGE-BACKED LOOKUP PATCH POPULATION IS NOT IN THIS CHANGE. Overlay bytes and the hook
-// that imports them are the desired state of the next PR's source converge (revision R + ordered
-// population P via std.upsert_decision), not files sitting here with no DigestFile and no apply.
-// A hex literal is not that producer.
+data v41_engram_file_backed_overlay_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch" as NonEmptyStr
+data v41_engram_storage_hook_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr
+
+fn v41_digest_declared_patch(path: NonEmptyStr) -> Sha256Digest? {
+  match sha256sum_file_digest_via_shell(path: path) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+    Sha256FileDigest { digest: d } => sha256_hex_digest(hex: d.hex as String)
+  }
+}
+
+// V41PatchesObserved HERE MEANS THE PATCH FILES WERE DIGESTED, not that Engram lookup is
+// storage-backed. The overlay adds FileBackedEngramStorage. The second member imports those
+// names into engram.py and does not rebind ParallelEngramEmbedding._allocate_weights; that
+// dispatch is the wiring trigger.
 fn v41_storage_backed_patch_population() -> V41PatchPopulation {
-  V41PatchesUnestablished {
-    obligation: "storage-backed Engram patches are Unestablished until the next-PR source converge: DigestFile over the declared population then std.upsert_decision Noop|Apply|Refuse against a readback of the tree at d2d649e6; this change has no executing consumer of those bytes, so they are not committed here" as NonEmptyStr,
+  match v41_digest_declared_patch(path: v41_engram_file_backed_overlay_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the file-backed overlay patch at dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch" as NonEmptyStr }
+    Present { value: overlay_digest } =>
+      match v41_engine_patch(path: v41_engram_file_backed_overlay_path, applies_to: vllm_d2d649e6_revision, sha256_hex: overlay_digest.hex as String, purpose: "file-backed Engram row-store overlay" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the overlay patch was not a sha256 digest" as NonEmptyStr }
+        Present { value: overlay } =>
+          match v41_digest_declared_patch(path: v41_engram_storage_hook_path) {
+            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the engram.py import member at dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr }
+            Present { value: hook_digest } =>
+              match v41_engine_patch(path: v41_engram_storage_hook_path, applies_to: vllm_d2d649e6_revision, sha256_hex: hook_digest.hex as String, purpose: "import of file-backed overlay symbols into engram.py; ParallelEngramEmbedding._allocate_weights is not rebound" as NonEmptyStr) {
+                Absent => V41PatchesUnestablished { obligation: "DigestFile of the engram.py import member was not a sha256 digest" as NonEmptyStr }
+                Present { value: hook } => V41PatchesObserved { patches: [overlay, hook], partition: PartitionByLaunchConfiguration }
+              }
+          }
+      }
   }
 }
 

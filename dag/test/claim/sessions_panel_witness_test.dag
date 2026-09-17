@@ -207,7 +207,9 @@ test fn sessions_banner_is_styled_loud() -> Bool {
     match r {
       StaticRule { selector: sel, decls: decls } =>
         match sel {
-          ClassSelector { name: n } => n == "observe-refused" && count(decls) == 6
+          ClassSelector { name: n } =>
+            n == "observe-refused"
+              && any(xs: decls, predicate: fn(d) { string_contains(s: d.value, pattern: "band-loud") })
           _ => false
         }
       _ => false

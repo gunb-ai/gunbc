@@ -11,21 +11,28 @@ import tools.dag_compile_clean_transport {
   dcc_gunbc_ready
 }
 
-data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
+// The exemplar is carried as its directory and its file name, so the staged copy's --entry path is
+// the declared file name rather than a segment recovered from a joined path.
+data shard_a_exemplar_entry_dir: String = "dag/std"
+data shard_a_exemplar_entry_file: String = "logic.dag"
 
-fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
+fn shard_a_exemplar_entry_path() -> String {
+  concat(shard_a_exemplar_entry_dir, concat("/", shard_a_exemplar_entry_file))
+}
+
+fn single_module_shard_compile_typed(entry_dir: String, entry_file: String) -> Bool {
   let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let stage = shell.Mktemp.Dir()
     if stage.success {
       let staged = shell.Copy.File(
-        source: concat(root.path, concat("/", entry_rel_path)),
+        source: concat(root.path, concat("/", concat(entry_dir, concat("/", entry_file)))),
         destination: stage.path
       )
       let compile = gunbc.WitnessBin.Run(
         workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
-        args: dcc_fixture_only_compile_args(tmp: stage.path)
+        args: dcc_fixture_only_compile_args(tmp: stage.path, entry_file: entry_file)
       )
       let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
       staged.success && compile.success && cleaned_stage.success
@@ -38,5 +45,5 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
 }
 
 fn run_shard_a_exemplar_compile() -> Bool {
-  single_module_shard_compile_typed(entry_rel_path: shard_a_exemplar_entry_path)
+  single_module_shard_compile_typed(entry_dir: shard_a_exemplar_entry_dir, entry_file: shard_a_exemplar_entry_file)
 }

@@ -128,7 +128,7 @@ test fn witness_fixture_history_loads_with_nonempty_live_set() -> Bool {
   }
 }
 
-test fn witness_deleted_history_event_refuses() -> Bool {
+fn check_witness_deleted_history_event_refuses() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -141,7 +141,11 @@ test fn witness_deleted_history_event_refuses() -> Bool {
   }
 }
 
-test fn witness_deleted_event_and_prior_prefix_refuses() -> Bool {
+test fn witness_deleted_history_event_refuses() -> Bool {
+  check_witness_deleted_history_event_refuses()
+}
+
+fn check_witness_deleted_event_and_prior_prefix_refuses() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -155,7 +159,11 @@ test fn witness_deleted_event_and_prior_prefix_refuses() -> Bool {
   }
 }
 
-test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
+test fn witness_deleted_event_and_prior_prefix_refuses() -> Bool {
+  check_witness_deleted_event_and_prior_prefix_refuses()
+}
+
+fn check_witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -180,7 +188,11 @@ test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
   }
 }
 
-test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool {
+test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
+  check_witness_wrong_prior_digest_in_revocation_refuses()
+}
+
+fn check_witness_revocation_while_exact_receipt_live_refuses() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -197,7 +209,11 @@ test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool {
   }
 }
 
-test fn witness_duplicate_revocations_refuse() -> Bool {
+test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool {
+  check_witness_revocation_while_exact_receipt_live_refuses()
+}
+
+fn check_witness_duplicate_revocations_refuse() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -212,7 +228,11 @@ test fn witness_duplicate_revocations_refuse() -> Bool {
   }
 }
 
-test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance() -> Bool {
+test fn witness_duplicate_revocations_refuse() -> Bool {
+  check_witness_duplicate_revocations_refuse()
+}
+
+fn check_witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -253,7 +273,11 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
   }
 }
 
-test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
+test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance() -> Bool {
+  check_witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
+}
+
+fn check_witness_exact_revocation_admits_vanished_receipt() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -271,6 +295,10 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
   }
 }
 
+test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
+  check_witness_exact_revocation_admits_vanished_receipt()
+}
+
 test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -> Bool {
   git_show_path_absent_at_ref(
     stderr: "fatal: path 'dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl' exists on disk, but not in '9ce6526c528'",
@@ -280,7 +308,7 @@ test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -
     )
 }
 
-test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
+fn check_witness_git_refusal_observation_refuses_integrity() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
@@ -293,7 +321,11 @@ test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
   }
 }
 
-test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit() -> Bool {
+test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
+  check_witness_git_refusal_observation_refuses_integrity()
+}
+
+fn check_witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -304,7 +336,11 @@ test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit(
   }
 }
 
-test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses() -> Bool {
+test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit() -> Bool {
+  check_witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit()
+}
+
+fn check_witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -320,7 +356,11 @@ test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prio
   }
 }
 
-test fn witness_digest_field_mutation_without_revocation_refuses_prefix() -> Bool {
+test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses() -> Bool {
+  check_witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses()
+}
+
+fn check_witness_digest_field_mutation_without_revocation_refuses_prefix() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -332,7 +372,11 @@ test fn witness_digest_field_mutation_without_revocation_refuses_prefix() -> Boo
   }
 }
 
-test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool {
+test fn witness_digest_field_mutation_without_revocation_refuses_prefix() -> Bool {
+  check_witness_digest_field_mutation_without_revocation_refuses_prefix()
+}
+
+fn check_witness_withheld_projection_refuses_when_history_load_refuses() -> Bool {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
     RoadmapAcceptanceEventHistoryLoadRefused { detail: history_detail } =>
@@ -345,7 +389,11 @@ test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool 
   }
 }
 
-test fn witness_receipts_projection_refuses_when_history_load_refuses() -> Bool {
+test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool {
+  check_witness_withheld_projection_refuses_when_history_load_refuses()
+}
+
+fn check_witness_receipts_projection_refuses_when_history_load_refuses() -> Bool {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
     RoadmapAcceptanceEventHistoryLoadRefused { detail: history_detail } =>
@@ -358,7 +406,11 @@ test fn witness_receipts_projection_refuses_when_history_load_refuses() -> Bool 
   }
 }
 
-test fn witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() -> Bool {
+test fn witness_receipts_projection_refuses_when_history_load_refuses() -> Bool {
+  check_witness_receipts_projection_refuses_when_history_load_refuses()
+}
+
+fn check_witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() -> Bool {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
@@ -366,7 +418,11 @@ test fn witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() ->
   }
 }
 
-test fn witness_authority_projection_refuses_when_receipts_projection_refuses() -> Bool {
+test fn witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() -> Bool {
+  check_witness_unreadable_carrier_text_refuses_load_with_line_parse_detail()
+}
+
+fn check_witness_authority_projection_refuses_when_receipts_projection_refuses() -> Bool {
   match roadmap_acceptance_receipts_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAcceptanceReceiptsProjected { receipts: _ } => false
     RoadmapAcceptanceReceiptsProjectionRefused { detail: receipt_detail } =>
@@ -379,7 +435,11 @@ test fn witness_authority_projection_refuses_when_receipts_projection_refuses() 
   }
 }
 
-test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() -> Bool {
+test fn witness_authority_projection_refuses_when_receipts_projection_refuses() -> Bool {
+  check_witness_authority_projection_refuses_when_receipts_projection_refuses()
+}
+
+fn check_witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() -> Bool {
   match prior_history_from_carrier_text(carrier_text: "not-jsonl-carrier\n") {
     PriorHistoryObserved { prior: _ } => false
     PriorHistoryGitObservationRefused { detail: detail } =>
@@ -387,7 +447,11 @@ test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() 
   }
 }
 
-test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> Bool {
+test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() -> Bool {
+  check_witness_unreadable_merge_base_carrier_parse_refuses_prior_observation()
+}
+
+fn check_witness_missing_carrier_prevents_silent_empty_authority_projection() -> Bool {
   match roadmap_authority_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       string_contains(s: detail, pattern: "line 1:")
@@ -401,7 +465,11 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
     }
 }
 
-test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
+test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> Bool {
+  check_witness_missing_carrier_prevents_silent_empty_authority_projection()
+}
+
+fn check_witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
   let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
   let projected = roadmap_authority_projection_from_carrier_text(
     text: receipt_continuity_acceptance_carrier_fixture_text,
@@ -420,4 +488,29 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
       }
       RoadmapAuthorityProjectionRefused { detail: _ } => false
     }
+}
+
+test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
+  check_witness_dispatch_never_presents_empty_frontier_on_authority_refusal()
+}
+
+fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
+  check_witness_deleted_history_event_refuses() &&
+    check_witness_deleted_event_and_prior_prefix_refuses() &&
+    check_witness_wrong_prior_digest_in_revocation_refuses() &&
+    check_witness_revocation_while_exact_receipt_live_refuses() &&
+    check_witness_duplicate_revocations_refuse() &&
+    check_witness_exact_revocation_admits_vanished_receipt() &&
+    check_witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance() &&
+    check_witness_git_refusal_observation_refuses_integrity() &&
+    check_witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit() &&
+    check_witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses() &&
+    check_witness_digest_field_mutation_without_revocation_refuses_prefix() &&
+    check_witness_authority_projection_refuses_when_receipts_projection_refuses() &&
+    check_witness_receipts_projection_refuses_when_history_load_refuses() &&
+    check_witness_withheld_projection_refuses_when_history_load_refuses() &&
+    check_witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() &&
+    check_witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() &&
+    check_witness_missing_carrier_prevents_silent_empty_authority_projection() &&
+    check_witness_dispatch_never_presents_empty_frontier_on_authority_refusal()
 }

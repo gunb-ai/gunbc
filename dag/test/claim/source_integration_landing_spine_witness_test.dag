@@ -236,7 +236,7 @@ fn p0_provenance_claim(
   claim: LandingRequiredClaim,
 ) -> Bool {
   provenance.agent == "p0-validator"
-    && claim.bound == p0_builds_claim().bound
+    && claim.bound as String == p0_proposal().attempt as String
 }
 
 fn p0_freshness_claim(

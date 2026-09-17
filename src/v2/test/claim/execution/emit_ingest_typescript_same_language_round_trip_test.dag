@@ -35,7 +35,7 @@ fn emit_ingest_typescript_canonical_emitted() -> Node {
   ts_emitted_add_fn_node()
 }
 
-test fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
+fn check_emit_typescript_backward_selects_canonical_row_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_typescript_shared_rules(),
     emitted: emit_ingest_typescript_canonical_emitted()
@@ -46,7 +46,11 @@ test fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
   }
 }
 
-test fn ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool {
+test fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
+  check_emit_typescript_backward_selects_canonical_row_holds()
+}
+
+fn check_ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -61,7 +65,11 @@ test fn ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool {
   }
 }
 
-test fn emit_then_ingest_typescript_selector_identity_holds() -> Bool {
+test fn ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool {
+  check_ingest_typescript_forward_selects_canonical_emitted_holds()
+}
+
+fn check_emit_then_ingest_typescript_selector_identity_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_typescript_shared_rules(),
     emitted: emit_ingest_typescript_canonical_emitted()
@@ -83,7 +91,11 @@ test fn emit_then_ingest_typescript_selector_identity_holds() -> Bool {
   }
 }
 
-test fn ingest_then_emit_typescript_selector_identity_holds() -> Bool {
+test fn emit_then_ingest_typescript_selector_identity_holds() -> Bool {
+  check_emit_then_ingest_typescript_selector_identity_holds()
+}
+
+fn check_ingest_then_emit_typescript_selector_identity_holds() -> Bool {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -105,7 +117,11 @@ test fn ingest_then_emit_typescript_selector_identity_holds() -> Bool {
   }
 }
 
-test fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
+test fn ingest_then_emit_typescript_selector_identity_holds() -> Bool {
+  check_ingest_then_emit_typescript_selector_identity_holds()
+}
+
+fn check_emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -119,7 +135,11 @@ test fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
   }
 }
 
-test fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
+test fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
+  check_emit_ingest_typescript_perturbed_frontier_fails_closed()
+}
+
+fn check_ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
   match grammar_relation_row_forward_selection(
     frontier: Cons { head: ^emit_ingest_typescript_perturb_bogus_tok, tail: std.algebra.Empty },
     rules: emit_ingest_typescript_shared_rules()
@@ -129,7 +149,11 @@ test fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
   }
 }
 
-test fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
+test fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
+  check_ingest_typescript_forward_fails_closed_off_frontier_holds()
+}
+
+fn check_emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_typescript_shared_rules(),
     emitted: dag_fixture_emitted_add_fn
@@ -139,7 +163,11 @@ test fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool
   }
 }
 
-test fn typescript_same_language_parse_bridge_holds() -> Bool {
+test fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
+  check_emit_typescript_backward_fails_closed_on_foreign_emitted_holds()
+}
+
+fn check_typescript_same_language_parse_bridge_holds() -> Bool {
   match typescript_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
@@ -154,7 +182,11 @@ test fn typescript_same_language_parse_bridge_holds() -> Bool {
   }
 }
 
-test fn typescript_same_language_source_emit_round_trip_holds() -> Bool {
+test fn typescript_same_language_parse_bridge_holds() -> Bool {
+  check_typescript_same_language_parse_bridge_holds()
+}
+
+fn check_typescript_same_language_source_emit_round_trip_holds() -> Bool {
   match typescript_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -169,6 +201,10 @@ test fn typescript_same_language_source_emit_round_trip_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn typescript_same_language_source_emit_round_trip_holds() -> Bool {
+  check_typescript_same_language_source_emit_round_trip_holds()
 }
 
 fn typescript_same_language_discriminates_on_real_tree() -> Bool {
@@ -188,6 +224,19 @@ fn typescript_same_language_discriminates_on_real_tree() -> Bool {
 data claim_emit_ingest_typescript_same_language_round_trip: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag"
-    function: typescript_same_language_discriminates_on_real_tree
+    function: emit_ingest_typescript_same_language_round_trip_holds
   }
+}
+
+fn emit_ingest_typescript_same_language_round_trip_holds() -> Bool {
+  check_emit_typescript_backward_selects_canonical_row_holds() &&
+    check_ingest_typescript_forward_selects_canonical_emitted_holds() &&
+    check_emit_then_ingest_typescript_selector_identity_holds() &&
+    check_ingest_then_emit_typescript_selector_identity_holds() &&
+    check_emit_ingest_typescript_perturbed_frontier_fails_closed() &&
+    check_ingest_typescript_forward_fails_closed_off_frontier_holds() &&
+    check_emit_typescript_backward_fails_closed_on_foreign_emitted_holds() &&
+    check_typescript_same_language_parse_bridge_holds() &&
+    check_typescript_same_language_source_emit_round_trip_holds() &&
+    typescript_same_language_discriminates_on_real_tree()
 }
