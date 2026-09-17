@@ -423,11 +423,8 @@ data approval_submission_authority_policy_frontier: DissolutionCondition = unbou
   description: "a requester -> authority policy roster (which enrolled filers may put which brokered authority in front of the operator) consumed by admit_parsed_submission in place of approval_submission_authority_permitted, with a witness whose unrostered requester answers SubmissionAuthorityRefused -- SUFFICIENT FOR the authority half of admission to refuse on the live route; triggered by the first second brokered authority or the first filer class other than the fleet-converge runner",
 )
 
-// THE RUN THAT FILES. This module is the server side; the client -- a fleet-converge mode that
-// materializes the submission key in-run, builds the request from a source-declared
-// AuthorizationRequest<Subject>, signs, POSTs, polls, and gates the boot on the grant -- is part D
-// (eager-owl-205's child lane, 2026-09-16). Until it lands, submit_parsed_submission has the serve
-// route and its witness as consumers and no filer; its first live receipt is D's first run.
+// THE FILING ROUTES ARE NOW ON THE SERVE TABLE (POST /approvals, GET /approvals/\{escalation_id\}).
+// Remaining dissolution is the same path used by every approval-gated fleet action, not one host's boot.
 data approval_submission_client_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a fleet-converge mode that materializes approval-submission-mac-key in-run over WIF, signs stored_request_json of a source-declared request with sign_submission, POSTs the envelope to /approvals, polls /approvals/\{escalation_id\} bounded by the request's expires_at, and gates the actuation on grant_from_approved_decision over those standing fields -- SUFFICIENT FOR every approval-gated fleet action, not one host's boot; the srv3 source-declared grant dissolves into the same run.",
+  description: "every approval-gated fleet action files through POST /approvals and GET /approvals/\{id\}, then joins the grant with grant_from_approved_decision over those standing fields; SUFFICIENT FOR that HTTP client path (runners never open the 0600 store), not one host's boot and not grant_from_store; the srv3 source-declared grant dissolves into the same run.",
 )

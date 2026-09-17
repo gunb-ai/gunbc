@@ -30,7 +30,8 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical }
 import extdeps.clock { Clock }
 import v2.std.optional { Present }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
+import gunbc.fleet_intent_network { operator_host_srv1 }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -183,7 +184,33 @@ fn mtcollins1_boot_poll_ticks(
   }
 }
 
+fn mtcollins1_boot_host_must_be_srv1(host: String) -> Bool {
+  host == operator_host_srv1 as String
+}
+
+fn mtcollins1_boot_refuses_off_srv1(host: String) -> ProcessExit {
+  if mtcollins1_boot_host_must_be_srv1(host: host) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 boot refuses host '", concat(host, concat("': POST/GET /approvals is loopback on the machine that serves the dashboard, which is ", operator_host_srv1 as String))))
+  }
+}
+
 fn mtcollins1_boot_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; loopback filing is srv1 only")))))
+    ActionsVariablePresent { value: host } =>
+      match mtcollins1_boot_refuses_off_srv1(host: host) {
+        ExitSuccess => mtcollins1_boot_wet_on_srv1()
+        other => other
+      }
+  }
+}
+
+fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
   uses net: std.resources.Network
 {
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
