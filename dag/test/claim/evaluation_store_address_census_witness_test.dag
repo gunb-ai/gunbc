@@ -9,9 +9,7 @@ import gunbc.materialization_provider_targets {
   evaluation_store_address_production_consumers,
   evaluation_store_address_persist_callers_expected,
   evaluation_store_address_admitted_consumers_expected,
-  evaluation_store_address_duplicate_consumers,
-  evaluation_store_address_missing_expected,
-  evaluation_store_address_unresolved
+  evaluation_store_address_duplicate_consumers
 }
 import gunbc.evaluation_store_address_census {
   ResolvedCallEdge,
@@ -20,9 +18,6 @@ import gunbc.evaluation_store_address_census {
   ProductionCoverageQualified,
   ProductionCoverageRefused,
   CandidateOutsideExactResolution,
-  evaluation_store_address_production_census,
-  evaluation_store_address_production_coverage,
-  evaluation_store_address_production_coverage_qualified,
   evaluation_store_address_zero_candidate_plant_coverage,
   evaluation_store_address_zero_candidate_plant_absent_coverage,
   evaluation_store_address_mutation_census,
@@ -46,61 +41,6 @@ test fn evaluation_store_address_expected_rosters_are_well_formed() -> Bool {
     && ((evaluation_store_address_producer.decl_name as String) == "evaluation_store_address")
     && (dissolution_description(condition: evaluation_store_address_alias_discovery_dissolve_on) != "")
     && (dissolution_description(condition: evaluation_store_address_production_partition_dissolve_on) != "")
-}
-
-fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool {
-  let direct_obs = bound_callers_of_edges(
-    edges: edges,
-    callee_module: "std.materialization_provider",
-    callee_decl: "evaluation_store_address"
-  )
-  let persist_obs = bound_callers_of_edges(
-    edges: edges,
-    callee_module: "std.materialization_provider",
-    callee_decl: "persist_evaluation_store_address"
-  )
-  let admitted_obs = bound_callers_of_edges(
-    edges: edges,
-    callee_module: "std.materialization_provider",
-    callee_decl: "evaluation_store_address_digest"
-  )
-  ((evaluation_store_address_missing_expected(
-    expected: evaluation_store_address_production_consumers,
-    observed: direct_obs
-  ) |> count()) == 0)
-    && ((evaluation_store_address_unresolved(
-      expected: evaluation_store_address_production_consumers,
-      observed: direct_obs
-    ) |> count()) == 0)
-    && ((evaluation_store_address_missing_expected(
-      expected: evaluation_store_address_persist_callers_expected,
-      observed: persist_obs
-    ) |> count()) == 0)
-    && ((evaluation_store_address_unresolved(
-      expected: evaluation_store_address_persist_callers_expected,
-      observed: persist_obs
-    ) |> count()) == 0)
-    && ((evaluation_store_address_missing_expected(
-      expected: evaluation_store_address_admitted_consumers_expected,
-      observed: admitted_obs
-    ) |> count()) == 0)
-    && ((evaluation_store_address_unresolved(
-      expected: evaluation_store_address_admitted_consumers_expected,
-      observed: admitted_obs
-    ) |> count()) == 0)
-}
-
-// Logic twin of //gunbc/instruments:evaluation-store-address-exact-head (not a floor test fn).
-// The instrument row is the enrolled producer; this fn stays for in-corpus join shape.
-fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> Bool {
-  match evaluation_store_address_production_census() {
-    ResolvedCallEdgeCensusRefused { cause: _ } => false
-    ResolvedCallEdgeCensusObserved { edges } =>
-      evaluation_store_address_join_observed(edges: edges)
-        && evaluation_store_address_production_coverage_qualified(
-          coverage: evaluation_store_address_production_coverage()
-        )
-  }
 }
 
 test fn evaluation_store_address_zero_candidate_guard_reports_planted_call() -> Bool {

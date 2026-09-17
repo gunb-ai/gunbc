@@ -410,6 +410,8 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
 }
 
 fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
+    const ENTRY: &str = "dag/gunbc/evaluation_store_address_census.dag";
+    const FUNCTION: &str = "evaluation_store_address_census_joins_exact_head_declaration_graph";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
             termination: Termination::Refused,
@@ -418,14 +420,53 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
             ),
         };
     }
-    match cli_run::evaluation_store_address_exact_head_holds() {
-        Ok(message) => InvocationOutcome {
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "evaluation-store-address-exact-head: resolve failed for {ENTRY}: {cause}"
+                ),
+            };
+        }
+    };
+    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+        graph.diagnostics.clone(),
+    );
+    if !blocking.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "evaluation-store-address-exact-head: {ENTRY} has blocking diagnostics: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    }
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &[], true) {
+        Ok(crate::v1_interpreter::Value::Bool(true)) => InvocationOutcome {
             termination: Termination::ObservationHeld,
-            message,
+            message: format!("evaluation-store-address-exact-head: held ({FUNCTION})"),
+        },
+        Ok(crate::v1_interpreter::Value::Bool(false)) => InvocationOutcome {
+            termination: Termination::ObservationDidNotHold,
+            message: format!("evaluation-store-address-exact-head: join/coverage did not hold"),
+        },
+        Ok(other) => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "evaluation-store-address-exact-head: {FUNCTION} returned a non-Bool value: {other}"
+            ),
         },
         Err(cause) => InvocationOutcome {
-            termination: Termination::ObservationDidNotHold,
-            message: cause,
+            termination: Termination::SubjectUnreached,
+            message: format!("evaluation-store-address-exact-head: eval failed: {cause}"),
         },
     }
 }
