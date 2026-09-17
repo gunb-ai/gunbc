@@ -15,6 +15,7 @@ import std.measure {
   money_amount_micro,
 }
 import std.types { NonEmptyStr, List }
+import extdeps.github.repository { RepositoryVisibility, PublicRepository, PrivateRepository }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -142,10 +143,6 @@ data github_actions_billing_citation: ExternalAuthority = ExternalAuthority {
 // it. Reading the allowance as a universal cap is the plausible misreading this type exists to
 // make unwritable -- the quota and the visibility are different facts and neither implies the
 // other.
-type ActionsRepositoryVisibility
-  = PublicRepository
-  | PrivateRepository
-
 // The 4, 8 and 16 core SKUs are what the cited page calls larger runners. The 2-core Linux and the
 // slim SKU are standard.
 //
@@ -186,9 +183,16 @@ type ActionsBillability
   | AlwaysChargedPerMinute
   | BillabilityUnread { obligation: NonEmptyStr }
 
+// THIS MODULE MINTED ITS OWN ActionsRepositoryVisibility AND IT WAS A NICKNAME. The type was
+// PublicRepository | PrivateRepository, which is character for character what
+// extdeps.github.repository.RepositoryVisibility already declares, down to both variant spellings.
+// DESIGN section 3 calls that out by name -- a second name for one concept, duplicated at the
+// meaning layer and then again in everything derived -- and extdeps.github.hosted_runners was
+// already keying its per-visibility runner specs off the real one, so the fork would have put two
+// answers to "is this repository public" on either side of one billing question.
 fn actions_billability(
   sku: GithubActionsBillingSku,
-  visibility: ActionsRepositoryVisibility,
+  visibility: RepositoryVisibility,
 ) -> ActionsBillability {
   match actions_runner_class(sku: sku) {
     RunnerClassUnread { obligation: o } => BillabilityUnread { obligation: o }
@@ -216,7 +220,7 @@ type ActionsBillableVerdict
 
 fn actions_usage_billable_verdict(
   sku: GithubActionsBillingSku,
-  visibility: ActionsRepositoryVisibility,
+  visibility: RepositoryVisibility,
 ) -> ActionsBillableVerdict {
   match actions_billability(sku: sku, visibility: visibility) {
     AlwaysChargedPerMinute => BillingConfirmed { billable: true }
