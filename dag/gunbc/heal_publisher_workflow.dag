@@ -1,0 +1,403 @@
+module gunbc.heal_publisher_workflow
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { list_map }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlValue }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep, ActionRef, action_ref_eq,
+  WorkflowTrigger, WorkflowRunCompleted,
+  WorkflowPermissions, PermRead, PermWrite,
+  ConcurrencySpec, ConcurrencyMappingQueueMax, CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse,
+  RunnerSpec, HostedRunner, RunnerLabel, Ubuntu2404Arm,
+  checkout_action, download_artifact_action, google_auth_action
+}
+import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
+  workflow_job_capability_closure, capability_closure_is_closed
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
+}
+import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import gunbc.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.heal_workflow {
+  heal_workflow_name, heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
+}
+import gunbc.heal_publication_boundary {
+  heal_repair_candidate_artifact_name, heal_repair_candidate_manifest_file_name, candidate_file_path,
+  phase_isolation, phases_are_isolated
+}
+import gunbc.heal_publication { heal_publication_candidate_directory_env }
+import gunbc.auth.heal_publisher_federation {
+  heal_publisher_wif_provider_resource, heal_publisher_service_account,
+  heal_publisher_app_registration, heal_publisher_app_is_registered, heal_publisher_app_registration_detail
+}
+import gunbc.ci_spec {
+  gunbc_ci_heal_publication_admit_invoke,
+  gunbc_ci_heal_publication_publish_invoke
+}
+
+// THE PROTECTED PUBLISHER (gunbc#10958 Phase B), AND EVERY STRUCTURAL REASON IT IS SAFE TO GIVE IT A
+// CREDENTIAL.
+//
+// IT RUNS FROM THE DEFAULT BRANCH. A workflow_run workflow is taken from the default branch's own
+// definition, never from the pull request's, so nothing a branch can edit decides what this job does.
+//
+// IT NEVER FETCHES THE PULL REQUEST'S TREE. Its checkout takes no ref, so it is this workflow's own
+// commit; the branch's bytes arrive only as a downloaded candidate that the publisher reads as data
+// and re-derives every fact about. `publisher_job_executes_candidate_code` is the emit-time check.
+//
+// IT RUNS ON A GITHUB-HOSTED RUNNER, and that is a credential-isolation fact rather than a capacity
+// choice: our self-hosted runners also execute pull-request jobs and share a filesystem between
+// slots, so a token minted on one of them is reachable from code a pull request wrote. The federation
+// condition pins runner_environment to github-hosted for the same reason, so a later edit that moved
+// this job onto the fleet would fail to federate rather than quietly widen.
+//
+// ADMISSION HAPPENS BEFORE FEDERATION. The admit step runs with the job's own read-only token; only
+// if a candidate admits does the auth step run and a token get minted at all, so a malformed or stale
+// candidate never causes a credential to exist.
+
+data heal_publisher_workflow_name: String = "heal-publish"
+
+data heal_publisher_workflow_job_id: String = "publish"
+
+data heal_publisher_timeout_minutes: Int = 45
+
+data heal_publisher_candidate_directory: String = "heal-candidate"
+
+data heal_publisher_required_bins: List<String> = ["gunbc"]
+
+data heal_publisher_build_step_name: String = "Build the publisher this job runs from the default branch"
+
+data heal_publisher_wif_step_id: String = "heal_publisher_wif"
+
+// GitHub's workflow_run branch filter takes the TRIGGERING run's branch, and this publisher answers
+// for every pull request branch, so the filter is the match-all pattern rather than an omission --
+// the trigger requires the member, and `[]` would name no branch at all.
+data heal_publisher_triggering_branches: List<String> = ["**"]
+
+// ONE PUBLICATION AT A TIME PER BRANCH, AND NONE DROPPED. Two candidates for one branch are ordered
+// rather than raced: the second re-reads the branch head after the first has moved it and refuses as
+// stale, which is a decision, while a cancelled pending entry would be a repair silently lost.
+data heal_publisher_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
+  group: "heal-publish-${{ github.event.workflow_run.head_branch }}",
+  cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse }
+}
+
+fn heal_publisher_job_condition() -> String {
+  join([
+    "github.event.workflow_run.event == 'pull_request'",
+    " && github.event.workflow_run.conclusion == 'success'",
+    " && github.event.workflow_run.head_repository.full_name == github.repository"
+  ], "")
+}
+
+// THE GATE FOR EVERY EXPENSIVE OR CREDENTIALED STEP. A heal run that found nothing to repair uploads
+// no artifact, so the download leaves the directory empty and `hashFiles` answers the empty string;
+// the job then does nothing but the download, which is what a clean tree should cost.
+fn heal_publisher_candidate_present_condition() -> String {
+  join([
+    "hashFiles('",
+    candidate_file_path(directory: heal_publisher_candidate_directory, file_name: heal_repair_candidate_manifest_file_name as String),
+    "') != ''"
+  ], "")
+}
+
+fn heal_publisher_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout the default branch this publisher runs from" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 1)),
+        kv(key: "persist-credentials", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// A PATTERN RATHER THAN A NAME, because a name that matches nothing is an ERROR in the download
+// action and "nothing to publish" is this workflow's ordinary case. The run id is the triggering
+// run's, so the artifact read is bound to the run whose facts the publisher validates against.
+fn heal_publisher_download_step() -> Step {
+  UsesStep {
+    name: Present { value: "Download the candidate the triggering heal run produced" },
+    id: none,
+    uses: download_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "pattern", value: yaml_string(s: heal_repair_candidate_artifact_name as String)),
+        kv(key: "path", value: yaml_string(s: heal_publisher_candidate_directory)),
+        kv(key: "merge-multiple", value: yaml_bool(b: true)),
+        kv(key: "run-id", value: yaml_string(s: "${{ github.event.workflow_run.id }}")),
+        kv(key: "github-token", value: yaml_string(s: "${{ github.token }}"))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn heal_publisher_gated(step_name: String, run: String, env: List<YamlKeyValue>?, id: String?) -> Step {
+  RunStep {
+    name: Present { value: step_name },
+    id: id,
+    run: run,
+    shell: none,
+    env: env,
+    working_directory: none,
+    if_condition: Present { value: heal_publisher_candidate_present_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn heal_publisher_candidate_directory_env_row() -> YamlKeyValue {
+  kv(key: heal_publication_candidate_directory_env as String, value: yaml_string(s: heal_publisher_candidate_directory))
+}
+
+// THE CREDENTIAL-FREE GATE. It reads the event, the candidate and the forge with the job's own
+// read-only token, and refuses before anything can be minted.
+fn heal_publisher_admit_step() -> Step {
+  heal_publisher_gated(
+    step_name: "Admit the candidate against this checkout's policy, with no publication credential",
+    run: gunbc_ci_heal_publication_admit_invoke(),
+    env: Present {
+      value: [
+        heal_publisher_candidate_directory_env_row(),
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))
+      ]
+    },
+    id: none
+  )
+}
+
+fn heal_publisher_wif_auth_step() -> Step {
+  UsesStep {
+    name: Present { value: "Federate to the publisher's own identity (access token only, five minutes)" },
+    id: Present { value: heal_publisher_wif_step_id },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(key: "workload_identity_provider", value: yaml_string(s: heal_publisher_wif_provider_resource())),
+        kv(key: "service_account", value: yaml_string(s: heal_publisher_service_account as String)),
+        kv(key: "token_format", value: yaml_string(s: "access_token")),
+        kv(key: "access_token_lifetime", value: yaml_string(s: "300s")),
+        kv(key: "create_credentials_file", value: yaml_bool(b: false)),
+        kv(key: "export_environment_variables", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: heal_publisher_candidate_present_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn heal_publisher_publish_step() -> Step {
+  heal_publisher_gated(
+    step_name: "Publish the admitted repair, fast-forward only, and read it back",
+    run: gunbc_ci_heal_publication_publish_invoke(),
+    env: Present {
+      value: [
+        heal_publisher_candidate_directory_env_row(),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", heal_publisher_wif_step_id, ".outputs.access_token }}"], "")))
+      ]
+    },
+    id: none
+  )
+}
+
+type HealPublisherBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn heal_publisher_bound_steps() -> List<HealPublisherBoundStep> {
+  [
+    HealPublisherBoundStep {
+      step: heal_publisher_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout the default branch this publisher runs from",
+    },
+    HealPublisherBoundStep {
+      step: heal_publisher_download_step(),
+      role: capability_neutral,
+      step_name: "Download the candidate the triggering heal run produced",
+    },
+    HealPublisherBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    HealPublisherBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    HealPublisherBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    HealPublisherBoundStep {
+      step: witness_floor_build_step(step_name: heal_publisher_build_step_name, build_script: repo_self_build_command(bins: heal_publisher_required_bins)),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: heal_publisher_build_step_name,
+    },
+    HealPublisherBoundStep {
+      step: heal_publisher_admit_step(),
+      role: capability_neutral,
+      step_name: "Admit the candidate against this checkout's policy, with no publication credential",
+    },
+    HealPublisherBoundStep {
+      step: heal_publisher_wif_auth_step(),
+      role: capability_neutral,
+      step_name: "Federate to the publisher's own identity (access token only, five minutes)",
+    },
+    HealPublisherBoundStep {
+      step: heal_publisher_publish_step(),
+      role: capability_neutral,
+      step_name: "Publish the admitted repair, fast-forward only, and read it back",
+    },
+  ]
+}
+
+fn heal_publisher_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: heal_publisher_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+// actions: READ is the artifact download from another run. contents: READ is this checkout.
+// pull_requests: READ is the subject join the admission makes. id-token: WRITE is the federation,
+// and it is the only write on the job -- the publication credential itself is not a GitHub Actions
+// grant at all but an App installation token minted inside the publish step.
+data heal_publisher_job_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: Present { value: PermRead },
+  issues: none,
+  actions: Present { value: PermRead },
+  id_token: Present { value: PermWrite }
+}
+
+fn heal_publisher_job() -> Job {
+  Job {
+    id: heal_publisher_workflow_job_id,
+    name: none,
+    runner: HostedRunner { label: Ubuntu2404Arm },
+    steps: list_map(xs: heal_publisher_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: heal_publisher_job_condition() },
+    timeout_minutes: Present { value: heal_publisher_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: heal_publisher_job_permissions }
+  }
+}
+
+data heal_publisher_workflow: Workflow = Workflow {
+  name: heal_publisher_workflow_name,
+  run_name: none,
+  on: [
+    WorkflowRunCompleted {
+      workflows: [heal_workflow_name],
+      branches: heal_publisher_triggering_branches
+    }
+  ],
+  concurrency: Present { value: heal_publisher_concurrency },
+  env: Present {
+    value: [
+      kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))
+    ]
+  },
+  permissions: none,
+  jobs: [heal_publisher_job()]
+}
+
+// ── The isolation invariant, asked of both emitted jobs ──────────────────────────────────────
+
+fn step_input_names(step: Step) -> List<String> {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => []
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Absent => []
+        Present { value: rows } => map(rows, row => row.key as String)
+      }
+  }
+}
+
+// A CHECKOUT THAT NAMES A REF OR A REPOSITORY IS FETCHING SOMETHING OTHER THAN THIS WORKFLOW'S OWN
+// COMMIT, and for this job the only thing it could name is the branch under review. That is the
+// second isolation direction: the phase holding publication authority must not obtain the candidate's
+// code, and the check reads the emitted steps rather than trusting the author.
+fn checkout_step_names_another_subject(step: Step) -> Bool {
+  step_uses_action(step: step, action: checkout_action)
+    && any(step_input_names(step: step), k => k == "ref" || k == "repository")
+}
+
+fn publisher_job_executes_candidate_code() -> Bool {
+  any(heal_publisher_job().steps, s => checkout_step_names_another_subject(step: s))
+}
+
+fn heal_publication_phases_isolated() -> Bool {
+  phases_are_isolated(s: phase_isolation(
+    candidate_holds_publication_credential: heal_job_holds_publication_credential(),
+    candidate_credential_detail: "the heal candidate job carries a write grant or federates to a cloud identity",
+    publication_executes_candidate_code: publisher_job_executes_candidate_code(),
+    publication_execution_detail: "the publisher job checks out a ref or repository other than its own default-branch commit"
+  ))
+}
+
+type HealPublisherWorkflowGenerationOutcome
+  = HealPublisherWorkflowGenerated { content: String }
+  | HealPublisherWorkflowGenerationRefused { reason: String }
+
+data heal_publisher_isolation_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the two phases are not isolated -- either the candidate job holds a publication credential or the publisher job obtains the candidate's code. No workflow yaml was emitted; this is the invariant gunbc.heal_publication_boundary states and gunbc#10887 violated."
+
+data heal_publisher_capability_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the job's capability closure does not hold. No workflow yaml was emitted."
+
+fn heal_publisher_registration_refusal_reason() -> String {
+  concat(
+    "REFUSED gunbc.heal_publisher_workflow: the publishing App is not registered, so no workflow yaml was emitted -- ",
+    heal_publisher_app_registration_detail(r: heal_publisher_app_registration)
+  )
+}
+
+fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutcome {
+  match admit_workflow_toolchain_homes(workflow: heal_publisher_workflow) {
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      HealPublisherWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+    WorkflowToolchainHomesAdmitted =>
+      if !heal_publisher_app_is_registered(r: heal_publisher_app_registration) {
+        HealPublisherWorkflowGenerationRefused { reason: heal_publisher_registration_refusal_reason() }
+      } else if !heal_publication_phases_isolated() {
+        HealPublisherWorkflowGenerationRefused { reason: heal_publisher_isolation_refusal_reason }
+      } else if !heal_publisher_capability_closure_holds() {
+        HealPublisherWorkflowGenerationRefused { reason: heal_publisher_capability_refusal_reason }
+      } else {
+        HealPublisherWorkflowGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: heal_publisher_workflow)) }
+      }
+  }
+}

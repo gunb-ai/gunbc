@@ -1,48 +1,132 @@
 module test.claim.heal_publication_boundary_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, NonEmptyStr, Bool, Int, CommitSha }
-import std.content_hash { Sha256Digest }
+import v2.std.optional { Present, Absent }
+import std.types { String, NonEmptyStr, Bool, Int, CommitSha, List }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.github.effect { RepositoryPath }
+import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, Failure }
+import extdeps.github.git_database { GitTreeItemWire }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitTreeMode, GitRegularBlobMode, GitExecutableBlobMode }
 import gunbc.heal_publication_boundary {
   PhaseCredentialStanding, PhasesIsolated,
   CandidatePhaseHoldsPublicationCredential, PublicationPhaseExecutesCandidateCode,
   phase_isolation, phases_are_isolated,
   CandidateEntry, HealRepairCandidate,
-  PathAdmission, PathAdmitted, PathIsWorkflowProjection, PathIsAuthorCommitRequired, PathNotInAdmittedClass,
-  publisher_path_admission,
-  CandidateValidation, CandidateAdmitted, CandidateRefused,
-  CandidateRefusalCause, RepositoryMismatch, PullRequestMismatch, HeadMoved, BaseMismatch, CandidateEntriesEmpty,
-  validate_candidate,
-  PublicationOutcome, Published, PublicationRefused, PublicationUnverified,
-  publication_outcome, publication_is_published,
-  DriftObservation, DriftObserved, DriftObservationRequired,
-  partition_for_publication, drift_requires_observation
+  encode_heal_repair_candidate, decode_heal_repair_candidate, CandidateDecode, CandidateDecoded, CandidateUndecodable,
+  PublisherPathPolicy, publisher_path_policy, PathAdmission, PathAdmitted, PathAdmissionRefused, publisher_path_admission,
+  TriggeringRunFacts, PullRequestFacts, ProposedBlobObservation, ProposedBlobComputed, ProposedBlobReadRefused,
+  PublisherObservations, AdmittedHealPublication, HealPublicationAdmission, HealPublicationAdmitted, HealPublicationRefused,
+  admit_heal_publication, heal_publication_refusal_token,
+  HealPublicationRefusal,
+  PublicationReadback, HealPublicationOutcome, HealPublished, HealPublicationWriteRefused, HealPublicationUnverified,
+  publication_readback_verdict, heal_publication_is_published
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data good_head: CommitSha = "72d2584a3e0e898e1a6622c7e992696ed4c11366"
-data other_head: CommitSha = "0000000000000000000000000000000000000000"
-data a_blob: Sha256Digest = Sha256Digest { hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }
+// ── fixtures: one consistent world, and each refusal changes exactly one fact of it ─────────
 
-fn an_entry(p: String) -> CandidateEntry {
-  CandidateEntry { path: RepositoryPath { value: p as NonEmptyStr }, blob: a_blob, mode_octal: "100644" }
+data head_hex: String = "1111111111111111111111111111111111111111"
+data base_blob_hex: String = "2222222222222222222222222222222222222222"
+data proposed_hex: String = "3333333333333333333333333333333333333333"
+data other_hex: String = "4444444444444444444444444444444444444444"
+data created_commit_hex: String = "5555555555555555555555555555555555555555"
+data created_tree_hex: String = "6666666666666666666666666666666666666666"
+data branch: String = "session/some-lane"
+
+fn oid(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex as Sha1DigestHex } }
 }
 
-fn a_candidate(repo: NonEmptyStr, pr: Int, head: CommitSha, base: NonEmptyStr, entries: List<CandidateEntry>) -> HealRepairCandidate {
+fn design_entry(mode: GitTreeMode, base: GitObjectId?, proposed: String) -> CandidateEntry {
+  CandidateEntry { path: RepositoryPath { value: "DESIGN.md" }, mode: mode, base_blob: base, proposed_blob: oid(hex: proposed) }
+}
+
+fn good_entry() -> CandidateEntry {
+  design_entry(mode: GitRegularBlobMode, base: Present { value: oid(hex: base_blob_hex) }, proposed: proposed_hex)
+}
+
+fn candidate_with(entries: List<CandidateEntry>, declaration: String) -> HealRepairCandidate {
   HealRepairCandidate {
-    repository_full_name: repo,
-    pull_number: pr,
-    head_ref: "heal-branch",
-    expected_head_sha: head,
-    base_ref: base,
+    repository_full_name: "gunb-ai/gunbc",
+    pull_number: 11493,
+    head_ref: branch as NonEmptyStr,
+    expected_head_sha: head_hex as CommitSha,
+    base_ref: "main",
+    producer_run_id: "35246745255",
+    repair_declaration: declaration,
     entries: entries
   }
 }
 
-fn validated(c: HealRepairCandidate) -> CandidateValidation {
-  validate_candidate(candidate: c, observed_repository: "gunb-ai/gunbc", observed_pull_number: 42, observed_head_sha: good_head, observed_base_ref: "main")
+fn good_candidate() -> HealRepairCandidate {
+  candidate_with(entries: [good_entry()], declaration: "Ledger-Repaired: DESIGN.md\n")
+}
+
+// Main's committed artifact paths, including a workflow projection the publisher must never admit.
+fn main_policy() -> PublisherPathPolicy {
+  publisher_path_policy(committed_artifact_paths: ["DESIGN.md", "ROADMAP.md", ".github/workflows/witnesses.yml"])
+}
+
+fn good_run() -> TriggeringRunFacts {
+  TriggeringRunFacts {
+    workflow_path: ".github/workflows/heal.yml",
+    originating_event: "pull_request",
+    conclusion: Success,
+    head_sha: head_hex,
+    head_branch: branch,
+    head_repository_full_name: "gunb-ai/gunbc",
+    repository_full_name: "gunb-ai/gunbc"
+  }
+}
+
+fn good_pull() -> PullRequestFacts {
+  PullRequestFacts { number: 11493, open: true, head_ref: branch, base_ref: "main" }
+}
+
+fn design_base_item(mode: String) -> GitTreeItemWire {
+  GitTreeItemWire { path: "DESIGN.md", mode: mode, type: "blob", sha: base_blob_hex, size: Present { value: 10 } }
+}
+
+fn observations_with(
+  run: TriggeringRunFacts,
+  pull: PullRequestFacts,
+  branch_head: String,
+  base_tree: List<GitTreeItemWire>,
+  blobs: List<ProposedBlobObservation>
+) -> PublisherObservations {
+  PublisherObservations {
+    repository_full_name: "gunb-ai/gunbc",
+    default_branch: "main",
+    heal_workflow_path: ".github/workflows/heal.yml",
+    run: run,
+    pull_request: pull,
+    branch_head_sha: branch_head,
+    base_tree_sha: "7777777777777777777777777777777777777777",
+    base_tree_truncated: false,
+    base_tree: base_tree,
+    proposed_blobs: blobs
+  }
+}
+
+fn good_blobs() -> List<ProposedBlobObservation> {
+  [ProposedBlobComputed { blob_hex: proposed_hex, computed_hex: proposed_hex }]
+}
+
+fn good_observations() -> PublisherObservations {
+  observations_with(run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs())
+}
+
+fn refusal_of(a: HealPublicationAdmission) -> String {
+  match a {
+    HealPublicationAdmitted { admitted: _ } => "admitted"
+    HealPublicationRefused { refusal } => heal_publication_refusal_token(r: refusal) as String
+  }
+}
+
+fn admit_with(c: HealRepairCandidate, o: PublisherObservations) -> String {
+  refusal_of(a: admit_heal_publication(candidate: c, observations: o, policy: main_policy()))
 }
 
 // ── isolation, both directions ──────────────────────────────────────────────────────────────
@@ -70,8 +154,7 @@ test fn witness_candidate_phase_holding_the_credential_is_a_violation() -> Bool 
 }
 
 // THE SECOND DIRECTION IS A SEPARATE ARM, and stating only the first would admit a publisher that
-// checks out the branch it publishes. Different remedy: credential placement versus execution
-// placement.
+// checks out the branch it publishes.
 test fn witness_publisher_executing_candidate_code_is_a_distinct_violation() -> Bool {
   match phase_isolation(
     candidate_holds_publication_credential: false, candidate_credential_detail: "none",
@@ -83,161 +166,280 @@ test fn witness_publisher_executing_candidate_code_is_a_distinct_violation() -> 
   }
 }
 
+// ── the candidate wire ──────────────────────────────────────────────────────────────────────
+
+// THE ROUND TRIP IS THE POSITIVE CONTROL FOR EVERY DECODE REFUSAL BELOW: a decoder that refused
+// everything would satisfy each of them.
+test fn witness_an_encoded_candidate_decodes_to_itself() -> Bool {
+  match decode_heal_repair_candidate(text: encode_heal_repair_candidate(c: good_candidate())) {
+    CandidateUndecodable { refusal: _ } => false
+    CandidateDecoded { candidate } =>
+      candidate.pull_number == 11493
+        && (candidate.head_ref as String) == branch
+        && (candidate.expected_head_sha as String) == head_hex
+        && count(candidate.entries) == 1
+        && candidate.repair_declaration == "Ledger-Repaired: DESIGN.md\n"
+  }
+}
+
+test fn witness_an_unknown_candidate_format_refuses_by_name() -> Bool {
+  match decode_heal_repair_candidate(text: "{\"format\":\"gunbc.heal_repair_candidate/0\"}") {
+    CandidateUndecodable { refusal } => heal_publication_refusal_token(r: refusal) == "CandidateFormatUnsupported"
+    CandidateDecoded { candidate: _ } => false
+  }
+}
+
+// A blob id names the file the publisher reads, so a non-canonical spelling must refuse rather than
+// be folded into a second name for the same object.
+test fn witness_an_uppercase_blob_id_refuses() -> Bool {
+  let text = encode_heal_repair_candidate(c: good_candidate())
+  let upper = replace(s: text, from: proposed_hex, to: "333333333333333333333333333333333333333A")
+  match decode_heal_repair_candidate(text: upper) {
+    CandidateUndecodable { refusal } => heal_publication_refusal_token(r: refusal) == "CandidateMemberMalformed"
+    CandidateDecoded { candidate: _ } => false
+  }
+}
+
 // ── the publisher's own path policy ─────────────────────────────────────────────────────────
 
-test fn witness_an_admitted_generated_path_is_publishable() -> Bool {
-  match publisher_path_admission(path: RepositoryPath { value: "docs/plans/x.md" }, is_workflow_projection: false, is_author_commit_required: false, is_admitted_generated_class: true) {
+test fn witness_a_path_in_mains_registry_is_admitted() -> Bool {
+  match publisher_path_admission(policy: main_policy(), path: RepositoryPath { value: "DESIGN.md" }) {
     PathAdmitted => true
-    _ => false
+    PathAdmissionRefused { refusal: _ } => false
   }
 }
 
-// A WORKFLOW FILE IS THE ONE PATH WHOSE CONTENTS DECIDE WHAT LATER RUNS MAY DO, so it is refused
-// by the publisher's own policy rather than by whatever the branch claims about it.
-test fn witness_workflow_projection_is_refused_by_the_publisher() -> Bool {
-  match publisher_path_admission(path: RepositoryPath { value: ".github/workflows/witnesses.yml" }, is_workflow_projection: true, is_author_commit_required: false, is_admitted_generated_class: true) {
-    PathIsWorkflowProjection { path } => path.value == ".github/workflows/witnesses.yml"
-    _ => false
+// A WORKFLOW FILE IS REFUSED EVEN THOUGH MAIN REGISTERS IT, because no automation may write the one
+// path whose contents decide what later runs may do.
+test fn witness_a_registered_workflow_projection_requires_an_author_commit() -> Bool {
+  match publisher_path_admission(policy: main_policy(), path: RepositoryPath { value: ".github/workflows/witnesses.yml" }) {
+    PathAdmitted => false
+    PathAdmissionRefused { refusal } => heal_publication_refusal_token(r: refusal) == "PathRequiresAuthorCommit"
   }
 }
 
-test fn witness_author_commit_required_path_is_refused() -> Bool {
-  match publisher_path_admission(path: RepositoryPath { value: ".gitattributes" }, is_workflow_projection: false, is_author_commit_required: true, is_admitted_generated_class: true) {
-    PathIsAuthorCommitRequired { path: _ } => true
-    _ => false
+// THE DECISIVE ARM FOR THE PERMIT RULE. The policy is main's registry; a path the branch might call
+// generated is refused when main's registry does not contain it.
+test fn witness_a_path_outside_mains_registry_is_refused() -> Bool {
+  match publisher_path_admission(policy: main_policy(), path: RepositoryPath { value: "src/v1/stage0/src/main.rs" }) {
+    PathAdmitted => false
+    PathAdmissionRefused { refusal } => heal_publication_refusal_token(r: refusal) == "PathNotPublisherAdmitted"
   }
 }
 
-// THE DECISIVE ARM FOR THE PERMIT RULE. A path the branch would classify as generated but which
-// the publisher's OWN admitted class does not contain is refused. If this ever admitted, a branch
-// could name an arbitrary path and have a privileged process write it.
-test fn witness_a_path_outside_the_publishers_own_class_is_refused() -> Bool {
-  match publisher_path_admission(path: RepositoryPath { value: "src/v1/stage0/src/main.rs" }, is_workflow_projection: false, is_author_commit_required: false, is_admitted_generated_class: false) {
-    PathNotInAdmittedClass { path } => path.value == "src/v1/stage0/src/main.rs"
-    _ => false
+// ── admission: one consistent world, then one fact changed at a time ────────────────────────
+
+test fn witness_a_consistent_candidate_is_admitted() -> Bool {
+  match admit_heal_publication(candidate: good_candidate(), observations: good_observations(), policy: main_policy()) {
+    HealPublicationRefused { refusal: _ } => false
+    HealPublicationAdmitted { admitted } =>
+      count(admitted.entries) == 1
+        && (admitted.expected_head_sha as String) == head_hex
+        && string_contains(s: admitted.message as String, pattern: "Heal-Candidate-Run: 35246745255")
   }
 }
 
-// ── independent validation ──────────────────────────────────────────────────────────────────
-
-test fn witness_a_matching_candidate_is_admitted() -> Bool {
-  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 42, head: good_head, base: "main", entries: [an_entry(p: "docs/plans/x.md")])) {
-    CandidateAdmitted { candidate: _ } => true
-    CandidateRefused { cause: _ } => false
-  }
+test fn witness_a_run_of_another_workflow_is_refused() -> Bool {
+  let run = good_run()
+  admit_with(c: good_candidate(), o: observations_with(
+    run: TriggeringRunFacts { workflow_path: ".github/workflows/evil.yml", originating_event: run.originating_event, conclusion: run.conclusion, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
+    pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+  )) == "TriggeringRunNotTheHealWorkflow"
 }
 
-// A CORRECT BLOB FOR THE WRONG REPOSITORY IS WORSE THAN A WRONG ONE, so identity is checked first.
-test fn witness_repository_mismatch_refuses() -> Bool {
-  match validated(c: a_candidate(repo: "someone/else", pr: 42, head: good_head, base: "main", entries: [an_entry(p: "docs/plans/x.md")])) {
-    CandidateRefused { cause } => match cause {
-      RepositoryMismatch { expected, candidate } => expected == "gunb-ai/gunbc" && candidate == "someone/else"
-      _ => false
-    }
-    CandidateAdmitted { candidate: _ } => false
-  }
+test fn witness_an_unsuccessful_heal_run_is_refused() -> Bool {
+  let run = good_run()
+  admit_with(c: good_candidate(), o: observations_with(
+    run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: Failure, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
+    pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+  )) == "TriggeringRunNotSuccessful"
 }
 
-test fn witness_pull_request_mismatch_refuses() -> Bool {
-  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 99, head: good_head, base: "main", entries: [an_entry(p: "docs/plans/x.md")])) {
-    CandidateRefused { cause } => match cause {
-      PullRequestMismatch { expected, candidate } => expected == 42 && candidate == 99
-      _ => false
-    }
-    CandidateAdmitted { candidate: _ } => false
-  }
+// A candidate carried by a run about ANOTHER head is not a description of that run's subject.
+test fn witness_a_candidate_for_a_head_its_run_did_not_judge_is_refused() -> Bool {
+  let run = good_run()
+  admit_with(c: good_candidate(), o: observations_with(
+    run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: run.conclusion, head_sha: other_hex, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
+    pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+  )) == "TriggeringRunSubjectDisagreed"
 }
 
-// THE COMPARE-AND-SWAP. Checked here AND carried into the push, because a head that moves between
-// validation and push is exactly the race a single check cannot close.
-test fn witness_moved_head_refuses_and_names_both() -> Bool {
-  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 42, head: other_head, base: "main", entries: [an_entry(p: "docs/plans/x.md")])) {
-    CandidateRefused { cause } => match cause {
-      HeadMoved { expected, observed } => expected == other_head && observed == good_head
-      _ => false
-    }
-    CandidateAdmitted { candidate: _ } => false
-  }
+// A FORK'S RUN NEVER REACHES A WRITE: the head repository is read from the event, not the candidate.
+test fn witness_a_run_from_another_head_repository_is_refused() -> Bool {
+  let run = good_run()
+  admit_with(c: good_candidate(), o: observations_with(
+    run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: run.conclusion, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: "someone/fork", repository_full_name: run.repository_full_name },
+    pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+  )) == "TriggeringRunRepositoryDisagreed"
 }
 
-test fn witness_base_mismatch_refuses() -> Bool {
-  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 42, head: good_head, base: "some-release", entries: [an_entry(p: "docs/plans/x.md")])) {
-    CandidateRefused { cause } => match cause {
-      BaseMismatch { expected, candidate } => expected == "main" && candidate == "some-release"
-      _ => false
-    }
-    CandidateAdmitted { candidate: _ } => false
-  }
+test fn witness_a_closed_pull_request_is_refused() -> Bool {
+  admit_with(c: good_candidate(), o: observations_with(
+    run: good_run(), pull: PullRequestFacts { number: 11493, open: false, head_ref: branch, base_ref: "main" },
+    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+  )) == "PullRequestNotOpen"
 }
 
-// NOTHING TO WRITE IS NOT A SUCCESSFUL PUBLICATION. This is the gunbc#10887 failure shape one
-// level up: an empty population must refuse, never report a clean result.
-test fn witness_an_empty_candidate_refuses_rather_than_publishing_nothing() -> Bool {
-  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 42, head: good_head, base: "main", entries: [])) {
-    CandidateRefused { cause } => match cause {
-      CandidateEntriesEmpty => true
-      _ => false
-    }
-    CandidateAdmitted { candidate: _ } => false
+test fn witness_a_pull_request_into_another_base_is_refused() -> Bool {
+  admit_with(c: good_candidate(), o: observations_with(
+    run: good_run(), pull: PullRequestFacts { number: 11493, open: true, head_ref: branch, base_ref: "release" },
+    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+  )) == "BaseRefNotTheDefaultBranch"
+}
+
+// THE COMPARE-AND-SWAP'S FIRST HALF. The fast-forward-only reference write is its second.
+test fn witness_a_moved_branch_head_is_refused() -> Bool {
+  admit_with(c: good_candidate(), o: observations_with(
+    run: good_run(), pull: good_pull(), branch_head: other_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+  )) == "HeadMoved"
+}
+
+test fn witness_a_branch_name_that_would_misaddress_a_rest_path_is_refused() -> Bool {
+  let run = good_run()
+  let hashed = HealRepairCandidate {
+    repository_full_name: "gunb-ai/gunbc", pull_number: 11493, head_ref: "lane#1", expected_head_sha: head_hex as CommitSha,
+    base_ref: "main", producer_run_id: "35246745255", repair_declaration: "Ledger-Repaired: DESIGN.md\n", entries: [good_entry()]
   }
+  admit_with(c: hashed, o: observations_with(
+    run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: run.conclusion, head_sha: run.head_sha, head_branch: "lane#1", head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
+    pull: PullRequestFacts { number: 11493, open: true, head_ref: "lane#1", base_ref: "main" },
+    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+  )) == "HeadRefNotAddressable"
+}
+
+// A COMMIT MUST SAY WHAT IT REPAIRED. An empty declaration is a zero-repairs record over an unstated
+// population.
+test fn witness_a_candidate_without_a_repair_declaration_is_refused() -> Bool {
+  admit_with(c: candidate_with(entries: [good_entry()], declaration: "  \n"), o: good_observations()) == "RepairDeclarationMissing"
+}
+
+// NOTHING TO WRITE IS NOT A SUCCESSFUL PUBLICATION.
+test fn witness_an_empty_candidate_is_refused() -> Bool {
+  admit_with(c: candidate_with(entries: [], declaration: "Ledger-Repaired: DESIGN.md\n"), o: good_observations()) == "CandidateEntriesEmpty"
+}
+
+test fn witness_a_duplicated_path_is_refused() -> Bool {
+  admit_with(c: candidate_with(entries: [good_entry(), good_entry()], declaration: "Ledger-Repaired: DESIGN.md\n"), o: good_observations()) == "PathPopulationDuplicated"
+}
+
+// A candidate's base must be the head GitHub reports, or its repair is relative to some other tree.
+test fn witness_a_candidate_whose_base_blob_disagrees_with_the_head_is_refused() -> Bool {
+  admit_with(
+    c: candidate_with(entries: [design_entry(mode: GitRegularBlobMode, base: Present { value: oid(hex: other_hex) }, proposed: proposed_hex)], declaration: "Ledger-Repaired: DESIGN.md\n"),
+    o: good_observations()
+  ) == "BaseBlobDisagreed"
+}
+
+// The publisher never changes a mode: an executable claim for a regular file refuses.
+test fn witness_a_mode_change_is_refused() -> Bool {
+  admit_with(
+    c: candidate_with(entries: [design_entry(mode: GitExecutableBlobMode, base: Present { value: oid(hex: base_blob_hex) }, proposed: proposed_hex)], declaration: "Ledger-Repaired: DESIGN.md\n"),
+    o: good_observations()
+  ) == "FileModeNotAdmitted"
+}
+
+// An ABSENT path may be ADDED, and only as a regular file. The positive control is the added regular
+// file; the executable variant refuses.
+test fn witness_an_absent_path_may_be_added_only_as_a_regular_file() -> Bool {
+  let added_regular = admit_with(
+    c: candidate_with(entries: [design_entry(mode: GitRegularBlobMode, base: none, proposed: proposed_hex)], declaration: "Ledger-Repaired: DESIGN.md\n"),
+    o: observations_with(run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [], blobs: good_blobs())
+  )
+  let added_executable = admit_with(
+    c: candidate_with(entries: [design_entry(mode: GitExecutableBlobMode, base: none, proposed: proposed_hex)], declaration: "Ledger-Repaired: DESIGN.md\n"),
+    o: observations_with(run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [], blobs: good_blobs())
+  )
+  added_regular == "admitted" && added_executable == "FileModeNotAdmitted"
+}
+
+test fn witness_an_entry_that_changes_nothing_is_refused() -> Bool {
+  admit_with(
+    c: candidate_with(entries: [design_entry(mode: GitRegularBlobMode, base: Present { value: oid(hex: base_blob_hex) }, proposed: base_blob_hex)], declaration: "Ledger-Repaired: DESIGN.md\n"),
+    o: observations_with(run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
+      blobs: [ProposedBlobComputed { blob_hex: base_blob_hex, computed_hex: base_blob_hex }])
+  ) == "EntryProposesNoChange"
+}
+
+// THE BYTES MUST HASH TO THE ID THEY CLAIM. A single changed byte changes the recomputed id.
+test fn witness_bytes_that_do_not_hash_to_the_claimed_blob_are_refused() -> Bool {
+  admit_with(c: good_candidate(), o: observations_with(
+    run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
+    blobs: [ProposedBlobComputed { blob_hex: proposed_hex, computed_hex: other_hex }]
+  )) == "ProposedBlobDisagreed"
+}
+
+test fn witness_an_unreadable_proposed_blob_is_refused() -> Bool {
+  admit_with(c: good_candidate(), o: observations_with(
+    run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
+    blobs: [ProposedBlobReadRefused { blob_hex: proposed_hex, detail: "absent" }]
+  )) == "ProposedBlobUnreadable"
+}
+
+test fn witness_a_candidate_naming_a_workflow_file_is_refused_whole() -> Bool {
+  let workflow_entry = CandidateEntry {
+    path: RepositoryPath { value: ".github/workflows/witnesses.yml" }, mode: GitRegularBlobMode,
+    base_blob: Present { value: oid(hex: base_blob_hex) }, proposed_blob: oid(hex: proposed_hex)
+  }
+  admit_with(c: candidate_with(entries: [good_entry(), workflow_entry], declaration: "Ledger-Repaired: DESIGN.md\n"), o: good_observations()) == "PathRequiresAuthorCommit"
 }
 
 // ── what counts as evidence the publication happened ────────────────────────────────────────
 
+fn admitted_design() -> AdmittedHealPublication? {
+  match admit_heal_publication(candidate: good_candidate(), observations: good_observations(), policy: main_policy()) {
+    HealPublicationAdmitted { admitted } => Present { value: admitted }
+    HealPublicationRefused { refusal: _ } => none
+  }
+}
+
+fn readback_with(branch_head: String, parents: List<String>, tree: String, changed: List<String>, head_tree: List<GitTreeItemWire>) -> PublicationReadback {
+  PublicationReadback {
+    branch_head_sha: branch_head,
+    head_parents: parents,
+    head_tree_sha: tree,
+    changed_paths: changed,
+    comparison_truncated: false,
+    head_tree_truncated: false,
+    head_tree: head_tree
+  }
+}
+
+fn published_design_item() -> GitTreeItemWire {
+  GitTreeItemWire { path: "DESIGN.md", mode: "100644", type: "blob", sha: proposed_hex, size: Present { value: 12 } }
+}
+
+fn verdict_token(readback: PublicationReadback) -> String {
+  match admitted_design() {
+    Absent => "no-admission"
+    Present { value: admitted } =>
+      match publication_readback_verdict(admitted: admitted, created_commit_sha: created_commit_hex, created_tree_sha: created_tree_hex, readback: readback) {
+        HealPublished { receipt: _ } => "published"
+        HealPublicationWriteRefused { refusal: _ } => "refused"
+        HealPublicationUnverified { detail: _ } => "unverified"
+      }
+  }
+}
+
 test fn witness_a_confirmed_readback_is_published() -> Bool {
-  publication_is_published(o: publication_outcome(
-    push_succeeded: true, readback_observed: true,
-    readback_head: good_head, readback_parent: other_head, expected_parent: other_head,
-    readback_paths: [RepositoryPath { value: "docs/plans/x.md" }], detail: "ok"
-  ))
+  verdict_token(readback: readback_with(branch_head: created_commit_hex, parents: [head_hex], tree: created_tree_hex, changed: ["DESIGN.md"], head_tree: [published_design_item()])) == "published"
 }
 
-// A SUCCESSFUL PUSH IS NOT TERMINAL EVIDENCE. The exit says the transport accepted the request; it
-// does not say what the ref points at. An unconfirmed readback is Unverified -- not Published, and
-// not a refusal either, because the write may well have landed.
-test fn witness_a_push_without_readback_is_unverified_not_published() -> Bool {
-  match publication_outcome(
-    push_succeeded: true, readback_observed: false,
-    readback_head: good_head, readback_parent: other_head, expected_parent: other_head,
-    readback_paths: [], detail: "readback not observed"
-  ) {
-    PublicationUnverified { detail } => detail == "readback not observed"
-    Published { head: _, parent: _, changed_paths: _ } => false
-    PublicationRefused { cause: _ } => false
-  }
+// A SUCCESSFUL WRITE IS NOT TERMINAL EVIDENCE: a branch that names another commit is unverified.
+test fn witness_a_branch_naming_another_commit_is_unverified() -> Bool {
+  verdict_token(readback: readback_with(branch_head: other_hex, parents: [head_hex], tree: created_tree_hex, changed: ["DESIGN.md"], head_tree: [published_design_item()])) == "unverified"
 }
 
-// A WRONG PARENT MEANS THE COMMIT IS NOT THE ONE THIS TRANSACTION BUILT, even though the push
-// succeeded and a readback happened.
-test fn witness_a_wrong_parent_is_unverified() -> Bool {
-  match publication_outcome(
-    push_succeeded: true, readback_observed: true,
-    readback_head: good_head, readback_parent: good_head, expected_parent: other_head,
-    readback_paths: [], detail: "parent disagreed"
-  ) {
-    PublicationUnverified { detail: _ } => true
-    Published { head: _, parent: _, changed_paths: _ } => false
-    PublicationRefused { cause: _ } => false
-  }
+test fn witness_a_published_commit_with_another_parent_is_unverified() -> Bool {
+  verdict_token(readback: readback_with(branch_head: created_commit_hex, parents: [other_hex], tree: created_tree_hex, changed: ["DESIGN.md"], head_tree: [published_design_item()])) == "unverified"
 }
 
-// ── the observation / authorization split ───────────────────────────────────────────────────
-
-// THE gunbc#10887 P1 AT ITS ROOT. An unobservable credential grant emptied the auto-push
-// population, the emitted script lost all 37 git add lines, and an emptiness check then reported
-// HealNoChange over a real divergence. Here an unobservable grant yields DriftObservationRequired,
-// which is a REFUSAL STATE and not an empty set.
-test fn witness_unobservable_drift_requires_observation_rather_than_reporting_empty() -> Bool {
-  drift_requires_observation(d: DriftObservationRequired { detail: "installation grant unobserved" })
-    && !drift_requires_observation(d: DriftObserved { paths: [RepositoryPath { value: "docs/plans/x.md" }] })
+// EXACTLY THE ADMITTED DELTA. A published head that also changed a path nobody admitted is not the
+// publication this transaction built.
+test fn witness_a_changed_population_wider_than_the_admission_is_unverified() -> Bool {
+  verdict_token(readback: readback_with(branch_head: created_commit_hex, parents: [head_hex], tree: created_tree_hex, changed: ["DESIGN.md", "ROADMAP.md"], head_tree: [published_design_item()])) == "unverified"
 }
 
-// And the partition carries nothing publishable when the observation itself is missing, so no
-// downstream consumer can read an empty publishable set as "nothing drifted".
-test fn witness_a_missing_observation_publishes_nothing() -> Bool {
-  count(partition_for_publication(
-    observed: DriftObservationRequired { detail: "grant unobserved" },
-    admissions: [],
-    publishable: [RepositoryPath { value: "docs/plans/x.md" }]
-  ).publishable) == 0
+test fn witness_a_published_path_holding_another_blob_is_unverified() -> Bool {
+  verdict_token(readback: readback_with(branch_head: created_commit_hex, parents: [head_hex], tree: created_tree_hex, changed: ["DESIGN.md"],
+    head_tree: [GitTreeItemWire { path: "DESIGN.md", mode: "100644", type: "blob", sha: other_hex, size: Present { value: 12 } }])) == "unverified"
 }

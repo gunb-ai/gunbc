@@ -1,11 +1,22 @@
 module test.claim.github_app_registry
 
-import gunbc.auth.github_credential { unsatisfied_capabilities }
-import gunbc.ci_heal_credential {
-  live_heal_control_plane,
-  live_heal_dispatch_credential,
-  live_heal_push_binding_resolution,
+import gunbc.auth.github_credential {
+  unsatisfied_capabilities,
+  GitHubCredentialAuthority, ActionsJobCredential,
 }
+import gunbc.auth.github_apps {
+  GitHubAppControlPlaneState, app_control_plane_state,
+  gunbai_bot_declared, gunbai_bot_signer_custody,
+  AppRegistrationReadbackUnavailable,
+  InstallationReadbackUnavailable, InstallationReadbackNotAttempted,
+}
+import extdeps.github.actions { WorkflowPermissions, PermWrite }
+import extdeps.github.actions_token {
+  EffectiveActionsJobGrant, PullRequestEvent, SameRepositoryOrigin,
+  ActionsRepositoryPolicyUnobserved,
+}
+import extdeps.github.effect { contents_write, workflows_write }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repository { gunbc_repository }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv2 }
@@ -45,12 +56,68 @@ data control_plane_probe_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration
 }
 
-fn live_heal_push_authority() -> GitHubCredentialAuthority {
-  match push_binding_authority(resolution: live_heal_push_binding_resolution) {
-    Present { value: a } => a
-    Absent => live_heal_dispatch_credential
-  }
+// ── THE ACTIONS JOB CREDENTIAL, SUPPLIED AT THE BOUNDARY IT IS READ AT ───────────────────────
+//
+// Three arms below ask what credential_authorizes / unsatisfied_capabilities answer for an Actions
+// job token, and credential_capability routes that authority to actions_job_capability, which
+// reads nothing but the grant it carries. Until this cut the grant was resolved out of a live
+// production workflow's checkout step, so this file's subject silently included that resolver and
+// that workflow's `permissions:` key -- an edit to either could move what these arms establish
+// about the CREDENTIAL fold. DESIGN §3: a witness discriminates at one interface, and its inputs
+// belong there as supplied values.
+//
+// The control-plane fixture below is deliberately NOT supplied that way: it runs the real
+// app_control_plane_state fold over the real gunbai_bot_signer_custody row, which is the paired
+// execution of the production path this file also claims things about.
+
+data a_pull_request_workflow_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.github_app_registry",
+  decl_name: "a_pull_request_job_grant",
+  field: WholeDeclaration
 }
+
+data a_pull_request_job_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.github_app_registry",
+  decl_name: "a_pull_request_job_permissions",
+  field: WholeDeclaration
+}
+
+// `contents: write` and `actions: write` are both declarable keys of the Actions permissions
+// vocabulary; `workflows` IS NOT ONE, which is the asymmetry every refusal arm below rests on and
+// witness_actions_token_scope_vocabulary_has_no_workflows establishes independently.
+data a_pull_request_job_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermWrite },
+  pull_requests: none,
+  issues: none,
+  actions: Present { value: PermWrite },
+  id_token: none
+}
+
+data a_pull_request_job_grant: EffectiveActionsJobGrant = EffectiveActionsJobGrant {
+  workflow: a_pull_request_workflow_ref,
+  job: a_pull_request_job_ref,
+  event: PullRequestEvent,
+  origin: SameRepositoryOrigin,
+  repository_policy: ActionsRepositoryPolicyUnobserved,
+  permissions: a_pull_request_job_permissions
+}
+
+data a_pull_request_job_credential: GitHubCredentialAuthority = ActionsJobCredential {
+  grant: a_pull_request_job_grant
+}
+
+// THE BOT APP'S CONTROL PLANE AT THE STANDING IT REALLY HAS. The custody argument is the LIVE
+// gunbc.auth.github_apps row: witness_live_control_plane_starts_at_material_discovery is a claim
+// about what that row says today, so supplying a custody value here would delete the
+// discrimination rather than move it to a boundary.
+data bot_app_control_plane: GitHubAppControlPlaneState = app_control_plane_state(
+  app: gunbai_bot_declared,
+  custody: gunbai_bot_signer_custody,
+  registration: AppRegistrationReadbackUnavailable,
+  observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+  required: [contents_write, workflows_write],
+  reason: "branch advance over .github/workflows/**"
+)
 
 fn perm(axis: GitHubPermissionAxis, access: GitHubAppPermissionAccess) -> GitHubAppPermission {
   GitHubAppPermission { name: axis, access: access }
@@ -195,11 +262,11 @@ fn observed_grant(perms: List<GitHubAppPermission>) -> GitHubAppControlPlaneStat
 test fn witness_app_grant_cannot_rescue_actions_job_credential() -> Bool {
   let control_plane = observed_grant(perms: full_workflow_grant)
   !credential_authorizes(
-    authority: live_heal_push_authority(),
+    authority: a_pull_request_job_credential,
     control_plane: control_plane,
     effect: workflow_advance_effect
   ) && credential_authorizes(
-    authority: live_heal_push_authority(),
+    authority: a_pull_request_job_credential,
     control_plane: control_plane,
     effect: ordinary_advance_effect
   ) && credential_authorizes(
@@ -212,7 +279,7 @@ test fn witness_app_grant_cannot_rescue_actions_job_credential() -> Bool {
 test fn witness_actions_token_refusal_is_kind_not_grant() -> Bool {
   let control_plane = observed_grant(perms: full_workflow_grant)
   let unsatisfied = unsatisfied_capabilities(
-    authority: live_heal_push_authority(),
+    authority: a_pull_request_job_credential,
     control_plane: control_plane,
     effect: workflow_advance_effect
   )
@@ -503,16 +570,16 @@ test fn witness_unobserved_states_are_machine_owned_not_operator_owned() -> Bool
 }
 
 test fn witness_live_control_plane_starts_at_material_discovery() -> Bool {
-  match live_heal_control_plane {
+  match bot_app_control_plane {
     SignerCustodyUnresolved { app, custody } => app.app_id.value == 3909950 && match custody {
       SignerMaterialAvailabilityUnobserved => true
       _ => false
     }
     _ => false
-  } && match next_action_owner(action: control_plane_next_action(state: live_heal_control_plane, producers: gunbai_bot_observations)) {
+  } && match next_action_owner(action: control_plane_next_action(state: bot_app_control_plane, producers: gunbai_bot_observations)) {
     MachineOwner => true
     OperatorOwner => false
-  } && match control_plane_next_action(state: live_heal_control_plane, producers: gunbai_bot_observations) {
+  } && match control_plane_next_action(state: bot_app_control_plane, producers: gunbai_bot_observations) {
     MachineActionRequired { action } => match action {
       DiscoverSignerMaterial { app } => app.app_id.value == 3909950
       _ => false
@@ -852,11 +919,11 @@ data dispatch_effect: GitHubEffect = DispatchWorkflow {
 test fn witness_dispatch_and_push_credentials_differ_in_outcome() -> Bool {
   let control_plane = observed_grant(perms: full_workflow_grant)
   credential_authorizes(
-    authority: live_heal_dispatch_credential,
+    authority: a_pull_request_job_credential,
     control_plane: control_plane,
     effect: dispatch_effect
   ) && !credential_authorizes(
-    authority: live_heal_push_authority(),
+    authority: a_pull_request_job_credential,
     control_plane: control_plane,
     effect: workflow_advance_effect
   )

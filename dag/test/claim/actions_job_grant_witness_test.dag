@@ -67,62 +67,107 @@ import extdeps.github.effect {
   GitHubEffect,
   AdvanceRepositoryBranch,
   GitBranchRef,
-  RepositoryPath
+  RepositoryPath,
+  contents_write,
+  workflows_write
 }
-import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_apps {
+  GitHubAppControlPlaneState,
+  app_control_plane_state,
+  gunbai_bot_declared,
+  gunbai_bot_signer_custody,
+  AppRegistrationReadbackUnavailable,
+  InstallationReadbackUnavailable,
+  InstallationReadbackNotAttempted
+}
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority,
   ActionsJobCredential,
-  GitPushCredentialBinding,
-  CheckoutPersistedActionsCredential,
-  PushBindingResolution,
-  PushBindingResolved,
-  PushCredentialBindingMissing,
-  PushCredentialLeaseUnresolved,
-  PushBindingStepKindUnsupported,
-  PushBindingActionMismatch,
-  PushBindingInputDuplicated,
-  PushBindingInputUnsupported,
   CredentialCapability,
   CredentialGrants,
   CredentialScopeNotGranted,
   actions_job_capability,
   credential_authorizes
 }
-import gunbc.ci_heal_credential {
-  ci_heal_job_permissions,
-  ci_heal_effective_grant,
-  ci_heal_origin_guard,
-  ci_regen_heal_if,
-  ci_heal_pull_request_origin,
-  ci_heal_origin_binding,
-  heal_origin_binding,
-  HealOriginGuard,
-  HealOriginBinding,
-  ci_heal_branch_head_checkout_step,
-  resolve_push_binding,
-  push_binding_authority,
-  live_heal_push_binding_resolution,
-  live_heal_control_plane,
-  fork_origin_grant
-}
-import extdeps.languages.yaml.types {
-  YamlKeyValue, YamlValue, YamlString, YamlBool,
-  YamlSequence,
-  yaml_value_kind_token,
-  kv, yaml_string, yaml_int, yaml_bool
-}
-import extdeps.github.actions { Step, UsesStep, RunStep, ActionRef, checkout_action, upload_artifact_action }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repository { gunbc_repository }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn live_heal_push_authority() -> GitHubCredentialAuthority {
-  match push_binding_authority(resolution: live_heal_push_binding_resolution) {
-    Present { value: a } => a
-    Absent => ActionsJobCredential { grant: fork_origin_grant() }
-  }
+// ── THE SUBJECT IS THE GRANT FOLD, SO THE GRANT IS SUPPLIED HERE ────────────────────────────
+//
+// Every arm in this file asks what effective_actions_grant / actions_job_capability answer for a
+// grant of a given SHAPE. Those folds read nothing of a job but the grant they are handed, so the
+// grant belongs at this boundary as a constructed value. It used to be read off a live production
+// workflow row instead, which made this file's subject that row's producer as well: an edit to
+// some other module's `permissions:` key could move what these arms establish about the fold, and
+// the fold itself would never have changed. DESIGN §3: a witness discriminates at ONE interface,
+// and its inputs belong at that interface as supplied values.
+//
+// The paired inhabitance claim for the shape is gunbc.auth.github_credential's own consumers --
+// credential_authorizes and unsatisfied_capabilities take exactly this EffectiveActionsJobGrant --
+// and the fork arm below runs credential_authorizes for real against a real control plane value.
+
+data a_pull_request_workflow_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.actions_job_grant_witness",
+  decl_name: "a_pull_request_job_grant",
+  field: WholeDeclaration
 }
+
+data a_pull_request_job_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.actions_job_grant_witness",
+  decl_name: "a_pull_request_job_permissions",
+  field: WholeDeclaration
+}
+
+// `contents: write` is the only level any arm below reads off this row; the other keys are here
+// because WorkflowPermissions is a closed record and a witness may not leave one half-stated.
+data a_pull_request_job_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermWrite },
+  pull_requests: none,
+  issues: none,
+  actions: Present { value: PermWrite },
+  id_token: none
+}
+
+data a_pull_request_job_grant: EffectiveActionsJobGrant = EffectiveActionsJobGrant {
+  workflow: a_pull_request_workflow_ref,
+  job: a_pull_request_job_ref,
+  event: PullRequestEvent,
+  origin: SameRepositoryOrigin,
+  repository_policy: ActionsRepositoryPolicyUnobserved,
+  permissions: a_pull_request_job_permissions
+}
+
+// THE SAME JOB, SEEN FROM A FORK'S PULL REQUEST. Exactly one field differs from the row above,
+// and that single difference is the whole content of the fork arm: keeping the two grants
+// otherwise identical is what makes the refusal attributable to the origin and to nothing else.
+data a_forked_pull_request_job_grant: EffectiveActionsJobGrant = EffectiveActionsJobGrant {
+  workflow: a_pull_request_workflow_ref,
+  job: a_pull_request_job_ref,
+  event: PullRequestEvent,
+  origin: ForkedRepositoryOrigin,
+  repository_policy: ActionsRepositoryPolicyUnobserved,
+  permissions: a_pull_request_job_permissions
+}
+
+data a_pull_request_job_credential: GitHubCredentialAuthority = ActionsJobCredential {
+  grant: a_pull_request_job_grant
+}
+
+// A REAL CONTROL PLANE VALUE, AND THE FORK ARM IS ABOUT ITS IRRELEVANCE. credential_capability
+// routes an ActionsJobCredential to actions_job_capability, which never consults the control
+// plane -- so an App's grant cannot rescue a job token. Building this through the real
+// app_control_plane_state fold over the real gunbai_bot_signer_custody row keeps that arm a
+// statement about the routing rather than about a shape assembled to agree with it.
+data bot_app_control_plane: GitHubAppControlPlaneState = app_control_plane_state(
+  app: gunbai_bot_declared,
+  custody: gunbai_bot_signer_custody,
+  registration: AppRegistrationReadbackUnavailable,
+  observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+  required: [contents_write, workflows_write],
+  reason: "branch advance over .github/workflows/**"
+)
 
 fn grant_with(
   contents: PermissionLevel?,
@@ -130,8 +175,8 @@ fn grant_with(
   policy: ActionsRepositoryPolicyObservation
 ) -> EffectiveActionsJobGrant {
   EffectiveActionsJobGrant {
-    workflow: ci_heal_effective_grant.workflow,
-    job: ci_heal_effective_grant.job,
+    workflow: a_pull_request_workflow_ref,
+    job: a_pull_request_job_ref,
     event: PullRequestEvent,
     origin: origin,
     repository_policy: policy,
@@ -335,163 +380,26 @@ data ordinary_effect: GitHubEffect = AdvanceRepositoryBranch {
 }
 
 test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
-  let fork_credential = ActionsJobCredential { grant: fork_origin_grant() }
+  let fork_credential = ActionsJobCredential { grant: a_forked_pull_request_job_grant }
   !credential_authorizes(
     authority: fork_credential,
-    control_plane: live_heal_control_plane,
+    control_plane: bot_app_control_plane,
     effect: ordinary_effect
   ) && !credential_authorizes(
     authority: fork_credential,
-    control_plane: live_heal_control_plane,
+    control_plane: bot_app_control_plane,
     effect: workflow_effect
   ) && credential_authorizes(
-    authority: live_heal_push_authority(),
-    control_plane: live_heal_control_plane,
+    authority: a_pull_request_job_credential,
+    control_plane: bot_app_control_plane,
     effect: ordinary_effect
   )
-}
-
-fn checkout_variant(rows: List<YamlKeyValue>) -> Step {
-  UsesStep {
-    name: Present { value: "Checkout" },
-    id: none,
-    uses: checkout_action,
-    with: Present { value: rows },
-    env: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-test fn witness_push_binding_is_projected_from_the_actual_checkout_step() -> Bool {
-  match resolve_push_binding(step: ci_heal_branch_head_checkout_step(), grant: ci_heal_effective_grant) {
-    PushBindingResolved { binding, authority } =>
-      match binding {
-        CheckoutPersistedActionsCredential { checkout_step } =>
-          checkout_step.decl_name == "ci_heal_branch_head_checkout_step"
-      } && match authority {
-        ActionsJobCredential { grant } => grant.permissions == ci_heal_job_permissions
-        _ => false
-      }
-    _ => false
-  }
-}
-
-test fn witness_persist_credentials_false_unbinds_the_push_credential() -> Bool {
-  let disabled = checkout_variant(rows: [
-    kv(key: "fetch-depth", value: yaml_int(n: 0)),
-    kv(key: "persist-credentials", value: yaml_bool(b: false))
-  ])
-  let disabled_string = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: yaml_string(s: "false"))
-  ])
-  let leased = checkout_variant(rows: [
-    kv(key: "token", value: yaml_string(s: "${{ steps.app_token.outputs.token }}"))
-  ])
-  match resolve_push_binding(step: disabled, grant: ci_heal_effective_grant) {
-    PushCredentialBindingMissing { checkout_step: _ } => true
-    _ => false
-  } && match resolve_push_binding(step: disabled_string, grant: ci_heal_effective_grant) {
-    PushCredentialBindingMissing { checkout_step: _ } => true
-    _ => false
-  } && match resolve_push_binding(step: leased, grant: ci_heal_effective_grant) {
-    PushCredentialLeaseUnresolved { checkout_step: _ } => true
-    _ => false
-  } && match push_binding_authority(
-    resolution: resolve_push_binding(step: disabled, grant: ci_heal_effective_grant)
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-test fn witness_heal_condition_and_origin_share_one_binding() -> Bool {
-  let no_dependabot_clause = heal_origin_binding(
-    guard: HealOriginGuard { exclude_dependabot: false }
-  )
-  string_contains(s: ci_regen_heal_if, pattern: "github.event_name == 'pull_request'")
-    && string_contains(s: ci_regen_heal_if, pattern: "github.event.pull_request.head.repo.full_name == github.repository")
-    && string_contains(s: ci_regen_heal_if, pattern: "github.actor != 'dependabot[bot]'")
-    && (ci_regen_heal_if == ci_heal_origin_binding.condition)
-    && match ci_heal_pull_request_origin { SameRepositoryOrigin => true  _ => false }
-    && string_contains(s: no_dependabot_clause.condition, pattern: "head.repo.full_name")
-    && !string_contains(s: no_dependabot_clause.condition, pattern: "dependabot")
-    && match no_dependabot_clause.origin { SameRepositoryOrigin => true  _ => false }
-}
-
-test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool {
-  let run_step = RunStep {
-    name: Present { value: "not a checkout" },
-    id: none,
-    run: "echo hi",
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-  let other_action = UsesStep {
-    name: Present { value: "upload" },
-    id: none,
-    uses: upload_artifact_action,
-    with: none,
-    env: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-  let duplicate_token = checkout_variant(rows: [
-    kv(key: "token", value: yaml_string(s: "a")),
-    kv(key: "token", value: yaml_string(s: "b"))
-  ])
-  let duplicate_persist = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: yaml_bool(b: true)),
-    kv(key: "persist-credentials", value: yaml_bool(b: false))
-  ])
-  match resolve_push_binding(step: run_step, grant: ci_heal_effective_grant) {
-    PushBindingStepKindUnsupported { checkout_step: _ } => true
-    _ => false
-  } && match resolve_push_binding(step: other_action, grant: ci_heal_effective_grant) {
-    PushBindingActionMismatch { checkout_step: _ } => true
-    _ => false
-  } && match resolve_push_binding(step: duplicate_token, grant: ci_heal_effective_grant) {
-    PushBindingInputDuplicated { checkout_step: _, input } => input == "token"
-    _ => false
-  } && match resolve_push_binding(step: duplicate_persist, grant: ci_heal_effective_grant) {
-    PushBindingInputDuplicated { checkout_step: _, input } =>
-      input == "persist-credentials"
-    _ => false
-  }
-}
-
-test fn witness_malformed_checkout_input_is_not_reported_as_duplicated() -> Bool {
-  let malformed = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: yaml_string(s: "maybe"))
-  ])
-  let sequence_valued = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: YamlSequence { elements: [] })
-  ])
-  match resolve_push_binding(step: malformed, grant: ci_heal_effective_grant) {
-    PushBindingInputUnsupported { checkout_step: _, input, observed_kind } =>
-      input == "persist-credentials"
-        && yaml_value_kind_token(k: observed_kind) == "str"
-    _ => false
-  } && match resolve_push_binding(step: sequence_valued, grant: ci_heal_effective_grant) {
-    PushBindingInputUnsupported { checkout_step: _, input: _, observed_kind } =>
-      yaml_value_kind_token(k: observed_kind) == "seq"
-    _ => false
-  } && !match resolve_push_binding(step: malformed, grant: ci_heal_effective_grant) {
-    PushBindingInputDuplicated { checkout_step: _, input: _ } => true
-    _ => false
-  }
 }
 
 test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
   let id_token_read = EffectiveActionsJobGrant {
-    workflow: ci_heal_effective_grant.workflow,
-    job: ci_heal_effective_grant.job,
+    workflow: a_pull_request_workflow_ref,
+    job: a_pull_request_job_ref,
     event: PullRequestEvent,
     origin: SameRepositoryOrigin,
     repository_policy: ActionsRepositoryPolicyUnobserved,

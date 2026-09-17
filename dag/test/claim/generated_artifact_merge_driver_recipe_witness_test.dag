@@ -3,7 +3,7 @@ module test.claim.generated_artifact_merge_driver_recipe
 import std.logic { Bool }
 import std.types { String }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
-import gunbc.ci_spec { ci_heal_author_commit_regen_command }
+import gunbc.ci_spec { generated_artifact_author_regen_command }
 import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_emit_dissolution_trigger }
 import gunbc.local_tidy_spec { generated_artifact_merge_driver_emit_scaffold }
@@ -35,7 +35,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emitted_driver_script() -> String {
   expected_generated_artifact_merge_driver_sh(
-    regen_command: ci_heal_author_commit_regen_command,
+    regen_command: generated_artifact_author_regen_command,
     heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
   )
 }

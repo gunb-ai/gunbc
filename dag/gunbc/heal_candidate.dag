@@ -1,0 +1,408 @@
+module gunbc.heal_candidate
+
+import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath }
+import std.integer { UInt8 }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.bytes { utf8_encode_bytes }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.effect { RepositoryPath }
+import extdeps.git.object_store {
+  GitObjectId, git_sha1_object_id, git_object_id_eq, git_object_id_wire_hex,
+  GitTreeMode, GitRegularBlobMode, GitExecutableBlobMode, GitSymlinkMode, GitSubtreeMode, GitlinkMode,
+  GitObjectFormatSha1, GitIndexStageNormal, GitIndexStageBase, GitIndexStageOurs, GitIndexStageTheirs,
+  git_decode_ls_files_stage_z, GitLsFilesStageZDecoded, GitLsFilesStageZRefused, git_path_octets, git_ascii_field_text, GitPath
+}
+import extdeps.git { git_pathspec_literal }
+import extdeps.git.plumbing
+import extdeps.git.inspect
+import extdeps.shell
+import gunbc.generated_artifact { committed_generated_artifact_paths }
+import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
+import gunbc.heal_publication_boundary {
+  CandidateEntry, HealRepairCandidate,
+  encode_heal_repair_candidate, decode_heal_repair_candidate, CandidateDecoded, CandidateUndecodable,
+  heal_publication_refusal_detail, heal_publication_refusal_token,
+  heal_repair_candidate_manifest_file_name, candidate_blob_file_name, candidate_file_path
+}
+
+// THE UNCREDENTIALED HALF OF HEAL PUBLICATION (gunbc#10958 Phase A). It runs in the pull request's
+// own job, after the regenerator has written every committed projection and the second pass has
+// shown those bytes are the generator's fixed point, and it turns that tree into a candidate: a
+// manifest naming each drifted path with the blob it held at the checked-out head and the blob it
+// holds now, plus the new bytes under their own blob ids. It publishes nothing and holds nothing
+// that could.
+//
+// THE POPULATION IS OBSERVED, NOT AUTHORIZED. Every committed generated artifact of THIS checkout is
+// compared against the index -- which is the checked-out head, because nothing in this job stages --
+// and a path is in the candidate exactly when its bytes differ. No credential, grant or policy
+// narrows that population; which of those paths may be published is the publisher's question, asked
+// of its own checkout, and it refuses whole rather than partially.
+
+data heal_candidate_directory: String = "target/heal-repair-candidate"
+
+data heal_candidate_repository_env: NonEmptyStr = "HEAL_REPOSITORY"
+
+data heal_candidate_pull_number_env: NonEmptyStr = "HEAL_PULL_NUMBER"
+
+data heal_candidate_head_ref_env: NonEmptyStr = "HEAL_HEAD_REF"
+
+data heal_candidate_base_ref_env: NonEmptyStr = "HEAL_BASE_REF"
+
+data heal_candidate_run_id_env: NonEmptyStr = "HEAL_RUN_ID"
+
+// ── The pure half: what one index listing and one blob id decide ────────────────────────────
+
+type BaseIndexObservation
+  = BaseIndexAbsent
+  | BaseIndexBlob { mode: GitTreeMode, oid: GitObjectId }
+  | BaseIndexRefused { detail: String }
+
+// THE PATH COMPARISON IS OVER GIT'S OWN OCTETS, rendered back to text. A generated artifact's path is
+// ASCII; a path git reports that is not renderable that way is not one this producer can claim to
+// have matched, so it refuses rather than comparing something else.
+fn index_entry_names_path(entry_path: GitPath, path: String) -> Bool {
+  match git_ascii_field_text(octets: git_path_octets(path: entry_path)) {
+    Absent => false
+    Present { value: text } => (text as String) == path
+  }
+}
+
+// ONE LITERAL PATHSPEC, AT MOST ONE ENTRY. The listing is decoded by git's own ls-files wire decoder
+// (extdeps.git.object_store), and the one entry must name exactly the requested path at stage 0 as a
+// regular or executable file; anything else -- a directory match, an unmerged path, a symlink or a
+// submodule where a generated file belongs -- refuses rather than being read as a blob.
+fn base_index_observation(path: String, raw: String) -> BaseIndexObservation {
+  if raw == "" {
+    BaseIndexAbsent
+  } else {
+    base_index_entry_observation(path: path, raw: raw)
+  }
+}
+
+// EMPTY OUTPUT IS AN ABSENCE, NOT A MALFORMED LISTING, and the two are separated above rather than
+// inside the decoder: `ls-files` prints nothing for a path the index does not carry, which is exactly
+// the state a newly registered artifact is in on a branch that has never committed it. The NUL-quartet
+// decoder refuses an empty payload -- correctly, since no record is not a record -- so reading that
+// refusal as "the listing did not decode" would turn every added path into a produced-nothing refusal.
+fn base_index_entry_observation(path: String, raw: String) -> BaseIndexObservation {
+  match git_decode_ls_files_stage_z(payload: utf8_encode_bytes(s: raw), format: GitObjectFormatSha1) {
+    GitLsFilesStageZRefused { cause: _ } => BaseIndexRefused { detail: "the index listing did not decode" }
+    GitLsFilesStageZDecoded { entries } =>
+      if count(entries) == 0 {
+        BaseIndexAbsent
+      } else if count(entries) > 1 {
+        BaseIndexRefused { detail: "the literal pathspec matched more than one index entry" }
+      } else {
+        match (entries |> first) {
+          Absent => BaseIndexAbsent
+          Present { value: e } =>
+            if !index_entry_names_path(entry_path: e.path, path: path) {
+              BaseIndexRefused { detail: "the index entry names another path, or a path this reader cannot render" }
+            } else {
+              match e.stage {
+                GitIndexStageBase => BaseIndexRefused { detail: "the path is unmerged in the index" }
+                GitIndexStageOurs => BaseIndexRefused { detail: "the path is unmerged in the index" }
+                GitIndexStageTheirs => BaseIndexRefused { detail: "the path is unmerged in the index" }
+                GitIndexStageNormal =>
+                  match e.mode {
+                    GitRegularBlobMode => BaseIndexBlob { mode: e.mode, oid: e.oid }
+                    GitExecutableBlobMode => BaseIndexBlob { mode: e.mode, oid: e.oid }
+                    GitSymlinkMode => BaseIndexRefused { detail: "the path is a symlink at the checked-out head" }
+                    GitSubtreeMode => BaseIndexRefused { detail: "the path is a directory at the checked-out head" }
+                    GitlinkMode => BaseIndexRefused { detail: "the path is a submodule at the checked-out head" }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+type CandidateEntryDecision
+  = EntryUnchanged
+  | EntryDrifted { entry: CandidateEntry }
+  | EntryDecisionRefused { detail: String }
+
+// A path absent at the head is ADDED as a regular file; a present one keeps its mode and names the
+// blob it held. Equal blob ids are no drift.
+fn candidate_entry_decision(path: String, base: BaseIndexObservation, proposed: GitObjectId) -> CandidateEntryDecision {
+  match base {
+    BaseIndexRefused { detail } => EntryDecisionRefused { detail: join([path, ": ", detail], "") }
+    BaseIndexAbsent =>
+      EntryDrifted {
+        entry: CandidateEntry {
+          path: RepositoryPath { value: path as NonEmptyStr },
+          mode: GitRegularBlobMode,
+          base_blob: none,
+          proposed_blob: proposed
+        }
+      }
+    BaseIndexBlob { mode, oid } =>
+      if git_object_id_eq(left: oid, right: proposed) {
+        EntryUnchanged
+      } else {
+        EntryDrifted {
+          entry: CandidateEntry {
+            path: RepositoryPath { value: path as NonEmptyStr },
+            mode: mode,
+            base_blob: Present { value: oid },
+            proposed_blob: proposed
+          }
+        }
+      }
+  }
+}
+
+// ── The effectful half ──────────────────────────────────────────────────────────────────────
+
+type RequiredEnv
+  = RequiredEnvFound { value: NonEmptyStr }
+  | RequiredEnvRefused { cause: String }
+
+fn required_env(name: NonEmptyStr) -> RequiredEnv {
+  match shell.Env.Get(name: name).value {
+    Absent => RequiredEnvRefused { cause: join(["HealCandidateContextUnreadable: ", name as String, " is not set"], "") }
+    Present { value: raw } =>
+      if trim(s: raw) == "" {
+        RequiredEnvRefused { cause: join(["HealCandidateContextUnreadable: ", name as String, " is empty"], "") }
+      } else {
+        RequiredEnvFound { value: trim(s: raw) as NonEmptyStr }
+      }
+  }
+}
+
+type BlobIdComputation
+  = BlobIdComputed { oid: GitObjectId }
+  | BlobIdRefused { cause: String }
+
+fn blob_id_of(content: String) -> BlobIdComputation {
+  let hashed = git.Plumbing.HashObjectStdinNoWrite(content: content)
+  if hashed.exit_code != 0 {
+    BlobIdRefused { cause: concat("git hash-object refused: ", trim(s: hashed.stderr)) }
+  } else {
+    match git_sha1_object_id(hex: trim(s: hashed.oid)) {
+      Absent => BlobIdRefused { cause: concat("git hash-object printed no sha1 blob id: ", trim(s: hashed.oid)) }
+      Present { value: oid } => BlobIdComputed { oid: oid }
+    }
+  }
+}
+
+type DriftedPath
+  = DriftedPathObserved { decision: CandidateEntryDecision, content: String }
+  | DriftedPathRefused { cause: String }
+
+fn observe_path_drift(path: String) -> DriftedPath {
+  let written = Filesystem.Read(path: path)
+  if !written.success {
+    DriftedPathRefused { cause: join(["HealCandidateRegeneratedFileUnreadable: ", path, ": ", written.error], "") }
+  } else {
+    let listed = git.Core.LsFilesStageZPathspecInRepo(repo: "." as FilePath, pathspec: git_pathspec_literal(path: path))
+    if !listed.success {
+      DriftedPathRefused { cause: join(["HealCandidateIndexUnreadable: ", path, ": ", trim(s: listed.stderr)], "") }
+    } else {
+      match blob_id_of(content: written.content) {
+        BlobIdRefused { cause } => DriftedPathRefused { cause: join(["HealCandidateBlobIdUnreadable: ", path, ": ", cause], "") }
+        BlobIdComputed { oid } =>
+          DriftedPathObserved {
+            decision: candidate_entry_decision(path: path, base: base_index_observation(path: path, raw: listed.raw), proposed: oid),
+            content: written.content
+          }
+      }
+    }
+  }
+}
+
+type DriftedEntry {
+  entry: CandidateEntry
+  content: String
+}
+
+type DriftPopulation
+  = DriftPopulationObserved { drifted: List<DriftedEntry> }
+  | DriftPopulationRefused { cause: String }
+
+fn observe_drift_population(paths: List<String>) -> DriftPopulation {
+  fold(paths, init: DriftPopulationObserved { drifted: [] }, f: fn(acc, path) {
+    match acc {
+      DriftPopulationRefused { cause } => DriftPopulationRefused { cause: cause }
+      DriftPopulationObserved { drifted } =>
+        match observe_path_drift(path: path) {
+          DriftedPathRefused { cause } => DriftPopulationRefused { cause: cause }
+          DriftedPathObserved { decision, content } =>
+            match decision {
+              EntryUnchanged => DriftPopulationObserved { drifted: drifted }
+              EntryDecisionRefused { detail } => DriftPopulationRefused { cause: concat("HealCandidateBaseRefused: ", detail) }
+              EntryDrifted { entry } => DriftPopulationObserved { drifted: concat(drifted, [DriftedEntry { entry: entry, content: content }]) }
+            }
+        }
+    }
+  })
+}
+
+type CandidateWrite
+  = CandidateWritten
+  | CandidateWriteRefused { cause: String }
+
+fn write_candidate_blob(entry: CandidateEntry, content: String) -> CandidateWrite {
+  let path = candidate_file_path(directory: heal_candidate_directory, file_name: candidate_blob_file_name(blob: entry.proposed_blob))
+  let w = Filesystem.Write(path: path, content: content)
+  if !w.success {
+    CandidateWriteRefused { cause: join(["HealCandidateBundleIncomplete: ", path, ": ", w.error], "") }
+  } else {
+    let back = Filesystem.Read(path: path)
+    if !back.success {
+      CandidateWriteRefused { cause: join(["HealCandidateBundleIncomplete: ", path, " could not be reread: ", back.error], "") }
+    } else {
+      match blob_id_of(content: back.content) {
+        BlobIdRefused { cause } => CandidateWriteRefused { cause: join(["HealCandidateBundleIncomplete: ", path, ": ", cause], "") }
+        BlobIdComputed { oid } =>
+          if git_object_id_eq(left: oid, right: entry.proposed_blob) {
+            CandidateWritten
+          } else {
+            CandidateWriteRefused {
+              cause: join(["HealCandidateBundleIncomplete: ", path, " reread as blob ", git_object_id_wire_hex(oid: oid) as String, ", not ", git_object_id_wire_hex(oid: entry.proposed_blob) as String], "")
+            }
+          }
+      }
+    }
+  }
+}
+
+fn write_candidate_blobs(drifted: List<DriftedEntry>) -> CandidateWrite {
+  fold(drifted, init: CandidateWritten, f: fn(acc, d) {
+    match acc {
+      CandidateWriteRefused { cause } => CandidateWriteRefused { cause: cause }
+      CandidateWritten => write_candidate_blob(entry: d.entry, content: d.content)
+    }
+  })
+}
+
+// THE MANIFEST IS WRITTEN LAST AND REREAD THROUGH THE PUBLISHER'S OWN DECODER, so a candidate that
+// exists is one whose blobs are already on disk under their ids and whose manifest a publisher can
+// read back to the value that was written.
+fn write_candidate_manifest(candidate: HealRepairCandidate) -> CandidateWrite {
+  let path = candidate_file_path(directory: heal_candidate_directory, file_name: heal_repair_candidate_manifest_file_name as String)
+  let text = encode_heal_repair_candidate(c: candidate)
+  let w = Filesystem.Write(path: path, content: text)
+  if !w.success {
+    CandidateWriteRefused { cause: join(["HealCandidateBundleIncomplete: ", path, ": ", w.error], "") }
+  } else {
+    let back = Filesystem.Read(path: path)
+    if !back.success {
+      CandidateWriteRefused { cause: join(["HealCandidateBundleIncomplete: ", path, " could not be reread: ", back.error], "") }
+    } else {
+      match decode_heal_repair_candidate(text: back.content) {
+        CandidateUndecodable { refusal } =>
+          CandidateWriteRefused { cause: join(["HealCandidateBundleIncomplete: ", path, " does not decode: ", heal_publication_refusal_token(r: refusal) as String, " ", heal_publication_refusal_detail(r: refusal)], "") }
+        CandidateDecoded { candidate: reread } =>
+          if encode_heal_repair_candidate(c: reread) == text {
+            CandidateWritten
+          } else {
+            CandidateWriteRefused { cause: join(["HealCandidateBundleIncomplete: ", path, " decodes to a different candidate than was written"], "") }
+          }
+      }
+    }
+  }
+}
+
+fn prepare_candidate_directory() -> CandidateWrite {
+  let removed = shell.Remove.RecursiveForce(path: heal_candidate_directory as FilePath)
+  if !removed.success {
+    CandidateWriteRefused { cause: concat("HealCandidateDirectoryUnprepared: could not remove ", heal_candidate_directory) }
+  } else {
+    let made = shell.Mkdir.Parents(path: heal_candidate_directory as FilePath)
+    if !made.success {
+      CandidateWriteRefused { cause: concat("HealCandidateDirectoryUnprepared: could not create ", heal_candidate_directory) }
+    } else {
+      CandidateWritten
+    }
+  }
+}
+
+fn heal_candidate_declaration_wet() -> RequiredEnv {
+  let read = Filesystem.Read(path: heal_repair_declaration_artifact_path)
+  if !read.success {
+    RequiredEnvRefused { cause: join(["HealRepairDeclarationMissing: ", heal_repair_declaration_artifact_path, ": ", read.error], "") }
+  } else if trim(s: read.content) == "" {
+    RequiredEnvRefused { cause: concat("HealRepairDeclarationMissing: the declaration step wrote nothing to ", heal_repair_declaration_artifact_path) }
+  } else {
+    RequiredEnvFound { value: read.content as NonEmptyStr }
+  }
+}
+
+// THE ENTRY THE HEAL WORKFLOW INVOKES. A clean tree writes no manifest and exits zero -- the upload
+// step then finds nothing, and the publisher's run finds nothing to download. A drifted tree writes
+// a complete, reread candidate and exits zero. Every other state refuses with a located cause and
+// writes no manifest, so no partial candidate can reach the publisher.
+fn heal_candidate_produce_wet() -> ProcessExit {
+  match prepare_candidate_directory() {
+    CandidateWriteRefused { cause } => exit_failure(reason: cause)
+    CandidateWritten =>
+      match observe_drift_population(paths: committed_generated_artifact_paths()) {
+        DriftPopulationRefused { cause } => exit_failure(reason: cause)
+        DriftPopulationObserved { drifted } =>
+          if count(drifted) == 0 {
+            ExitSuccess
+          } else {
+            heal_candidate_write_wet(drifted: drifted)
+          }
+      }
+  }
+}
+
+fn heal_candidate_write_wet(drifted: List<DriftedEntry>) -> ProcessExit {
+  let head = git.Inspect.HeadCommit()
+  if !head.success {
+    exit_failure(reason: "HealCandidateContextUnreadable: the checked-out head did not resolve")
+  } else {
+    match required_env(name: heal_candidate_repository_env) {
+      RequiredEnvRefused { cause } => exit_failure(reason: cause)
+      RequiredEnvFound { value: repository } =>
+        match required_env(name: heal_candidate_pull_number_env) {
+          RequiredEnvRefused { cause } => exit_failure(reason: cause)
+          RequiredEnvFound { value: pull_digits } =>
+            match parse_int(s: pull_digits as String) {
+              Absent => exit_failure(reason: concat("HealCandidateContextUnreadable: HEAL_PULL_NUMBER is not decimal: ", pull_digits as String))
+              Present { value: pull_number } =>
+                match required_env(name: heal_candidate_head_ref_env) {
+                  RequiredEnvRefused { cause } => exit_failure(reason: cause)
+                  RequiredEnvFound { value: head_ref } =>
+                    match required_env(name: heal_candidate_base_ref_env) {
+                      RequiredEnvRefused { cause } => exit_failure(reason: cause)
+                      RequiredEnvFound { value: base_ref } =>
+                        match required_env(name: heal_candidate_run_id_env) {
+                          RequiredEnvRefused { cause } => exit_failure(reason: cause)
+                          RequiredEnvFound { value: run_id } =>
+                            match heal_candidate_declaration_wet() {
+                              RequiredEnvRefused { cause } => exit_failure(reason: cause)
+                              RequiredEnvFound { value: declaration } => {
+                                let candidate = HealRepairCandidate {
+                                  repository_full_name: repository,
+                                  pull_number: pull_number,
+                                  head_ref: head_ref,
+                                  expected_head_sha: trim(s: head.sha as String) as CommitSha,
+                                  base_ref: base_ref,
+                                  producer_run_id: run_id,
+                                  repair_declaration: declaration as String,
+                                  entries: map(drifted, d => d.entry)
+                                }
+                                match write_candidate_blobs(drifted: drifted) {
+                                  CandidateWriteRefused { cause } => exit_failure(reason: cause)
+                                  CandidateWritten =>
+                                    match write_candidate_manifest(candidate: candidate) {
+                                      CandidateWriteRefused { cause } => exit_failure(reason: cause)
+                                      CandidateWritten => ExitSuccess
+                                    }
+                                }
+                              }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}

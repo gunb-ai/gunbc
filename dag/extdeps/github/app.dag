@@ -113,6 +113,16 @@ fn permission_axis_wire_name(axis: GitHubPermissionAxis) -> NonEmptyStr {
   }
 }
 
+// THE ACCESS LEVEL'S WIRE SPELLING, beside the axis's. Both halves of a permission row cross the wire
+// as text -- `{"contents":"write"}` -- and a caller composing a request body needs the same authority
+// for the value as for the key.
+fn permission_access_wire_name(access: GitHubAppPermissionAccess) -> NonEmptyStr {
+  match access {
+    AppAccessRead => "read"
+    AppAccessWrite => "write"
+  }
+}
+
 fn permission_axis_from_wire(name: NonEmptyStr) -> GitHubPermissionAxis? {
   fold_list(
     xs: all_permission_axes,

@@ -1,0 +1,466 @@
+module gunbc.heal_publication
+
+import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import std.resources { Network }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import extdeps.git.plumbing
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.github.pulls { Open, Closed }
+import extdeps.github.commits { comparison_files_listing_cap }
+import extdeps.github.git_database { GitTreeItemWire, GitTreeEntryInput, git_blob_encoding_utf8 }
+import extdeps.github.workflow_run_event {
+  workflow_run_event_from_event_path, WorkflowRunEventObserved, WorkflowRunEventMemberAbsent,
+  WorkflowRunEventMemberMalformed, WorkflowRunEventMalformed, WorkflowRunEventPayloadReadRefused
+}
+import extdeps.git.object_store { git_object_id_wire_hex, git_sha1_object_id, git_encode_tree_mode, git_tree_mode_object_type }
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { committed_generated_artifact_paths, artifact_path, HealWorkflowYamlArtifact }
+import gunbc.heal_candidate { blob_id_of, BlobIdComputed, BlobIdRefused }
+import gunbc.heal_publication_boundary {
+  HealRepairCandidate, decode_heal_repair_candidate, CandidateDecoded, CandidateUndecodable,
+  heal_repair_candidate_manifest_file_name, candidate_blob_file_name, candidate_file_path,
+  heal_publication_refusal_token, heal_publication_refusal_detail, HealPublicationRefusal,
+  HeadRefNotAddressable, BranchRefUnreadable, ExpectedHeadUnreadable, BaseTreeUnreadable, head_ref_is_addressable,
+  publisher_path_policy, TriggeringRunFacts, PullRequestFacts,
+  ProposedBlobObservation, ProposedBlobComputed, ProposedBlobReadRefused,
+  PublisherObservations, AdmittedHealPublication, AdmittedEntry,
+  admit_heal_publication, HealPublicationAdmitted, HealPublicationRefused,
+  PublicationWriteRefusal, BlobWriteRefused, BlobIdentityDisagreed, TreeWriteRefused, CommitWriteRefused,
+  CommitShapeDisagreed, ReferenceNotFastForward, ReferenceWriteRefused,
+  PublicationReadback, publication_readback_verdict,
+  HealPublished, HealPublicationWriteRefused, HealPublicationUnverified, HealPublicationReceipt
+}
+
+// THE PROTECTED HALF OF HEAL PUBLICATION (gunbc#10958 Phase B). It runs from the DEFAULT BRANCH'S
+// workflow definition, on a runner no pull request's job has touched, with the default branch
+// checked out and the pull request's tree never fetched. Its inputs are a downloaded candidate, the
+// workflow_run event GitHub delivered, and what the GitHub API answers; its policy is its own
+// checkout's registry.
+//
+// TWO ENTRIES, ONE ADMISSION. heal_publication_admit_wet runs BEFORE the workflow federates to any
+// credential: a candidate that does not admit never causes an App token to be minted.
+// heal_publication_publish_wet runs after, re-observes everything and admits again -- the branch may
+// have moved while the credential was obtained, and only the admission it performs itself can mint
+// the AdmittedHealPublication its writes consume -- and then writes, fast-forward only, and reads
+// back.
+
+data heal_publication_candidate_directory_env: NonEmptyStr = "HEAL_CANDIDATE_DIRECTORY"
+
+data github_event_path_env_name: NonEmptyStr = "GITHUB_EVENT_PATH"
+
+data heal_publication_receipt_path: String = "target/heal-publication-receipt.txt"
+
+// ── Observation ─────────────────────────────────────────────────────────────────────────────
+
+type PublisherRun
+  = PublisherRunAdmitted { admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent> }
+  | PublisherRunRefused { cause: String }
+
+type ObservedBlobContent {
+  blob_hex: String
+  content: String
+}
+
+fn env_value(name: NonEmptyStr) -> String? {
+  match shell.Env.Get(name: name).value {
+    Absent => none
+    Present { value: raw } => if trim(s: raw) == "" { none } else { Present { value: trim(s: raw) } }
+  }
+}
+
+fn read_candidate_blob(directory: String, blob_hex: String) -> ObservedBlobRead {
+  match git_sha1_object_id(hex: blob_hex) {
+    Absent => ObservedBlobReadRefused { observation: ProposedBlobReadRefused { blob_hex: blob_hex, detail: "not a blob id" } }
+    Present { value: oid } => {
+      let path = candidate_file_path(directory: directory, file_name: candidate_blob_file_name(blob: oid))
+      let read = Filesystem.Read(path: path)
+      if !read.success {
+        ObservedBlobReadRefused { observation: ProposedBlobReadRefused { blob_hex: blob_hex, detail: concat("unreadable: ", read.error) } }
+      } else {
+        match blob_id_of(content: read.content) {
+          BlobIdRefused { cause } => ObservedBlobReadRefused { observation: ProposedBlobReadRefused { blob_hex: blob_hex, detail: cause } }
+          BlobIdComputed { oid: computed } =>
+            ObservedBlobReadDone {
+              observation: ProposedBlobComputed { blob_hex: blob_hex, computed_hex: git_object_id_wire_hex(oid: computed) as String },
+              content: ObservedBlobContent { blob_hex: blob_hex, content: read.content }
+            }
+        }
+      }
+    }
+  }
+}
+
+type ObservedBlobRead
+  = ObservedBlobReadDone { observation: ProposedBlobObservation, content: ObservedBlobContent }
+  | ObservedBlobReadRefused { observation: ProposedBlobObservation }
+
+fn observed_blob_observation(r: ObservedBlobRead) -> ProposedBlobObservation {
+  match r {
+    ObservedBlobReadDone { observation, content: _ } => observation
+    ObservedBlobReadRefused { observation } => observation
+  }
+}
+
+fn observed_blob_contents(reads: List<ObservedBlobRead>) -> List<ObservedBlobContent> {
+  fold(reads, init: [], f: fn(acc, r) {
+    match r {
+      ObservedBlobReadDone { observation: _, content } => concat(acc, [content])
+      ObservedBlobReadRefused { observation: _ } => acc
+    }
+  })
+}
+
+// EVERY REFUSAL LEAVES BY ITS OWN ARM'S NAME AND PAYLOAD, so a reader recovers the arm from the line.
+fn refusal_line(refusal: HealPublicationRefusal) -> String {
+  join([heal_publication_refusal_token(r: refusal) as String, ": ", heal_publication_refusal_detail(r: refusal)], "")
+}
+
+fn event_refusal_message(kind: String, detail: String) -> String {
+  join(["HealPublicationEventUnreadable: ", kind, " ", detail], "")
+}
+
+// OBSERVE, THEN ADMIT. The two addressing checks here -- a head ref that cannot reach a REST path
+// intact, and a candidate that did not decode -- stop before any request is made with a value the
+// candidate chose; everything else is decided by admit_heal_publication over the full observation.
+fn observe_and_admit_wet() -> PublisherRun
+  uses net: Network
+{
+  match env_value(name: heal_publication_candidate_directory_env) {
+    Absent => PublisherRunRefused { cause: "HealPublicationContextUnreadable: HEAL_CANDIDATE_DIRECTORY is not set" }
+    Present { value: directory } =>
+      match env_value(name: github_event_path_env_name) {
+        Absent => PublisherRunRefused { cause: "HealPublicationContextUnreadable: GITHUB_EVENT_PATH is not set" }
+        Present { value: event_path } =>
+          match workflow_run_event_from_event_path(path: event_path) {
+            WorkflowRunEventMemberAbsent { member } => PublisherRunRefused { cause: event_refusal_message(kind: "member absent", detail: member) }
+            WorkflowRunEventMemberMalformed { member, detail } => PublisherRunRefused { cause: event_refusal_message(kind: concat("member malformed ", member), detail: detail) }
+            WorkflowRunEventMalformed { detail } => PublisherRunRefused { cause: event_refusal_message(kind: "malformed", detail: detail) }
+            WorkflowRunEventPayloadReadRefused { path, cause } => PublisherRunRefused { cause: event_refusal_message(kind: concat("unreadable ", path), detail: cause) }
+            WorkflowRunEventObserved { event } => {
+              let manifest = Filesystem.Read(path: candidate_file_path(directory: directory, file_name: heal_repair_candidate_manifest_file_name as String))
+              if !manifest.success {
+                PublisherRunRefused { cause: concat("CandidateUnreadable: the manifest could not be read: ", manifest.error) }
+              } else {
+                match decode_heal_repair_candidate(text: manifest.content) {
+                  CandidateUndecodable { refusal } =>
+                    PublisherRunRefused { cause: refusal_line(refusal: refusal) }
+                  CandidateDecoded { candidate } =>
+                    if !head_ref_is_addressable(head_ref: candidate.head_ref as String) {
+                      PublisherRunRefused {
+                        cause: refusal_line(refusal: HeadRefNotAddressable { head_ref: candidate.head_ref as String })
+                      }
+                    } else {
+                      observe_candidate_world_wet(
+                        directory: directory,
+                        candidate: candidate,
+                        run: TriggeringRunFacts {
+                          workflow_path: event.workflow_path,
+                          originating_event: event.originating_event,
+                          conclusion: event.conclusion,
+                          head_sha: event.head_sha as String,
+                          head_branch: event.head_branch,
+                          head_repository_full_name: event.head_repository_full_name,
+                          repository_full_name: event.repository_full_name
+                        }
+                      )
+                    }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn rest_outcome_text(o: RestOutcome) -> String {
+  match o {
+    RestOk => "ok"
+    RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
+    RestTransportRefused { cause } => concat("transport: ", cause as String)
+    RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
+  }
+}
+
+fn rest_outcome_ok(o: RestOutcome) -> Bool {
+  match o {
+    RestOk => true
+    RestStatusRefused { status: _, body: _ } => false
+    RestTransportRefused { cause: _ } => false
+    RestBodyUndecodable { status: _, cause: _ } => false
+  }
+}
+
+fn observe_candidate_world_wet(directory: String, candidate: HealRepairCandidate, run: TriggeringRunFacts) -> PublisherRun
+  uses net: Network
+{
+  let owner = gunbc_repository.owner as String
+  let repo = gunbc_repository.name as String
+  let pr = github.Pulls.Get(auth_token: "", owner: owner, repo: repo, pull_number: candidate.pull_number)
+  let branch = github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", candidate.head_ref as String))
+  if !rest_outcome_ok(o: branch.outcome) {
+    PublisherRunRefused {
+      cause: refusal_line(refusal: BranchRefUnreadable { head_ref: candidate.head_ref as String, detail: rest_outcome_text(o: branch.outcome) })
+    }
+  } else {
+    let head_commit = github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: candidate.expected_head_sha as String)
+    if !rest_outcome_ok(o: head_commit.outcome) {
+      PublisherRunRefused {
+        cause: refusal_line(refusal: ExpectedHeadUnreadable { expected: candidate.expected_head_sha as String, detail: rest_outcome_text(o: head_commit.outcome) })
+      }
+    } else {
+      let base_tree = github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head_commit.commit.tree.sha)
+      if !rest_outcome_ok(o: base_tree.outcome) {
+        PublisherRunRefused {
+          cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: head_commit.commit.tree.sha, detail: rest_outcome_text(o: base_tree.outcome) })
+        }
+      } else {
+        let reads = map(candidate.entries, e => read_candidate_blob(directory: directory, blob_hex: git_object_id_wire_hex(oid: e.proposed_blob) as String))
+        let observations = PublisherObservations {
+          repository_full_name: gunbc_repository.full_name as NonEmptyStr,
+          default_branch: gunbc_repository.default_branch as NonEmptyStr,
+          heal_workflow_path: artifact_path(a: HealWorkflowYamlArtifact) as NonEmptyStr,
+          run: run,
+          pull_request: PullRequestFacts {
+            number: pr.pr.number,
+            open: match pr.pr.state { Open => true  Closed => false },
+            head_ref: pr.pr.head.ref as String,
+            base_ref: pr.pr.base.ref as String
+          },
+          branch_head_sha: branch.reference.object.sha,
+          base_tree_sha: head_commit.commit.tree.sha,
+          base_tree_truncated: base_tree.tree_object.truncated,
+          base_tree: base_tree.tree_object.tree,
+          proposed_blobs: map(reads, r => observed_blob_observation(r: r))
+        }
+        match admit_heal_publication(
+          candidate: candidate,
+          observations: observations,
+          policy: publisher_path_policy(committed_artifact_paths: committed_generated_artifact_paths())
+        ) {
+          HealPublicationRefused { refusal } =>
+            PublisherRunRefused { cause: refusal_line(refusal: refusal) }
+          HealPublicationAdmitted { admitted } =>
+            PublisherRunAdmitted { admitted: admitted, blobs: observed_blob_contents(reads: reads) }
+        }
+      }
+    }
+  }
+}
+
+// ── The credential-free gate ────────────────────────────────────────────────────────────────
+
+fn heal_publication_admit_wet() -> ProcessExit
+  uses net: Network
+{
+  match observe_and_admit_wet() {
+    PublisherRunRefused { cause } => exit_failure(reason: cause)
+    PublisherRunAdmitted { admitted: _, blobs: _ } => ExitSuccess
+  }
+}
+
+// ── The transaction ─────────────────────────────────────────────────────────────────────────
+
+type BlobWrites
+  = BlobsWritten
+  | BlobWritesRefused { refusal: PublicationWriteRefusal }
+
+fn content_for(blobs: List<ObservedBlobContent>, blob_hex: String) -> String? {
+  match (blobs |> filter(b => b.blob_hex == blob_hex) |> first) {
+    Absent => none
+    Present { value: b } => Present { value: b.content }
+  }
+}
+
+fn write_blob_wet(entry: AdmittedEntry, blobs: List<ObservedBlobContent>) -> BlobWrites
+  uses net: Network
+{
+  let path = entry.path.value as String
+  let hex = git_object_id_wire_hex(oid: entry.blob) as String
+  match content_for(blobs: blobs, blob_hex: hex) {
+    Absent => BlobWritesRefused { refusal: BlobWriteRefused { path: path, detail: "the admitted blob's bytes were not retained" } }
+    Present { value: content } => {
+      let created = github.GitDatabase.CreateBlob(
+        auth_token: "", owner: gunbc_repository.owner as String, repo: gunbc_repository.name as String,
+        content: content, encoding: git_blob_encoding_utf8
+      )
+      if !rest_outcome_ok(o: created.outcome) {
+        BlobWritesRefused { refusal: BlobWriteRefused { path: path, detail: rest_outcome_text(o: created.outcome) } }
+      } else if created.blob.sha != hex {
+        BlobWritesRefused { refusal: BlobIdentityDisagreed { path: path, admitted: hex, created: created.blob.sha } }
+      } else {
+        BlobsWritten
+      }
+    }
+  }
+}
+
+fn write_blobs_wet(admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> BlobWrites
+  uses net: Network
+{
+  fold(admitted.entries, init: BlobsWritten, f: fn(acc, e) {
+    match acc {
+      BlobWritesRefused { refusal } => BlobWritesRefused { refusal: refusal }
+      BlobsWritten => write_blob_wet(entry: e, blobs: blobs)
+    }
+  })
+}
+
+fn tree_entry_input(e: AdmittedEntry) -> GitTreeEntryInput {
+  GitTreeEntryInput {
+    path: e.path.value as String,
+    mode: git_encode_tree_mode(mode: e.mode) as String,
+    type: git_tree_mode_object_type(mode: e.mode) as String,
+    sha: git_object_id_wire_hex(oid: e.blob) as String
+  }
+}
+
+fn refused_exit(refusal: PublicationWriteRefusal) -> ProcessExit {
+  exit_failure(reason: match refusal {
+    BlobWriteRefused { path, detail } => join(["BlobWriteRefused: path=", path, " ", detail], "")
+    BlobIdentityDisagreed { path, admitted, created } => join(["BlobIdentityDisagreed: path=", path, " admitted=", admitted, " created=", created], "")
+    TreeWriteRefused { detail } => concat("TreeWriteRefused: ", detail)
+    CommitWriteRefused { detail } => concat("CommitWriteRefused: ", detail)
+    CommitShapeDisagreed { detail } => concat("CommitShapeDisagreed: ", detail)
+    ReferenceNotFastForward { detail } => concat("ReferenceNotFastForward: the branch moved after admission; nothing was published: ", detail)
+    ReferenceWriteRefused { detail } => concat("ReferenceWriteRefused: ", detail)
+  })
+}
+
+fn receipt_text(r: HealPublicationReceipt) -> String {
+  join([
+    "HealPublished repository=", r.repository_full_name as String,
+    " branch=", r.head_ref as String,
+    " parent=", r.parent as String,
+    " published_head=", r.published_head as String,
+    " tree=", r.tree,
+    " paths=", join(r.paths, ","),
+    "\n"
+  ], "")
+}
+
+// THE STATUS SAYS WHETHER A 422 MEANS A MOVED BRANCH. Update a reference answers 422 for a write that
+// is not a fast-forward, which after an admission against the expected head is exactly a branch that
+// moved in between; any other refusal is a refusal of a different kind. A 5xx is ambiguous about
+// whether the write landed, so it is not a refusal at all: the readback decides.
+fn publish_admitted_wet(admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> ProcessExit
+  uses net: Network
+{
+  let owner = gunbc_repository.owner as String
+  let repo = gunbc_repository.name as String
+  match write_blobs_wet(admitted: admitted, blobs: blobs) {
+    BlobWritesRefused { refusal } => refused_exit(refusal: refusal)
+    BlobsWritten => {
+      let tree = github.GitDatabase.CreateTree(
+        auth_token: "", owner: owner, repo: repo,
+        base_tree: admitted.base_tree_sha, tree: map(admitted.entries, e => tree_entry_input(e: e))
+      )
+      if !rest_outcome_ok(o: tree.outcome) {
+        refused_exit(refusal: TreeWriteRefused { detail: rest_outcome_text(o: tree.outcome) })
+      } else {
+        let commit = github.GitDatabase.CreateCommit(
+          auth_token: "", owner: owner, repo: repo,
+          message: admitted.message as String, tree: tree.created.sha, parents: [admitted.expected_head_sha as String]
+        )
+        if !rest_outcome_ok(o: commit.outcome) {
+          refused_exit(refusal: CommitWriteRefused { detail: rest_outcome_text(o: commit.outcome) })
+        } else if commit.commit.tree.sha != tree.created.sha
+          || count(commit.commit.parents) != 1
+          || !any(commit.commit.parents, p => p.sha == (admitted.expected_head_sha as String)) {
+          refused_exit(refusal: CommitShapeDisagreed { detail: "the created commit does not name the created tree and exactly the expected head as parent" })
+        } else {
+          let updated = github.GitDatabase.UpdateRefFastForward(
+            auth_token: "", owner: owner, repo: repo,
+            ref: concat("heads/", admitted.head_ref as String), sha: commit.commit.sha
+          )
+          match updated.outcome {
+            RestStatusRefused { status, body } =>
+              if (status as Int) == 422 {
+                refused_exit(refusal: ReferenceNotFastForward { detail: body })
+              } else if (status as Int) >= 500 {
+                readback_wet(admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+              } else {
+                refused_exit(refusal: ReferenceWriteRefused { detail: rest_outcome_text(o: updated.outcome) })
+              }
+            RestTransportRefused { cause: _ } => readback_wet(admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+            RestBodyUndecodable { status: _, cause: _ } => readback_wet(admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+            RestOk => readback_wet(admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn readback_wet(admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit
+  uses net: Network
+{
+  let owner = gunbc_repository.owner as String
+  let repo = gunbc_repository.name as String
+  let branch = github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", admitted.head_ref as String))
+  if !rest_outcome_ok(o: branch.outcome) {
+    exit_failure(reason: concat("HealPublicationUnverified: the branch could not be read back: ", rest_outcome_text(o: branch.outcome)))
+  } else {
+    let head = github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: branch.reference.object.sha)
+    if !rest_outcome_ok(o: head.outcome) {
+      exit_failure(reason: concat("HealPublicationUnverified: the branch head could not be read back: ", rest_outcome_text(o: head.outcome)))
+    } else {
+      let head_tree = github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head.commit.tree.sha)
+      if !rest_outcome_ok(o: head_tree.outcome) {
+        exit_failure(reason: concat("HealPublicationUnverified: the published tree could not be read back: ", rest_outcome_text(o: head_tree.outcome)))
+      } else {
+        let comparison = github.Commits.Compare(
+          auth_token: "", owner: owner, repo: repo,
+          basehead: join([admitted.expected_head_sha as String, "...", branch.reference.object.sha], "")
+        )
+        let changed = match comparison.comparison.files {
+          Absent => []
+          Present { value: files } => map(files, f => f.filename)
+        }
+        let truncated = match comparison.comparison.files {
+          Absent => true
+          Present { value: files } => count(files) >= comparison_files_listing_cap
+        }
+        match publication_readback_verdict(
+          admitted: admitted,
+          created_commit_sha: created_commit,
+          created_tree_sha: created_tree,
+          readback: PublicationReadback {
+            branch_head_sha: branch.reference.object.sha,
+            head_parents: map(head.commit.parents, p => p.sha),
+            head_tree_sha: head.commit.tree.sha,
+            changed_paths: changed,
+            comparison_truncated: truncated,
+            head_tree_truncated: head_tree.tree_object.truncated,
+            head_tree: head_tree.tree_object.tree
+          }
+        ) {
+          HealPublicationUnverified { detail } => exit_failure(reason: concat("HealPublicationUnverified: ", detail))
+          HealPublicationWriteRefused { refusal } => refused_exit(refusal: refusal)
+          HealPublished { receipt } => {
+            let w = Filesystem.Write(path: heal_publication_receipt_path, content: receipt_text(r: receipt))
+            if w.success {
+              ExitSuccess
+            } else {
+              exit_failure(reason: join(["HealPublishedReceiptUnwritten: the publication landed and was read back, but ", heal_publication_receipt_path, " could not be written: ", w.error, " -- ", receipt_text(r: receipt)], ""))
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── The credentialed entry ──────────────────────────────────────────────────────────────────
+
+fn heal_publication_publish_wet() -> ProcessExit
+  uses net: Network
+{
+  match observe_and_admit_wet() {
+    PublisherRunRefused { cause } => exit_failure(reason: cause)
+    PublisherRunAdmitted { admitted, blobs } => publish_admitted_wet(admitted: admitted, blobs: blobs)
+  }
+}
