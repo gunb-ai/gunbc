@@ -9,6 +9,7 @@ use self::DataReferenceUnresolvableCause::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::ParamDefaultResolution::*;
 use self::WitnessCtorPathVerdict::*;
+pub use crate::extdeps_cargo::CargoFeature;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
@@ -241,7 +242,7 @@ pub use crate::v1_compiler_ownership::{
     collect_callable_refs,
 };
 pub use crate::v1_compiler_resolve::get_exported_names;
-pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
+pub use crate::v1_compiler_runtime_rust::{rust_runtime_cargo_features, rust_runtime_source};
 pub use crate::v1_compiler_trait_bound_witness::{
     v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name,
     v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names,
@@ -38186,16 +38187,67 @@ pub fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand)
         );
         let workspace = "\n[workspace]\n".to_string();
         let all_deps = emitted_crate_dependency_lines(demand.clone());
+        let features = emit_cargo_features_section(
+            crate::v1_compiler_runtime_rust::rust_runtime_cargo_features(),
+        );
         Rc::new(TextFile {
             path: "Cargo.toml".to_string(),
             content: v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(header.clone(), workspace.clone()),
+                    v1_rt::concat(
+                        v1_rt::concat(header.clone(), workspace.clone()),
+                        features.clone(),
+                    ),
                     "\n[dependencies]\n".to_string(),
                 ),
                 all_deps.clone().join(&"".to_string()),
             ),
         })
+    }
+}
+
+pub fn emit_cargo_feature(feature: Rc<CargoFeature>) -> String {
+    if ((feature.dependencies.clone().len() as i64) == 0) {
+        v1_rt::concat(feature.name.clone(), " = []\n".to_string())
+    } else {
+        {
+            let dep_names = Rc::new({
+                let mut __result = Vec::new();
+                for d in feature.dependencies.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
+                        v1_rt::concat("\"".to_string(), d.clone()),
+                        "\"".to_string(),
+                    ));
+                }
+                __result
+            })
+            .join(&", ".to_string());
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(feature.name.clone(), " = [".to_string()),
+                    dep_names.clone(),
+                ),
+                "]\n".to_string(),
+            )
+        }
+    }
+}
+
+pub fn emit_cargo_features_section(features: Rc<Vec<Rc<CargoFeature>>>) -> String {
+    if ((features.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        v1_rt::concat(
+            v1_rt::concat("\n[features]\n".to_string(), "default = []\n".to_string()),
+            Rc::new(
+                features
+                    .iter()
+                    .cloned()
+                    .map(emit_cargo_feature)
+                    .collect::<Vec<_>>(),
+            )
+            .join(&"".to_string()),
+        )
     }
 }
 

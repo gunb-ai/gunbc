@@ -137,7 +137,8 @@ import v1.compiler.languages {
   sharing_for_target,
   is_string_like
 }
-import v1.compiler.runtime_rust { rust_runtime_source }
+import v1.compiler.runtime_rust { rust_runtime_source, rust_runtime_cargo_features }
+import extdeps.cargo { CargoFeature }
 import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
@@ -16282,12 +16283,36 @@ fn emitted_crate_dependency_lines(demand: EmittedCrateDependencyDemand) -> List<
   concat(base_deps, concat(cli_deps, async_deps))
 }
 
+// The emitted crate always carries v1_rt.rs, so its manifest declares the runtime's features.
 fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand) -> TextFile {
   let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
   let workspace = "\n[workspace]\n"
   let all_deps = emitted_crate_dependency_lines(demand: demand)
-  TextFile { path: "Cargo.toml", content: concat(header, workspace, "\n[dependencies]\n", all_deps |> join(separator: "")) }
+  let features = emit_cargo_features_section(features: rust_runtime_cargo_features())
+  TextFile { path: "Cargo.toml", content: concat(header, workspace, features, "\n[dependencies]\n", all_deps |> join(separator: "")) }
 }
+
+fn emit_cargo_feature(feature: CargoFeature) -> String {
+  if (feature.dependencies |> count) == 0 {
+    concat(feature.name, " = []\n")
+  } else {
+    let dep_names = feature.dependencies |> map(d => concat("\"", d, "\"")) |> join(separator: ", ")
+    concat(feature.name, " = [", dep_names, "]\n")
+  }
+}
+
+fn emit_cargo_features_section(features: List<CargoFeature>) -> String {
+  if (features |> count) == 0 {
+    ""
+  } else {
+    concat(
+      "\n[features]\n",
+      "default = []\n",
+      features |> map(emit_cargo_feature) |> join(separator: "")
+    )
+  }
+}
+
 
 type WorkflowFunc {
   name: String
