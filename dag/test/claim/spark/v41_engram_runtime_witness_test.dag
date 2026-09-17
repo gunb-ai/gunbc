@@ -58,7 +58,7 @@ import gunbc.spark.v41_runtime_realized {
 import gunbc.spark.vllm_runtime_image_build { BuiltByThisRun, AdoptedUnderExpectedTag }
 import extdeps.container.oci.digest { oci_content_digest_from_validated_sha256 }
 import gunbc.spark.v41_engram_staging {
-  v41_staging_request, v41_stage, V41StagingVerified, V41StagingRefused, V41StagingUnestablished,
+  v41_staging_request, v41_stage, v41_stage_rank_stores, V41StagingVerified, V41RankStoresVerified, V41StagingRefused, V41StagingUnestablished,
   v41_group_a_staging_standing, v41_staged_matching, v41_staged_with_readback,
   v41_engram_goes_to_disk_because,
 }
@@ -275,7 +275,9 @@ test fn fixture_correspondence_does_not_establish_the_published_shards() -> Bool
                     Absent => false
                     Present { value: spec } => (spec.component.decl_name as String) == "deepseek_v4_1_engram_component"
                       && match v41_published_transform_standing() {
-                        V41PublishedTransformUnestablished { obligation: o } => (o as String).contains("published Engram shards")
+                        V41PublishedTransformUnestablished { obligation: o } =>
+                          (o as String).contains("published Engram shards")
+                            && (o as String).contains("have not been acquired")
                         V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
                         V41TransformUnfaithful { defects: _ } => false
                       }
@@ -421,22 +423,38 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
         let bad = v41_staged_with_readback(encoding: enc, readback: content_hash_of_value(value: "nope" as NonEmptyStr))
         (match v41_stage(request: req, image_readback: w_image().manifest, rank_readbacks: good, provenance: BuiltByThisRun) {
           V41StagingVerified { request_key: _, image_readback: _, ranks: rs } => length(rs) == 4
+          V41RankStoresVerified { ranks: _ } => false
           V41StagingRefused { defects: _ } => false
           V41StagingUnestablished { obligation: _ } => false
         })
           && (match v41_stage(request: req, image_readback: w_image().manifest, rank_readbacks: bad, provenance: BuiltByThisRun) {
             V41StagingRefused { defects: d } => any(d, x => (x as String).contains("readback"))
             V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
+            V41RankStoresVerified { ranks: _ } => false
+            V41StagingUnestablished { obligation: _ } => false
+          })
+          && (match v41_stage_rank_stores(encoding: enc, rank_readbacks: good) {
+            V41RankStoresVerified { ranks: rs } => length(rs) == 4
+            V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
+            V41StagingRefused { defects: _ } => false
+            V41StagingUnestablished { obligation: _ } => false
+          })
+          && (match v41_stage_rank_stores(encoding: enc, rank_readbacks: bad) {
+            V41StagingRefused { defects: d } => any(d, x => (x as String).contains("readback"))
+            V41RankStoresVerified { ranks: _ } => false
+            V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
             V41StagingUnestablished { obligation: _ } => false
           })
           && (match v41_group_a_staging_standing {
             V41StagingUnestablished { obligation: o } =>
-              (o as String).contains("proud-deer-538")
-                && (o as String).contains("stages around")
-                && (o as String).contains("Fill is Unestablished")
+              (o as String).contains("do not launch")
+                && (o as String).contains("v41_stage_rank_stores")
+                && (o as String).contains("acquisition")
                 && (o as String).contains("candidate_component_budget")
+                && (o as String).contains("engram_pool_relief")
                 && declaration_ref_eq(a: v41_engram_goes_to_disk_because(), b: id_component_budget_authority)
             V41StagingVerified { request_key: _, image_readback: _, ranks: _ } => false
+            V41RankStoresVerified { ranks: _ } => false
             V41StagingRefused { defects: _ } => false
           })
       }

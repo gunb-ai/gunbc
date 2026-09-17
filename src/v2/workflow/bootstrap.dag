@@ -3,7 +3,7 @@ module v2.workflow.bootstrap
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node }
+import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, symbol_eq }
 import v2.std.algebra {
   bag_eq,
   contains,
@@ -161,10 +161,6 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
     at: Textual { file: ^bootstrap_workflow_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
-}
-
-fn bs_symbol_eq(left: Symbol, right: Symbol) -> Bool {
-  left == right
 }
 
 fn bootstrap_construct_eq(left: BootstrapConstruct, right: BootstrapConstruct) -> Bool {
@@ -349,7 +345,7 @@ fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
 }
 
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
-  bag_eq(xs: a, ys: b, eq: bs_symbol_eq)
+  bag_eq(xs: a, ys: b, eq: symbol_eq)
 }
 
 fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<BootstrapConstruct>) -> Bool {
