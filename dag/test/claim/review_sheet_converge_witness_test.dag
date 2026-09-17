@@ -30,6 +30,7 @@ import gunbc.review_sheet_projection {
   classify_review_sheet,
   DerivedPayloadErasure,
   conflict_reason,
+  LocatedDerivedConflict,
   append_listing_row,
   columns_by_name,
   judgement_for_listing,
@@ -54,6 +55,7 @@ import gunbc.review_sheet_projection {
   a1_column,
   a1_cell,
   a1_cell_wire,
+  a1_cell_eq,
   a1_row_span_wire,
   a1_origin_cell,
   A1Column,
@@ -293,13 +295,10 @@ test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> B
   )
   match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetConflict { conflict: c } =>
-      string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
-        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=title")
-        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "cell=B2")
-    ReviewSheetUnreadable { reason: r } =>
-      string_contains(s: r as String, pattern: "listing=L1")
-        && string_contains(s: r as String, pattern: "column=title")
-        && string_contains(s: r as String, pattern: "cell=B2")
+      (c.listing_id as String) == "L1"
+        && (c.column as String) == "title"
+        && a1_cell_eq(a: c.a1, b: A1Cell { column: A1Column { letter: "B" as NonEmptyStr }, row: 2 })
+    ReviewSheetUnreadable { reason: _ } => false
     ReviewSheetConverged => false
     ReviewSheetNeedsWrite { plan: _ } => false
   }
@@ -1011,6 +1010,17 @@ test fn duplicate_header_refuses_rather_than_last_wins() -> Bool {
   }
 }
 
+test fn conflict_reason_renders_the_located_facts_it_was_given() -> Bool {
+  let rendered = conflict_reason(conflict: LocatedDerivedConflict {
+    listing_id: "L1" as NonEmptyStr,
+    column: "title" as NonEmptyStr,
+    a1: A1Cell { column: A1Column { letter: "B" as NonEmptyStr }, row: 2 },
+  }) as String
+  string_contains(s: rendered, pattern: "listing=L1")
+    && string_contains(s: rendered, pattern: "column=title")
+    && string_contains(s: rendered, pattern: "cell=B2")
+}
+
 test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
@@ -1019,9 +1029,9 @@ test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
   )
   match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetConflict { conflict: c } =>
-      string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
-        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=standing")
-        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "cell=C2")
+      (c.listing_id as String) == "L1"
+        && (c.column as String) == "standing"
+        && a1_cell_eq(a: c.a1, b: A1Cell { column: A1Column { letter: "C" as NonEmptyStr }, row: 2 })
     ReviewSheetUnreadable { reason: _ } => false
     ReviewSheetConverged => false
     ReviewSheetNeedsWrite { plan: _ } => false
