@@ -5,6 +5,7 @@ import std.scoped_authorization { AuthorizationRequest }
 import extdeps.crypto.mac {
   MacKey, MacSigned, MacKeyMaterialNotHex, HmacSha256, MacKeyId,
 }
+import gunbc.auth.approval_capability { utc_instant_is_canonical }
 import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, request_revision_of, approval_mac_key_id,
 }
@@ -80,9 +81,13 @@ fn kv_line_value(body: String, key: String) -> String {
   )
 }
 
-fn kv_nonempty(body: String, key: String, fallback: NonEmptyStr) -> NonEmptyStr {
+fn kv_required_instant(body: String, key: String) -> String {
   let v = kv_line_value(body: body, key: key)
-  if v == "" { fallback } else { v as NonEmptyStr }
+  if utc_instant_is_canonical(t: v as Timestamp) {
+    v
+  } else {
+    ""
+  }
 }
 
 type FiledApprovalStatus
@@ -104,8 +109,18 @@ type FiledApprovalStatus
 
 type ApprovalPollStanding
   = PollStillPending
-  | PollApproved
-  | PollDenied
+  | PollApproved {
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      execute_by: Timestamp
+    }
+  | PollDenied {
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      reason: NonEmptyStr
+    }
   | PollExpired
   | PollNotFiled
   | PollUnreadable { detail: NonEmptyStr }
@@ -117,8 +132,10 @@ fn approval_poll_standing(
 ) -> ApprovalPollStanding {
   if observed_at > expires_at {
     match status {
-      StatusApproved { revision: _, decided_by: _, decided_at: _, execute_by: _ } => PollApproved
-      StatusDenied { revision: _, decided_by: _, decided_at: _, reason: _ } => PollDenied
+      StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+        PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
+      StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
+        PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
       StatusUnreadable { detail: d } => PollUnreadable { detail: d }
       _ => PollExpired
     }
@@ -126,8 +143,10 @@ fn approval_poll_standing(
     match status {
       StatusNotFiled => PollNotFiled
       StatusPending { expires_at: _ } => PollStillPending
-      StatusApproved { revision: _, decided_by: _, decided_at: _, execute_by: _ } => PollApproved
-      StatusDenied { revision: _, decided_by: _, decided_at: _, reason: _ } => PollDenied
+      StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+        PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
+      StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
+        PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
       StatusUnreadable { detail: d } => PollUnreadable { detail: d }
     }
   }
@@ -138,23 +157,49 @@ fn parse_filed_approval_status(body: String) -> FiledApprovalStatus {
   if standing == "not-filed" {
     StatusNotFiled
   } else if standing == "pending" {
-    StatusPending { expires_at: kv_line_value(body: body, key: "expires_at") as Timestamp }
+    let expires = kv_required_instant(body: body, key: "expires_at")
+    if expires == "" {
+      StatusUnreadable { detail: "pending standing is missing a canonical expires_at" as NonEmptyStr }
+    } else {
+      StatusPending { expires_at: expires as Timestamp }
+    }
   } else if standing == "approved" {
-    StatusApproved {
-      revision: kv_nonempty(body: body, key: "revision", fallback: "unspecified" as NonEmptyStr),
-      decided_by: kv_nonempty(body: body, key: "decided_by", fallback: "unspecified" as NonEmptyStr),
-      decided_at: kv_line_value(body: body, key: "decided_at") as Timestamp,
-      execute_by: kv_line_value(body: body, key: "execute_by") as Timestamp,
+    let revision = kv_line_value(body: body, key: "revision")
+    let decided_by = kv_line_value(body: body, key: "decided_by")
+    let decided_at = kv_required_instant(body: body, key: "decided_at")
+    let execute_by = kv_required_instant(body: body, key: "execute_by")
+    if revision == "" || decided_by == "" || decided_at == "" || execute_by == "" {
+      StatusUnreadable { detail: "approved standing is missing revision, decided_by, decided_at, or execute_by" as NonEmptyStr }
+    } else {
+      StatusApproved {
+        revision: revision as NonEmptyStr,
+        decided_by: decided_by as NonEmptyStr,
+        decided_at: decided_at as Timestamp,
+        execute_by: execute_by as Timestamp,
+      }
     }
   } else if standing == "denied" {
-    StatusDenied {
-      revision: kv_nonempty(body: body, key: "revision", fallback: "unspecified" as NonEmptyStr),
-      decided_by: kv_nonempty(body: body, key: "decided_by", fallback: "unspecified" as NonEmptyStr),
-      decided_at: kv_line_value(body: body, key: "decided_at") as Timestamp,
-      reason: kv_nonempty(body: body, key: "reason", fallback: "unspecified" as NonEmptyStr),
+    let revision = kv_line_value(body: body, key: "revision")
+    let decided_by = kv_line_value(body: body, key: "decided_by")
+    let decided_at = kv_required_instant(body: body, key: "decided_at")
+    let reason = kv_line_value(body: body, key: "reason")
+    if revision == "" || decided_by == "" || decided_at == "" || reason == "" {
+      StatusUnreadable { detail: "denied standing is missing revision, decided_by, decided_at, or reason" as NonEmptyStr }
+    } else {
+      StatusDenied {
+        revision: revision as NonEmptyStr,
+        decided_by: decided_by as NonEmptyStr,
+        decided_at: decided_at as Timestamp,
+        reason: reason as NonEmptyStr,
+      }
     }
   } else if standing == "unreadable" {
-    StatusUnreadable { detail: kv_nonempty(body: body, key: "detail", fallback: "unreadable standing with no detail" as NonEmptyStr) }
+    let detail = kv_line_value(body: body, key: "detail")
+    if detail == "" {
+      StatusUnreadable { detail: "unreadable standing has empty detail" as NonEmptyStr }
+    } else {
+      StatusUnreadable { detail: detail as NonEmptyStr }
+    }
   } else if standing == "" {
     StatusUnreadable { detail: "status text has no standing= line" as NonEmptyStr }
   } else {

@@ -699,6 +699,34 @@ fn request_revision_of<Subject>(request: AuthorizationRequest<Subject>) -> NonEm
   serialize_content_hash(hash: request.intent_hash)
 }
 
+fn grant_from_approved_decision<Subject>(
+  request: AuthorizationRequest<Subject>,
+  revision: NonEmptyStr,
+  decided_by: NonEmptyStr,
+  decided_at: Timestamp,
+  execute_by: Timestamp,
+) -> GrantDerivation<Subject> {
+  let want = request_revision_of(request: request)
+  if revision != want {
+    GrantForAnotherIntent { requested_revision: want, decided_revision: revision }
+  } else {
+    GrantDerived { authorization: AuthorizationGranted {
+      grant: OperatorGrant {
+        escalation_id: request.escalation_id,
+        scopes: request.scopes,
+        subject: request.subject,
+        purpose: request.purpose,
+        attempt: request.attempt,
+        intent_hash: request.intent_hash,
+        granted_by: decided_by,
+        granted_at: decided_at,
+        expires_at: execute_by,
+      },
+      claim: Unclaimed,
+    } }
+  }
+}
+
 fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Subject>) -> GrantDerivation<Subject> {
   let revision = request_revision_of(request: request)
   match observe_escalation(root: root, escalation_id: request.escalation_id) {
@@ -707,23 +735,16 @@ fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Su
     EscalationPending { request: _ } => GrantStillPending { escalation_id: request.escalation_id }
     EscalationDecided { decision: d } => match d {
       BrokerApproved { escalation_id: e, revision: r, decided_by: by, decided_at: at, obligation: o } =>
-        if e != request.escalation_id || r != revision {
+        if e != request.escalation_id {
           GrantForAnotherIntent { requested_revision: revision, decided_revision: r }
         } else {
-          GrantDerived { authorization: AuthorizationGranted {
-            grant: OperatorGrant {
-              escalation_id: request.escalation_id,
-              scopes: request.scopes,
-              subject: request.subject,
-              purpose: request.purpose,
-              attempt: request.attempt,
-              intent_hash: request.intent_hash,
-              granted_by: by,
-              granted_at: at,
-              expires_at: o.execute_by,
-            },
-            claim: Unclaimed,
-          } }
+          grant_from_approved_decision(
+            request: request,
+            revision: r,
+            decided_by: by,
+            decided_at: at,
+            execute_by: o.execute_by,
+          )
         }
       BrokerDenied { escalation_id: e, revision: r, decided_by: by, decided_at: at, reason: why } =>
         if e != request.escalation_id || r != revision {

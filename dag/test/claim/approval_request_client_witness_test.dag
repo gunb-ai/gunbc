@@ -64,6 +64,7 @@ test fn status_words_are_closed() -> Bool {
       _ => false
     }
     && match parse_filed_approval_status(body: "standing=maybe\n") { StatusUnreadable { detail: _ } => true  _ => false }
+    && match parse_filed_approval_status(body: "standing=approved\n") { StatusUnreadable { detail: _ } => true  _ => false }
 }
 
 test fn poll_expires_after_expires_at_unless_already_decided() -> Bool {
@@ -81,7 +82,7 @@ test fn poll_expires_after_expires_at_unless_already_decided() -> Bool {
       observed_at: "2026-09-16T22:00:00Z",
       expires_at: "2026-09-16T21:00:00Z",
     ) {
-      PollApproved => true
+      PollApproved { revision: _, decided_by: _, decided_at: _, execute_by: _ } => true
       _ => false
     }
     && match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T21:00:00Z" }, observed_at: "2026-09-16T20:30:00Z", expires_at: "2026-09-16T21:00:00Z") {

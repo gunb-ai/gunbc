@@ -16,8 +16,8 @@ import std.scoped_authorization {
   AuthorizationRefused,
 }
 import gunbc.auth.approval_decision_store {
-  grant_from_store, GrantDerived, GrantStillPending, GrantEscalationNotFiled,
-  GrantForAnotherIntent, GrantStoreUnreadable, approval_decision_store_root,
+  grant_from_approved_decision, GrantDerived, GrantForAnotherIntent,
+  request_revision_of,
 }
 import gunbc.auth.approval_request_client {
   ApprovalPollStanding, PollApproved, PollDenied, PollExpired, PollStillPending,
@@ -128,20 +128,33 @@ fn mtcollins1_boot_gate_from_poll(
     PollNotFiled => BootGateNotFiled { escalation_id: request.escalation_id }
     PollExpired => BootGateExpired
     PollUnreadable { detail: d } => BootGateStoreUnreadable { detail: d }
-    PollDenied => BootGateDenied { reason: "the operator denied this boot" as NonEmptyStr }
-    PollApproved =>
-      match grant_from_store(root: approval_decision_store_root, request: request) {
-        GrantStillPending { escalation_id: e } => BootGatePending { escalation_id: e }
-        GrantEscalationNotFiled { escalation_id: e } => BootGateNotFiled { escalation_id: e }
+    PollDenied { revision: r, decided_by: _, decided_at: _, reason: why } =>
+      if r != request_revision_of(request: request) {
+        BootGateIntentMismatch {
+          requested_revision: request_revision_of(request: request),
+          decided_revision: r,
+        }
+      } else {
+        BootGateDenied { reason: why }
+      }
+    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+      match grant_from_approved_decision(
+        request: request,
+        revision: r,
+        decided_by: by,
+        decided_at: at,
+        execute_by: until,
+      ) {
         GrantForAnotherIntent { requested_revision: a, decided_revision: b } =>
           BootGateIntentMismatch { requested_revision: a, decided_revision: b }
-        GrantStoreUnreadable { detail: d } => BootGateStoreUnreadable { detail: d }
         GrantDerived { authorization: auth } =>
           match authorize(authorization: auth, request: request, observed_at: observed_at) {
             AuthorizationPermitted { grant: _ } => BootGateAdmitted { authorization: auth }
             AuthorizationRefused { cause: _ } =>
-              BootGateAuthorizeRefused { detail: "scoped authorization refused the stored grant for this request" as NonEmptyStr }
+              BootGateAuthorizeRefused { detail: "scoped authorization refused the HTTP grant for this request" as NonEmptyStr }
           }
+        _ =>
+          BootGateStoreUnreadable { detail: "approved GET standing did not yield a grant" as NonEmptyStr }
       }
   }
 }

@@ -376,8 +376,10 @@ fn submit_parsed_submission(
 
 // WHAT A POLLING RUN MAY LEARN OVER HTTP: the slot's standing and, once decided, who decided and
 // when. Not the purpose, not the requester -- the run filed those and does not need them back --
-// and never a link. The grant itself is derived by the run from the decision it already knows it
-// is waiting for, through grant_from_store's join, once part D moves that read behind this route.
+// WHAT A POLLING RUN MAY LEARN OVER HTTP: the slot's standing and, once decided, who decided and
+// when. Not the purpose, not the requester -- the run filed those and does not need them back --
+// and never a link. The grant join is grant_from_approved_decision over these fields: the runner
+// never opens the 0600 store.
 // THE STATUS A POLLING RUN READS, with its wire status beside it: an answer about the slot --
 // not filed, pending, decided -- is 200, and a store that could not be read is 503, because the
 // HTTP status is the channel the filer reads first and a failed read on the success channel is
@@ -427,5 +429,5 @@ data approval_submission_authority_policy_frontier: DissolutionCondition = unbou
 // (eager-owl-205's child lane, 2026-09-16). Until it lands, submit_parsed_submission has the serve
 // route and its witness as consumers and no filer; its first live receipt is D's first run.
 data approval_submission_client_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a fleet-converge mode that materializes approval-submission-mac-key in-run over WIF, signs stored_request_json of a source-declared request with sign_submission, POSTs the envelope to /approvals, polls /approvals/\{escalation_id\} bounded by the request's expires_at, and gates the actuation on grant_from_store's OperatorGrant -- SUFFICIENT FOR every approval-gated fleet action, not one host's boot; the srv3 source-declared grant dissolves into the same run.",
+  description: "a fleet-converge mode that materializes approval-submission-mac-key in-run over WIF, signs stored_request_json of a source-declared request with sign_submission, POSTs the envelope to /approvals, polls /approvals/\{escalation_id\} bounded by the request's expires_at, and gates the actuation on grant_from_approved_decision over those standing fields -- SUFFICIENT FOR every approval-gated fleet action, not one host's boot; the srv3 source-declared grant dissolves into the same run.",
 )
