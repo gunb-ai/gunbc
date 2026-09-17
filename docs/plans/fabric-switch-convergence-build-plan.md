@@ -58,10 +58,14 @@ Mirror `gunbc.spark.bootstrap_credential` / `grant_privileged_operation`:
   The host-side READ of negotiated speed is UNPRIVILEGED (`ethtool <dev>` reports Speed
   without root), so PR-3's success criterion does NOT depend on PR-4: reading a speed and
   forcing a speed are different privileges. What PR-3 CANNOT do without PR-4 is FORCE the
-  host end, and forced-both is what actually trains 100G on this hardware -- so PR-3 and
-  PR-4 together ACHIEVE convergence, while PR-3 alone can already OBSERVE both ends and
-  refuse honestly. If PR-3 lands first it converges the switch and reports the host still
-  at 50G (host unforced); it does not claim success off the switch's local link-ok.
+  host end. Forced-both is the production candidate the MikroTik breakout requirement
+  points at, NOT an established working config: the one mstlink run of forced-both did NOT
+  train (host stayed in Polling, no bilateral link -- fabric-switch-actuation-log.md). So
+  PR-3 + PR-4 together let us RE-TEST forced-both properly once the QSFP-DD coding is
+  fixed; they do not, on the current evidence, achieve convergence by themselves. PR-3
+  alone can already OBSERVE both ends and refuse honestly: if it lands first it converges
+  the switch and reports the host still at 50G (host unforced), and never claims success
+  off the switch's local link-ok.
 
 - **PR-4 (host side): mstlink authority + set grant.** `extdeps.mellanox` for mstlink
   (G9), the 2-lane-force fact (G10: ethtool cannot pin CR2), and the host-side set grant

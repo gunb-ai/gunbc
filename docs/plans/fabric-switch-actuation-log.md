@@ -127,19 +127,25 @@ Key facts distinguished:
 - The SWITCH PHY can run 100G: when FORCED it reports link-ok rate 100Gbps. So the
   switch hardware/module is NOT hard-capped at 50G. Earlier "auto-init-failed" was the
   AUTONEG path only.
-- 100GBASE-CR2 (copper) requires clause-73 AUTONEG on both ends by IEEE. The forced
-  (autoneg-off) path is non-compliant for CR and the ConnectX-7 finds "no partner" ->
-  no link. So forced-both cannot be the production config.
+- [SUPERSEDED at this site -- see the mstlink re-test section below: MikroTik REQUIRES
+  forced/autoneg-off for 4x100G DAC breakout, so this "forced is non-compliant" reasoning
+  was WRONG. The forced-both host "no partner" seen here was ethtool -s selecting the wrong
+  lane count (CR4), not a compliance fact. Kept struck-through rather than deleted so the
+  wrong turn is visible.] ~100GBASE-CR2 requires clause-73 autoneg on both ends; the forced
+  path is non-compliant for CR, so forced-both cannot be the production config.~
 - The AUTONEG path is the compliant one, and it fails at the SWITCH:
   status=auto-init-failed, eeprom-checksum=bad on the QSFP-DD module. The switch cannot
   complete 100G autoneg-init with the Generic-coded QSFP-DD end.
 - 50G works because forced 50G parallel-detects without needing clean autoneg-init.
 
-VERDICT: 100G will not come up in any configuration. The switch is capable (forced 100G
-trains locally) and the host is ready (coded + advertises 100G-CR2), but the ONE
-compliant 100G-CR2 config (both-ends autoneg) fails at the switch's autoneg-init against
-the Generic-coded QSFP-DD module (bad eeprom-checksum). The wall is the switch-side
-QSFP-DD module coding, specifically its autoneg/EEPROM adequacy for 100G-CR2.
+VERDICT [SUPERSEDED at this site -- this is the PRE-mstlink verdict; the corrected verdict
+is in the mstlink re-test section below. It over-claimed on the forced path, which had not
+yet been tested with the right tool. Kept for the record of the wrong turn]:
+~100G will not come up in any configuration. The switch is capable (forced 100G trains
+locally) and the host is ready, but the ONE compliant config (both-ends autoneg) fails at
+the switch's autoneg-init against the Generic-coded QSFP-DD module. The wall is the
+switch-side QSFP-DD module coding.~ The corrected verdict, after the forced path was
+re-tested with mstlink, is below and is the one to read.
 
 This is now a precise, evidenced question for FS: the NVIDIA(ETH) recode of the QSFP56
 host ends lets the host advertise 100G-CR2, but the switch cannot autoneg-init 100G-CR2
