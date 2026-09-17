@@ -1414,24 +1414,46 @@ pub(crate) enum Xl1PrimaryRootTap {
     },
 }
 
-pub(crate) fn compile_xl1_primary_root_tap(source_roots: &[String]) -> Xl1PrimaryRootTap {
+pub(crate) fn compile_xl1_primary_root_tap(
+    source_roots: &[String],
+    repository: &str,
+    measured_root_demands: &str,
+) -> Xl1PrimaryRootTap {
     if source_roots.is_empty() {
         return Xl1PrimaryRootTap::Refused {
             cause: "xl1 primary-root tap: source_roots is empty".to_string(),
         };
     }
     let root = source_roots[0].clone();
+    // THE ROOT DEMAND IS DECLARED BY THE CALLER, exactly as `gunbc compile` receives it on
+    // argv: the repository identity and the projection path are repository facts
+    // (gunbc.whole_corpus_compile_admission whole_corpus_compile_repository,
+    // gunbc.whole_corpus_compile_demand_projection), so the .dag caller names them and the
+    // tap borrows no identity. Admission is then the SAME whole-root admission the compile
+    // transaction asks, on the root's own measured row (#11265).
     let request = CompileRequest {
         subject: CompileSubject::PrimaryRoot(root.clone()),
         source_roots: source_roots.to_vec(),
         primary_precedence: false,
         render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        root_demand: RootDemandDeclaration {
+            repository: Some(repository.to_string()),
+            measured_root_demands: Some(measured_root_demands.to_string()),
+        },
     };
     if let Err(cause) = request.primary_root_agrees_with_precedence() {
         return Xl1PrimaryRootTap::Refused { cause };
     }
-    let (budget, budget_source) = crate::memory_governor::read_host_budget_bytes();
-    let admission = crate::memory_governor::whole_corpus_compile_admission(budget, &budget_source);
+    let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
+        repository: repository.to_string(),
+        primary_root: root.clone(),
+        dependency_pools: source_roots.iter().skip(1).cloned().collect(),
+    };
+    let read =
+        crate::memory_governor::read_whole_corpus_compile_demands(Some(measured_root_demands));
+    let budget = crate::memory_governor::read_host_budget_resolution();
+    let admission =
+        crate::memory_governor::whole_corpus_compile_admission(&budget, &identity, &read);
     if let Some(diagnostic) =
         crate::memory_governor::whole_corpus_compile_refusal_diagnostic(&admission)
     {

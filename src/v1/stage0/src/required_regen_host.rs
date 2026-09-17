@@ -8681,6 +8681,7 @@ fn emit_dag_artifact_text(root_rel: &str) -> Result<String, String> {
     let entry = root.join(DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME);
     let run = super::compile_emission(&super::CompileRequest {
         subject: super::CompileSubject::Entry(entry.to_string_lossy().to_string()),
+        root_demand: super::RootDemandDeclaration::default(),
         source_roots: vec![root.to_string_lossy().to_string()],
         primary_precedence: false,
         render_targets: vec![RenderTarget::Dag],

@@ -1,0 +1,171 @@
+module test.claim.root_demand_measurement_witness
+
+import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
+import gunbc.whole_corpus_compile_admission {
+  WholeCorpusCompileRootIdentity,
+  WholeCorpusCompileSourceCensus,
+  SourceBytesRecorded,
+  MeasuredForRoot,
+  UnmeasuredRoot,
+  whole_corpus_compile_public_root,
+}
+import gunbc.root_demand_measurement {
+  RootDemandMeasurementLimitReading,
+  MemoryMaxBindsProcess,
+  MemoryHighThrottlesBelowMax,
+  MemoryHighOnly,
+  NoCgroupMemoryLimit,
+  RootDemandMeasurementAdmitted,
+  RootDemandMeasurementRefusedNoEnforceableLimit,
+  RootDemandMeasurementRun,
+  CensusReported,
+  CensusNotReported,
+  MeasurementCompleted,
+  MeasurementExceeded,
+  MeasurementTerminated,
+  MeasuredRowAuthored,
+  MeasuredRowRefusedReceiptForAnotherRoot,
+  MeasuredRowRefusedLowerBound,
+  MeasuredRowRefusedRunDidNotComplete,
+  root_demand_measurement_admission,
+  measured_for_root_from_receipt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn private_root() -> WholeCorpusCompileRootIdentity {
+  WholeCorpusCompileRootIdentity {
+    repository: "gunbc-private" as RepositoryIdentity,
+    primary_root: "strategy" as SourceRootIdentity,
+    dependency_pools: ["dag" as SourceRootIdentity],
+  }
+}
+
+fn six_gib_memory_max() -> RootDemandMeasurementLimitReading {
+  MemoryMaxBindsProcess { cgroup_dir: "/sys/fs/cgroup/session.slice" as NonEmptyStr, bytes: byte_size(6442450944) }
+}
+
+fn run_for(root: WholeCorpusCompileRootIdentity, census: Bool) -> RootDemandMeasurementRun {
+  RootDemandMeasurementRun {
+    root: root,
+    limit: byte_size(6442450944),
+    limit_source: "cgroup memory.max (/sys/fs/cgroup/session.slice)" as NonEmptyStr,
+    measured_on_host: "session container" as NonEmptyStr,
+    instrument_run: "fixture run" as NonEmptyStr,
+    census: if census {
+      CensusReported { census: WholeCorpusCompileSourceCensus { source_count: 548, source_bytes: SourceBytesRecorded { bytes: byte_size(9000000) } } }
+    } else { CensusNotReported },
+  }
+}
+
+fn evidence() -> DeclarationRef {
+  DeclarationRef { module_path: "test.claim.root_demand_measurement_witness", decl_name: "run_for", field: WholeDeclaration }
+}
+
+// POSITIVE CONTROL: an observed cgroup limit admits a root that has no row.
+test fn an_enforceable_cgroup_limit_admits_the_measurement_of_an_unmeasured_root() -> Bool {
+  match root_demand_measurement_admission(limit: six_gib_memory_max(), root: private_root()) {
+    RootDemandMeasurementAdmitted { root: _, limit: l, limit_source: s } =>
+      byte_size_count(b: l) == 6442450944 && string_contains(s: s as String, pattern: "memory.max")
+    RootDemandMeasurementRefusedNoEnforceableLimit { root: _, reason: _ } => false
+  }
+}
+
+// RED: a declared budget, an unreadable budget and the machine's physical memory are not
+// enforceable limits, so the measurement refuses on each.
+fn measurement_refusal_reason(l: RootDemandMeasurementLimitReading) -> String {
+  match root_demand_measurement_admission(limit: l, root: private_root()) {
+    RootDemandMeasurementRefusedNoEnforceableLimit { root: _, reason: r } => r as String
+    RootDemandMeasurementAdmitted { root: _, limit: _, limit_source: _ } => ""
+  }
+}
+
+// RED: memory.high alone throttles and never kills, so it refuses naming exactly that; no cgroup
+// limit at all refuses too. Neither admits.
+test fn measurement_under_memory_high_only_or_no_limit_refuses() -> Bool {
+  let high_only = measurement_refusal_reason(l: MemoryHighOnly { cgroup_dir: "/sys/fs/cgroup/runner.slice" as NonEmptyStr, high: byte_size(8589934592) })
+  let none_at_all = measurement_refusal_reason(l: NoCgroupMemoryLimit)
+  string_contains(s: high_only, pattern: "memory.high throttles and never kills")
+    && string_contains(s: high_only, pattern: "needs memory.max")
+    && string_contains(s: none_at_all, pattern: "needs memory.max")
+}
+
+// RED: a finite memory.high BELOW memory.max throttles first, so memory.max does not bound the run
+// even though it is set; the refusal names the throttle line and the repair.
+test fn measurement_under_memory_high_below_max_refuses() -> Bool {
+  let both = measurement_refusal_reason(l: MemoryHighThrottlesBelowMax {
+    cgroup_dir: "/sys/fs/cgroup/runner.slice" as NonEmptyStr,
+    high: byte_size(8589934592),
+    max: byte_size(17179869184),
+  })
+  string_contains(s: both, pattern: "memory.high is set below memory.max")
+    && string_contains(s: both, pattern: "before the process can reach the kill line")
+}
+
+// POSITIVE CONTROL for authoring: a completed, exit-0 receipt for the root authors its row at
+// whole-gibibyte grain, rounded up.
+test fn a_completed_receipt_authors_the_row_at_grain() -> Bool {
+  match measured_for_root_from_receipt(
+    root: private_root(),
+    receipt: MeasurementCompleted { run: run_for(root: private_root(), census: true), exit_status: 0, peak: byte_size(4000000000) },
+    measured_on: "2026-09-13" as NonEmptyStr,
+    evidence: evidence(),
+  ) {
+    MeasuredRowAuthored { demand: d } => match d {
+      MeasuredForRoot { root: _, census: c, peak: p, receipt: _ } => byte_size_count(b: p) == 4294967296 && c.source_count == 548
+      UnmeasuredRoot { root: _ } => false
+    }
+    MeasuredRowRefusedReceiptForAnotherRoot { root: _, receipt_root: _ } => false
+    MeasuredRowRefusedLowerBound { limit: _, why: _ } => false
+    MeasuredRowRefusedRunDidNotComplete { why: _ } => false
+  }
+}
+
+// RED: a receipt for a DIFFERENT root identity does not author this root's row.
+test fn a_row_authored_from_another_roots_receipt_refuses() -> Bool {
+  match measured_for_root_from_receipt(
+    root: private_root(),
+    receipt: MeasurementCompleted { run: run_for(root: whole_corpus_compile_public_root, census: true), exit_status: 0, peak: byte_size(4000000000) },
+    measured_on: "2026-09-13" as NonEmptyStr,
+    evidence: evidence(),
+  ) {
+    MeasuredRowRefusedReceiptForAnotherRoot { root: _, receipt_root: _ } => true
+    MeasuredRowAuthored { demand: _ } => false
+    MeasuredRowRefusedLowerBound { limit: _, why: _ } => false
+    MeasuredRowRefusedRunDidNotComplete { why: _ } => false
+  }
+}
+
+// RED: a kill at the limit is an EXCEEDED receipt, a lower bound, and never authors a row; neither
+// does a nonzero exit, another signal, or a run with no census.
+test fn a_kill_a_refusal_or_a_missing_census_never_authors_a_row() -> Bool {
+  let exceeded = match measured_for_root_from_receipt(root: private_root(), receipt: MeasurementExceeded { run: run_for(root: private_root(), census: false) }, measured_on: "2026-09-13" as NonEmptyStr, evidence: evidence()) {
+    MeasuredRowRefusedLowerBound { limit: l, why: _ } => byte_size_count(b: l) == 6442450944
+    MeasuredRowAuthored { demand: _ } => false
+    MeasuredRowRefusedReceiptForAnotherRoot { root: _, receipt_root: _ } => false
+    MeasuredRowRefusedRunDidNotComplete { why: _ } => false
+  }
+  let nonzero = match measured_for_root_from_receipt(root: private_root(), receipt: MeasurementCompleted { run: run_for(root: private_root(), census: true), exit_status: 1, peak: byte_size(4000000000) }, measured_on: "2026-09-13" as NonEmptyStr, evidence: evidence()) {
+    MeasuredRowRefusedLowerBound { limit: _, why: _ } => true
+    MeasuredRowAuthored { demand: _ } => false
+    MeasuredRowRefusedReceiptForAnotherRoot { root: _, receipt_root: _ } => false
+    MeasuredRowRefusedRunDidNotComplete { why: _ } => false
+  }
+  let signalled = match measured_for_root_from_receipt(root: private_root(), receipt: MeasurementTerminated { run: run_for(root: private_root(), census: false), signal: 15 }, measured_on: "2026-09-13" as NonEmptyStr, evidence: evidence()) {
+    MeasuredRowRefusedRunDidNotComplete { why: _ } => true
+    MeasuredRowAuthored { demand: _ } => false
+    MeasuredRowRefusedReceiptForAnotherRoot { root: _, receipt_root: _ } => false
+    MeasuredRowRefusedLowerBound { limit: _, why: _ } => false
+  }
+  let no_census = match measured_for_root_from_receipt(root: private_root(), receipt: MeasurementCompleted { run: run_for(root: private_root(), census: false), exit_status: 0, peak: byte_size(4000000000) }, measured_on: "2026-09-13" as NonEmptyStr, evidence: evidence()) {
+    MeasuredRowRefusedRunDidNotComplete { why: _ } => true
+    MeasuredRowAuthored { demand: _ } => false
+    MeasuredRowRefusedReceiptForAnotherRoot { root: _, receipt_root: _ } => false
+    MeasuredRowRefusedLowerBound { limit: _, why: _ } => false
+  }
+  exceeded && nonzero && signalled && no_census
+}

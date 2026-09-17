@@ -17,6 +17,12 @@ data accepted_source_emits_uncompilable_target: RecurringFailureMode = Recurring
 
     "Section 7 makes this the seed's floor and not the target's problem: the .dag graph is the authority and Rust is one realization, so 'rustc catches it' is exactly the outsourcing this project exists to end.",
 
+    "A THIRD SPECIMEN, 2026-09-16, AND IT IS A TYPE NAME RATHER THAN A CONSTRUCTOR: `v2.std.text` declares `type String = FreeMonoid<Char>` while the compiler's PRIMITIVE `String` emits to the target languages native string. One name, two materially different representations (DESIGN section 3 meaning fork), and the emitter resolves the two differently in the two places it matters: an ordinary declarations `String`-typed field or parameter emits as Rusts `String`, while `v2.std.text`s OWN functions emit against its alias, `pub type String = Rc<Vec<i64>>;`. The consequence is that EVERY function in that module is uncallable from emitted code on an ordinary string.",
+
+    "HOW IT WAS FOUND, and the finding is the seam rather than the module: `v2.cli.compile_cli` called `string_eq(a: arg, b: cli_verb_emit)` to compare two ordinary `String` values. The front end accepted it with ZERO blocking diagnostics -- both sides are spelled `String` and the alias makes that true -- and the emitted crate then refused at `cargo build` with `error[E0308]: arguments to this function are incorrect`, `expected struct Rc<im::Vector<i64>>, found struct std::string::String`, three times. The repair at the call site is `==`, which is what `string_eq` is defined as; the CLASS is that nothing in `.dag` could have said so.",
+
+    "WHY NOBODY HAD HIT IT: the emitted `pub type String = Rc<Vec<i64>>;` has ZERO USERS in every crate emitted to date -- measured on the self-host closure, where no emitted module references `v2_std_text::String` at all. So the fork was dormant rather than absent, and the first emitted consumer of any `v2.std.text` function is the first thing to surface it. That is why a widening of the proven closure is what found it, and why the count of emitted crates that built clean is not evidence the alias is sound.",
+
     "THE SPECIMEN IS CARRIED IN THIS ROW RATHER THAN CITED, because the fixture that produced it was never committed to this repository (neat-otter-332, 2026-09-01).",
 
     "Its emitted artifacts are held by that lane's own receipts; no path is given here, since a path outside this repository is not a citation a later reader can resolve.",

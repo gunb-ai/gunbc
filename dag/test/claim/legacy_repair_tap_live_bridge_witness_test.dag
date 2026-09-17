@@ -4,6 +4,8 @@ import std.types { String, Bool, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.content_hash { structural_content_hash }
 import std.decl_ref { decl_ref }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
+import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
 import extdeps.git.object_store { git_sha1_object_id }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservationSubject,
@@ -40,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // gunbc.recurring_failure_mode.a_gate_sized_for_the_largest_subject_refuses_every_smaller_one.
 
 test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool {
-  match emit_rust_reference_derived_rows_bridge([]) {
+  match emit_rust_reference_derived_rows_bridge([], whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path()) {
     Xl1PrimaryRootRefused { cause: c } => string_contains(s: c, pattern: "empty")
     Xl1PrimaryRootObserved {
       primary_root: _,
