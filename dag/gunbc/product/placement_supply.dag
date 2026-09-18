@@ -35,6 +35,12 @@ fn physical_asset_identity_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity
   a as String == b as String
 }
 
+// Sites, for the same reason: gunbc.network_boot_delivery asks whether an edge or client
+// observation sits at the expected site, and product.placement_supply owns SiteIdentity.
+fn site_identity_eq(a: SiteIdentity, b: SiteIdentity) -> Bool {
+  a as String == b as String
+}
+
 // SPATIAL-0: physical placement and RF reachability — the product-layer authority for WHERE assets
 // sit, whether they share a rack, and whether a wireless bootstrap step is admissible. Logical
 // packet reach (extdeps.network.reach) and logical topology zones

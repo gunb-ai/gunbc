@@ -57,7 +57,7 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryTargetMismatch,
   NetworkBootDeliveryTrustUnestablished,
   NetworkBootDeliveryUnestablished,
-  ManifestJoinExpired,
+  ManifestVerificationExpired,
   ManifestJoinWrongTarget,
   ManifestUnsignedIdentity,
   ManifestVerificationMac,
@@ -663,7 +663,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
     },
   }
   match join_network_boot_delivery(inputs: inputs) {
-    NetworkBootDeliveryManifestRefused { cause: ManifestJoinExpired { expiry: _, observed_at: _ } } => true
+    NetworkBootDeliveryManifestRefused { cause: ManifestVerificationRefused { class: ManifestVerificationExpired, observation: _ } } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false

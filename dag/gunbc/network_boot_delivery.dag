@@ -15,7 +15,7 @@ import extdeps.provisioning.dhcp_client_arch {
   dhcp_client_processor_architecture,
 }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection }
-import product.placement_supply { SiteIdentity }
+import product.placement_supply { SiteIdentity, site_identity_eq }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
 
@@ -85,6 +85,8 @@ type NetworkBootManifestVerificationClass
   = ManifestVerificationMac
   | ManifestVerificationWrongMessage
   | ManifestVerificationWrongArchitecture
+  | ManifestVerificationNotYetValid
+  | ManifestVerificationExpired
   | ManifestVerificationReplay
   | ManifestVerificationSigningKey
   | ManifestVerificationVerifiedKey
@@ -98,8 +100,6 @@ type NetworkBootManifestRefusal
       observation: DeclarationRef
     }
   | ManifestJoinDigestDisagrees
-  | ManifestJoinNotYetValid { not_before: EpochMs, observed_at: EpochMs }
-  | ManifestJoinExpired { expiry: EpochMs, observed_at: EpochMs }
   | ManifestJoinWrongTarget
   | ManifestJoinWrongAttempt
   | ManifestJoinWrongSigningKey
@@ -286,6 +286,22 @@ type SignedBootManifestStanding
     }
   | SignedBootManifestAbsent
 
+// The validity window of a signed boot manifest is adjudicated here and only
+// here: the broker's redemption and the delivery join both consume it.
+fn signed_boot_manifest_window_refusal(identity: SignedBootManifestIdentity, at: EpochMs) -> NetworkBootManifestVerificationClass? {
+  if at < identity.not_before {
+    Present { value: ManifestVerificationNotYetValid }
+  } else if at >= identity.expiry {
+    Present { value: ManifestVerificationExpired }
+  } else {
+    none
+  }
+}
+
+fn manifest_verification_refused_at(class: NetworkBootManifestVerificationClass, observation: DeclarationRef) -> NetworkBootDeliveryStanding {
+  NetworkBootDeliveryManifestRefused { cause: ManifestVerificationRefused { class: class, observation: observation } }
+}
+
 type BootstrapTrustObservation {
   observation: DeclarationRef
   observed_at: EpochMs
@@ -369,7 +385,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
         SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } =>
           NetworkBootDeliveryArchitectureRefused { cause: ChainloaderMismatch { client: c, chainloader: l } }
         SitePxeEdgeEstablished { receipt: site } =>
-          if (site.edge.site as String) != (inputs.expected_site as String) {
+          if site_identity_eq(a: site.edge.site, b: inputs.expected_site) == false {
             NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: site.edge.site }
           } else {
           match inputs.client {
@@ -386,7 +402,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                   if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
                     NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
                   } else {
-                  if (client.site as String) != (inputs.expected_site as String) {
+                  if site_identity_eq(a: client.site, b: inputs.expected_site) == false {
                     NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: client.site }
                   } else {
                     match inputs.boot_control {
@@ -483,16 +499,10 @@ fn join_verified_ticket_after_trust(
                 if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
                   NetworkBootDeliveryManifestRefused { cause: ManifestJoinDigestDisagrees }
                 } else {
-                  if manifest_at < id.not_before {
-                    NetworkBootDeliveryManifestRefused {
-                      cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
-                    }
-                  } else {
-                    if manifest_at >= id.expiry {
-                      NetworkBootDeliveryManifestRefused {
-                        cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
-                      }
-                    } else {
+                  match signed_boot_manifest_window_refusal(identity: id, at: manifest_at) {
+                    Present { value: window_class } =>
+                      manifest_verification_refused_at(class: window_class, observation: manifest_obs)
+                    Absent => {
                       if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
                         NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                       } else {

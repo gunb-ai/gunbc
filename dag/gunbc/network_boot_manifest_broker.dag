@@ -32,6 +32,7 @@ import extdeps.crypto.mac {
 import gunbc.machine_intake_subject { IntakeAttemptId }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
+  signed_boot_manifest_window_refusal,
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
   SignedBootManifestVerified,
@@ -92,6 +93,7 @@ type BootstrapTrustRoot {
 type BootManifestExpectation {
   trust: BootstrapTrustRoot
   spent_attempt_nonces: List<SpentAttemptNonce>
+  redeemed_at: EpochMs
 }
 
 type BootManifestVerification
@@ -243,7 +245,10 @@ fn join_verified_mac(
   } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: ticket.claims.identity.attempt_id, nonce: ticket.claims.identity.nonce) {
     refused(class: ManifestVerificationReplay)
   } else {
-    BootManifestAuthentic { claims: ticket.claims }
+    match signed_boot_manifest_window_refusal(identity: ticket.claims.identity, at: expectation.redeemed_at) {
+      Present { value: window_class } => refused(class: window_class)
+      Absent => BootManifestAuthentic { claims: ticket.claims }
+    }
   }
 }
 

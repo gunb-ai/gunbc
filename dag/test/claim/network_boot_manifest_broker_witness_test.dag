@@ -16,6 +16,8 @@ import gunbc.network_boot_delivery {
   SignedBootManifestAbsent,
   ManifestVerificationWrongArchitecture,
   ManifestVerificationReplay,
+  ManifestVerificationExpired,
+  ManifestVerificationNotYetValid,
   ManifestVerificationMac,
   ManifestVerificationVerifiedKey,
   ProductionTrustedBootstrap,
@@ -115,11 +117,16 @@ fn issued_ticket(id: SignedBootManifestIdentity) -> SignedBootManifestTicket {
   }
 }
 
-fn expectation_at(spent: List<SpentAttemptNonce>) -> BootManifestExpectation {
+fn expectation_when(spent: List<SpentAttemptNonce>, at: Int) -> BootManifestExpectation {
   BootManifestExpectation {
     trust: BootstrapTrustRoot { signing_key_id: broker_key_id, standing: production_trust() },
     spent_attempt_nonces: spent,
+    redeemed_at: at,
   }
+}
+
+fn expectation_at(spent: List<SpentAttemptNonce>) -> BootManifestExpectation {
+  expectation_when(spent: spent, at: 1788001800000)
 }
 
 fn good_identity() -> SignedBootManifestIdentity {
@@ -145,6 +152,28 @@ test fn replayed_attempt_nonce_is_refused() -> Bool {
     expectation: expectation_at(spent: spent),
   ) {
     BootManifestRefused { class: c } => c == ManifestVerificationReplay
+    BootManifestAuthentic { claims: _ } => false
+  }
+}
+
+test fn redemption_at_expiry_is_refused() -> Bool {
+  match redeem_signed_boot_manifest(
+    ticket: issued_ticket(id: good_identity()),
+    key: broker_key,
+    expectation: expectation_when(spent: [], at: 1788003600000),
+  ) {
+    BootManifestRefused { class: c } => c == ManifestVerificationExpired
+    BootManifestAuthentic { claims: _ } => false
+  }
+}
+
+test fn redemption_before_not_before_is_refused() -> Bool {
+  match redeem_signed_boot_manifest(
+    ticket: issued_ticket(id: good_identity()),
+    key: broker_key,
+    expectation: expectation_when(spent: [], at: 1787999999999),
+  ) {
+    BootManifestRefused { class: c } => c == ManifestVerificationNotYetValid
     BootManifestAuthentic { claims: _ } => false
   }
 }
