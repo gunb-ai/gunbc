@@ -7,7 +7,8 @@ import extdeps.languages.toml.types {
   toml_entry, toml_entry_noted, toml_entry_trailing, toml_strings
 }
 import extdeps.languages.toml.emit {
-  serialize_toml, toml_render_value, toml_escape_basic_string, toml_render_key, toml_render_comment
+  serialize_toml, toml_render_value, toml_escape_basic_string, toml_render_key, toml_render_comment,
+  toml_render_entry
 }
 import extdeps.cargo_config {
   CargoConfigEnvVar, CargoAnnotatedEnvVar, CargoBuildConfig, CargoBuildAnnotations,
@@ -151,6 +152,25 @@ test fn control_bearing_strings_stay_inside_their_basic_string() -> Bool {
     && (toml_render_value(v: TomlString { value: "a\u{1f}b" }) == "\"a\\u001Fb\"")
 }
 
+// U+007F IS THE BOUNDARY THE OBVIOUS TEST MISSES. DELETE sits ABOVE the C0 block, so a
+// `point < 32` guard renders it verbatim while the spec requires it escaped -- and a control
+// witness that stops at U+001F passes over exactly that character. The quoted-key case is here
+// because keys, table names and values share one escaping route, and a claim over values alone
+// would not establish the other two.
+test fn delete_is_escaped_on_every_route_that_shares_the_escaper() -> Bool {
+  (toml_render_value(v: TomlString { value: "a\u{7f}b" }) == "\"a\\u007Fb\"")
+    && (toml_escape_basic_string(s: "\u{7f}") == "\\u007F")
+    && (toml_render_key(key: "a\u{7f}b") == "\"a\\u007Fb\"")
+    && (serialize_toml(doc: TomlDocument {
+         preamble_comments: [],
+         tables: [TomlTable {
+           name: Present { value: "a\u{7f}b" },
+           leading_comments: [],
+           entries: []
+         }]
+       }) == "[\"a\\u007Fb\"]\n")
+}
+
 // A key that is not a BARE key must be quoted, and `a.b` is the case that matters most: written
 // bare it is a dotted path naming a nested table, so quoting is what preserves the caller's
 // meaning rather than a cosmetic choice.
@@ -169,6 +189,31 @@ test fn a_multi_line_comment_cannot_escape_into_live_toml() -> Bool {
   (toml_render_comment(text: "one\ntwo") == "# one\n# two\n")
     && (toml_render_comment(text: "one\r\ntwo") == "# one\n# two\n")
     && (toml_render_comment(text: "plain") == "# plain\n")
+}
+
+// THE TRAILING COMMENT IS ITS OWN ROUTE AND WAS THE ONE LEFT OPEN. It is the only comment position
+// that follows a value on the same line, and an earlier revision appended it raw -- so a newline in
+// it rendered its second line as a real assignment. Asserting `toml_render_comment` alone never
+// touches this path, which is why this claim goes through a whole ENTRY.
+test fn a_trailing_comment_cannot_inject_an_assignment() -> Bool {
+  (toml_render_entry(e: toml_entry_trailing(
+     key: "jobs", value: TomlInteger { value: 2 }, trailing_comment: "one\ninjected = 2"
+   )) == "jobs = 2  # one\n# injected = 2\n")
+    && (toml_render_entry(e: toml_entry_trailing(
+         key: "jobs", value: TomlInteger { value: 2 }, trailing_comment: "plain"
+       )) == "jobs = 2  # plain\n")
+}
+
+// TOML admits only TAB among the controls inside a comment; the rest of C0 and U+007F are
+// prohibited. A comment carries no escape sequences -- its content is raw -- so a prohibited
+// character is rendered as its `\uXXXX` TEXT rather than carried through as an invalid byte.
+test fn comment_content_carries_no_prohibited_control() -> Bool {
+  (toml_render_comment(text: "a\u{1}b") == "# a\\u0001b\n")
+    && (toml_render_comment(text: "a\u{7f}b") == "# a\\u007Fb\n")
+    && (toml_render_comment(text: "a\tb") == "# a\tb\n")
+    && (toml_render_entry(e: toml_entry_trailing(
+         key: "k", value: TomlInteger { value: 1 }, trailing_comment: "a\u{7f}b"
+       )) == "k = 1  # a\\u007Fb\n")
 }
 
 // INHABITANCE: the real projection, run for real, carrying the real policy row. The claims above

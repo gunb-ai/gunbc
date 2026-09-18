@@ -2,6 +2,7 @@ module extdeps.languages.toml.emit
 
 import std.types { Bool, String, List, Int }
 import v2.std.collection { list_at_optional }
+import v2.std.algebra { list_head, skip, HeadFound, HeadAbsent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.toml.types {
@@ -29,8 +30,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //      which parses as a backslash followed by a terminator rather than as a quote;
 //   2. the control characters with a short escape -- backspace, tab, newline, form feed, carriage
 //      return -- each of which would otherwise end or corrupt a single-line basic string;
-//   3. every remaining C0 control, emitted as `\uXXXX`, which is the spec's only other admitted
-//      form for them.
+//   3. every remaining C0 control AND U+007F (DELETE), emitted as `\uXXXX`, which is the spec's
+//      only other admitted form for them. DEL is the boundary the obvious `point < 32` test
+//      misses: it sits ABOVE the C0 block and the spec names it explicitly.
 //
 // The alternative contract -- narrow the constructors so unrenderable content cannot be built --
 // was available and is not what this takes: a key or a value here comes from data this repository
@@ -72,7 +74,7 @@ fn toml_hex_nibble(n: Int) -> String {
 // than formatted, because there is no hex formatter in the substrate and inventing one here would
 // be a second numeric authority for four bits.
 fn toml_escape_remaining_control(point: Int) -> String {
-  if point < 32 {
+  if (point < 32) || (point == 127) {
     concat("\\u00", concat(toml_hex_nibble(n: point / 16), toml_hex_nibble(n: point - ((point / 16) * 16))))
   } else {
     from_code_point(point)
@@ -121,14 +123,52 @@ fn toml_render_pair(kv: TomlKeyValue) -> String {
   concat(toml_render_key(key: kv.key), concat(" = ", toml_render_value(v: kv.value)))
 }
 
-// A COMMENT LINE IS ONE LINE. A comment carrying an embedded newline would otherwise be prefixed
-// ONCE, leaving its second line unprefixed and therefore LIVE TOML -- a note silently becoming a
-// key. Each line gets its own `#`, and a carriage return is dropped rather than carried into the
-// output, so a CRLF-bearing note cannot leave a stray CR mid-file.
-fn toml_render_comment(text: String) -> String {
+// A COMMENT LINE IS ONE LINE, AND ITS CONTENT IS SANITIZED. Two separate hazards live here, and a
+// renderer that handles one still emits invalid or dangerous output for the other.
+//
+//   NEWLINES: a comment carrying one would be prefixed ONCE, leaving its second line unprefixed
+//   and therefore LIVE TOML -- a note silently becoming a key. Every line gets its own `#`.
+//
+//   CONTROLS: TOML admits only TAB among the control characters inside a comment; the rest of C0
+//   and U+007F are prohibited outright. A comment cannot carry escape sequences -- its content is
+//   raw -- so a prohibited character is rendered as its `\uXXXX` TEXT, which is valid comment
+//   content and preserves what the author wrote rather than deleting it silently.
+fn toml_comment_lines(text: String) -> List<String> {
   split(s: replace(s: text, from: "\r", to: ""), delimiter: "\n")
-    |> map(line => concat("# ", concat(line, "\n")))
-    |> join(separator: "")
+    |> map(line => chars(s: line) |> map(toml_comment_char) |> join(separator: ""))
+}
+
+fn toml_comment_char(point: Int) -> String {
+  if (point == 9) {
+    from_code_point(point)
+  } else {
+    if (point < 32) || (point == 127) {
+      concat("\\u00", concat(toml_hex_nibble(n: point / 16), toml_hex_nibble(n: point - ((point / 16) * 16))))
+    } else {
+      from_code_point(point)
+    }
+  }
+}
+
+fn toml_render_comment(text: String) -> String {
+  toml_comment_lines(text: text) |> map(line => concat("# ", concat(line, "\n"))) |> join(separator: "")
+}
+
+// A TRAILING COMMENT TAKES THE SAME ROUTE AS EVERY OTHER COMMENT, which is the whole point of this
+// function existing rather than the entry renderer appending `"  # "` to the raw string. Appending
+// it raw left the ONE comment position that follows a value on the same line able to carry a
+// newline -- and its second line then rendered as an actual assignment. The first line stays
+// beside the value; every continuation becomes its own comment line.
+fn toml_render_trailing_comment(text: String) -> String {
+  let lines = toml_comment_lines(text: text)
+  match list_head(xs: lines) {
+    HeadFound { value: first } =>
+      concat(
+        concat("  # ", concat(first, "\n")),
+        skip(xs: lines, n: 1) |> map(line => concat("# ", concat(line, "\n"))) |> join(separator: "")
+      )
+    HeadAbsent => "\n"
+  }
 }
 
 fn toml_render_comments(texts: List<String>) -> String {
@@ -140,13 +180,10 @@ fn toml_render_entry(e: TomlEntry) -> String {
     toml_render_comments(texts: e.leading_comments),
     concat(
       toml_render_pair(kv: e.pair),
-      concat(
-        match e.trailing_comment {
-          Present { value: c } => concat("  # ", c)
-          Absent => ""
-        },
-        "\n"
-      )
+      match e.trailing_comment {
+        Present { value: c } => toml_render_trailing_comment(text: c)
+        Absent => "\n"
+      }
     )
   )
 }
