@@ -13,6 +13,7 @@ import v2.std.declaration_marker {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
+  dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
@@ -40,11 +41,13 @@ import v2.std.optional {
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
 import v2.std.diagnostic {
   Correction,
+  CorrectionNotModeled,
   Diagnostic,
   Diagnostics,
   node_locus,
   Outcome,
   UserInputBoundary,
+  Unavailable,
   Accepted,
   None,
   diagnostics_merge,
@@ -396,6 +399,14 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+fn float_literal_not_lowered_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^float_literal_not_lowered,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
 fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^resolve_reason_ambiguous_symbol,
@@ -552,6 +563,10 @@ fn resolve_atom_bound(
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
     Accepted { value: n, diagnostics: None }
+  } else if dag_node_is_float_literal_atom(node: n) {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: float_literal_not_lowered_diagnostic(n: n))
+    }
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {

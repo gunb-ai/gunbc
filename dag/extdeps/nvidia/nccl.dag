@@ -638,3 +638,171 @@ fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
       ], "") as NonEmptyStr
   }
 }
+
+// ── WHICH NETWORK IS NOT WHICH MEMORY PATH, AND CONFLATING THEM MISREADS A CORRECT DEPLOYMENT ──
+//
+// `NcclRealizedTransport` answers ONE question: which network the communicator built. It does not
+// answer how the NIC reaches the buffers, and those are different facts with different causes. A
+// communicator can build IB verbs and still stage every message through host memory, because
+// GPUDirect RDMA registration is a property of the GPU, the NIC userspace and the kernel's RDMA
+// stack rather than of the network NCCL selected.
+//
+// THIS DISTINCTION WAS PAID FOR. Group B was read on 2026-09-18 announcing `Using network IB` with
+// every channel `via NET/IB/0`, and simultaneously printing `GPU Direct RDMA Disabled for HCA 0`.
+// Because this module modelled only the network, the reading had no place to put the second fact,
+// and it was diagnosed as an incompletely configured deployment: a missing `nvidia_peermem`, then a
+// `libmlx5` too old to export `mlx5dv_reg_dmabuf_mr`, then an image rebuild to repair it. The device
+// itself then answered `GPU_DIRECT_RDMA_SUPPORTED=0` and `DMA_BUF_SUPPORTED=0`, so no module and no
+// image could have enabled it. A two-valued transport axis is what made a SUPPORTED STATE look like
+// a defect, and the repair is a second axis rather than a richer first one.
+// WHAT THIS AXIS STILL DOES NOT SPLIT, declared rather than left for the next reader to discover.
+// `NcclRealizedTransport` answering `IbVerbs` continues to collapse the LINK RATE, the rail and HCA
+// identity, and the collective algorithm and protocol into one state -- so two runs reading
+// `IbVerbs` can differ by a factor and compare as equal. The same log line this module already
+// parses carries `speed=50000`, `rail=-1 plane=-1` and the device name, so the facts are in reach.
+// TRIGGER: the first comparison whose two sides differ on link rate or rail count, which the Group B
+// breakout reprogramming (50G to 100G) will produce. SUFFICIENT FOR: a subject that refuses to join
+// a 50G reading to a 100G one instead of averaging them.
+// THE ARM NAMES WHAT THE LINE SAYS AND NOT WHAT FOLLOWS FROM IT. An earlier revision called the
+// disabled arm `NcclHostStagedTransfer`, which claims a fallback mechanism the producer never states:
+// the line establishes that direct GPU-memory RDMA was DISABLED for the named HCA, not how many host
+// stages the transfer then takes. On a unified-memory SoC that difference is not academic.
+//
+// THE GRAMMAR IS NCCL'S OWN FORMAT STRING, AT THE RELEASE THIS MODULE MODELS. NVIDIA/nccl v2.30.4-1
+// (nccl_semantics_release, the runtime the Spark images load) src/graph/topo.cc emits
+//   INFO(NCCL_NET,"NET/%s : GPU Direct RDMA %s for HCA %d '%s'", ..., gdrSupport ? "Enabled" : "Disabled", ...)
+// so the state token is exactly `Enabled` or `Disabled` and is followed by ` for `. Every `Disabled`
+// instance in this repository comes from real Group B output; the `Enabled` form is grounded in that
+// format string, not yet in a capture from this fleet.
+type NcclGpuMemoryPath
+  = NcclGpuDirectEnabled { read_from: NonEmptyStr }
+  | NcclGpuDirectDisabled { read_from: NonEmptyStr }
+
+// NCCL PUBLISHES THIS ITSELF TOO, once per HCA, and the line carries the verdict in the same shape
+// as the network announcement: a marker followed by the state. It is read rather than inferred from
+// the presence of a kernel module, which is the inference this axis exists to retire -- module
+// presence is an implementation-presence read and never a capability read.
+data nccl_gdr_marker: String = "GPU Direct RDMA "
+data nccl_gdr_state_disabled: String = "Disabled for "
+data nccl_gdr_state_enabled: String = "Enabled for "
+
+// NOT A GDR LINE AND A GDR LINE THIS MODULE CANNOT READ ARE DIFFERENT FACTS, and collapsing them is
+// the defect the channel reader above was already repaired for (NcclChannelNotAChannelLine versus
+// NcclChannelUnreadable). A capture is mostly lines about other things, so "not a GDR line" is the
+// ordinary case and says nothing; a line that carries the marker and a state this module does not
+// know is the producer saying something we failed to understand, and it must reach the caller as a
+// refusal rather than vanish into "the capture carries no GPU Direct RDMA line" (review 67523).
+type NcclGpuDirectLineReading
+  = NcclGpuDirectLineEnabled { read_from: NonEmptyStr }
+  | NcclGpuDirectLineDisabled { read_from: NonEmptyStr }
+  | NcclNotAGpuDirectLine
+  | NcclGpuDirectLineUnreadable { cause: NonEmptyStr }
+
+fn nccl_gpu_memory_path_of_line(line: NcclLogLine) -> NcclGpuDirectLineReading {
+  let body = line.body as String
+  let halves = split(s: body, delimiter: nccl_gdr_marker)
+  if count(halves) < 2 {
+    NcclNotAGpuDirectLine
+  } else {
+    match halves.last() {
+      Absent => NcclGpuDirectLineUnreadable { cause: join(["the ", nccl_gdr_marker, " marker is present with nothing after it: ", line.raw as String], "") as NonEmptyStr }
+      Present { value: rest } =>
+        if starts_with(s: rest, prefix: nccl_gdr_state_disabled) {
+          NcclGpuDirectLineDisabled { read_from: line.raw }
+        } else {
+          if starts_with(s: rest, prefix: nccl_gdr_state_enabled) {
+            NcclGpuDirectLineEnabled { read_from: line.raw }
+          } else {
+            NcclGpuDirectLineUnreadable { cause: join([
+              "the ", nccl_gdr_marker, " marker is followed by neither ", nccl_gdr_state_enabled,
+              " nor ", nccl_gdr_state_disabled, ", so the memory path stays unread rather than assumed: ",
+              line.raw as String,
+            ], "") as NonEmptyStr }
+          }
+        }
+    }
+  }
+}
+
+// WHICH LOCAL DEVICES ANNOUNCED A MEMORY PATH. Each GDR line's emitter carries NCCL's local CUDA
+// device index (the `[n]` in `host:pid:tid [n]`), so a consumer that joins this reading against a
+// device-capability query can require that the lines came from the device that was queried, rather
+// than assuming one visible GPU per container.
+fn nccl_gpu_direct_line_devices(captured_text: String) -> List<Nat> {
+  flat_map(nccl_log_lines(text: captured_text), l =>
+    match nccl_gpu_memory_path_of_line(line: l) {
+      NcclNotAGpuDirectLine => [] as List<Nat>
+      NcclGpuDirectLineUnreadable { cause: _ } => [l.emitter.local_device]
+      NcclGpuDirectLineEnabled { read_from: _ } => [l.emitter.local_device]
+      NcclGpuDirectLineDisabled { read_from: _ } => [l.emitter.local_device]
+    })
+}
+
+// ── THE MEMORY PATH OVER A WHOLE CAPTURE, NOT ONE LINE ────────────────────────────────────────
+//
+// A PER-LINE READER IS NOT A CONSUMER'S INTERFACE. `nccl_gpu_memory_path_of_line` answers about one
+// line, and a caller holding a captured log has to find the right line first -- which is the reader's
+// job, not theirs. `nccl_transport_verdict` already does this for the network axis; this is the same
+// fold for the memory axis, and its absence is what left the standing with no reachable consumer
+// (review 67473).
+//
+// SEVERAL LINES ARE EXPECTED AND DISAGREEMENT REFUSES. NCCL prints the GDR state once per HCA and
+// once per plugin path -- the Group B capture carries three (`NET/IB`, `NET/GIN_IB_GDAKI`,
+// `NET/RMA_IB_PROXY`) -- so a capture normally holds several readings that agree. If they do NOT
+// agree, no arm is entitled to answer: one HCA registering GPU memory while another stages through
+// host memory is a real state, and collapsing it to either answer would report a fabric fact that is
+// true of only half the run.
+type NcclGpuMemoryPathReading
+  = NcclMemoryPathAgreed { path: NcclGpuMemoryPath, readings: Nat }
+  | NcclMemoryPathDisagrees { causes: List<NonEmptyStr> }
+  | NcclMemoryPathUnreadable { causes: List<NonEmptyStr> }
+  | NcclMemoryPathAbsent
+
+// THE ACCUMULATOR CARRIES THE READINGS, NOT COUNTS BESIDE OPTIONALS. An earlier revision kept
+// `enabled: Nat` next to `first_enabled: NonEmptyStr?`, which made "one enabled line and no first
+// enabled line" representable and gave the fold two arms that could never run (review 67523). A list
+// of the lines each state was read from carries both the count and the evidence in one field.
+type NcclMemoryPathAcc sole_constructor {
+  enabled: List<NonEmptyStr>
+  disabled: List<NonEmptyStr>
+  unreadable: List<NonEmptyStr>
+}
+
+fn nccl_memory_path_step(acc: NcclMemoryPathAcc, line: NcclLogLine) -> NcclMemoryPathAcc {
+  match nccl_gpu_memory_path_of_line(line: line) {
+    NcclNotAGpuDirectLine => acc
+    NcclGpuDirectLineUnreadable { cause: c } =>
+      NcclMemoryPathAcc { enabled: acc.enabled, disabled: acc.disabled, unreadable: concat(acc.unreadable, [c]) }
+    NcclGpuDirectLineEnabled { read_from: l } =>
+      NcclMemoryPathAcc { enabled: concat(acc.enabled, [l]), disabled: acc.disabled, unreadable: acc.unreadable }
+    NcclGpuDirectLineDisabled { read_from: l } =>
+      NcclMemoryPathAcc { enabled: acc.enabled, disabled: concat(acc.disabled, [l]), unreadable: acc.unreadable }
+  }
+}
+
+// AN UNREADABLE GDR LINE REFUSES THE WHOLE CAPTURE, even beside readable ones that agree. The
+// unreadable line is a state this module cannot place, so it may be the one that disagrees; agreeing
+// on the lines we understood would be the absorbing fallback DESIGN section 5 names.
+fn nccl_gpu_memory_path_of_text(captured_text: String) -> NcclGpuMemoryPathReading {
+  let acc = fold(nccl_log_lines(text: captured_text),
+    init: NcclMemoryPathAcc { enabled: [], disabled: [], unreadable: [] },
+    f: (a, l) => nccl_memory_path_step(acc: a, line: l))
+  if count(acc.unreadable) > 0 {
+    NcclMemoryPathUnreadable { causes: acc.unreadable }
+  } else {
+    if count(acc.enabled) > 0 && count(acc.disabled) > 0 {
+      NcclMemoryPathDisagrees { causes: [
+        join([to_string(count(acc.enabled)), " line(s) report GPU Direct RDMA enabled and ", to_string(count(acc.disabled)), " report it disabled in one capture"], "") as NonEmptyStr,
+      ] }
+    } else {
+      match acc.enabled.first() {
+        Present { value: l } => NcclMemoryPathAgreed { path: NcclGpuDirectEnabled { read_from: l }, readings: count(acc.enabled) }
+        Absent =>
+          match acc.disabled.first() {
+            Present { value: l } => NcclMemoryPathAgreed { path: NcclGpuDirectDisabled { read_from: l }, readings: count(acc.disabled) }
+            Absent => NcclMemoryPathAbsent
+          }
+      }
+    }
+  }
+}

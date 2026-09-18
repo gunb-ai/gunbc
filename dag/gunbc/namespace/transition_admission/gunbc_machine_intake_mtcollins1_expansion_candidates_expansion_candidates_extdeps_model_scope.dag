@@ -1,0 +1,28 @@
+module gunbc.namespace.transition_admission.gunbc_machine_intake_mtcollins1_expansion_candidates_expansion_candidates_extdeps_model_scope
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+// The candidate list's `extdeps_model_scope` leaf swapped IBM FRU 01FT753 for the arrived
+// NVIDIA OPN MCX4121A-ACAT. Same five-card roster cardinality; different independently
+// governed product. Consumer: namespace-wave-admission on gunbc#11549.
+data gunbc_machine_intake_mtcollins1_expansion_candidates_expansion_candidates_extdeps_model_scope: TransitionAdmission = TransitionAdmission {
+  label: "mtcollins1 expansion candidate catalog_scope cites arrived MCX4121A-ACAT, not ordered IBM 01FT753" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.machine_intake_mtcollins1_expansion_candidates", "expansion_candidates"),
+    spelling: "extdeps_model_scope" as NonEmptyStr,
+    expected_candidates: [
+      decl_ref("extdeps.network.dell_0r887v", "extdeps_model_scope"),
+      decl_ref("extdeps.network.mcx4121a_acat", "extdeps_model_scope"),
+      decl_ref("extdeps.network.mcx4411a_acan", "extdeps_model_scope"),
+      decl_ref("extdeps.network.mcx4421a_acan", "extdeps_model_scope"),
+      decl_ref("extdeps.network.mcx4621a_acab", "extdeps_model_scope"),
+    ],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11549 as UInt32,
+}
