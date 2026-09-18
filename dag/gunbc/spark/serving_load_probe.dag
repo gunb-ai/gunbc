@@ -508,7 +508,7 @@ type ClientBenchLatency
   | ClientBenchLatencyReported {
       output_throughput_milli_tok_per_s: Nat
       tpot_milli: Nat
-      itl_milli: Nat
+      itl_milli: Nat?
       ttft_milli: Nat
       contended: Bool
       standing: CitedFigureStanding
@@ -645,7 +645,11 @@ fn client_latency_text(c: ClientBenchLatency) -> String {
       join([
         "bench-serve throughput_milli_tok_s=", to_string(th),
         " tpot_ms=", to_string(tpot),
-        " itl_ms=", to_string(itl),
+        " itl_ms=",
+        match itl {
+          Absent => "unread"
+          Present { value: n } => to_string(n)
+        },
         " ttft_ms=", to_string(ttft),
         " contended=", if k { "yes" } else { "no" },
       ], "")
@@ -809,7 +813,13 @@ data glm_native_engine_tokenizer_path: NonEmptyStr = snapshot_install_path(
 // WIRING IS PROVEN AT A FEW HUNDRED TOKENS. A 100k-prefix protocol is not a smoke test: it is the
 // heaviest prefill this arm can construct and it starves operator interactive traffic. SendAllImmediately
 // is the validated wiring argv; it is not a comparable rate protocol (arrival skew).
-data glm_native_smoke_dataset: RandomDatasetSpec = RandomDatasetSpec {
+data glm_native_wiring_smoke_dataset: RandomDatasetSpec = RandomDatasetSpec {
+  input_len: token_count(count: 256),
+  output_len: token_count(count: 64),
+  prefix_len: token_count(count: 0),
+}
+
+data glm_native_sweep_dataset: RandomDatasetSpec = RandomDatasetSpec {
   input_len: token_count(count: 256),
   output_len: token_count(count: 128),
   prefix_len: token_count(count: 0),
@@ -820,7 +830,7 @@ data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request
   base_url: "http://127.0.0.1:30000" as NonEmptyStr,
   model: glm_native_concurrent_profile.served_alias,
   tokenizer: glm_native_engine_tokenizer_path,
-  dataset: glm_native_smoke_dataset,
+  dataset: glm_native_sweep_dataset,
   num_prompts: 4,
   arrival: SendAllImmediately,
   max_concurrency: Present { value: 2 },
@@ -850,17 +860,235 @@ data glm_native_arm_service: ArmServiceStanding = ArmInService {
   because: "the operator serves interactive work on this arm; WindowIsolated requires an out-of-service receipt that has not been issued" as NonEmptyStr
 }
 
-// Client TTFT/TPOT/ITL from vllm bench serve stdout, transcribed from the 2026-09-18 smoke
-// (256/64, inf rate, c=2, 4/4 ok). Contended: operator session was in flight. Not a /metrics fold.
+data glm_native_wiring_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
+  backend: OpenaiChat,
+  base_url: "http://127.0.0.1:30000" as NonEmptyStr,
+  model: glm_native_concurrent_profile.served_alias,
+  tokenizer: glm_native_engine_tokenizer_path,
+  dataset: glm_native_wiring_smoke_dataset,
+  num_prompts: 4,
+  arrival: SendAllImmediately,
+  max_concurrency: Present { value: 2 },
+  ignore_eos: true,
+)
+
+// Client TTFT/TPOT/ITL from vllm bench serve stdout, transcribed from the 2026-09-18 wiring
+// smoke (256/64, inf rate, c=2, 4/4 ok). Contended. Not the 256/128 sweep protocol.
 data glm_native_smoke_client_latency: ClientBenchLatency = ClientBenchLatencyReported {
   output_throughput_milli_tok_per_s: 17390
   tpot_milli: 82
-  itl_milli: 82
+  itl_milli: Present { value: 82 }
   ttft_milli: 2185
   contended: true
   standing: TranscribedUncited {
-    read_obligation: "re-read vllm bench serve stdout for this smoke argv; the 17.39 tok/s / 82.1 ms TPOT / 81.8 ms ITL / 2185 ms TTFT figures were transcribed from calm-bat-65's docker-exec receipt" as NonEmptyStr
+    read_obligation: "re-read vllm bench serve stdout for the 256-in/64-out wiring argv; the 17.39 tok/s / 82.1 ms TPOT / 81.8 ms ITL / 2185 ms TTFT figures were transcribed from calm-bat-65's docker-exec receipt" as NonEmptyStr
   }
+}
+
+data glm_native_contended_sweep_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "re-read calm-bat-65's vllm bench serve stdout for the 256-in/128-out inf-rate ignore-eos sweep (num-prompts 4×concurrency, min 8) taken while operator long-context traffic shared Group B" as NonEmptyStr
+}
+
+fn glm_native_sweep_num_prompts(concurrency: Nat) -> Nat {
+  let fourfold = concurrency * 4
+  if fourfold < 8 { 8 } else { fourfold }
+}
+
+fn glm_native_contended_sweep_protocol(concurrency: Nat) -> VllmBenchServeRequest {
+  vllm_bench_serve_request(
+    backend: OpenaiChat,
+    base_url: "http://127.0.0.1:30000" as NonEmptyStr,
+    model: glm_native_concurrent_profile.served_alias,
+    tokenizer: glm_native_engine_tokenizer_path,
+    dataset: glm_native_sweep_dataset,
+    num_prompts: glm_native_sweep_num_prompts(concurrency: concurrency),
+    arrival: SendAllImmediately,
+    max_concurrency: Present { value: concurrency },
+    ignore_eos: true,
+  )
+}
+
+fn glm_native_contended_client_latency(
+  throughput_milli_tok_per_s: Nat,
+  tpot_milli: Nat,
+  ttft_milli: Nat,
+) -> ClientBenchLatency {
+  ClientBenchLatencyReported {
+    output_throughput_milli_tok_per_s: throughput_milli_tok_per_s,
+    tpot_milli: tpot_milli,
+    itl_milli: none,
+    ttft_milli: ttft_milli,
+    contended: true,
+    standing: glm_native_contended_sweep_standing,
+  }
+}
+
+type ContendedSweepPoint {
+  concurrency: Nat
+  protocol: VllmBenchServeRequest
+  latency: ClientBenchLatency
+}
+
+fn glm_native_contended_sweep_point(
+  concurrency: Nat,
+  throughput_milli_tok_per_s: Nat,
+  tpot_milli: Nat,
+  ttft_milli: Nat,
+) -> ContendedSweepPoint {
+  ContendedSweepPoint {
+    concurrency: concurrency,
+    protocol: glm_native_contended_sweep_protocol(concurrency: concurrency),
+    latency: glm_native_contended_client_latency(
+      throughput_milli_tok_per_s: throughput_milli_tok_per_s,
+      tpot_milli: tpot_milli,
+      ttft_milli: ttft_milli,
+    ),
+  }
+}
+
+data glm_native_contended_sweep_c1: ContendedSweepPoint = glm_native_contended_sweep_point(
+  concurrency: 1, throughput_milli_tok_per_s: 10860, tpot_milli: 81, ttft_milli: 1542,
+)
+data glm_native_contended_sweep_c2: ContendedSweepPoint = glm_native_contended_sweep_point(
+  concurrency: 2, throughput_milli_tok_per_s: 17220, tpot_milli: 109, ttft_milli: 994,
+)
+data glm_native_contended_sweep_c4: ContendedSweepPoint = glm_native_contended_sweep_point(
+  concurrency: 4, throughput_milli_tok_per_s: 25490, tpot_milli: 140, ttft_milli: 2353,
+)
+data glm_native_contended_sweep_c8: ContendedSweepPoint = glm_native_contended_sweep_point(
+  concurrency: 8, throughput_milli_tok_per_s: 38360, tpot_milli: 190, ttft_milli: 2602,
+)
+data glm_native_contended_sweep_c16: ContendedSweepPoint = glm_native_contended_sweep_point(
+  concurrency: 16, throughput_milli_tok_per_s: 62530, tpot_milli: 198, ttft_milli: 5218,
+)
+
+data glm_native_contended_sweep_points: List<ContendedSweepPoint> = [
+  glm_native_contended_sweep_c1,
+  glm_native_contended_sweep_c2,
+  glm_native_contended_sweep_c4,
+  glm_native_contended_sweep_c8,
+  glm_native_contended_sweep_c16,
+]
+
+// ABSOLUTE tok/s ARE NOT A CAPACITY under WindowSharedWithDeclaredTraffic. Elasticity
+// log(throughput ratio)/log(concurrency ratio) is a SHAPE: contention scales both ends and does
+// not by itself invent a plateau. These milli figures are transcribed from that log ratio on the
+// five points above; they are not stored rates.
+type ScalingElasticityStep {
+  from_concurrency: Nat
+  to_concurrency: Nat
+  elasticity_milli: Nat
+  standing: CitedFigureStanding
+}
+
+data glm_native_elasticity_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "recompute log(throughput_after/throughput_before)/log(concurrency_after/concurrency_before) from glm_native_contended_sweep_points; the 670/570/590/700 milli figures were transcribed from calm-bat-65's 0.67, 0.57, 0.59, 0.70" as NonEmptyStr
+}
+
+fn glm_native_elasticity_step(from_concurrency: Nat, to_concurrency: Nat, elasticity_milli: Nat) -> ScalingElasticityStep {
+  ScalingElasticityStep {
+    from_concurrency: from_concurrency,
+    to_concurrency: to_concurrency,
+    elasticity_milli: elasticity_milli,
+    standing: glm_native_elasticity_standing,
+  }
+}
+
+data glm_native_elasticity_1_to_2: ScalingElasticityStep = glm_native_elasticity_step(from_concurrency: 1, to_concurrency: 2, elasticity_milli: 670)
+data glm_native_elasticity_2_to_4: ScalingElasticityStep = glm_native_elasticity_step(from_concurrency: 2, to_concurrency: 4, elasticity_milli: 570)
+data glm_native_elasticity_4_to_8: ScalingElasticityStep = glm_native_elasticity_step(from_concurrency: 4, to_concurrency: 8, elasticity_milli: 590)
+data glm_native_elasticity_8_to_16: ScalingElasticityStep = glm_native_elasticity_step(from_concurrency: 8, to_concurrency: 16, elasticity_milli: 700)
+
+data glm_native_contended_elasticity_steps: List<ScalingElasticityStep> = [
+  glm_native_elasticity_1_to_2,
+  glm_native_elasticity_2_to_4,
+  glm_native_elasticity_4_to_8,
+  glm_native_elasticity_8_to_16,
+]
+
+fn elasticity_still_buying_throughput(steps: List<ScalingElasticityStep>) -> Bool {
+  length(steps) == 4
+    && glm_native_elasticity_1_to_2.elasticity_milli > 0
+    && glm_native_elasticity_2_to_4.elasticity_milli > 0
+    && glm_native_elasticity_4_to_8.elasticity_milli > 0
+    && glm_native_elasticity_8_to_16.elasticity_milli > 0
+    && glm_native_elasticity_8_to_16.elasticity_milli >= glm_native_elasticity_1_to_2.elasticity_milli
+    && glm_native_elasticity_8_to_16.elasticity_milli >= glm_native_elasticity_2_to_4.elasticity_milli
+    && glm_native_elasticity_8_to_16.elasticity_milli >= glm_native_elasticity_4_to_8.elasticity_milli
+}
+
+// TPOT 8→16 is nearly flat while throughput still rises; TTFT at 16 is the sharp move.
+// This is not a realization selection and not a capacity claim. It is the observation that a
+// latency floor, if one entered policy, would bind on TTFT here rather than on throughput.
+type ContendedLatencyFloorHint
+  = TtftWouldBindConcurrency {
+      from_concurrency: Nat
+      to_concurrency: Nat
+      tpot_rise_milli_percent: Nat
+      throughput_rise_milli_percent: Nat
+      ttft_from_milli: Nat
+      ttft_to_milli: Nat
+      standing: CitedFigureStanding
+    }
+
+data glm_native_ttft_binds_concurrency: ContendedLatencyFloorHint = TtftWouldBindConcurrency {
+  from_concurrency: 8
+  to_concurrency: 16
+  tpot_rise_milli_percent: 45
+  throughput_rise_milli_percent: 630
+  ttft_from_milli: 2602
+  ttft_to_milli: 5218
+  standing: TranscribedUncited {
+    read_obligation: "re-read glm_native_contended_sweep_c8 and glm_native_contended_sweep_c16 for TPOT 189.6→198.2 ms (+4.5%) and throughput 38.36→62.53 tok/s (+63%) with TTFT 2602→5218 ms" as NonEmptyStr
+  }
+}
+
+// Same subject, same single-stream protocol shape, different window: quieter engine 48.9 ms vs
+// contended client c=1 TPOT 80.7 ms. The gap is the operator's traffic. Window standing is a field.
+type WindowStandingGapSpecimen {
+  quieter_engine_tpot_milli: Nat
+  contended_client_c1_tpot_milli: Nat
+}
+
+data glm_native_window_standing_specimen: WindowStandingGapSpecimen = WindowStandingGapSpecimen {
+  quieter_engine_tpot_milli: glm_native_single_stream_decode_bound_millis,
+  contended_client_c1_tpot_milli: 81,
+}
+
+fn window_standing_gap_is_operator_traffic(s: WindowStandingGapSpecimen) -> Bool {
+  s.contended_client_c1_tpot_milli > s.quieter_engine_tpot_milli
+}
+
+fn bench_output_len(req: VllmBenchServeRequest) -> Nat {
+  token_count_value(t: req.dataset.output_len)
+}
+
+fn pinned_load_protocol_matches(a: VllmBenchServeRequest, b: VllmBenchServeRequest) -> Bool {
+  token_count_value(t: a.dataset.input_len) == token_count_value(t: b.dataset.input_len)
+    && bench_output_len(req: a) == bench_output_len(req: b)
+    && token_count_value(t: a.dataset.prefix_len) == token_count_value(t: b.dataset.prefix_len)
+    && a.ignore_eos == b.ignore_eos
+    && a.num_prompts == b.num_prompts
+    && match a.max_concurrency {
+      Absent =>
+        match b.max_concurrency {
+          Absent => true
+          Present { value: _ } => false
+        }
+      Present { value: ac } =>
+        match b.max_concurrency {
+          Absent => false
+          Present { value: bc } => ac == bc
+        }
+    }
+}
+
+type LongContextExecutionStanding
+  = LongContextModelledOnly { until: NonEmptyStr }
+  | LongContextRunnable { because: NonEmptyStr }
+
+data glm_native_holistic_execution: LongContextExecutionStanding = LongContextModelledOnly {
+  until: "the arm carries an ArmOutOfService receipt; a 100k-prefix protocol is not executed on an in-service operator arm" as NonEmptyStr
 }
 
 // TRANSCRIBED BOUND, NOT A READING. Parent derived ~10.7 GB active weights / ~9-11 ms memory-bandwidth
