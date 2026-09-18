@@ -76,7 +76,7 @@ Run ONE witness file's claims in ONE process. The floor above runs everything; w
 
 Who is needed: self-serve
 
-Done when: One PASS line per test fn the file declares, and exit 0. Name a function that does not exist beside real ones and the run reports its refusal after the passes and exits 1 -- that is the control that the loop reports every function rather than the first. THE ENTRY IN THE RECIPE IS AN EXAMPLE: substitute the witness you are working on. The argv comes from gunbc.cli_invoke gunbc_run_all_claims_invocation_words, the same authority the floor's per-claim invocations use, so a flag renamed on the modeled surface is renamed here.
+Done when: One PASS line per test fn the file declares, and exit 0. Name a function that does not exist beside real ones and the run reports its refusal after the passes and exits 1 -- that is the control that the loop reports every function rather than the first. THE ENTRY IN THE RECIPE IS AN EXAMPLE: substitute the witness you are working on. The argv comes from gunbc.cli_invoke gunbc_run_all_claims_invocation_words, which is the one `gunbc run` builder (gunbc_run_invocation_words_with_functions) with an empty function population -- the same builder every per-claim invocation goes through -- so a flag renamed on the modeled surface is renamed here.
 
 ### 7. run-build-lane
 
