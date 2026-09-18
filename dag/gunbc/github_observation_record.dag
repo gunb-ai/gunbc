@@ -30,7 +30,7 @@ import std.content_hash {
 // ANSWER -- a per_page that only changes pagination shape is still part of the question, because a
 // page 2 of 100 is not a page 2 of 30.
 type GithubObservationRequest
-  = CodeSearchPage {
+  = CodeSearchPageRequest {
       query: NonEmptyStr,
       per_page: Int,
       page: Int,
@@ -50,7 +50,7 @@ type GithubObservationRequest
 
 fn request_identity(request: GithubObservationRequest) -> Fnv1a64Structural {
   match request {
-    CodeSearchPage { query: q, per_page: pp, page: p } =>
+    CodeSearchPageRequest { query: q, per_page: pp, page: p } =>
       tagged_join(
         tag: "github-observation-code-search-page" as NonEmptyStr,
         parts: [q as String, to_string(pp), to_string(p)],
