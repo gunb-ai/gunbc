@@ -81,6 +81,18 @@ fn head_exec_words() -> List<String> {
 }
 
 
+// ── THERE IS NO all_* CONJUNCTION HERE, AND THAT IS THE §3 RULE RATHER THAN AN OMISSION ──────
+//
+// A ROLL-UP THAT ANDs EVERY CLAIM PAYS EVERY CASE THROUGH ONE BUDGET. This file's did: at 199,092
+// eval steps it refused the floor's new-witness budget while every individual row was comfortably
+// inside it, and the roll-up asserted nothing its members did not already assert -- each `test fn` is
+// enrolled and reported on its own, so the conjunction added a second, more expensive way to learn
+// the same thing. DESIGN section 3 names the shape directly: a conjunction of independent cases that
+// forces every case through one budget when splitting them loses no coverage.
+//
+// IT ALSO MADE EVERY FAILURE READ THE SAME. One red row and eight red rows both surfaced as one
+// failing conjunction, so the receipt named the roll-up rather than the case.
+
 // ── THE PLAN IS THE RoCE ARM, KEYED BY THE LANE ───────────────────────────────────────────────
 test fn w_the_native_plan_is_the_roce_arm_keyed_by_the_lane() -> Bool {
   let lane = srv9_lane()
@@ -584,17 +596,3 @@ test fn w_the_container_argv_declares_the_reporter_off() -> Bool {
   let argv = head_exec_words()
   count(argv) > 0 && argv_has(argv: argv, word: vllm_usage_stats_disable_assignment_wire())
 }
-
-// ── THERE IS NO all_* CONJUNCTION HERE, AND THAT IS THE §3 RULE RATHER THAN AN OMISSION ──────
-//
-// A ROLL-UP THAT ANDs EVERY CLAIM PAYS EVERY CASE THROUGH ONE BUDGET. This file's did: at 199,092
-// eval steps it refused the floor's new-witness budget while every individual row was comfortably
-// inside it, and the roll-up asserted nothing its members did not already assert -- each `test fn` is
-// enrolled and reported on its own, so the conjunction added a second, more expensive way to learn
-// the same thing. DESIGN section 3 names the shape directly: a conjunction of independent cases that
-// forces every case through one budget when splitting them loses no coverage.
-//
-// IT ALSO MADE EVERY FAILURE READ THE SAME. One red row and eight red rows both surfaced as one
-// failing conjunction, so the receipt named the roll-up rather than the case.
-
-
