@@ -36,6 +36,7 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
+  SignedBootManifestVerified,
   SignedBootManifestIdentified,
   SignedBootManifestAbsent,
   MeasuredNetworkBootFact,
@@ -349,7 +350,7 @@ fn signed_boot_manifest_standing(
 ) -> SignedBootManifestStanding {
   match verification {
     BootManifestAuthentic { claims: c } =>
-      SignedBootManifestIdentified {
+      SignedBootManifestVerified {
         identity: c.identity,
         evidence_class: MeasuredNetworkBootFact,
         observation: observation,

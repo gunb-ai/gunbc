@@ -9,6 +9,7 @@ import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 import gunbc.network_boot_delivery {
   SignedBootManifestIdentity,
+  SignedBootManifestVerified,
   SignedBootManifestIdentified,
   SignedBootManifestAbsent,
   MeasuredNetworkBootFact,
@@ -299,11 +300,12 @@ test fn issued_ticket_standing_is_a_measured_network_boot_fact() -> Bool {
     observation: standing_obs,
     observed_at: 1788001800000,
   ) {
-    SignedBootManifestIdentified { identity: _, evidence_class: c, observation: _, observed_at: _ } =>
+    SignedBootManifestVerified { identity: _, evidence_class: c, observation: _, observed_at: _ } =>
       match c {
         MeasuredNetworkBootFact => true
         NonEstablishingNetworkBootPredecessor => false
       }
+    SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
     SignedBootManifestAbsent => false
   }
 }
@@ -319,6 +321,7 @@ test fn an_expired_ticket_does_not_mint_measured_manifest_standing() -> Bool {
     observed_at: 1788003600000,
   ) {
     SignedBootManifestAbsent => true
+    SignedBootManifestVerified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
     SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
   }
 }
