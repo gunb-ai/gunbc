@@ -93,30 +93,28 @@ fn apns_provider_token(identity: ApnsProviderIdentity, auth_key: Secret, issued_
 // apns-topic is the app's bundle identifier for an alert push.
 type ApnsTopic = NonEmptyStr where brand("ApnsTopic")
 
-// apns-push-type is required on watchOS and recommended everywhere; an alert must say alert.
-type ApnsPushType
-  = PushTypeAlert
-  | PushTypeBackground
+// apns-push-type is required on watchOS and recommended everywhere. SCOPED TO THE ALERT SHAPE: a
+// background push is a different payload (content-available: 1, no alert, priority 5), and no
+// consumer here sends one, so it is not modeled rather than modeled wrong.
+type ApnsPushType =
+  | PushTypeAlert
 
 fn apns_push_type_wire(t: ApnsPushType) -> NonEmptyStr {
   match t {
     PushTypeAlert => "alert" as NonEmptyStr
-    PushTypeBackground => "background" as NonEmptyStr
   }
 }
 
-// apns-priority: 10 delivers immediately, 5 is power-considerate, 1 prioritizes power. A background
-// push MUST be 5; an alert may be 10.
+// apns-priority: Apple documents exactly two values -- 10 delivers immediately (the default when
+// omitted) and 5 delivers with the device's power considerations.
 type ApnsPriority
   = PriorityImmediate
   | PriorityPowerConsiderate
-  | PriorityPowerPreferred
 
 fn apns_priority_wire(p: ApnsPriority) -> Int {
   match p {
     PriorityImmediate => 10
     PriorityPowerConsiderate => 5
-    PriorityPowerPreferred => 1
   }
 }
 
