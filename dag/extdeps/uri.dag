@@ -25,6 +25,13 @@ type Uri {
   locator: NonEmptyStr
 }
 
+fn uri_http(locator: NonEmptyStr) -> Uri {
+  Uri {
+    scheme: Http
+    locator: locator
+  }
+}
+
 fn uri_https(locator: NonEmptyStr) -> Uri {
   Uri {
     scheme: Https

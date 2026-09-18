@@ -4,8 +4,8 @@ import std.types { Bool, NonEmptyStr, String, list_length }
 import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.uri { Uri, Http, uri_https }
-import gunbc.network_boot_delivery { FleetBootServiceReceipt, NonEstablishingNetworkBootPredecessor }
+import extdeps.uri { Uri, uri_http, uri_https }
+import gunbc.network_boot_delivery { FleetBootServiceReceipt }
 import gunbc.cloudflare.r2_origin {
   fabric_boot_origin_standing,
   fabric_durable_origin_standing,
@@ -79,7 +79,6 @@ fn receipt_at(domain: Uri) -> FleetBootServiceReceipt {
     https_boot_endpoint: uri_https(locator: "boot.example.test"),
     origin_custom_domain: domain,
     signing_key_identity: "fixture-key",
-    evidence_class: NonEstablishingNetworkBootPredecessor,
     observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "receipt_at"),
     observed_at: 0,
   }
@@ -205,7 +204,7 @@ test fn boot_origin_credentials_are_disjoint_and_unminted() -> Bool {
 }
 
 test fn readback_refuses_plain_http() -> Bool {
-  match boot_readback_locator(receipt: receipt_at(domain: Uri { scheme: Http, locator: "boot-origin.example.test" }), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+  match boot_readback_locator(receipt: receipt_at(domain: uri_http(locator: "boot-origin.example.test")), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
     BootReadbackAt { url: _ } => false
     BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
     BootReadbackRefusedNotHttps {} => true
