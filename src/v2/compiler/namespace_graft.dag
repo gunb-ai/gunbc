@@ -421,16 +421,16 @@ fn namespace_graft_type_decl_target(captured: Node) -> Node {
       match namespace_graft_find_emitted(node: captured, emitted: ^dag_surface_field_decl_block) {
         Present { value: block } =>
           node_synthetic(
-            kind: TypeNode { connective: Conj },
+            kind: TypeNode { connective: Cardinality },
             children: namespace_graft_collect_field_edges(node: block)
           )
         Absent =>
           match list_tail(xs: namespace_graft_collect_user_atom_idents(node: captured)) {
             TailAbsent =>
-              node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+              node_synthetic(kind: TypeNode { connective: Cardinality }, children: [])
             TailFound { tail: field_syms } =>
               node_synthetic(
-                kind: TypeNode { connective: Conj },
+                kind: TypeNode { connective: Cardinality },
                 children: namespace_graft_field_edges_from_syms(syms: field_syms)
               )
           }
@@ -537,7 +537,7 @@ fn namespace_graft_bind_pending_field_block(
                 item: Edge {
                   label: Named { name: type_name },
                   target: node_synthetic(
-                    kind: TypeNode { connective: Conj },
+                    kind: TypeNode { connective: Cardinality },
                     children: namespace_graft_collect_field_edges(node: block)
                   )
                 }
