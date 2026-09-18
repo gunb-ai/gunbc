@@ -3,6 +3,7 @@ module gunbc.boot_artifact_delivery
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash }
+import extdeps.uri { Uri }
 import product.placement_supply { SiteIdentity }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
 import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
@@ -111,6 +112,7 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryEvidenceRefused,
   NetworkBootDeliveryManifestRefused,
   NetworkBootDeliverySiteMismatch,
+  NetworkBootSiteAxis,
   NetworkBootDeliverySiteUnestablished,
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryTargetMismatch,
@@ -362,7 +364,7 @@ type BootDeliveryCandidateIneligibility
   | CandidateNetworkBootTargetMismatch { axis: NetworkBootRequirement }
   | CandidateNetworkBootManifestRefused { cause: NetworkBootManifestRefusal }
   | CandidateNetworkBootSiteUnestablished
-  | CandidateNetworkBootSiteMismatch { expected: SiteIdentity, observed: SiteIdentity }
+  | CandidateNetworkBootSiteMismatch { axis: NetworkBootSiteAxis, expected: SiteIdentity, observed: SiteIdentity }
   | CandidateNetworkBootTrustUnestablished
 
 type BootDeliveryCandidateStanding
@@ -670,7 +672,7 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
       if same_boot_delivery_target(left: e.target, right: request.target) == false {
         CandidateIneligible { cause: CandidateEvidenceForOtherTarget { evidence_target: e.target } }
       } else {
-        staged_digest_standing(offered: e.artifact_digest, requested: request.artifact.digest)
+        staged_digest_standing(offered: e.manifest.identity.root_digest, requested: request.artifact.digest)
       }
     NetworkBootDeliveryUnestablished { missing: m } => CandidateIneligible { cause: CandidateNetworkBootUnestablished { missing: m } }
     NetworkBootDeliveryEvidenceRefused { axis: axis, observation: observation } =>
@@ -685,8 +687,8 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
       CandidateIneligible { cause: CandidateNetworkBootManifestRefused { cause: cause } }
     NetworkBootDeliverySiteUnestablished =>
       CandidateIneligible { cause: CandidateNetworkBootSiteUnestablished }
-    NetworkBootDeliverySiteMismatch { expected: expected, observed: observed } =>
-      CandidateIneligible { cause: CandidateNetworkBootSiteMismatch { expected: expected, observed: observed } }
+    NetworkBootDeliverySiteMismatch { axis: axis, expected: expected, observed: observed } =>
+      CandidateIneligible { cause: CandidateNetworkBootSiteMismatch { axis: axis, expected: expected, observed: observed } }
     NetworkBootDeliveryTrustUnestablished =>
       CandidateIneligible { cause: CandidateNetworkBootTrustUnestablished }
   }
@@ -840,7 +842,7 @@ fn build_boot_artifact_delivery(
         NetworkBootDeliveryTargetMismatch { axis: _ } => none
         NetworkBootDeliveryManifestRefused { cause: _ } => none
         NetworkBootDeliverySiteUnestablished => none
-        NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => none
+        NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => none
         NetworkBootDeliveryTrustUnestablished => none
       }
   }

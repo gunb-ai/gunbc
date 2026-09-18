@@ -4,10 +4,10 @@ import std.types { Bool, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, Tftp }
 import extdeps.toolchain.types { Aarch64, X86_64, Wasm32 }
 import extdeps.provisioning.dhcp_client_arch { HttpBootArm64, UefiArm64 }
-import extdeps.provisioning.network_boot { NativeDhcpBootOptions }
+import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiHttpBoot, UefiPxe }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_subject {
@@ -19,6 +19,7 @@ import gunbc.machine_intake_subject {
   IntakeAttemptId,
   MachineIntakeSubject,
   UnitKey,
+  content_hash_equal,
   qualification_subject_of,
 }
 import gunbc.machine_intake_access { BootDeliveryTarget }
@@ -54,6 +55,8 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryManifestRefused,
   NetworkBootDeliverySiteUnestablished,
   NetworkBootDeliverySiteMismatch,
+  SiteEdgeSite,
+  ClientObservationSite,
   NetworkBootDeliveryTargetMismatch,
   NetworkBootDeliveryTrustUnestablished,
   NetworkBootDeliveryUnestablished,
@@ -67,6 +70,11 @@ import gunbc.network_boot_delivery {
   ObservedClientBootModeReceipt,
   ObservedDhcpPxeClient,
   ProductionTrustedBootstrap,
+  FirmwareHttpsTrusted,
+  SecureBootChainloaderTrusted,
+  FirmwareHttpsAndSecureBootTrusted,
+  BootstrapTrustObservation,
+  BootstrapTrustStanding,
   SignedBootManifestAbsent,
   SignedBootManifestIdentified,
   SignedBootManifestVerificationRefused,
@@ -78,6 +86,7 @@ import gunbc.network_boot_delivery {
   SiteDiscoveryUnobserved,
   ManifestJoinChainloaderDigestDisagrees,
   ManifestJoinWrongSigningKey,
+  ManifestJoinWrongFirmwareClass,
   SitePxeEdge,
   SitePxeEdgeClientArchitectureNotAdmitted,
   SitePxeEdgeChainloaderMismatch,
@@ -126,6 +135,9 @@ data other_target: BootDeliveryTarget = BootDeliveryTarget {
 data onboarding_site: SiteIdentity = "onboarding-segment" as SiteIdentity
 
 data foreign_site: SiteIdentity = "other-site" as SiteIdentity
+
+data edge_tftp: Uri = Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" }
+
 data artifact: ContentHash = content_hash_of_value(value: "pxe-fabric-root-fixture")
 
 data obs: DeclarationRef = DeclarationRef {
@@ -194,6 +206,26 @@ fn control_ok() -> BootControlObserved {
   }
 }
 
+fn trust_obs() -> BootstrapTrustObservation {
+  BootstrapTrustObservation { observation: obs, observed_at: 1788000000000 }
+}
+
+fn production_trust() -> BootstrapTrustStanding {
+  bootstrap_trust_standing(
+    firmware_https: Present { value: trust_obs() },
+    secure_boot_chainloader: Absent,
+    isolated_onboarding_network: Absent,
+  )
+}
+
+fn controlled_trust() -> BootstrapTrustStanding {
+  bootstrap_trust_standing(
+    firmware_https: Absent,
+    secure_boot_chainloader: Absent,
+    isolated_onboarding_network: Present { value: trust_obs() },
+  )
+}
+
 fn manifest_ok() -> SignedBootManifestStanding {
   SignedBootManifestVerified {
     identity: SignedBootManifestIdentity {
@@ -201,6 +233,7 @@ fn manifest_ok() -> SignedBootManifestStanding {
       attempt_id: attempt,
       nonce: "nonce-0a",
       architecture: Aarch64,
+      boot_mode: UefiPxe { tftp_root: edge_tftp },
       chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
       kernel_digest: content_hash_of_value(value: "kernel-fixture"),
       initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -221,7 +254,7 @@ fn complete_inputs() -> NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -233,13 +266,20 @@ fn complete_inputs() -> NetworkBootJoinInputs {
 test fn four_receipts_join_to_established() -> Bool {
   match join_network_boot_delivery(inputs: complete_inputs()) {
     NetworkBootDeliveryEstablished { evidence: e } =>
-      e.artifact_digest == artifact
+      content_hash_equal(left: e.manifest.identity.root_digest, right: artifact)
       && (e.site.edge.site as String) == (onboarding_site as String)
       && (e.fleet.signing_key_identity as String) == "boot-manifest-key-0"
-      && (e.manifest.kernel_cmdline as String) == "console=ttyAMA0"
+      && (e.manifest.identity.kernel_cmdline as String) == "console=ttyAMA0"
+      && e.manifest.observed_at == 1788000000000
       && match e.trust {
-        ProductionTrustedBootstrap => true
-        ControlledNetworkBootstrap => false
+        ProductionTrustedBootstrap { grounds: g } =>
+          match g {
+            FirmwareHttpsTrusted { firmware_https: https } =>
+              (https.observation.decl_name as String) == (obs.decl_name as String)
+            SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => false
+            FirmwareHttpsAndSecureBootTrusted { firmware_https: _, secure_boot_chainloader: _ } => false
+          }
+        ControlledNetworkBootstrap { evidence: _ } => false
         BootstrapTrustUnestablished => false
       }
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -249,7 +289,7 @@ test fn four_receipts_join_to_established() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -259,7 +299,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: FleetBootServiceUnestablished,
     site: site_ok(),
     client: client_ok(),
@@ -275,7 +315,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -285,7 +325,7 @@ test fn missing_site_is_not_missing_fleet_serving() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeUnestablished,
     client: client_ok(),
@@ -301,7 +341,7 @@ test fn missing_site_is_not_missing_fleet_serving() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -355,7 +395,7 @@ test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site,
     client: client_ok(),
@@ -372,7 +412,7 @@ test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -420,7 +460,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -442,7 +482,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -452,7 +492,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -463,6 +503,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -481,7 +522,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -494,7 +535,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -510,7 +551,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
   wrong_unit && absent
@@ -521,7 +562,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -532,6 +573,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -550,7 +592,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: ManifestUnsignedIdentity } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -566,7 +608,7 @@ test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -582,7 +624,7 @@ test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
       (o.decl_name as String) == (obs.decl_name as String)
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -598,7 +640,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -609,6 +651,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -627,7 +670,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinExpired { expiry: _, observed_at: _ } } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -643,7 +686,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: ClientBootModeUnobserved,
@@ -659,7 +702,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -669,7 +712,7 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: ClientBootModeObserved {
@@ -697,29 +740,87 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
 
 test fn controlled_network_is_not_production_trust() -> Bool {
-  match bootstrap_trust_standing(firmware_https_or_secure_boot: false, isolated_onboarding_network: true) {
-    ControlledNetworkBootstrap =>
-      match bootstrap_trust_standing(firmware_https_or_secure_boot: true, isolated_onboarding_network: true) {
-        ProductionTrustedBootstrap => true
-        ControlledNetworkBootstrap => false
+  match controlled_trust() {
+    ControlledNetworkBootstrap { evidence: e } =>
+      (e.observation.decl_name as String) == (obs.decl_name as String)
+      && match production_trust() {
+        ProductionTrustedBootstrap { grounds: g } =>
+          match g {
+            FirmwareHttpsTrusted { firmware_https: _ } => true
+            SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => false
+            FirmwareHttpsAndSecureBootTrusted { firmware_https: _, secure_boot_chainloader: _ } => false
+          }
+        ControlledNetworkBootstrap { evidence: _ } => false
         BootstrapTrustUnestablished => false
       }
-    ProductionTrustedBootstrap => false
+    ProductionTrustedBootstrap { grounds: _ } => false
     BootstrapTrustUnestablished => false
   }
 }
 
 test fn neither_trust_input_is_unestablished() -> Bool {
-  match bootstrap_trust_standing(firmware_https_or_secure_boot: false, isolated_onboarding_network: false) {
+  match bootstrap_trust_standing(
+    firmware_https: Absent,
+    secure_boot_chainloader: Absent,
+    isolated_onboarding_network: Absent,
+  ) {
     BootstrapTrustUnestablished => true
-    ProductionTrustedBootstrap => false
-    ControlledNetworkBootstrap => false
+    ProductionTrustedBootstrap { grounds: _ } => false
+    ControlledNetworkBootstrap { evidence: _ } => false
+  }
+}
+
+test fn firmware_https_is_production_even_on_isolated_network() -> Bool {
+  match bootstrap_trust_standing(
+    firmware_https: Present { value: trust_obs() },
+    secure_boot_chainloader: Absent,
+    isolated_onboarding_network: Present { value: trust_obs() },
+  ) {
+    ProductionTrustedBootstrap { grounds: _ } => true
+    ControlledNetworkBootstrap { evidence: _ } => false
+    BootstrapTrustUnestablished => false
+  }
+}
+
+test fn both_grounds_present_names_both() -> Bool {
+  match bootstrap_trust_standing(
+    firmware_https: Present { value: trust_obs() },
+    secure_boot_chainloader: Present { value: trust_obs() },
+    isolated_onboarding_network: Absent,
+  ) {
+    ProductionTrustedBootstrap { grounds: g } =>
+      match g {
+        FirmwareHttpsAndSecureBootTrusted { firmware_https: h, secure_boot_chainloader: sb } =>
+          (h.observation.decl_name as String) == (obs.decl_name as String)
+          && (sb.observation.decl_name as String) == (obs.decl_name as String)
+        FirmwareHttpsTrusted { firmware_https: _ } => false
+        SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => false
+      }
+    ControlledNetworkBootstrap { evidence: _ } => false
+    BootstrapTrustUnestablished => false
+  }
+}
+
+test fn secure_boot_ground_is_not_https_ground() -> Bool {
+  match bootstrap_trust_standing(
+    firmware_https: Absent,
+    secure_boot_chainloader: Present { value: trust_obs() },
+    isolated_onboarding_network: Absent,
+  ) {
+    ProductionTrustedBootstrap { grounds: g } =>
+      match g {
+        SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => true
+        FirmwareHttpsTrusted { firmware_https: _ } => false
+        FirmwareHttpsAndSecureBootTrusted { firmware_https: _, secure_boot_chainloader: _ } => false
+      }
+    ControlledNetworkBootstrap { evidence: _ } => false
+    BootstrapTrustUnestablished => false
   }
 }
 
@@ -728,7 +829,7 @@ test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
@@ -761,7 +862,7 @@ test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -771,7 +872,7 @@ test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
@@ -804,7 +905,7 @@ test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -814,7 +915,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
@@ -841,6 +942,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Wasm32,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -865,7 +967,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -875,7 +977,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
@@ -892,6 +994,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-other-bytes"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -910,7 +1013,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinChainloaderDigestDisagrees } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -926,7 +1029,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -937,6 +1040,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -955,7 +1059,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongSigningKey } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -988,7 +1092,7 @@ test fn unestablished_trust_does_not_join() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
   }
 }
 
@@ -997,7 +1101,7 @@ test fn controlled_network_trust_can_establish() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ControlledNetworkBootstrap,
+    trust: controlled_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -1007,8 +1111,10 @@ test fn controlled_network_trust_can_establish() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryEstablished { evidence: e } =>
       match e.trust {
-        ControlledNetworkBootstrap => (e.manifest.callback_identity as String) == "intake-callback-0"
-        ProductionTrustedBootstrap => false
+        ControlledNetworkBootstrap { evidence: ev } =>
+          (ev.observation.decl_name as String) == (obs.decl_name as String)
+          && (e.manifest.identity.callback_identity as String) == "intake-callback-0"
+        ProductionTrustedBootstrap { grounds: _ } => false
         BootstrapTrustUnestablished => false
       }
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -1018,7 +1124,7 @@ test fn controlled_network_trust_can_establish() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -1028,7 +1134,7 @@ test fn foreign_site_edge_does_not_join() -> Bool {
     target: target,
     expected_site: foreign_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -1036,8 +1142,9 @@ test fn foreign_site_edge_does_not_join() -> Bool {
     manifest: manifest_ok(),
   }
   match join_network_boot_delivery(inputs: inputs) {
-    NetworkBootDeliverySiteMismatch { expected: exp, observed: obs_site } =>
+    NetworkBootDeliverySiteMismatch { axis: SiteEdgeSite, expected: exp, observed: obs_site } =>
       (exp as String) == (foreign_site as String) && (obs_site as String) == (onboarding_site as String)
+    NetworkBootDeliverySiteMismatch { axis: ClientObservationSite, expected: _, observed: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -1061,7 +1168,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client,
@@ -1078,7 +1185,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
@@ -1094,7 +1201,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet,
     site: site_ok(),
     client: client_ok(),
@@ -1111,7 +1218,94 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
-    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
+    NetworkBootDeliveryTrustUnestablished => false
+  }
+}
+
+test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    expected_site: onboarding_site,
+    artifact_digest: artifact,
+    trust: production_trust(),
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        boot_mode: UefiHttpBoot,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongFirmwareClass } => true
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
+    NetworkBootDeliveryTrustUnestablished => false
+  }
+}
+
+// The edge agrees with the expected site and the client observation does not: the mismatch names the
+// client axis, not the edge one (review 67939: one variant, two disagreements, now told apart).
+test fn foreign_client_observation_site_names_the_client_axis() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    expected_site: onboarding_site,
+    artifact_digest: artifact,
+    trust: production_trust(),
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: ClientBootModeObserved {
+      receipt: ObservedClientBootModeReceipt {
+        target: target,
+        site: foreign_site,
+        client: ObservedDhcpPxeClient {
+          vendor_class: "PXEClient:Arch:00011:UNDI:003016",
+          arch: UefiArm64,
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+    },
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliverySiteMismatch { axis: ClientObservationSite, expected: exp, observed: obs_site } =>
+      (exp as String) == (onboarding_site as String) && (obs_site as String) == (foreign_site as String)
+    NetworkBootDeliverySiteMismatch { axis: SiteEdgeSite, expected: _, observed: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliveryTrustUnestablished => false
   }
 }
