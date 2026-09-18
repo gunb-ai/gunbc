@@ -20,6 +20,8 @@ import gunbc.spark.credential_workflow {
 import gunbc.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host_reset_return { host_reset_return_receipt_path }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -861,6 +863,11 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "runner_guest_image_converge_wet",
 }
 
+data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
+  function: "mtcollins1_fan_observe_wet",
+}
+
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_grant_install.dag",
   function: "spark_grant_install_ci_wet",
@@ -1007,6 +1014,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
+    gunbc_ci_mtcollins1_fan_observe_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -1405,6 +1413,95 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       )
     }
   ]
+}
+
+// THE MT. COLLINS BMC CREDENTIAL PRELUDE, THE SAME SHAPE AS THE SPARK ONE ABOVE AND DELIBERATELY NOT
+// A SHARED FUNCTION WITH IT.
+//
+// The two preludes fetch different secrets for different principals against different hosts, and the
+// spark one selects its version by a CASE over a host roster because every Spark carries its own
+// password. Mt. Collins is one unit with one pinned version (gunbc.secret_provision
+// mtcollins1_bmc_gunbc_secret_ref, version 2), so there is no selection to make. Generalizing the
+// spark prelude to cover both would put a roster dispatch in front of a fetch that has one answer,
+// which is the shape that later grows a wrong-host bug. What IS shared is the auth-header write, the
+// umask, the trap and the refusal vocabulary, and those are shared as the functions they already are.
+//
+// READ-ONLY IS NOT THIS PRELUDE'S PROPERTY TO GUARANTEE and it is not claimed here. The credential it
+// materializes is the same administrator account the boot lane uses; what makes the fan observation
+// read-only is that its entry reaches only the `readonly` arms of diagnostic.ipmi.Tool. A reader
+// looking for that wall looks at gunbc.machine_intake_bmc_fan_observation's import list, not here.
+fn gunbc_ci_mtcollins1_bmc_credential_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "CRED_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-response.json\"") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\" \"$HDR_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: join(["SM_URL=\"", secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref), "\""], "")) },
+    Do { run: ci_retry_body_run(command: join(["SM_RES=\"", secret_ref_version_resource(ref: mtcollins1_bmc_gunbc_secret_ref), "\""], "")) },
+    Do {
+      run: ci_retry_body_run(
+        command: "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"$SM_URL\" || echo 000)\""
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" = 403 ]; then echo \"Mtcollins1BmcCredentialUnreadable: ",
+          "$SM_RES",
+          " answered 403. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant this run's principal roles/secretmanager.secretAccessor on it (gunbc.auth.fleet_secret_accessor_roster mtcollins1_bmc_accessor_row). Contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" = 404 ]; then echo \"Mtcollins1BmcCredentialAbsent: ",
+          "$SM_RES",
+          " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" != 200 ]; then echo \"Mtcollins1BmcCredentialFetchFailed: HTTP $HTTP_CODE from ",
+          "$SM_RES",
+          "; contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$RESP_FILE\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$CRED_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ ! -s \"$CRED_FILE\" ]; then echo \"Mtcollins1BmcCredentialEmpty: ",
+          "$SM_RES",
+          " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join(["export ", mtcollins1_fan_credential_path_env as String, "=\"$CRED_FILE\""], "")
+      )
+    },
+  ]
+}
+
+fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_mtcollins1_bmc_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
+    function: gunbc_ci_mtcollins1_fan_observe_target.function,
+    claim_run: false,
+    receipt_rel: mtcollins1_fan_observation_receipt_path
+  )
 }
 
 // The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and must kill

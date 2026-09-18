@@ -1,0 +1,104 @@
+module extdeps.bmc.phosphor_fan_control
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  CitedFigureStanding,
+  CitedToAuthority,
+  ExternalAuthority,
+  ExternalModelScope,
+  ExternalSubjectRef,
+  TranscribedUncited,
+  cited_figure_read_obligation,
+}
+import extdeps.uri { Https, Uri }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/phosphor-fan-presence/tree/master/control"
+  }
+}
+
+data phosphor_fan_control_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.phosphor_fan_control",
+      decl_name: "phosphor_fan_zone_policy_contract",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: phosphor_fan_control_authority,
+  further_citations: []
+}
+
+// WHY THIS IS A SEPARATE MODULE FROM extdeps.bmc.openbmc_fan_control. That module's declared
+// external subject is the TRANSPORT it reads the controller through - busctl and jq - and its rows
+// are the shapes those tools return. phosphor-fan-presence is an independently governed OpenBMC
+// project with its own release train, and the fact modeled here is its CONTROL CONTRACT: under
+// which conditions a zone stops tracking its sensors and holds a fixed target. Filing that as more
+// rows on the busctl module would fuse two independently versioned upstreams, which DESIGN §3
+// 'External upstream decomposition' forbids. The observation ROUTE stays where it already is:
+// openbmc_fan_control openbmc_zone_failsafe reads the zone's Failsafe property, and nothing here
+// re-declares it.
+
+// THE CONDITIONS UNDER WHICH A ZONE HOLDS A FIXED TARGET INSTEAD OF TRACKING ITS SENSORS.
+//
+// These are the upstream's own dependency arms, and they are kept separate rather than collapsed to
+// one 'degraded' arm because they have different owners and different remedies. A sensor that is
+// absent from the object mapper is a service-topology fact; a sensor present and marked
+// non-functional is a reading the sensor daemon itself refused; an owner that went away is a
+// lifecycle fact about the publishing service. A consumer that only needs 'is it in failsafe' reads
+// the Failsafe property and never this type - this type exists for the consumer that must say WHY.
+//
+// THE PRE-POST CASE IS ZoneSensorUnavailable AND NOT AN ARM OF ITS OWN. Before a host POSTs there
+// is no host thermal sensor daemon publishing, so the zone's dependencies are unavailable for the
+// ordinary reason. Minting a PreHostPost arm here would put a HOST LIFECYCLE fact - which belongs to
+// the observing layer, where the machine's power and POST state is known - inside an upstream's
+// vocabulary, and the controller does not know what a POST is.
+type PhosphorFanFailsafeCondition
+  = ZoneSensorUnavailable
+  | ZoneSensorNonFunctional
+  | ZoneSensorOwnerLost
+
+// WHAT THE UPSTREAM CONTRACT ESTABLISHES, AS A STRING OF ITS OWN SO THE SCOPE HAS A SUBJECT TO
+// POINT AT. The contract is stated rather than derived because it is prose in an upstream
+// repository: a zone configured with a failsafe target holds that target while ANY of the
+// conditions above stands, and resumes tracking only when EVERY dependency has returned. The
+// asymmetry is the load-bearing half - one missing dependency enters failsafe, and all of them
+// returning is what leaves it - and it is what makes FailsafeHeldAfterPost a real state rather than
+// an impossible one in the consuming model.
+data phosphor_fan_zone_policy_contract: NonEmptyStr = "openbmc/phosphor-fan-presence control: a zone holds its configured failsafe target while any dependency is unavailable, non-functional or owner-lost, and resumes sensor tracking only once every dependency has returned"
+
+// THE FAILSAFE DUTY IS NOT A FAMILY CONSTANT AND THIS MODULE REFUSES TO INVENT ONE. Upstream ships
+// no fleet-wide number: the target is whatever a build's zone configuration carries, which is why
+// openbmc_fan_control reads it out of the config rather than asserting it. Anyone wanting the duty
+// for a particular host reads that host's configuration; this row exists so that a reader looking
+// for a family figure finds a stated read obligation instead of a fabricated percentage, which is
+// the over-assertion arm of DESIGN §4d.
+data phosphor_fan_failsafe_duty_standing: CitedFigureStanding = TranscribedUncited { read_obligation: "no fleet-wide failsafe duty is published for phosphor-fan control; the target is per-build zone configuration and is read from the host's own fan config through extdeps.bmc.openbmc_fan_control, never asserted at family grain here" }
+
+fn phosphor_fan_failsafe_duty_read_obligation() -> NonEmptyStr? {
+  cited_figure_read_obligation(standing: phosphor_fan_failsafe_duty_standing)
+}
+
+// ENTERING TAKES ONE CONDITION; LEAVING TAKES NONE OUTSTANDING. Both directions are offered because
+// a consumer that wrote the second as `!enters(...)` would have written the same function twice, and
+// a consumer that had only the first would have to invent the exit rule.
+fn phosphor_fan_zone_enters_failsafe(conditions: List<PhosphorFanFailsafeCondition>) -> Bool {
+  conditions.length() > 0
+}
+
+fn phosphor_fan_zone_resumes_tracking(conditions: List<PhosphorFanFailsafeCondition>) -> Bool {
+  conditions.length() == 0
+}
+
+fn phosphor_fan_failsafe_condition_label(condition: PhosphorFanFailsafeCondition) -> NonEmptyStr {
+  match condition {
+    ZoneSensorUnavailable => "ZoneSensorUnavailable"
+    ZoneSensorNonFunctional => "ZoneSensorNonFunctional"
+    ZoneSensorOwnerLost => "ZoneSensorOwnerLost"
+  }
+}

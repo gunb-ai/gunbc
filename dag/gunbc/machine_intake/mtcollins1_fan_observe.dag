@@ -1,0 +1,74 @@
+module gunbc.machine_intake_mtcollins1_fan_observe
+
+import std.algebra { trim }
+import std.types { Int, NonEmptyStr, String }
+import std.process { ProcessExit, exit_failure }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
+import gunbc.machine_intake_bmc_fan_observation { observe_fan_policy }
+
+// THE POLICY LAYER FOR ONE HOST'S FAN OBSERVATION, separate from the producer for the same reason
+// the media-attach and boot-handoff wrappers are separate from theirs: how many samples this unit
+// should take and how far apart is a decision about this run, and the producer stays reusable by
+// Mt. Jade without carrying Mt. Collins's choices.
+
+data mtcollins1_fan_credential_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE" as NonEmptyStr
+
+// SIX ROUNDS AT TEN SECONDS IS A MINUTE OF SERIES, AND THE SHAPE IS THE POINT RATHER THAN THE
+// DURATION. One sample cannot distinguish a controller holding a fixed output from one that happens
+// to be commanding that output right now; a minute of samples can show whether the number moves at
+// all. It is deliberately short: this is a read against a machine in someone's home, and a longer
+// series buys resolution the first question does not need.
+data mtcollins1_fan_observation_rounds: Int = 6
+data mtcollins1_fan_observation_interval_seconds: Int = 10
+
+// THE RECEIPT PATH IS DECLARED HERE AND READ BY THE CONVERGE STEP, NOT THE OTHER WAY ROUND. Where a
+// host's observation lands is a fact about that observation; a CI module declaring it would make the
+// entry unable to write its own receipt without importing CI.
+data mtcollins1_fan_observation_receipt_path: String = "target/mtcollins1-fan-observation.txt"
+
+// THE CREDENTIAL ARRIVES AS A PATH IN THE ENVIRONMENT, NEVER AS A VALUE, for the reason
+// gunbc.fleet_bootstrap_principal_session gives at length: a path is not the secret, and this
+// repository's own receipts dump argv. The converge job's prelude materializes the file; this entry
+// only learns where it is.
+fn mtcollins1_fan_credential_path() -> NonEmptyStr? {
+  match shell.Env.Get(name: mtcollins1_fan_credential_path_env).value {
+    Absent => Absent
+    Present { value: raw } => {
+      let path = trim(s: raw)
+      if path == "" { Absent } else { Present { value: path as NonEmptyStr } }
+    }
+  }
+}
+
+// REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING. A run that reaches the controller
+// with no credential produces an authentication failure, and an authentication failure read as a
+// machine fact is how "the fans could not be observed" becomes "the fans are not reporting".
+fn mtcollins1_fan_observe_wet() -> ProcessExit
+  uses net: std.resources.Network, clock: std.resources.Clock
+{
+  match mtcollins1_secured_account() {
+    Absent =>
+      return exit_failure(reason: "mtcollins1 fan observation: the BMC is not BmcSecured, so this run holds no account to read sensors with; contacting NO host")
+    Present { value: username } =>
+      match mtcollins1_fan_credential_path() {
+        Absent =>
+          return exit_failure(
+            reason: join([
+              "mtcollins1 fan observation: no ",
+              mtcollins1_fan_credential_path_env as String,
+              " in the environment, so this run materialized no controller credential; contacting NO host",
+            ], "")
+          )
+        Present { value: password_file } =>
+          return observe_fan_policy(
+            bmc_host: mtcollins1_endpoint.host,
+            username: username,
+            password_file: password_file,
+            rounds: mtcollins1_fan_observation_rounds,
+            interval_seconds: mtcollins1_fan_observation_interval_seconds,
+            receipt_path: mtcollins1_fan_observation_receipt_path,
+          )
+      }
+  }
+}

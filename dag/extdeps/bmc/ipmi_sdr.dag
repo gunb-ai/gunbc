@@ -1,0 +1,208 @@
+module extdeps.bmc.ipmi_sdr
+
+import std.algebra { trim }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { Percent, RevolutionsPerMinute, percent, rpm }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "linux.die.net/man/1/ipmitool"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmi_sdr",
+      decl_name: "SdrTypeLine",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE RENDERING ipmitool's `sdr type` PRODUCES, WHICH IS THE TOOL'S FACT AND NOT THE SPECIFICATION'S.
+//
+// This module is the same split extdeps.bmc.ipmi_sel already makes and for the same reason: the
+// argv lives with the transport (extdeps.bmc.ipmi), the record semantics live with the IPMI
+// specification, and the five-field pipe-separated TEXT below is neither - it is how one tool chose
+// to print a sensor record, it changes when the tool changes, and a Redfish reader of the same
+// sensors would never see it. What a controller was observed to publish is a receipt in the
+// observing layer, never a row here.
+//
+// THE SHAPE, as the tool prints it:
+//
+//   FAN1             | 41h | ok  |  7.1 | 8600 RPM
+//   FAN2             | 42h | ns  |  7.2 | No Reading
+//   CPU_Temp         | 01h | ok  |  3.1 | 45 degrees C
+//
+// name, sensor number, status, entity id, reading. The reading field is the one that carries a UNIT
+// IN ITS TEXT, which is why it is decoded rather than split: "8600 RPM", "45 degrees C" and "72
+// percent" are three different quantities and the field does not say which except by its own suffix.
+type SdrTypeLine {
+  name: NonEmptyStr
+  sensor_number: NonEmptyStr
+  status: NonEmptyStr
+  entity_id: NonEmptyStr
+  reading_text: NonEmptyStr
+}
+
+// A LINE THAT DID NOT HAVE FIVE FIELDS IS NOT AN EMPTY LINE AND NOT A ZERO READING.
+//
+// ipmitool prints header noise, blank lines and, on some builds, continuation text. Dropping those
+// silently would make a truncated output indistinguishable from a machine with no fans - the
+// empty-observation narrow - so a line that does not decode is carried as a refusal with its own
+// text, and a consumer counting sensors counts refusals too.
+type SdrLineResult
+  = SdrLineDecoded { line: SdrTypeLine }
+  | SdrLineUnstructured { text: String }
+
+fn sdr_decode_line(text: String) -> SdrLineResult {
+  let fields = split(s: text, delimiter: "|") |> map(f => trim(f))
+  if fields.length() != 5 {
+    SdrLineUnstructured { text: text }
+  } else {
+    match fields.first() {
+      Absent => SdrLineUnstructured { text: text }
+      Present { value: name } => if trim(name) == "" {
+        SdrLineUnstructured { text: text }
+      } else {
+        SdrLineDecoded {
+          line: SdrTypeLine {
+            name: name,
+            sensor_number: sdr_field_at(fields: fields, index: 1),
+            status: sdr_field_at(fields: fields, index: 2),
+            entity_id: sdr_field_at(fields: fields, index: 3),
+            reading_text: sdr_field_at(fields: fields, index: 4),
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE INDEX HELPER RETURNS A SENTINEL ONLY WHERE THE CALLER HAS ALREADY ESTABLISHED THE LENGTH.
+// sdr_decode_line checks for exactly five fields before calling it, so the Absent arm is
+// unreachable from that caller; it is spelled as a visible marker rather than a blank so that a
+// future caller which has NOT checked produces something a reader will notice.
+fn sdr_field_at(fields: List<String>, index: Int) -> NonEmptyStr {
+  match fields.skip(n: index).first() {
+    Absent => "SdrFieldMissing"
+    Present { value: f } => if trim(f) == "" { "SdrFieldEmpty" } else { f }
+  }
+}
+
+fn sdr_decode_lines(stdout: String) -> List<SdrLineResult> {
+  split(s: stdout, delimiter: "\n")
+    |> filter(l => trim(l) != "")
+    |> map(l => sdr_decode_line(text: l))
+}
+
+// WHAT A FAN SENSOR'S READING FIELD MEANT.
+//
+// THE PERCENT ARM IS NOT DECORATION. Several builds publish a fan sensor in percent rather than RPM,
+// and a controller that publishes duty directly is the only case where a failsafe verdict can be
+// reached without the fan catalog. Collapsing it into the RPM arm would lose exactly the reading
+// that answers the question this decoder exists for.
+//
+// SdrFanNoReading IS SEPARATE FROM SdrFanReadingUnrecognised. "No Reading" and "ns" are the tool
+// saying the sensor answered nothing, which is a fact about the sensor; an unrecognised suffix is
+// this decoder admitting it does not know what the units are, which is a fact about this decoder.
+// One is the controller's report and the other is our gap, and a consumer chasing a missing fan must
+// not be sent to the wrong one.
+type SdrFanReading
+  = SdrFanRpm { speed: RevolutionsPerMinute }
+  | SdrFanDuty { duty: Percent }
+  | SdrFanNoReading
+  | SdrFanReadingUnrecognised { text: String }
+
+fn sdr_reading_words(reading_text: NonEmptyStr) -> List<String> {
+  split(s: trim(reading_text as String), delimiter: " ") |> filter(w => trim(w) != "")
+}
+
+fn sdr_fan_reading(reading_text: NonEmptyStr) -> SdrFanReading {
+  let words = sdr_reading_words(reading_text: reading_text)
+  if words.length() < 2 {
+    SdrFanNoReading
+  } else {
+    match words.first() {
+      Absent => SdrFanNoReading
+      Present { value: magnitude } => {
+        let unit = sdr_field_at(fields: words, index: 1)
+        match parse_int(s: trim(magnitude)) {
+          Absent => SdrFanNoReading
+          Present { value: n } => if n < 0 {
+            SdrFanReadingUnrecognised { text: reading_text as String }
+          } else if unit == "RPM" {
+            SdrFanRpm { speed: rpm(n) }
+          } else if unit == "percent" {
+            SdrFanDuty { duty: percent(n) }
+          } else {
+            SdrFanReadingUnrecognised { text: reading_text as String }
+          }
+        }
+      }
+    }
+  }
+}
+
+// A TEMPERATURE READING, DECODED ONLY FAR ENOUGH TO ANSWER "IS THE HOST PUBLISHING THERMALS AT ALL".
+//
+// The fan-policy question does not need a calibrated temperature; it needs to know whether the
+// controller has any host thermal sensor producing a number, because that is the input whose absence
+// is what failsafe exists for. So this returns degrees where it can and says so where it cannot, and
+// it deliberately does not model thresholds, hysteresis or entity association - a consumer needing
+// those is asking a different question and should not reach it through this decoder.
+type SdrTemperatureReading
+  = SdrTemperatureDegreesC { degrees: Int }
+  | SdrTemperatureNoReading
+  | SdrTemperatureUnrecognised { text: String }
+
+fn sdr_temperature_reading(reading_text: NonEmptyStr) -> SdrTemperatureReading {
+  let words = sdr_reading_words(reading_text: reading_text)
+  if words.length() < 2 {
+    SdrTemperatureNoReading
+  } else {
+    match words.first() {
+      Absent => SdrTemperatureNoReading
+      Present { value: magnitude } => match parse_int(s: trim(magnitude)) {
+        Absent => SdrTemperatureNoReading
+        Present { value: n } => if sdr_field_at(fields: words, index: 1) == "degrees" {
+          SdrTemperatureDegreesC { degrees: n }
+        } else {
+          SdrTemperatureUnrecognised { text: reading_text as String }
+        }
+      }
+    }
+  }
+}
+
+fn sdr_decoded_lines(results: List<SdrLineResult>) -> List<SdrTypeLine> {
+  fold(results, init: [], f: (acc, r) => match r {
+    SdrLineDecoded { line: l } => acc.append(l)
+    SdrLineUnstructured { text: _ } => acc
+  })
+}
+
+fn sdr_unstructured_count(results: List<SdrLineResult>) -> Int {
+  filter(results, r => match r {
+    SdrLineDecoded { line: _ } => false
+    SdrLineUnstructured { text: _ } => true
+  }).length()
+}
+
+// WHETHER ANY HOST THERMAL SENSOR PRODUCED A NUMBER. This is the predicate the fan-policy derivation
+// actually consumes, and it is a fold over the whole temperature read rather than a lookup of one
+// named sensor, because sensor NAMES are per-build and the question is not about any particular one.
+fn sdr_any_temperature_reading(lines: List<SdrTypeLine>) -> Bool {
+  fold(lines, init: false, f: (acc, l) => match sdr_temperature_reading(reading_text: l.reading_text) {
+    SdrTemperatureDegreesC { degrees: _ } => true
+    SdrTemperatureNoReading => acc
+    SdrTemperatureUnrecognised { text: _ } => acc
+  })
+}

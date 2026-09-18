@@ -1,0 +1,96 @@
+module gunbc.fleet_acoustic_intent
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.measure { Percent, percent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.fans.types { FanCatalogRow }
+import product.placement_supply { SiteIdentity }
+import product.acoustic_ceiling {
+  AcousticCeiling,
+  AcousticCeilingBasis,
+  DutyCeilingResult,
+  OperatorStatedTolerance,
+  acoustic_basis_is_operator_policy,
+  duty_ceiling_for_fan,
+}
+import product.fan_policy_standing {
+  FanDutyCeilingVerdict,
+  FanPolicyStanding,
+  fan_policy_against_duty_ceiling,
+}
+import gunbc.fleet_physical_inventory { operator_site }
+
+// THE SITE'S ACOUSTIC INTENT, WHICH IS A POLICY THE OPERATOR STATES AND NOT A NUMBER ANYTHING READ.
+//
+// The machines under test sit in the operator's own residence, and on 2026-09-18 he stated the
+// constraint in behavioural terms: he cannot tolerate fans running at sustained full duty while he
+// is testing. That sentence is the whole input, and what follows is an exercise in NOT making it
+// into more than it is.
+//
+// WHAT IT IS: a bound on DUTY. It is enforceable today, against any controller that reports duty,
+// with no instrument and no datasheet in between.
+//
+// WHAT IT IS NOT: a dB(A) figure. No sound level was measured at any position and the operator
+// stated none, so this module declares no acoustic ceiling row. That absence is deliberate and it is
+// the §4d discipline applied to the easiest possible place to violate it - a plausible number here
+// (45 dB(A) at one metre, say) would read as the operator's constraint forever, and the person it
+// misrepresents is the one who has to live with the result.
+//
+// THE SITE IS THE ONE ALREADY DECLARED. gunbc.fleet_physical_inventory operator_site is where these
+// machines are; minting a second identity for the same place - "operator-residence" beside
+// "operator-lab" - would be the §3 fork, arrived at from the direction where both spellings look
+// reasonable.
+
+data operator_residence_site: SiteIdentity = operator_site
+
+// THE DUTY THE OPERATOR WILL TOLERATE SUSTAINED, AS A CEILING AND NOT A TARGET.
+//
+// Sixty percent is the operator's stated boundary read conservatively: "not sustained full duty" is
+// what he said, and a ceiling at 99 would satisfy the letter of it while being, in a residence,
+// exactly the thing he was objecting to. This number is OPERATOR POLICY and carries no measurement
+// behind it, which is why it sits beside the basis row below rather than alone - a bare percent
+// would be indistinguishable from a datasheet figure to anybody reading it later.
+//
+// IT BOUNDS THE SUSTAINED STATE AND NOT THE EXCURSION. A controller with no host thermal sensors has
+// no safe alternative to a high fixed output, so the failsafe window is bounded by its DURATION and
+// by the operator's ability to power the machine off - never by this percentage. Applying this
+// ceiling to a pre-POST failsafe would demand that a family violate its own thermal contract, which
+// is why the consuming function takes a standing rather than a bare reading.
+data operator_residence_sustained_duty_ceiling: Percent = percent(60)
+
+data operator_residence_duty_ceiling_basis: AcousticCeilingBasis = OperatorStatedTolerance { statement: "operator statement 2026-09-18: cannot tolerate sustained full-duty fans in the residence during testing; the percentage is this repository's conservative reading of that sentence and not a figure the operator gave" }
+
+// THE PREDICATE IS ASKED OF THE BASIS AND NOT OF A CEILING, BECAUSE THERE IS NO CEILING TO ASK IT
+// OF. An earlier draft constructed an AcousticCeiling here with a placeholder level so that the
+// ceiling-shaped predicate could be called - which is the fabricated value this module's own header
+// forbids, smuggled back in one layer down as scaffolding. The basis stands on its own: it says the
+// bound below came from an operator's sentence, and that is true whether or not a level exists.
+fn operator_residence_ceiling_is_policy_not_measurement() -> Bool {
+  acoustic_basis_is_operator_policy(basis: operator_residence_duty_ceiling_basis)
+}
+
+// THE ENFORCEABLE CONSUMER, TODAY. This is what the fan-policy lane actually calls: a standing
+// observed at a host in this residence, bounded by the duty the operator will tolerate. Every arm of
+// the verdict is reachable - within, over, and the tach-only refusal, which is the arm Mt. Collins
+// itself lands on while its controller reports fans in RPM.
+fn residence_duty_verdict(standing: FanPolicyStanding) -> FanDutyCeilingVerdict {
+  fan_policy_against_duty_ceiling(standing: standing, ceiling: operator_residence_sustained_duty_ceiling)
+}
+
+// THE ACOUSTIC ROUTE IS A DECLARED FRONTIER, NOT A DANGLING DECLARATION (DESIGN §3c).
+//
+// product.acoustic_ceiling duty_ceiling_for_fan derives a duty bound from a fan's published table
+// under a stated dB(A) ceiling, and this site has no dB(A) ceiling to state. The function is not
+// dead: it is consumed by this module's hermetic witnesses against a catalogued fan today, and its
+// production consumer is named below with the trigger that lands it.
+//
+// TRIGGER, stated as the CAPABILITY and not as an artifact: a stated-or-measured dB(A) ceiling for
+// this site at a named reference position, TOGETHER WITH a modeled fan part for the host being
+// bounded. Both are required and neither alone retires this row - a ceiling with no catalogued fan
+// has nothing to compare against, and a catalogued fan with no ceiling has no bound. Mt. Jade's six
+// 6056 fans landing from the platform lane satisfies the second half only.
+fn residence_duty_ceiling_from_datasheet(row: FanCatalogRow, ceiling: AcousticCeiling, fan_count: Int) -> DutyCeilingResult {
+  duty_ceiling_for_fan(row: row, ceiling: ceiling, fan_count: fan_count)
+}
+
+data residence_acoustic_ceiling_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when this site carries a stated-or-measured dB(A) ceiling at a named reference position AND the host being bounded has a modeled fan part, at which point residence_duty_ceiling_from_datasheet gains a production consumer; a catalogued fan without a ceiling, or a ceiling without a catalogued fan, retires neither half")
