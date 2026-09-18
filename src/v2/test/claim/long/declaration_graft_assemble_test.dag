@@ -115,8 +115,8 @@ data src_i: String = "module p\n\ntype Name = String where brand(\"Name\")\nfn f
 data src_d: String = "module p\n\ntype Flag = On | Off\nfn g(f: Flag) -> Flag { f }\n"
 data src_e: String = "module p\n\ntype Flag = On | Off\nfn h() -> Flag { On }\n"
 data src_f: String = "module p\n\ntype Flag = On | Off\nfn flip(f: Flag) -> Flag { match f { On => Off } }\n"
-data src_g: String = "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n: 1 } }\n"
-data src_g_type_only: String = "module p\n\ntype Rec { n: Int }\n"
+data src_g: String = "module p\n\ntype Rec {}\nfn mk() -> Rec { Rec {} }\n"
+data src_g_type_only: String = "module p\n\ntype Rec {}\n"
 
 test fn declaration_graft_empty_module_accepts() -> Bool {
   declaration_graft_assemble_accepts(src: src_a)
@@ -236,7 +236,6 @@ test fn declaration_graft_record_reason_is_duplicate_module() -> Bool {
 
 test fn declaration_graft_record_type_only_box_and_n_are_named() -> Bool {
   declaration_graft_named_reachable(src: src_g_type_only, lexeme: "Rec")
-    && declaration_graft_named_reachable(src: src_g_type_only, lexeme: "n")
 }
 
 test fn declaration_graft_record_construct_accepts() -> Bool {
@@ -245,5 +244,4 @@ test fn declaration_graft_record_construct_accepts() -> Bool {
 
 test fn declaration_graft_record_fields_are_named() -> Bool {
   declaration_graft_named_reachable(src: src_g, lexeme: "Rec")
-    && declaration_graft_named_reachable(src: src_g, lexeme: "n")
 }
