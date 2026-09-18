@@ -14,7 +14,8 @@ import gunbc.machine_intake_subject { UnitKey }
 // NicAttachmentClass, not a second PcieCem/OcpNic3 spelling.
 // Panel text is an observation. Identity is an observed unit key + locator + attachment.
 // An unobserved unit cannot mint SameUnit or DistinctUnits; matching discriminator prose
-// is not a unit key.
+// is not a unit key. An unobserved function cannot mint SameFunction or DistinctFunctions;
+// matching discriminator prose is not a function key.
 
 type EthernetAttachment
   = BaseboardOnboard
@@ -63,6 +64,17 @@ type ConnectorIdentityStanding
   = SameConnector
   | DistinctConnectors
   | ConnectorIdentityUnobserved { discriminator: NonEmptyStr }
+
+type FunctionIdentityStanding
+  = ObservedSameFunction
+  | ObservedDistinctFunctions
+  | FunctionIdentityUnobserved { discriminator: NonEmptyStr }
+
+type ConnectorFunctionStanding
+  = ObservedMultipleFunctions
+  | ObservedSingleFunction
+  | FunctionsOnDistinctConnectors
+  | ConnectorFunctionUnobserved { discriminator: NonEmptyStr }
 
 fn ethernet_port_unit_identity(a: EthernetPortUnit, b: EthernetPortUnit) -> PortUnitIdentityStanding {
   match a {
@@ -114,14 +126,67 @@ fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort)
   }
 }
 
+fn ethernet_function_identity(a: EthernetFunction, b: EthernetFunction) -> FunctionIdentityStanding {
+  match a {
+    FunctionUnobserved { discriminator: _ } =>
+      FunctionIdentityUnobserved {
+        discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
+      }
+    BmcDedicated => ethernet_observed_function_against(observed: BmcDedicated, other: b)
+    BmcNcsi => ethernet_observed_function_against(observed: BmcNcsi, other: b)
+    HostData => ethernet_observed_function_against(observed: HostData, other: b)
+    PrebootNetwork => ethernet_observed_function_against(observed: PrebootNetwork, other: b)
+  }
+}
+
+fn ethernet_observed_function_against(observed: EthernetFunction, other: EthernetFunction) -> FunctionIdentityStanding {
+  match other {
+    FunctionUnobserved { discriminator: _ } =>
+      FunctionIdentityUnobserved {
+        discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
+      }
+    BmcDedicated =>
+      if observed == BmcDedicated {
+        ObservedSameFunction
+      } else {
+        ObservedDistinctFunctions
+      }
+    BmcNcsi =>
+      if observed == BmcNcsi {
+        ObservedSameFunction
+      } else {
+        ObservedDistinctFunctions
+      }
+    HostData =>
+      if observed == HostData {
+        ObservedSameFunction
+      } else {
+        ObservedDistinctFunctions
+      }
+    PrebootNetwork =>
+      if observed == PrebootNetwork {
+        ObservedSameFunction
+      } else {
+        ObservedDistinctFunctions
+      }
+  }
+}
+
 fn ethernet_port_may_carry_multiple_functions(
   a: EthernetFunctionBinding,
   b: EthernetFunctionBinding,
-) -> Bool {
+) -> ConnectorFunctionStanding {
   match ethernet_connector_identity(a: a.port, b: b.port) {
-    SameConnector => (a.function == b.function) == false
-    DistinctConnectors => false
-    ConnectorIdentityUnobserved { discriminator: _ } => false
+    SameConnector =>
+      match ethernet_function_identity(a: a.function, b: b.function) {
+        ObservedDistinctFunctions => ObservedMultipleFunctions
+        ObservedSameFunction => ObservedSingleFunction
+        FunctionIdentityUnobserved { discriminator: d } =>
+          ConnectorFunctionUnobserved { discriminator: d }
+      }
+    DistinctConnectors => FunctionsOnDistinctConnectors
+    ConnectorIdentityUnobserved { discriminator: d } =>
+      ConnectorFunctionUnobserved { discriminator: d }
   }
 }
 

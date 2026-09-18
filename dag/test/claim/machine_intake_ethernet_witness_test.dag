@@ -5,19 +5,27 @@ import std.measure { rpm, watt }
 import gunbc.machine_intake_ethernet {
   AttachmentUnobserved,
   BmcNcsi,
+  ConnectorFunctionUnobserved,
   ConnectorIdentityUnobserved,
   DistinctConnectors,
+  FunctionIdentityUnobserved,
   FunctionUnobserved,
+  FunctionsOnDistinctConnectors,
   EthernetFunctionBinding,
   HostData,
+  ObservedDistinctFunctions,
   ObservedDistinctUnits,
+  ObservedMultipleFunctions,
+  ObservedSameFunction,
   ObservedSameUnit,
+  ObservedSingleFunction,
   PhysicalEthernetPort,
   PortOnUnit,
   PortUnitIdentityUnobserved,
   PortUnitUnobserved,
   SameConnector,
   ethernet_connector_identity,
+  ethernet_function_identity,
   ethernet_port_may_carry_multiple_functions,
   ethernet_port_unit_identity,
   ethernet_ports_are_distinct,
@@ -65,22 +73,64 @@ data other_unit_same_labels: PhysicalEthernetPort = PhysicalEthernetPort {
 }
 
 test fn w_one_port_can_bind_host_data_and_bmc_ncsi() -> Bool {
-  ethernet_port_may_carry_multiple_functions(
+  match ethernet_port_may_carry_multiple_functions(
     a: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
     b: EthernetFunctionBinding { port: jade_upper_left, function: BmcNcsi },
-  )
-    && ethernet_port_may_carry_multiple_functions(
+  ) {
+    ObservedMultipleFunctions => true
+    ObservedSingleFunction => false
+    FunctionsOnDistinctConnectors => false
+    ConnectorFunctionUnobserved { discriminator: _ } => false
+  }
+    && match ethernet_port_may_carry_multiple_functions(
       a: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
       b: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
-    ) == false
-    && ethernet_port_may_carry_multiple_functions(
+    ) {
+      ObservedSingleFunction => true
+      ObservedMultipleFunctions => false
+      FunctionsOnDistinctConnectors => false
+      ConnectorFunctionUnobserved { discriminator: _ } => false
+    }
+    && ethernet_ports_are_distinct(a: jade_upper_left, b: jade_upper_left) == false
+}
+
+test fn w_unobserved_function_is_not_a_second_function() -> Bool {
+  match ethernet_function_identity(
+    a: HostData,
+    b: FunctionUnobserved { discriminator: "fixture: function unobserved" },
+  ) {
+    FunctionIdentityUnobserved { discriminator: _ } => true
+    ObservedSameFunction => false
+    ObservedDistinctFunctions => false
+  }
+    && match ethernet_port_may_carry_multiple_functions(
       a: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
       b: EthernetFunctionBinding {
         port: jade_upper_left,
         function: FunctionUnobserved { discriminator: "fixture: function unobserved" },
       },
-    )
-    && ethernet_ports_are_distinct(a: jade_upper_left, b: jade_upper_left) == false
+    ) {
+      ConnectorFunctionUnobserved { discriminator: _ } => true
+      ObservedMultipleFunctions => false
+      ObservedSingleFunction => false
+      FunctionsOnDistinctConnectors => false
+    }
+    && match ethernet_function_identity(
+      a: FunctionUnobserved { discriminator: "fixture: function unobserved" },
+      b: FunctionUnobserved { discriminator: "fixture: function unobserved" },
+    ) {
+      FunctionIdentityUnobserved { discriminator: _ } => true
+      ObservedSameFunction => false
+      ObservedDistinctFunctions => false
+    }
+    && match ethernet_function_identity(
+      a: FunctionUnobserved { discriminator: "fixture: function unobserved A" },
+      b: FunctionUnobserved { discriminator: "fixture: function unobserved B" },
+    ) {
+      FunctionIdentityUnobserved { discriminator: _ } => true
+      ObservedSameFunction => false
+      ObservedDistinctFunctions => false
+    }
 }
 
 test fn w_dedicated_bmc_jack_is_not_the_upper_host_module() -> Bool {
@@ -141,10 +191,15 @@ test fn w_matching_unobserved_unit_prose_is_not_unit_identity() -> Bool {
       SameConnector => false
       DistinctConnectors => false
     }
-    && ethernet_port_may_carry_multiple_functions(
+    && match ethernet_port_may_carry_multiple_functions(
       a: EthernetFunctionBinding { port: unobserved_bmc_a, function: HostData },
       b: EthernetFunctionBinding { port: unobserved_bmc_same_labels, function: BmcNcsi },
-    ) == false
+    ) {
+      ConnectorFunctionUnobserved { discriminator: _ } => true
+      ObservedMultipleFunctions => false
+      ObservedSingleFunction => false
+      FunctionsOnDistinctConnectors => false
+    }
 }
 
 test fn w_collins_bmc_lans_are_distinct_ports() -> Bool {
