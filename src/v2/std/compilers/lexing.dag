@@ -226,25 +226,13 @@ fn lex_artifact_new(tokens: TokenStream, annotations: List<UnboundSourceAnnotati
   LexArtifact { tokens: tokens, annotations: annotations }
 }
 
-fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
-  match rule {
-    TokenRule { token_class: c, pattern: _ } => c == token_class
-    TriviaRule { pattern: _ } => false
-    AnnotationRule { annotation_class: _, pattern: _ } => false
-  }
-}
-
-fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
-  match map_lookup(m: lex_rule_set_token_class_map(rules: rules), key: token_class) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn lex_rule_set_token_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
+fn lex_rule_set_insert_token_classes(
+  m: Map<Symbol, Bool>,
+  rules: LexRuleSet
+) -> Map<Symbol, Bool> {
   fold_list(
     xs: rules.rules,
-    empty: empty_map(),
+    empty: m,
     cons: fn(acc, rule) {
       match rule {
         TokenRule { token_class: c, pattern: _ } =>
@@ -254,6 +242,17 @@ fn lex_rule_set_token_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
       }
     }
   )
+}
+
+fn lex_rule_set_token_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
+  lex_rule_set_insert_token_classes(m: empty_map(), rules: rules)
+}
+
+fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
+  match map_lookup(m: lex_rule_set_token_class_map(rules: rules), key: token_class) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 type LexPatternFold<R> {
