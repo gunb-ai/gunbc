@@ -1,4 +1,4 @@
-module v2.test.parse.weather_g0_prefix_parse_probe
+module v2.test.parse.weather_g0_prefix_parse
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
