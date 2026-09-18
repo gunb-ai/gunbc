@@ -64,8 +64,8 @@ import gunbc.spark.serving_runtime_capability_probe {
 // representation (NVFP4 kernels preprocess and pad), and free of transformed copies. None of those is
 // established here. The first revision of this module minted "TP4 refuses, TP8 fits with 51 GB of KV
 // headroom" from this division -- numbers seeded by the brief it was written under, so reproducing
-// them was not evidence. What survives is the lower-bound refusal; the fit is a later PR's, backed by
-// a per-tensor placement projection or a model-load memory receipt.
+// them was not evidence. Nothing about fit survives here; the fit is a later PR's, backed by a
+// per-tensor placement projection or a model-load memory receipt.
 //
 // WHY THE RESIDUAL IS NOT KV. `usable - ideal_weights_per_rank` is the budget left BEFORE the
 // engine funds runtime and non-torch memory, activations, CUDA graphs, collective workspaces,
@@ -86,14 +86,14 @@ import gunbc.spark.serving_runtime_capability_probe {
 // eight compatible GB10 ranks in an admitted fabric group with the image and checkpoint in place --
 // which EightSparkTp8 does not carry: it is a rank count.
 //
-// THE ARITHMETIC ROUNDS IN THE REFUSING DIRECTION. Weights per rank round UP; usable bytes round
-// DOWN. A screen that rounded the other way could pass a tuple a byte-exact test refuses.
+// THE ARITHMETIC ROUNDS CONSERVATIVELY. Weights per rank round UP; usable bytes round DOWN. The
+// advisory figures therefore err toward reporting an overrun, never toward hiding one.
 
 // ── THE IDEAL EVEN-SPLIT ARTIFACT SCREEN ────────────────────────────────────────────────────
 
-// THREE ADVISORY OUTCOMES. None is a verdict; each says which figure stands where against the
-// budget so a reader knows what a real placement receipt would have to overturn.
-type IdealEvenSplitVerdict
+// THREE ADVISORY OUTCOMES. None is a verdict -- the type says so -- each says which figure stands
+// where against the budget so a reader knows what a real placement receipt would have to overturn.
+type IdealEvenSplitAdvisory
   = PayloadSplitExceedsUsable { shortfall_per_rank: ByteSize }
   | FullArtifactSplitExceedsUsable { shortfall_per_rank: ByteSize, payload_residual: ByteSize }
   | IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: ByteSize }
@@ -107,7 +107,7 @@ type IdealEvenSplitArtifactScreen sole_constructor {
   pool_per_rank: ByteSize
   utilization: BasisPoint
   usable_per_rank: ByteSize
-  verdict: IdealEvenSplitVerdict
+  advisory: IdealEvenSplitAdvisory
 }
 
 // ZERO RANKS IS A REFUSAL, NOT A SHARE OF ZERO. A degenerate rank count has no per-rank figure, and
@@ -148,7 +148,7 @@ fn screen_ideal_even_split(weights: ByteSize, payload: ByteSize, ranks: Nat, poo
             pool_per_rank: pool_per_rank,
             utilization: utilization,
             usable_per_rank: usable,
-            verdict: if payload_count > usable_count {
+            advisory: if payload_count > usable_count {
               PayloadSplitExceedsUsable { shortfall_per_rank: byte_size(count: payload_count - usable_count) }
             } else if per_rank_count > usable_count {
               FullArtifactSplitExceedsUsable { shortfall_per_rank: byte_size(count: per_rank_count - usable_count), payload_residual: byte_size(count: usable_count - payload_count) }
@@ -391,17 +391,29 @@ fn static_compatibility_answers(crow: ServingCheckpointRow, rrow: ServingRuntime
 //
 // FOUR STANDINGS AND NO ADMITTING ONE, BECAUSE MISSING EVIDENCE IS NOT IMPOSSIBILITY AND AN UNREAD
 // PLACEMENT IS NOT A FIT. A missing checkpoint or runtime row is MODELING REQUIRED -- the corpus has
-// not described the subject -- which is different again from a refusal. The only structural refusal
-// the screen can produce today is a topology with no ranks; every byte figure is advisory. The first revision folded every non-admission into one `ProjectionRefused`,
-// which made "the ideal split already exceeds the budget" and "the probe's discriminator is absent
-// from the build" the same answer; they are not. And it admitted a tuple whose placement nobody had
-// read. So: a structural refusal when the ideal split already exceeds the budget (real placement can
-// only add); a measured incompatibility when a reading answered no; otherwise calibration required,
-// naming every unread fact -- placement and non-weight memory always among them -- so a reader sees
-// which act supplies which. Each arm carries every answer.
+// not described the subject -- which is different again from a refusal. The first revision folded
+// every non-admission into one `ProjectionRefused`, which made "the ideal split already exceeds the
+// budget" and "the probe's discriminator is absent from the build" the same answer; they are not.
+// And it admitted a tuple whose placement nobody had read. So: a measured incompatibility when a
+// dispositive reading answered no; otherwise calibration required, naming every unread fact --
+// placement and non-weight memory always among them -- so a reader sees which act supplies which.
+//
+// THE STRUCTURAL ARM CARRIES A TYPED CAUSE AND NO SCREEN, BY CONSTRUCTION. A byte screen is advisory,
+// so a screen cannot be the cause of a structural refusal, and the arm has no field that could hold
+// one: the only structural cause today is a topology with no ranks. A real structural producer -- a
+// subject-bound placement receipt whose lower bound exceeds an exact capacity receipt -- would add
+// its cause as a new variant here, never as a string.
+type StructuralRefusalCause = | TopologyHasNoRanks
+
+fn structural_refusal_cause_text(c: StructuralRefusalCause) -> String {
+  match c {
+    TopologyHasNoRanks => "the topology has no ranks, so there is no per-rank figure to screen"
+  }
+}
+
 type StaticFeasibilityStanding
   = FeasibilityModelingRequired { missing: NonEmptyStr }
-  | FeasibilityRefusedStructurally { cause: NonEmptyStr, screen: IdealEvenSplitArtifactScreen?, answers: List<StaticCompatibilityAnswer> }
+  | FeasibilityRefusedStructurally { cause: StructuralRefusalCause }
   | FeasibilityMeasuredIncompatible { cause: NonEmptyStr, screen: IdealEvenSplitArtifactScreen, answers: List<StaticCompatibilityAnswer> }
   | FeasibilityCalibrationRequired { missing: NonEmptyStr, screen: IdealEvenSplitArtifactScreen, answers: List<StaticCompatibilityAnswer> }
 
@@ -414,22 +426,12 @@ type StaticFeasibilityProjection sole_constructor {
 
 data placement_unread_obligation: NonEmptyStr = "runtime placement and non-weight memory are unread: the ideal even splits are advisory figures against a rounded capacity, and residency needs a per-tensor TP/EP placement projection over this checkpoint's component classes (routed experts, shared experts, attention, embeddings and lm_head, dense layers, norms and router gates, scales, the nextn layer) bound to the checkpoint revision and the runtime's loader, an exact byte-capacity receipt for the candidate host class with a candidate-owned utilisation policy, or a model-load memory receipt (extdeps.vllm.memory_profile through gunbc.spark.vllm_memory_receipt) on this runtime and topology; a deployment verdict further needs a qualified rank offer for the topology" as NonEmptyStr
 
-// EVERY SCREEN OUTCOME IS ADVISORY, so the refusal text is always absent; the function stays so the
-// standing fold reads one seam, and a future subject-bound payload receipt is what would fill it.
-fn screen_refusal_text(p: IdealEvenSplitArtifactScreen) -> String? {
-  match p.verdict {
-    IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => none
-    FullArtifactSplitExceedsUsable { shortfall_per_rank: _, payload_residual: _ } => none
-    PayloadSplitExceedsUsable { shortfall_per_rank: _ } => none
-  }
-}
-
 // THE SCREEN FIGURES, WHEN THEY EXCEED THE BUDGET, ARE REPORTED INTO THE CALIBRATION TEXT rather than
 // deciding anything: the full artifact includes shard headers and populations a serving mode may not
 // load; the payload is an unbound caller figure against a rounded capacity. Both are warnings that a
 // placement receipt must be read carefully.
 fn screen_advisory_text(p: IdealEvenSplitArtifactScreen) -> String? {
-  match p.verdict {
+  match p.advisory {
     IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => none
     PayloadSplitExceedsUsable { shortfall_per_rank: s } => Present { value: join([
       "ADVISORY: even the supplied payload's even split (", to_string(byte_size_count(b: p.ideal_payload_per_rank)), " bytes per rank) exceeds the rounded budget by ",
@@ -493,15 +495,12 @@ fn project_static_feasibility(
         Absent => FeasibilityModelingRequired { missing: "no runtime row: the image has no modelled identity to ask about" as NonEmptyStr }
         Present { value: rrow } =>
           match screen_on_gb10(manifest: manifest, payload: payload, topology: topology, utilization: utilization) {
-            Absent => FeasibilityRefusedStructurally { cause: "the topology has no ranks, so there is no per-rank figure to screen" as NonEmptyStr, screen: none, answers: [] }
+            Absent => FeasibilityRefusedStructurally { cause: TopologyHasNoRanks }
             Present { value: screen } => {
               let answers = static_compatibility_answers(crow: crow, rrow: rrow, required_method: required_method)
-              match screen_refusal_text(p: screen) {
-                Present { value: t } => FeasibilityRefusedStructurally { cause: t as NonEmptyStr, screen: Present { value: screen }, answers: answers }
-                Absent => match answers_text_where(answers: answers, f: a => answer_is_dispositive_negative(a: a)) {
-                  Present { value: t } => FeasibilityMeasuredIncompatible { cause: t as NonEmptyStr, screen: screen, answers: answers }
-                  Absent => FeasibilityCalibrationRequired { missing: calibration_text(screen: screen, answers: answers), screen: screen, answers: answers }
-                }
+              match answers_text_where(answers: answers, f: a => answer_is_dispositive_negative(a: a)) {
+                Present { value: t } => FeasibilityMeasuredIncompatible { cause: t as NonEmptyStr, screen: screen, answers: answers }
+                Absent => FeasibilityCalibrationRequired { missing: calibration_text(screen: screen, answers: answers), screen: screen, answers: answers }
               }
             }
           }
@@ -567,7 +566,7 @@ fn glm53_flash_native_live_arm_screen() -> IdealEvenSplitArtifactScreen? {
 fn pre_runtime_artifact_residual(p: IdealEvenSplitArtifactScreen?) -> ByteSize? {
   match p {
     Absent => none
-    Present { value: screen } => match screen.verdict {
+    Present { value: screen } => match screen.advisory {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: r } => Present { value: r }
       FullArtifactSplitExceedsUsable { shortfall_per_rank: _, payload_residual: _ } => none
       PayloadSplitExceedsUsable { shortfall_per_rank: _ } => none
@@ -636,7 +635,7 @@ fn screen_text(p: IdealEvenSplitArtifactScreen) -> String {
     to_string(byte_size_count(b: p.usable_per_rank)), " usable bytes per rank at ",
     to_string(basis_point_count(bp: p.utilization)), " basis points of a ",
     to_string(byte_size_count(b: p.pool_per_rank)), "-byte pool (rounded reading) -- ",
-    match p.verdict {
+    match p.advisory {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: r } => join(["within budget with a pre-runtime artifact residual of ", to_string(byte_size_count(b: r)), " bytes per rank; PLACEMENT UNREAD, not a fit, not KV"], "")
       FullArtifactSplitExceedsUsable { shortfall_per_rank: s, payload_residual: g } => join(["the full-artifact split exceeds the budget by ", to_string(byte_size_count(b: s)), " bytes per rank while the supplied payload leaves ", to_string(byte_size_count(b: g)), "; ADVISORY, placement unread"], "")
       PayloadSplitExceedsUsable { shortfall_per_rank: s } => join(["even the supplied payload's split exceeds the budget by ", to_string(byte_size_count(b: s)), " bytes per rank; ADVISORY, not a refusal"], "")
@@ -658,7 +657,7 @@ fn projection_text(p: StaticFeasibilityProjection) -> String {
   ], "")
   match p.standing {
     FeasibilityModelingRequired { missing: m } => join([head, "MODELING REQUIRED: ", m as String], "")
-    FeasibilityRefusedStructurally { cause: c, screen: sc, answers: _ } => join([head, "REFUSED STRUCTURALLY: ", c as String, ". ", optional_screen_text(p: sc)], "")
+    FeasibilityRefusedStructurally { cause: c } => join([head, "REFUSED STRUCTURALLY: ", structural_refusal_cause_text(c: c)], "")
     FeasibilityMeasuredIncompatible { cause: c, screen: sc, answers: _ } => join([head, "MEASURED INCOMPATIBLE: ", c as String, ". ", screen_text(p: sc)], "")
     FeasibilityCalibrationRequired { missing: m, screen: sc, answers: a } => join([
       head, "CALIBRATION REQUIRED -- ", m as String, ". ", screen_text(p: sc), ". Answers: ",
@@ -697,7 +696,7 @@ fn radixark_nvfp4_gb10_readout() -> String {
 fn standing_is_refusal(p: StaticFeasibilityProjection) -> Bool {
   match p.standing {
     FeasibilityModelingRequired { missing: _ } => true
-    FeasibilityRefusedStructurally { cause: _, screen: _, answers: _ } => true
+    FeasibilityRefusedStructurally { cause: _ } => true
     FeasibilityMeasuredIncompatible { cause: _, screen: _, answers: _ } => true
     FeasibilityCalibrationRequired { missing: _, screen: _, answers: _ } => false
   }
