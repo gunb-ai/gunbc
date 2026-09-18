@@ -67,6 +67,7 @@ type NetworkBootDeliveryStanding
   = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
   | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
   | NetworkBootDeliveryEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
+  | NetworkBootDeliveryArchitectureRefused { architecture: Architecture }
 
 // An authored plan cannot inhabit MeasuredNetworkBootFact. The class travels on
 // the receipt so an unrostered DeclarationRef cannot silently establish.
@@ -291,7 +292,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
         MeasuredNetworkBootFact =>
           match inputs.site {
             SitePxeEdgeUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
-            SitePxeEdgeArchitectureRefused { architecture: _ } => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
+            SitePxeEdgeArchitectureRefused { architecture: a } => NetworkBootDeliveryArchitectureRefused { architecture: a }
             SitePxeEdgeEstablished { receipt: _ } =>
               match inputs.client {
                 ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
