@@ -58,12 +58,19 @@ test fn padding_block_counts_hold() -> Bool {
     Err { value: _ } => false
     Ok { value: one } =>
       list_length(items: one) == 64
-        && get(xs: one, index: 3) == Present { value: 128 }
-        && get(xs: one, index: 63) == Present { value: 24 }
+        && octet_at_is(xs: one, index: 3, expected: 128)
+        && octet_at_is(xs: one, index: 63, expected: 24)
         && match sha256_pad(message: two_block_message()) {
           Err { value: _ } => false
-          Ok { value: two } => list_length(items: two) == 128 && get(xs: two, index: 127) == Present { value: 192 }
+          Ok { value: two } => list_length(items: two) == 128 && octet_at_is(xs: two, index: 127, expected: 192)
         }
+  }
+}
+
+fn octet_at_is(xs: List<UInt8>, index: Int, expected: Int) -> Bool {
+  match get(xs: xs, index: index) {
+    Present { value: v } => v == expected
+    Absent => false
   }
 }
 
