@@ -24,7 +24,7 @@ import gunbc.fleet_known_hosts_anchor {
 import gunbc.spark.fabric_reach {
   ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach, SparkReachPath,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts }
 import gunbc.spark.grant_privileged_operation {
   read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
 }
@@ -34,10 +34,8 @@ import gunbc.auth.materialized_secret {
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SnapshotAcquisitionExecutor, HostCli,
 }
-import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
-  glm_native_concurrent_profile, ArmIntent, ArmBoundedExperiment,
-}
+import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment }
+import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
   plan_arm_launch_for, arm_rail_gid_selection, glm_native_container_name,
@@ -91,7 +89,7 @@ import gunbc.spark.serving_relaunch_transaction {
 // planner, so this module names neither. A host list written here would be a second authority for
 // the membership of Group B, and a container name written here would be a second authority for what
 // the planner creates -- and the relaunch's whole job is to make those two agree.
-data glm_group_b_group: FabricGroup = FabricGroupB
+data glm_group_b_group: FabricGroup = glm_group_b_serving_assignment.group
 
 fn glm_group_b_subjects() -> List<ObservedRankSubject> {
   map(fabric_group_hosts(g: glm_group_b_group), h =>
@@ -382,13 +380,14 @@ type ArmPlanRoster
   | ArmPlanRefused { cause: NonEmptyStr }
 
 fn glm_group_b_rank_plans() -> ArmPlanRoster {
+  let a = glm_group_b_serving_assignment
   match plan_arm_launch_for(
-    checkpoint: Glm53NativeFp8,
-    runtime: GunbcGlm53NopeDerivedGb10,
-    topology: FourSparkTp4,
-    group: glm_group_b_group,
+    checkpoint: a.checkpoint,
+    runtime: a.runtime,
+    topology: a.topology,
+    group: a.group,
     intent: ArmBoundedExperiment,
-    profile: glm_native_concurrent_profile,
+    profile: a.profile,
   ) {
     ArmLaunchRefused { cause: why } => ArmPlanRefused { cause: why }
     ArmLaunchPlanned { lines: ls, master: _ } => ArmPlanned {
