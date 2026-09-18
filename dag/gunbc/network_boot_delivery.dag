@@ -1,9 +1,12 @@
 module gunbc.network_boot_delivery
 
-import std.types { EpochMs, List, String }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
+import extdeps.uri { Uri }
+import extdeps.toolchain.types { Architecture }
 import gunbc.machine_intake_access { BootDeliveryTarget }
+import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
 // namespace ruling). Its four evidence axes have independent producers — client firmware mode,
@@ -61,3 +64,54 @@ data network_boot_requirements_all: List<NetworkBootRequirement> = [
   NetworkBootServingInfrastructure,
   NetworkBootBootArtifacts,
 ]
+
+// DHCP filenames and presigned URLs are routing hints and availability fences.
+// They never become identity or integrity evidence.
+type BootDiscoveryHint
+  = DhcpFilenameHint { filename: NonEmptyStr }
+  | PresignedUrlAvailabilityFence { uri: Uri }
+
+// One canonical signed ticket identity. Issuance and verification of the MAC,
+// window, replay, and digest join live in gunbc.network_boot_manifest_broker;
+// this slice names the identity that issuer must inhabit.
+type SignedBootManifestIdentity {
+  target_unit: UnitKey
+  attempt_id: IntakeAttemptId
+  nonce: NonEmptyStr
+  architecture: Architecture
+  chainloader_digest: ContentHash
+  kernel_digest: ContentHash
+  initrd_digest: ContentHash
+  root_digest: ContentHash
+  kernel_cmdline: NonEmptyStr
+  not_before: EpochMs
+  expiry: EpochMs
+  signing_key_identity: NonEmptyStr
+  callback_identity: NonEmptyStr
+}
+
+type SignedBootManifestStanding
+  = SignedBootManifestIdentified {
+      identity: SignedBootManifestIdentity
+      observation: DeclarationRef
+      observed_at: EpochMs
+    }
+  | SignedBootManifestAbsent
+
+// Two honest trust standings. ControlledNetworkBootstrap is not production trust.
+type BootstrapTrustStanding
+  = ProductionTrustedBootstrap
+  | ControlledNetworkBootstrap
+  | BootstrapTrustUnestablished
+
+fn bootstrap_trust_standing(firmware_https_or_secure_boot: Bool, isolated_onboarding_network: Bool) -> BootstrapTrustStanding {
+  if firmware_https_or_secure_boot {
+    ProductionTrustedBootstrap
+  } else {
+    if isolated_onboarding_network {
+      ControlledNetworkBootstrap
+    } else {
+      BootstrapTrustUnestablished
+    }
+  }
+}

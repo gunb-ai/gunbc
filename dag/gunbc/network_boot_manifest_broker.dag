@@ -1,0 +1,339 @@
+module gunbc.network_boot_manifest_broker
+
+import std.types { Bool, EpochMs, List, NonEmptyStr, String, Secret }
+import std.content_hash { ContentHash, serialize_content_hash }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import extdeps.crypto.mac {
+  MacKey,
+  MacKeyId,
+  MacSuite,
+  HmacSha256,
+  MacVerification,
+  MacVerified,
+  MacSigning,
+  MacSigned,
+  MacKeyMaterialNotHex,
+  mac_sign,
+  mac_verify,
+}
+import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
+import gunbc.secret_provision { SecretRef, fleet_secret_ref }
+import gunbc.network_boot_delivery {
+  SignedBootManifestIdentity,
+  BootDiscoveryHint,
+  BootstrapTrustStanding,
+  ProductionTrustedBootstrap,
+  ControlledNetworkBootstrap,
+  BootstrapTrustUnestablished,
+}
+
+// THE SIGNED BOOT-MANIFEST BROKER. gunbc.network_boot_delivery names the ticket identity;
+// this module issues one MAC over that identity plus firmware class, pins the trust root
+// the bootstrap verifier is configured with, and refuses every substitution the brief
+// names. DHCP filenames and presigned URLs are not in the signing input: they are
+// availability fences, never identity. Host credentials, cloud tokens, and install
+// secrets are not fields of a public origin object; those arrive later through the
+// nonce-bound intake callback named by callback_identity, using gunbc.secret_provision.
+
+data boot_manifest_protocol: NonEmptyStr = "gunbc.signed-boot-manifest.v1" as NonEmptyStr
+
+data signing_field_separator: String = from_code_point(cp: 31)
+
+data boot_manifest_mac_key_secret_ref: SecretRef = fleet_secret_ref(secret_id: "boot-manifest-mac-key")
+
+data boot_manifest_mac_suite: MacSuite = HmacSha256
+
+type BootFirmwareClass
+  = UefiHttpFirmwareClass
+  | UefiPxeFirmwareClass
+  | LegacyBiosPxeFirmwareClass
+
+fn firmware_class_name(c: BootFirmwareClass) -> NonEmptyStr {
+  match c {
+    UefiHttpFirmwareClass => "uefi-http" as NonEmptyStr
+    UefiPxeFirmwareClass => "uefi-pxe" as NonEmptyStr
+    LegacyBiosPxeFirmwareClass => "legacy-bios-pxe" as NonEmptyStr
+  }
+}
+
+type SignedBootManifestClaims {
+  identity: SignedBootManifestIdentity
+  firmware_class: BootFirmwareClass
+}
+
+type SignedBootManifestTicket {
+  claims: SignedBootManifestClaims
+  tag_hex: NonEmptyStr
+}
+
+type BootManifestIssuanceRefusal
+  = ManifestIssuanceKeyIdDisagrees { claimed: NonEmptyStr, signing_key: MacKeyId }
+  | ManifestIssuanceKeyMaterialNotHex { key_id: MacKeyId }
+  | ManifestIssuanceWindowInverted { not_before: EpochMs, expiry: EpochMs }
+  | ManifestIssuanceTrustUnestablished
+
+type BootManifestIssuance
+  = BootManifestIssued { ticket: SignedBootManifestTicket }
+  | BootManifestIssuanceRefused { cause: BootManifestIssuanceRefusal }
+
+type ExpectedBootArtifactDigests {
+  chainloader: ContentHash
+  kernel: ContentHash
+  initrd: ContentHash
+  root: ContentHash
+}
+
+type SpentAttemptNonce {
+  attempt_id: IntakeAttemptId
+  nonce: NonEmptyStr
+}
+
+type BootstrapTrustRoot {
+  signing_key_id: MacKeyId
+  standing: BootstrapTrustStanding
+}
+
+type BootManifestExpectation {
+  target_unit: UnitKey
+  architecture: Architecture
+  firmware_class: BootFirmwareClass
+  artifacts: ExpectedBootArtifactDigests
+  trust: BootstrapTrustRoot
+  observed_at: EpochMs
+  spent_attempt_nonces: List<SpentAttemptNonce>
+}
+
+type BootManifestRefusal
+  = ManifestMacRefused { verification: MacVerification }
+  | ManifestEvidenceForAnotherMessage { verified_message: NonEmptyStr, presented_message: NonEmptyStr }
+  | ManifestWrongTarget { claimed: UnitKey, expected: UnitKey }
+  | ManifestWrongArchitecture { claimed: Architecture, expected: Architecture }
+  | ManifestWrongFirmwareClass { claimed: BootFirmwareClass, expected: BootFirmwareClass }
+  | ManifestExpired { expiry: EpochMs, observed_at: EpochMs }
+  | ManifestNotYetValid { not_before: EpochMs, observed_at: EpochMs }
+  | ManifestAttemptReplayed { attempt_id: IntakeAttemptId, nonce: NonEmptyStr }
+  | ManifestDigestDisagrees { field: NonEmptyStr }
+  | ManifestSigningKeyDisagrees { claimed: NonEmptyStr, pinned: MacKeyId }
+  | ManifestTrustUnestablished
+  | ManifestCallbackIdentityEmpty
+
+type BootManifestVerification
+  = BootManifestAuthentic { claims: SignedBootManifestClaims }
+  | BootManifestRefused { cause: BootManifestRefusal }
+
+type PublicBootOriginObject {
+  digest: ContentHash
+  availability_fence: BootDiscoveryHint
+}
+
+type PublicOriginAdmission
+  = PublicOriginAdmitted { object: PublicBootOriginObject }
+  | PublicOriginRefusedSecretMaterial
+
+fn epoch_ms_text(t: EpochMs) -> String {
+  to_string(t)
+}
+
+fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr {
+  let id = c.identity
+  join(
+    [
+      boot_manifest_protocol as String,
+      id.target_unit as String,
+      id.attempt_id as String,
+      id.nonce as String,
+      architecture_diagnostic_name(arch: id.architecture) as String,
+      firmware_class_name(c: c.firmware_class) as String,
+      serialize_content_hash(hash: id.chainloader_digest) as String,
+      serialize_content_hash(hash: id.kernel_digest) as String,
+      serialize_content_hash(hash: id.initrd_digest) as String,
+      serialize_content_hash(hash: id.root_digest) as String,
+      id.kernel_cmdline as String,
+      epoch_ms_text(t: id.not_before),
+      epoch_ms_text(t: id.expiry),
+      id.signing_key_identity as String,
+      id.callback_identity as String,
+    ],
+    signing_field_separator,
+  ) as NonEmptyStr
+}
+
+fn issue_signed_boot_manifest(
+  claims: SignedBootManifestClaims,
+  key: MacKey,
+  trust: BootstrapTrustStanding,
+) -> BootManifestIssuance {
+  match trust {
+    BootstrapTrustUnestablished => BootManifestIssuanceRefused { cause: ManifestIssuanceTrustUnestablished }
+    ProductionTrustedBootstrap => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
+    ControlledNetworkBootstrap => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
+  }
+}
+
+fn issue_signed_boot_manifest_under_trust(claims: SignedBootManifestClaims, key: MacKey) -> BootManifestIssuance {
+  if claims.identity.signing_key_identity != key.id as NonEmptyStr {
+    BootManifestIssuanceRefused {
+      cause: ManifestIssuanceKeyIdDisagrees {
+        claimed: claims.identity.signing_key_identity,
+        signing_key: key.id,
+      },
+    }
+  } else if claims.identity.expiry <= claims.identity.not_before {
+    BootManifestIssuanceRefused {
+      cause: ManifestIssuanceWindowInverted {
+        not_before: claims.identity.not_before,
+        expiry: claims.identity.expiry,
+      },
+    }
+  } else {
+    match mac_sign(key: key, message: signed_boot_manifest_signing_input(c: claims)) {
+      MacKeyMaterialNotHex { key_id: k } =>
+        BootManifestIssuanceRefused { cause: ManifestIssuanceKeyMaterialNotHex { key_id: k } }
+      MacSigned { tag: t } =>
+        BootManifestIssued {
+          ticket: SignedBootManifestTicket { claims: claims, tag_hex: t.hex },
+        }
+    }
+  }
+}
+
+fn attempt_nonce_spent(spent: List<SpentAttemptNonce>, attempt_id: IntakeAttemptId, nonce: NonEmptyStr) -> Bool {
+  spent |> any(row => row.attempt_id == attempt_id && row.nonce == nonce)
+}
+
+fn digest_field_disagrees(left: ContentHash, right: ContentHash, field: NonEmptyStr) -> NonEmptyStr? {
+  if content_hash_equal(left: left, right: right) {
+    none
+  } else {
+    Present { value: field }
+  }
+}
+
+fn verify_signed_boot_manifest(
+  ticket: SignedBootManifestTicket,
+  expectation: BootManifestExpectation,
+  mac_result: MacVerification,
+) -> BootManifestVerification {
+  match expectation.trust.standing {
+    BootstrapTrustUnestablished => BootManifestRefused { cause: ManifestTrustUnestablished }
+    ProductionTrustedBootstrap => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
+    ControlledNetworkBootstrap => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
+  }
+}
+
+fn verify_signed_boot_manifest_under_trust(
+  ticket: SignedBootManifestTicket,
+  expectation: BootManifestExpectation,
+  mac_result: MacVerification,
+) -> BootManifestVerification {
+  let presented = signed_boot_manifest_signing_input(c: ticket.claims)
+  match mac_result {
+    MacVerified { verified: v } =>
+      if v.message != presented {
+        BootManifestRefused {
+          cause: ManifestEvidenceForAnotherMessage {
+            verified_message: v.message,
+            presented_message: presented,
+          },
+        }
+      } else {
+        verify_authenticated_boot_manifest(claims: ticket.claims, expectation: expectation)
+      }
+    _ => BootManifestRefused { cause: ManifestMacRefused { verification: mac_result } }
+  }
+}
+
+fn verify_authenticated_boot_manifest(
+  claims: SignedBootManifestClaims,
+  expectation: BootManifestExpectation,
+) -> BootManifestVerification {
+  let id = claims.identity
+  if id.signing_key_identity != expectation.trust.signing_key_id as NonEmptyStr {
+    BootManifestRefused {
+      cause: ManifestSigningKeyDisagrees {
+        claimed: id.signing_key_identity,
+        pinned: expectation.trust.signing_key_id,
+      },
+    }
+  } else if id.target_unit != expectation.target_unit {
+    BootManifestRefused { cause: ManifestWrongTarget { claimed: id.target_unit, expected: expectation.target_unit } }
+  } else if id.architecture != expectation.architecture {
+    BootManifestRefused { cause: ManifestWrongArchitecture { claimed: id.architecture, expected: expectation.architecture } }
+  } else if firmware_class_name(c: claims.firmware_class) != firmware_class_name(c: expectation.firmware_class) {
+    BootManifestRefused { cause: ManifestWrongFirmwareClass { claimed: claims.firmware_class, expected: expectation.firmware_class } }
+  } else if expectation.observed_at < id.not_before {
+    BootManifestRefused { cause: ManifestNotYetValid { not_before: id.not_before, observed_at: expectation.observed_at } }
+  } else if expectation.observed_at >= id.expiry {
+    BootManifestRefused { cause: ManifestExpired { expiry: id.expiry, observed_at: expectation.observed_at } }
+  } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: id.attempt_id, nonce: id.nonce) {
+    BootManifestRefused { cause: ManifestAttemptReplayed { attempt_id: id.attempt_id, nonce: id.nonce } }
+  } else {
+    match digest_field_disagrees(left: id.chainloader_digest, right: expectation.artifacts.chainloader, field: "chainloader" as NonEmptyStr) {
+      Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
+      Absent =>
+        match digest_field_disagrees(left: id.kernel_digest, right: expectation.artifacts.kernel, field: "kernel" as NonEmptyStr) {
+          Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
+          Absent =>
+            match digest_field_disagrees(left: id.initrd_digest, right: expectation.artifacts.initrd, field: "initrd" as NonEmptyStr) {
+              Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
+              Absent =>
+                match digest_field_disagrees(left: id.root_digest, right: expectation.artifacts.root, field: "root" as NonEmptyStr) {
+                  Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
+                  Absent =>
+                    if id.callback_identity as String == "" {
+                      BootManifestRefused { cause: ManifestCallbackIdentityEmpty }
+                    } else {
+                      BootManifestAuthentic { claims: claims }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn redeem_signed_boot_manifest(ticket: SignedBootManifestTicket, key: MacKey, expectation: BootManifestExpectation) -> BootManifestVerification {
+  verify_signed_boot_manifest(
+    ticket: ticket,
+    expectation: expectation,
+    mac_result: mac_verify(key: key, message: signed_boot_manifest_signing_input(c: ticket.claims), tag_hex: ticket.tag_hex),
+  )
+}
+
+fn admit_public_boot_origin_object(
+  digest: ContentHash,
+  availability_fence: BootDiscoveryHint,
+  host_credential: Secret?,
+  cloud_token: Secret?,
+  install_secret: Secret?,
+) -> PublicOriginAdmission {
+  match host_credential {
+    Present { value: _ } => PublicOriginRefusedSecretMaterial
+    Absent =>
+      match cloud_token {
+        Present { value: _ } => PublicOriginRefusedSecretMaterial
+        Absent =>
+          match install_secret {
+            Present { value: _ } => PublicOriginRefusedSecretMaterial
+            Absent => PublicOriginAdmitted {
+              object: PublicBootOriginObject { digest: digest, availability_fence: availability_fence },
+            }
+          }
+      }
+  }
+}
+
+fn discovery_hint_is_not_identity(hint: BootDiscoveryHint, unit: UnitKey) -> Bool {
+  match hint {
+    DhcpFilenameHint { filename: f } => f as String != unit as String
+    PresignedUrlAvailabilityFence { uri: u } => u.locator != unit as String
+  }
+}
+
+fn controlled_network_is_not_production_trust(standing: BootstrapTrustStanding) -> Bool {
+  match standing {
+    ControlledNetworkBootstrap => true
+    ProductionTrustedBootstrap => false
+    BootstrapTrustUnestablished => false
+  }
+}
