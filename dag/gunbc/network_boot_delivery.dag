@@ -87,13 +87,8 @@ type NetworkBootDeliveryStanding
 type NetworkBootManifestVerificationClass
   = ManifestVerificationMac
   | ManifestVerificationWrongMessage
-  | ManifestVerificationWrongTarget
   | ManifestVerificationWrongArchitecture
-  | ManifestVerificationWrongFirmwareClass
-  | ManifestVerificationExpired
-  | ManifestVerificationNotYetValid
   | ManifestVerificationReplay
-  | ManifestVerificationDigest
   | ManifestVerificationSigningKey
   | ManifestVerificationVerifiedKey
   | ManifestVerificationSuite
