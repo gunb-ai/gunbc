@@ -166,7 +166,8 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import std.algebra { Empty }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
@@ -1297,7 +1298,7 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
     right: dag_grammar_choice(
       left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
       right: dag_grammar_choice(
-        left: dag_grammar_terminal_lexeme(token_class: ^dag_token_float_literal),
+        left: dag_grammar_terminal(token_class: ^dag_token_float_literal),
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
@@ -1452,7 +1453,7 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
           right: dag_grammar_choice(
-            left: dag_grammar_terminal_lexeme(token_class: ^dag_token_float_literal),
+            left: dag_grammar_terminal(token_class: ^dag_token_float_literal),
             right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
           )
         )
@@ -3169,7 +3170,12 @@ fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurre
   }
 }
 
-data dag_float_literal_magnitude_home_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: dag_float_literal_node_from_lexeme interned-lexeme child. NEXT-RUNG TRIGGER: a float-magnitude home (the analogue of DecimalMagnitude / dag_int_literal_node_from_magnitude) that parse, resolve, eval-literal shape, and body_lower consume; retire the lexeme field then. Not IEEE decode as a second authority beside that home.")
+data dag_float_literal_magnitude_home_dissolve_on: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "v2.extdeps.languages.dag",
+    decl_name: "dag_float_literal_node_from_lexeme"
+  )
+)
 
 fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge {

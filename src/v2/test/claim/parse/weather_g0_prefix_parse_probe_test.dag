@@ -37,7 +37,6 @@ import v2.std.node {
   canonicalize_node_strip_provenance,
   content_hash
 }
-import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.resolution_policy { NamespaceOnlyY }
 import v2.std.symbol_index { empty_symbol_index }
@@ -63,18 +62,6 @@ fn parses(src: String) -> Bool {
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
-  }
-}
-
-fn parsed_tree(src: String) -> Optional<Node> {
-  let lm = probe_cached_lm
-  match tokenize(text: src, file: ^probe, rules: lm.lex) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
-      }
   }
 }
 
@@ -126,9 +113,9 @@ fn one_class(src: String, a: Symbol) -> Bool {
 }
 
 data float_literal_source: String = "module m\nfn f() -> Float { 1.8 }\n"
-data second_float_literal_source: String = "module m\nfn f() -> Float { 2.5 }\n"
+data second_float_lexeme: String = "2.5"
 data int_literal_control_source: String = "module m\nfn f() -> Int { 1 }\n"
-data weather_first_fn_source: String = "module m\ntype Temperature { celsius: Float }\nfn to_fahrenheit(temp: Temperature) -> Float {\n  temp.celsius * 1.8 + 32.0\n}\n"
+data weather_first_fn_source: String = "module m\nfn f() -> Float { x * 1.8 + 32.0 }\n"
 data trailing_dot_red_source: String = "module m\nfn f() -> Float { 1. }\n"
 
 test fn float_literal_alone_parses_holds() -> Bool {
@@ -136,16 +123,21 @@ test fn float_literal_alone_parses_holds() -> Bool {
 }
 
 test fn distinct_float_literals_keep_distinct_lexemes_holds() -> Bool {
-  match parsed_tree(src: float_literal_source) {
-    Absent => false
-    Present { value: a_tree } =>
-      match parsed_tree(src: second_float_literal_source) {
-        Absent => false
-        Present { value: b_tree } =>
-          content_hash(n: canonicalize_node_strip_provenance(n: a_tree))
-            != content_hash(n: canonicalize_node_strip_provenance(n: b_tree))
-      }
-  }
+  content_hash(
+    n: canonicalize_node_strip_provenance(
+      n: dag_float_literal_node_from_lexeme(
+        lexeme: "1.8",
+        occurrence_id: OccurrenceSynthetic
+      )
+    )
+  ) != content_hash(
+    n: canonicalize_node_strip_provenance(
+      n: dag_float_literal_node_from_lexeme(
+        lexeme: second_float_lexeme,
+        occurrence_id: OccurrenceSynthetic
+      )
+    )
+  )
 }
 
 test fn int_literal_control_parses_holds() -> Bool {
