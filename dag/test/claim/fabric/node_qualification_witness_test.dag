@@ -3,7 +3,7 @@ module test.claim.fabric.node_qualification_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count, nanosecond_count, byte_size_count }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import extdeps.ethernet.link_mode {
   ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_50gbase_cr2, link_mode_eq, link_mode_aggregate,
@@ -28,6 +28,7 @@ import product.fabric.node_qualification {
   LinkModeRead, LinkModeUnread, PcieLinkRead, PcieLinkUnread,
   GpuDirectReceiptPresent, GpuDirectReceiptUnread, GpuDirectCapabilityReading,
   GpuDirectDeviceUnsupported, GpuDirectDevicePrerequisiteMet, GpuDirectUnread,
+  GpuDirectReceiptNamesAnotherHost,
   qualify_gpu_direct,
   CollectiveCurveRead, CollectiveCurveUnread,
   EthtoolLinkModes, LspciLnkSta, NcclTestsAllReducePerf, NcclTestsAllToAllPerf,
@@ -86,17 +87,18 @@ fn symmetry_because(s: RankSymmetryStanding, want: NonEmptyStr) -> Bool {
 }
 
 data fx_node: HostIdentity = "fixture-node" as HostIdentity
+data fx_node_b: HostIdentity = "fixture-node-b" as HostIdentity
 
 fn fx_gdr_unread() -> GpuDirectCapabilityReading {
   GpuDirectReceiptUnread { because: "cudaDeviceGetAttribute GPUDirect probe not run" as NonEmptyStr }
 }
 
-fn fx_gdr_unsupported_reading() -> GpuDirectCapabilityReading {
+fn fx_gdr_unsupported_reading(host: HostIdentity) -> GpuDirectCapabilityReading {
   match container_incarnation_id(id: "0f3a9c1d2e4b") {
     Absent => fx_gdr_unread()
     Present { value: cid } => GpuDirectReceiptPresent {
       receipt: RankGpuDirectCapabilityReceipt {
-        from: ObservedRankIncarnation { host: fx_node, container: cid, node_rank: 0 },
+        from: ObservedRankIncarnation { host: host, container: cid, node_rank: 0 },
         device_ordinal: 0,
         device_api: ProbeReplied { stdout: "116 0 0 0 0" },
         dma_buf: ProbeReplied { stdout: "124 0 0 0 0" },
@@ -107,6 +109,16 @@ fn fx_gdr_unsupported_reading() -> GpuDirectCapabilityReading {
 
 fn fx_pcie16() -> PcieLink { PcieLink { generation: Gen5, lane_count: 16 } }
 fn fx_pcie4() -> PcieLink { PcieLink { generation: Gen5, lane_count: 4 } }
+
+fn fx_agreeing_host_measured(host: HostIdentity) -> HostMeasuredDelivery {
+  HostMeasuredDelivery {
+    accelerator_count: CountRead { count: 4 },
+    usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
+    rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
+    nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
+    gpu_direct: fx_gdr_unsupported_reading(host: host),
+  }
+}
 
 fn fx_all_reduce_protocol() -> CollectiveProtocol {
   CollectiveProtocol {
@@ -254,13 +266,7 @@ fn fx_ib_fallback_unread() -> HostRegisteredIbFallbackStanding {
 
 fn fx_measured_all_agree() -> MeasuredNodeDelivery {
   MeasuredNodeDelivery {
-    host: HostMeasuredDelivery {
-      accelerator_count: CountRead { count: 4 },
-      usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
-      rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
-      nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
-      gpu_direct: fx_gdr_unsupported_reading(),
-    },
+    host: fx_agreeing_host_measured(host: fx_node),
     group: CollectiveGroupMeasured {
       collective: fx_curve(samples: [fx_sample()]),
       all_to_all: fx_all_to_all_curve(samples: [fx_sample()]),
@@ -306,26 +312,26 @@ fn fx_pair_hosts() -> List<HostQualificationAdmission> {
       receipt: qualify_host(
         node: "rank-0" as HostIdentity,
         advertised: fx_advertised().host,
-        measured: fx_measured_all_agree().host,
+        measured: fx_agreeing_host_measured(host: "rank-0" as HostIdentity),
       ),
     ),
     admit_qualified_host(
       receipt: qualify_host(
         node: "rank-1" as HostIdentity,
         advertised: fx_advertised().host,
-        measured: fx_measured_all_agree().host,
+        measured: fx_agreeing_host_measured(host: "rank-1" as HostIdentity),
       ),
     ),
   ]
 }
 
-fn fx_unqualified_host_measured() -> HostMeasuredDelivery {
+fn fx_unqualified_host_measured(host: HostIdentity) -> HostMeasuredDelivery {
   HostMeasuredDelivery {
     accelerator_count: CountRead { count: 4 },
     usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
     rail_link_mode: LinkModeRead { mode: ieee_50gbase_cr2, instrument: EthtoolLinkModes },
     nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
-    gpu_direct: fx_gdr_unsupported_reading(),
+    gpu_direct: fx_gdr_unsupported_reading(host: host),
   }
 }
 
@@ -335,14 +341,14 @@ fn fx_pair_unqualified_hosts() -> List<HostQualificationAdmission> {
       receipt: qualify_host(
         node: "rank-0" as HostIdentity,
         advertised: fx_advertised().host,
-        measured: fx_unqualified_host_measured(),
+        measured: fx_unqualified_host_measured(host: "rank-0" as HostIdentity),
       ),
     ),
     admit_qualified_host(
       receipt: qualify_host(
         node: "rank-1" as HostIdentity,
         advertised: fx_advertised().host,
-        measured: fx_unqualified_host_measured(),
+        measured: fx_unqualified_host_measured(host: "rank-1" as HostIdentity),
       ),
     ),
   ]
@@ -387,7 +393,7 @@ fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDel
       usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
       rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
       nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
-      gpu_direct: fx_gdr_unsupported_reading(),
+      gpu_direct: fx_gdr_unsupported_reading(host: fx_node),
     },
     group: CollectiveGroupMeasured {
       collective: fx_curve(samples: [fx_sample()]),
@@ -671,7 +677,7 @@ test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
         receipt: qualify_host(
           node: "rank-0" as HostIdentity,
           advertised: fx_advertised().host,
-          measured: fx_measured_all_agree().host,
+          measured: fx_agreeing_host_measured(host: "rank-0" as HostIdentity),
         ),
       ),
     ],
@@ -710,14 +716,14 @@ test fn failing_host_receipts_wrapped_as_host_qualified_do_not_complete_the_rost
         receipt: qualify_host(
           node: "rank-0" as HostIdentity,
           advertised: fx_advertised().host,
-          measured: fx_unqualified_host_measured(),
+          measured: fx_unqualified_host_measured(host: "rank-0" as HostIdentity),
         ),
       },
       HostQualified {
         receipt: qualify_host(
           node: "rank-1" as HostIdentity,
           advertised: fx_advertised().host,
-          measured: fx_unqualified_host_measured(),
+          measured: fx_unqualified_host_measured(host: "rank-1" as HostIdentity),
         ),
       },
     ],
@@ -1007,7 +1013,11 @@ test fn group_a_samples_relabeled_as_group_b_do_not_agree() -> Bool {
 }
 
 test fn a_gb10_zero_capability_receipt_is_device_unsupported() -> Bool {
-  match qualify_gpu_direct(platform: spark_gb10_platform, reading: fx_gdr_unsupported_reading()) {
+  match qualify_gpu_direct(
+    node: fx_node,
+    platform: spark_gb10_platform,
+    reading: fx_gdr_unsupported_reading(host: fx_node),
+  ) {
     GpuDirectDeviceUnsupported { capability: c } => match c {
       GpuDirectRdmaDeviceUnsupported { platform: p, dma_buf: _, capability_receipt: _ } =>
         (p as String) == (spark_gb10_platform as String)
@@ -1015,6 +1025,7 @@ test fn a_gb10_zero_capability_receipt_is_device_unsupported() -> Bool {
       GpuDirectRdmaCapabilityUnread { cause: _ } => false
     }
     GpuDirectDevicePrerequisiteMet { capability: _ } => false
+    GpuDirectReceiptNamesAnotherHost { expected: _, observed: _, receipt: _ } => false
     GpuDirectUnread { because: _ } => false
   }
 }
@@ -1039,6 +1050,66 @@ test fn an_unread_gpu_direct_receipt_is_not_host_qualification() -> Bool {
           GpuDirectUnread { because: _ } => true
           GpuDirectDeviceUnsupported { capability: _ } => false
           GpuDirectDevicePrerequisiteMet { capability: _ } => false
+          GpuDirectReceiptNamesAnotherHost { expected: _, observed: _, receipt: _ } => false
         }
+  }
+}
+
+test fn a_gdr_receipt_from_another_host_does_not_qualify() -> Bool {
+  match admit_qualified_host(
+    receipt: qualify_host(
+      node: fx_node_b,
+      advertised: fx_advertised().host,
+      measured: fx_agreeing_host_measured(host: fx_node),
+    ),
+  ) {
+    HostQualified { receipt: _ } => false
+    HostNotQualified { receipt: r, refusals: refusals } =>
+      refusals.length() > 0
+        && match r.gpu_direct {
+          GpuDirectReceiptNamesAnotherHost { expected: e, observed: o, receipt: rec } =>
+            host_identity_eq(a: e, b: fx_node_b)
+              && host_identity_eq(a: o, b: fx_node)
+              && host_identity_eq(a: rec.from.host, b: fx_node)
+          GpuDirectUnread { because: _ } => false
+          GpuDirectDeviceUnsupported { capability: _ } => false
+          GpuDirectDevicePrerequisiteMet { capability: _ } => false
+        }
+  }
+}
+
+test fn a_gdr_receipt_from_another_host_wrapped_as_host_qualified_does_not_complete_the_roster() -> Bool {
+  let mismatched = qualify_host(
+    node: "rank-0" as HostIdentity,
+    advertised: fx_advertised().host,
+    measured: fx_agreeing_host_measured(host: fx_node),
+  )
+  match fx_admit_group_for(
+    advertised: fx_advertised(),
+    m: fx_measured_all_agree(),
+    hosts: [
+      HostQualified { receipt: mismatched },
+      HostQualified {
+        receipt: qualify_host(
+          node: "rank-1" as HostIdentity,
+          advertised: fx_advertised().host,
+          measured: fx_agreeing_host_measured(host: "rank-1" as HostIdentity),
+        ),
+      },
+    ],
+  ) {
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: _ } => match r.host_roster {
+      GroupMemberNotQualified { host: h, receipt: rec } =>
+        host_identity_eq(a: h, b: "rank-0" as HostIdentity)
+          && match rec.gpu_direct {
+            GpuDirectReceiptNamesAnotherHost { expected: _, observed: _, receipt: _ } => true
+            GpuDirectUnread { because: _ } => false
+            GpuDirectDeviceUnsupported { capability: _ } => false
+            GpuDirectDevicePrerequisiteMet { capability: _ } => false
+          }
+      GroupHostRosterUnread { because: _ } => false
+      GroupHostRosterComplete { rank_count: _ } => false
+    }
   }
 }
