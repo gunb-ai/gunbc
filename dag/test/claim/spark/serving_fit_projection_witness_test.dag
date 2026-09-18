@@ -17,7 +17,7 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_fit_projection {
   IdealEvenSplitArtifactScreen, IdealEvenSplitVerdict, IdealSplitWithinBudgetPlacementUnread,
-  FullArtifactSplitExceedsUsable, GuaranteedPayloadSplitExceedsUsable,
+  FullArtifactSplitExceedsUsable, PayloadSplitExceedsUsable,
   screen_ideal_even_split, radixark_nvfp4_screen, glm53_flash_native_live_arm_screen, pre_runtime_artifact_residual,
   StaticFeasibilityProjection, StaticFeasibilityStanding,
   FeasibilityModelingRequired, FeasibilityRefusedStructurally, FeasibilityMeasuredIncompatible, FeasibilityCalibrationRequired,
@@ -104,7 +104,7 @@ test fn w_the_moe_layer_count_is_derived_from_layers_and_dense_prefix() -> Bool 
 // ten at 8400 basis points is eight usable, not nine. Supplied values, because the claim is about
 // the fold's arithmetic and not about any manifest.
 test fn w_ideal_split_rounds_up_and_usable_rounds_down() -> Bool {
-  match screen_ideal_even_split(weights: byte_size(count: 10), guaranteed_payload: byte_size(count: 10), ranks: 3, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
+  match screen_ideal_even_split(weights: byte_size(count: 10), payload: byte_size(count: 10), ranks: 3, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
     Absent => false
     Present { value: p } => byte_size_count(b: p.ideal_weights_per_rank) == 4 && byte_size_count(b: p.usable_per_rank) == 8
   }
@@ -112,14 +112,14 @@ test fn w_ideal_split_rounds_up_and_usable_rounds_down() -> Bool {
 
 // ZERO RANKS REFUSES RATHER THAN SCREENING ON A SHARE OF ZERO: the RED for a fabricated-zero arm.
 test fn w_zero_ranks_has_no_screen() -> Bool {
-  match screen_ideal_even_split(weights: byte_size(count: 10), guaranteed_payload: byte_size(count: 10), ranks: 0, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
+  match screen_ideal_even_split(weights: byte_size(count: 10), payload: byte_size(count: 10), ranks: 0, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-fn verdict_of(weights: Nat, guaranteed: Nat) -> IdealEvenSplitVerdict? {
-  match screen_ideal_even_split(weights: byte_size(count: weights), guaranteed_payload: byte_size(count: guaranteed), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000)) {
+fn verdict_of(weights: Nat, payload: Nat) -> IdealEvenSplitVerdict? {
+  match screen_ideal_even_split(weights: byte_size(count: weights), payload: byte_size(count: payload), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000)) {
     Absent => none
     Present { value: p } => Present { value: p.verdict }
   }
@@ -127,34 +127,33 @@ fn verdict_of(weights: Nat, guaranteed: Nat) -> IdealEvenSplitVerdict? {
 
 // A SPLIT EXACTLY AT THE BUDGET IS WITHIN IT WITH A ZERO RESIDUAL -- AND STILL NOT A FIT.
 test fn w_split_equal_to_usable_is_within_budget_with_zero_residual() -> Bool {
-  match verdict_of(weights: 800, guaranteed: 800) {
+  match verdict_of(weights: 800, payload: 800) {
     Absent => false
     Present { value: v } => match v {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: r } => byte_size_count(b: r) == 0
-      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, guaranteed_payload_residual: _ } => false
-      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, payload_residual: _ } => false
+      PayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
     }
   }
 }
 
-// ONE BYTE OVER ON THE FULL ARTIFACT WITH THE GUARANTEED PAYLOAD INSIDE IS NON-DISPOSITIVE; ONE BYTE
-// OVER ON THE GUARANTEED PAYLOAD IS STRUCTURAL. The two arms are the RED for promoting the
-// full-artifact figure into a refusal.
-test fn w_full_artifact_over_by_one_is_advisory_and_guaranteed_over_by_one_is_structural() -> Bool {
-  let advisory = match verdict_of(weights: 801, guaranteed: 700) {
+// ONE BYTE OVER ON THE FULL ARTIFACT WITH THE PAYLOAD INSIDE, AND ONE BYTE OVER ON THE PAYLOAD, ARE
+// TWO DISTINCT ADVISORY OUTCOMES -- and neither is a refusal (see the standing witnesses below).
+test fn w_full_artifact_over_by_one_and_payload_over_by_one_are_distinct_advisories() -> Bool {
+  let advisory = match verdict_of(weights: 801, payload: 700) {
     Absent => false
     Present { value: v } => match v {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => false
-      FullArtifactSplitExceedsUsable { shortfall_per_rank: s, guaranteed_payload_residual: g } => byte_size_count(b: s) == 1 && byte_size_count(b: g) == 100
-      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: s, payload_residual: g } => byte_size_count(b: s) == 1 && byte_size_count(b: g) == 100
+      PayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
     }
   }
-  let structural = match verdict_of(weights: 900, guaranteed: 801) {
+  let structural = match verdict_of(weights: 900, payload: 801) {
     Absent => false
     Present { value: v } => match v {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => false
-      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, guaranteed_payload_residual: _ } => false
-      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: s } => byte_size_count(b: s) == 1
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, payload_residual: _ } => false
+      PayloadSplitExceedsUsable { shortfall_per_rank: s } => byte_size_count(b: s) == 1
     }
   }
   advisory && structural
@@ -163,17 +162,17 @@ test fn w_full_artifact_over_by_one_is_advisory_and_guaranteed_over_by_one_is_st
 // ── THE SCREEN THROUGH THE REAL MANIFEST AND THE LIVE ARM'S UTILISATION ───────────────────────
 //
 // WHAT THESE ESTABLISH AND WHAT THEY DO NOT. At tp4 the FULL-artifact split exceeds the budget while
-// the guaranteed payload (the derived routed experts, ~101.9 GB per rank) is inside it, so tp4 is NOT
+// the supplied payload (the derived routed experts, ~101.9 GB per rank) is inside it, so tp4 is NOT
 // structurally refused: the figure that exceeds includes headers and the optional nextn population.
 // tp8 is within the budget on both figures with placement unread, which is not a fit claim: no
 // witness here asserts residency, a KV figure, or a comparison with the serving arm's headroom.
-test fn w_tp4_full_artifact_exceeds_but_guaranteed_payload_is_within() -> Bool {
+test fn w_tp4_full_artifact_exceeds_but_payload_is_within() -> Bool {
   match radixark_nvfp4_screen(topology: FourSparkTp4) {
     Absent => false
     Present { value: p } => match p.verdict {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => false
-      FullArtifactSplitExceedsUsable { shortfall_per_rank: s, guaranteed_payload_residual: g } => byte_size_count(b: s) > 0 && byte_size_count(b: g) > 0
-      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: s, payload_residual: g } => byte_size_count(b: s) > 0 && byte_size_count(b: g) > 0
+      PayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
     }
   }
 }
@@ -183,8 +182,8 @@ test fn w_tp8_ideal_split_is_within_budget_with_placement_unread() -> Bool {
     Absent => false
     Present { value: p } => match p.verdict {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: r } => byte_size_count(b: r) > 0
-      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, guaranteed_payload_residual: _ } => false
-      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, payload_residual: _ } => false
+      PayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
     }
   }
 }
@@ -227,15 +226,15 @@ test fn w_the_serving_runtime_registers_the_architecture() -> Bool {
 }
 
 // TP4 IS CALIBRATION REQUIRED, NOT REFUSED: the full-artifact overrun is reported as non-dispositive
-// in the standing, because the guaranteed payload is inside the budget.
+// in the standing; nothing in the screen can refuse.
 test fn w_tp4_is_calibration_required_with_the_full_artifact_overrun_reported() -> Bool {
   match radixark_nvfp4_tp4().standing {
     FeasibilityModelingRequired { missing: _ } => false
     FeasibilityRefusedStructurally { cause: _, screen: _, answers: _ } => false
     FeasibilityMeasuredIncompatible { cause: _, screen: _, answers: _ } => false
     FeasibilityCalibrationRequired { missing: m, screen: _, answers: _ } =>
-      string_contains(s: m as String, pattern: "FULL-artifact even split")
-        && string_contains(s: m as String, pattern: "non-dispositive")
+      string_contains(s: m as String, pattern: "ADVISORY: the full-artifact even split")
+        && string_contains(s: m as String, pattern: "which optional populations this serving mode loads decides it")
   }
 }
 
@@ -261,6 +260,27 @@ test fn w_tp8_is_calibration_required_naming_the_moe_path_and_placement() -> Boo
   }
 }
 
+// EVEN A PAYLOAD OVERRUN IS ADVISORY: a supplied payload larger than the budget leaves the standing at
+// calibration required with the overrun reported, never at a structural refusal. The RED for a
+// caller-supplied figure minting a wall.
+test fn w_a_payload_overrun_is_calibration_required_not_structural() -> Bool {
+  let p = project_static_feasibility(
+    checkpoint: Glm53RadixArkNvfp4Modelopt,
+    runtime: GunbcGlm53DerivedGb10,
+    topology: EightSparkTp8,
+    manifest: glm_5_3_nvfp4_manifest,
+    payload: glm_5_3_nvfp4_manifest.repository_total_bytes,
+    utilization: basis_point(count: 100),
+    required_method: glm_5_3_nvfp4_quantization.quant_method,
+  )
+  match p.standing {
+    FeasibilityModelingRequired { missing: _ } => false
+    FeasibilityRefusedStructurally { cause: _, screen: _, answers: _ } => false
+    FeasibilityMeasuredIncompatible { cause: _, screen: _, answers: _ } => false
+    FeasibilityCalibrationRequired { missing: m, screen: _, answers: _ } => string_contains(s: m as String, pattern: "even the supplied payload's even split")
+  }
+}
+
 // A MISSING ROW IS MODELING REQUIRED, NOT A REFUSAL: the checkpoint the corpus carries no row for.
 test fn w_a_checkpoint_without_a_row_is_modeling_required() -> Bool {
   let p = project_static_feasibility(
@@ -268,7 +288,7 @@ test fn w_a_checkpoint_without_a_row_is_modeling_required() -> Bool {
     runtime: GunbcGlm53DerivedGb10,
     topology: EightSparkTp8,
     manifest: glm_5_3_nvfp4_manifest,
-    guaranteed_payload: glm_5_3_nvfp4_manifest.safetensors_bytes,
+    payload: glm_5_3_nvfp4_manifest.safetensors_bytes,
     utilization: live_arm_utilization(),
     required_method: glm_5_3_nvfp4_quantization.quant_method,
   )
@@ -289,7 +309,7 @@ test fn w_the_nope_runtime_has_no_modelopt_reading_and_defers_by_name() -> Bool 
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: EightSparkTp8,
     manifest: glm_5_3_nvfp4_manifest,
-    guaranteed_payload: glm_5_3_nvfp4_manifest.safetensors_bytes,
+    payload: glm_5_3_nvfp4_manifest.safetensors_bytes,
     utilization: live_arm_utilization(),
     required_method: glm_5_3_nvfp4_quantization.quant_method,
   )
