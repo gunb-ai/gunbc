@@ -185,7 +185,9 @@ test fn a_missing_rank_reading_is_unread() -> Bool {
 
 // ── THE INCUMBENT QUESTION COMES FIRST ─────────────────────────────────────────────────────────
 
-fn t_answered_established(a: ContentHash, b: ContentHash, img: ContentHash) -> IncumbentReading {
+// An incumbent answering with head bytes `a` and worker bytes `b`, judged against a declaration
+// whose workers are `declared_worker`: equal to `b` for an established incumbent, other for drift.
+fn t_answered(a: ContentHash, b: ContentHash, declared_worker: ContentHash, img: ContentHash) -> IncumbentReading {
   let head = endpoint_incarnation_observation(
     endpoint: vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.5:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
     launch: vllm_serving_launch(group: FabricGroupA, head: operator_host_srv5, systemd_invocation: "inv" as NonEmptyStr, container_id: "c" as NonEmptyStr, executable_digest: img, unit_digest: a, started_at: 1),
@@ -198,7 +200,7 @@ fn t_answered_established(a: ContentHash, b: ContentHash, img: ContentHash) -> I
   ]
   IncumbentAnswered {
     agreement: pair_realization_agreement(
-      declared: DeclaredPairRealizationKeyed { declared: t_declared(head: a, worker: b) },
+      declared: DeclaredPairRealizationKeyed { declared: t_declared(head: a, worker: declared_worker) },
       observed: ObservedPairRealizationRead { observed: observed_pair_realization_of(group: FabricGroupA, head: head, workers: workers, receipt: "test.claim.spark.pair_serving_d0_witness fixture" as ObservationReceiptRef) },
     ),
   }
@@ -210,7 +212,7 @@ fn t_answered_established(a: ContentHash, b: ContentHash, img: ContentHash) -> I
 test fn a_live_declared_incumbent_restores_active_with_the_key_and_refuses() -> Bool {
   with_digests(scenario: fn(a, b, c) {
     let d = t_declared(head: a, worker: b)
-    let decision = t_decide(declared: d, incumbent: t_answered_established(a: a, b: b, img: c), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c)
+    let decision = t_decide(declared: d, incumbent: t_answered(a: a, b: b, declared_worker: b, img: c), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c)
     match decision {
       D0DecidedRestore { next: PairServingActive { group: _, exact_realization: PairRealizationKeyed { key: k } }, key: k2 } =>
         hashes_equal(l: k, r: d.key) && hashes_equal(l: k2, r: d.key) && !d0_decision_is_eligible(d: decision)
@@ -224,7 +226,7 @@ test fn a_live_declared_incumbent_restores_active_with_the_key_and_refuses() -> 
 // restored, not suspended -- fenced for the operator, naming the standing.
 test fn a_live_drifted_incumbent_is_fenced() -> Bool {
   with_digests(scenario: fn(a, b, c) {
-    match t_decide(declared: t_declared(head: a, worker: c), incumbent: t_answered_established(a: a, b: b, img: c), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: c }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: true, unit_digest: c }), h: c) {
+    match t_decide(declared: t_declared(head: a, worker: c), incumbent: t_answered(a: a, b: b, declared_worker: c, img: c), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: c }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: true, unit_digest: c }), h: c) {
       D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentLive { standing: _ } } => true
       _ => false
     }
