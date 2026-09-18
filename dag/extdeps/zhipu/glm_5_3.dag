@@ -36,8 +36,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [],
 }
 
-data glm_5_3_model_id: NonEmptyStr = "zai-org/GLM-5.3" as NonEmptyStr
-
 // THE ARCHITECTURE CLASS IS THE STRING A RUNTIME'S REGISTRY IS ASKED FOR, read from `architectures`
 // (its sole entry) in config.json at the pinned revision below. Every consumer that needs to know
 // whether an image can load this model -- or any quantization of it -- asks for THIS declaration,
