@@ -8,7 +8,16 @@ import extdeps.cloud.gcp.secret_manager {
   SmAccessVersionSecretDecoded,
   SmAccessVersionSecretDecodeRefused,
 }
-import extdeps.transports.rest { classify_rest_outcome, RestReadExchange }
+import extdeps.transports.rest {
+  classify_rest_outcome,
+  RestExchangeCommitAmbiguous,
+  RestExchangePerformance,
+  RestExchangeStatusRefused,
+  RestExchangeSucceeded,
+  RestExchangeUndecodable,
+  RestExchangeUnreached,
+  RestReadExchange,
+}
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.bmc_onboarding {
   BmcOnboardingPlan,
@@ -81,7 +90,27 @@ fn bmc_health_reader_body_path(host_name: NonEmptyStr) -> NonEmptyStr {
   concat("/tmp/bmc_health_reader_body_", host_name as String, ".json") as NonEmptyStr
 }
 
-fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> String?
+// THREE ANSWERS, NOT A MAYBE. A 404 is the store saying the secret does not exist; a refused status,
+// an unreached call or an undecodable payload says nothing about existence and is carried as the
+// read failure it is (review 67836). Collapsing them would tell an operator to create a secret that
+// may be sitting there behind a permission they lack.
+type CustodyCredentialRead
+  = CustodyCredentialHeld { password: String }
+  | CustodyCredentialAbsent
+  | CustodyCredentialUnreadable { cause: String }
+
+fn custody_read_refusal_cause(performance: RestExchangePerformance) -> CustodyCredentialRead {
+  match performance {
+    RestExchangeSucceeded => CustodyCredentialUnreadable { cause: "the read succeeded but its payload did not decode" }
+    RestExchangeStatusRefused { status: status, body: body } =>
+      if status == 404 { CustodyCredentialAbsent } else { CustodyCredentialUnreadable { cause: concat("Secret Manager refused the read: ", body) } }
+    RestExchangeCommitAmbiguous { detail: d } => CustodyCredentialUnreadable { cause: d as String }
+    RestExchangeUnreached { cause: c } => CustodyCredentialUnreadable { cause: c as String }
+    RestExchangeUndecodable { status: _, cause: c } => CustodyCredentialUnreadable { cause: c as String }
+  }
+}
+
+fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> CustodyCredentialRead
   uses net: Network
 {
   resp = gcp.SecretManager.AccessVersion(
@@ -90,24 +119,41 @@ fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> String?
     secret: secret_id,
     version: "latest"
   )
-  if !bmc_stored_credential_read_succeeded(performance: classify_rest_outcome(standing: RestReadExchange { rest: resp.outcome })) {
-    return none
+  let performance = classify_rest_outcome(standing: RestReadExchange { rest: resp.outcome })
+  if !bmc_stored_credential_read_succeeded(performance: performance) {
+    return custody_read_refusal_cause(performance: performance)
   }
   return match decode_sm_access_version_secret_wire(data_b64: resp.data_b64) {
-    SmAccessVersionSecretDecoded { credential: c } => Present { value: c as String }
-    SmAccessVersionSecretDecodeRefused { cause: _ } => none
+    SmAccessVersionSecretDecoded { credential: c } => CustodyCredentialHeld { password: c as String }
+    SmAccessVersionSecretDecodeRefused { cause: _ } => CustodyCredentialUnreadable { cause: "the custody payload did not decode" }
   }
 }
 
-fn bmc_login_succeeds(host: NonEmptyStr, account: NonEmptyStr, password: String) -> Bool
+// A LOGIN THAT NEVER REACHED THE BMC IS NOT A REJECTED PASSWORD. A netrc that could not be written --
+// including one that left credential residue on disk -- is a local fault whose remedy is cleanup, so
+// it keeps netrc_failure_reason's located cause instead of reading as "does not authenticate".
+type BmcLoginAttempt
+  = BmcLoginAccepted
+  | BmcLoginRejected { body: String }
+  | BmcLoginNotAttempted { reason: String }
+
+fn bmc_login_attempt(host: NonEmptyStr, account: NonEmptyStr, password: String) -> BmcLoginAttempt
   uses net: Network
 {
   let w = write_netrc_outcome(host: host, account: account, password: password)
   if netrc_write_succeeded(outcome: w) == false {
-    return false
+    return BmcLoginNotAttempted { reason: netrc_failure_reason(outcome: w, stage: "reader login") }
   }
   probe = redfish.Http.GetSystem(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
-  return probe.success
+  return if probe.success { BmcLoginAccepted } else { BmcLoginRejected { body: probe.body } }
+}
+
+fn reader_login_exit(attempt: BmcLoginAttempt, rejected_prefix: String) -> ProcessExit {
+  match attempt {
+    BmcLoginAccepted => ExitSuccess
+    BmcLoginRejected { body: b } => exit_failure(reason: concat(rejected_prefix, b))
+    BmcLoginNotAttempted { reason: r } => exit_failure(reason: concat("reader: the login was not attempted: ", r))
+  }
 }
 
 // Reads run under the administrator netrc, which the caller has already written.
@@ -142,8 +188,9 @@ fn bmc_health_reader_converge(plan: BmcOnboardingPlan, host_name: NonEmptyStr) -
       AccessTokenEnsureRefused { reason: r } => return exit_failure(reason: r as String)
       AccessTokenReady { token: t } =>
         match bmc_custody_credential(secret_id: onboarding_secret_id(plan: plan), token: t) {
-          none => return exit_failure(reason: concat("reader: the administrator credential is not in custody for ", plan.bmc.host as String))
-          Present { value: admin_password } =>
+          CustodyCredentialAbsent => return exit_failure(reason: concat("reader: the administrator credential is not in custody for ", plan.bmc.host as String))
+          CustodyCredentialUnreadable { cause: c } => return exit_failure(reason: concat("reader: the administrator credential could not be read from custody: ", c))
+          CustodyCredentialHeld { password: admin_password } =>
             return bmc_health_reader_converge_as_admin(plan: plan, host_name: host_name, token: t, admin_password: admin_password)
         }
     }
@@ -163,13 +210,13 @@ fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, host_name: NonEm
     ReaderAccountRefused { cause: c } => return exit_failure(reason: concat("reader: ", c as String))
     ReaderAccountConverged =>
       match bmc_custody_credential(secret_id: reader_secret, token: token) {
-        none => return exit_failure(reason: "reader: the account exists but its credential is not in custody; it was not created by this flow or custody was lost")
-        Present { value: held } =>
-          return if bmc_login_succeeds(host: host, account: bmc_health_reader_username, password: held) {
-            ExitSuccess
-          } else {
-            exit_failure(reason: "reader: the account exists but the custody credential does not authenticate")
-          }
+        CustodyCredentialAbsent => return exit_failure(reason: "reader: the account exists but its credential is not in custody; it was not created by this flow or custody was lost")
+        CustodyCredentialUnreadable { cause: c } => return exit_failure(reason: concat("reader: the reader credential could not be read from custody: ", c))
+        CustodyCredentialHeld { password: held } =>
+          return reader_login_exit(
+            attempt: bmc_login_attempt(host: host, account: bmc_health_reader_username, password: held),
+            rejected_prefix: "reader: the account exists but the custody credential is refused: ",
+          )
       }
     CreateReaderAccount => {
       let credential = mint_bmc_credential()
@@ -203,11 +250,10 @@ fn bmc_health_reader_create(host: NonEmptyStr, host_name: NonEmptyStr, credentia
     ReaderAccountRefused { cause: c } => return exit_failure(reason: concat("reader: created, but read back as: ", c as String))
     CreateReaderAccount => return exit_failure(reason: "reader: created, but the accounts collection does not list it")
     ReaderAccountConverged =>
-      return if bmc_login_succeeds(host: host, account: bmc_health_reader_username, password: credential as String) {
-        ExitSuccess
-      } else {
-        exit_failure(reason: "reader: the created account does not authenticate with the stored credential")
-      }
+      return reader_login_exit(
+        attempt: bmc_login_attempt(host: host, account: bmc_health_reader_username, password: credential as String),
+        rejected_prefix: "reader: the created account refuses the stored credential: ",
+      )
   }
 }
 

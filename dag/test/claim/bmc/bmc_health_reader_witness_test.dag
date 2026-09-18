@@ -17,7 +17,17 @@ import gunbc.bmc_health_reader {
   reader_account_from_json,
   reader_listed_in_accounts,
 }
-import gunbc.tools.bmc_health_reader_converge { bmc_health_reader_body_path }
+import gunbc.tools.bmc_health_reader_converge {
+  BmcLoginNotAttempted,
+  BmcLoginRejected,
+  CustodyCredentialAbsent,
+  CustodyCredentialUnreadable,
+  bmc_health_reader_body_path,
+  custody_read_refusal_cause,
+  reader_login_exit,
+}
+import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeUnreached }
+import std.process { ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -72,4 +82,26 @@ test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool 
     && string_contains(s: body, pattern: "gunbc_health")
     && bmc_health_reader_secret_id(host: "srv3") == "bmc-srv3-health-reader"
     && bmc_health_reader_body_path(host_name: "srv3") != bmc_health_reader_body_path(host_name: "srv4")
+}
+
+// Only a 404 says the secret is absent; a refused status or an unreached call is a read failure
+// that says nothing about existence (review 67836).
+test fn only_a_404_reads_as_absent_custody() -> Bool {
+  let absent = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 404, body: "not found" }) { CustodyCredentialAbsent => true _ => false }
+  let denied = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 403, body: "denied" }) { CustodyCredentialUnreadable { cause: _ } => true _ => false }
+  let unreached = match custody_read_refusal_cause(performance: RestExchangeUnreached { cause: "timeout" }) { CustodyCredentialUnreadable { cause: _ } => true _ => false }
+  absent && denied && unreached
+}
+
+// A login that never reached the BMC keeps its local cause instead of reading as a refused password.
+test fn a_login_that_was_never_attempted_is_not_a_refused_password() -> Bool {
+  let not_attempted = match reader_login_exit(attempt: BmcLoginNotAttempted { reason: "netrc residue remains" }, rejected_prefix: "refused: ") {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "not attempted") && !string_contains(s: r, pattern: "refused: ")
+    _ => false
+  }
+  let rejected = match reader_login_exit(attempt: BmcLoginRejected { body: "401" }, rejected_prefix: "refused: ") {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "refused: 401")
+    _ => false
+  }
+  not_attempted && rejected
 }
