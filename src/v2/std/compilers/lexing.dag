@@ -8,7 +8,11 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.std.algebra { fold_list, length, list_snoc_item, skip }
 import v2.std.collection {
   List,
-  list_at_optional
+  Map,
+  empty_map,
+  list_at_optional,
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -231,11 +235,23 @@ fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
 }
 
 fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
+  match map_lookup(m: lex_rule_set_token_class_map(rules: rules), key: token_class) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn lex_rule_set_token_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
   fold_list(
     xs: rules.rules,
-    empty: false,
+    empty: empty_map(),
     cons: fn(acc, rule) {
-      acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
+      match rule {
+        TokenRule { token_class: c, pattern: _ } =>
+          map_insert(m: acc, key: c, value: true)
+        TriviaRule { pattern: _ } => acc
+        AnnotationRule { annotation_class: _, pattern: _ } => acc
+      }
     }
   )
 }
