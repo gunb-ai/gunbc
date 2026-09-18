@@ -1,6 +1,6 @@
 module std.list
 
-import std.types { List, Bool, String, Map }
+import std.types { List, Bool, String, Map, Int }
 // Temporary realization: the seed intercepts algebra.contains and discards eq.
 // Tracking: gunbc.list_membership_operation_gap. Retire list_member and rewire
 // list_cover when the declared contains route executes caller equality, with the
@@ -54,4 +54,42 @@ fn first_duplicate_by_key<T>(xs: List<T>, key: fn(T) -> String) -> T? {
     FirstDuplicateFound { value: v } => Present { value: v }
     FirstDuplicateNotFound { seen: _ } => none
   }
+}
+
+// EACH KEY ONCE, IN FIRST-SEEN ORDER - distinct_by_key keeps the first element carrying each key and
+// duplicated_by_key reports the first element of every key that occurs more than once, once. Both are
+// one fold over a keyed map, prepending and reversing at the end, because the shape they replace - an
+// accumulator grown by concat(acc, [x]) with membership tested by count(filter(acc, ..)) - is quadratic
+// in both writes and reads, and DESIGN section 6 fixes that shape regardless of the realized n.
+// gunbc.repository_census_coverage census_subject_index is the same kernel specialized to its key type
+// and carrying lookup counters for its own cost claims; consuming this from there is a rewire of that
+// module, named here so the two are a declared divergence rather than silent second authorities.
+type KeyedScan<T> {
+  seen: Map<String, Int>
+  kept_reversed: List<T>
+}
+
+fn distinct_by_key<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
+  let scan = fold(xs, init: KeyedScan { seen: empty_map(), kept_reversed: [] }, f: fn(acc, x) {
+    match map_get(acc.seen, key(x)) {
+      Present { value: _ } => acc
+      Absent => KeyedScan { seen: map_insert(acc.seen, key(x), 1), kept_reversed: concat([x], acc.kept_reversed) }
+    }
+  })
+  reverse(scan.kept_reversed)
+}
+
+fn duplicated_by_key<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
+  let scan = fold(xs, init: KeyedScan { seen: empty_map(), kept_reversed: [] }, f: fn(acc, x) {
+    match map_get(acc.seen, key(x)) {
+      Absent => KeyedScan { seen: map_insert(acc.seen, key(x), 1), kept_reversed: acc.kept_reversed }
+      Present { value: n } =>
+        if n == 1 {
+          KeyedScan { seen: map_insert(acc.seen, key(x), 2), kept_reversed: concat([x], acc.kept_reversed) }
+        } else {
+          acc
+        }
+    }
+  })
+  reverse(scan.kept_reversed)
 }

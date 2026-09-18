@@ -1,7 +1,8 @@
 module product.fabric.failure_scenario_admission
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
+import std.list { distinct_by_key, duplicated_by_key }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.capacity_admission { AdmittedCapacity }
@@ -202,22 +203,6 @@ type DemandSupply<P> {
   eligible: List<AdmittedCapacity<P>>
 }
 
-// TWO ROWS FOR ONE OFFER-DEMAND-WORK SUBJECT ARE REFUSED BEFORE ANYTHING IS SUMMED, because
-// surviving_grants adds every row it is handed: one 10-slot offer admitted twice would read as 20
-// surviving slots, which is quantity manufactured by a caller calling admit_capacity twice (side
-// review of this chain). Arity is the whole question - whether the two rows happen to agree is not
-// the point, since the sum double-counts either way - so this refuses on a second row rather than
-// comparing them, exactly as offer_route refuses a roster that answers twice.
-fn duplicate_capacity_refusals<P>(
-  capacities: List<AdmittedCapacity<P>>,
-  capacity: AdmittedCapacity<P>,
-) -> List<FailureScenarioRefusal<P>> {
-  if count(filter(capacities, c => same_subject(a: c, b: capacity))) > 1 {
-    [CapacityListedTwiceForOneSubject { offer: capacity.offer.id, demand: capacity.demand, work: capacity.work }]
-  } else {
-    []
-  }
-}
 
 // EVERY NAMED CAPACITY MUST BE IN THE ROSTER, checked before any scenario is evaluated. This is the
 // structural twin of the undeclared-domain refusal: both close the arm where a scenario silently
@@ -250,44 +235,6 @@ fn scenario_refusals<P>(
   }
 }
 
-fn capacity_is_in<P>(capacities: List<AdmittedCapacity<P>>, offer: FabricIdentity<P, OfferKey>) -> Bool {
-  count(filter(capacities, c => fabric_identity_eq(left: c.offer.id, right: offer))) > 0
-}
-
-// ONE REFUSAL PER SHARED OFFER, NOT ONE PER CAPACITY THAT MENTIONS IT. A capacity is admitted FOR a
-// work, so a roster serving two demands holds two capacities over the same offer - which is the
-// sharing this refusal is about, and reporting it twice would make the count of refusals depend on
-// how many demands happened to be asked rather than on how many offers are double-counted. The scan
-// carries the offers it has already reported, so each is named once, in roster order.
-fn shared_offer_scan<P>(
-  remaining: List<AdmittedCapacity<P>>,
-  reported: List<FabricIdentity<P, OfferKey>>,
-  supplies: List<DemandSupply<P>>,
-) -> List<FailureScenarioRefusal<P>> {
-  match remaining.first() {
-    Absent => []
-    Present { value: c } => {
-      let rest = remaining.skip(n: 1)
-      if count(filter(reported, o => fabric_identity_eq(left: o, right: c.offer.id))) > 0 {
-        shared_offer_scan(remaining: rest, reported: reported, supplies: supplies)
-      } else {
-        let seen = concat(reported, [c.offer.id])
-        if count(filter(supplies, s => capacity_is_in(capacities: s.eligible, offer: c.offer.id))) > 1 {
-          concat(
-            [OfferSharedAcrossDemands { offer: c.offer.id }],
-            shared_offer_scan(remaining: rest, reported: seen, supplies: supplies),
-          )
-        } else {
-          shared_offer_scan(remaining: rest, reported: seen, supplies: supplies)
-        }
-      }
-    }
-  }
-}
-
-fn sharing_refusals<P>(capacities: List<AdmittedCapacity<P>>, supplies: List<DemandSupply<P>>) -> List<FailureScenarioRefusal<P>> {
-  shared_offer_scan(remaining: capacities, reported: [], supplies: supplies)
-}
 
 // ONE DEMAND'S SUPPLY MUST HAVE BEEN PROVED FOR ONE REQUIREMENTS VALUE, checked before anything is
 // summed. A capacity is admitted against the ExecutionRequirements its caller supplied, and WorkKey is
@@ -307,42 +254,48 @@ fn requirements_refusals<P>(supply: DemandSupply<P>) -> List<FailureScenarioRefu
   }
 }
 
-// One refusal per duplicated subject rather than one per duplicate row, for the same reason the
-// sharing scan reports each shared offer once.
-// THE SCAN IS KEYED ON THE SAME SUBJECT THE REFUSAL IS. An earlier revision suppressed on offer id
-// alone, so [(X, d1, w), (X, d2, w), (X, d2, w)] reported nothing: the first row's subject occurs
-// once, and the two duplicates of (X, d2, w) were then skipped as "already seen" because X had been -
-// and d2's reserve counted X twice (review 67526). Suppression and duplication must agree on what a
-// subject is, or the suppression hides exactly the duplicate it exists to name.
-fn same_subject<P>(a: AdmittedCapacity<P>, b: AdmittedCapacity<P>) -> Bool {
-  fabric_identity_eq(left: a.offer.id, right: b.offer.id)
-    && fabric_identity_eq(left: a.demand, right: b.demand)
-    && fabric_identity_eq(left: a.work, right: b.work)
+
+// ONE REFUSAL PER SHARED OFFER, NOT ONE PER CAPACITY THAT MENTIONS IT. A capacity is admitted FOR a
+// demand, so a roster serving two demands holds two capacities over one offer - the sharing this
+// refusal names. Reporting it per capacity would make the count depend on how many demands were asked
+// rather than how many offers are double-counted, so the population is reduced to one row per
+// offer-demand-work subject and each offer occurring under more than one subject is reported once, through
+// std.list's keyed scans (review 67855: the hand-rolled accumulator it replaces was quadratic, which
+// DESIGN section 6 fixes regardless of n).
+//
+// TWO ROWS FOR ONE OFFER-DEMAND-WORK SUBJECT ARE REFUSED BEFORE ANYTHING IS SUMMED, because
+// surviving_grants adds every row it is handed: one 10-slot offer admitted twice would read as 20.
+// Keyed on the SAME subject the refusal names (review 67526: an earlier scan suppressed on offer id
+// alone and hid the duplicate), each duplicated subject is reported once.
+//
+// THE KEY IS THE IDENTITY KEY STRINGS, NOT THE PRINCIPAL. P is a type parameter with no string
+// spelling, so two identities whose keys agree and whose principals differ key the same here. That
+// direction fails closed - it can only report a sharing or duplicate a principal-aware join would not
+// - and it matches product.fabric.supply's own reading that such a pair is one subject.
+fn offer_key_of<P>(c: AdmittedCapacity<P>) -> String { (c.offer.id.key as String) }
+
+fn subject_key_of<P>(c: AdmittedCapacity<P>) -> String {
+  join([(c.offer.id.key as String), (c.demand.key as String), (c.work.key as String)], "|")
 }
 
-fn dedupe_scan<P>(
-  remaining: List<AdmittedCapacity<P>>,
-  reported: List<AdmittedCapacity<P>>,
-  capacities: List<AdmittedCapacity<P>>,
-) -> List<FailureScenarioRefusal<P>> {
-  match remaining.first() {
-    Absent => []
-    Present { value: c } => {
-      let rest = remaining.skip(n: 1)
-      if count(filter(reported, r => same_subject(a: r, b: c))) > 0 {
-        dedupe_scan(remaining: rest, reported: reported, capacities: capacities)
-      } else {
-        concat(
-          duplicate_capacity_refusals(capacities: capacities, capacity: c),
-          dedupe_scan(remaining: rest, reported: concat(reported, [c]), capacities: capacities),
-        )
-      }
-    }
-  }
+// Sharing is asked of the capacity ELIGIBLE for the demands actually being admitted, as a
+// per-subject population: another customer's row for the same offer is not this admission's sharing.
+fn eligible_population<P>(supplies: List<DemandSupply<P>>) -> List<AdmittedCapacity<P>> {
+  flat_map(supplies, s => eligible_of(supply: s))
+}
+
+fn eligible_of<P>(supply: DemandSupply<P>) -> List<AdmittedCapacity<P>> { supply.eligible }
+
+fn sharing_refusals<P>(supplies: List<DemandSupply<P>>) -> List<FailureScenarioRefusal<P>> {
+  map(
+    duplicated_by_key(distinct_by_key(eligible_population(supplies: supplies), subject_key_of), offer_key_of),
+    c => OfferSharedAcrossDemands { offer: c.offer.id })
 }
 
 fn dedupe_refusals<P>(capacities: List<AdmittedCapacity<P>>) -> List<FailureScenarioRefusal<P>> {
-  dedupe_scan(remaining: capacities, reported: [], capacities: capacities)
+  map(
+    duplicated_by_key(capacities, subject_key_of),
+    c => CapacityListedTwiceForOneSubject { offer: c.offer.id, demand: c.demand, work: c.work })
 }
 
 fn covered_by<P>(supply: DemandSupply<P>) -> List<CoveredSubject<P>> {
@@ -380,7 +333,7 @@ fn admit_failure_scenarios<P>(
       concat(
         flat_map(scenarios, sc => unknown_offer_refusals(capacities: capacities, scenario: sc)),
         concat(
-          sharing_refusals(capacities: capacities, supplies: supplies),
+          sharing_refusals(supplies: supplies),
           flat_map(supplies, sup => requirements_refusals(supply: sup)),
         ),
       ),
