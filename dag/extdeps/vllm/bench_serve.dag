@@ -133,6 +133,32 @@ fn vllm_bench_eos_words(ignore: Bool) -> List<String> {
   if ignore { ["--ignore-eos"] } else { [] }
 }
 
+fn vllm_bench_backend_eq(a: VllmBenchBackend, b: VllmBenchBackend) -> Bool {
+  (vllm_bench_backend_wire(b: a) as String) == (vllm_bench_backend_wire(b: b) as String)
+}
+
+fn vllm_bench_arrival_eq(a: BenchArrival, b: BenchArrival) -> Bool {
+  match a {
+    SendAllImmediately =>
+      match b {
+        SendAllImmediately => true
+        PoissonProcess { millirequests_per_second: _, burstiness_milli: _ } => false
+      }
+    PoissonProcess { millirequests_per_second: an, burstiness_milli: ab } =>
+      match b {
+        SendAllImmediately => false
+        PoissonProcess { millirequests_per_second: bn, burstiness_milli: bb } => an == bn && ab == bb
+      }
+  }
+}
+
+fn vllm_bench_serve_identity_matches(a: VllmBenchServeRequest, b: VllmBenchServeRequest) -> Bool {
+  vllm_bench_backend_eq(a: a.backend, b: b.backend)
+    && (a.model as String) == (b.model as String)
+    && (a.tokenizer as String) == (b.tokenizer as String)
+    && vllm_bench_arrival_eq(a: a.arrival, b: b.arrival)
+}
+
 // THE ARGV IS DERIVED FROM THE REQUEST, so a protocol that asked for Poisson arrivals cannot
 // silently render `inf`, and a protocol that named a shared prefix cannot drop `--random-prefix-len`.
 // SERVED NAME AND TOKENIZER IDENTITY ARE DIFFERENT FACTS. --model is what the OpenAI route answers;

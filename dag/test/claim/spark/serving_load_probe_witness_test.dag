@@ -20,6 +20,7 @@ import extdeps.vllm.metrics { InterTokenLatencySeconds }
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, RandomDatasetSpec, OpenaiChat, SendAllImmediately, PoissonProcess,
   vllm_bench_serve_request, vllm_bench_serve_arguments, vllm_bench_serve_uses_poisson_idle_gaps,
+  vllm_bench_serve_identity_matches,
 }
 import extdeps.vllm.kv_layout { AdmissionCostUnestablished, AdmissionCostBlocks }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
@@ -55,7 +56,7 @@ import gunbc.spark.serving_load_probe {
   decode_corroboration_for_protocol, CorroborationNotApplicable, CorroborationUnread,
   glm_native_wiring_smoke_protocol, glm_native_contended_sweep_c1, glm_native_contended_sweep_c2,
   glm_native_contended_sweep_c16, glm_native_contended_sweep_points,
-  glm_native_contended_elasticity_steps, elasticity_still_buying_throughput,
+  glm_native_contended_sweep_elasticity, elasticity_is_off_the_uncontrolled_series,
   glm_native_wet_smoke_is_not_sweep_c1_protocol, glm_native_wet_smoke_rate_is_output_tokens,
   glm_native_ttft_would_bind_on_this_sweep,
   glm_native_window_standing_specimen, window_standing_gap_is_unattributed,
@@ -65,8 +66,7 @@ import gunbc.spark.serving_load_probe {
   client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout,
   ClientOutputTokensObserved,
   pinned_load_protocol_matches, bench_output_len, glm_native_sweep_num_prompts,
-  glm_native_holistic_execution, LongContextModelledOnly, LongContextRunnable,
-  glm_native_elasticity_8_to_16,
+  glm_native_holistic_execution, LongContextLoadProtocolPrototype, LongContextRunnable,
 }
 
 data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
@@ -455,6 +455,11 @@ test fn a_64_out_wiring_receipt_is_not_the_128_out_sweep_protocol() -> Bool {
     && !pinned_load_protocol_matches(a: glm_native_wiring_smoke_protocol, b: glm_native_contended_sweep_c2.protocol)
 }
 
+test fn protocol_identity_includes_backend_model_tokenizer_and_arrival() -> Bool {
+  vllm_bench_serve_identity_matches(a: glm_native_smoke_protocol, b: glm_native_wiring_smoke_protocol)
+    && !vllm_bench_serve_identity_matches(a: glm_native_smoke_protocol, b: glm_native_holistic_protocol)
+}
+
 data fx_bench_stdout: String = join([
   "============ Serving Benchmark Result ============\n",
   "Successful requests:                     4\n",
@@ -529,9 +534,8 @@ test fn the_contended_sweep_is_five_shared_window_client_points() -> Bool {
     }
 }
 
-test fn scaling_elasticity_is_a_shape_still_buying_at_16() -> Bool {
-  elasticity_still_buying_throughput(steps: glm_native_contended_elasticity_steps)
-    && glm_native_elasticity_8_to_16.elasticity_milli == 700
+test fn scaling_elasticity_is_off_the_uncontrolled_series() -> Bool {
+  elasticity_is_off_the_uncontrolled_series(s: glm_native_contended_sweep_elasticity)
 }
 
 test fn ttft_would_bind_concurrency_before_throughput_on_this_sweep() -> Bool {
@@ -546,7 +550,7 @@ test fn the_49_vs_81_ms_gap_is_why_window_standing_is_a_field() -> Bool {
 
 test fn long_context_stays_modelled_until_the_arm_is_out_of_service() -> Bool {
   match glm_native_holistic_execution {
-    LongContextModelledOnly { until: _ } => true
+    LongContextLoadProtocolPrototype { until: _ } => true
     LongContextRunnable { because: _ } => false
   }
 }

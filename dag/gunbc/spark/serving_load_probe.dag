@@ -20,6 +20,7 @@ import extdeps.vllm.metrics {
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, PoissonProcess, SendAllImmediately,
   RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_uses_poisson_idle_gaps,
+  vllm_bench_serve_identity_matches,
 }
 import gunbc.harness.harness_backend {
   harness_gauge_value, harness_labelled_gauge_value, harness_gauge_count,
@@ -1367,50 +1368,19 @@ data glm_native_contended_sweep_points: List<ContendedSweepPoint> = [
 ]
 
 // ABSOLUTE tok/s ARE NOT A CAPACITY under WindowSharedWithDeclaredTraffic. Elasticity
-// log(throughput ratio)/log(concurrency ratio) is a SHAPE: contention scales both ends and does
-// not by itself invent a plateau. These milli figures are transcribed from that log ratio on the
-// five points above; they are not stored rates.
-type ScalingElasticityStep {
-  from_concurrency: Nat
-  to_concurrency: Nat
-  elasticity_milli: Nat
-  standing: CitedFigureStanding
+// log(throughput ratio)/log(concurrency ratio) is a SHAPE that requires a controlled series.
+// The five contended points are shared-window client latency; they are not that series.
+type UncontrolledSeriesElasticity
+  = ElasticityNotOnUncontrolledSeries { because: NonEmptyStr }
+
+data glm_native_contended_sweep_elasticity: UncontrolledSeriesElasticity = ElasticityNotOnUncontrolledSeries {
+  because: "glm_native_contended_sweep_points were taken under WindowSharedWithDeclaredTraffic; log(throughput ratio)/log(concurrency ratio) on that series is not a scaling elasticity" as NonEmptyStr
 }
 
-data glm_native_elasticity_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "recompute log(throughput_after/throughput_before)/log(concurrency_after/concurrency_before) from glm_native_contended_sweep_points; the 670/570/590/700 milli figures were transcribed from calm-bat-65's 0.67, 0.57, 0.59, 0.70" as NonEmptyStr
-}
-
-fn glm_native_elasticity_step(from_concurrency: Nat, to_concurrency: Nat, elasticity_milli: Nat) -> ScalingElasticityStep {
-  ScalingElasticityStep {
-    from_concurrency: from_concurrency,
-    to_concurrency: to_concurrency,
-    elasticity_milli: elasticity_milli,
-    standing: glm_native_elasticity_standing,
+fn elasticity_is_off_the_uncontrolled_series(s: UncontrolledSeriesElasticity) -> Bool {
+  match s {
+    ElasticityNotOnUncontrolledSeries { because: _ } => true
   }
-}
-
-data glm_native_elasticity_1_to_2: ScalingElasticityStep = glm_native_elasticity_step(from_concurrency: 1, to_concurrency: 2, elasticity_milli: 670)
-data glm_native_elasticity_2_to_4: ScalingElasticityStep = glm_native_elasticity_step(from_concurrency: 2, to_concurrency: 4, elasticity_milli: 570)
-data glm_native_elasticity_4_to_8: ScalingElasticityStep = glm_native_elasticity_step(from_concurrency: 4, to_concurrency: 8, elasticity_milli: 590)
-data glm_native_elasticity_8_to_16: ScalingElasticityStep = glm_native_elasticity_step(from_concurrency: 8, to_concurrency: 16, elasticity_milli: 700)
-
-data glm_native_contended_elasticity_steps: List<ScalingElasticityStep> = [
-  glm_native_elasticity_1_to_2,
-  glm_native_elasticity_2_to_4,
-  glm_native_elasticity_4_to_8,
-  glm_native_elasticity_8_to_16,
-]
-
-fn elasticity_still_buying_throughput(steps: List<ScalingElasticityStep>) -> Bool {
-  length(steps) == 4
-    && glm_native_elasticity_1_to_2.elasticity_milli > 0
-    && glm_native_elasticity_2_to_4.elasticity_milli > 0
-    && glm_native_elasticity_4_to_8.elasticity_milli > 0
-    && glm_native_elasticity_8_to_16.elasticity_milli > 0
-    && glm_native_elasticity_8_to_16.elasticity_milli >= glm_native_elasticity_1_to_2.elasticity_milli
-    && glm_native_elasticity_8_to_16.elasticity_milli >= glm_native_elasticity_2_to_4.elasticity_milli
-    && glm_native_elasticity_8_to_16.elasticity_milli >= glm_native_elasticity_4_to_8.elasticity_milli
 }
 
 // TPOT 8→16 is nearly flat while throughput still rises; TTFT at 16 is the sharp move.
@@ -1476,7 +1446,8 @@ fn bench_output_len(req: VllmBenchServeRequest) -> Nat {
 }
 
 fn pinned_load_protocol_matches(a: VllmBenchServeRequest, b: VllmBenchServeRequest) -> Bool {
-  token_count_value(t: a.dataset.input_len) == token_count_value(t: b.dataset.input_len)
+  vllm_bench_serve_identity_matches(a: a, b: b)
+    && token_count_value(t: a.dataset.input_len) == token_count_value(t: b.dataset.input_len)
     && bench_output_len(req: a) == bench_output_len(req: b)
     && token_count_value(t: a.dataset.prefix_len) == token_count_value(t: b.dataset.prefix_len)
     && a.ignore_eos == b.ignore_eos
@@ -1496,10 +1467,10 @@ fn pinned_load_protocol_matches(a: VllmBenchServeRequest, b: VllmBenchServeReque
 }
 
 type LongContextExecutionStanding
-  = LongContextModelledOnly { until: NonEmptyStr }
+  = LongContextLoadProtocolPrototype { until: NonEmptyStr }
   | LongContextRunnable { because: NonEmptyStr }
 
-data glm_native_holistic_execution: LongContextExecutionStanding = LongContextModelledOnly {
+data glm_native_holistic_execution: LongContextExecutionStanding = LongContextLoadProtocolPrototype {
   until: "the arm carries an ArmOutOfService receipt; a 100k-prefix protocol is not executed on an in-service operator arm" as NonEmptyStr
 }
 
