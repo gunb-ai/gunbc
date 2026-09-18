@@ -79,12 +79,50 @@ fn round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAuthor
 
 // ── THE CODEC ──────────────────────────────────────────────────────────────────────────────────
 
-// Every arm, with every field it carries, survives the wire in both positions of a transition.
-test fn every_authority_arm_round_trips_through_the_wire() -> Bool {
+// EVERY ARM, WITH EVERY FIELD IT CARRIES, SURVIVES THE WIRE -- one claim per arm, because the
+// fold that renders and parses an authority is the whole cost of each and a conjunction over six
+// arms pays it six times under one budget (DESIGN §3: split independent cases when splitting
+// loses no coverage). The `previous` position runs the same members fold, so it is covered once.
+fn arm_round_trips(index: Int) -> Bool {
   with_hash(scenario: fn(h) {
-    let arms = w_all_arms(h: h)
-    all(arms, a => round_trips(previous: w_active_unestablished(), next: a))
-      && all(arms, a => round_trips(previous: a, next: w_active_unestablished()))
+    match get(xs: w_all_arms(h: h), index: index) {
+      Absent => false
+      Present { value: a } => round_trips(previous: w_active_unestablished(), next: a)
+    }
+  })
+}
+
+test fn an_unestablished_active_arm_round_trips_through_the_wire() -> Bool {
+  arm_round_trips(index: 0)
+}
+
+test fn a_keyed_active_arm_round_trips_through_the_wire() -> Bool {
+  arm_round_trips(index: 1)
+}
+
+test fn a_pending_arm_round_trips_through_the_wire() -> Bool {
+  arm_round_trips(index: 2)
+}
+
+test fn a_suspended_for_successor_arm_round_trips_through_the_wire() -> Bool {
+  arm_round_trips(index: 3)
+}
+
+test fn a_fenced_arm_round_trips_through_the_wire() -> Bool {
+  arm_round_trips(index: 4)
+}
+
+test fn a_released_arm_round_trips_through_the_wire() -> Bool {
+  arm_round_trips(index: 5)
+}
+
+// The `previous` position, with a leased arm, so both sides of one event are read back.
+test fn a_leased_previous_arm_round_trips_through_the_wire() -> Bool {
+  with_hash(scenario: fn(h) {
+    match get(xs: w_all_arms(h: h), index: 3) {
+      Absent => false
+      Present { value: a } => round_trips(previous: a, next: w_active_unestablished())
+    }
   })
 }
 
