@@ -3,6 +3,7 @@ module gunbc.network_boot_manifest_broker
 import std.types { Bool, EpochMs, List, NonEmptyStr, String, to_string }
 import std.content_hash { serialize_content_hash }
 import std.decl_ref { DeclarationRef }
+import std.materialization_provider { length_prefixed_encode }
 import extdeps.uri { uri_wire }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import extdeps.provisioning.dhcp_client_arch {
@@ -52,8 +53,6 @@ import gunbc.network_boot_delivery {
 
 // Protocol id bound into the HMAC preimage so a tag from another envelope cannot verify here.
 data boot_manifest_protocol: NonEmptyStr = "gunbc.signed-boot-manifest.v1" as NonEmptyStr
-
-data signing_field_separator: String = from_code_point(cp: 31)
 
 data boot_manifest_mac_key_secret_ref: SecretRef = fleet_secret_ref(secret_id: "boot-manifest-mac-key")
 
@@ -115,6 +114,8 @@ fn boot_mode_preimage(mode: ClientNetworkBootMode) -> String {
   }
 }
 
+// Each field is length-prefixed, so no field value can shift a boundary:
+// two distinct claim records cannot share one preimage.
 fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr? {
   let id = c.identity
   match uefi_processor_architecture(arch: id.architecture) {
@@ -138,8 +139,8 @@ fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptySt
             epoch_ms_text(t: id.expiry),
             id.signing_key_identity as String,
             id.callback_identity as String,
-          ],
-          signing_field_separator,
+          ] |> map(f => length_prefixed_encode(s: f)),
+          "",
         ) as NonEmptyStr,
       }
   }

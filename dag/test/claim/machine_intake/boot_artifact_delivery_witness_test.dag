@@ -1197,9 +1197,6 @@ fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> N
       trust: ControlledNetworkBootstrap {
         evidence: BootstrapTrustObservation { observation: obs, observed_at: 1788000000000 },
       },
-      boot_source_override: control_network_boot_axis(requirement: NetworkBootBootSourceOverride),
-      client_boot_mode: control_network_boot_axis(requirement: NetworkBootClientBootMode),
-      serving_infrastructure: control_network_boot_axis(requirement: NetworkBootServingInfrastructure),
       boot_artifacts: control_network_boot_axis(requirement: NetworkBootBootArtifacts),
       artifact_digest: digest,
     },

@@ -64,9 +64,6 @@ type NetworkBootDeliveryEstablishment {
   boot_control: NetworkBootBootControlReceipt
   manifest: SignedBootManifestIdentity
   trust: BootstrapTrustStanding
-  boot_source_override: NetworkBootRequirementEvidence
-  client_boot_mode: NetworkBootRequirementEvidence
-  serving_infrastructure: NetworkBootRequirementEvidence
   boot_artifacts: NetworkBootRequirementEvidence
   artifact_digest: ContentHash
 }
@@ -302,13 +299,6 @@ type BootstrapTrustStanding
   | ControlledNetworkBootstrap { evidence: BootstrapTrustObservation }
   | BootstrapTrustUnestablished
 
-fn production_trust_ground_observed(o: BootstrapTrustObservation?) -> Bool {
-  match o {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // HTTPS firmware trust and Secure-Boot-verified chainloader are independently
 // observed. Production is minted when at least one ground is present; the
 // established receipt keeps both observations so a later reader can tell which
@@ -319,23 +309,21 @@ fn bootstrap_trust_standing(
   secure_boot_chainloader: BootstrapTrustObservation?,
   isolated_onboarding_network: BootstrapTrustObservation?,
 ) -> BootstrapTrustStanding {
-  if production_trust_ground_observed(o: firmware_https) {
-    ProductionTrustedBootstrap {
-      firmware_https: firmware_https,
-      secure_boot_chainloader: secure_boot_chainloader,
-    }
-  } else {
-    if production_trust_ground_observed(o: secure_boot_chainloader) {
-      ProductionTrustedBootstrap {
-        firmware_https: firmware_https,
-        secure_boot_chainloader: secure_boot_chainloader,
+  let production = ProductionTrustedBootstrap {
+    firmware_https: firmware_https,
+    secure_boot_chainloader: secure_boot_chainloader,
+  }
+  match firmware_https {
+    Present { value: _ } => production
+    Absent =>
+      match secure_boot_chainloader {
+        Present { value: _ } => production
+        Absent =>
+          match isolated_onboarding_network {
+            Present { value: e } => ControlledNetworkBootstrap { evidence: e }
+            Absent => BootstrapTrustUnestablished
+          }
       }
-    } else {
-      match isolated_onboarding_network {
-        Present { value: e } => ControlledNetworkBootstrap { evidence: e }
-        Absent => BootstrapTrustUnestablished
-      }
-    }
   }
 }
 
@@ -526,9 +514,6 @@ fn join_verified_ticket_after_trust(
                               boot_control: control,
                               manifest: id,
                               trust: inputs.trust,
-                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
-                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
-                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
                               boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
                               artifact_digest: inputs.artifact_digest,
                             },
