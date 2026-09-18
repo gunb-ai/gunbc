@@ -42,12 +42,13 @@ import gunbc.gcp_estate_observation {
   EstateWifProvider,
   EstateEnabledService,
   observed_github_pool,
-  sheets_calling_home_is_unresolved,
+  sheets_calling_home_is_selected_outside_the_refused_surface,
   secrets_project_is_refused_as_sheets_api_surface,
   fleet_automation_is_refused_as_sheets_writer,
   gunb_test_is_enumerated_not_selected,
   sheets_calling_home,
   SheetsCallingHomeUnresolved,
+  SheetsCallingHomeSelected,
   project_enables_service,
   sts_api_service_id,
   named_projects_are_observed_in_census,
@@ -81,7 +82,9 @@ import gunbc.gcp_estate_observation {
   gunbai_auto_sts_inert_is_not_established,
   none_of_the_three_sandboxes_has_sheets,
   gunbai_auto_is_the_only_pool_host_without_sts,
-  sheets_home_is_create_purpose_scoped_unminted,
+  sheets_home_is_create_purpose_scoped_and_minted,
+  gunbai_sheets_project_id,
+  review_sheet_writer_sa_email,
   gunbai_secrets_enabled_services_are_closed,
   copied_malformed_condition_has_three_instances,
   copied_malformed_instance_count_in_census,
@@ -424,26 +427,39 @@ test fn inaccessible_desired_subject_does_not_look_absent() -> Bool {
   }
 }
 
-test fn sheets_calling_home_is_unresolved_and_does_not_default_to_secrets() -> Bool {
-  sheets_calling_home_is_unresolved()
+// The home is now SELECTED, so the proposition this witness carries changes with it -- but the
+// half that was doing the protecting does not. Secrets stays refused as the API surface,
+// fleet-automation stays refused as the writer, and gunbai-auto stays unselected; what is new is
+// that the selected project must be none of them. Asserting unresolvedness after resolution would
+// be a witness testing the old world, and deleting it would drop the refusals it also carried.
+test fn sheets_calling_home_is_selected_and_does_not_default_to_secrets() -> Bool {
+  sheets_calling_home_is_selected_outside_the_refused_surface()
     && secrets_project_is_refused_as_sheets_api_surface()
     && fleet_automation_is_refused_as_sheets_writer()
     && gunbai_auto_is_not_selected_as_sheets_home()
     && match sheets_calling_home() {
       SheetsCallingHomeUnresolved {
-        refused_api_surface_project: p,
-        refused_writer: w,
-        candidate_writer_in_secrets: c,
-        kitchen_sink_project: k,
-        pool_host_without_sts: auto,
-        sts_host_without_sheets: ci,
+        refused_api_surface_project: _,
+        refused_writer: _,
+        candidate_writer_in_secrets: _,
+        kitchen_sink_project: _,
+        pool_host_without_sts: _,
+        sts_host_without_sheets: _,
+      } => false
+      SheetsCallingHomeSelected {
+        project_id: p,
+        writer: w,
+        refused_api_surface_project: refused,
+        refused_writer: rw,
       } =>
-        p == fleet_secrets_gcp_project
-          && w == fleet_automation_sa_email
-          && c == fleet_cloud_convergence_sa_email
-          && k == gunb_test_project_id
-          && auto == gunbai_auto_project_id
-          && ci == gunb_ci_project_id
+        p == gunbai_sheets_project_id
+          && w == review_sheet_writer_sa_email
+          && refused == fleet_secrets_gcp_project
+          && rw == fleet_automation_sa_email
+          && p != fleet_secrets_gcp_project
+          && p != gunbai_auto_project_id
+          && p != gunb_ci_project_id
+          && p != gunb_test_project_id
     }
 }
 
@@ -454,7 +470,7 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && !project_enables_service(project_id: gunb_test_project_id, service: sheets_serviceusage_api_id)
     && project_enables_service(project_id: gunb_test_project_id, service: sts_api_service_id)
     && none_of_the_three_sandboxes_has_sheets()
-    && sheets_home_is_create_purpose_scoped_unminted()
+    && sheets_home_is_create_purpose_scoped_and_minted()
     && !project_enables_service(project_id: gunbai_auto_project_id, service: sts_api_service_id)
     && project_enables_service(project_id: gunb_ci_project_id, service: sts_api_service_id)
     && gunbai_auto_is_the_only_pool_host_without_sts()

@@ -3,7 +3,9 @@ module test.claim.approval_decision_store_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String, Timestamp, POST, GET, Secret }
 import std.scoped_authorization { AttemptIdentity }
-import extdeps.crypto.mac { MacKey, HmacSha256, mac_verify, MacVerified, MacTagMismatch }
+import extdeps.crypto.mac { MacKey, HmacSha256, mac_verify, MacVerified, MacTagMismatch, mac_key_material_hex_length, mac_suite_key_size }
+import std.measure { byte_size_count }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import extdeps.tailscale.identity { tailnet_identity_of }
 import extdeps.filesystem.filesystem_io { filesystem_exact_read }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
@@ -13,18 +15,19 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed,
   StoredDecisionParsed, StoredRecordUnreadable,
   claims_for, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
-  IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, approval_identity_trust,
+  IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished, approval_identity_trust, approval_identity_trust_for,
   redeem_over_store, RedemptionIdentityUntrusted,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE FIXTURE KEY AND ITS TAGS. Issuance is part A's (approval_issuance_frontier), so the two tags
-// below were computed OUTSIDE the substrate with HMAC-SHA-256 over exactly
-// approval_capability_signing_input(claims_for(fixture_request, d)) under this key -- the same
-// arrangement mac_verification_witness_test uses with the RFC 4231 vectors: the implementation is
-// checked against bytes it did not produce. When mac_sign lands, a round-trip test replaces these
-// literals and they become the regression control that the signing input did not move.
+// THE FIXTURE KEY AND ITS TAGS. The two tags below were computed OUTSIDE the substrate with
+// HMAC-SHA-256 over exactly approval_capability_signing_input(claims_for(fixture_request, d))
+// under this key -- the same arrangement mac_verification_witness_test uses with the RFC 4231
+// vectors: the implementation is checked against bytes it did not produce. Issuance now exists
+// (extdeps.crypto.mac mac_sign, consumed by approval_request_submission issue_links), so these
+// literals are the regression control that the signing input did not move, beside the round-trip
+// in approval_request_submission_witness_test.
 data fixture_key_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 data fixture_approve_tag: NonEmptyStr = "d1f1f1034370302f1405bd0bcd71e907c079ead5bf912da095cbe110d7876663"
 data fixture_deny_tag: NonEmptyStr = "0df108f82248bc3803c611a779d10108a581aecc68a46904a54a95b25e9e9c68"
@@ -50,18 +53,20 @@ fn fixture_request() -> StoredApprovalRequest {
 // ── keyring ────────────────────────────────────────────────────────────────────────────────────
 
 test fn keyring_loads_sixty_four_lower_hex_and_refuses_the_rest() -> Bool {
-  match approval_keyring_from_content(content: fixture_key_hex) { ApprovalKeyLoaded { key: k } => k.suite == approval_mac_key_suite  _ => false }
-    && match approval_keyring_from_content(content: "") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: 0 } } => true  _ => false }
-    && match approval_keyring_from_content(content: concat(fixture_key_hex, "\n")) { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: n } } => n == 65  _ => false }
-    && match approval_keyring_from_content(content: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: _ } } => true  _ => false }
+  mac_key_material_hex_length(s: approval_mac_key_suite) == 2 * byte_size_count(b: mac_suite_key_size(s: approval_mac_key_suite))
+    && mac_key_material_hex_length(s: approval_mac_key_suite) == fixture_key_hex.length()
+    &&   match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: fixture_key_hex) { ApprovalKeyLoaded { key: k } => k.suite == approval_mac_key_suite  _ => false }
+    && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: "") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: 0 } } => true  _ => false }
+    && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: concat(fixture_key_hex, "\n")) { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: n } } => n == 65  _ => false }
+    && match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") { ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: _, length: _ } } => true  _ => false }
 }
 
 // ABSENT IS THE FILESYSTEM'S ANSWER AND UNREADABLE IS A DIFFERENT ONE: a missing file and a
 // permission failure both arrive with empty content, and only the exact read tells them apart.
 test fn keyring_absent_and_unreadable_are_two_refusals() -> Bool {
-  match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "No such file or directory (os error 2)", error_kind: "not_found")) { ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: _ } } => true  _ => false }
-    && match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "Permission denied (os error 13)", error_kind: "permission_denied")) { ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: _, error: _ } } => true  _ => false }
-    && match approval_keyring_from_exact_read(exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: fixture_key_hex, success: true, error: "", error_kind: "")) { ApprovalKeyLoaded { key: _ } => true  _ => false }
+  match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "No such file or directory (os error 2)", error_kind: "not_found")) { ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: _ } } => true  _ => false }
+    && match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "Permission denied (os error 13)", error_kind: "permission_denied")) { ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: _, error: _ } } => true  _ => false }
+    && match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: fixture_key_hex, success: true, error: "", error_kind: "")) { ApprovalKeyLoaded { key: _ } => true  _ => false }
 }
 
 // ── the record round-trips through its own wire ────────────────────────────────────────────────
@@ -108,13 +113,27 @@ test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() ->
 
 // ── the deployment property gates everything ───────────────────────────────────────────────────
 
-// TODAY'S ROW SAYS NOT ESTABLISHED, and a redemption under it refuses before the segment is even
-// parsed -- with a well-formed segment and a loaded key, so nothing else could be the cause.
+// THE TRUST STANDING FOLLOWS THE INSTANCE ROW AND NOTHING ELSE: loopback opens the gate ONLY as
+// Unattributed (never as Established -- a loopback bind does not attribute the on-host peer, so
+// the record names the bearer), any other bind or an unparseable host keeps it closed, and the production row is
+// exactly the derivation over srv1_live_dashboard_instance.listen_host -- so the gate cannot be
+// opened by editing a row beside the one the unit is emitted from.
+test fn identity_trust_is_derived_from_the_instance_bind() -> Bool {
+  match approval_identity_trust_for(listen_host: "127.0.0.1") { IdentityHeaderUnattributed { residual: _ } => true  _ => false }
+    && match approval_identity_trust_for(listen_host: "127.0.0.1") { IdentityHeaderTrustEstablished { evidence: _ } => false  _ => true }
+    && match approval_identity_trust_for(listen_host: "0.0.0.0") { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
+    && match approval_identity_trust_for(listen_host: "srv1.internal") { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
+    && approval_identity_trust == approval_identity_trust_for(listen_host: srv1_live_dashboard_instance().listen_host)
+}
+
+// AN UNTRUSTED IDENTITY HEADER REFUSES BEFORE THE SEGMENT IS EVEN PARSED -- with a well-formed
+// segment and a loaded key, so nothing else could be the cause. The untrusted standing is supplied,
+// since the production row is whatever the instance bind makes it.
 test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool {
-  match approval_identity_trust { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
+  true
     && match redeem_over_store(
       root: "/nonexistent/approvals",
-      trust: approval_identity_trust,
+      trust: IdentityHeaderTrustNotEstablished { blocker: "witness: the deployment cannot vouch for the header" },
       keyring: ApprovalKeyLoaded { key: fixture_key() },
       method: POST,
       segment: capability_path_segment(escalation_id: "esc-mtc1-boot-1", decision: ProposeApprove, tag_hex: fixture_approve_tag) as String,

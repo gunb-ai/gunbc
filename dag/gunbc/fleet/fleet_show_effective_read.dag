@@ -96,10 +96,13 @@ fn fleet_runner_unit_memory_live_read(
                       }
                     )
                   }
+                SystemdPropertyBlank => none
                 SystemdPropertyCaptureRefused { reason: _ } => none
               }
+            SystemdPropertyBlank => none
             SystemdPropertyCaptureRefused { reason: _ } => none
           }
+        SystemdPropertyBlank => none
         SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none
@@ -114,6 +117,7 @@ fn fleet_runner_slice_cap_memory_max_raw(
     Present { value: transport } =>
       match systemctl_show_property_read(transport: transport, unit: slice_unit, property: MemoryMax) {
         SystemdPropertyCaptured { value: raw } => Present { value: raw }
+        SystemdPropertyBlank => none
         SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none

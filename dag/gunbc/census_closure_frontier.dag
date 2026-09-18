@@ -29,6 +29,9 @@ import gunbc.public_workload_census {
   public_workload_census_declared_runner_frontier_rows,
 }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
+import gunbc.review_sheet_converge_cli { review_sheet_whole_estate_consumer_frontier_rows }
+import gunbc.sheets_bootstrap_converge { sheets_bootstrap_project_consumer_frontier_rows }
+import extdeps.pricing.github_actions { actions_allowance_consumer_frontier_rows }
 import gunbc.roadmap_dispatch_destination { attempt_admission_subject_frontier_rows }
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
 import extdeps.pin { pin_frontier_rows }
@@ -60,6 +63,9 @@ import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_r
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
+    review_sheet_whole_estate_consumer_frontier_rows,
+    sheets_bootstrap_project_consumer_frontier_rows,
+    actions_allowance_consumer_frontier_rows,
     data_class_frontier_rows,
     data_category_frontier_rows,
     buyer_review_ensure_projection_frontier_rows,
