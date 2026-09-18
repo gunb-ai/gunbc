@@ -84,9 +84,27 @@ final class AppState: ObservableObject {
         throw WireError.configMissing("APNs did not deliver a device token")
     }
 
+    // ── Authenticated reads ──────────────────────────────────────────────────────────────────
+    /// An App Attest assertion over device_read_client_data for this path, now. No Face ID: reading
+    /// is not deciding. requested_at is a Timestamp in the .dag's spelling (RFC 3339, UTC, seconds).
+    private func readAuth(path: String) async throws -> ReadAuth {
+        guard let enrolment else { throw WireError.configMissing("this phone is not enrolled") }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        let requestedAt = f.string(from: Date())
+        let clientData = deviceReadClientData(path: path, enrollmentId: enrolment.enrollment_id, requestedAt: requestedAt)
+        let assertion = try await AppAttest.assert(keyId: enrolment.attest_key_id, clientData: clientData)
+        return ReadAuth(enrollmentId: enrolment.enrollment_id, requestedAt: requestedAt, assertionB64: assertion.assertion_b64)
+    }
+
+    func fetch(_ escalationId: String) async throws -> FetchedRequest {
+        let path = Route.request(escalationId)
+        return try await requireClient().fetch(escalationId, try await readAuth(path: path))
+    }
+
     // ── Inbox ────────────────────────────────────────────────────────────────────────────────
     func refresh() async {
-        do { pending = try await requireClient().pending() }
+        do { pending = try await requireClient().pending(try await readAuth(path: Route.pending)) }
         catch { lastError = error.localizedDescription }
     }
 
@@ -106,11 +124,11 @@ final class AppState: ObservableObject {
             stored_request_text: r.stored_request_text,
             decision: decision,
             capability_text: cap.capability_text,
-            capability_tag: cap.capability_tag
+            capability_tag_hex: cap.capability_tag_hex
         )
         let bytes = deviceRedemptionSigningInput(input)
         let signature = try DecisionKey.sign(key, bytes)
-        let proof = try await AppAttest.assert(keyId: enrolment.attest_key_id, signingInput: bytes)
+        let proof = try await AppAttest.assert(keyId: enrolment.attest_key_id, clientData: bytes)
         let outcome = try await client.redeem(SignedRedemption(signing_input: input, signature_b64url: signature.b64url, platform_proof: proof))
         await refresh()
         return outcome

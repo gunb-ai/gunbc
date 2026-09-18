@@ -1,6 +1,6 @@
 # Approve — iOS approval app
 
-Hand-authored SwiftUI (iOS 17+) realizing `gunbc.auth.approval_device_redemption` with
+Hand-authored SwiftUI (iOS 17+) realizing `gunbc.auth.approval_device_wire` (the byte contract) and `gunbc.auth.approval_device_redemption` (the server's admission) with
 `extdeps.apple.{secure_enclave, app_attest, apns}`. Recorded as seed-retained Swift in
 `gunbc.approve_ios_app` (`approve_ios_hand_authored_swift_frontier`). The app invents no wire fact:
 every constant, field order and route is a transcription of the `.dag`, and the two byte builders are
@@ -13,8 +13,8 @@ held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors
 |---|---|
 | `project.yml` | XcodeGen spec; no `.xcodeproj` is committed |
 | `Config/Team.xcconfig` | operator-filled: `DEVELOPMENT_TEAM`, `APPROVE_SERVER_HOST` (srv1 tailnet host), `APNS_ENVIRONMENT`, `APP_ATTEST_ENVIRONMENT` |
-| `Approve/Protocol.swift` | `enrolment_transcript`, `device_redemption_signing_input`, the protocol records, the 0x1F join |
-| `Approve/Wire.swift` | the ONE file that knows routes and envelopes; `URLSession` over the tailnet |
+| `Approve/Protocol.swift` | `framed` (the injective `<n>:<field>,` rendering), `enrolment_transcript`, `device_redemption_signing_input`, `device_read_client_data`, the protocol records |
+| `Approve/Wire.swift` | the ONE file that knows routes, envelopes and the read-auth headers; `URLSession` over the tailnet |
 | `Approve/DeviceKeys.swift` | enclave decision key (`[.privateKeyUsage, .biometryCurrentSet]` at creation) and App Attest |
 | `Approve/AppState.swift` | enrolment → inbox → redemption flow |
 | `Approve/ApproveApp.swift` | entry point, APNs token delivery, push wakes the list |
@@ -44,7 +44,7 @@ fixes on first build.
 - **Enrol**: type the dashboard's one-time code (it is the challenge identifier) → refuse unless App Attest is
   supported → create the enclave key → generate the App Attest key → attest with
   `clientDataHash = SHA256(enrolment_transcript)` → register for APNs → `POST /approve/device/enrol`.
-- **Inbox**: `GET /approve/device/pending` on open, pull-to-refresh, and on push. The push carries only
+- **Inbox**: `GET /approve/device/pending` on open, pull-to-refresh, and on push, authenticated by an App Attest assertion over `device_read_client_data` (headers `X-Approval-Assertion`, `X-Approval-Enrollment`, `X-Approval-Requested-At`; 60 s skew). The push carries only
   `notification_id`; nothing from it is displayed as the request.
 - **Detail**: `GET /approve/device/requests/<escalation_id>` returns the stored request byte for byte
   plus a stateless `RedemptionChallenge` and both verbs' capabilities; the app shows that text, then Approve/Deny signs with the chosen verb's capability:

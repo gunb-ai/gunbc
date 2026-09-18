@@ -115,9 +115,11 @@ enum AppAttest {
         return IosAppAttestBoundDecisionKey(attest_key_id: keyId, attestation_b64: attestation.base64EncodedString())
     }
 
-    /// An assertion over the SAME signing input the decision key signs (its counter refuses replay).
-    static func assert(keyId: String, signingInput: Data) async throws -> IosAppAttestAssertion {
-        let hash = Data(SHA256.hash(data: signingInput))
+    /// An assertion whose clientData is EXACTLY the given bytes: the redemption signing input (the same
+    /// bytes the decision key signs) or device_read_client_data for an authenticated GET. The API takes
+    /// the hash; the server hashes the same bytes.
+    static func assert(keyId: String, clientData: Data) async throws -> IosAppAttestAssertion {
+        let hash = Data(SHA256.hash(data: clientData))
         let assertion = try await DCAppAttestService.shared.generateAssertion(keyId, clientDataHash: hash)
         return IosAppAttestAssertion(assertion_b64: assertion.base64EncodedString())
     }

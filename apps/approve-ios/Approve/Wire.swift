@@ -1,7 +1,6 @@
-// THE ONE FILE THAT KNOWS THE HTTP SURFACE. Route paths and envelope names are data rows of
-// gunbc.auth.approval_device_redemption (the server adopted these paths as rows, so the server matches
-// the app and not the other way round). Field names are the .dag field names. Nothing outside this
-// file spells a path or a JSON key that is not a protocol field.
+// THE ONE FILE THAT KNOWS THE HTTP SURFACE. Route paths are the data rows of
+// gunbc.auth.approval_device_wire (approval_device_*_path); field names are the .dag field names.
+// Nothing outside this file spells a path, a header or a JSON key that is not a protocol field.
 import Foundation
 
 struct ServerConfig {
@@ -25,10 +24,29 @@ struct ServerConfig {
 }
 
 enum Route {
+    /// approval_device_enrol_path
     static let enrol = "/approve/device/enrol"
+    /// approval_device_pending_path
     static let pending = "/approve/device/pending"
+    /// approval_device_request_path_prefix + escalation_id
     static func request(_ escalationId: String) -> String { "/approve/device/requests/\(escalationId)" }
+    /// approval_device_redeem_path
     static let redeem = "/approve/device/redeem"
+}
+
+/// Authenticated reads: the assertion over device_read_client_data and the two values the server
+/// needs to recompute it. Admitted only inside approval_device_read_skew (60 s).
+enum ReadHeader {
+    static let assertion = "X-Approval-Assertion"
+    static let enrollment = "X-Approval-Enrollment"
+    static let requestedAt = "X-Approval-Requested-At"
+}
+
+/// The credentials an authenticated GET carries; produced by the caller so this file signs nothing.
+struct ReadAuth {
+    var enrollmentId: String
+    var requestedAt: String
+    var assertionB64: String
 }
 
 /// POST /approve/device/enrol body. The login is not sent: the server derives it from the code.
@@ -55,7 +73,7 @@ struct PendingApproval: Codable, Identifiable, Hashable {
 /// The capability one verb redeems: approval_capability_signing_input text and its tag.
 struct VerbCapability: Codable, Equatable {
     var capability_text: String
-    var capability_tag: String
+    var capability_tag_hex: String
 }
 
 /// GET /approve/device/requests/<escalation_id>: the stored request as the server returns it, byte
@@ -102,9 +120,15 @@ struct Client {
     let config: ServerConfig
     let session = URLSession(configuration: .ephemeral)
 
-    private func send<T: Decodable>(_ method: String, _ path: String, body: (any Encodable)? = nil) async throws -> T {
+    private func send<T: Decodable>(_ method: String, _ path: String, body: (any Encodable)? = nil,
+                                    read: ReadAuth? = nil) async throws -> T {
         var req = URLRequest(url: config.url(path))
         req.httpMethod = method
+        if let read {
+            req.setValue(read.assertionB64, forHTTPHeaderField: ReadHeader.assertion)
+            req.setValue(read.enrollmentId, forHTTPHeaderField: ReadHeader.enrollment)
+            req.setValue(read.requestedAt, forHTTPHeaderField: ReadHeader.requestedAt)
+        }
         if let body {
             req.httpBody = try JSONEncoder().encode(AnyEncodable(body))
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -120,8 +144,10 @@ struct Client {
     }
 
     func enrol(_ s: EnrolmentSubmission) async throws -> EnrolmentGrant { try await send("POST", Route.enrol, body: s) }
-    func pending() async throws -> [PendingApproval] { try await send("GET", Route.pending) }
-    func fetch(_ escalationId: String) async throws -> FetchedRequest { try await send("GET", Route.request(escalationId)) }
+    func pending(_ read: ReadAuth) async throws -> [PendingApproval] { try await send("GET", Route.pending, read: read) }
+    func fetch(_ escalationId: String, _ read: ReadAuth) async throws -> FetchedRequest {
+        try await send("GET", Route.request(escalationId), read: read)
+    }
     func redeem(_ r: SignedRedemption) async throws -> RedemptionOutcome { try await send("POST", Route.redeem, body: r) }
 }
 

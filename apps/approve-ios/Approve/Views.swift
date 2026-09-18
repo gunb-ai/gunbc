@@ -95,7 +95,7 @@ struct DetailView: View {
         }
         .navigationTitle(pending.escalation_id)
         .task {
-            do { fetched = try await state.client?.fetch(pending.escalation_id) }
+            do { fetched = try await state.fetch(pending.escalation_id) }
             catch { self.error = error.localizedDescription }
         }
     }

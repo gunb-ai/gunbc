@@ -16,7 +16,7 @@ struct Vectors: Decodable {
             var stored_request_text: String
             var decision: String
             var capability_text: String
-            var capability_tag: String
+            var capability_tag_hex: String
         }
         var name: String
         var input: Input
@@ -32,7 +32,7 @@ struct Vectors: Decodable {
         var input: Input
         var expected: String
     }
-    var separator_code_point: Int
+    var framing: String
     var redemption: [Redemption]
     var enrolment: [Enrolment]
 }
@@ -48,8 +48,13 @@ final class ProtocolVectorTests: XCTestCase {
         return v
     }
 
-    func testSeparatorIsTheCapabilitySigningFieldSeparator() throws {
-        XCTAssertEqual(Int(Protocol.fieldSeparator), try load().separator_code_point)
+    /// Framing counts CODE POINTS, not UTF-8 bytes and not grapheme clusters: "é" is 1, a flag emoji
+    /// (two scalars) is 2, and a field containing "," or ":" frames unchanged.
+    func testFramedFieldCountsUnicodeScalars() {
+        XCTAssertEqual(Protocol.framedField("é"), "1:é,")
+        XCTAssertEqual(Protocol.framedField("\u{1F1EC}\u{1F1E7}"), "2:\u{1F1EC}\u{1F1E7},")
+        XCTAssertEqual(Protocol.framedField("a,b:c"), "5:a,b:c,")
+        XCTAssertEqual(Protocol.framedField(""), "0:,")
     }
 
     func testRedemptionSigningInputMatchesEveryVector() throws {
@@ -64,7 +69,7 @@ final class ProtocolVectorTests: XCTestCase {
                 stored_request_text: v.input.stored_request_text,
                 decision: decision,
                 capability_text: v.input.capability_text,
-                capability_tag: v.input.capability_tag
+                capability_tag_hex: v.input.capability_tag_hex
             )
             XCTAssertEqual(deviceRedemptionSigningInput(input), Data(v.expected.utf8), v.name)
         }
@@ -88,22 +93,28 @@ final class ProtocolVectorTests: XCTestCase {
         let input = DeviceRedemptionSigningInput(
             audience: "a", enrollment_id: "e", challenge: RedemptionChallenge(expires_at: "x", nonce_hex: "n"),
             escalation_id: "s", request_revision: "r", stored_request_text: "t", decision: .deny,
-            capability_text: "c", capability_tag: "g")
+            capability_text: "c", capability_tag_hex: "g")
         let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(input)) as? [String: Any]
         XCTAssertEqual(Set(json?.keys ?? []), ["audience", "enrollment_id", "challenge_expires_at", "nonce_hex",
-            "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag"])
+            "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_hex"])
         XCTAssertEqual(try JSONDecoder().decode(DeviceRedemptionSigningInput.self, from: JSONEncoder().encode(input)), input)
     }
 
-    /// Discriminating control on the builder itself: swapping the verb must move the bytes, and the
-    /// join must place exactly one 0x1F between fields.
-    func testBuilderDiscriminatesTheVerbAndJoinsWithUnitSeparator() {
+    /// Discriminating control on the builder itself: swapping the verb must move the bytes, and a
+    /// field that contains the frame's own punctuation must not collide with a split field.
+    func testBuilderDiscriminatesTheVerbAndFramingIsInjective() {
         let base = DeviceRedemptionSigningInput(
             audience: "a", enrollment_id: "e", challenge: RedemptionChallenge(expires_at: "x", nonce_hex: "n"),
             escalation_id: "s", request_revision: "r", stored_request_text: "t", decision: .approve,
-            capability_text: "c", capability_tag: "g")
+            capability_text: "c", capability_tag_hex: "g")
         var denied = base; denied.decision = .deny
         XCTAssertNotEqual(deviceRedemptionSigningInput(base), deviceRedemptionSigningInput(denied))
-        XCTAssertEqual(deviceRedemptionSigningInput(base).filter { $0 == 0x1F }.count, 10)
+        XCTAssertNotEqual(Protocol.framed(["a,b"]), Protocol.framed(["a", "b"]))
+        XCTAssertNotEqual(Protocol.framed(["1:a,"]), Protocol.framed(["a"]))
+    }
+
+    func testReadClientDataMatchesTheFrame() {
+        XCTAssertEqual(deviceReadClientData(path: "/approve/device/pending", enrollmentId: "e", requestedAt: "2026-09-18T12:00:00Z"),
+                       Data("29:gunbc.approval-device-read.v1,23:/approve/device/pending,1:e,20:2026-09-18T12:00:00Z,".utf8))
     }
 }
