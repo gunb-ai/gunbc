@@ -2,7 +2,6 @@ module gunbc.spark.runtime_architecture_registry_reading
 
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
-import extdeps.zhipu.glm_5_3 { glm_5_3_architecture_class }
 
 // WHICH ARCHITECTURES AN IMAGE ANSWERS FOR IS SOMETHING WE READ, NOT SOMETHING ITS PUBLISHER SAYS.
 //
