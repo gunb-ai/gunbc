@@ -1,7 +1,9 @@
 module gunbc.network_boot_delivery
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -336,12 +338,9 @@ fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRe
 // 0WET stays unbound this slice: operator 2026-09-18 named Mt. Jade (arriving,
 // barebones) as first candidate and Mt. Collins after CD as fallback. No UnitKey
 // is minted here.
-// Production consumer of this join: BoundBootDeliveryEvidence.network_boot, read
-// by gunbc.boot_artifact_delivery pxe_chain_candidate. 0C does not call this
-// function: it owns only the site edge and binds NetworkBootJoinInputs.site
-// when the first boot offer is observed from the srv4 edge. 0B/0D likewise own
-// one receipt family. The mint is the intake assembler that holds fleet + site
-// + client + control + SignedBootManifestVerified together.
+// 0C does not call this function: it owns only the site edge. 0B/0D likewise own
+// one receipt family each. Its unexecuted production route is the typed frontier
+// row network_boot_delivery_frontier_rows, not this annotation.
 fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliveryStanding {
   match inputs.fleet {
     FleetBootServiceUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
@@ -513,3 +512,13 @@ fn join_verified_ticket_after_trust(
       }
   }
 }
+
+data network_boot_delivery_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery"),
+    reason: "no intake assembler calls join_network_boot_delivery yet; BoundBootDeliveryEvidence.network_boot, read by gunbc.boot_artifact_delivery pxe_chain_candidate, is constructed only by witnesses over supplied inputs",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the machine-intake assembler holding the fleet receipt, the site edge standing observed from the srv4 edge, the client, the control and SignedBootManifestVerified calls join_network_boot_delivery and binds its standing into BoundBootDeliveryEvidence.network_boot on a real boot attempt; a witness over supplied answers does not fire this"
+    )
+  ),
+]

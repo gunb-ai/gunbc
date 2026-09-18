@@ -108,6 +108,11 @@ type OriginCredentialStanding
   | OriginCredentialUnminted {
       mint_entry: DeclarationRef
     }
+  // No mint entry exists for this credential yet; secret_id is where its token will be stored once
+  // one does. Distinct from OriginCredentialUnminted so mint_entry keeps one meaning: an entry to run.
+  | OriginCredentialMintEntryUnbuilt {
+      secret_id: NonEmptyStr
+    }
 
 type R2OriginBucket {
   bucket_name: NonEmptyStr
@@ -362,12 +367,8 @@ fn fabric_boot_origin_standing() -> R2OriginStanding {
           bucket_name: name,
           jurisdiction: R2JurisdictionDefault,
           purpose: FabricBootOrigin {},
-          read_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_read_secret_id"),
-          },
-          write_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_write_secret_id"),
-          },
+          read_credential: OriginCredentialMintEntryUnbuilt { secret_id: fabric_boot_origin_read_secret_id },
+          write_credential: OriginCredentialMintEntryUnbuilt { secret_id: fabric_boot_origin_write_secret_id },
         }
       }
   }

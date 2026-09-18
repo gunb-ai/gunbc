@@ -39,6 +39,7 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialStanding,
   OriginCredentialPinned,
   OriginCredentialUnminted,
+  OriginCredentialMintEntryUnbuilt,
   bucket_purpose_admission,
   origin_admission_is_create_only,
 }
@@ -246,6 +247,14 @@ fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> Origin
                   "THE ORIGIN'S ", origin_direction_word(direction: direction),
                   " CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String,
                   " and pin the stored version in gunbc.cloudflare.r2_origin before this operation can sign a request",
+                ], "") as NonEmptyStr,
+              }
+            OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
+              OriginTargetRefused {
+                cause: join([
+                  "THE ORIGIN'S ", origin_direction_word(direction: direction),
+                  " CREDENTIAL HAS NO MINT ENTRY: nothing mints ", secret_id as String,
+                  " yet, so this operation cannot sign a request",
                 ], "") as NonEmptyStr,
               }
             OriginCredentialPinned { access_key_id: access_key_id, token_value: token_value } =>

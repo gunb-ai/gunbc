@@ -240,4 +240,11 @@ data cloudflare_boot_origin_frontier_rows: List<FrontierRow> = [
       description: "dissolves when boot_origin_hostname_standing is Allocated and a boot readback entry fetches every published key through boot_readback_locator and classifies it with classify_boot_readback"
     )
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_standing"),
+    reason: "both boot-origin credentials stand OriginCredentialMintEntryUnbuilt: gunbc.cloudflare.r2_token_mint_run mints only for the durable origin, so no entry mints the boot read or write token",
+    dissolution: unbound_dissolution(
+      description: "dissolves when gunbc.cloudflare.r2_token_mint_run is parameterized by BucketPurpose and a boot mint entry has executed, stored each token under its fabric_boot_origin secret id, and fabric_boot_origin_standing names that entry as OriginCredentialUnminted or pins the stored version as OriginCredentialPinned"
+    )
+  ),
 ]

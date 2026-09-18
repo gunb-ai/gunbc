@@ -59,6 +59,7 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialStanding,
   OriginCredentialPinned,
   OriginCredentialUnminted,
+  OriginCredentialMintEntryUnbuilt,
 }
 import gunbc.auth.access_token_source {
   resolve_access_token,
@@ -545,6 +546,7 @@ fn list_account_tokens(
 fn origin_credential_pin_is_exact(credential: OriginCredentialStanding) -> Bool {
   match credential {
     OriginCredentialUnminted { mint_entry: _ } => false
+    OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
     OriginCredentialPinned { access_key_id: _, token_value: locus } =>
       (locus.version as String) != "latest"
         && (locus.version as String) != "pending"

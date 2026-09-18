@@ -57,6 +57,7 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialStanding,
   OriginCredentialPinned,
   OriginCredentialUnminted,
+  OriginCredentialMintEntryUnbuilt,
 }
 import gunbc.cloudflare.r2_permission_group_observe {
   cloudflare_r2_bucket_item_write_observed_permission_group_id,
@@ -340,6 +341,7 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
     R2OriginAllocated { bucket: bucket } =>
       match bucket.read_credential {
         OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
         OriginCredentialPinned { access_key_id: access_key_id, token_value: locus } =>
           (locus.secret as String) == (fabric_durable_origin_read_secret_id as String)
             && (locus.project as String) == (fleet_secrets_gcp_project as String)
@@ -365,6 +367,7 @@ test fn r2_origin_bucket_write_credential_is_unminted_and_names_its_mint_entry()
     R2OriginAllocated { bucket: bucket } =>
       match bucket.write_credential {
         OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+        OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
         OriginCredentialUnminted { mint_entry: entry } =>
           (entry.module_path as String) == "gunbc.cloudflare.r2_token_mint_run"
             && (entry.decl_name as String) == "run_object_write"
@@ -418,6 +421,7 @@ test fn r2_origin_read_pin_names_this_project_version() -> Bool {
     R2OriginAllocated { bucket: bucket } =>
       match bucket.read_credential {
         OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
         OriginCredentialPinned { access_key_id: _, token_value: locus } =>
           gcp_resource_names_this_version(
             returned: secret_ref_version_resource(ref: locus),

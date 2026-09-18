@@ -13,6 +13,7 @@ import gunbc.cloudflare.r2_origin {
   R2OriginUnallocated,
   OriginCredentialPinned,
   OriginCredentialUnminted,
+  OriginCredentialMintEntryUnbuilt,
   DigestKeyedBootArtifacts,
   bucket_purpose_admission,
   FabricCommitManifestsAndContentAddressedOutputs,
@@ -183,7 +184,7 @@ test fn boot_origin_is_a_separate_bucket_from_the_durable_origin() -> Bool {
   boot_origin_is_separate_from_durable_origin()
 }
 
-test fn boot_origin_credentials_are_disjoint_and_unminted() -> Bool {
+test fn boot_origin_credentials_are_disjoint_and_have_no_mint_entry() -> Bool {
   let disjoint = (fabric_boot_origin_read_secret_id as String) != (fabric_boot_origin_write_secret_id as String)
     && !((fabric_boot_origin_read_secret_id as String) == (fabric_durable_origin_read_secret_id as String))
     && !((fabric_boot_origin_write_secret_id as String) == (fabric_durable_origin_write_secret_id as String))
@@ -195,9 +196,15 @@ test fn boot_origin_credentials_are_disjoint_and_unminted() -> Bool {
              FabricCommitManifestsAndContentAddressedOutputs {} => false
              DigestKeyedBootArtifacts {} => true
            }
+        && match b.read_credential {
+             OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+             OriginCredentialUnminted { mint_entry: _ } => false
+             OriginCredentialMintEntryUnbuilt { secret_id: s } => (s as String) == (fabric_boot_origin_read_secret_id as String)
+           }
         && match b.write_credential {
              OriginCredentialPinned { access_key_id: _, token_value: _ } => false
-             OriginCredentialUnminted { mint_entry: _ } => true
+             OriginCredentialUnminted { mint_entry: _ } => false
+             OriginCredentialMintEntryUnbuilt { secret_id: s } => (s as String) == (fabric_boot_origin_write_secret_id as String)
            }
   }
   disjoint && standing
