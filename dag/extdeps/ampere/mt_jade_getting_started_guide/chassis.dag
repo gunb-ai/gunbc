@@ -43,8 +43,8 @@ data mt_jade_gsg_chassis_fan_count: Nat = 6
 data mt_jade_gsg_minimum_bmc_firmware_family: BmcFirmwareFamily = AmiMegaRac
 
 // The unstated rows record that THIS document does not state the topic. They are inferred from
-// nothing -- not from Collins, Wiwynn SV328R, or IEC catalogues -- and mt_jade_gsg_rail_kit_part_number
-// is the one with a consumer today, carried by identity in the intake observation module.
+// nothing -- not from Collins, Wiwynn SV328R, or IEC catalogues --. No row in this module has a
+// production consumer today; every one of them is on the frontier roster.
 data mt_jade_gsg_inlet_connector_face: GsgUnstated = GsgUnstated {
   topic: "IEC inlet / cord face (C13, C14, or other). Table 5 and Table 12 name Power cable quantity 2 and do not name the connector.",
 }

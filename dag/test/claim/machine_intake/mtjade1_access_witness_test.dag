@@ -4,9 +4,7 @@ import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake_mtjade1_access_observation {
   SecretLocusReservedNotOnAccessorRoster,
-  mtjade1_bmc_ethernet,
   mtjade1_managed_bmc_secret_standing,
-  mtjade1_rail_kit_part_number,
   mtjade1_unit_key_standing,
 }
 import gunbc.machine_intake_subject {
@@ -16,27 +14,10 @@ import gunbc.machine_intake_subject {
   UnitKeyRefused,
   bind_unit_key,
 }
-import extdeps.ampere.mt_jade_getting_started_guide.chassis {
-  GsgUnstated,
-  NamedOnRearPanel,
-  mt_jade_gsg_bmc_ethernet_port,
-  mt_jade_gsg_rail_kit_part_number,
-}
 import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-// THE RAIL-KIT ROW IS THE GSG'S ROW, NOT A RE-MINT. The observation module carries
-// mt_jade_gsg_rail_kit_part_number by identity; the RED is an observation-side GsgUnstated with
-// its own prose, which is the fork this claim exists to refuse. No conjunct compares a topic to a
-// literal copied from the row it reads (review 67911).
-test fn w_mtjade1_bmc_ethernet_is_rear_panel_and_rail_kit_row_is_the_gsg_row() -> Bool {
-  mtjade1_bmc_ethernet == mt_jade_gsg_bmc_ethernet_port
-    && (NamedOnRearPanel { figure_or_table: "fixture: not Table 6" } == mt_jade_gsg_bmc_ethernet_port) == false
-    && mtjade1_rail_kit_part_number == mt_jade_gsg_rail_kit_part_number
-    && (GsgUnstated { topic: "fixture: a part number" } == mt_jade_gsg_rail_kit_part_number) == false
-}
 
 test fn w_mtjade1_unit_key_is_board_serial_absent() -> Bool {
   match mtjade1_unit_key_standing {

@@ -19,8 +19,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the fabricated-citation class std.dissolution warns about by name.
 test fn w_mtjade1_gsg_frontier_rows_are_well_formed_and_unbound() -> Bool {
   frontier_rows_well_formed(rows: mtjade1_coverage_frontier_rows)
-    && list_length(mtjade1_coverage_frontier_rows) == 21
-    && list_length(mtjade1_gsg_document_frontier_rows) == 9
+    && list_length(mtjade1_coverage_frontier_rows) == 23
+    && list_length(mtjade1_gsg_document_frontier_rows) == 11
     && all(
       mtjade1_gsg_document_frontier_rows,
       row => match row.subject {

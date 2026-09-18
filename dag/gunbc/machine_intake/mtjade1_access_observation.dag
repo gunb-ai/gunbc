@@ -11,12 +11,6 @@ import gunbc.machine_intake_subject {
 }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.ampere.mt_jade_getting_started_guide.chassis {
-  GsgRearManagementEthernet,
-  GsgUnstated,
-  mt_jade_gsg_bmc_ethernet_port,
-  mt_jade_gsg_rail_kit_part_number,
-}
 
 // MT. JADE UNIT 1 BMC ACCESS, AND NOTHING HERE IS A LIVE READING. The operator has AC and a BMC
 // in standby; this module does not invent a host, serial, firmware family, or BaseboardModel arm.
@@ -33,9 +27,12 @@ data mtjade1_unit_key_standing: UnitKeyStanding = UnitKeyRefused {
   cause: BoardSerialAbsent,
 }
 
-data mtjade1_bmc_ethernet: GsgRearManagementEthernet = mt_jade_gsg_bmc_ethernet_port
-
-data mtjade1_rail_kit_part_number: GsgUnstated = mt_jade_gsg_rail_kit_part_number
+// THE GSG'S ROWS ARE NOT RE-BOUND UNDER mtjade1_ NAMES HERE. An alias adds a second name for one
+// concept (DESIGN §3) and buys nothing: the rear management port and the rail-kit part number are
+// facts about the PLATFORM that this document states, and nothing observed on unit 1 distinguishes
+// them. The aliases that used to sit here had exactly one reader, a witness asserting x == x, and
+// their existence made two chassis rows LOOK consumed and kept them off the coverage frontier
+// (review 67996). Both are rostered in gunbc.machine_intake_mtjade1_coverage_frontier now.
 
 // Locus is reserved and off the accessor roster until the secret exists. Mint after a wet
 // ProbeServiceRoot blob binds FamilyObserved, then the first rotation — not before.

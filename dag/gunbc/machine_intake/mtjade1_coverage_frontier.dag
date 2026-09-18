@@ -67,6 +67,16 @@ data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: the #11529 lane binding chassis mass from a cited datasheet as a Gram measure. TRIGGER: that cited read lands. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_bmc_ethernet_port"),
+    reason: "Table 6 / Figure 1 name a rear management port. An earlier revision made this row LOOK consumed by re-binding it as mtjade1_bmc_ethernet in the intake module, but that alias was a second name for one concept whose only reader asserted x == x, so the row was dangling and off this roster (review 67996).",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a PhysicalEthernetPort observation of unit 1's rear panel joined to this row through the refusing ethernet_port_unit_identity in the #11529 lane, which answers PortUnitIdentityUnobserved rather than minting SameUnit from matching prose. TRIGGER: that observation exists and the join runs, at which point the document's port and the observed connector are two subjects a fold relates. SUFFICIENT FOR deleting this row. NOT satisfied by re-binding the row under a unit-scoped name, which is what it was."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_rail_kit_part_number"),
+    reason: "Recorded as GsgUnstated: Table 5 gives quantity 1 and the description Rail Kit, and no vendor part number. Same alias history as the port row above - mtjade1_rail_kit_part_number made it look consumed.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the #11529 physical class-facts lane binding a cited rail-kit part number. TRIGGER: that cited read lands and the topic becomes a stated value. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
     ref: gsg_chassis_decl(name: "mt_jade_gsg_bmc_ethernet_phy"),
     reason: "Recorded as GsgUnstated: Table 6 names the BMC Ethernet port and not its PHY or controller SKU.",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: an OnboardNetworkController row in the #11529 lane, or a host-side lspci/ethtool census of this unit. TRIGGER: either binds a cited controller SKU. SUFFICIENT FOR deleting this row. NOT satisfied by inferring the PHY from the platform's standard configuration, which the GSG itself says custom-shipped systems may differ from."),
