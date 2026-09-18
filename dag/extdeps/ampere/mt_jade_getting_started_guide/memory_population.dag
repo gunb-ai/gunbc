@@ -1,0 +1,77 @@
+module extdeps.ampere.mt_jade_getting_started_guide.memory_population
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, FactCitation }
+import extdeps.ampere.mt_jade_getting_started_guide.subject {
+  mt_jade_gsg_authority,
+  mt_jade_gsg_model_scope,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_jade_gsg_authority
+data extdeps_model_scope: ExternalModelScope = mt_jade_gsg_model_scope
+
+// Table 11, page 11, Document Issue 1.00. Printed slot labels are hash-numbers (#1..#32), not a
+// J-prefix. Each MCU has two columns. Socket 0 columns left-to-right: #1 #2 #3 #4 #5 #6 #7 #8
+// then #16 #15 #14 #13 #12 #11 #10 #9 under MCU0 MCU1 MCU2 MCU3 MCU7 MCU6 MCU5 MCU4.
+// Socket 1: #17..#24 then #32..#25 under the same MCU order.
+
+type MtJadeGsgChannelConnectorPair {
+  processor_socket: Nat
+  memory_controller: Nat
+  table_left_connector: Nat
+  table_right_connector: Nat
+}
+
+data mt_jade_gsg_socket0_channel_pairs: List<MtJadeGsgChannelConnectorPair> = [
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 0, table_left_connector: 1, table_right_connector: 2 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 1, table_left_connector: 3, table_right_connector: 4 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 2, table_left_connector: 5, table_right_connector: 6 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 3, table_left_connector: 7, table_right_connector: 8 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 7, table_left_connector: 16, table_right_connector: 15 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 6, table_left_connector: 14, table_right_connector: 13 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 5, table_left_connector: 12, table_right_connector: 11 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 4, table_left_connector: 10, table_right_connector: 9 },
+]
+
+data mt_jade_gsg_socket1_channel_pairs: List<MtJadeGsgChannelConnectorPair> = [
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 0, table_left_connector: 17, table_right_connector: 18 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 1, table_left_connector: 19, table_right_connector: 20 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 2, table_left_connector: 21, table_right_connector: 22 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 3, table_left_connector: 23, table_right_connector: 24 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 7, table_left_connector: 32, table_right_connector: 31 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 6, table_left_connector: 30, table_right_connector: 29 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 5, table_left_connector: 28, table_right_connector: 27 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 4, table_left_connector: 26, table_right_connector: 25 },
+]
+
+type MtJadeGsgDimmPopulationRow {
+  configuration: NonEmptyStr
+  dimm_count: Nat
+  populated_slot_labels: List<Nat>
+}
+
+// 2S2P sixteen-DIMM row of Table 11: the Y cells. That is one DIMM per MCU (1DPC) on both sockets.
+data mt_jade_gsg_population_2s2p_16_dimms: MtJadeGsgDimmPopulationRow = MtJadeGsgDimmPopulationRow {
+  configuration: "2S2P",
+  dimm_count: 16,
+  populated_slot_labels: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31],
+}
+
+data mt_jade_gsg_socket0_one_dpc_slot_labels: List<Nat> = [1, 3, 5, 7, 9, 11, 13, 15]
+
+data mt_jade_gsg_socket1_one_dpc_slot_labels: List<Nat> = [17, 19, 21, 23, 25, 27, 29, 31]
+
+data mt_jade_gsg_one_dpc_empty_slot_labels: List<Nat> = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]
+
+data mt_jade_gsg_slot_label_prefix: NonEmptyStr = "#"
+
+data mt_jade_gsg_population_2s2p_16_dimms_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.ampere.mt_jade_getting_started_guide.memory_population",
+    decl_name: "mt_jade_gsg_population_2s2p_16_dimms",
+    field: WholeDeclaration,
+  },
+  authority: mt_jade_gsg_authority,
+}

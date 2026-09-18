@@ -6,7 +6,7 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform { DimmSlot0 }
 import extdeps.memory.types { DualDiePackage, MonolithicDie, ThreeDimensionalStacked }
 import extdeps.ocp.mt_jade.platform { MasterSocket, SlaveSocket }
 import gunbc.machine_intake_mtjade1_first_dpc_population_plan {
-  ConnectorSilkUnobserved,
+  ConnectorSilkFromGsgTable11,
   MixedModuleClassRefused,
   UniformDualDieRdimm,
   UniformMonolithicRdimm,
@@ -14,7 +14,9 @@ import gunbc.machine_intake_mtjade1_first_dpc_population_plan {
   jade_first_dpc_admits_die_stacking,
   jade_first_dpc_cross_channel_1r_2r_is_undetermined,
   jade_first_dpc_dimm_count,
+  jade_first_dpc_empty_slot_labels,
   jade_first_dpc_preferred_class,
+  jade_first_dpc_printed_slot_labels,
   jade_first_dpc_same_channel_mixing_is_engaged,
   jade_first_dpc_silk_standing,
   jade_first_dpc_slot,
@@ -79,9 +81,12 @@ test fn w_jade_first_dpc_modules_are_uniform_and_ddp_is_a_class_not_a_bogus_2rx4
     }
 }
 
-test fn w_jade_first_dpc_silk_is_unobserved_not_collins_j_map() -> Bool {
+test fn w_jade_first_dpc_silk_is_gsg_table11_hash_numbers() -> Bool {
   match jade_first_dpc_silk_standing {
-    ConnectorSilkUnobserved { discriminator: d } =>
-      (d as String) != "J1,J3,...,J31"
+    ConnectorSilkFromGsgTable11 { socket0: a, socket1: b } =>
+      list_length(a) == 8
+        && list_length(b) == 8
+        && list_length(jade_first_dpc_printed_slot_labels) == 16
+        && list_length(jade_first_dpc_empty_slot_labels) == 16
   }
 }

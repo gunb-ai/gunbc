@@ -1,0 +1,44 @@
+module extdeps.ampere.mt_jade_getting_started_guide.chassis
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily }
+import extdeps.ampere.mt_jade_getting_started_guide.subject {
+  mt_jade_gsg_authority,
+  mt_jade_gsg_model_scope,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_jade_gsg_authority
+data extdeps_model_scope: ExternalModelScope = mt_jade_gsg_model_scope
+
+// WHAT TABLE 5 AND FIGURE 10 / TABLE 6 STATE. What they do not state is recorded as
+// UnstatedByThisDocument rather than inferred from Collins, Wiwynn SV328R, or IEC catalogues.
+
+type GsgUnstated {
+  topic: NonEmptyStr
+}
+
+data mt_jade_gsg_carton_power_cable_count: Nat = 2
+
+data mt_jade_gsg_carton_rail_kit_count: Nat = 1
+
+data mt_jade_gsg_rear_psu_count: Nat = 2
+
+data mt_jade_gsg_chassis_fan_count: Nat = 6
+
+data mt_jade_gsg_minimum_bmc_firmware_family: BmcFirmwareFamily = AmiMegaRac
+
+data mt_jade_gsg_inlet_connector_face: GsgUnstated = GsgUnstated {
+  topic: "IEC inlet / cord face (C13, C14, or other). Table 5 and Table 12 name Power cable quantity 2 and do not name the connector.",
+}
+
+data mt_jade_gsg_chassis_weight: GsgUnstated = GsgUnstated {
+  topic: "Chassis or system mass. This GSG does not print a weight.",
+}
+
+data mt_jade_gsg_rail_kit_part_number: GsgUnstated = GsgUnstated {
+  topic: "Rail kit vendor part number. Table 5 quantity is 1 with description Rail Kit only.",
+}
+
+data mt_jade_gsg_bmc_ethernet_port_present: NonEmptyStr = "BMC Ethernet Port / Management Ethernet on the rear panel (Table 6 / Figure 1). PHY and controller SKUs are not named."

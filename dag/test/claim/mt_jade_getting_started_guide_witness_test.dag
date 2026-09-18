@@ -1,0 +1,49 @@
+module test.claim.mt_jade_getting_started_guide_witness
+
+import std.types { Bool, String, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.ampere.mt_jade_getting_started_guide.subject {
+  mt_jade_gsg_issue,
+  mt_jade_gsg_title,
+}
+import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
+  mt_jade_gsg_one_dpc_empty_slot_labels,
+  mt_jade_gsg_population_2s2p_16_dimms,
+  mt_jade_gsg_socket0_one_dpc_slot_labels,
+  mt_jade_gsg_socket1_one_dpc_slot_labels,
+}
+import extdeps.ampere.mt_jade_getting_started_guide.chassis {
+  mt_jade_gsg_carton_power_cable_count,
+  mt_jade_gsg_carton_rail_kit_count,
+  mt_jade_gsg_chassis_fan_count,
+  mt_jade_gsg_chassis_weight,
+  mt_jade_gsg_inlet_connector_face,
+  mt_jade_gsg_minimum_bmc_firmware_family,
+  mt_jade_gsg_rear_psu_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_jade_gsg_identity_is_issue_1_00() -> Bool {
+  (mt_jade_gsg_issue as String) == "1.00"
+    && (mt_jade_gsg_title as String) != ""
+}
+
+test fn w_jade_gsg_table11_16_dimm_row_is_the_odd_hash_slots() -> Bool {
+  mt_jade_gsg_population_2s2p_16_dimms.dimm_count == 16
+    && list_length(mt_jade_gsg_population_2s2p_16_dimms.populated_slot_labels) == 16
+    && list_length(mt_jade_gsg_socket0_one_dpc_slot_labels) == 8
+    && list_length(mt_jade_gsg_socket1_one_dpc_slot_labels) == 8
+    && list_length(mt_jade_gsg_one_dpc_empty_slot_labels) == 16
+}
+
+test fn w_jade_gsg_states_cables_rails_fans_and_does_not_state_inlet_or_weight() -> Bool {
+  mt_jade_gsg_carton_power_cable_count == 2
+    && mt_jade_gsg_carton_rail_kit_count == 1
+    && mt_jade_gsg_rear_psu_count == 2
+    && mt_jade_gsg_chassis_fan_count == 6
+    && mt_jade_gsg_minimum_bmc_firmware_family == AmiMegaRac
+    && (mt_jade_gsg_inlet_connector_face.topic as String) != ""
+    && (mt_jade_gsg_chassis_weight.topic as String) != ""
+}

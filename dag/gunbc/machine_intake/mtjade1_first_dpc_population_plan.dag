@@ -1,6 +1,13 @@
 module gunbc.machine_intake_mtjade1_first_dpc_population_plan
 
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
+  mt_jade_gsg_one_dpc_empty_slot_labels,
+  mt_jade_gsg_population_2s2p_16_dimms,
+  mt_jade_gsg_socket0_one_dpc_slot_labels,
+  mt_jade_gsg_socket1_one_dpc_slot_labels,
+}
 import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   DimmSlotPosition,
@@ -28,12 +35,9 @@ import extdeps.ocp.mt_jade.memory_mixing {
 }
 import extdeps.ocp.mt_jade.platform { MasterSocket, ProcessorSocketRole, SlaveSocket }
 
-// FIRST 1DPC FILL FOR THE BAREBONES JADE UNIT. Table 3 (extdeps.ocp.mt_jade.memory_mixing) does
-// not name fill order or which member of a channel pair is populated first. Ampere Altra
-// platform HW design section 2.2.3 does: 1DPC occupies Slot0, the DIMM farther from that CPU.
-// Mt. Collins Table 11 odd J-connectors are that product's silk, not this board's. This plan
-// names the sixteen Slot0 positions; silkscreen J-labels stay unobserved until a photo is
-// joined to Slot0 = farther-from-CPU.
+// FIRST 1DPC FILL. OCP Table 3 does not name fill order. Ampere Altra 2.2.3 says 1DPC is Slot0
+// (farther from that CPU). Printed board labels for that fill are the Y cells of Ampere Mt. Jade
+// PVT/DVT GSG Issue 1.00 Table 11, 2S2P 16-DIMM row — hash-numbers, not Collins J-prefix.
 
 type JadeFirstDpcSlot {
   socket: ProcessorSocketRole
@@ -42,7 +46,7 @@ type JadeFirstDpcSlot {
 }
 
 type JadeFirstDpcSilkStanding
-  = ConnectorSilkUnobserved { discriminator: NonEmptyStr }
+  = ConnectorSilkFromGsgTable11 { socket0: List<Nat>, socket1: List<Nat> }
 
 type JadeFirstDpcModuleClass
   = UniformMonolithicRdimm
@@ -93,9 +97,14 @@ data jade_first_dpc_slots: List<JadeFirstDpcSlot> = [
   jade_channel_slot(socket: SlaveSocket, channel_ordinal: 7),
 ]
 
-data jade_first_dpc_silk_standing: JadeFirstDpcSilkStanding = ConnectorSilkUnobserved {
-  discriminator: "Photograph each channel pair; the member farther from that socket is Slot0 / DIMM0 and receives the 1DPC stick. Do not copy Mt. Collins J1,J3,...,J31.",
+data jade_first_dpc_silk_standing: JadeFirstDpcSilkStanding = ConnectorSilkFromGsgTable11 {
+  socket0: mt_jade_gsg_socket0_one_dpc_slot_labels,
+  socket1: mt_jade_gsg_socket1_one_dpc_slot_labels,
 }
+
+data jade_first_dpc_printed_slot_labels: List<Nat> = mt_jade_gsg_population_2s2p_16_dimms.populated_slot_labels
+
+data jade_first_dpc_empty_slot_labels: List<Nat> = mt_jade_gsg_one_dpc_empty_slot_labels
 
 // Same-channel Table 3 cells are not engaged at 1DPC. Cross-channel 1R+2R is MixingUndetermined
 // (TBD). First fill therefore uses sixteen identical modules: one rank, one width, one density,
