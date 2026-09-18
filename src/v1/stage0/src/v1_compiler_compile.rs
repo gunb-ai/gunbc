@@ -629,8 +629,8 @@ pub fn function_value_target(
             binding_kind: bk, ..
         } => match bk.clone() {
             Some(kind) => match (*kind.clone()).clone() {
-                VarBindingKind::FunctionValueBinding => v1_rt::map_get(
-                    &visible,
+                VarBindingKind::FunctionValueBinding => visible_or_qualified_key(
+                    visible.clone(),
                     crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
                 ),
                 VarBindingKind::LocalValueBinding => std::option::Option::None,
@@ -640,9 +640,16 @@ pub fn function_value_target(
                 VarBindingKind::MatchBoundBinding => std::option::Option::None,
                 VarBindingKind::ServiceValueBinding => std::option::Option::None,
             },
-            std::option::Option::None => v1_rt::map_get(
-                &visible,
+            std::option::Option::None => visible_or_qualified_key(
+                visible.clone(),
                 crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
+            ),
+        },
+        ExprData::ExprFieldAccess { summary: s, .. } => match s.clone() {
+            Some(_) => std::option::Option::None,
+            std::option::Option::None => visible_or_qualified_key(
+                visible.clone(),
+                dotted_reference_text(texpr.clone(), source_indices.clone()),
             ),
         },
         ExprData::ExprCall {
@@ -650,6 +657,54 @@ pub fn function_value_target(
         } => call_semantics_source_target(cs.clone()),
         _ => std::option::Option::None,
     }
+}
+
+pub fn visible_or_qualified_key(
+    visible: Rc<HashMap<String, String>>,
+    name: String,
+) -> Option<String> {
+    match v1_rt::map_get(&visible, name.clone()) {
+        Some(key) => Some(key.clone()),
+        std::option::Option::None => {
+            if v1_rt::string_contains(&name, ".".to_string()) {
+                Some(name.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+    }
+}
+
+pub fn dotted_reference_text(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
+            ExprData::ExprFieldAccess { summary: _, .. } => {
+                match texpr.children.clone().first().cloned() {
+                    Some(base) => v1_rt::concat(
+                        v1_rt::concat(
+                            dotted_reference_text(base.clone(), source_indices.clone()),
+                            ".".to_string(),
+                        ),
+                        crate::v1_std_core::field_access_field_at(
+                            texpr.clone(),
+                            source_indices.clone(),
+                        ),
+                    ),
+                    std::option::Option::None => crate::v1_std_core::field_access_field_at(
+                        texpr.clone(),
+                        source_indices.clone(),
+                    ),
+                }
+            }
+            _ => "".to_string(),
+        }
+    })
 }
 
 pub fn test_references_in_expr(

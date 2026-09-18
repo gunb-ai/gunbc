@@ -505,16 +505,48 @@ fn function_value_target(texpr: Node, visible: Map<String, String>, source_indic
       match bk {
         Present { value: kind } =>
           match kind {
-            FunctionValueBinding => map_get(visible, authored_name_at(source_indices: source_indices, node: texpr))
+            FunctionValueBinding => visible_or_qualified_key(visible: visible, name: authored_name_at(source_indices: source_indices, node: texpr))
             LocalValueBinding => none
             VariantValueBinding { parent_enum: _ } => none
             MatchBoundBinding => none
             ServiceValueBinding => none
           }
-        Absent => map_get(visible, authored_name_at(source_indices: source_indices, node: texpr))
+        Absent => visible_or_qualified_key(visible: visible, name: authored_name_at(source_indices: source_indices, node: texpr))
+      }
+    ExprFieldAccess { summary: s } =>
+      match s {
+        Present { value: _ } => none
+        Absent => visible_or_qualified_key(visible: visible, name: dotted_reference_text(texpr: texpr, source_indices: source_indices))
       }
     ExprCall { call_semantics: cs, descent_evidence: _ } => call_semantics_source_target(semantics: cs)
     _ => none
+  }
+}
+
+// A QUALIFIED NAME IS ALREADY A DECLARATION KEY. Inference rewrites `module.leaf` into an ExprVar
+// whose kernel span is the dotted declaration key, and the visible map is keyed by bare spellings,
+// so a qualified test taken as a value missed the lookup and refused nothing (review 67685). A
+// bare name resolves through the visible map; a qualified one is its own key. The caller admits a
+// key only when it names a TestMarked declaration, so an unrelated dotted name costs nothing.
+fn visible_or_qualified_key(visible: Map<String, String>, name: String) -> String? {
+  match map_get(visible, name) {
+    Present { value: key } => Present { value: key }
+    Absent => if string_contains(s: name, pattern: ".") { Present { value: name } } else { none }
+  }
+}
+
+// The dotted text of an UNINFERRED field-access chain, e.g. a parameter default `module.leaf`, which
+// v1 retains but does not infer. An inferred field access carries a FieldSummary and is a record
+// field read, never a declaration reference, so only the summary-less form reaches this.
+fn dotted_reference_text(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } => authored_name_at(source_indices: source_indices, node: texpr)
+    ExprFieldAccess { summary: _ } =>
+      match texpr.children |> first {
+        Present { value: base } => concat(dotted_reference_text(texpr: base, source_indices: source_indices), ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
+        Absent => field_access_field_at(texpr: texpr, source_indices: source_indices)
+      }
+    _ => ""
   }
 }
 
