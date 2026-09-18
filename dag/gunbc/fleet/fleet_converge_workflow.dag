@@ -56,6 +56,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
   gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
   fleet_host_mutation_concurrency_group_expression,
+  fleet_arm_mutation_group_glm_group_b_native,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
@@ -719,6 +720,29 @@ data fleet_converge_spark_serving_apply_step_if: String = fleet_converge_mode_st
 // SO THE SUBJECT IS EXPLICIT AND THE DEFAULT IS TO DO NOTHING. `spark_native_serving_apply` names the
 // arm it relaunches; `spark_serving_apply` no longer reaches it.
 data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_mode_step_if(mode: SparkNativeServingApply)
+
+// ── THIS JOB'S MUTATION DOMAIN IS THE EXECUTOR'S, EXCEPT FOR THE ONE MODE WHOSE SUBJECT IS NOT ─
+//
+// gunbc.fleet_workflow_steps fleet_host_mutation_concurrency_group_expression keys the domain to the
+// `host` input, which names the EXECUTOR. Every other mode in this job mutates that executor, so the
+// two coincide. `spark_native_serving_apply` does not: it reaches out from whichever executor was
+// selected and relaunches Group B's four cage-2 hosts, so two dispatches naming different executors
+// would land in different domains and queue behind nothing while reloading the same 328 GB arm. Its
+// group is therefore constant for the arm.
+//
+// AND THIS IS BELT, NOT THE WALL, which is worth saying because a reader could take it for the
+// protection. Actions concurrency cannot help a direct CLI invocation, which is how this entry is
+// actually run today, and a job carries exactly ONE group -- so keying the native mode to the arm
+// means it no longer queues behind an ordinary converge of a Group-B host, a real and stated trade.
+// The wall is the source-level lock: gunbc.spark.native_serving_apply acquires an O_EXCL fence per
+// unit carrying a kernel-UUID transaction identity, and every leg that removes an artifact refuses
+// unless it owns that identity.
+data fleet_converge_mutation_concurrency_group_expression: String = join([
+  "${{ github.event.inputs.mode == '",
+  fleet_converge_workflow_mode_wire(mode: SparkNativeServingApply),
+  "' && '", fleet_arm_mutation_group_glm_group_b_native,
+  "' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}",
+], "")
 data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_mode_step_if(mode: SparkRuntimeImageProbe)
 
 data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
@@ -1607,7 +1631,7 @@ fn fleet_converge_job() -> Job {
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
-        group: fleet_host_mutation_concurrency_group_expression,
+        group: fleet_converge_mutation_concurrency_group_expression,
         cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
         explicit_single: none
       }

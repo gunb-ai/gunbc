@@ -15,13 +15,18 @@ import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
 import gunbc.spark.native_serving_apply {
   SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps,
   spark_native_preflight_script, spark_native_preserve_script, spark_native_rollback_script,
-  spark_native_metadata_cleanup_script, spark_native_front_door_script,
+  spark_native_metadata_cleanup_script, spark_native_front_door_script, spark_native_commit_script,
+  SparkNativeHostDisposition, HostIncumbentExecStarted, HostUnitRemovedAndContainerAbsent,
+  HostDispositionUnread, spark_native_disposition_of, spark_native_disposition_is_read,
+  spark_native_incumbent_restored_word, spark_native_unit_removed_word,
   SparkNativeStage, NativeStagePreflight, NativeStagePreserve, NativeStageMetadataCleanup,
   NativeStageApply, NativeStageReadback, NativeStageCommit,
   spark_native_stage_has_mutated_the_serving_arm,
   spark_native_readback_disagreements, spark_native_image_readback_gap,
 }
 import product.placement_supply { host_identity_eq }
+import gunbc.spark.pair_serving_apply { SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed }
+import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
 import extdeps.docker.cli {
   DockerCreateSpec, DockerDeviceMapping, DockerMount, BindMount, VolumeMount, TmpfsMount,
@@ -219,10 +224,10 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
         Absent => false
         Present { value: st } => {
           let scripts = join([
-            spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, image: st.launch.image_reference, host_model_path: st.launch.host_model_path),
+            spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, spec: st.launch.container, host_model_path: st.launch.host_model_path),
             spark_native_preserve_script(unit_name: st.unit_name, transaction_id: "t"),
-            spark_native_rollback_script(unit_name: st.unit_name),
-            spark_native_metadata_cleanup_script(unit_name: st.unit_name),
+            spark_native_rollback_script(unit_name: st.unit_name, transaction_id: "t"),
+            spark_native_metadata_cleanup_script(unit_name: st.unit_name, transaction_id: "t"),
             spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr),
           ], "\n")
           !string_contains(s: scripts, pattern: "Using network")
@@ -282,7 +287,7 @@ test fn w_the_preflight_checks_image_snapshot_and_startability() -> Bool {
         Present { value: st } => {
           let script = spark_native_preflight_script(
             unit_name: st.unit_name, unit_text: st.unit_text,
-            image: st.launch.image_reference, host_model_path: st.launch.host_model_path)
+            spec: st.launch.container, host_model_path: st.launch.host_model_path)
           string_contains(s: script, pattern: "docker image inspect")
             && string_contains(s: script, pattern: "PREFLIGHT-REFUSED-image-absent")
             && string_contains(s: script, pattern: "PREFLIGHT-REFUSED-snapshot-absent")
@@ -365,12 +370,109 @@ test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
 // deleted -- the worst reachable state, reported as the best. The absence of that `|| true` is
 // asserted, and so is the daemon read that establishes the container is actually gone.
 test fn w_the_rollback_refuses_an_unpreserved_host() -> Bool {
-  let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr)
+  let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr, transaction_id: "t-1")
   string_contains(s: script, pattern: "ROLLBACK-REFUSED-this-host-was-never-preserved")
     && string_contains(s: script, pattern: "rollback-actuation-accepted-incumbent-unit-restored-and-exec-started")
     && string_contains(s: script, pattern: "rollback-actuation-accepted-unit-removed-and-container-gone")
     && string_contains(s: script, pattern: "ROLLBACK-REFUSED-successor-container-still-present-after-stop")
     && !string_contains(s: script, pattern: "|| true")
+    && string_contains(s: script, pattern: "FENCE-REFUSED-held-by-another-transaction")
+    && string_contains(s: script, pattern: ".gunbc-unresolved-rollback")
+}
+
+// ── AN UNVERIFIED ROLLBACK MAY NOT ERASE THE FENCE THAT STOPS ITS ADOPTION ────────────────────
+//
+// THE TWO BRANCHES END IN DIFFERENT STATES, SO THEY GET DIFFERENT FENCE RULES, and an earlier
+// revision gave them the same one. The incumbent-restore branch establishes ExecStarted on a
+// Type=simple unit and nothing more -- not the incumbent's image or argv, not one epoch, not
+// transport, not the front door -- so clearing the fence would have let the NEXT invocation preserve
+// that unverified state as its incumbent and proceed. The fence is renamed to an unresolved-rollback
+// marker instead, which preflight refuses on. The remove branch may clear, because its evidence is an
+// ABSENCE that was read back from the daemon: the unit is gone and no container answers that name, so
+// there is no unverified running thing left to adopt.
+test fn w_an_unverified_rollback_keeps_its_fence() -> Bool {
+  let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr, transaction_id: "t-1")
+  string_contains(s: script, pattern: join(["mv -f /etc/systemd/system/gunbc-glm-native-head.service.gunbc-transaction /etc/systemd/system/gunbc-glm-native-head.service", ".gunbc-unresolved-rollback"], ""))
+    && string_contains(s: script, pattern: "rm -f /etc/systemd/system/gunbc-glm-native-head.service /etc/systemd/system/gunbc-glm-native-head.service.gunbc-had-no-unit /etc/systemd/system/gunbc-glm-native-head.service.gunbc-transaction")
+}
+
+// ── TWO TRANSACTIONS: B REFUSES ON A'S FENCE AND CANNOT REMOVE A'S ARTIFACTS ──────────────────
+//
+// THE INTERLEAVING THIS IS THE RED FOR, STEP BY STEP. A and B both clear preflight; A writes its
+// fence and backup; B refuses preserve on A's fence; B's pre-actuation cleanup deletes the fixed
+// paths -- A's fence and A's backup -- and A proceeds into mutation with its rollback evidence gone.
+// Every step is individually correct and the sequence destroys the artifact the design rests on.
+//
+// TWO PROPERTIES CLOSE IT AND BOTH ARE ASSERTED. The acquisition is ATOMIC: `set -C` makes the
+// redirect O_EXCL, so the loser learns it lost from the write rather than from a check that was true
+// a moment ago -- a check-then-write is asserted ABSENT, because that is the shape that was wrong.
+// And every removal is OWNERSHIP-CHECKED: cleanup, commit and rollback each read the fence and refuse
+// on a foreign identity, so B's cleanup cannot touch A's.
+test fn w_a_second_transaction_cannot_remove_the_first_ones_evidence() -> Bool {
+  let unit = "gunbc-glm-native-head.service" as NonEmptyStr
+  let a_preserve = spark_native_preserve_script(unit_name: unit, transaction_id: "A")
+  let b_cleanup = spark_native_metadata_cleanup_script(unit_name: unit, transaction_id: "B")
+  let b_commit = spark_native_commit_script(unit_name: unit, transaction_id: "B")
+  let b_rollback = spark_native_rollback_script(unit_name: unit, transaction_id: "B")
+  string_contains(s: a_preserve, pattern: "set -C")
+    && string_contains(s: a_preserve, pattern: "PRESERVE-REFUSED-fence-held-by-")
+    && all([b_cleanup, b_commit, b_rollback], sc =>
+         string_contains(s: sc, pattern: "FENCE-REFUSED-held-by-another-transaction")
+           && string_contains(s: sc, pattern: "'B'"))
+    && string_contains(s: b_commit, pattern: "FENCE-REFUSED-no-fence-on-this-host")
+    && string_contains(s: b_rollback, pattern: "FENCE-REFUSED-no-fence-on-this-host")
+    && !string_contains(s: b_cleanup, pattern: "FENCE-REFUSED-no-fence-on-this-host")
+}
+
+// ── PREFLIGHT VALIDATES THE HOST-SIDE REALIZATION, NOT ONLY THE UNIT'S SYNTAX ─────────────────
+//
+// `systemd-analyze verify` answers whether systemd can PARSE the unit. It says nothing about whether
+// Docker can realize the plan here: /dev/infiniband can be absent, a bind source can be missing, the
+// GPU runtime can be unregistered -- and until this stage read them, the FIRST DISCRIMINATOR for any
+// of those was the destructive restart, which is the exact mechanism the transaction exists to get in
+// front of. Every device path and bind source the spec projects is tested BY NAME, so the claim moves
+// with the plan rather than against a literal.
+test fn w_preflight_tests_every_device_and_bind_source_by_name() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let spec = st.launch.container
+          let script = spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, spec: spec, host_model_path: st.launch.host_model_path)
+          count(spec.devices) > 0
+            && count(spec.mounts) > 0
+            && all(spec.devices, d => string_contains(s: script, pattern: join(["PREFLIGHT-REFUSED-device-absent-", d.host_path as String], "")))
+            && all(spec.mounts, m => match m {
+                 BindMount { host_path: h, container_path: _, readonly: _ } =>
+                   string_contains(s: script, pattern: join(["PREFLIGHT-REFUSED-bind-source-absent-", h as String], ""))
+                 VolumeMount { volume: _, container_path: _, readonly: _ } => true
+                 TmpfsMount { container_path: _, size_bytes: _ } => true
+               })
+            && string_contains(s: script, pattern: "PREFLIGHT-REFUSED-no-nvidia-runtime")
+        }
+      }
+  }
+}
+
+// ── A DISPOSITION IS READ, NOT INFERRED ───────────────────────────────────────────────────────
+//
+// THE HEADLINE THAT MADE THIS NECESSARY said "THIS ARM IS SPLIT: some hosts carry the successor and
+// some the incumbent" on a path that had observed no such thing -- a rollback credential refusal
+// means no leg ran anywhere, which after a fully applied arm leaves all four hosts on the SUCCESSOR.
+// The population is now derived from each leg's own printed word, and a leg that did not run or
+// printed something this reader does not know is Unread rather than assigned to a side.
+test fn w_a_host_disposition_comes_from_its_own_leg() -> Bool {
+  let h = operator_host_srv9
+  spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
+    host: h, detail: spark_native_incumbent_restored_word, standing: serving_standing(attempts: []) }))
+    && spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
+         host: h, detail: spark_native_unit_removed_word, standing: serving_standing(attempts: []) }))
+    && !spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplyFailed {
+         host: h, cause: "ssh refused" }))
+    && !spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
+         host: h, detail: "restarted", standing: serving_standing(attempts: []) }))
 }
 
 // ── THE FENCE: AN UNRESOLVED TRANSACTION REFUSES THE NEXT ONE ─────────────────────────────────
@@ -388,7 +490,7 @@ test fn w_an_unresolved_transaction_refuses_the_next_run() -> Bool {
       match first(steps) {
         Absent => false
         Present { value: st } => {
-          let preflight = spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, image: st.launch.image_reference, host_model_path: st.launch.host_model_path)
+          let preflight = spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, spec: st.launch.container, host_model_path: st.launch.host_model_path)
           let preserve = spark_native_preserve_script(unit_name: st.unit_name, transaction_id: "2026-09-18T00:00:00Z")
           string_contains(s: preflight, pattern: "PREFLIGHT-REFUSED-unresolved-transaction-artifact")
             && string_contains(s: preserve, pattern: "PRESERVE-REFUSED-artifact-already-present")
@@ -423,5 +525,9 @@ test fn w_all_native_roce_transport_claims_hold() -> Bool {
     && w_the_rollback_refuses_an_unpreserved_host()
     && w_the_readback_is_incarnation_bound_and_typed()
     && w_an_unresolved_transaction_refuses_the_next_run()
+    && w_an_unverified_rollback_keeps_its_fence()
+    && w_a_second_transaction_cannot_remove_the_first_ones_evidence()
+    && w_preflight_tests_every_device_and_bind_source_by_name()
+    && w_a_host_disposition_comes_from_its_own_leg()
 }
 

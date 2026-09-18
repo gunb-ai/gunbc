@@ -160,7 +160,7 @@ jobs:
       actions: read
       id-token: write
     concurrency:
-      group: gunbc-host-mutation-${{ github.event.inputs.host }}
+      group: ${{ github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
