@@ -4620,6 +4620,32 @@ fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseS
   }
 }
 
+fn parse_subtree_has_production_under_children(root: Node, emitted: Symbol) -> Bool {
+  fold(
+    root.children,
+    init: false,
+    f: fn(found, edge) {
+      if found {
+        true
+      } else {
+        parse_subtree_has_production(root: edge.target, emitted: emitted)
+      }
+    }
+  )
+}
+
+fn parse_subtree_has_production(root: Node, emitted: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == emitted {
+        true
+      } else {
+        parse_subtree_has_production_under_children(root: root, emitted: emitted)
+      }
+    Absent => parse_subtree_has_production_under_children(root: root, emitted: emitted)
+  }
+}
+
 // THE NAMED-ARGUMENT SPINE, AND IT LIVES HERE BECAUSE THIS MODULE OWNS THE PRODUCTION IT
 // DECODES. dag_grammar_arg_expr is Choice(Seq(binding_name, Seq(colon, expr)), expr): a named
 // argument carries its NAME in the sequence left and its VALUE two rights in, past the colon; a

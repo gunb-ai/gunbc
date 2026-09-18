@@ -29,8 +29,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  node_rebuild,
-  node_synthetic,
+  node_subtree_nodes,
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.compilers.lexing { symbol_lexeme }
@@ -53,6 +52,8 @@ import v2.extdeps.languages.dag {
   namespace_graft_unwrap_module_working_root,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
+  parse_subtree_has_production,
+  dag_resolve_preserve_module_metadata_subtree,
   qualified_name_from_module_node
 }
 
@@ -106,14 +107,6 @@ fn namespace_graft_parse_projection_edge(name: Symbol) -> Bool {
     || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
 }
 
-fn namespace_graft_is_module_header_subtree(node: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      (id == ^dag_surface_module_header) || (id == ^dag_surface_qualified_name)
-    Absent => false
-  }
-}
-
 fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -142,7 +135,7 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
         acc
       } else if namespace_graft_parse_projection_edge(name: sym) {
         concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
-      } else if namespace_graft_is_module_header_subtree(node: edge.target) {
+      } else if dag_resolve_preserve_module_metadata_subtree(node: edge.target) {
         acc
       } else if namespace_graft_is_transparent_sequence_spine(node: edge.target) {
         concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
@@ -150,7 +143,7 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
         list_snoc_item(xs: acc, item: edge)
       }
     Positional =>
-      if namespace_graft_is_module_header_subtree(node: edge.target) {
+      if dag_resolve_preserve_module_metadata_subtree(node: edge.target) {
         acc
       } else if namespace_graft_is_transparent_sequence_spine(node: edge.target) {
         concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
@@ -313,42 +306,6 @@ fn namespace_graft_kw_then_ident(captured: Node) -> Symbol? {
   }
 }
 
-fn namespace_graft_find_emitted(node: Node, emitted: Symbol) -> Node? {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      if id == emitted {
-        optional_present(value: node)
-      } else {
-        fold(node.children, init: optional_absent(), f: fn(acc, e) {
-          match acc {
-            Present { value: _ } => acc
-            Absent => namespace_graft_find_emitted(node: e.target, emitted: emitted)
-          }
-        })
-      }
-    Absent =>
-      fold(node.children, init: optional_absent(), f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => namespace_graft_find_emitted(node: e.target, emitted: emitted)
-        }
-      })
-  }
-}
-
-fn namespace_graft_find_disj(node: Node) -> Node? {
-  match node.kind {
-    TypeNode { connective: Disj } => optional_present(value: node)
-    _ =>
-      fold(node.children, init: optional_absent(), f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => namespace_graft_find_disj(node: e.target)
-        }
-      })
-  }
-}
-
 fn namespace_graft_symbol_is_grammar_machinery(sym: Symbol) -> Bool {
   fold_list(
     xs: dag_grammar_root().productions,
@@ -371,10 +328,20 @@ fn namespace_graft_is_machinery_symbol(sym: Symbol) -> Bool {
 }
 
 fn namespace_graft_type_decl_target(captured: Node) -> Node {
-  match namespace_graft_find_disj(node: captured) {
-    Present { value: disj } => disj
-    Absent => captured
-  }
+  fold(
+    node_subtree_nodes(root: captured),
+    init: captured,
+    f: fn(acc, n) {
+      match acc.kind {
+        TypeNode { connective: Disj } => acc
+        _ =>
+          match n.kind {
+            TypeNode { connective: Disj } => n
+            _ => acc
+          }
+      }
+    }
+  )
 }
 
 fn namespace_graft_unit_captured(unit: Node) -> Node? {
@@ -396,19 +363,19 @@ fn namespace_graft_type_decl_name(unit: Node) -> Symbol? {
 // The unit is a residual: body_edges_for_graft reconstructs it beside any sibling
 // Named edge so a nonempty combined cannot delete it.
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
-  match namespace_graft_find_emitted(node: unit, emitted: ^dag_surface_field_decl_block) {
-    Present { value: _ } => optional_absent()
-    Absent =>
-      match namespace_graft_type_decl_name(unit: unit) {
-        Absent => optional_absent()
-        Present { value: type_name } =>
-          optional_present(
-            value: Edge {
-              label: Named { name: type_name },
-              target: namespace_graft_type_decl_target(captured: unit)
-            }
-          )
-      }
+  if parse_subtree_has_production(root: unit, emitted: ^dag_surface_field_decl_block) {
+    optional_absent()
+  } else {
+    match namespace_graft_type_decl_name(unit: unit) {
+      Absent => optional_absent()
+      Present { value: type_name } =>
+        optional_present(
+          value: Edge {
+            label: Named { name: type_name },
+            target: namespace_graft_type_decl_target(captured: unit)
+          }
+        )
+    }
   }
 }
 
@@ -552,12 +519,6 @@ fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
   } else {
     namespace_graft_has_module_header(root: root)
   }
-}
-
-fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
-  namespace_graft_collect_body_edges_from_node(
-    node: namespace_graft_unwrap_module_working_root(root: root)
-  )
 }
 
 // The empty-observation narrow made unwritable (operator ruling msg_d18a55de): a
