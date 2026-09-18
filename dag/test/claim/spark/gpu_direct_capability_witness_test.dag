@@ -7,17 +7,20 @@ import extdeps.nvidia.cuda_driver {
   cuda_attribute_outcome, cuda_device_attribute_ordinal, cuda_device_attribute_program,
 }
 import extdeps.nvidia.gpu_direct_rdma {
-  GpuDirectRdmaCapability, GpuDirectRdmaSupported, GpuDirectRdmaUnsupported, GpuDirectRdmaCapabilityUnread,
-  PeerMemoryRegistration, DmaBufRegistration, gpu_direct_rdma_capability,
+  GpuDirectRdmaCapability, GpuDirectRdmaDevicePrerequisiteMet, GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaCapabilityUnread,
+  gpu_direct_rdma_capability,
 }
 import extdeps.nvidia.nccl {
-  NcclLogLine, NcclGpuMemoryPath, NcclGpuDirectRegistered, NcclHostStagedTransfer, NcclGpuMemoryPathUnread,
+  NcclLogLine, NcclGpuMemoryPath, NcclGpuDirectEnabled, NcclGpuDirectDisabled, NcclGpuMemoryPathUnread,
   nccl_parse_log_line, nccl_gpu_memory_path_of_line,
 }
 import gunbc.spark.collective_memory_path_standing {
   CollectiveMemoryPathStanding, MemoryPathDirectAsCapable, MemoryPathStagedAsPlatformRequires,
   MemoryPathBelowCapability, MemoryPathStandingUnread,
-  collective_memory_path_standing, memory_path_standing_is_defect,
+  collective_memory_path_standing,
+  MemoryPathProducersContradict,
+  MemoryPathDefectStanding, DefectEstablished, NoDefectEstablished, DefectStandingUnread, EvidenceContradicts,
+  memory_path_defect_standing,
 }
 import gunbc.spark.spark_gpu_direct_capability { spark_gb10_gpu_direct_capability }
 
@@ -95,38 +98,53 @@ test fn w_the_query_program_names_the_attribute_ordinal() -> Bool {
 data gb10: NonEmptyStr = "a unified-memory platform" as NonEmptyStr
 
 test fn w_both_attributes_zero_is_unsupported() -> Bool {
-  match gpu_direct_rdma_capability(platform: gb10, peer_memory: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 0 }) {
-    GpuDirectRdmaUnsupported { platform: _, capability_receipt: _ } => true
-    GpuDirectRdmaSupported { mechanism: _, capability_receipt: _ } => false
+  match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 0 }) {
+    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
   }
 }
 
 test fn w_peer_memory_support_names_its_mechanism() -> Bool {
-  match gpu_direct_rdma_capability(platform: gb10, peer_memory: CudaQuerySucceeded { value: 1 }, dma_buf: CudaQuerySucceeded { value: 0 }) {
-    GpuDirectRdmaSupported { mechanism: m, capability_receipt: _ } =>
-      match m { PeerMemoryRegistration => true, DmaBufRegistration => false }
-    GpuDirectRdmaUnsupported { platform: _, capability_receipt: _ } => false
+  match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 1 }, dma_buf: CudaQuerySucceeded { value: 0 }) {
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => true
+    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
   }
 }
 
-test fn w_dma_buf_alone_is_still_supported() -> Bool {
-  match gpu_direct_rdma_capability(platform: gb10, peer_memory: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 1 }) {
-    GpuDirectRdmaSupported { mechanism: m, capability_receipt: _ } =>
-      match m { DmaBufRegistration => true, PeerMemoryRegistration => false }
-    GpuDirectRdmaUnsupported { platform: _, capability_receipt: _ } => false
+// DMA-BUF ALONE DOES NOT MAKE THE DEVICE CAPABLE, and this row is the corrected form of one that
+// asserted the opposite. Attribute 116 reports whether the device supports the GPUDirect RDMA APIs
+// at all; a zero there decides unavailability on its own, and a positive DMA-BUF reading cannot
+// overturn it, because DMA-BUF sharing is a prerequisite for one registration route rather than an
+// end-to-end capability (review 5243531470).
+test fn w_dma_buf_alone_does_not_overturn_an_unsupported_device() -> Bool {
+  match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 1 }) {
+    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
   }
 }
 
-// ONE FAILED QUERY LEAVES THE CAPABILITY UNREAD rather than letting the other attribute's zero
-// answer for it. This is the row that refuses "no module, therefore unsupported".
-test fn w_a_failed_query_leaves_the_capability_unread() -> Bool {
-  match gpu_direct_rdma_capability(platform: gb10, peer_memory: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQueryFailed { result_code: 3 }) {
+// A FAILED QUERY ON THE DECIDING ATTRIBUTE LEAVES THE CAPABILITY UNREAD. This is the row that
+// refuses "no module, therefore unsupported": when the device never answered, nothing may stand in
+// for the answer.
+test fn w_a_failed_decider_query_leaves_the_capability_unread() -> Bool {
+  match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQueryFailed { result_code: 3 }, dma_buf: CudaQuerySucceeded { value: 0 }) {
     GpuDirectRdmaCapabilityUnread { cause: _ } => true
-    GpuDirectRdmaUnsupported { platform: _, capability_receipt: _ } => false
-    GpuDirectRdmaSupported { mechanism: _, capability_receipt: _ } => false
+    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => false
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
+  }
+}
+
+// BUT A FAILED SECONDARY QUERY AFTER A DECIDED NEGATIVE IS NOT UNREAD, and saying so is the point of
+// asking the deciding attribute first: once the device reports no GPUDirect API support, whether
+// DMA-BUF could be read changes nothing about the answer.
+test fn w_a_failed_secondary_query_does_not_unread_a_decided_negative() -> Bool {
+  match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQueryFailed { result_code: 3 }) {
+    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
+    GpuDirectRdmaCapabilityUnread { cause: _ } => false
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
   }
 }
 
@@ -140,16 +158,16 @@ fn memory_path_of(raw: String) -> NcclGpuMemoryPath {
 
 test fn w_a_disabled_line_reads_as_host_staged() -> Bool {
   match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'") {
-    NcclHostStagedTransfer { read_from: _ } => true
-    NcclGpuDirectRegistered { read_from: _ } => false
+    NcclGpuDirectDisabled { read_from: _ } => true
+    NcclGpuDirectEnabled { read_from: _ } => false
     NcclGpuMemoryPathUnread { cause: _ } => false
   }
 }
 
 test fn w_an_enabled_line_reads_as_registered() -> Bool {
   match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'rocep1s0f1'") {
-    NcclGpuDirectRegistered { read_from: _ } => true
-    NcclHostStagedTransfer { read_from: _ } => false
+    NcclGpuDirectEnabled { read_from: _ } => true
+    NcclGpuDirectDisabled { read_from: _ } => false
     NcclGpuMemoryPathUnread { cause: _ } => false
   }
 }
@@ -159,38 +177,67 @@ test fn w_an_enabled_line_reads_as_registered() -> Bool {
 test fn w_the_network_announcement_does_not_answer_the_memory_path() -> Bool {
   match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO Using network IB") {
     NcclGpuMemoryPathUnread { cause: _ } => true
-    NcclHostStagedTransfer { read_from: _ } => false
-    NcclGpuDirectRegistered { read_from: _ } => false
+    NcclGpuDirectDisabled { read_from: _ } => false
+    NcclGpuDirectEnabled { read_from: _ } => false
+  }
+}
+
+fn defect_established(s: CollectiveMemoryPathStanding) -> Bool {
+  match memory_path_defect_standing(s: s) {
+    EvidenceContradicts { cause: _ } => false
+    DefectEstablished { cause: _ } => true
+    NoDefectEstablished { because: _ } => false
+    DefectStandingUnread { cause: _ } => false
+  }
+}
+
+fn no_defect_established(s: CollectiveMemoryPathStanding) -> Bool {
+  match memory_path_defect_standing(s: s) {
+    EvidenceContradicts { cause: _ } => false
+    NoDefectEstablished { because: _ } => true
+    DefectEstablished { cause: _ } => false
+    DefectStandingUnread { cause: _ } => false
+  }
+}
+
+// UNREAD IS ITS OWN ANSWER, and this helper exists so the row below asserts it POSITIVELY rather
+// than by the absence of a defect -- which is the fail-open shape the Boolean had.
+fn defect_standing_unread(s: CollectiveMemoryPathStanding) -> Bool {
+  match memory_path_defect_standing(s: s) {
+    EvidenceContradicts { cause: _ } => false
+    DefectStandingUnread { cause: _ } => true
+    DefectEstablished { cause: _ } => false
+    NoDefectEstablished { because: _ } => false
   }
 }
 
 // ── 4. THE JOIN THAT DECIDES WHETHER IT IS A DEFECT ───────────────────────────────────────────
-data staged: NcclGpuMemoryPath = NcclHostStagedTransfer { read_from: "NET/IB : GPU Direct RDMA Disabled for HCA 0" as NonEmptyStr }
+data staged: NcclGpuMemoryPath = NcclGpuDirectDisabled { read_from: "NET/IB : GPU Direct RDMA Disabled for HCA 0" as NonEmptyStr }
 
 test fn w_staged_on_an_incapable_platform_is_not_a_defect() -> Bool {
   let s = collective_memory_path_standing(
-    capability: gpu_direct_rdma_capability(platform: gb10, peer_memory: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 0 }),
+    capability: gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 0 }),
     observed: staged)
-  !memory_path_standing_is_defect(s: s)
-    && match s { MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => true, MemoryPathDirectAsCapable { mechanism: _ } => false, MemoryPathBelowCapability { mechanism: _, capability_receipt: _, observed_from: _ } => false, MemoryPathStandingUnread { cause: _ } => false }
+  no_defect_established(s: s)
+    && match s { MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => true, MemoryPathDirectAsCapable => false, MemoryPathBelowCapability { capability_receipt: _, observed_from: _ } => false, MemoryPathStandingUnread { cause: _ } => false, MemoryPathProducersContradict { capability_receipt: _, observed_from: _ } => false }
 }
 
 // THE ONE ARM THAT IS A DEFECT, and the row that makes the type discriminating rather than
 // decorative: the same observation, on a platform that says it can do better.
 test fn w_staged_on_a_capable_platform_is_a_defect() -> Bool {
   let s = collective_memory_path_standing(
-    capability: gpu_direct_rdma_capability(platform: gb10, peer_memory: CudaQuerySucceeded { value: 1 }, dma_buf: CudaQuerySucceeded { value: 0 }),
+    capability: gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 1 }, dma_buf: CudaQuerySucceeded { value: 0 }),
     observed: staged)
-  memory_path_standing_is_defect(s: s)
-    && match s { MemoryPathBelowCapability { mechanism: _, capability_receipt: _, observed_from: _ } => true, MemoryPathDirectAsCapable { mechanism: _ } => false, MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => false, MemoryPathStandingUnread { cause: _ } => false }
+  defect_established(s: s)
+    && match s { MemoryPathBelowCapability { capability_receipt: _, observed_from: _ } => true, MemoryPathDirectAsCapable => false, MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => false, MemoryPathStandingUnread { cause: _ } => false, MemoryPathProducersContradict { capability_receipt: _, observed_from: _ } => false }
 }
 
 test fn w_an_unread_capability_refuses_to_decide() -> Bool {
   let s = collective_memory_path_standing(
-    capability: gpu_direct_rdma_capability(platform: gb10, peer_memory: CudaQueryFailed { result_code: 3 }, dma_buf: CudaQuerySucceeded { value: 0 }),
+    capability: gpu_direct_rdma_capability(platform: gb10, device_api: CudaQueryFailed { result_code: 3 }, dma_buf: CudaQuerySucceeded { value: 0 }),
     observed: staged)
-  !memory_path_standing_is_defect(s: s)
-    && match s { MemoryPathStandingUnread { cause: _ } => true, MemoryPathDirectAsCapable { mechanism: _ } => false, MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => false, MemoryPathBelowCapability { mechanism: _, capability_receipt: _, observed_from: _ } => false }
+  defect_standing_unread(s: s)
+    && match s { MemoryPathStandingUnread { cause: _ } => true, MemoryPathDirectAsCapable => false, MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => false, MemoryPathBelowCapability { capability_receipt: _, observed_from: _ } => false, MemoryPathProducersContradict { capability_receipt: _, observed_from: _ } => false }
 }
 
 // ── 5. THE REAL READING ───────────────────────────────────────────────────────────────────────
@@ -199,9 +246,47 @@ test fn w_an_unread_capability_refuses_to_decide() -> Bool {
 // so the fold is exercised over a value a real producer emitted rather than only over shapes.
 test fn w_the_group_b_reading_is_unsupported_and_its_staged_path_is_not_a_defect() -> Bool {
   match spark_gb10_gpu_direct_capability {
-    GpuDirectRdmaUnsupported { platform: _, capability_receipt: _ } =>
-      !memory_path_standing_is_defect(s: collective_memory_path_standing(capability: spark_gb10_gpu_direct_capability, observed: staged))
-    GpuDirectRdmaSupported { mechanism: _, capability_receipt: _ } => false
+    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } =>
+      no_defect_established(s: collective_memory_path_standing(capability: spark_gb10_gpu_direct_capability, observed: staged))
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
   }
+}
+
+
+// ── 6. THE CELL THE TYPES THEMSELVES NAMED A CONTRADICTION ────────────────────────────────────
+//
+// A device reporting no capability while the run announces a registered path means ONE OF THE TWO
+// PRODUCERS IS WRONG. An earlier revision put this in the unread arm with a cause string that said
+// "a contradiction ... rather than a standing" -- one constructor carrying both "nobody looked" and
+// "the evidence conflicts" (review 67449, DESIGN section 3 meaning fork). No row covered the cell,
+// so the collapse was invisible. This is that row.
+data enabled_announcement: NcclGpuMemoryPath = NcclGpuDirectEnabled { read_from: "NET/IB : GPU Direct RDMA Enabled for HCA 0" as NonEmptyStr }
+
+test fn w_an_incapable_device_announcing_a_registered_path_is_a_contradiction() -> Bool {
+  let s = collective_memory_path_standing(
+    capability: gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 0 }),
+    observed: enabled_announcement)
+  match s {
+    MemoryPathProducersContradict { capability_receipt: _, observed_from: _ } =>
+      match memory_path_defect_standing(s: s) {
+        EvidenceContradicts { cause: _ } => true
+        DefectEstablished { cause: _ } => false
+        NoDefectEstablished { because: _ } => false
+        DefectStandingUnread { cause: _ } => false
+      }
+    MemoryPathDirectAsCapable => false
+    MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => false
+    MemoryPathBelowCapability { capability_receipt: _, observed_from: _ } => false
+    MemoryPathStandingUnread { cause: _ } => false
+  }
+}
+
+// AND A CONTRADICTION IS NOT "NO DEFECT", which is the assertion that keeps an admission consumer
+// from treating conflicting evidence as healthy.
+test fn w_a_contradiction_does_not_read_as_no_defect() -> Bool {
+  let s = collective_memory_path_standing(
+    capability: gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 0 }),
+    observed: enabled_announcement)
+  !no_defect_established(s: s) && !defect_standing_unread(s: s)
 }

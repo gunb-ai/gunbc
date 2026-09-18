@@ -32,7 +32,7 @@ data spark_gb10_dma_buf_outcome: CudaQueryOutcome = CudaQuerySucceeded { value: 
 
 data spark_gb10_gpu_direct_capability: GpuDirectRdmaCapability = gpu_direct_rdma_capability(
   platform: spark_gb10_platform,
-  peer_memory: spark_gb10_peer_memory_outcome,
+  device_api: spark_gb10_peer_memory_outcome,
   dma_buf: spark_gb10_dma_buf_outcome,
 )
 

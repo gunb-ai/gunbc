@@ -663,9 +663,18 @@ fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
 // TRIGGER: the first comparison whose two sides differ on link rate or rail count, which the Group B
 // breakout reprogramming (50G to 100G) will produce. SUFFICIENT FOR: a subject that refuses to join
 // a 50G reading to a 100G one instead of averaging them.
+// THE ARM NAMES WHAT THE LINE SAYS AND NOT WHAT FOLLOWS FROM IT. An earlier revision called the
+// disabled arm `NcclHostStagedTransfer`, which claims a fallback mechanism the producer never states:
+// the line establishes that direct GPU-memory RDMA was DISABLED for the named HCA, not how many host
+// stages the transfer then takes. On a unified-memory SoC that difference is not academic.
+//
+// THE ENABLED SPELLING IS NOT GROUNDED IN A CAPTURE. Every `Disabled` instance here comes from real
+// Group B output; no run in this repository has produced the `Enabled` form, so its exact spelling is
+// inferred from the disabled one's shape. TRIGGER: the first capture from a platform that enables it.
+// SUFFICIENT FOR: the positive arm's reader is exercised against bytes a producer actually emitted.
 type NcclGpuMemoryPath
-  = NcclGpuDirectRegistered { read_from: NonEmptyStr }
-  | NcclHostStagedTransfer { read_from: NonEmptyStr }
+  = NcclGpuDirectEnabled { read_from: NonEmptyStr }
+  | NcclGpuDirectDisabled { read_from: NonEmptyStr }
   | NcclGpuMemoryPathUnread { cause: NonEmptyStr }
 
 // NCCL PUBLISHES THIS ITSELF TOO, once per HCA, and the line carries the verdict in the same shape
@@ -686,10 +695,10 @@ fn nccl_gpu_memory_path_of_line(line: NcclLogLine) -> NcclGpuMemoryPath {
       Absent => NcclGpuMemoryPathUnread { cause: join(["the ", nccl_gdr_marker, " marker is present with nothing after it: ", line.raw as String], "") as NonEmptyStr }
       Present { value: rest } =>
         if starts_with(s: rest, prefix: nccl_gdr_state_disabled) {
-          NcclHostStagedTransfer { read_from: line.raw }
+          NcclGpuDirectDisabled { read_from: line.raw }
         } else {
           if starts_with(s: rest, prefix: nccl_gdr_state_enabled) {
-            NcclGpuDirectRegistered { read_from: line.raw }
+            NcclGpuDirectEnabled { read_from: line.raw }
           } else {
             NcclGpuMemoryPathUnread { cause: join([
               "the ", nccl_gdr_marker, " marker is followed by neither ", nccl_gdr_state_enabled,
@@ -704,8 +713,8 @@ fn nccl_gpu_memory_path_of_line(line: NcclLogLine) -> NcclGpuMemoryPath {
 
 fn nccl_gpu_memory_path_wire(p: NcclGpuMemoryPath) -> NonEmptyStr {
   match p {
-    NcclGpuDirectRegistered { read_from: _ } => "gpu-direct-registered" as NonEmptyStr
-    NcclHostStagedTransfer { read_from: _ } => "host-staged" as NonEmptyStr
+    NcclGpuDirectEnabled { read_from: _ } => "gpu-direct-enabled" as NonEmptyStr
+    NcclGpuDirectDisabled { read_from: _ } => "gpu-direct-disabled" as NonEmptyStr
     NcclGpuMemoryPathUnread { cause: _ } => "unread" as NonEmptyStr
   }
 }
