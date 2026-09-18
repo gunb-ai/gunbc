@@ -11,7 +11,7 @@ import extdeps.crypto.signature {
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_device_wire {
   framed, device_redemption_signing_input, enrolment_transcript, DeviceRedemptionSigningInput, RedemptionChallenge,
-  approval_device_audience, MobileIos, MobileAndroid,
+  approval_device_audience, MobileIos, MobileAndroid, device_read_client_data,
 }
 
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
@@ -72,7 +72,7 @@ fn redemption_input(approve: Bool, enrollment: NonEmptyStr, nonce: NonEmptyStr, 
     stored_request_text: request_text,
     decision: if approve { ProposeApprove } else { ProposeDeny },
     capability_text: "cap",
-    capability_tag_hex: tag,
+    capability_tag_b64url: tag,
   })
 }
 
@@ -101,4 +101,13 @@ test fn witness_signing_input_binds_the_capability_tag() -> Bool {
 test fn witness_enrolment_transcript_binds_key_and_platform() -> Bool {
   enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileIos) != enrolment_transcript(code: "482913", decision_key: key_b, platform: MobileIos)
     && enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileIos) != enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileAndroid)
+}
+
+// The read transcript binds the path and the enrolment: an assertion for one GET or one device
+// cannot authenticate another.
+test fn witness_read_transcript_binds_path_enrollment_and_time() -> Bool {
+  let base = device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z")
+  base != device_read_client_data(path: "/approve/device/requests/esc-1", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z")
+    && base != device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-2", requested_at: "2026-09-18T12:00:30Z")
+    && base != device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:31Z")
 }
