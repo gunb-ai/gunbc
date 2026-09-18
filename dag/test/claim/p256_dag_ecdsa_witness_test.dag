@@ -1,0 +1,115 @@
+module test.claim.p256_dag_ecdsa_witness_test
+
+import std.logic { Bool }
+import std.types { Int, List }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.bignat { BigNat, bignat_small }
+import extdeps.numeric.base16 { base16_decode_lower }
+import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets, p256_on_curve, p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine, p256_is_infinity }
+
+fn hex(s: String) -> List<UInt8> {
+  match base16_decode_lower(hex: s) {
+    Present { value: o } => o
+    Absent => []
+  }
+}
+
+fn ascii(s: String) -> List<UInt8> {
+  bytes_octets(b: utf8_encode_bytes(s: s))
+}
+
+fn is_true(v: Bool?) -> Bool {
+  match v {
+    Present { value: b } => b
+    Absent => false
+  }
+}
+
+fn is_false(v: Bool?) -> Bool {
+  match v {
+    Present { value: b } => !b
+    Absent => false
+  }
+}
+
+fn is_absent(v: Bool?) -> Bool {
+  match v {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// ── The parameters themselves ────────────────────────────────────────────────────────────────
+// G is on the curve, and n·G is the point at infinity: the published constants are the curve's.
+test fn the_base_point_is_on_the_curve_and_has_order_n() -> Bool {
+  let zero = p256_hex_zero()
+  p256_on_curve(x: p256_gx, y: p256_gy)
+    && p256_is_infinity(p: p256_double_scalar(u1: p256_n, g: p256_affine(x: p256_gx, y: p256_gy), u2: zero, q: p256_affine(x: p256_gx, y: p256_gy)))
+}
+
+fn p256_hex_zero() -> BigNat {
+  bignat_small(n: 0)
+}
+
+// ── RFC 6979 §A.2.5: a published P-256 / SHA-256 key and two signatures ─────────────────────
+data rfc6979_key: List<UInt8> = hex(s: "0460fed4ba255a9d31c961eb74c6356d68c049b8923b61fa6ce669622e60f29fb67903fe1008b8bc99a41ae9e95628bc64f2f1b20c2d7e9f5177a3c294d4462299")
+data rfc6979_sample_sig: List<UInt8> = hex(s: "efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8")
+data rfc6979_test_sig: List<UInt8> = hex(s: "f1abb023518351cd71d881567b1ea663ed3efcf6c5132b354f28d3b0b7d38367019f4113742a2b14bd25926b49c649155f267e60d3814b4c0cc84250e46f0083")
+
+test fn the_rfc6979_sample_signature_verifies() -> Bool {
+  is_true(v: p256_ecdsa_verify_octets(key: rfc6979_key, signature: rfc6979_sample_sig, message: ascii(s: "sample")))
+}
+
+test fn the_rfc6979_test_signature_verifies() -> Bool {
+  is_true(v: p256_ecdsa_verify_octets(key: rfc6979_key, signature: rfc6979_test_sig, message: ascii(s: "test")))
+}
+
+// The "sample" signature presented for "test": well-formed, and false.
+test fn a_signature_for_a_different_message_is_false() -> Bool {
+  is_false(v: p256_ecdsa_verify_octets(key: rfc6979_key, signature: rfc6979_sample_sig, message: ascii(s: "test")))
+}
+
+// The RFC 7515 A.3 key under the RFC 6979 signature: the wrong key, false.
+test fn the_wrong_key_is_false() -> Bool {
+  is_false(v: p256_ecdsa_verify_octets(key: hex(s: "047fcdce2770f6c45d4183cbee6fdb4b7b580733357be9ef13bacf6e3c7bd15445c7f144cd1bbd9b7e872cdfedb9eeb9f4b3695d6ea90b24ad8a4623288588e5ad"), signature: rfc6979_sample_sig, message: ascii(s: "sample")))
+}
+
+// The RFC key with the last bit of y flipped: 65 octets, 0x04, and not a point on the curve.
+test fn a_point_off_the_curve_is_absent() -> Bool {
+  is_absent(v: p256_ecdsa_verify_octets(key: hex(s: "0460fed4ba255a9d31c961eb74c6356d68c049b8923b61fa6ce669622e60f29fb67903fe1008b8bc99a41ae9e95628bc64f2f1b20c2d7e9f5177a3c294d4462298"), signature: rfc6979_sample_sig, message: ascii(s: "sample")))
+}
+
+// ── Wycheproof ecdsa_secp256r1_sha256_p1363_test.json ───────────────────────────────────────
+data wycheproof_key: List<UInt8> = hex(s: "042927b10512bae3eddcfe467828128bad2903269919f7086069c8c4df6c732838c7787964eaac00e5921fb1498a60f4606766b3d9685001558d1a974e7341513e")
+data wycheproof_msg: List<UInt8> = hex(s: "313233343030")
+
+// tcId 1, valid: the high-s form. ECDSA verification has no low-s rule, so it verifies.
+test fn wycheproof_1_the_malleable_signature_verifies() -> Bool {
+  is_true(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: hex(s: "2ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e184cd60b855d442f5b3c7b11eb6c4e0ae7525fe710fab9aa7c77a67f79e6fadd76"), message: wycheproof_msg))
+}
+
+// tcId 60, valid: an edge case for Shamir multiplication.
+test fn wycheproof_60_the_shamir_edge_case_verifies() -> Bool {
+  is_true(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: hex(s: "64a1aab5000d0e804f3e2fc02bdee9be8ff312334e2ba16d11547c97711c898e6af015971cc30be6d1a206d4e013e0997772a2f91d73286ffd683b9bb2cf4f1b"), message: hex(s: "3639383139")))
+}
+
+// tcId 4, invalid: r replaced by n - r. Well-formed, so the answer is false.
+test fn wycheproof_4_n_minus_r_is_false() -> Bool {
+  is_false(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: hex(s: "d45c5740946b2a147f59262ee6f5bc90bd01ed280528b62b3aed5fc93f06f739b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db"), message: wycheproof_msg))
+}
+
+// tcId 11, invalid: r = 0 and s = 0, outside [1, n-1].
+test fn wycheproof_11_r_and_s_zero_are_absent() -> Bool {
+  is_absent(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: hex(s: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), message: wycheproof_msg))
+}
+
+// tcId 26, invalid: r = n, outside [1, n-1].
+test fn wycheproof_26_r_equal_to_n_is_absent() -> Bool {
+  is_absent(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: hex(s: "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc6325510000000000000000000000000000000000000000000000000000000000000001"), message: wycheproof_msg))
+}
+
+// tcId 2, invalid: r replaced by r + n, which needs 33 octets -- not the 64-octet encoding.
+test fn wycheproof_2_r_plus_n_is_absent() -> Bool {
+  is_absent(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: hex(s: "012ba3a8bd6b94d5ed80a6d9d1190a436ebccc0833490686deac8635bcb9bf536900b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db"), message: wycheproof_msg))
+}

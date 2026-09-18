@@ -50,6 +50,12 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 hmac = { workspace = true }
 hex = { workspace = true }
+# ECDSA P-256 / SHA-256 (FIPS 186-5), the asymmetric twin of hmac above: RustCrypto's p256 on the
+# same digest 0.10 family sha2 0.10 uses. Verification backs extdeps.crypto.signature
+# p256_ecdsa_verify; signing (pkcs8 + pem, for the APNs .p8 key) backs extdeps.apple.apns
+# apns_provider_token. base64 is the URL-safe unpadded codec both wire formats use.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "pem", "std"] }
+base64 = "0.22"
 sha2 = "0.10"
 toml = { workspace = true }
 ureq = { version = "2", features = ["json"] }

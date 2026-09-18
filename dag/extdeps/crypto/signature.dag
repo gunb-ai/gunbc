@@ -1,0 +1,196 @@
+module extdeps.crypto.signature
+
+import std.types { NonEmptyStr, String, Int, Secret }
+import std.encoding { base64_decode, UrlSafe }
+import std.logic { Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// ECDSA per FIPS 186-5 (Digital Signature Standard), over the NIST P-256 curve (SP 800-186) with
+// SHA-256 (FIPS 180-4, cited by extdeps.crypto.hash). The anchor is the standard, not Apple and not
+// a crate: the Secure Enclave is one PRODUCER of this signature (extdeps.apple.secure_enclave) and a
+// server-side verifier is another realization of the same shape. §3: the interface is modeled once.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/fips/186-5/final"
+  }
+}
+
+// THE ASYMMETRIC TWIN OF extdeps.crypto.mac, and the reason it exists is the note that module
+// carries: with a MAC, whoever can verify can mint. A verifier that must NOT be able to issue -- a
+// server that records which device decided, and must not be able to forge that device's decision --
+// needs a public-key construction. That is the only property this module adds, and the only one a
+// consumer may rely on it for.
+
+// ONE FIXED SUITE, closed for the same algorithm-confusion reason as MacSuite: the verifier picks
+// the suite from its enrolled key, never from the message it is checking.
+type SignatureSuite =
+  | EcdsaP256Sha256
+
+// THE PUBLIC KEY SPELLING IS SEC 1 §2.3.3 UNCOMPRESSED POINT: 0x04 || X || Y, 65 octets for P-256.
+// It is also ANSI X9.63's spelling, which is the name Apple's CryptoKit exposes it under
+// (x963Representation). One spelling on the wire, so a key cannot be enrolled under one encoding
+// and compared under another.
+fn signature_suite_public_key_size(s: SignatureSuite) -> ByteSize {
+  match s {
+    EcdsaP256Sha256 => byte_size(count: 65)
+  }
+}
+
+// THE SIGNATURE SPELLING IS THE FIXED-WIDTH r || s, 64 octets for P-256 (IEEE P1363 form; CryptoKit
+// rawRepresentation). DER (CryptoKit derRepresentation) is the other common spelling; it is not
+// admitted, because a verifier that accepts two encodings of one signature has a malleability
+// surface it did not need.
+fn signature_suite_signature_size(s: SignatureSuite) -> ByteSize {
+  match s {
+    EcdsaP256Sha256 => byte_size(count: 64)
+  }
+}
+
+type PublicKeyEncoding =
+  | Sec1Uncompressed
+
+type SignatureEncoding =
+  | P1363FixedWidth
+
+// The key a verifier holds. Not Secret: a public key is published by design, and wrapping it would
+// stop it reaching the audit record where it belongs.
+type VerifyingKey {
+  suite: SignatureSuite
+  encoding: PublicKeyEncoding
+  point_b64url: NonEmptyStr
+}
+
+type SignatureBytes {
+  suite: SignatureSuite
+  encoding: SignatureEncoding
+  b64url: NonEmptyStr
+}
+
+// ── Verification ─────────────────────────────────────────────────────────────────────────────
+// THE SUCCESS CARRIES THE MESSAGE AND THE KEY, for the reason extdeps.crypto.mac VerifiedMessage
+// does: a success detached from its message authenticates every message. sole_constructor makes the
+// only mint the realization seam below.
+type SignedMessage sole_constructor {
+  key: VerifyingKey
+  message: NonEmptyStr
+}
+
+type SignatureVerification
+  = SignatureVerified { verified: SignedMessage }
+  | SignatureInvalid { suite: SignatureSuite }
+  | SignatureMalformed { declared: ByteSize, expected: ByteSize }
+  | VerifyingKeyMalformed { declared: ByteSize, expected: ByteSize }
+  | SignatureSuiteMismatch { key_suite: SignatureSuite, signature_suite: SignatureSuite }
+  | VerifyingKeyUndecodable { suite: SignatureSuite }
+  | SignatureUndecodable { suite: SignatureSuite }
+  | SignatureEncodingRefused { suite: SignatureSuite }
+
+// ── The realization seam ─────────────────────────────────────────────────────────────────────
+// Same boundary as mac_verification_from_implementation, stated the same way: evidence cannot exist
+// without naming its message and key (structural), and whether the bound implementation actually ran
+// ECDSA verification over those bytes is the realization's trust, not this module's (not
+// structural). Length checks happen HERE, before the implementation is consulted, because they are
+// facts of the suite and not of the curve arithmetic.
+fn signature_verification_from_implementation(
+  key: VerifyingKey,
+  key_size: ByteSize,
+  signature: SignatureBytes,
+  signature_size: ByteSize,
+  message: NonEmptyStr,
+  implementation_verified: Bool,
+) -> SignatureVerification {
+  if key.suite != signature.suite {
+    SignatureSuiteMismatch { key_suite: key.suite, signature_suite: signature.suite }
+  } else if byte_size_count(b: key_size) != byte_size_count(b: signature_suite_public_key_size(s: key.suite)) {
+    VerifyingKeyMalformed { declared: key_size, expected: signature_suite_public_key_size(s: key.suite) }
+  } else if byte_size_count(b: signature_size) != byte_size_count(b: signature_suite_signature_size(s: signature.suite)) {
+    SignatureMalformed { declared: signature_size, expected: signature_suite_signature_size(s: signature.suite) }
+  } else if implementation_verified {
+    SignatureVerified { verified: SignedMessage { key: key, message: message } }
+  } else {
+    SignatureInvalid { suite: signature.suite }
+  }
+}
+
+// ── The bound implementation ─────────────────────────────────────────────────────────────────
+// `p256_ecdsa_verify_b64url` is a host primitive backed by RustCrypto's p256 VerifyingKey::verify,
+// which SHA-256-hashes the message itself: nothing here hands the implementation a digest. The octet
+// lengths the seam checks are the DECODED lengths, so a 64-octet key or a 71-octet DER signature is
+// named as such rather than collapsed into a mismatch.
+//
+// Absence from the primitive is not a mismatch either. When the seam's own checks pass (so the
+// answer with a false bit would be SignatureInvalid) and the primitive still answers absent, the
+// bytes had the right lengths and are not an admitted encoding -- a point off the curve, a scalar out
+// of range, a prefix other than 0x04, a non-canonical base64url spelling -- and that is
+// SignatureEncodingRefused, never SignatureInvalid: an invalid signature is a statement about a
+// well-formed one.
+fn p256_ecdsa_verify(key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SignatureVerification {
+  match base64_decode(s: key.point_b64url as String, variant: UrlSafe) {
+    Absent => VerifyingKeyUndecodable { suite: key.suite }
+    Present { value: key_octets } =>
+      match base64_decode(s: signature.b64url as String, variant: UrlSafe) {
+        Absent => SignatureUndecodable { suite: signature.suite }
+        Present { value: signature_octets } =>
+          match key.suite {
+            EcdsaP256Sha256 =>
+              match p256_ecdsa_verify_b64url(key.point_b64url as String, signature.b64url as String, message as String) {
+                Present { value: verified } =>
+                  signature_verification_from_implementation(
+                    key: key,
+                    key_size: byte_size(count: count(key_octets)),
+                    signature: signature,
+                    signature_size: byte_size(count: count(signature_octets)),
+                    message: message,
+                    implementation_verified: verified,
+                  )
+                Absent =>
+                  encoding_refusal(v: signature_verification_from_implementation(
+                    key: key,
+                    key_size: byte_size(count: count(key_octets)),
+                    signature: signature,
+                    signature_size: byte_size(count: count(signature_octets)),
+                    message: message,
+                    implementation_verified: false,
+                  ))
+              }
+          }
+      }
+  }
+}
+
+// The seam's structural refusals stand; only the arm that would claim a well-formed invalid
+// signature is re-read as an encoding refusal.
+fn encoding_refusal(v: SignatureVerification) -> SignatureVerification {
+  match v {
+    SignatureInvalid { suite: s } => SignatureEncodingRefused { suite: s }
+    _ => v
+  }
+}
+
+// ── Signing ──────────────────────────────────────────────────────────────────────────────────
+// THE KEY HOLDER'S OPERATION, and the only one this module adds for it. The private key travels as a
+// PKCS #8 PEM Secret (an APNs .p8 is exactly that) and never enters an argv
+// (gunbc.credential_argv_exposure), which is why this is a host primitive and not a shell transport.
+// The signature comes back in the one spelling verification admits -- 64-octet r || s, unpadded
+// base64url -- as SignatureBytes, so whatever carries it (a JWS, a record) needs no re-encoding.
+type SignatureSigning
+  = SignatureSigned { signature: SignatureBytes }
+  | SigningKeyUnreadable { suite: SignatureSuite }
+
+// `p256_ecdsa_sign_b64url` is RustCrypto's p256 SigningKey over SHA-256 with RFC 6979 deterministic
+// nonces: no RNG, one message has one signature. Absent means the key is not a P-256 PKCS #8 PEM.
+// The suite match is total so a second SignatureSuite arm cannot reach this implementation without
+// an authored arm.
+fn p256_ecdsa_sign(suite: SignatureSuite, key_pem: Secret, message: NonEmptyStr) -> SignatureSigning {
+  match suite {
+    EcdsaP256Sha256 =>
+      match p256_ecdsa_sign_b64url(key_pem as String, message as String) {
+        Absent => SigningKeyUnreadable { suite: suite }
+        Present { value: b64url } =>
+          SignatureSigned { signature: SignatureBytes { suite: suite, encoding: P1363FixedWidth, b64url: b64url as NonEmptyStr } }
+      }
+  }
+}
