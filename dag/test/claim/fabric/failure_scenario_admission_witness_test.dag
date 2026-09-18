@@ -6,7 +6,7 @@ import std.types { NonEmptyStr, String, Int, List, EpochSecs }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { MoneyRate, money_amount_micro, second, hardware_thread_count, HardwareThreadCount }
 import extdeps.currency.currency { Usd }
-import product.fabric.identity { FabricIdentity, OfferKey, WorkKey }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
 import product.fabric.work {
   Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
   ControlPlaneCapacity,
@@ -263,8 +263,12 @@ fn sanction(route: ProviderRoute) -> RouteScopeSanction {
 fn cleared(ev: DeclarationRef) -> DispositionStanding { DispositionCleared { evidence: ev } }
 
 fn scope(work: WorkKey) -> ProviderUseScope<NonEmptyStr> {
+  scope_for(demand_key: "fsa-demand", work: work)
+}
+
+fn scope_for(demand_key: DemandKey, work: WorkKey) -> ProviderUseScope<NonEmptyStr> {
   ProviderUseScope {
-    demand: FabricIdentity { principal: "gunbc", key: "fsa-demand" },
+    demand: FabricIdentity { principal: "gunbc", key: demand_key },
     work: FabricIdentity { principal: "gunbc", key: work },
     customer_profile: r(name: "fsa_customer_profile"),
     data_handling_profile: r(name: "fsa_data_handling_profile"),
@@ -575,4 +579,37 @@ test fn w_a_survival_reports_the_subject_its_capacity_was_proved_for() -> Bool {
   let a = admit(offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(), scenarios: absorbed_scenarios())
   covered_capabilities(a: a) == ["gunbc.capabilities.linux-rust-toolchain", "gunbc.capabilities.linux-rust-toolchain", "gunbc.capabilities.linux-rust-toolchain"]
     && covered_grants(a: a) == [10, 10, 20]
+}
+
+// review 67526's specimen, exactly: the same offer admitted once for another demand and TWICE for
+// this one. Suppressing on offer id alone reported nothing and let this demand count the offer twice;
+// keyed on the whole subject, the duplicate for THIS demand is named.
+fn capacity_for_demand(demand_key: DemandKey) -> List<AdmittedCapacity<NonEmptyStr>> {
+  flat_map(offers(), o =>
+    match admit_capacity(
+      routes: route_rows(offers: offers()),
+      sanctions: sanctions(),
+      active: posture(),
+      scope: scope_for(demand_key: demand_key, work: "committed-ci"),
+      decision_receipt: r(name: "fsa_decision_receipt"),
+      exercises: exercises(),
+      readiness_requirement: RequireExercisedRoute,
+      at: now,
+      requirements: requirements(caps: caps()),
+      offer: o,
+    ) {
+      CapacityAdmittedForOrdinaryWork { capacity: c } => if (c.offer.id.key as NonEmptyStr) == "cloud-x" { [c] } else { [] }
+      RouteExercisePlacementAdmitted { placement: _ } => []
+      CapacityRefused { refusal: _ } => []
+    })
+}
+
+test fn w_a_duplicate_hidden_behind_another_demands_row_is_still_named() -> Bool {
+  let for_other = capacity_for_demand(demand_key: "fsa-other-demand")
+  let for_this = capacity_for_demand(demand_key: "fsa-demand")
+  tags(a: admit_with_capacity(
+    capacities: concat(for_other, concat(for_this, for_this)),
+    demands: one_demand(),
+    scenarios: absorbed_scenarios()))
+    == ["duplicate:cloud-x"]
 }
