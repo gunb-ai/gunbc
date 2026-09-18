@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
-import extdeps.toolchain.types { Architecture, Aarch64, architecture_is_aarch64 }
+import extdeps.toolchain.types { Architecture, Aarch64 }
 import v2.std.optional { Absent, Present }
 import extdeps.provisioning.dhcp_client_arch {
   DhcpProcessorArchitecture,
@@ -439,48 +439,40 @@ fn join_verified_ticket_after_trust(
                 if mapped != client.client.arch {
                   NetworkBootDeliveryClientModeRefused { arch: client.client.arch }
                 } else {
-                  if loader_arch != id.architecture {
-                    NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongArchitecture { architecture: id.architecture } }
+                  if content_hash_equal(left: loader_digest, right: id.chainloader_digest) == false {
+                    NetworkBootDeliveryManifestRefused { cause: ManifestJoinChainloaderDigestDisagrees }
                   } else {
-                    if architecture_is_aarch64(a: id.architecture) == false {
-                      NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongArchitecture { architecture: id.architecture } }
+                    if (fleet.signing_key_identity as String) != (id.signing_key_identity as String) {
+                      NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongSigningKey }
                     } else {
-                      if content_hash_equal(left: loader_digest, right: id.chainloader_digest) == false {
-                        NetworkBootDeliveryManifestRefused { cause: ManifestJoinChainloaderDigestDisagrees }
+                      if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
+                        NetworkBootDeliveryManifestRefused { cause: ManifestJoinDigestDisagrees }
                       } else {
-                        if (fleet.signing_key_identity as String) != (id.signing_key_identity as String) {
-                          NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongSigningKey }
+                        if manifest_at < id.not_before {
+                          NetworkBootDeliveryManifestRefused {
+                            cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
+                          }
                         } else {
-                          if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
-                            NetworkBootDeliveryManifestRefused { cause: ManifestJoinDigestDisagrees }
+                          if manifest_at >= id.expiry {
+                            NetworkBootDeliveryManifestRefused {
+                              cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
+                            }
                           } else {
-                            if manifest_at < id.not_before {
-                              NetworkBootDeliveryManifestRefused {
-                                cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
-                              }
+                            if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
+                              NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                             } else {
-                              if manifest_at >= id.expiry {
-                                NetworkBootDeliveryManifestRefused {
-                                  cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
-                                }
+                              if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
+                                NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
                               } else {
-                                if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
-                                  NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
-                                } else {
-                                  if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
-                                    NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
-                                  } else {
-                                    NetworkBootDeliveryEstablished {
-                                      evidence: NetworkBootDeliveryEstablishment {
-                                        target: inputs.target,
-                                        boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
-                                        client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
-                                        serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
-                                        boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
-                                        artifact_digest: inputs.artifact_digest,
-                                      },
-                                    }
-                                  }
+                                NetworkBootDeliveryEstablished {
+                                  evidence: NetworkBootDeliveryEstablishment {
+                                    target: inputs.target,
+                                    boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
+                                    client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
+                                    serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
+                                    boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
+                                    artifact_digest: inputs.artifact_digest,
+                                  },
                                 }
                               }
                             }
