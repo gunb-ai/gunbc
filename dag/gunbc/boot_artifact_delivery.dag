@@ -117,6 +117,10 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryTargetMismatch,
   NetworkBootDeliveryTrustUnestablished,
+  NetworkBootDeliveryTrustRefused,
+  NetworkBootDeliveryRouteMismatch,
+  NetworkBootTrustRefusal,
+  NetworkBootRouteAxis,
   NetworkBootDeliveryUnestablished,
   NetworkBootManifestRefusal,
   NetworkBootRequirement,
@@ -366,6 +370,8 @@ type BootDeliveryCandidateIneligibility
   | CandidateNetworkBootSiteUnestablished
   | CandidateNetworkBootSiteMismatch { axis: NetworkBootSiteAxis, expected: SiteIdentity, observed: SiteIdentity }
   | CandidateNetworkBootTrustUnestablished
+  | CandidateNetworkBootTrustRefused { cause: NetworkBootTrustRefusal }
+  | CandidateNetworkBootRouteMismatch { axis: NetworkBootRouteAxis, expected: Uri, observed: Uri }
 
 type BootDeliveryCandidateStanding
   = CandidateEligible
@@ -691,6 +697,10 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
       CandidateIneligible { cause: CandidateNetworkBootSiteMismatch { axis: axis, expected: expected, observed: observed } }
     NetworkBootDeliveryTrustUnestablished =>
       CandidateIneligible { cause: CandidateNetworkBootTrustUnestablished }
+    NetworkBootDeliveryTrustRefused { cause: cause } =>
+      CandidateIneligible { cause: CandidateNetworkBootTrustRefused { cause: cause } }
+    NetworkBootDeliveryRouteMismatch { axis: axis, expected: expected, observed: observed } =>
+      CandidateIneligible { cause: CandidateNetworkBootRouteMismatch { axis: axis, expected: expected, observed: observed } }
   }
 }
 
@@ -844,6 +854,8 @@ fn build_boot_artifact_delivery(
         NetworkBootDeliverySiteUnestablished => none
         NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => none
         NetworkBootDeliveryTrustUnestablished => none
+        NetworkBootDeliveryTrustRefused { cause: _ } => none
+        NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => none
       }
   }
 }
