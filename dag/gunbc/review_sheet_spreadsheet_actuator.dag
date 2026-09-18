@@ -296,10 +296,17 @@ fn perform_marker_migration(
   }
 }
 
-// THE SECOND SEARCH IS ISSUED ONLY WHERE ITS ANSWER CAN CHANGE THE DECISION, WHICH IS ALSO WHERE IT
-// IS SAFE TO SKIP IT. An adopted sheet settles the identity, so the steady state -- every run after
-// the first -- issues exactly the one files.list it issued before this change, and the refusing arms
-// have already refused for a reason that a superseded-marker file could not repair.
+// THE SECOND SEARCH IS ISSUED ON EVERY NON-REFUSING CURRENT OBSERVATION, AND THAT COSTS A SECOND
+// files.list ON EVERY RUN INCLUDING THE STEADY STATE. An earlier cut issued it only when the current
+// search found nothing, and justified the skip exactly here: an adopted sheet settles the identity.
+// That sentence is only true if the identity has ONE SPELLING, which is what this whole module
+// exists to deny -- properties reaching A while appProperties still reaches B is a converged-looking
+// Noop that leaves B invisible forever.
+//
+// So the cost was accepted rather than avoided, and it is one list call per converge, not one per
+// row. The REFUSING arms still skip it, and that is not an optimisation either: they have already
+// refused for a reason no superseded-marker file could repair, so issuing the read could not change
+// the decision.
 // THE DECLARATION IS READ FROM DISK, WHICH IS WHAT MAKES THE ARM REACHABLE OUTSIDE A FIXTURE. The
 // id file wins over the absence file: supplying an id is the more specific statement, and an
 // operator who wrote both has told us a sheet exists, so honouring the weaker one would create
@@ -374,6 +381,20 @@ fn read_no_legacy_sheet_declaration() -> SupersededMarkerDeclaration uses fs: st
   }
 }
 
+fn perform_superseded_read(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+  declaration: SupersededMarkerDeclaration,
+) -> SupersededSearchReading uses net: Network {
+  SupersededRead {
+    observation: read_spreadsheet(
+      drive_id: drive_id,
+      query: review_sheet_superseded_search_query(marker_value: marker_value),
+    ),
+    visibility: visibility_from_declaration(declaration: declaration),
+  }
+}
+
 fn read_superseded_marker(
   drive_id: NonEmptyStr,
   marker_value: NonEmptyStr,
@@ -381,22 +402,8 @@ fn read_superseded_marker(
   declaration: SupersededMarkerDeclaration,
 ) -> SupersededSearchReading uses net: Network {
   match observed {
-    SheetAbsent =>
-      SupersededRead {
-        observation: read_spreadsheet(
-          drive_id: drive_id,
-          query: review_sheet_superseded_search_query(marker_value: marker_value),
-        ),
-        visibility: visibility_from_declaration(declaration: declaration),
-      }
-    SheetObservedOne { file_id: _ } =>
-      SupersededRead {
-        observation: read_spreadsheet(
-          drive_id: drive_id,
-          query: review_sheet_superseded_search_query(marker_value: marker_value),
-        ),
-        visibility: visibility_from_declaration(declaration: declaration),
-      }
+    SheetAbsent => perform_superseded_read(drive_id: drive_id, marker_value: marker_value, declaration: declaration)
+    SheetObservedOne { file_id: _ } => perform_superseded_read(drive_id: drive_id, marker_value: marker_value, declaration: declaration)
     SheetDuplicated { file_ids: _ } => SupersededNotConsulted
     SheetSearchIncomplete => SupersededNotConsulted
     SheetPageIncomplete { next_page_token: _ } => SupersededNotConsulted

@@ -372,12 +372,15 @@ type SpreadsheetPlan
   = SpreadsheetCreate { create: SpreadsheetCreatePlan }
   | SpreadsheetMigrateMarker { migrate: SpreadsheetMarkerMigrationPlan }
 
-// THE SUPERSEDED SEARCH IS CONDITIONAL, AND ITS NOT-CONSULTED STATE IS WRITTEN DOWN RATHER THAN
-// INFERRED. When the current search finds the sheet the identity is settled and the second call is
-// pure cost, so the steady state -- which is every run after the first -- issues exactly the one
-// files.list it issued before this change. The arm below exists so that "we did not look" can never
-// arrive at the decision wearing the same shape as "we looked and found nothing": the create arm is
+// THE NOT-CONSULTED STATE IS WRITTEN DOWN RATHER THAN INFERRED, so that "we did not look" can never
+// arrive at the decision wearing the same shape as "we looked and found nothing". The create arm is
 // unreachable from SupersededNotConsulted, so a caller that skips the read cannot mint a file.
+//
+// IT IS NOT A COST OPTIMISATION AND AN EARLIER REVISION OF THIS NOTE SAID IT WAS. The superseded
+// search is now issued on every non-refusing current observation -- including a current HIT, because
+// adopting on the newest spelling alone is how a legacy-marked file goes dark. Only the refusing
+// arms answer NotConsulted, and they do so because they have already refused for a reason no
+// superseded-marker file could repair, not to save a call.
 // AN APP-PRIVATE FIELD READ UNDER AN UNOBSERVED CLIENT CANNOT ESTABLISH ABSENCE, AND THE FIRST
 // REVISION OF THIS CHANGE GOT THAT WRONG IN THE ONE CASE IT WAS WRITTEN FOR. extdeps.google.drive
 // already states the governing fact: appProperties are private to the CREATING application, so a
