@@ -1,0 +1,225 @@
+module extdeps.apple.apns
+
+import std.types { NonEmptyStr, String, Int, Bool, List, Secret, EpochSecs }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.measure { Second, second, ByteSize, byte_size }
+import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256, SignatureSigned, SigningKeyUnreadable, p256_ecdsa_sign }
+import extdeps.auth.jwt { JwtCompactSerialization }
+import extdeps.auth.jws { jws_signing_input, jws_compact }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+
+// Apple Push Notification service, HTTP/2 provider API with token-based authentication.
+// Cited pages: "Sending notification requests to APNs", "Establishing a token-based connection to
+// APNs", "Generating a remote notification", "Handling notification responses from APNs".
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns"
+  }
+}
+
+// ── Environments ─────────────────────────────────────────────────────────────────────────────
+// Two hosts, and the choice is a fact of how the APP WAS SIGNED, not of the provider's preference: a
+// device token minted by a development-signed build is only valid against the sandbox host, and one
+// minted by a distribution build (App Store AND TestFlight) only against production. Sending to the
+// wrong one answers 400 BadDeviceToken -- a delivery failure that looks like a bad token.
+type ApnsEnvironment
+  = ApnsDevelopment
+  | ApnsProduction
+
+fn apns_host(e: ApnsEnvironment) -> NonEmptyStr {
+  match e {
+    ApnsDevelopment => "api.sandbox.push.apple.com" as NonEmptyStr
+    ApnsProduction => "api.push.apple.com" as NonEmptyStr
+  }
+}
+
+
+// ── Token-based provider authentication ──────────────────────────────────────────────────────
+// The provider signs a JWT (RFC 7519) with the .p8 auth key: header { alg: ES256, kid: <key id> },
+// claims { iss: <team id>, iat: <issued, epoch seconds> }. ES256 is ECDSA P-256 SHA-256, so the suite
+// is extdeps.crypto.signature's, not a second name for it.
+type ApnsKeyId = NonEmptyStr where brand("ApnsKeyId")
+type AppleTeamId = NonEmptyStr where brand("AppleTeamId")
+
+data apns_provider_token_suite: SignatureSuite = EcdsaP256Sha256
+
+// Apple's two timing facts, and they bound in opposite directions: a token older than one hour is
+// refused (403 ExpiredProviderToken), and a provider that REFRESHES more often than once per twenty
+// minutes is refused too (429 TooManyProviderTokenUpdates). So the token is a cached value with a
+// window, not a per-request mint.
+data apns_provider_token_max_age: Second = second(count: 3600)
+data apns_provider_token_min_refresh: Second = second(count: 1200)
+
+type ApnsProviderIdentity {
+  team_id: AppleTeamId
+  key_id: ApnsKeyId
+}
+
+// THE TOKEN, and what it names. The JWT is the bearer credential sent as `authorization: bearer
+// <jwt>`; it carries its identity and issue time beside it so a cache can decide the refresh window
+// (the two bounds above) without decoding its own output.
+type ApnsProviderToken {
+  identity: ApnsProviderIdentity
+  issued_at_epoch: EpochSecs
+  jwt: JwtCompactSerialization
+}
+
+// Minting refuses rather than fabricating. The one malformed input the bound implementation can see
+// is a key that is not a P-256 PKCS #8 PEM (an APNs .p8 is exactly that). An issue time before the
+// epoch is not a refusal here: EpochSecs makes it unwritable.
+type ApnsProviderTokenMint
+  = ApnsProviderTokenSigned { token: ApnsProviderToken }
+  | ApnsAuthKeyUnreadable { key_id: ApnsKeyId }
+
+// THE TOKEN IS A JWS (extdeps.auth.jws) OVER A JWT (extdeps.auth.jwt): protected header
+// {"alg": "ES256", "kid": <key id>}, payload {"iss": <team id>, "iat": <issued>}, both serialized by
+// extdeps.languages.json.emit, and the signature over the JWS signing input is ES256 -- ECDSA P-256
+// SHA-256 as extdeps.crypto.signature p256_ecdsa_sign, whose r || s base64url is exactly RFC 7518
+// §3.4's JWS Signature. The only host kernel is that signature; every wire shape is modeled.
+fn apns_provider_token(identity: ApnsProviderIdentity, auth_key: Secret, issued_at_epoch: EpochSecs) -> ApnsProviderTokenMint {
+  let signing_input = jws_signing_input(
+    protected_header: json_object(members: [json_kv(key: "alg", value: json_string(s: "ES256")), json_kv(key: "kid", value: json_string(s: identity.key_id as String))]),
+    payload: json_object(members: [json_kv(key: "iss", value: json_string(s: identity.team_id as String)), json_kv(key: "iat", value: json_int(n: issued_at_epoch as Int))]),
+  )
+  match p256_ecdsa_sign(suite: apns_provider_token_suite, key_pem: auth_key, message: signing_input) {
+    SigningKeyUnreadable { suite: _ } => ApnsAuthKeyUnreadable { key_id: identity.key_id }
+    SignatureSigned { signature } =>
+      ApnsProviderTokenSigned { token: ApnsProviderToken { identity: identity, issued_at_epoch: issued_at_epoch, jwt: jws_compact(signing_input: signing_input, signature_b64url: signature.b64url) } }
+  }
+}
+
+// ── Request headers ──────────────────────────────────────────────────────────────────────────
+// apns-topic is the app's bundle identifier for an alert push.
+type ApnsTopic = NonEmptyStr where brand("ApnsTopic")
+
+// apns-push-type is required on watchOS and recommended everywhere. SCOPED TO THE ALERT SHAPE: a
+// background push is a different payload (content-available: 1, no alert, priority 5), and no
+// consumer here sends one, so it is not modeled rather than modeled wrong.
+type ApnsPushType =
+  | PushTypeAlert
+
+fn apns_push_type_wire(t: ApnsPushType) -> NonEmptyStr {
+  match t {
+    PushTypeAlert => "alert" as NonEmptyStr
+  }
+}
+
+// apns-priority: Apple documents exactly two values -- 10 delivers immediately (the default when
+// omitted) and 5 delivers with the device's power considerations.
+type ApnsPriority
+  = PriorityImmediate
+  | PriorityPowerConsiderate
+
+fn apns_priority_wire(p: ApnsPriority) -> Int {
+  match p {
+    PriorityImmediate => 10
+    PriorityPowerConsiderate => 5
+  }
+}
+
+// apns-collapse-id: notifications sharing it are coalesced on the device into the newest. Apple caps
+// its value at 64 bytes.
+type ApnsCollapseId = NonEmptyStr where brand("ApnsCollapseId")
+data apns_collapse_id_max_size: ByteSize = byte_size(count: 64)
+
+// ── Payload ──────────────────────────────────────────────────────────────────────────────────
+// The aps dictionary's alert and mutable-content keys. mutable-content = 1 lets a Notification
+// Service Extension rewrite the content before display; custom keys travel beside aps at the top
+// level of the JSON body.
+type ApnsInterruptionLevel
+  = InterruptionPassive
+  | InterruptionActive
+  | InterruptionTimeSensitive
+
+fn apns_interruption_level_wire(l: ApnsInterruptionLevel) -> NonEmptyStr {
+  match l {
+    InterruptionPassive => "passive" as NonEmptyStr
+    InterruptionActive => "active" as NonEmptyStr
+    InterruptionTimeSensitive => "time-sensitive" as NonEmptyStr
+  }
+}
+
+type ApnsAlert {
+  title: NonEmptyStr
+  subtitle: String
+  body: NonEmptyStr
+}
+
+type ApnsAps {
+  alert: ApnsAlert
+  mutable_content: Bool
+  interruption_level: ApnsInterruptionLevel
+  category: String
+}
+
+// Apple's limit for a non-VoIP remote notification payload.
+data apns_payload_max_size: ByteSize = byte_size(count: 4096)
+
+// A device token is an opaque per-app-install address APNs issues to the app; the provider stores it
+// and never interprets it.
+type ApnsDeviceToken = NonEmptyStr where brand("ApnsDeviceToken")
+
+// APP-SPECIFIC DATA IS A PEER OF aps, never inside it: Apple reserves the aps dictionary and puts
+// custom keys at the top level of the JSON body. String values only here, which is all a consumer
+// of this module needs; a richer value shape is added when a consumer needs one.
+type ApnsCustomKey {
+  key: NonEmptyStr
+  value: NonEmptyStr
+}
+
+type ApnsRequest {
+  environment: ApnsEnvironment
+  device_token: ApnsDeviceToken
+  topic: ApnsTopic
+  push_type: ApnsPushType
+  priority: ApnsPriority
+  collapse_id: ApnsCollapseId
+  aps: ApnsAps
+  custom: List<ApnsCustomKey>
+}
+
+// ── Responses ────────────────────────────────────────────────────────────────────────────────
+// 200 carries the apns-id header and no body. Every refusal carries a JSON body { reason }, and 410
+// adds { timestamp } -- the last moment APNs knew the token was valid. The status table is Apple's.
+// A 410 is not a transient failure: the token will never work again, and the consumer's remedy is to
+// forget the enrolment's token, not to retry.
+type ApnsRefusalClass
+  = ApnsBadRequest
+  | ApnsAuthenticationRefused
+  | ApnsBadPath
+  | ApnsBadMethod
+  | ApnsTokenUnregistered
+  | ApnsPayloadTooLarge
+  | ApnsTooManyRequests
+  | ApnsServerError
+  | ApnsServiceUnavailable
+  | ApnsStatusUnlisted { status: Int }
+
+fn apns_refusal_class(status: Int) -> ApnsRefusalClass {
+  if status == 400 { ApnsBadRequest } else { if status == 403 { ApnsAuthenticationRefused } else { if status == 404 { ApnsBadPath } else { if status == 405 { ApnsBadMethod } else { if status == 410 { ApnsTokenUnregistered } else { if status == 413 { ApnsPayloadTooLarge } else { if status == 429 { ApnsTooManyRequests } else { if status == 500 { ApnsServerError } else { if status == 503 { ApnsServiceUnavailable } else { ApnsStatusUnlisted { status: status } } } } } } } } } }
+}
+
+// The same four-way outcome extdeps.ntfy.ntfy NtfyPublishOutcome settled on, for the same reasons: a
+// transport refusal has no status and must not be given one, and an undecodable 200 is not a
+// refusal. The broker-level shape both fold into is the consumer's (gunbc.auth.approval_device_redemption
+// PushProviderOutcome), not this module's.
+type ApnsSendOutcome
+  = ApnsAccepted { apns_id: NonEmptyStr }
+  | ApnsRefused { status: Int, class: ApnsRefusalClass, reason: String }
+  | ApnsUnreached { cause: String }
+  | ApnsUndecodable { status: Int, cause: String }
+
+// APNs ANSWERS EVERY ACCEPTED REQUEST WITH AN apns-id HEADER, supplied or generated. A 200 without
+// one is not an acceptance this module can name, so it is undecodable -- never an ApnsAccepted
+// carrying an empty id.
+fn apns_send_outcome_of(rest: RestOutcome, apns_id: String) -> ApnsSendOutcome {
+  match rest {
+    RestOk => if apns_id == "" { ApnsUndecodable { status: 200, cause: "accepted response carried no apns-id header" } } else { ApnsAccepted { apns_id: apns_id as NonEmptyStr } }
+    RestStatusRefused { status, body } => ApnsRefused { status: status, class: apns_refusal_class(status: status), reason: body }
+    RestTransportRefused { cause } => ApnsUnreached { cause: cause as String }
+    RestBodyUndecodable { status, cause } => ApnsUndecodable { status: status, cause: cause as String }
+  }
+}

@@ -1,0 +1,414 @@
+module extdeps.apple.app_attest
+
+import std.types { NonEmptyStr, String, Int, List, EpochSecs }
+import std.logic { Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// DeviceCheck DCAppAttestService, and Apple's server-side validation procedure for its attestation
+// objects. Cited pages: "Establishing your app's integrity", "Validating apps that connect to your
+// server", "DCAppAttestService".
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server"
+  }
+}
+
+// ── What an attestation establishes, and what it does not ────────────────────────────────────
+// App Attest generates its OWN P-256 key in the Secure Enclave (generateKey), separate from any
+// CryptoKit key, and Apple certifies that key as belonging to a genuine instance of the app with a
+// named team id and bundle id on genuine Apple hardware. Two things it does NOT give:
+//
+//   * It cannot be gated by biometrics -- DCAppAttestService exposes no access-control policy -- so
+//     it proves the APP, not the operator. The decision-signing key is the CryptoKit enclave key
+//     under extdeps.apple.secure_enclave BiometryCurrentSet.
+//   * It certifies nothing about any other key. The link from the attested app to the decision key
+//     is made by the enrolment protocol: the clientDataHash the app attests over commits to the
+//     decision key and the one-time enrolment code (gunbc.auth.approval_device_redemption).
+
+type AttestKeyId = NonEmptyStr where brand("AttestKeyId")
+
+// Two environments by entitlement (com.apple.developer.devicecheck.appattest-environment), visible
+// to the server as the authenticator data's AAGUID: "appattestdevelop" or "appattest" followed by
+// seven zero bytes. TestFlight and App Store builds attest in production.
+type AppAttestEnvironment
+  = AppAttestDevelopment
+  | AppAttestProduction
+
+// ── Validation, in Apple's order ─────────────────────────────────────────────────────────────
+// The attestation object is CBOR { fmt: "apple-appattest", attStmt: { x5c, receipt }, authData }.
+// Apple's current procedure; each failure is its own refusal because each is a different incident.
+//
+//   1. x5c chains to the Apple App Attestation Root CA
+//   2. nonce = SHA256(authData || clientDataHash)
+//   3. nonce equals the credential certificate extension OID 1.2.840.113635.100.8.2
+//   4. SHA256(credential public key) equals the key id
+//   5. authData RP ID hash equals SHA256(App ID) -- App ID prefix, ".", bundle id
+//   6. authData counter is 0
+//   7. AAGUID names the expected environment
+//   8. authData credentialId equals the key id
+//   9. apple_validation_category_01 (UInt32, extensions CBOR) names an admitted launch category
+//  10. apple_bundle_version_01 (String, extensions CBOR) is the distributed app version
+//
+// The server then STORES the credential public key and the receipt: the key verifies every later
+// assertion, and the receipt is the handle for Apple's fraud-metric call.
+type AttestationRefusal
+  = AttestationFormatUnexpected { declared: String }
+  | AttestationChainUntrusted { detail: String }
+  | AttestationNonceMismatch
+  | AttestationKeyIdMismatch { declared: AttestKeyId }
+  | AttestationAppIdMismatch { expected_app_id: NonEmptyStr }
+  | AttestationCounterNonZero { counter: Int }
+  | AttestationEnvironmentUnexpected { expected: AppAttestEnvironment }
+  | AttestationCredentialIdMismatch { declared: AttestKeyId }
+  | AttestationValidationCategoryRefused { category: Int }
+  | AttestationValidationCategoryAbsent
+  | AttestationBundleVersionAbsent
+  | AttestationBundleVersionRefused { version: NonEmptyStr }
+  | AttestationUndecodable { cause: String }
+
+
+data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
+
+// THE APP ID IS "<App ID prefix>.<bundle id>". Apple: the prefix is USUALLY the 10-character team
+// identifier, and is read from the app's Identifier entry in the developer account -- so it is its
+// own fact, not a second name for the team id, and the verifier is configured with it directly.
+type AppIdPrefix = NonEmptyStr where brand("AppIdPrefix")
+
+fn app_attest_app_id(prefix: AppIdPrefix, bundle_id: NonEmptyStr) -> NonEmptyStr {
+  join([prefix as String, bundle_id as String], ".") as NonEmptyStr
+}
+
+// ── Verified facts, minted only at the seam ──────────────────────────────────────────────────
+// Same boundary as extdeps.crypto.mac VerifiedMessage: nothing outside this module constructs a
+// verified attestation or assertion, and each names what it was verified OVER, so a success cannot
+// be paired afterwards with another enrolment's or another request's bytes.
+type VerifiedAttestation sole_constructor {
+  key_id: AttestKeyId
+  public_key_point_b64url: NonEmptyStr
+  receipt_b64: NonEmptyStr
+  environment: AppAttestEnvironment
+  client_data: NonEmptyStr
+}
+
+type AttestationVerification
+  = AttestationVerified { verified: VerifiedAttestation }
+  | AttestationRefused { cause: AttestationRefusal }
+
+fn attestation_verification_from_implementation(
+  key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
+  receipt_b64: NonEmptyStr,
+  environment: AppAttestEnvironment,
+  client_data: NonEmptyStr,
+  refusal: AttestationRefusal?,
+) -> AttestationVerification {
+  match refusal {
+    Present { value: r } => AttestationRefused { cause: r }
+    Absent => AttestationVerified {
+      verified: VerifiedAttestation { key_id: key_id, public_key_point_b64url: public_key_point_b64url, receipt_b64: receipt_b64, environment: environment, client_data: client_data }
+    }
+  }
+}
+
+
+// ── Assertions ───────────────────────────────────────────────────────────────────────────────
+// Each later request carries an assertion: CBOR { signature, authenticatorData } produced by
+// generateAssertion(keyId, clientDataHash). Apple's procedure: (1) clientDataHash = SHA256(clientData);
+// (2) nonce = SHA256(authenticatorData || clientDataHash); (3) the signature verifies for nonce under
+// the STORED public key; (4) the RP ID hash equals SHA256(App ID); (5) the counter exceeds the
+// previous assertion's; (6) the embedded challenge matches the one issued; (7) validationCategory
+// and (8) bundleVersion, from the extensions CBOR. Only after all eight does Apple call it trusted.
+//
+// THIS MODULE'S SUCCESS IS NAMED FOR LESS, deliberately: AssertionAuthentic covers steps 1-4, 7 and
+// 8 -- the parts a verifier can decide from the assertion, the client data and the stored key.
+// Step 5 needs the previous counter and step 6 needs the issued challenge; both are the CONSUMER'S
+// state, so the counter is carried out for the consumer to compare (or to state why it does not) and
+// the client data is carried out for the consumer to join to its challenge. A value named for full
+// trust would claim checks this producer cannot make.
+type AssertionRefusal
+  = AssertionSignatureInvalid
+  | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
+  | AssertionValidationCategoryRefused { category: Int }
+  | AssertionValidationCategoryAbsent
+  | AssertionBundleVersionAbsent
+  | AssertionBundleVersionRefused { version: NonEmptyStr }
+  | AssertionUndecodable { cause: String }
+
+type AuthenticAssertion sole_constructor {
+  key_id: AttestKeyId
+  public_key_point_b64url: NonEmptyStr
+  counter: Int
+  client_data: NonEmptyStr
+}
+
+type AssertionVerification
+  = AssertionAuthentic { authentic: AuthenticAssertion }
+  | AssertionRefused { cause: AssertionRefusal }
+
+fn assertion_verification_from_implementation(
+  key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
+  counter: Int,
+  client_data: NonEmptyStr,
+  refusal: AssertionRefusal?,
+) -> AssertionVerification {
+  match refusal {
+    Present { value: r } => AssertionRefused { cause: r }
+    Absent => AssertionAuthentic { authentic: AuthenticAssertion { key_id: key_id, public_key_point_b64url: public_key_point_b64url, counter: counter, client_data: client_data } }
+  }
+}
+
+// ── The pinned trust anchor ──────────────────────────────────────────────────────────────────
+// Apple App Attestation Root CA, as published at the URL in apple_app_attest_root_ca_note (P-384,
+// valid 2020-03-18 to 2045-03-15, SHA-256 fingerprint 1C:B9:82:3B:A2:8B:A6:AD:2D:33:A0:06:94:1D:E2:AE:
+// 4F:51:3E:F1:D4:E8:31:B9:F7:E0:FA:7B:62:42:C9:32). This row IS the pin: the verifier is handed this
+// PEM, and nothing an attestation carries in x5c can stand in for it.
+type AppAttestTrustAnchor {
+  root_pem: NonEmptyStr
+}
+
+data apple_app_attestation_root_ca: AppAttestTrustAnchor = AppAttestTrustAnchor {
+  root_pem: "-----BEGIN CERTIFICATE-----\nMIICITCCAaegAwIBAgIQC/O+DvHN0uD7jG5yH2IXmDAKBggqhkjOPQQDAzBSMSYw\nJAYDVQQDDB1BcHBsZSBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UECgwK\nQXBwbGUgSW5jLjETMBEGA1UECAwKQ2FsaWZvcm5pYTAeFw0yMDAzMTgxODMyNTNa\nFw00NTAzMTUwMDAwMDBaMFIxJjAkBgNVBAMMHUFwcGxlIEFwcCBBdHRlc3RhdGlv\nbiBSb290IENBMRMwEQYDVQQKDApBcHBsZSBJbmMuMRMwEQYDVQQIDApDYWxpZm9y\nbmlhMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAERTHhmLW07ATaFQIEVwTtT4dyctdh\nNbJhFs/Ii2FdCgAHGbpphY3+d8qjuDngIN3WVhQUBHAoMeQ/cLiP1sOUtgjqK9au\nYen1mMEvRq9Sk3Jm5X8U62H+xTD3FE9TgS41o0IwQDAPBgNVHRMBAf8EBTADAQH/\nMB0GA1UdDgQWBBSskRBTM72+aEH/pwyp5frq5eWKoTAOBgNVHQ8BAf8EBAMCAQYw\nCgYIKoZIzj0EAwMDaAAwZQIwQgFGnByvsiVbpTKwSga0kP0e8EeDS4+sQmTvb7vn\n53O5+FRXgeLhpJ06ysC5PrOyAjEAp5U4xDgEgllF7En3VcE3iexZZtKeYnpqtijV\noyFraWVIyd/dganmrduC1bmTBGwD\n-----END CERTIFICATE-----\n",
+}
+
+// ── Where the procedure lives, and what moves it ─────────────────────────────────────────────
+// STEPS 1-8 EXECUTE IN SEED RUST TODAY, and that is tracked debt rather than a claim that the
+// procedure is a host kernel. Only four operations are genuinely irreducible here -- CBOR decoding,
+// X.509 parsing, SHA-256, and P-256/P-384 ECDSA verification over a certificate's TBS bytes. Every
+// comparison built on them (nonce, key id, RP ID, counter, AAGUID, credential id, the chain's
+// issuer/validity/CA checks) is a decision this module could make itself once those kernels are
+// reachable as values. Steps 9-10 already are (app_attest_policy_refusal).
+data app_attest_procedure_in_seed_frontier: DissolutionCondition = unbound_dissolution(
+  description: "host kernels for CBOR decode, X.509 parse, SHA-256 and ECDSA-over-TBS reachable from .dag as typed values (or a non-v1 host route binding RustCrypto) -- SUFFICIENT FOR extdeps.apple.app_attest to decide Apple's attestation steps 1-8 and assertion steps 3-4 as .dag comparisons, at which point app_attest_verify_attestation / app_attest_verify_assertion and their Rust helpers are deleted and only the kernels remain in the seed",
+)
+
+// ── The implementation's answer ──────────────────────────────────────────────────────────────
+// WHAT THE BOUND IMPLEMENTATION ESTABLISHED, typed at the seam. The host constructs these arms
+// directly -- the refusal arm carries this module's own AttestationRefusal / AssertionRefusal -- so
+// there is one spelling of each refusal and nothing re-parses text. An answer is NOT a verified
+// fact: VerifiedAttestation and VerifiedAssertion stay sole-constructed, and only the seams above
+// mint them, after this module has applied the caller's policy (admitted categories, stored
+// counter) to the facts.
+type AttestationImplementationAnswer
+  = AttestationImplementationVerified {
+      public_key_point_b64url: NonEmptyStr,
+      validation_category: Int,
+      receipt_b64: NonEmptyStr,
+      bundle_version: NonEmptyStr,
+    }
+  | AttestationImplementationRefused { cause: AttestationRefusal }
+  | AttestationImplementationAaguidMismatch
+
+type AssertionImplementationAnswer
+  = AssertionImplementationVerified { counter: Int, validation_category: Int, bundle_version: NonEmptyStr }
+  | AssertionImplementationRefused { cause: AssertionRefusal }
+
+// ── The bound implementation ─────────────────────────────────────────────────────────────────
+// `app_attest_verify_attestation` is a host primitive running Apple's ten steps above in Apple's
+// order, over RustCrypto p256/p384 + sha2, ciborium and x509-parser, answering an
+// AttestationImplementationAnswer.
+//
+// The client data is passed, not its hash: the verifier computes SHA-256(client data) itself, so a
+// caller cannot supply a hash the device never committed to. `now_epoch` is the caller's clock
+// reading, and certificate validity is judged at it, so one attestation has one answer.
+//
+// WHICH LAUNCH CATEGORIES ARE ADMITTED IS THE CALLER'S POLICY (Apple's table: 2 TestFlight, 3
+// development signing, 4 App Store, 5 enterprise / ad-hoc, 6 Developer ID, 0 and 7-10 not
+// appropriate), so it arrives as a parameter. So does step 10's: Apple asks the server to verify
+// apple_bundle_version_01 against the distributed app version, and which versions are distributed
+// is the caller's fact. The implementation reports both values; this module judges them.
+fn app_attest_verify(
+  prefix: AppIdPrefix,
+  bundle_id: NonEmptyStr,
+  environment: AppAttestEnvironment,
+  admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
+  attestation_b64: NonEmptyStr,
+  client_data: NonEmptyStr,
+  key_id: AttestKeyId,
+  now_epoch: EpochSecs,
+) -> AttestationVerification {
+  app_attest_verify_under(
+    anchor: apple_app_attestation_root_ca,
+    prefix: prefix,
+    bundle_id: bundle_id,
+    environment: environment,
+    admitted_categories: admitted_categories,
+    admitted_bundle_versions: admitted_bundle_versions,
+    attestation_b64: attestation_b64,
+    client_data: client_data,
+    key_id: key_id,
+    now_epoch: now_epoch,
+  )
+}
+
+// The anchor as a parameter exists for ONE consumer: a witness showing that a chain which verifies
+// under its own root is refused under the pinned one. Every production caller goes through
+// app_attest_verify.
+fn app_attest_verify_under(
+  anchor: AppAttestTrustAnchor,
+  prefix: AppIdPrefix,
+  bundle_id: NonEmptyStr,
+  environment: AppAttestEnvironment,
+  admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
+  attestation_b64: NonEmptyStr,
+  client_data: NonEmptyStr,
+  key_id: AttestKeyId,
+  now_epoch: EpochSecs,
+) -> AttestationVerification {
+  let app_id = app_attest_app_id(prefix: prefix, bundle_id: bundle_id)
+  app_attest_attestation_of(
+    answer: app_attest_verify_attestation(
+      attestation_b64 as String,
+      client_data as String,
+      key_id as String,
+      app_id as String,
+      app_attest_aaguid_hex(e: environment) as String,
+      anchor.root_pem as String,
+      now_epoch as Int,
+    ),
+    key_id: key_id,
+    environment: environment,
+    client_data: client_data,
+    admitted_categories: admitted_categories,
+    admitted_bundle_versions: admitted_bundle_versions,
+  )
+}
+
+// THE AAGUID EACH ENVIRONMENT PUTS IN THE AUTHENTICATOR DATA, as the 16 octets in lowercase hex:
+// "appattestdevelop", or "appattest" followed by seven 0x00. This is the wire fact step 7 compares,
+// so the environment reaches the implementation as its AAGUID rather than as a flag.
+fn app_attest_aaguid_hex(e: AppAttestEnvironment) -> NonEmptyStr {
+  match e {
+    AppAttestDevelopment => "617070617474657374646576656c6f70" as NonEmptyStr
+    AppAttestProduction => "61707061747465737400000000000000" as NonEmptyStr
+  }
+}
+
+fn app_attest_category_admitted(admitted: List<Int>, category: Int) -> Bool {
+  fold(admitted, init: false, f: (acc, c) => acc || c == category)
+}
+
+fn app_attest_bundle_version_admitted(admitted: List<NonEmptyStr>, version: NonEmptyStr) -> Bool {
+  fold(admitted, init: false, f: (acc, v) => acc || v == version)
+}
+
+// Steps 9 and 10 judged in Apple's order, both against the caller's policy.
+fn app_attest_policy_refusal(
+  admitted_categories: List<Int>,
+  category: Int,
+  admitted_bundle_versions: List<NonEmptyStr>,
+  bundle_version: NonEmptyStr,
+) -> AttestationRefusal? {
+  if !app_attest_category_admitted(admitted: admitted_categories, category: category) {
+    Present { value: AttestationValidationCategoryRefused { category: category } }
+  } else if !app_attest_bundle_version_admitted(admitted: admitted_bundle_versions, version: bundle_version) {
+    Present { value: AttestationBundleVersionRefused { version: bundle_version } }
+  } else {
+    none
+  }
+}
+
+fn app_attest_attestation_of(
+  answer: AttestationImplementationAnswer,
+  key_id: AttestKeyId,
+  environment: AppAttestEnvironment,
+  client_data: NonEmptyStr,
+  admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
+) -> AttestationVerification {
+  match answer {
+    AttestationImplementationRefused { cause } => AttestationRefused { cause: cause }
+    AttestationImplementationAaguidMismatch => AttestationRefused { cause: AttestationEnvironmentUnexpected { expected: environment } }
+    AttestationImplementationVerified { public_key_point_b64url, validation_category, receipt_b64, bundle_version } =>
+      attestation_verification_from_implementation(
+        key_id: key_id,
+        public_key_point_b64url: public_key_point_b64url,
+        receipt_b64: receipt_b64,
+        environment: environment,
+        client_data: client_data,
+        refusal: app_attest_policy_refusal(
+          admitted_categories: admitted_categories,
+          category: validation_category,
+          admitted_bundle_versions: admitted_bundle_versions,
+          bundle_version: bundle_version,
+        ),
+      )
+  }
+}
+
+// `app_attest_verify_assertion` is the host primitive for the steps of the assertion procedure a
+// verifier can decide alone: the signature under the STORED attested key (3), the app's RP ID hash
+// (4), and the extensions' validationCategory (7) and bundleVersion (8), judged here against the same
+// caller policy as the attestation's. Steps 5 (counter) and 6 (challenge) are the consumer's: the
+// counter and the client data are carried out on AuthenticAssertion for it to compare and join.
+fn app_attest_verify_assertion_of(
+  prefix: AppIdPrefix,
+  bundle_id: NonEmptyStr,
+  admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
+  key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
+  assertion_b64: NonEmptyStr,
+  client_data: NonEmptyStr,
+) -> AssertionVerification {
+  let app_id = app_attest_app_id(prefix: prefix, bundle_id: bundle_id)
+  app_attest_assertion_of(
+    answer: app_attest_verify_assertion(
+      assertion_b64 as String,
+      client_data as String,
+      public_key_point_b64url as String,
+      app_id as String,
+    ),
+    key_id: key_id,
+    public_key_point_b64url: public_key_point_b64url,
+    client_data: client_data,
+    admitted_categories: admitted_categories,
+    admitted_bundle_versions: admitted_bundle_versions,
+  )
+}
+
+fn app_attest_assertion_of(
+  answer: AssertionImplementationAnswer,
+  key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
+  client_data: NonEmptyStr,
+  admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
+) -> AssertionVerification {
+  match answer {
+    AssertionImplementationRefused { cause } => AssertionRefused { cause: cause }
+    AssertionImplementationVerified { counter, validation_category, bundle_version } =>
+      assertion_verification_from_implementation(
+        key_id: key_id,
+        public_key_point_b64url: public_key_point_b64url,
+        counter: counter,
+        client_data: client_data,
+        refusal: app_attest_assertion_policy_refusal(
+          admitted_categories: admitted_categories,
+          category: validation_category,
+          admitted_bundle_versions: admitted_bundle_versions,
+          bundle_version: bundle_version,
+        ),
+      )
+  }
+}
+
+fn app_attest_assertion_policy_refusal(
+  admitted_categories: List<Int>,
+  category: Int,
+  admitted_bundle_versions: List<NonEmptyStr>,
+  bundle_version: NonEmptyStr,
+) -> AssertionRefusal? {
+  if !app_attest_category_admitted(admitted: admitted_categories, category: category) {
+    Present { value: AssertionValidationCategoryRefused { category: category } }
+  } else if !app_attest_bundle_version_admitted(admitted: admitted_bundle_versions, version: bundle_version) {
+    Present { value: AssertionBundleVersionRefused { version: bundle_version } }
+  } else {
+    none
+  }
+}

@@ -289,6 +289,102 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_std_core::with_optional_cardinality(string_type()),
     }));
+                __m.insert("p256_ecdsa_verify_b64url".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "key_point_b64url".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "signature_b64url".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "message".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: crate::v1_std_core::with_optional_cardinality(bool_type()),
+    }));
+                __m.insert("p256_ecdsa_sign_b64url".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "p8_pem_secret".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "message".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: crate::v1_std_core::with_optional_cardinality(string_type()),
+    }));
+                __m.insert("app_attest_verify_attestation".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "attestation_b64".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "client_data".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "key_id_b64".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "app_id".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "expected_aaguid_hex".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "root_pem".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "now_epoch".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "Int".to_string(),
+    }),
+    })]),
+        returns: type_variable_node("app_attest_attestation_answer".to_string()),
+    }));
+                __m.insert("app_attest_verify_assertion".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "assertion_b64".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "client_data".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "public_key_point_b64url".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "app_id".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: type_variable_node("app_attest_assertion_answer".to_string()),
+    }));
                 __m.insert("string_length".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),
