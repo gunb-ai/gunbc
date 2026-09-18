@@ -412,6 +412,18 @@ service drive.Permissions {
 // every other property on the file untouched. A PUT would replace the resource and silently drop
 // properties this repository does not know about and did not write.
 //
+// THE PROPERTY NAME IS A THIRD COPY OF ONE FACT AND THIS OPERATION CANNOT AVOID IT. Its authority is
+// gunbc.review_sheet_drive_converge review_sheet_marker_property_key, which every SEARCH query is
+// built from; the write side spells it as a literal because the body builder emits field names as
+// SYNTAX and cannot take a field name from a parameter. CreateFile above carries the second copy and
+// states the same constraint; this PATCH is the third, and adding it does not make the limitation
+// new -- it makes it wider, which is worth saying rather than leaving a reader to count.
+//
+// WHAT WOULD ACTUALLY CLOSE IT is a body builder that accepts a field NAME as a parameter, at which
+// point all three copies collapse into the one declaration. Until then no claim in this corpus can
+// reach these literals, so the three spellings agreeing is checked on the search side and asserted
+// by a human reading three lines on the write side. That asymmetry is the residue, not a choice.
+//
 // THE FIELD MASK MUST SATISFY THE DECLARED RESPONSE TYPE. An earlier cut asked for `id` alone while
 // mapping 200 to DriveFile, whose id, name and mimeType are all required -- so a perfectly
 // successful PATCH would have decoded short and classified as RestExchangeUndecodable, reporting a

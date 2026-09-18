@@ -570,6 +570,13 @@ fn ensure_review_spreadsheet_with_declaration(
 // It also bypassed the current search's own refusal arms, so a write could land before the
 // unreadable, incomplete, paged and duplicated line-stops had a chance to fire.
 //
+// A DECLARATION NEVER DISARMS A WALL THE UNDECLARED PATH ENFORCES. When the current marker already
+// reaches the declared file there is nothing to migrate, but "nothing to migrate" is not "nothing to
+// check": the superseded search can still name a SECOND file, and answering Noop there would let an
+// installed declaration hide exactly the lineage adopt_unless_a_legacy_lineage_disagrees exists to
+// refuse. So this arm routes through that same fold rather than short-circuiting -- the declaration
+// decides WHICH file is ours, never whether the other one matters.
+//
 // THE RULE THAT KEEPS BOTH PROPERTIES: the id is honoured unless a search POSITIVELY NAMES A
 // DIFFERENT FILE. Absence, unreadability and partial listings are exactly the ignorance the id was
 // supplied to compensate for, so they do not veto it. A positive find that disagrees is two files
@@ -587,7 +594,7 @@ fn decide_with_declared_id(
   match observed {
     SheetObservedOne { file_id: found } =>
       if (found as String) == (declared_id as String) {
-        Noop
+        adopt_unless_a_legacy_lineage_disagrees(current: found, superseded: superseded, drive_id: drive_id)
       } else {
         Refuse {
           reason: join(

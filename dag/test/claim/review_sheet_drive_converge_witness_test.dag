@@ -590,6 +590,75 @@ test fn an_unreadable_declaration_refuses_the_whole_decision() -> Bool {
   }
 }
 
+// A DECLARATION DOES NOT DISARM THE LEGACY-LINEAGE WALL. The declared id matches the current find,
+// so there is nothing to migrate -- and the superseded search still names a second file. Answering
+// Noop here would let installing a declaration hide exactly what the undeclared path refuses.
+test fn a_declaration_matching_the_current_hit_still_refuses_a_second_lineage() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "current-A")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-B")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "current-A" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "current-A")
+        && string_contains(s: r as String, pattern: "legacy-B")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE CONTROL: the same declaration with a SILENT superseded search still adopts, so the wall above
+// has not closed the ordinary post-migration steady state.
+test fn a_declaration_matching_the_current_hit_adopts_when_no_second_lineage_exists() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "current-A")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "current-A" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Noop => true
+    Refuse { reason: _ } => false
+    Apply { plan: _ } => false
+  }
+}
+
 // A CURRENT HIT DOES NOT HIDE A LEGACY LINEAGE. This is the adopt-path half of the original
 // incident: properties reaches A, appProperties still reaches B, and returning Noop on the current
 // hit alone leaves B invisible to every later run.
