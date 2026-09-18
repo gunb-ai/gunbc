@@ -419,18 +419,30 @@ fn observe_rank_cuda_attribute(
   }
 }
 
+// THE RECEIPT NAMES THE INCARNATION IT WAS READ FROM. Its caller passes a subject pinned to the
+// inspected container's immutable id, so both queries -- and the log the memory-path line is read
+// from -- address one container incarnation: a stop and recreate between legs makes the later legs
+// refuse on a missing id rather than silently joining an old log to a new container's capability.
+type RankGpuDirectCapabilityReceipt sole_constructor {
+  incarnation: NonEmptyStr
+  capability: GpuDirectRdmaCapability
+}
+
 fn observe_rank_gpu_direct_capability(
   ctx: SparkMaterializeContext,
   subject: ObservedRankSubject,
   platform: NonEmptyStr,
-) -> GpuDirectRdmaCapability
+) -> RankGpuDirectCapabilityReceipt
   uses net: Network
 {
-  gpu_direct_rdma_capability(
-    platform: platform,
-    device_api: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: GpuDirectRdmaSupportedAttribute),
-    dma_buf: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: DmaBufSupportedAttribute),
-  )
+  RankGpuDirectCapabilityReceipt {
+    incarnation: subject.container,
+    capability: gpu_direct_rdma_capability(
+      platform: platform,
+      device_api: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: GpuDirectRdmaSupportedAttribute),
+      dma_buf: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: DmaBufSupportedAttribute),
+    ),
+  }
 }
 
 // ── (b) THE ENGINE'S STARTUP RESIDUALS, AND THE REVISION THAT EMITTED THEM ────────────────────

@@ -55,8 +55,25 @@ fn cuda_device_attribute_name(a: CudaDeviceAttribute) -> NonEmptyStr {
 // keeps them apart, and the value is only interpreted when the result code says the query succeeded.
 type CudaQueryOutcome
   = CudaQuerySucceeded { value: Int }
-  | CudaQueryFailed { result_code: Int }
+  | CudaQueryFailed { stage: CudaAcquisitionStage, result_code: Int, raw_reply: NonEmptyStr }
   | CudaQueryUnparsed { cause: NonEmptyStr }
+
+// WHICH CALL FAILED IS PART OF THE ANSWER. The probe runs three calls and a failure at each means
+// something different -- the driver would not initialise, device 0 does not exist, or the attribute
+// query itself was refused -- so the stage and the raw reply travel with the result code rather than
+// every failure reading as an attribute-query failure (side-chat review of #11560, 2026-09-18).
+type CudaAcquisitionStage
+  = CudaInitStage
+  | CudaDeviceSelectionStage
+  | CudaAttributeQueryStage
+
+fn cuda_acquisition_stage_call(s: CudaAcquisitionStage) -> NonEmptyStr {
+  match s {
+    CudaInitStage => "cuInit" as NonEmptyStr
+    CudaDeviceSelectionStage => "cuDeviceGet" as NonEmptyStr
+    CudaAttributeQueryStage => "cuDeviceGetAttribute" as NonEmptyStr
+  }
+}
 
 data cuda_result_success: Int = 0
 
@@ -105,30 +122,39 @@ fn cuda_device_attribute_argv(a: CudaDeviceAttribute) -> List<String> {
 //
 // AND THE ORDINAL IS CHECKED against the attribute the caller asked for, so a reply that answered a
 // different question is refused rather than attributed to this one.
+// THE VALUE FIELD IS READ ONLY AFTER ALL THREE CALLS SUCCEEDED. The probe initialises the output to
+// -1, so a failure at cuInit or cuDeviceGet leaves -1 in the value field; parsing every field up front
+// refused that negative and turned a perfectly legible acquisition failure into "unparsed". The four
+// leading fields are parsed first, the stages are checked in the order the probe ran them, and the
+// value is interpreted only when there is a value to interpret.
 fn cuda_attribute_outcome(a: CudaDeviceAttribute, stdout: String) -> CudaQueryOutcome {
-  let fields = split(s: trim(s: stdout), delimiter: " ")
+  let reply = trim(s: stdout)
+  let fields = split(s: reply, delimiter: " ")
   if count(fields) != 5 {
-    CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " is not the five fields <ordinal> <cuInit> <cuDeviceGet> <cuDeviceGetAttribute> <value>: ", trim(s: stdout)], "") as NonEmptyStr }
+    CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " is not the five fields <ordinal> <cuInit> <cuDeviceGet> <cuDeviceGetAttribute> <value>: ", reply], "") as NonEmptyStr }
   } else {
-    match parse_nat_fields(fields: fields) {
-      Absent => CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " carries a field that is not a number: ", trim(s: stdout)], "") as NonEmptyStr }
-      Present { value: parsed } =>
-        if parsed.ordinal != cuda_device_attribute_ordinal(a: a) {
+    match cuda_reply_header(fields: fields) {
+      Absent => CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " carries a result field that is not a number: ", reply], "") as NonEmptyStr }
+      Present { value: h } =>
+        if h.ordinal != cuda_device_attribute_ordinal(a: a) {
           CudaQueryUnparsed { cause: join([
-            "the reply answers attribute ", to_string(parsed.ordinal), " and this query asked for ",
+            "the reply answers attribute ", to_string(h.ordinal), " and this query asked for ",
             to_string(cuda_device_attribute_ordinal(a: a)), " (", cuda_device_attribute_name(a: a) as String, ")",
           ], "") as NonEmptyStr }
         } else {
-          if parsed.init_result != cuda_result_success {
-            CudaQueryFailed { result_code: parsed.init_result }
+          if h.init_result != cuda_result_success {
+            CudaQueryFailed { stage: CudaInitStage, result_code: h.init_result, raw_reply: reply as NonEmptyStr }
           } else {
-            if parsed.device_result != cuda_result_success {
-              CudaQueryFailed { result_code: parsed.device_result }
+            if h.device_result != cuda_result_success {
+              CudaQueryFailed { stage: CudaDeviceSelectionStage, result_code: h.device_result, raw_reply: reply as NonEmptyStr }
             } else {
-              if parsed.result_code != cuda_result_success {
-                CudaQueryFailed { result_code: parsed.result_code }
+              if h.attribute_result != cuda_result_success {
+                CudaQueryFailed { stage: CudaAttributeQueryStage, result_code: h.attribute_result, raw_reply: reply as NonEmptyStr }
               } else {
-                CudaQuerySucceeded { value: parsed.value }
+                match cuda_reply_int_at(fields: fields, index: 4) {
+                  Absent => CudaQueryUnparsed { cause: join(["every call succeeded and the value field is not a non-negative number: ", reply], "") as NonEmptyStr }
+                  Present { value: v } => CudaQuerySucceeded { value: v }
+                }
               }
             }
           }
@@ -137,16 +163,14 @@ fn cuda_attribute_outcome(a: CudaDeviceAttribute, stdout: String) -> CudaQueryOu
   }
 }
 
-
-type CudaAttributeFields sole_constructor {
+type CudaReplyHeader sole_constructor {
   ordinal: Int
   init_result: Int
   device_result: Int
-  result_code: Int
-  value: Int
+  attribute_result: Int
 }
 
-fn parse_nat_fields(fields: List<String>) -> CudaAttributeFields? {
+fn cuda_reply_header(fields: List<String>) -> CudaReplyHeader? {
   match cuda_reply_int_at(fields: fields, index: 0) {
     Absent => none
     Present { value: ordinal } =>
@@ -159,11 +183,7 @@ fn parse_nat_fields(fields: List<String>) -> CudaAttributeFields? {
               match cuda_reply_int_at(fields: fields, index: 3) {
                 Absent => none
                 Present { value: ra } =>
-                  match cuda_reply_int_at(fields: fields, index: 4) {
-                    Absent => none
-                    Present { value: v } =>
-                      Present { value: CudaAttributeFields { ordinal: ordinal, init_result: ri, device_result: rd, result_code: ra, value: v } }
-                  }
+                  Present { value: CudaReplyHeader { ordinal: ordinal, init_result: ri, device_result: rd, attribute_result: ra } }
               }
           }
       }

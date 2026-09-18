@@ -2,8 +2,8 @@ module gunbc.spark.collective_memory_path_standing
 
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.nvidia.nccl {
-  NcclGpuMemoryPath, NcclGpuDirectEnabled, NcclGpuDirectDisabled, NcclGpuMemoryPathUnread,
-  nccl_gpu_memory_path_wire,
+  NcclGpuMemoryPath, NcclGpuDirectEnabled, NcclGpuDirectDisabled,
+  NcclGpuMemoryPathReading, NcclMemoryPathAgreed, NcclMemoryPathDisagrees, NcclMemoryPathUnreadable, NcclMemoryPathAbsent,
 }
 import extdeps.nvidia.gpu_direct_rdma {
   GpuDirectRdmaCapability, GpuDirectRdmaDevicePrerequisiteMet, GpuDirectRdmaDeviceUnsupported,
@@ -24,6 +24,18 @@ import extdeps.nvidia.gpu_direct_rdma {
 // opposite mistakes: without the capability, a supported state reads as a defect; without the
 // observation, a defect reads as nothing at all. Neither collapses into the other, and neither
 // collapses into the answer.
+// THE STANDING IS AN OBSERVATION, AND WHETHER IT IS A DEFECT IS A SEPARATE, CALLER-OWNED QUESTION.
+// An earlier revision named one arm MemoryPathBelowCapability and mapped it straight to a defect.
+// That promoted a device PREREQUISITE -- "this device is not the obstacle" -- into a deployment
+// REQUIREMENT: NCCL can lawfully leave GPUDirect disabled on a capable device because of topology,
+// an explicit NCCL_NET_GDR_LEVEL, another missing prerequisite, or a product decision. So the join
+// below reports what the two producers said, neutrally, and `memory_path_defect_standing` takes a
+// DesiredCollectiveMemoryPath from the caller before it will call anything a defect (side-chat
+// review of #11560, 2026-09-18; DESIGN section 3d, observation before policy).
+//
+// AND NCCL DISAGREEING WITH ITSELF IS ITS OWN FACT. The capture reading arrives whole, so "several
+// HCA or plugin lines disagree" stays distinct from "no line was read" instead of being collapsed
+// into one unread arm before it gets here.
 type CollectiveMemoryPathStanding
   = MemoryPathDirectAsCapable
   | MemoryPathStagedAsPlatformRequires {
@@ -31,7 +43,7 @@ type CollectiveMemoryPathStanding
       capability_receipt: NonEmptyStr
       observed_from: NonEmptyStr
     }
-  | MemoryPathBelowCapability {
+  | MemoryPathRuntimeDisabledWhereDevicePermits {
       capability_receipt: NonEmptyStr
       observed_from: NonEmptyStr
     }
@@ -39,51 +51,59 @@ type CollectiveMemoryPathStanding
       capability_receipt: NonEmptyStr
       observed_from: NonEmptyStr
     }
+  | MemoryPathObservationDisagrees {
+      causes: List<NonEmptyStr>
+    }
   | MemoryPathStandingUnread {
       cause: NonEmptyStr
     }
 
-// THE ONLY ARM THAT NAMES A DEFECT IS MemoryPathBelowCapability: the device says it can register GPU
-// memory and the run staged through the host anyway. Everything else is either correct, or honestly
-// unknown.
-// TWO PRODUCERS DISAGREEING IS NOT A MISSING READING. An earlier revision routed that cell into the
-// unread arm with a cause string that said so in prose -- one constructor carrying both "nobody
-// looked" and "the evidence conflicts", which are different obligations for a reader (DESIGN
-// section 3, meaning fork; review 67449). gunbc.spark.vllm_serving_launch already keeps that split
-// as its own constructor rather than as prose, and MemoryPathProducersContradict follows it.
 fn collective_memory_path_standing(
   capability: GpuDirectRdmaCapability,
-  observed: NcclGpuMemoryPath,
+  observed: NcclGpuMemoryPathReading,
 ) -> CollectiveMemoryPathStanding {
-  match capability {
-    GpuDirectRdmaCapabilityUnread { cause: c } =>
-      MemoryPathStandingUnread { cause: join(["the platform capability is unread, so a staged path cannot be told from a supported one: ", c as String], "") as NonEmptyStr }
-    GpuDirectRdmaDeviceUnsupported { platform: p, capability_receipt: r } =>
-      match observed {
-        NcclGpuMemoryPathUnread { cause: oc } =>
-          MemoryPathStandingUnread { cause: join(["the platform cannot register GPU memory, and the run's own path was not read either: ", oc as String], "") as NonEmptyStr }
-        NcclGpuDirectDisabled { read_from: l } =>
-          MemoryPathStagedAsPlatformRequires { platform: p, capability_receipt: r, observed_from: l }
-        NcclGpuDirectEnabled { read_from: l } =>
-          MemoryPathProducersContradict { capability_receipt: r, observed_from: l }
-      }
-    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: r } =>
-      match observed {
-        NcclGpuMemoryPathUnread { cause: oc } =>
-          MemoryPathStandingUnread { cause: join(["the platform supports registration and the run's own path was not read: ", oc as String], "") as NonEmptyStr }
-        NcclGpuDirectEnabled { read_from: _ } => MemoryPathDirectAsCapable {}
-        NcclGpuDirectDisabled { read_from: l } =>
-          MemoryPathBelowCapability { capability_receipt: r, observed_from: l }
+  match observed {
+    NcclMemoryPathAbsent =>
+      MemoryPathStandingUnread { cause: "the capture carries no GPU Direct RDMA line, so the run's own memory path was not read" as NonEmptyStr }
+    NcclMemoryPathUnreadable { causes: cs } =>
+      MemoryPathStandingUnread { cause: join(["the capture carries GPU Direct RDMA line(s) this reader could not read: ", join(map(cs, c => c as String), "; ")], "") as NonEmptyStr }
+    NcclMemoryPathDisagrees { causes: cs } => MemoryPathObservationDisagrees { causes: cs }
+    NcclMemoryPathAgreed { path: path, readings: _ } =>
+      match capability {
+        GpuDirectRdmaCapabilityUnread { cause: c } =>
+          MemoryPathStandingUnread { cause: join(["the platform capability is unread, so a staged path cannot be told from a supported one: ", c as String], "") as NonEmptyStr }
+        GpuDirectRdmaDeviceUnsupported { platform: p, capability_receipt: r } =>
+          match path {
+            NcclGpuDirectDisabled { read_from: l } =>
+              MemoryPathStagedAsPlatformRequires { platform: p, capability_receipt: r, observed_from: l }
+            NcclGpuDirectEnabled { read_from: l } =>
+              MemoryPathProducersContradict { capability_receipt: r, observed_from: l }
+          }
+        GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: r } =>
+          match path {
+            NcclGpuDirectEnabled { read_from: _ } => MemoryPathDirectAsCapable {}
+            NcclGpuDirectDisabled { read_from: l } =>
+              MemoryPathRuntimeDisabledWhereDevicePermits { capability_receipt: r, observed_from: l }
+          }
       }
   }
 }
 
-// ── WHETHER A READER SHOULD ACT IS THREE-VALUED, AND THE BOOLEAN THAT STOOD HERE FAILED OPEN ──
+// ── WHAT THE DEPLOYMENT WANTED, WHICH IS THE CALLER'S TO SAY ──────────────────────────────────
+//
+// DirectRegistrationWhereDevicePermits: a device that can register GPU memory must be used that way,
+// so a runtime that staged through host memory on such a device is a defect. HostStagingAccepted: the
+// deployment accepts staging whatever the device can do. Neither affects a device that cannot
+// register at all -- staging is then the platform's only supported state under either policy.
+type DesiredCollectiveMemoryPath
+  = DirectRegistrationWhereDevicePermits
+  | HostStagingAccepted
+
+// ── WHETHER A READER SHOULD ACT IS FOUR-VALUED, AND THE BOOLEAN THAT STOOD HERE FAILED OPEN ────
 //
 // THE DEFECT, RECORDED BECAUSE I BUILT IT INTO A MODULE WHOSE SUBJECT IS FAIL-CLOSED READING. The
 // first revision answered `Bool`, and answered FALSE for MemoryPathStandingUnread -- so a caller
-// writing `if !is_defect(s) { admit() }` admitted on evidence nobody read. A witness asserted that
-// arm too, which made the collapse intended rather than an accidental call site. Unread is not the
+// writing `if !is_defect(s) { admit() }` admitted on evidence nobody read. Unread is not the
 // absence of a defect; it is the absence of a reading, and the two differ exactly where it matters.
 type MemoryPathDefectStanding
   = DefectEstablished { cause: NonEmptyStr }
@@ -91,10 +111,15 @@ type MemoryPathDefectStanding
   | DefectStandingUnread { cause: NonEmptyStr }
   | EvidenceContradicts { cause: NonEmptyStr }
 
-fn memory_path_defect_standing(s: CollectiveMemoryPathStanding) -> MemoryPathDefectStanding {
+fn memory_path_defect_standing(policy: DesiredCollectiveMemoryPath, s: CollectiveMemoryPathStanding) -> MemoryPathDefectStanding {
   match s {
-    MemoryPathBelowCapability { capability_receipt: r, observed_from: l } =>
-      DefectEstablished { cause: join(["the device reports a registration capability and this run did not use it. Capability: ", r as String, ". Observed: ", l as String], "") as NonEmptyStr }
+    MemoryPathRuntimeDisabledWhereDevicePermits { capability_receipt: r, observed_from: l } =>
+      match policy {
+        DirectRegistrationWhereDevicePermits =>
+          DefectEstablished { cause: join(["the deployment requires direct registration where the device permits it, the device reports the GPUDirect APIs, and this run staged through host memory. Capability: ", r as String, ". Observed: ", l as String], "") as NonEmptyStr }
+        HostStagingAccepted =>
+          NoDefectEstablished { because: "the device permits direct registration and the deployment accepts host staging" as NonEmptyStr }
+      }
     MemoryPathDirectAsCapable =>
       NoDefectEstablished { because: "the run registered GPU memory directly" as NonEmptyStr }
     MemoryPathStagedAsPlatformRequires { platform: p, capability_receipt: _, observed_from: _ } =>
@@ -104,6 +129,8 @@ fn memory_path_defect_standing(s: CollectiveMemoryPathStanding) -> MemoryPathDef
         "the device reports no GPUDirect capability and the run announced a registered path anyway, so one of the two producers is wrong and no admission may rest on either. Capability: ",
         r as String, ". Observed: ", l as String,
       ], "") as NonEmptyStr }
+    MemoryPathObservationDisagrees { causes: cs } =>
+      EvidenceContradicts { cause: join(["the run's own GPU Direct RDMA lines disagree: ", join(map(cs, c => c as String), "; ")], "") as NonEmptyStr }
     MemoryPathStandingUnread { cause: c } => DefectStandingUnread { cause: c }
   }
 }
@@ -117,13 +144,15 @@ fn memory_path_standing_text(s: CollectiveMemoryPathStanding) -> NonEmptyStr {
         " does not support GPUDirect registration, which is the platform's supported state and not a deployment defect. Capability read: ", r as String,
         ". Observed: ", l as String,
       ], "") as NonEmptyStr
-    MemoryPathBelowCapability { capability_receipt: r, observed_from: l } =>
+    MemoryPathRuntimeDisabledWhereDevicePermits { capability_receipt: r, observed_from: l } =>
       join([
-        "the device can register GPU memory and this run staged through host memory anyway, so a registration prerequisite is missing on this host or in this image. Capability read: ", r as String,
+        "the device reports the GPUDirect APIs and this run staged through host memory; whether that is a defect is the deployment policy's to say. Capability read: ", r as String,
         ". Observed: ", l as String,
       ], "") as NonEmptyStr
     MemoryPathProducersContradict { capability_receipt: r, observed_from: l } =>
       join(["two producers disagree and neither may be relied on: capability says ", r as String, ", the run announced ", l as String], "") as NonEmptyStr
+    MemoryPathObservationDisagrees { causes: cs } =>
+      join(["the run's own GPU Direct RDMA lines disagree: ", join(map(cs, c => c as String), "; ")], "") as NonEmptyStr
     MemoryPathStandingUnread { cause: c } => c
   }
 }

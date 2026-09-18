@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.nvidia.cuda_driver {
   CudaDeviceAttribute, GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute,
   CudaQueryOutcome, CudaQuerySucceeded, CudaQueryFailed, CudaQueryUnparsed,
-  cuda_device_attribute_name,
+  cuda_device_attribute_name, cuda_acquisition_stage_call,
 }
 
 // ── WHAT EACH ATTRIBUTE ESTABLISHES, AND WHAT IT DOES NOT ─────────────────────────────────────
@@ -34,7 +34,7 @@ type GpuDirectRdmaCapability
       capability_receipt: NonEmptyStr
     }
   | GpuDirectRdmaDevicePrerequisiteMet {
-      dma_buf_prerequisite: Bool
+      dma_buf: BoolReading
       capability_receipt: NonEmptyStr
     }
   | GpuDirectRdmaCapabilityUnread {
@@ -60,8 +60,8 @@ fn attribute_bool(a: CudaDeviceAttribute, o: CudaQueryOutcome) -> BoolReading {
           BoolUnread { cause: join([cuda_device_attribute_name(a: a) as String, " answered ", to_string(v), ", which is neither 0 nor 1 and is not a value this model understands"], "") as NonEmptyStr }
         }
       }
-    CudaQueryFailed { result_code: rc } =>
-      BoolUnread { cause: join([cuda_device_attribute_name(a: a) as String, " query returned CUresult ", to_string(rc), ", so the device gave no answer to interpret"], "") as NonEmptyStr }
+    CudaQueryFailed { stage: st, result_code: rc, raw_reply: raw } =>
+      BoolUnread { cause: join([cuda_device_attribute_name(a: a) as String, ": ", cuda_acquisition_stage_call(s: st) as String, " returned CUresult ", to_string(rc), ", so the device gave no answer to interpret (reply: ", raw as String, ")"], "") as NonEmptyStr }
     CudaQueryUnparsed { cause: c } =>
       BoolUnread { cause: join([cuda_device_attribute_name(a: a) as String, " reply could not be read: ", c as String], "") as NonEmptyStr }
   }
@@ -71,15 +71,16 @@ fn outcome_receipt(a: CudaDeviceAttribute, o: CudaQueryOutcome) -> NonEmptyStr {
   match o {
     CudaQuerySucceeded { value: v } =>
       join([cuda_device_attribute_name(a: a) as String, "=", to_string(v)], "") as NonEmptyStr
-    CudaQueryFailed { result_code: rc } =>
-      join([cuda_device_attribute_name(a: a) as String, " CUresult=", to_string(rc)], "") as NonEmptyStr
+    CudaQueryFailed { stage: st, result_code: rc, raw_reply: _ } =>
+      join([cuda_device_attribute_name(a: a) as String, " ", cuda_acquisition_stage_call(s: st) as String, " CUresult=", to_string(rc)], "") as NonEmptyStr
     CudaQueryUnparsed { cause: c } => c
   }
 }
 
 // THE DEVICE-API ATTRIBUTE IS ASKED FIRST AND ALONE DECIDES THE NEGATIVE. The DMA-BUF reading is
-// consulted only when the device says it supports the APIs at all, and it is carried as a
-// prerequisite flag rather than promoted to a capability.
+// carried beside a positive answer as its own reading, and an unread DMA-BUF attribute does NOT
+// unread the device-API fact: "the device supports the GPUDirect APIs" stays true whether or not the
+// adjacent question could be answered (side-chat review of #11560, 2026-09-18).
 fn gpu_direct_rdma_capability(
   platform: NonEmptyStr,
   device_api: CudaQueryOutcome,
@@ -89,16 +90,12 @@ fn gpu_direct_rdma_capability(
     BoolUnread { cause: c } => GpuDirectRdmaCapabilityUnread { cause: c }
     BoolRead { value: supported } =>
       if supported {
-        match attribute_bool(a: DmaBufSupportedAttribute, o: dma_buf) {
-          BoolUnread { cause: c2 } => GpuDirectRdmaCapabilityUnread { cause: c2 }
-          BoolRead { value: dmabuf } =>
-            GpuDirectRdmaDevicePrerequisiteMet {
-              dma_buf_prerequisite: dmabuf,
-              capability_receipt: join([
-                outcome_receipt(a: GpuDirectRdmaSupportedAttribute, o: device_api) as String, "; ",
-                outcome_receipt(a: DmaBufSupportedAttribute, o: dma_buf) as String,
-              ], "") as NonEmptyStr,
-            }
+        GpuDirectRdmaDevicePrerequisiteMet {
+          dma_buf: attribute_bool(a: DmaBufSupportedAttribute, o: dma_buf),
+          capability_receipt: join([
+            outcome_receipt(a: GpuDirectRdmaSupportedAttribute, o: device_api) as String, "; ",
+            outcome_receipt(a: DmaBufSupportedAttribute, o: dma_buf) as String,
+          ], "") as NonEmptyStr,
         }
       } else {
         GpuDirectRdmaDeviceUnsupported {
@@ -111,8 +108,11 @@ fn gpu_direct_rdma_capability(
 
 fn gpu_direct_rdma_capability_wire(c: GpuDirectRdmaCapability) -> NonEmptyStr {
   match c {
-    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: d, capability_receipt: _ } =>
-      if d { "device-prerequisite-met-with-dma-buf" as NonEmptyStr } else { "device-prerequisite-met" as NonEmptyStr }
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf: d, capability_receipt: _ } =>
+      match d {
+        BoolRead { value: v } => if v { "device-prerequisite-met-with-dma-buf" as NonEmptyStr } else { "device-prerequisite-met" as NonEmptyStr }
+        BoolUnread { cause: _ } => "device-prerequisite-met-dma-buf-unread" as NonEmptyStr
+      }
     GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => "device-unsupported" as NonEmptyStr
     GpuDirectRdmaCapabilityUnread { cause: _ } => "unread" as NonEmptyStr
   }

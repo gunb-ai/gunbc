@@ -675,7 +675,6 @@ fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
 type NcclGpuMemoryPath
   = NcclGpuDirectEnabled { read_from: NonEmptyStr }
   | NcclGpuDirectDisabled { read_from: NonEmptyStr }
-  | NcclGpuMemoryPathUnread { cause: NonEmptyStr }
 
 // NCCL PUBLISHES THIS ITSELF TOO, once per HCA, and the line carries the verdict in the same shape
 // as the network announcement: a marker followed by the state. It is read rather than inferred from
@@ -727,7 +726,6 @@ fn nccl_gpu_memory_path_wire(p: NcclGpuMemoryPath) -> NonEmptyStr {
   match p {
     NcclGpuDirectEnabled { read_from: _ } => "gpu-direct-enabled" as NonEmptyStr
     NcclGpuDirectDisabled { read_from: _ } => "gpu-direct-disabled" as NonEmptyStr
-    NcclGpuMemoryPathUnread { cause: _ } => "unread" as NonEmptyStr
   }
 }
 
