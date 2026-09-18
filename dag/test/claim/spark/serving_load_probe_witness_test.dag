@@ -12,7 +12,7 @@ import gunbc.spark.serving_rank_observe {
   container_incarnation_id, ObservedRankIncarnation,
 }
 import product.fabric.demand { ObservationReceiptRef }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.model_snapshot_materialize { RemoteRan, RemoteUnreachable }
 import gunbc.spark.vllm_endpoint_process_launch {
   vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
@@ -47,8 +47,6 @@ import gunbc.spark.serving_load_probe {
   OccupancyBoundariesRead, OccupancyBoundariesUnread, OccupancySample,
   occupancy_does_not_count_positively, qualify_client_rate,
   send_all_without_start_events_is_not_zero_skew,
-  bench_serve_observation_receipt, BenchServeObservationReceipt, BenchServeExited, mixed_run_client_facts_cannot_be_written,
-  bench_serve_interval, bench_serve_ledger,
   glm_native_exclusion_warning,
   glm_native_sweep_ttft_c8, glm_native_sweep_ttft_c16,
   ClientOutputTokensUnread, ClientOutputTokensObserved,
@@ -75,6 +73,11 @@ import gunbc.spark.serving_load_probe {
   pinned_load_protocol_matches, bench_output_len, glm_native_sweep_num_prompts,
   glm_native_holistic_execution, LongContextLoadProtocolPrototype, LongContextRunnable,
   glm_native_live_runtime_is_derived_gb10_row,
+  glm_native_protected_subject, protected_subject_key,
+  bench_serve_from_remote, BenchServeRan, BenchServeUnreachable, BenchServeExecution,
+  mixed_run_client_facts_cannot_be_written, nonzero_exit_does_not_yield_client_facts,
+  unreachable_does_not_yield_client_facts, stderr_is_not_the_client_summary,
+  glm_native_observation_carries_bench_source_standing,
 }
 
 data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
@@ -120,7 +123,7 @@ test fn a_busy_drain_refuses_the_window() -> Bool {
   match window_from_drain(drain: d) {
     WindowIsolationNotEstablished { cause: _, drain: DrainNotIdle { running: n } } => n == 3
     WindowIsolationNotEstablished { cause: _, drain: _ } => false
-    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } => false
     ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
     ForeignTrafficNotObserved { drain: _ } => false
     ForeignTrafficUnread { cause: _, drain: _ } => false
@@ -131,7 +134,7 @@ test fn a_quiet_drain_is_not_an_isolated_window() -> Bool {
   let d = drain_from_queue(q: harness_queue_from_body(body: fx_idle))
   let w = window_from_drain(drain: d)
   match w {
-    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } => false
     WindowIsolationNotEstablished { cause: _, drain: DrainObservedIdle } => true
     WindowIsolationNotEstablished { cause: _, drain: _ } => false
     ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
@@ -149,18 +152,19 @@ test fn exclusion_warning_names_actors_who_might_arrive() -> Bool {
 
 test fn isolated_window_requires_exclusion_and_idle_drain() -> Bool {
   let grant = lease_grant(
-    reference: "probe" as NonEmptyStr,
+    reference: protected_subject_key(p: glm_native_protected_subject),
     fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
     granted_at: 1,
     policy: LeasePolicy { maximum_duration_seconds: 60, release_law: FencedResource },
   )
   match isolated_window(
     grant: grant,
+    measured: glm_native_protected_subject,
     deadline: 61,
     drain: DrainObservedIdle,
-    exclusion: ExclusionEstablished { how: "named" as NonEmptyStr },
+    exclusion: ExclusionEstablished { how: "named" as NonEmptyStr, protected: glm_native_protected_subject },
   ) {
-    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => true
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } => true
     WindowIsolationNotEstablished { cause: _, drain: _ } => false
     ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
     ForeignTrafficNotObserved { drain: _ } => false
@@ -170,15 +174,38 @@ test fn isolated_window_requires_exclusion_and_idle_drain() -> Bool {
 
 test fn isolated_window_refuses_without_exclusion() -> Bool {
   let grant = lease_grant(
+    reference: protected_subject_key(p: glm_native_protected_subject),
+    fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
+    granted_at: 1,
+    policy: LeasePolicy { maximum_duration_seconds: 60, release_law: FencedResource },
+  )
+  match isolated_window(grant: grant, measured: glm_native_protected_subject, deadline: 61, drain: DrainObservedIdle, exclusion: ExclusionNotEstablished { cause: "route was not withdrawn" as NonEmptyStr }) {
+    WindowIsolationNotEstablished { cause: _, drain: DrainObservedIdle } => true
+    WindowIsolationNotEstablished { cause: _, drain: _ } => false
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } => false
+    ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
+    ForeignTrafficNotObserved { drain: _ } => false
+    ForeignTrafficUnread { cause: _, drain: _ } => false
+  }
+}
+
+test fn isolated_window_refuses_a_generic_lease() -> Bool {
+  let grant = lease_grant(
     reference: "probe" as NonEmptyStr,
     fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
     granted_at: 1,
     policy: LeasePolicy { maximum_duration_seconds: 60, release_law: FencedResource },
   )
-  match isolated_window(grant: grant, deadline: 61, drain: DrainObservedIdle, exclusion: ExclusionNotEstablished { cause: "route was not withdrawn" as NonEmptyStr }) {
+  match isolated_window(
+    grant: grant,
+    measured: glm_native_protected_subject,
+    deadline: 61,
+    drain: DrainObservedIdle,
+    exclusion: ExclusionEstablished { how: "named" as NonEmptyStr, protected: glm_native_protected_subject },
+  ) {
     WindowIsolationNotEstablished { cause: _, drain: DrainObservedIdle } => true
     WindowIsolationNotEstablished { cause: _, drain: _ } => false
-    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } => false
     ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
     ForeignTrafficNotObserved { drain: _ } => false
     ForeignTrafficUnread { cause: _, drain: _ } => false
@@ -282,12 +309,10 @@ fn fx_same_incarnation() -> ObservedRankIncarnation? {
   fx_incarnation(id: "0f3a9c1d2e4b")
 }
 
-fn fx_bench_receipt(stdout: String) -> BenchServeObservationReceipt {
-  bench_serve_observation_receipt(
+fn fx_bench_receipt(stdout: String) -> BenchServeExecution {
+  bench_serve_from_remote(
     protocol: glm_native_smoke_protocol,
-    process_outcome: BenchServeExited { exit_code: 0 },
-    raw_stdout: stdout,
-    raw_stderr: "",
+    remote: RemoteRan { exit_code: 0, stdout: stdout, stderr: "" },
   )
 }
 
@@ -647,4 +672,29 @@ test fn qualify_client_rate_refuses_two_boundary_occupancy() -> Bool {
 
 test fn live_subject_consumes_the_derived_gb10_runtime_row() -> Bool {
   glm_native_live_runtime_is_derived_gb10_row()
+}
+
+test fn a_nonzero_bench_exit_does_not_parse_stdout() -> Bool {
+  nonzero_exit_does_not_yield_client_facts(e: bench_serve_from_remote(
+    protocol: glm_native_smoke_protocol,
+    remote: RemoteRan { exit_code: 1, stdout: fx_bench_stdout, stderr: "" },
+  ))
+}
+
+test fn an_unreachable_bench_does_not_parse_stdout() -> Bool {
+  unreachable_does_not_yield_client_facts(e: bench_serve_from_remote(
+    protocol: glm_native_smoke_protocol,
+    remote: RemoteUnreachable { cause: "ssh refused" },
+  ))
+}
+
+test fn stderr_carrying_the_summary_is_not_parsed() -> Bool {
+  stderr_is_not_the_client_summary(e: bench_serve_from_remote(
+    protocol: glm_native_smoke_protocol,
+    remote: RemoteRan { exit_code: 0, stdout: "", stderr: fx_bench_stdout },
+  ))
+}
+
+test fn the_observation_carries_bench_source_standing() -> Bool {
+  glm_native_observation_carries_bench_source_standing(o: fx_obs())
 }

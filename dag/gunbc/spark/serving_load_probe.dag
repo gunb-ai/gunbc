@@ -19,8 +19,10 @@ import extdeps.vllm.metrics {
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, PoissonProcess, SendAllImmediately,
   RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_uses_poisson_idle_gaps,
-  vllm_bench_serve_identity_matches,
+  vllm_bench_serve_identity_matches, vllm_bench_serve_source_standing, vllm_bench_backend_route,
 }
+import extdeps.vllm.server { vllm_route_path }
+import gunbc.spark.model_snapshot_materialize { SparkRemoteRun, RemoteRan, RemoteUnreachable }
 import gunbc.harness.harness_backend {
   harness_gauge_value, harness_labelled_gauge_value, harness_gauge_count,
   harness_histogram_statistic_value, harness_launch_from_body, harness_queue_from_body,
@@ -42,13 +44,14 @@ import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCacheP
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
+  serving_performance_subject_wire,
 }
 import gunbc.spark.serving_rank_observe {
   ObservedRankIncarnation, observed_rank_incarnations_agree, observed_rank_incarnation_text,
 }
 import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority }
 
 // ── THROUGHPUT QUALIFICATION FOR THE SERVING SUBJECT (design #11540, serving side) ────────────
 //
@@ -67,12 +70,46 @@ type DrainReceipt
   | DrainNotIdle { running: Nat }
   | DrainUnread { cause: NonEmptyStr }
 
+type ProtectedSubjectField sole_constructor {
+  subject: ServingPerformanceSubject
+  served_alias: NonEmptyStr
+  route: NonEmptyStr
+}
+
+fn protected_subject_field(
+  subject: ServingPerformanceSubject,
+  served_alias: NonEmptyStr,
+  route: NonEmptyStr,
+) -> ProtectedSubjectField {
+  ProtectedSubjectField { subject: subject, served_alias: served_alias, route: route }
+}
+
+fn protected_subject_key(p: ProtectedSubjectField) -> NonEmptyStr {
+  join([
+    serving_performance_subject_wire(s: p.subject) as String,
+    "/",
+    p.served_alias as String,
+    "/",
+    p.route as String,
+  ], "") as NonEmptyStr
+}
+
+fn protected_subject_matches(a: ProtectedSubjectField, b: ProtectedSubjectField) -> Bool {
+  (protected_subject_key(p: a) as String) == (protected_subject_key(p: b) as String)
+}
+
 type ExclusionReceipt
-  = ExclusionEstablished { how: NonEmptyStr }
+  = ExclusionEstablished { how: NonEmptyStr, protected: ProtectedSubjectField }
   | ExclusionNotEstablished { cause: NonEmptyStr }
 
 type ProbeWindowStanding
-  = WindowIsolated { grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt }
+  = WindowIsolated {
+      grant: LeaseGrant
+      protected: ProtectedSubjectField
+      deadline: EpochSecs
+      drain: DrainReceipt
+      exclusion: ExclusionReceipt
+    }
   | WindowIsolationNotEstablished { cause: NonEmptyStr, drain: DrainReceipt }
   | ForeignTrafficObserved { attributed_receipt: NonEmptyStr, drain: DrainReceipt }
   | ForeignTrafficNotObserved { drain: DrainReceipt }
@@ -80,9 +117,9 @@ type ProbeWindowStanding
 
 fn window_isolated_requires_exclusion(s: ProbeWindowStanding) -> Bool {
   match s {
-    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: e } =>
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: e } =>
       match e {
-        ExclusionEstablished { how: _ } => true
+        ExclusionEstablished { how: _, protected: _ } => true
         ExclusionNotEstablished { cause: _ } => false
       }
     WindowIsolationNotEstablished { cause: _, drain: _ } => false
@@ -124,18 +161,36 @@ fn window_from_drain(drain: DrainReceipt) -> ProbeWindowStanding {
   }
 }
 
-fn isolated_window(grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt) -> ProbeWindowStanding {
+fn isolated_window(
+  grant: LeaseGrant,
+  measured: ProtectedSubjectField,
+  deadline: EpochSecs,
+  drain: DrainReceipt,
+  exclusion: ExclusionReceipt,
+) -> ProbeWindowStanding {
   match exclusion {
     ExclusionNotEstablished { cause: c } =>
       WindowIsolationNotEstablished { cause: c, drain: drain }
-    ExclusionEstablished { how: _ } =>
-      match drain {
-        DrainObservedIdle =>
-          WindowIsolated { grant: grant, deadline: deadline, drain: drain, exclusion: exclusion }
-        DrainNotIdle { running: _ } =>
-          WindowIsolationNotEstablished { cause: "exclusion was named but the drain snapshot was not idle" as NonEmptyStr, drain: drain }
-        DrainUnread { cause: c } =>
-          WindowIsolationNotEstablished { cause: c, drain: drain }
+    ExclusionEstablished { how: _, protected: ep } =>
+      if !protected_subject_matches(a: measured, b: ep) {
+        WindowIsolationNotEstablished {
+          cause: "exclusion was not over the measured arm, route, and subject" as NonEmptyStr,
+          drain: drain,
+        }
+      } else if (grant.reference as String) != (protected_subject_key(p: measured) as String) {
+        WindowIsolationNotEstablished {
+          cause: "the lease was not over the measured arm, route, and subject" as NonEmptyStr,
+          drain: drain,
+        }
+      } else {
+        match drain {
+          DrainObservedIdle =>
+            WindowIsolated { grant: grant, protected: measured, deadline: deadline, drain: drain, exclusion: exclusion }
+          DrainNotIdle { running: _ } =>
+            WindowIsolationNotEstablished { cause: "exclusion was named but the drain snapshot was not idle" as NonEmptyStr, drain: drain }
+          DrainUnread { cause: c } =>
+            WindowIsolationNotEstablished { cause: c, drain: drain }
+        }
       }
   }
 }
@@ -575,7 +630,7 @@ type CapacityClaim
 
 fn capacity_claim_for_window(window: ProbeWindowStanding) -> CapacityClaim {
   match window {
-    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } =>
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } =>
       CapacityClaimUnavailable { because: "one run does not decide saturation even under isolation" as NonEmptyStr }
     WindowIsolationNotEstablished { cause: _, drain: _ } =>
       CapacityClaimUnavailable { because: "this arm has no exclusive window; a latency distribution beside unattributed load is real, an aggregate capacity claim is not" as NonEmptyStr }
@@ -671,7 +726,7 @@ fn qualify_client_rate(
                       LedgerAndCounterAgree { generation_tokens: _, completed_requests: _ } =>
                         occupancy_does_not_count_positively(occupancy: occupancy)
                     }
-                  WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } =>
+                  WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } =>
                     match agreement {
                       AgreementUnread { because: c } => ClientRateUnqualified { because: c }
                       LedgerCounterDisagree { because: c } => ClientRateUnqualified { because: c }
@@ -710,11 +765,156 @@ type ClientBenchLatency
       window: ProbeWindowStanding
     }
 
+type ItlTailCause
+  = ItlTailCauseUnestablished { because: NonEmptyStr }
+
+type ClientItlDistribution
+  = ClientItlDistributionUnread { cause: NonEmptyStr }
+  | ClientItlDistributionObserved { mean_milli: Nat, median_milli: Nat, p99_milli: Nat, cause: ItlTailCause }
+
+type ClientRequestConcurrencyStanding
+  = ClientConcurrencyUnread { cause: NonEmptyStr }
+  | SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: Nat, bucket_peak: Nat }
+
 type ProbeProvenance
   = SamePrincipal { principal: NonEmptyStr }
   | DriverObserverSplit { driver: NonEmptyStr, observer: NonEmptyStr }
 
-type ServingLoadObservation {
+// ONE REMOTE OPERATION IS ONE EXECUTION. The mint takes SparkRemoteRun whole, so an exit from
+// run A cannot be paired with stdout from run B at this interface.
+type BenchServeExecution sole_constructor
+  = BenchServeRan { protocol: VllmBenchServeRequest, exit_code: Int, stdout: String, stderr: String }
+  | BenchServeUnreachable { protocol: VllmBenchServeRequest, cause: NonEmptyStr }
+
+fn bench_serve_from_remote(protocol: VllmBenchServeRequest, remote: SparkRemoteRun) -> BenchServeExecution {
+  match remote {
+    RemoteUnreachable { cause: c } =>
+      BenchServeUnreachable { protocol: protocol, cause: c as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      BenchServeRan { protocol: protocol, exit_code: code, stdout: out, stderr: err }
+  }
+}
+
+fn bench_execution_protocol(e: BenchServeExecution) -> VllmBenchServeRequest {
+  match e {
+    BenchServeRan { protocol: p, exit_code: _, stdout: _, stderr: _ } => p
+    BenchServeUnreachable { protocol: p, cause: _ } => p
+  }
+}
+
+fn bench_execution_stderr(e: BenchServeExecution) -> String {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: _ } => ""
+    BenchServeRan { protocol: _, exit_code: _, stdout: _, stderr: err } => err
+  }
+}
+
+fn bench_summary_unread_cause(e: BenchServeExecution) -> NonEmptyStr {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: c } => c
+    BenchServeRan { protocol: _, exit_code: code, stdout: _, stderr: _ } =>
+      join(["vllm bench serve exited ", to_string(code), "; stdout is not a client-fact summary"], "") as NonEmptyStr
+  }
+}
+
+fn bench_summary_stdout(e: BenchServeExecution) -> String? {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: _ } => none
+    BenchServeRan { protocol: _, exit_code: code, stdout: out, stderr: _ } =>
+      if code == 0 { Present { value: out } } else { none }
+  }
+}
+
+fn bench_serve_ledger(e: BenchServeExecution) -> OperationLedger {
+  match bench_summary_stdout(e: e) {
+    Absent => LedgerIncomplete { because: bench_summary_unread_cause(e: e) }
+    Present { value: body } => ledger_from_bench_stdout(body: body, offered: bench_execution_protocol(e: e).num_prompts)
+  }
+}
+
+fn bench_serve_completed_output(e: BenchServeExecution) -> ClientOutputTokens {
+  match bench_summary_stdout(e: e) {
+    Absent => ClientOutputTokensUnread { cause: bench_summary_unread_cause(e: e) }
+    Present { value: body } => client_output_from_bench_stdout(body: body)
+  }
+}
+
+fn bench_serve_interval(e: BenchServeExecution) -> Nat? {
+  match bench_summary_stdout(e: e) {
+    Absent => none
+    Present { value: body } => scrape_millis_from_bench_stdout(body: body)
+  }
+}
+
+fn bench_serve_latency(e: BenchServeExecution, window: ProbeWindowStanding) -> ClientBenchLatency {
+  match bench_summary_stdout(e: e) {
+    Absent => ClientBenchLatencyUnread { cause: bench_summary_unread_cause(e: e) }
+    Present { value: body } => client_latency_from_bench_stdout(body: body, window: window)
+  }
+}
+
+fn bench_serve_itl(e: BenchServeExecution) -> ClientItlDistribution {
+  match bench_summary_stdout(e: e) {
+    Absent => ClientItlDistributionUnread { cause: bench_summary_unread_cause(e: e) }
+    Present { value: body } => client_itl_from_bench_stdout(body: body)
+  }
+}
+
+fn bench_serve_bucket_peak(e: BenchServeExecution) -> ClientRequestConcurrencyStanding {
+  match bench_execution_protocol(e: e).max_concurrency {
+    Absent => ClientConcurrencyUnread { cause: "the protocol did not declare max-concurrency" as NonEmptyStr }
+    Present { value: c } =>
+      match bench_summary_stdout(e: e) {
+        Absent => ClientConcurrencyUnread { cause: bench_summary_unread_cause(e: e) }
+        Present { value: body } => client_bucket_peak_from_bench_stdout(body: body, client_max_concurrency: c)
+      }
+  }
+}
+
+fn mixed_run_client_facts_cannot_be_written(a: BenchServeExecution, b: BenchServeExecution) -> Bool {
+  match bench_serve_interval(e: a) {
+    Absent => false
+    Present { value: ia } =>
+      match bench_serve_interval(e: b) {
+        Absent => false
+        Present { value: ib } => ia != ib
+      }
+  }
+}
+
+fn nonzero_exit_does_not_yield_client_facts(e: BenchServeExecution) -> Bool {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: _ } => false
+    BenchServeRan { protocol: _, exit_code: code, stdout: _, stderr: _ } =>
+      code != 0
+        && match bench_serve_completed_output(e: e) {
+          ClientOutputTokensUnread { cause: _ } => true
+          ClientOutputTokensObserved { tokens: _ } => false
+        }
+  }
+}
+
+fn unreachable_does_not_yield_client_facts(e: BenchServeExecution) -> Bool {
+  match e {
+    BenchServeRan { protocol: _, exit_code: _, stdout: _, stderr: _ } => false
+    BenchServeUnreachable { protocol: _, cause: _ } =>
+      match bench_serve_completed_output(e: e) {
+        ClientOutputTokensUnread { cause: _ } => true
+        ClientOutputTokensObserved { tokens: _ } => false
+      }
+  }
+}
+
+fn stderr_is_not_the_client_summary(e: BenchServeExecution) -> Bool {
+  match bench_serve_completed_output(e: e) {
+    ClientOutputTokensUnread { cause: _ } => true
+    ClientOutputTokensObserved { tokens: _ } => false
+  }
+}
+
+type ServingLoadObservation sole_constructor {
+  execution: BenchServeExecution
+  bench_source_standing: CitedFigureStanding
   subject: ServingPerformanceSubjectStanding
   protocol: VllmBenchServeRequest
   window: ProbeWindowStanding
@@ -749,8 +949,9 @@ fn serving_load_observation(
   after_body: String,
   before_incarnation: ObservedRankIncarnation?,
   after_incarnation: ObservedRankIncarnation?,
-  bench: BenchServeObservationReceipt,
+  bench: BenchServeExecution,
 ) -> ServingLoadObservation {
+  let protocol = bench_execution_protocol(e: bench)
   let before_p = preemption_count(body: before_body)
   let after_p = preemption_count(body: after_body)
   let generation = generation_token_delta_scoped(
@@ -759,19 +960,21 @@ fn serving_load_observation(
     before_body: before_body,
     after_body: after_body,
   )
-  let ledger = bench_serve_ledger(r: bench)
-  let client_output = bench_serve_completed_output(r: bench)
+  let ledger = bench_serve_ledger(e: bench)
+  let client_output = bench_serve_completed_output(e: bench)
   let agreement = ledger_counter_agreement(ledger: ledger, generation: generation, client_output: client_output)
   let foreign = foreign_work_bound(generation: generation, client_output: client_output)
   let rate = derive_rate_honest(
     ledger: ledger,
-    scrape_millis: bench_serve_interval(r: bench),
+    scrape_millis: bench_serve_interval(e: bench),
     client_output: client_output,
   )
-  let arrival = arrival_from_protocol(req: bench.protocol)
+  let arrival = arrival_from_protocol(req: protocol)
   ServingLoadObservation {
+    execution: bench,
+    bench_source_standing: vllm_bench_serve_source_standing,
     subject: subject,
-    protocol: bench.protocol,
+    protocol: protocol,
     window: window,
     continuity: continuity,
     arrival: arrival,
@@ -784,9 +987,9 @@ fn serving_load_observation(
     iteration_tokens_booked: histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal),
     ledger: ledger,
     admission: glm_native_workload_admission,
-    corroboration: decode_corroboration_for_protocol(req: bench.protocol),
+    corroboration: decode_corroboration_for_protocol(req: protocol),
     provenance: glm_native_live_probe_provenance,
-    client_latency: bench_serve_latency(r: bench, window: window),
+    client_latency: bench_serve_latency(e: bench, window: window),
     foreign_work: foreign,
     capacity_claim: capacity_claim_for_window(window: window),
     rate: rate,
@@ -816,6 +1019,8 @@ fn saturation_from_one_run(_: ServingLoadObservation) -> Bool {
 fn serving_load_observation_text(o: ServingLoadObservation) -> String {
   join([
     "serving-load observation\n",
+    "execution: ", bench_execution_text(e: o.execution), "\n",
+    "bench source standing: ", cited_standing_text(s: o.bench_source_standing), "\n",
     "window: ", window_text(s: o.window), "\n",
     "continuity: ", continuity_text(c: o.continuity), "\n",
     "before backlog: ", backlog_text(b: o.before_backlog), "\n",
@@ -888,6 +1093,21 @@ fn provenance_text(p: ProbeProvenance) -> String {
   }
 }
 
+fn bench_execution_text(e: BenchServeExecution) -> String {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: c } => join(["unreachable ", c as String], "")
+    BenchServeRan { protocol: _, exit_code: code, stdout: _, stderr: _ } =>
+      join(["exited ", to_string(code)], "")
+  }
+}
+
+fn cited_standing_text(s: CitedFigureStanding) -> String {
+  match s {
+    CitedToAuthority { authority: _ } => "cited-to-authority"
+    TranscribedUncited { read_obligation: o } => join(["transcribed-uncited ", o as String], "")
+  }
+}
+
 fn corroboration_text(c: DecodeCorroboration) -> String {
   match c {
     CorroborationNotApplicable { because: b } => join(["not-applicable ", b as String], "")
@@ -930,7 +1150,7 @@ fn admission_text(a: AdmissionCost) -> String {
 
 fn window_text(s: ProbeWindowStanding) -> String {
   match s {
-    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => "isolated"
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } => "isolated"
     WindowIsolationNotEstablished { cause: c, drain: d } =>
       join(["isolation-not-established drain=", drain_text(d: d), " cause=", c as String], "")
     ForeignTrafficObserved { attributed_receipt: t, drain: d } =>
@@ -1140,26 +1360,12 @@ data glm_native_wet_smoke_client_latency: TranscribedClientLatency = Transcribed
   standing: glm_native_wet_smoke_standing
 }
 
-type ItlTailCause
-  = ItlTailCauseUnestablished { because: NonEmptyStr }
-
-type ClientItlDistribution
-  = ClientItlDistributionUnread { cause: NonEmptyStr }
-  | ClientItlDistributionObserved { mean_milli: Nat, median_milli: Nat, p99_milli: Nat, cause: ItlTailCause }
-
 fn itl_tail_cause_is_unestablished(d: ClientItlDistribution) -> Bool {
   match d {
     ClientItlDistributionUnread { cause: _ } => true
     ClientItlDistributionObserved { mean_milli: _, median_milli: _, p99_milli: _, cause: ItlTailCauseUnestablished { because: _ } } => true
   }
 }
-
-// vLLM bench serve's max_concurrent_requests is a whole-second bucket peak over THIS CLIENT's
-// successful request spans. Two sequential waves of two can print 4 with exact concurrency 2 and
-// zero foreign work. The field cannot mint engine concurrency or a shared-window proof.
-type ClientRequestConcurrencyStanding
-  = ClientConcurrencyUnread { cause: NonEmptyStr }
-  | SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: Nat, bucket_peak: Nat }
 
 fn client_second_bucket_peak_establishes_foreign_work(p: ClientRequestConcurrencyStanding) -> Bool {
   match p {
@@ -1262,73 +1468,6 @@ fn client_latency_from_bench_stdout(body: String, window: ProbeWindowStanding) -
                 window: window,
               }
           }
-      }
-  }
-}
-
-type BenchServeProcessOutcome
-  = BenchServeExited { exit_code: Nat }
-  | BenchServeUnreachable { cause: NonEmptyStr }
-
-type BenchServeObservationReceipt sole_constructor {
-  protocol: VllmBenchServeRequest
-  process_outcome: BenchServeProcessOutcome
-  raw_stdout: String
-  raw_stderr: String
-}
-
-fn bench_serve_observation_receipt(
-  protocol: VllmBenchServeRequest,
-  process_outcome: BenchServeProcessOutcome,
-  raw_stdout: String,
-  raw_stderr: String,
-) -> BenchServeObservationReceipt {
-  BenchServeObservationReceipt {
-    protocol: protocol,
-    process_outcome: process_outcome,
-    raw_stdout: raw_stdout,
-    raw_stderr: raw_stderr,
-  }
-}
-
-fn bench_serve_parse_body(r: BenchServeObservationReceipt) -> String {
-  join([r.raw_stdout, "\n", r.raw_stderr], "")
-}
-
-fn bench_serve_ledger(r: BenchServeObservationReceipt) -> OperationLedger {
-  ledger_from_bench_stdout(body: bench_serve_parse_body(r: r), offered: r.protocol.num_prompts)
-}
-
-fn bench_serve_completed_output(r: BenchServeObservationReceipt) -> ClientOutputTokens {
-  client_output_from_bench_stdout(body: bench_serve_parse_body(r: r))
-}
-
-fn bench_serve_interval(r: BenchServeObservationReceipt) -> Nat? {
-  scrape_millis_from_bench_stdout(body: bench_serve_parse_body(r: r))
-}
-
-fn bench_serve_latency(r: BenchServeObservationReceipt, window: ProbeWindowStanding) -> ClientBenchLatency {
-  client_latency_from_bench_stdout(body: bench_serve_parse_body(r: r), window: window)
-}
-
-fn bench_serve_itl(r: BenchServeObservationReceipt) -> ClientItlDistribution {
-  client_itl_from_bench_stdout(body: bench_serve_parse_body(r: r))
-}
-
-fn bench_serve_bucket_peak(r: BenchServeObservationReceipt) -> ClientRequestConcurrencyStanding {
-  match r.protocol.max_concurrency {
-    Absent => ClientConcurrencyUnread { cause: "the protocol did not declare max-concurrency" as NonEmptyStr }
-    Present { value: c } => client_bucket_peak_from_bench_stdout(body: bench_serve_parse_body(r: r), client_max_concurrency: c)
-  }
-}
-
-fn mixed_run_client_facts_cannot_be_written(a: BenchServeObservationReceipt, b: BenchServeObservationReceipt) -> Bool {
-  match bench_serve_interval(r: a) {
-    Absent => false
-    Present { value: ia } =>
-      match bench_serve_interval(r: b) {
-        Absent => false
-        Present { value: ib } => ia != ib
       }
   }
 }
@@ -1586,6 +1725,23 @@ fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding {
 fn glm_native_live_runtime_is_derived_gb10_row() -> Bool {
   (serving_runtime_wire(r: glm_native_live_subject.runtime) as String) == (serving_runtime_wire(r: GunbcGlm53DerivedGb10) as String)
     && (glm_native_live_subject.runtime_image_reference as String) == (runtime_artifact_wire(a: glm53_derived_row.artifact) as String)
+}
+
+data glm_native_protected_subject: ProtectedSubjectField = protected_subject_field(
+  subject: glm_native_live_subject,
+  served_alias: glm_native_concurrent_profile.served_alias,
+  route: vllm_route_path(r: vllm_bench_backend_route(b: glm_native_smoke_protocol.backend)),
+)
+
+fn glm_native_observation_carries_bench_source_standing(o: ServingLoadObservation) -> Bool {
+  match o.bench_source_standing {
+    TranscribedUncited { read_obligation: a } =>
+      match vllm_bench_serve_source_standing {
+        TranscribedUncited { read_obligation: b } => (a as String) == (b as String)
+        CitedToAuthority { authority: _ } => false
+      }
+    CitedToAuthority { authority: _ } => false
+  }
 }
 
 fn holistic_protocol_is_session_shaped(req: VllmBenchServeRequest) -> Bool {

@@ -27,21 +27,20 @@ import gunbc.spark.serving_load_probe {
   serving_load_observation, serving_load_observation_text,
   drain_from_queue, window_from_drain, counter_continuity,
   occupancy_trace_from_endpoint_scrapes,
-  bench_serve_observation_receipt, BenchServeExited, BenchServeUnreachable,
-  bench_serve_bucket_peak, bench_serve_itl,
+  bench_serve_from_remote, bench_serve_bucket_peak, bench_serve_itl, bench_execution_stderr,
   client_second_bucket_peak_establishes_foreign_work, itl_tail_cause_is_unestablished,
   WindowIsolated, WindowIsolationNotEstablished,
   ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread,
   DrainObservedIdle, DrainNotIdle, DrainUnread,
-  RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
+  ClientRateQualified, ClientRateUnqualified,
 }
-
-// ── THE INHABITANCE ROUTE ─────────────────────────────────────────────────────────────────────
 //
 // Witnesses supply metric bodies. This function drives `vllm bench serve` against the live native
 // GLM head. A non-idle drain REFUSES the start. An idle start is WindowIsolationNotEstablished:
 // glm_native_exclusion_warning names actors who might arrive, and is not a traffic observation.
-// Client facts are derived from one BenchServeObservationReceipt.
+// Client facts are derived from one BenchServeExecution minted from the remote operation.
+// glm_native_serving_load_wet exits 0 when the observation is captured.
+// glm_native_serving_load_qualify exits nonzero on ClientRateUnqualified.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/spark/serving_load_probe_cli.dag --function glm_native_serving_load_wet
@@ -94,6 +93,18 @@ fn inspect_incarnation(ctx: SparkMaterializeContext) -> ObservedRankIncarnation?
 fn glm_native_serving_load_wet() -> ProcessExit
   uses net: Network
 {
+  glm_native_serving_load_run(require_qualified: false)
+}
+
+fn glm_native_serving_load_qualify() -> ProcessExit
+  uses net: Network
+{
+  glm_native_serving_load_run(require_qualified: true)
+}
+
+fn glm_native_serving_load_run(require_qualified: Bool) -> ProcessExit
+  uses net: Network
+{
   with_group_b_access(use: fn(trust, path, administrator, file) {
     let ctx = rank_context(host: operator_host_srv9, trust: trust, path: path, administrator: administrator, credential_file: file)
     let before = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-before")
@@ -103,7 +114,7 @@ fn glm_native_serving_load_wet() -> ProcessExit
       let drain = drain_from_queue(q: harness_queue_from_body(body: before))
       let window = window_from_drain(drain: drain)
       match window {
-        WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } =>
+        WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } =>
           exit_failure(reason: "an isolated window is not this arm's inhabitance path")
         ForeignTrafficObserved { attributed_receipt: _, drain: _ } =>
           exit_failure(reason: "attributed foreign traffic is not this arm's inhabitance path")
@@ -116,39 +127,17 @@ fn glm_native_serving_load_wet() -> ProcessExit
             DrainUnread { cause: u } => exit_failure(reason: u as String)
             DrainObservedIdle => {
       let before_incarnation = inspect_incarnation(ctx: ctx)
-      let bench = spark_remote_run(ctx: ctx, argv: bench_exec_argv())
+      let bench = bench_serve_from_remote(protocol: glm_native_smoke_protocol, remote: spark_remote_run(ctx: ctx, argv: bench_exec_argv()))
       let after = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-after")
       if body_is_failure(body: after) {
         exit_failure(reason: after)
       } else {
             let after_incarnation = inspect_incarnation(ctx: ctx)
-            let outcome = match bench {
-              RemoteUnreachable { cause: c } => BenchServeUnreachable { cause: c as NonEmptyStr }
-              RemoteRan { exit_code: code, stdout: _, stderr: _ } => BenchServeExited { exit_code: code }
-            }
-            let stdout = match bench {
-              RemoteUnreachable { cause: c } => c
-              RemoteRan { exit_code: _, stdout: out, stderr: _ } => out
-            }
-            let stderr = match bench {
-              RemoteUnreachable { cause: _ } => ""
-              RemoteRan { exit_code: _, stdout: _, stderr: err } => err
-            }
-            let receipt = bench_serve_observation_receipt(
-              protocol: glm_native_smoke_protocol,
-              process_outcome: outcome,
-              raw_stdout: stdout,
-              raw_stderr: stderr,
-            )
-            let bench_ok = match outcome {
-              BenchServeUnreachable { cause: _ } => false
-              BenchServeExited { exit_code: code } => code == 0
-            }
             let before_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: before)
             let after_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: after)
             let occ = occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after)
-            let bucket = bench_serve_bucket_peak(r: receipt)
-            let itl = bench_serve_itl(r: receipt)
+            let bucket = bench_serve_bucket_peak(e: bench)
+            let itl = bench_serve_itl(e: bench)
             let obs = serving_load_observation(
               subject: glm_native_live_subject_standing(),
               window: window,
@@ -158,26 +147,25 @@ fn glm_native_serving_load_wet() -> ProcessExit
               after_body: after,
               before_incarnation: before_incarnation,
               after_incarnation: after_incarnation,
-              bench: receipt,
+              bench: bench,
             )
             let body = join([
               "glm native serving-load wet at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
               serving_load_observation_text(o: obs),
-              "\nbucket_peak_establishes_foreign_work=", if client_second_bucket_peak_establishes_foreign_work(p: bucket) { "yes" } else { "no" }, "\n",
+              "bucket_peak_establishes_foreign_work=", if client_second_bucket_peak_establishes_foreign_work(p: bucket) { "yes" } else { "no" }, "\n",
               "itl_tail_cause_unestablished=", if itl_tail_cause_is_unestablished(d: itl) { "yes" } else { "no" }, "\n",
-              "\n--- bench ---\n", stdout, "\n", stderr, "\n",
+              "\n--- bench stderr ---\n", bench_execution_stderr(e: bench), "\n",
             ], "")
             let w = Filesystem.Write(path: glm_native_serving_load_receipt_path, content: body)
             if !w.success {
               exit_failure(reason: join(["receipt write failed: ", w.error], ""))
-            } else if !bench_ok {
-              exit_failure(reason: body)
-            } else {
-              match obs.rate {
-                RateFromClientOutputTokens { tokens: _, scrape_millis: _ } => ExitSuccess
-                RateUndenominable { because: _ } => exit_failure(reason: body)
-                RateUnreadable { because: _ } => exit_failure(reason: body)
+            } else if require_qualified {
+              match obs.qualified_rate {
+                ClientRateQualified { tokens: _, scrape_millis: _ } => ExitSuccess
+                ClientRateUnqualified { because: b } => exit_failure(reason: join([body, "\nunqualified: ", b as String], ""))
               }
+            } else {
+              ExitSuccess
             }
       }
             }
