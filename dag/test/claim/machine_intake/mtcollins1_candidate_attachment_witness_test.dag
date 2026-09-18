@@ -19,8 +19,9 @@ import gunbc.machine_intake_mtcollins1_expansion_attachment {
   NoObservationForUnit, attachment_for_unit, attachment_against_evidence,
 }
 import gunbc.machine_intake_mtcollins1_expansion_candidates {
-  candidate_verdicts, mtcollins1_candidate_verdicts, CatalogEvaluation, RelayedListingAlias, OrderedAwaitingArrival, FullHeightBracket,
+  candidate_verdicts, mtcollins1_candidate_verdicts, InstalledUnobserved, FullHeightBracket, LowProfileBracket,
 }
+import gunbc.machine_intake_mtcollins1_connectx4lx_observation { Connectx4LxHostUnobserved, Connectx4LxHostObserved }
 import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -46,7 +47,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // this fold; it is tracked on roadmap row fleet-mtcollins1-first-host and deliberately not decided here.
 test fn real_candidates_reach_typed_verdicts() -> Bool {
   let rows = mtcollins1_candidate_verdicts()
-  let each_identity_once = fold(["mcx4411a_acan_attachment", "mcx4421a_acan_attachment", "dell_0r887v_attachment", "mcx4621a_acab_attachment", "ibm_01ft753"], init: true, f: (acc, name) =>
+  let each_identity_once = fold(["mcx4411a_acan_attachment", "mcx4421a_acan_attachment", "dell_0r887v_attachment", "mcx4621a_acab_attachment", "mcx4121a_acat"], init: true, f: (acc, name) =>
     acc && fold(rows, init: 0, f: (count, row) => if row.candidate.catalog_scope.subject.declaration.decl_name == name { count + 1 } else { count }) == 1)
   each_identity_once && list_length(items: rows) == 5 && fold(rows, init: true, f: (acc, row) => {
     let name = row.candidate.catalog_scope.subject.declaration.decl_name
@@ -64,13 +65,21 @@ test fn real_candidates_reach_typed_verdicts() -> Bool {
           _ => false
         }
       Admitted { scope: InterfaceFamilyOnly {}, physical_fit: PhysicalFitUnresolved { candidate: candidate, settled_by: settle }, unit_evidence: _ } =>
-        name == "ibm_01ft753" && settle != ""
+        name == "mcx4121a_acat" && settle != ""
           && match candidate { PcieCem => true, _ => false }
           && match row.candidate.context {
-            OrderedAwaitingArrival { reported_alias: listing_name, bracket: FullHeightBracket {}, catalog: catalog, relay_message: relay } =>
-              listing_name == "CX4121A" && catalog.host_link.generation == Gen3
-                && catalog.host_link.lane_count == 8 && catalog.port_count == 2
-                && catalog.port_connector == "SFP28" && relay != ""
+            InstalledUnobserved { ordered: ordered, ordered_bracket: bracket, arrived: arrived, host: host, relay_message: relay } =>
+              ordered.port_connector == "SFP28" && arrived.opn == "MCX4121A-ACAT"
+                && arrived.host_link.generation == Gen3 && arrived.host_link.lane_count == 8
+                && arrived.port_count == 2 && arrived.port_connector == "SFP28" && relay != ""
+                && match bracket {
+                  FullHeightBracket => true
+                  LowProfileBracket => false
+                }
+                && match host {
+                  Connectx4LxHostUnobserved { seated_report: _, pcie_read_obligation: _, driver_read_obligation: _, discharges_at: _ } => true
+                  Connectx4LxHostObserved { pcie_identity: _, bound_module: _ } => false
+                }
             _ => false
           }
       Admitted { scope: InterfaceGenerationOnly {}, physical_fit: PhysicalFitUnresolved { candidate: candidate, settled_by: settle }, unit_evidence: evidence } =>
