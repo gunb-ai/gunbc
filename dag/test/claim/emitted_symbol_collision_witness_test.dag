@@ -1,0 +1,102 @@
+module test.claim.emitted_symbol_collision_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT. v1.compiler.emit_core_support sanitize_service_name splits on '.' and joins
+// capitalized segments with nothing, so `type GitWorktree` and `service git.Worktree` render one
+// emitted type `GitWorktree`. DuplicateDeclaration does not fire: the authored names differ.
+// Before the wall, emit wrote both `pub struct GitWorktree` definitions into one module and rustc
+// reported E0428. The mapping cannot be made injective without renaming every emitted service, so
+// the residue is REFUSED. This file is the executing evidence.
+//
+// THE LIVE SPECIMEN is `extdeps.git`: type GitWorktree and service git.Worktree. The repair is
+// the emitter wall, not a rename of that module. The fixture is isolated so the RED is
+// attributable and does not depend on emitting the live git closure.
+
+// NO `std.types` IMPORT IN EITHER FIXTURE SOURCE, AND THAT IS LOAD-BEARING RATHER THAN TERSENESS.
+// `compile_fixture` compiles the supplied manifest with NO corpus roots, so `import std.types`
+// names a module the subject does not contain and refuses the WHOLE compile with
+// `UnresolvedImport` -- which is interpreter-blocking, so `emittable_graph` answers none and emit
+// never runs. Emit is where `EmittedSymbolCollision` is produced, so with that import present the
+// class-specific RED cannot observe its subject and the positive control cannot reach its
+// `count(rows) == 0`. `Int` and `Bool` need no import: both are in the kernel type set and every
+// module sees them. The same constraint is recorded at
+// `test.claim.bare_name_ambiguity_wall_witness` and asserted as a control by
+// `test.claim.multi_module_compile_fixture_witness` `no_default_corpus_roots_are_loaded`.
+data collide_source: String = "module esc.probe\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Worktree {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+
+data distinct_source: String = "module esc.probe\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Other {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+
+fn collision_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("esc/probe.dag", collide_source)],
+    entry: "esc/probe.dag"
+  })
+}
+
+fn distinct_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("esc/probe.dag", distinct_source)],
+    entry: "esc/probe.dag"
+  })
+}
+
+fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn completed_with_struct(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+test fn type_and_dotted_service_sharing_one_emitted_symbol_refuse() -> Bool {
+  refused_with_class(collision_run(), "EmittedSymbolCollision")
+}
+
+test fn a_type_and_a_service_with_distinct_emitted_symbols_still_compile() -> Bool {
+  completed_with_struct(distinct_run())
+    && !refused_with_class(distinct_run(), "EmittedSymbolCollision")
+}
+
+test fn the_live_git_worktree_shape_is_refused_as_a_fixture() -> Bool {
+  compile_dag_rust_emit_check(
+    collide_source,
+    "src/esc_probe.rs",
+    [],
+    []
+  ) == false
+}
+
+test fn git_worktree_type_without_the_colliding_service_emits() -> Bool {
+  compile_dag_rust_emit_check(
+    distinct_source,
+    "src/esc_probe.rs",
+    ["struct GitWorktree"],
+    []
+  )
+}

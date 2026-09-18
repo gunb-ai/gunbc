@@ -267,7 +267,7 @@ import v1.compiler.languages {
 }
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
-  escape_json_string, module_to_filename, module_filename_collision_diagnostics, make_indent,
+  escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
@@ -3507,6 +3507,10 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let filename_collisions = module_filename_collision_diagnostics(typed: typed)
   if filename_collisions |> count > 0 {
     return EmitResult { files: [], diagnostics: filename_collisions }
+  }
+  let symbol_collisions = emitted_symbol_collision_diagnostics(typed: typed)
+  if symbol_collisions |> count > 0 {
+    return EmitResult { files: [], diagnostics: symbol_collisions }
   }
   let test_projections = ctx.test_projections
   let module_emissions = typed.modules
@@ -12767,9 +12771,21 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
 // is a fabricated realization. The arm now asks the same predicate the signature asks, so the two
 // agree by construction; where it declines, the op is a host seam with no realization in this
 // target and emits the generated refusal body the seam ruling prescribes -- a panic naming the seam,
-// never a call into a binding that does not exist. The realized arm is currently UNINHABITED by
-// the corpus (no `.dag` source in the seed or the closure spells a receiver the predicate accepts),
-// so its positive control is not authorable today; that is recorded, not papered over.
+// never a call into a binding that does not exist. The realized arm is INHABITED by a service
+// reached through its bare name (`Filesystem.Read`), which the predicate accepts since
+// infer_var_binding_kind recognizes the service-root local; its positive control is
+// test.claim.self_host_emitted_call_target_realization_witness_test
+// w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter. THIS REFUSAL
+// IS STILL REACHABLE, and its discriminating red is enrolled beside that row
+// (w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding).
+// The stamp follows the service's NAME, while ServiceMethodSemantics follows the receiver's TYPE: a
+// `let fs = Filesystem` copies the nominal service type onto a different name, so `fs.Read(...)` is
+// a service op through an ordinary local, derived demand misses it, and this arm emits the refusal.
+// That residual is fail-closed -- loud and located, never an unbound `.await?` -- and it is the
+// remaining gap in derived demand for service calls. Next-rung trigger, as a capability: derived
+// service demand follows a service VALUE through bindings, not only its name, sufficient that an
+// aliased service call makes its fn effectful and this arm has no reachable input; the enrolled
+// red then flips to that construction's positive control rather than retiring (DESIGN 4b(4)).
 fn rust_unrealized_service_op_refusal(service_name: String, method: String, module_name: String) -> String {
   concat("panic!(\"unrealized host seam: service op ", service_name, ".", method, " in ", module_name, ": the Rust realization binds a service only through an async fn parameter, and this function declares none\")")
 }

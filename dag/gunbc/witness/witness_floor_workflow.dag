@@ -7,6 +7,7 @@ import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_clippy_command }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -746,6 +747,12 @@ fn witness_floor_checkout_step() -> Step {
 //
 // `gunbc.fleet_workflow_steps` `ci_setup_rust_step` already passes this same key to this same
 // action; this step was the one that did not.
+// THE DENIAL IS DECLARED HERE, NOT INHERITED FROM THE ACTION'S DEFAULT. Until this row the
+// `rustflags` input was omitted, so every required job's RUSTFLAGS was whatever
+// setup-rust-toolchain happens to default to -- a value this repository never declared and an
+// upstream bump may change, which would silently un-deny warnings for every cargo the job
+// spawns. The value is the repository's own policy row rather than a literal, so this step and
+// the clippy command cannot drift apart (gunbc.repo_self_warning_policy).
 fn witness_floor_toolchain_step() -> Step {
   UsesStep {
     name: Present { value: "Install Rust toolchain" },
@@ -755,6 +762,7 @@ fn witness_floor_toolchain_step() -> Step {
       value: [
         kv(key: "components", value: yaml_string(s: "rustfmt")),
         kv(key: "cache", value: yaml_bool(b: false)),
+        kv(key: "rustflags", value: yaml_string(s: repo_self_warning_denial_rustflags())),
       ]
     },
     env: none,

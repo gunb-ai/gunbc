@@ -5,7 +5,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact,
   HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
-  GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact,
   DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -120,6 +120,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     HealPublisherWorkflowYamlArtifact => []
     GitignoreArtifact => []
     GitattributesArtifact => []
+    CargoConfigArtifact => []
     RoadmapArtifact => []
     DesignArtifact => []
     GithooksPrePushArtifact => []

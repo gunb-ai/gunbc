@@ -20,7 +20,7 @@ import gunbc.generated_artifact {
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
   GitignoreArtifact,
-  GitattributesArtifact,
+  GitattributesArtifact, CargoConfigArtifact,
   RoadmapArtifact,
   GithooksPrePushArtifact,
   GithooksPreCommitArtifact,
@@ -85,6 +85,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     HealPublisherWorkflowYamlArtifact => Absent
     GitignoreArtifact => Absent
     GitattributesArtifact => Absent
+    CargoConfigArtifact => Absent
     GithooksPrePushArtifact => Absent
     GithooksPreCommitArtifact => Absent
     GeneratedArtifactMergeDriverArtifact => Absent

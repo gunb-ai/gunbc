@@ -5,7 +5,7 @@ import std.measure { byte_size_count }
 import std.algebra { trim }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
 import std.content_hash {
   content_hash_atom,
   content_hash_of_value,
@@ -132,9 +132,20 @@ import gunbc.live_deploy.spec {
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
 }
-// LiveDeploy is a FleetConvergeScope (C3 / #11468). C2 supplies DesiredDeployment here;
-// timer retirement still reads production names from that roster home, not a spec fork.
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  deployment_spec_srv1,
+  instance_id_text,
+}
+import gunbc.live_deploy.fleet_request {
+  LiveDeployMemberBasis,
+  live_deploy_member_basis_baseline_rows,
+}
+import gunbc.live_deploy.member_identity {
+  member_decision_review_line,
+  effect_labels,
+  plan_mutation_count,
+}
 import gunbc.host_axis_caps {
   CapMember,
   CapMemberAt,
@@ -374,6 +385,14 @@ type FleetConvergeRequest
       host: NonEmptyStr
       observed_allocation_store: AllocationStoreSubstratePrestate
     }
+  | LiveDeployConverge {
+      desired: DesiredDeployment
+      basis: LiveDeployMemberBasis
+    }
+
+fn live_deploy_converge_request(desired: DesiredDeployment, basis: LiveDeployMemberBasis) -> FleetConvergeRequest {
+  LiveDeployConverge { desired: desired, basis: basis }
+}
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
@@ -381,6 +400,7 @@ fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeS
     LaunchEnvironmentConverge { host: _, observed_timers: _ } => LaunchEnvironment
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
+    LiveDeployConverge { desired: _, basis: _ } => LiveDeploy
   }
 }
 
@@ -390,6 +410,7 @@ fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
     LaunchEnvironmentConverge { host: h, observed_timers: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
     FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
+    LiveDeployConverge { desired: d, basis: _ } => d.target.host.identity as NonEmptyStr
   }
 }
 
@@ -485,6 +506,7 @@ fn fleet_converge_apply_subject_admits(
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
     ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
+    ApplyAwaitingCapability { capability: _ } => false
   }
 }
 
@@ -501,6 +523,21 @@ type FleetConvergeApplyAdmission
   | ApplyScopeMismatch { planned_wire: String, observed_wire: String }
   | ApplyMemberSetMismatch
   | ApplyAllocationStorePrestateMismatch { namespace_path: NonEmptyStr, store_path: NonEmptyStr, observed: String }
+  | ApplyAwaitingCapability { capability: String }
+
+data live_deploy_wet_apply_capability: String = "convergence-one-c8-wet-apply"
+
+type LiveDeployApplyStanding
+  = LiveDeployPlanOnlyNoop
+  | LiveDeployAwaitingWetApply { capability: String }
+
+fn live_deploy_apply_standing(basis: LiveDeployMemberBasis) -> LiveDeployApplyStanding {
+  if plan_mutation_count(plan: basis.effects) == 0 {
+    LiveDeployPlanOnlyNoop
+  } else {
+    LiveDeployAwaitingWetApply { capability: live_deploy_wet_apply_capability }
+  }
+}
 
 // THE CANONICAL APPLY ADMISSION, OVER EXACTLY WHAT THE ARTIFACT CARRIES. Host, scope and member
 // set are judged together in one place, so a caller cannot check two of three and still reach the
@@ -543,9 +580,21 @@ fn fleet_converge_apply_artifact_admits(
             FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => ApplyMemberSetMismatch
             LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+            LiveDeployConverge { desired: _, basis: _ } => ApplyMemberSetMismatch
           }
         } else {
-          ApplyAdmitted
+          match observed {
+            LiveDeployConverge { desired: _, basis } =>
+              match live_deploy_apply_standing(basis: basis) {
+                LiveDeployPlanOnlyNoop => ApplyAdmitted
+                LiveDeployAwaitingWetApply { capability } =>
+                  ApplyAwaitingCapability { capability: capability }
+              }
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => ApplyAdmitted
+            LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyAdmitted
+            FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyAdmitted
+            FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => ApplyAdmitted
+          }
         }
     }
   }
@@ -600,6 +649,8 @@ fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmi
       "SubjectIdentityMismatch — member set drifted since plan; rerun plan and review"
     ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
       join(["AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], "")
+    ApplyAwaitingCapability { capability: c } =>
+      join(["AwaitingCapability ", c, " — the member plan is nonempty and wet apply is not this arm"], "")
   }
 }
 
@@ -1235,6 +1286,7 @@ fn fleet_converge_activation_refusal_count(
 type FleetConvergeApplyTerminal
   = FullyApplied
   | PartiallyApplied { refused_axis_count: Int, detail: String }
+  | AwaitingCapability { capability: String }
 
 // THE TERMINAL FOLDS OVER THE REQUEST, SO ITS AXIS SET IS THE SCOPE'S AXIS SET AND NOT A WIDER ONE.
 // It used to take the families as loose parameters, which made the axis set a property of the CALL
@@ -1254,6 +1306,23 @@ type FleetConvergeApplyTerminal
 // count there could only ever be zero and would read as a measurement nobody took. This is where
 // fleet_converge_allocation_store_plan_artifact used to write the literal; it now asks here, so
 // there is one authority for what a terminal means.
+//
+// THE LIVE-DEPLOY ARM ANSWERS TWO QUESTIONS, NOT ONE. An admitted LiveDeployMemberBasis cannot
+// carry a MemberRefused: derive_member_plan answers EffectsRefused on any refused decision, and
+// admit_live_deploy_member_basis refuses that as LiveDeployEffectsRefused before LiveDeployConverge
+// is minted. There is therefore no refusal axis this terminal could count. A count of zero would
+// read as a measurement nobody took.
+//
+// THAT PROOF IS ONLY ABOUT REFUSALS. An admitted basis may still carry Create/Replace, so a
+// nonempty ReleaseEffectPlan can coexist with an apply shell that emits no host effects. FullyApplied
+// over that pair is fabricated success: the plan says work is needed, nothing does it, the terminal
+// reports applied. Until C8 supplies the actuator, only an empty member plan may reach FullyApplied
+// (plan-only / no-op). A nonempty plan reaches AwaitingCapability, and apply admission reaches
+// ApplyAwaitingCapability — never ApplyAdmitted. plan_mutation_count > 0 with executed_effect_count
+// == 0 cannot construct FullyApplied: this arm does not have that constructor in that case. If a
+// later refusal axis is added to the basis that admission does not refuse on, or if C8 lands and
+// this arm still answers AwaitingCapability after effects execute, this arm is a silent lie until
+// it is revisited here.
 fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConvergeApplyTerminal {
   match request {
     FullHostConverge {
@@ -1313,6 +1382,11 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       }
     }
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FullyApplied
+    LiveDeployConverge { desired: _, basis } =>
+      match live_deploy_apply_standing(basis: basis) {
+        LiveDeployPlanOnlyNoop => FullyApplied
+        LiveDeployAwaitingWetApply { capability } => AwaitingCapability { capability: capability }
+      }
   }
 }
 
@@ -1353,6 +1427,18 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    LiveDeployConverge { desired: desired, basis: basis } =>
+      concat(
+        [
+          concat("# candidate-revision=", basis.candidate.revision as String),
+          concat("# selected-identity=", declaration_ref_display_key(ref: desired.selected_identity)),
+          concat("# instance=", instance_id_text(id: desired.instance.instance_id)),
+        ],
+        concat(
+          map(basis.decisions, d => concat("# member ", member_decision_review_line(d: d))),
+          map(effect_labels(plan: basis.effects), e => concat("# effect ", e)),
+        ),
+      )
   }
 }
 
@@ -1395,6 +1481,11 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
         concat("# scope=", fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)),
         "# allocation-store-refusals=0",
       ]
+    LiveDeployConverge { desired: desired, basis: _ } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: LiveDeploy)),
+        concat("# selected-identity=", declaration_ref_display_key(ref: desired.selected_identity)),
+      ]
   }
 }
 
@@ -1406,6 +1497,8 @@ fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> S
         concat("# apply-terminal: PartiallyApplied refusals=", to_string(n)),
         concat(" ", d),
       )
+    AwaitingCapability { capability: c } =>
+      join(["# apply-terminal: AwaitingCapability ", c], "")
   }
 }
 
@@ -1415,12 +1508,19 @@ fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> S
   match terminal {
     FullyApplied => "fully_applied"
     PartiallyApplied { refused_axis_count: n, detail: d } => join(["partially_applied|", to_string(n), "|", d], "")
+    AwaitingCapability { capability: c } => join(["awaiting_capability|", c], "")
   }
 }
 
 fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerminal? {
   if text == "fully_applied" {
     Present { value: FullyApplied }
+  } else if starts_with(s: text, prefix: "awaiting_capability|") {
+    Present {
+      value: AwaitingCapability {
+        capability: substring(s: text, start: 20, end: string_length(s: text)),
+      },
+    }
   } else if starts_with(s: text, prefix: "partially_applied|") {
     let rest = substring(s: text, start: 18, end: string_length(s: text))
     let n_text = fold(split(s: rest, delimiter: "|"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
@@ -1853,6 +1953,20 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
           concat("host:", host as String),
           allocation_store_substrate_prestate_wire(prestate: observed),
         ],
+        "\n",
+      )
+    LiveDeployConverge { desired: desired, basis: basis } =>
+      join(
+        concat(
+          [
+            fleet_converge_scope_wire(scope: LiveDeploy),
+            concat("host:", desired.target.host.identity as String),
+            concat("instance:", instance_id_text(id: desired.instance.instance_id)),
+            concat("selected:", declaration_ref_display_key(ref: desired.selected_identity)),
+            concat("unit:", desired.names.unit_name as String),
+          ],
+          live_deploy_member_basis_baseline_rows(basis: basis),
+        ),
         "\n",
       )
   }
@@ -2386,6 +2500,8 @@ fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String
       "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
       "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+    LiveDeployConverge { desired: _, basis: _ } =>
+      "scope:live-deploy — this script emits no host effects; wet apply is CONVERGENCE-ONE C8 and is not this arm"
   }
 }
 
@@ -2428,6 +2544,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    LiveDeployConverge { desired: _, basis: _ } => []
   }
 }
 

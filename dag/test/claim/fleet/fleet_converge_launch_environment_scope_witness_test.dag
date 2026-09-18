@@ -18,6 +18,8 @@ import gunbc.fleet_converge_plan {
   FleetConvergeApplyTerminal,
   FullyApplied,
   PartiallyApplied,
+  AwaitingCapability,
+  ApplyAwaitingCapability,
   TimerRetirementMember,
   fleet_converge_apply_terminal,
   fleet_converge_apply_terminal_wire,
@@ -106,6 +108,7 @@ fn terminal_is_fully_applied(t: FleetConvergeApplyTerminal) -> Bool {
   match t {
     FullyApplied => true
     PartiallyApplied { refused_axis_count: _, detail: _ } => false
+    AwaitingCapability { capability: _ } => false
   }
 }
 
@@ -141,6 +144,7 @@ test fn the_host_scope_detail_still_attributes_its_refusal_to_the_slot_axis() ->
     FullyApplied => false
     PartiallyApplied { refused_axis_count: _, detail: d } =>
       string_contains(s: d, pattern: "slot=1") && string_contains(s: d, pattern: "activation=")
+    AwaitingCapability { capability: _ } => false
   }
 }
 
@@ -354,6 +358,7 @@ test fn a_launch_environment_plan_cannot_be_applied_against_a_full_host_reobserv
     ApplyScopeUndecodable { cause: _ } => false
     ApplyMemberSetMismatch => false
     ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
+    ApplyAwaitingCapability { capability: _ } => false
   }
 }
 
@@ -376,6 +381,7 @@ test fn a_full_host_plan_cannot_be_applied_against_a_launch_environment_reobserv
     ApplyScopeUndecodable { cause: _ } => false
     ApplyMemberSetMismatch => false
     ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
+    ApplyAwaitingCapability { capability: _ } => false
   }
 }
 
@@ -394,6 +400,7 @@ fn admission_is_scope_undecodable(wire: String) -> Bool {
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
     ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
+    ApplyAwaitingCapability { capability: _ } => false
   }
 }
 
@@ -421,6 +428,7 @@ fn admission_is_admitted(planned: FleetConvergeRequest, observed: FleetConvergeR
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
     ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
+    ApplyAwaitingCapability { capability: _ } => false
   }
 }
 
@@ -519,6 +527,7 @@ test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bo
         && string_contains(s: d, pattern: "cap=0")
         && string_contains(s: d, pattern: "timer=0")
         && string_contains(s: d, pattern: "fabric-cell=0")
+    AwaitingCapability { capability: _ } => false
   }
     && terminal_is_fully_applied(t: fleet_converge_apply_terminal(
          request: LaunchEnvironmentConverge { host: witness_host_srv1, observed_timers: [] },

@@ -811,10 +811,29 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_is_block_delimiter_token(id: Symbol) -> Bool {
+  (id == ^dag_token_lbrace) || (id == ^dag_token_rbrace)
+}
+
+fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
+  match sugar_sequence_pair_optional(
+    node: body_lower_unwrap_surface_shell(node: captured)
+  ) {
+    Absent => false
+    Present { value: pair } =>
+      match node_atom_identity_optional(
+        node: body_lower_deep_unwrap_optional(node: pair.left)
+      ) {
+        Present { value: id } => id == ^dag_token_lbrace
+        Absent => false
+      }
+  }
+}
+
 fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) {
+      if dag_lex_token_symbol(sym: id) && !body_lower_is_block_delimiter_token(id: id) {
         optional_present(
           value: node_synthetic(
             kind: TypeNode { connective: Atom { identity: id } },
@@ -1474,9 +1493,16 @@ fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> 
   }
 }
 
+// A brace-headed sequence is a block delimiter. This matcher must not
+// claim it as a call or infix: those arms would mint Transform with `{`
+// as operator and drop the interior. Absent here means not this strategy;
+// every call site then walks the interior. `{` is also unwritable as an
+// infix operator in body_lower_operator_atom_optional.
 fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: optional_present(value: node))
+  } else if body_lower_sequence_left_is_lbrace(captured: node) {
+    outcome_accepted(value: optional_absent())
   } else {
     match body_lower_try_fold_behavior_optional(node: node) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1832,27 +1858,21 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_body_subtree_lower_rest(captured: Node) -> Outcome<Optional<Node>> {
-  match body_lower_try_body_lowered(node: captured) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: found, diagnostics: _ } =>
-      match found {
-        Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
-        Absent =>
-          match body_lower_find_captured(
-            root: captured,
-            emitted: ^dag_surface_if_expr
-          ) {
-            ParseSubtreeFound { captured: if_capture } =>
-              body_lower_try_if_from_captured(captured: if_capture)
-            ParseSubtreeAbsent =>
-          match body_lower_find_captured(
-            root: captured,
-            emitted: ^dag_surface_match_expr
-          ) {
-            ParseSubtreeFound { captured: match_capture } =>
-              body_lower_try_match_from_captured(captured: match_capture)
-            ParseSubtreeAbsent =>
+fn body_lower_body_subtree_lower_control_forms(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(
+    root: captured,
+    emitted: ^dag_surface_if_expr
+  ) {
+    ParseSubtreeFound { captured: if_capture } =>
+      body_lower_try_if_from_captured(captured: if_capture)
+    ParseSubtreeAbsent =>
+      match body_lower_find_captured(
+        root: captured,
+        emitted: ^dag_surface_match_expr
+      ) {
+        ParseSubtreeFound { captured: match_capture } =>
+          body_lower_try_match_from_captured(captured: match_capture)
+        ParseSubtreeAbsent =>
           match body_lower_find_captured(
             root: captured,
             emitted: ^dag_surface_loop_expr
@@ -1860,18 +1880,28 @@ fn body_lower_body_subtree_lower_rest(captured: Node) -> Outcome<Optional<Node>>
             ParseSubtreeFound { captured: loop_capture } =>
               body_lower_try_loop_expr_from_captured(captured: loop_capture)
             ParseSubtreeAbsent =>
-          match body_lower_find_captured(
-            root: captured,
-            emitted: ^dag_surface_let_expr
-          ) {
-            ParseSubtreeFound { captured: let_capture } =>
-              body_lower_try_let_in_from_captured(captured: let_capture)
-            ParseSubtreeAbsent =>
-              body_lower_body_subtree_lower_from_binary(captured: captured)
+              match body_lower_find_captured(
+                root: captured,
+                emitted: ^dag_surface_let_expr
+              ) {
+                ParseSubtreeFound { captured: let_capture } =>
+                  body_lower_try_let_in_from_captured(captured: let_capture)
+                ParseSubtreeAbsent =>
+                  body_lower_body_subtree_lower_from_binary(captured: captured)
+              }
           }
-          }
-          }
-          }
+      }
+  }
+}
+
+fn body_lower_body_subtree_lower_rest(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_try_body_lowered(node: captured) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        Present { value: lowered } =>
+          outcome_accepted(value: optional_present(value: lowered))
+        Absent => body_lower_body_subtree_lower_control_forms(captured: captured)
       }
   }
 }
@@ -2437,12 +2467,44 @@ fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_call_sequence_node(node: Node) -> Node {
   let stripped = body_lower_unwrap_surface_shell(node: node)
+  match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_primary_expr {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } => captured
+          Absent => stripped
+        }
+      } else {
+        stripped
+      }
+    Absent => stripped
+  }
+}
+
+fn body_lower_call_callee_optional(node: Node) -> Optional<Node> {
+  match body_lower_operand_ref_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: callee } =>
+      match node_atom_identity_optional(node: callee) {
+        Present { value: id } =>
+          if dag_lex_token_symbol(sym: id) {
+            optional_absent()
+          } else {
+            optional_present(value: callee)
+          }
+        Absent => optional_present(value: callee)
+      }
+  }
+}
+
+fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
+  let stripped = body_lower_call_sequence_node(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => outcome_accepted(value: optional_absent())
     Present { value: pair } =>
-      match body_lower_operand_ref_optional(node: pair.left) {
+      match body_lower_call_callee_optional(node: pair.left) {
         Absent => outcome_accepted(value: optional_absent())
         Present { value: callee_atom } =>
           match body_lower_primary_call_suffix_optional(root: pair.right) {
@@ -4626,9 +4688,6 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
             Present { value: loop_node } =>
               Accepted { value: loop_node, diagnostics: ld }
             Absent =>
-      match body_lower_pattern_first_atom_optional(node: captured) {
-        Present { value: atom } => outcome_accepted(value: atom)
-        Absent =>
       match body_lower_try_primary_ident_call(node: captured) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: primary_call, diagnostics: d } =>
@@ -4636,6 +4695,9 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
             Present { value: transform } =>
               Accepted { value: transform, diagnostics: d }
             Absent =>
+      match body_lower_pattern_first_atom_optional(node: captured) {
+        Present { value: atom } => outcome_accepted(value: atom)
+        Absent =>
       match body_lower_try_postfix_projection(node: captured) {
         Rejected { diagnostics: r } =>
           match body_lower_literal_bool_atom_optional(node: captured) {

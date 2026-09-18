@@ -19,6 +19,7 @@ import extdeps.systemd {
 import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
@@ -185,6 +186,7 @@ fn host_converge_slice1_probed_at() -> NonEmptyStr? {
 fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
   match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemoryMax) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
+    SystemdPropertyBlank => none
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
@@ -330,6 +332,7 @@ fn host_converge_slice1_tasks_knob(host: HostIdentity) -> ConvergeKnob? {
 fn host_converge_slice1_read_tasks_max_raw(unit: NonEmptyStr) -> String? {
   match systemctl_show_property_read(transport: LocalShell, unit: unit, property: TasksMax) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
+    SystemdPropertyBlank => none
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
@@ -337,6 +340,7 @@ fn host_converge_slice1_read_tasks_max_raw(unit: NonEmptyStr) -> String? {
 fn host_converge_slice1_read_tasks_current_raw(unit: NonEmptyStr) -> String? {
   match systemctl_show_property_read(transport: LocalShell, unit: unit, property: TasksCurrent) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
+    SystemdPropertyBlank => none
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
