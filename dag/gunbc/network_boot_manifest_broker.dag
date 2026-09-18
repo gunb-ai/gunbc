@@ -24,6 +24,11 @@ import extdeps.crypto.mac {
   HmacSha256,
   MacVerification,
   MacVerified,
+  MacTagMismatch,
+  MacKeyUnknown,
+  MacKeyRetired,
+  MacSuiteMismatch,
+  MacTagMalformed,
   VerifiedMessage,
   MacSigning,
   MacSigned,
@@ -225,14 +230,6 @@ fn attempt_nonce_spent(spent: List<SpentAttemptNonce>, attempt_id: IntakeAttempt
   spent |> any(row => row.attempt_id == attempt_id && row.nonce == nonce)
 }
 
-fn digest_field_disagrees(left: ContentHash, right: ContentHash, field: NonEmptyStr) -> NonEmptyStr? {
-  if content_hash_equal(left: left, right: right) {
-    none
-  } else {
-    Present { value: field }
-  }
-}
-
 fn verify_signed_boot_manifest(
   ticket: SignedBootManifestTicket,
   expectation: BootManifestExpectation,
@@ -258,7 +255,11 @@ fn verify_signed_boot_manifest_under_trust(
       } else {
         join_verified_mac(ticket: ticket, expectation: expectation, verified: v)
       }
-    _ => refused(class: ManifestVerificationMac)
+    MacTagMismatch { key_id: _ } => refused(class: ManifestVerificationMac)
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => refused(class: ManifestVerificationMac)
+    MacSuiteMismatch { expected: _, key_suite: _ } => refused(class: ManifestVerificationSuite)
+    MacKeyUnknown { key_id: _ } => refused(class: ManifestVerificationSigningKey)
+    MacKeyRetired { key_id: _, retired_at: _ } => refused(class: ManifestVerificationSigningKey)
   }
 }
 
@@ -296,23 +297,16 @@ fn verify_authenticated_boot_manifest(
     refused(class: ManifestVerificationExpired)
   } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: id.attempt_id, nonce: id.nonce) {
     refused(class: ManifestVerificationReplay)
+  } else if content_hash_equal(left: id.chainloader_digest, right: expectation.artifacts.chainloader) == false {
+    refused(class: ManifestVerificationDigest)
+  } else if content_hash_equal(left: id.kernel_digest, right: expectation.artifacts.kernel) == false {
+    refused(class: ManifestVerificationDigest)
+  } else if content_hash_equal(left: id.initrd_digest, right: expectation.artifacts.initrd) == false {
+    refused(class: ManifestVerificationDigest)
+  } else if content_hash_equal(left: id.root_digest, right: expectation.artifacts.root) == false {
+    refused(class: ManifestVerificationDigest)
   } else {
-    match digest_field_disagrees(left: id.chainloader_digest, right: expectation.artifacts.chainloader, field: "chainloader" as NonEmptyStr) {
-      Present { value: _ } => refused(class: ManifestVerificationDigest)
-      Absent =>
-        match digest_field_disagrees(left: id.kernel_digest, right: expectation.artifacts.kernel, field: "kernel" as NonEmptyStr) {
-          Present { value: _ } => refused(class: ManifestVerificationDigest)
-          Absent =>
-            match digest_field_disagrees(left: id.initrd_digest, right: expectation.artifacts.initrd, field: "initrd" as NonEmptyStr) {
-              Present { value: _ } => refused(class: ManifestVerificationDigest)
-              Absent =>
-                match digest_field_disagrees(left: id.root_digest, right: expectation.artifacts.root, field: "root" as NonEmptyStr) {
-                  Present { value: _ } => refused(class: ManifestVerificationDigest)
-                  Absent => BootManifestAuthentic { claims: claims }
-                }
-            }
-        }
-    }
+    BootManifestAuthentic { claims: claims }
   }
 }
 
