@@ -504,7 +504,7 @@ fn enrolment_members(kind: String, e: VerifiedDeviceEnrollment) -> List<JsonKeyV
     ]
     AndroidAttestedDecisionKey => []
   }
-  concat_lists([
+  concat([
     json_kv(key: "kind", value: json_string(s: kind)),
     json_kv(key: "enrollment_id", value: json_string(s: e.enrollment_id as String)),
     json_kv(key: "operator_login", value: json_string(s: e.operator_login as String)),
@@ -519,7 +519,7 @@ fn enrolment_json(e: VerifiedDeviceEnrollment) -> String {
 }
 
 fn revocation_json(e: VerifiedDeviceEnrollment, revoked_at: Timestamp, reason: NonEmptyStr) -> String {
-  serialize_json(v: json_object(members: concat_lists(enrolment_members(kind: "revoked", e: e), [
+  serialize_json(v: json_object(members: concat(enrolment_members(kind: "revoked", e: e), [
     json_kv(key: "revoked_at", value: json_string(s: revoked_at)),
     json_kv(key: "reason", value: json_string(s: reason as String)),
   ])))
