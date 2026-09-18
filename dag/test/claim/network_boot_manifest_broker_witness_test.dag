@@ -291,7 +291,11 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
 
 test fn issued_ticket_standing_is_a_measured_network_boot_fact() -> Bool {
   match signed_boot_manifest_standing(
-    ticket: issued_ticket(id: good_identity()),
+    verification: redeem_signed_boot_manifest(
+      ticket: issued_ticket(id: good_identity()),
+      key: broker_key,
+      expectation: expectation_at(observed_at: 1788001800000, spent: []),
+    ),
     observation: standing_obs,
     observed_at: 1788001800000,
   ) {
@@ -301,6 +305,21 @@ test fn issued_ticket_standing_is_a_measured_network_boot_fact() -> Bool {
         NonEstablishingNetworkBootPredecessor => false
       }
     SignedBootManifestAbsent => false
+  }
+}
+
+test fn an_expired_ticket_does_not_mint_measured_manifest_standing() -> Bool {
+  match signed_boot_manifest_standing(
+    verification: redeem_signed_boot_manifest(
+      ticket: issued_ticket(id: good_identity()),
+      key: broker_key,
+      expectation: expectation_at(observed_at: 1788003600000, spent: []),
+    ),
+    observation: standing_obs,
+    observed_at: 1788003600000,
+  ) {
+    SignedBootManifestAbsent => true
+    SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
   }
 }
 
