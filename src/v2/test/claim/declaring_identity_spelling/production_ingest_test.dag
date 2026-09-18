@@ -383,7 +383,7 @@ test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
   }
 }
 
-test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
+test fn a_callee_name_reaches_the_census_holds() -> Bool {
   match census_of(
     path: call_only_path,
     unit: ^xl3_call_only
@@ -391,7 +391,7 @@ test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
     Present { value: census } =>
       census_unreadable_roots_empty(census: census)
         && authored_is(census: census, spelling: "LocalParam")
-        && !authored_is(census: census, spelling: "helper")
+        && authored_is(census: census, spelling: "helper")
     Absent => false
   }
 }

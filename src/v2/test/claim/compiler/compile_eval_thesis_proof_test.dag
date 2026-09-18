@@ -104,7 +104,7 @@ test fn compile_eval_bool_reaches_node_value_holds() -> Bool {
 // sides were the same node, not because a type was derived. v2 has no derivation rule for the Atom
 // type-node kind, so the honest outcome is the typed, located refusal this now asserts. The thesis
 // that compile -> eval reaches a node value is UNCHANGED and still proven by
-// compile_eval_bool_reaches_node_value_holds / isolate_t1, which supply the facts via
+// compile_eval_bool_reaches_node_value_holds, which supplies the facts via
 // compile_inferred; what is no longer claimed is that v2 can infer those facts itself. dissolve-on:
 // a derivation rule for literal atoms lands, at which point this flips back to asserting the value
 // and the fixture path stops being the only green one.
@@ -128,16 +128,4 @@ test fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
       d.head.reason == ^eval_rejected_runtime_value_node_unrepresentable
     Accepted { value: _, diagnostics: _ } => false
   }
-}
-
-test fn isolate_t1_holds() -> Bool {
-  compile_eval_bool_reaches_node_value_holds()
-}
-
-test fn isolate_t2_holds() -> Bool {
-  compile_eval_bool_via_compile_entry_refuses_underived_holds()
-}
-
-test fn isolate_t3_holds() -> Bool {
-  compile_eval_unit_unrepresentable_red_holds()
 }
