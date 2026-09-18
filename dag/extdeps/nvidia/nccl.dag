@@ -718,3 +718,76 @@ fn nccl_gpu_memory_path_wire(p: NcclGpuMemoryPath) -> NonEmptyStr {
     NcclGpuMemoryPathUnread { cause: _ } => "unread" as NonEmptyStr
   }
 }
+
+// ── THE MEMORY PATH OVER A WHOLE CAPTURE, NOT ONE LINE ────────────────────────────────────────
+//
+// A PER-LINE READER IS NOT A CONSUMER'S INTERFACE. `nccl_gpu_memory_path_of_line` answers about one
+// line, and a caller holding a captured log has to find the right line first -- which is the reader's
+// job, not theirs. `nccl_transport_verdict` already does this for the network axis; this is the same
+// fold for the memory axis, and its absence is what left the standing with no reachable consumer
+// (review 67473).
+//
+// SEVERAL LINES ARE EXPECTED AND DISAGREEMENT REFUSES. NCCL prints the GDR state once per HCA and
+// once per plugin path -- the Group B capture carries three (`NET/IB`, `NET/GIN_IB_GDAKI`,
+// `NET/RMA_IB_PROXY`) -- so a capture normally holds several readings that agree. If they do NOT
+// agree, no arm is entitled to answer: one HCA registering GPU memory while another stages through
+// host memory is a real state, and collapsing it to either answer would report a fabric fact that is
+// true of only half the run.
+type NcclGpuMemoryPathReading
+  = NcclMemoryPathAgreed { path: NcclGpuMemoryPath, readings: Nat }
+  | NcclMemoryPathDisagrees { causes: List<NonEmptyStr> }
+  | NcclMemoryPathAbsent
+
+type NcclMemoryPathAcc sole_constructor {
+  enabled: Nat
+  disabled: Nat
+  first_enabled: NonEmptyStr?
+  first_disabled: NonEmptyStr?
+}
+
+fn nccl_memory_path_step(acc: NcclMemoryPathAcc, line: NcclLogLine) -> NcclMemoryPathAcc {
+  match nccl_gpu_memory_path_of_line(line: line) {
+    NcclGpuMemoryPathUnread { cause: _ } => acc
+    NcclGpuDirectEnabled { read_from: l } =>
+      NcclMemoryPathAcc {
+        enabled: acc.enabled + 1,
+        disabled: acc.disabled,
+        first_enabled: match acc.first_enabled { Absent => Present { value: l }, Present { value: p } => Present { value: p } },
+        first_disabled: acc.first_disabled,
+      }
+    NcclGpuDirectDisabled { read_from: l } =>
+      NcclMemoryPathAcc {
+        enabled: acc.enabled,
+        disabled: acc.disabled + 1,
+        first_enabled: acc.first_enabled,
+        first_disabled: match acc.first_disabled { Absent => Present { value: l }, Present { value: p } => Present { value: p } },
+      }
+  }
+}
+
+fn nccl_gpu_memory_path_of_text(captured_text: String) -> NcclGpuMemoryPathReading {
+  let acc = fold(nccl_log_lines(text: captured_text),
+    init: NcclMemoryPathAcc { enabled: 0, disabled: 0, first_enabled: none, first_disabled: none },
+    f: (a, l) => nccl_memory_path_step(acc: a, line: l))
+  if acc.enabled > 0 && acc.disabled > 0 {
+    NcclMemoryPathDisagrees { causes: [
+      join([to_string(acc.enabled), " line(s) report GPU Direct RDMA enabled and ", to_string(acc.disabled), " report it disabled in one capture"], "") as NonEmptyStr,
+    ] }
+  } else {
+    if acc.enabled > 0 {
+      match acc.first_enabled {
+        Absent => NcclMemoryPathAbsent
+        Present { value: l } => NcclMemoryPathAgreed { path: NcclGpuDirectEnabled { read_from: l }, readings: acc.enabled }
+      }
+    } else {
+      if acc.disabled > 0 {
+        match acc.first_disabled {
+          Absent => NcclMemoryPathAbsent
+          Present { value: l } => NcclMemoryPathAgreed { path: NcclGpuDirectDisabled { read_from: l }, readings: acc.disabled }
+        }
+      } else {
+        NcclMemoryPathAbsent
+      }
+    }
+  }
+}

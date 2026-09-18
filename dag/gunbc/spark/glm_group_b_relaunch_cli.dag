@@ -10,7 +10,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import product.placement_supply { HostIdentity }
 import extdeps.docker.cli { DockerCreateSpec }
 import extdeps.docker.container_inspect { ContainerInspect }
+import gunbc.spark.collective_memory_path_standing { collective_memory_path_standing, memory_path_standing_text }
+import gunbc.spark.spark_gpu_direct_capability { spark_gb10_gpu_direct_capability }
 import extdeps.nvidia.nccl {
+  NcclGpuMemoryPath, NcclGpuMemoryPathUnread, NcclGpuMemoryPathReading, NcclMemoryPathAgreed,
+  NcclMemoryPathDisagrees, NcclMemoryPathAbsent, nccl_gpu_memory_path_of_text,
   NcclRoceGidSelection, NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
   nccl_realized_transport_wire,
 }
@@ -233,6 +237,31 @@ fn rank_startup_facet(
 // two is deliberate: an engine still capturing CUDA graphs has not printed them yet, which is a state
 // of the engine and not a failure of the reading. The transport facet has no such state -- a running
 // rank has announced a network or this route could not read it.
+// ── WHICH NETWORK IS NOT WHICH MEMORY PATH, AND THE OBSERVATION REPORTS BOTH ───────────────────
+//
+// The transport verdict above says the communicator built IB verbs. It does not say whether the NIC
+// reaches the buffers directly or stages them through host memory, and on GB10 the answer is the
+// platform's supported state rather than a defect -- which a reader cannot know from the transport
+// line alone. This is the consumer of gunbc.spark.collective_memory_path_standing: the same captured
+// text the transport verdict was read from is read for the GDR lines, joined against the device
+// capability reading, and the resulting sentence goes in the rank's report beside the transport one.
+//
+// IT REPORTS RATHER THAN GATES, and that is deliberate. A staged path on an incapable platform is
+// not an action item, so it must not fail an observation; a staged path on a CAPABLE platform is a
+// defect, and the standing says which of those a reader is looking at instead of leaving them to
+// infer it from a log line that reads the same either way.
+fn rank_memory_path_text(captured: String) -> String {
+  let observed = match nccl_gpu_memory_path_of_text(captured_text: captured) {
+    NcclMemoryPathAgreed { path: p, readings: _ } => p
+    NcclMemoryPathAbsent => NcclGpuMemoryPathUnread { cause: "the capture carries no GPU Direct RDMA line" as NonEmptyStr }
+    NcclMemoryPathDisagrees { causes: cs } => NcclGpuMemoryPathUnread { cause: join(map(cs, c => c as String), "; ") as NonEmptyStr }
+  }
+  memory_path_standing_text(s: collective_memory_path_standing(
+    capability: spark_gb10_gpu_direct_capability,
+    observed: observed,
+  )) as String
+}
+
 fn observe_rank_report(
   trust: FleetOpenSshTrustPolicy,
   path: SparkReachPath,
@@ -268,7 +297,7 @@ fn observe_rank_report(
               standing: RankNotFullyRead { what: "the transport verdict could not be read" as NonEmptyStr },
             }
             RankTransportObserved { verdict: v } => RankTransportFacet {
-              lines: [rank_transport_verdict_text(v: v)],
+              lines: [rank_transport_verdict_text(v: v), rank_memory_path_text(captured: t)],
               standing: transport_standing(v: v),
             }
           }
