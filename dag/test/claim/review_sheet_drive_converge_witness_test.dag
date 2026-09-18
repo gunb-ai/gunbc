@@ -312,7 +312,10 @@ test fn exactly_one_match_adopts_without_writing() -> Bool {
         nextPageToken: none
       }
     ),
-    superseded: SupersededNotConsulted,
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    },
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
     marker_value: "ci-prospect-sheet" as NonEmptyStr,
@@ -583,6 +586,103 @@ test fn an_unreadable_declaration_refuses_the_whole_decision() -> Bool {
   ) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "not an absent one")
     Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// A CURRENT HIT DOES NOT HIDE A LEGACY LINEAGE. This is the adopt-path half of the original
+// incident: properties reaches A, appProperties still reaches B, and returning Noop on the current
+// hit alone leaves B invisible to every later run.
+test fn a_current_hit_beside_a_disagreeing_legacy_find_refuses() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "current-A")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-B")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "current-A")
+        && string_contains(s: r as String, pattern: "legacy-B")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE CONTROL, AND IT IS WHAT KEEPS THE ABOVE FROM STOPPING EVERY RUN. A sheet already carrying BOTH
+// markers is one lineage, not two, and it adopts silently -- which is the steady state after any
+// successful migration.
+test fn a_current_hit_matching_the_legacy_find_still_adopts() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "same-sheet")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "same-sheet")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Noop => true
+    Refuse { reason: _ } => false
+    Apply { plan: _ } => false
+  }
+}
+
+// AN UNREADABLE LEGACY SEARCH STILL ADOPTS, deliberately: that is the ignorance this whole migration
+// generation lives inside, and refusing there would stop every steady-state run for a condition no
+// read can settle (DESIGN section 4d over-prohibition).
+test fn a_current_hit_with_an_unreadable_legacy_search_still_adopts() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "current-A")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList { files: none, incompleteSearch: Present { value: false }, nextPageToken: none }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Noop => true
+    Refuse { reason: _ } => false
     Apply { plan: _ } => false
   }
 }

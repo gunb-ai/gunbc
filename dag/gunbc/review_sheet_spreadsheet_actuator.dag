@@ -389,7 +389,14 @@ fn read_superseded_marker(
         ),
         visibility: visibility_from_declaration(declaration: declaration),
       }
-    SheetObservedOne { file_id: _ } => SupersededNotConsulted
+    SheetObservedOne { file_id: _ } =>
+      SupersededRead {
+        observation: read_spreadsheet(
+          drive_id: drive_id,
+          query: review_sheet_superseded_search_query(marker_value: marker_value),
+        ),
+        visibility: visibility_from_declaration(declaration: declaration),
+      }
     SheetDuplicated { file_ids: _ } => SupersededNotConsulted
     SheetSearchIncomplete => SupersededNotConsulted
     SheetPageIncomplete { next_page_token: _ } => SupersededNotConsulted

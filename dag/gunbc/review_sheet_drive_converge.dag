@@ -682,7 +682,8 @@ fn ensure_review_spreadsheet(
   marker_value: NonEmptyStr,
 ) -> UpsertDecision<SpreadsheetPlan> {
   match observed {
-    SheetObservedOne { file_id: _ } => Noop
+    SheetObservedOne { file_id: current } =>
+      adopt_unless_a_legacy_lineage_disagrees(current: current, superseded: superseded, drive_id: drive_id)
     SheetSearchUnreadable { reason: r } => Refuse { reason: r }
     SheetPageIncomplete { next_page_token: _ } =>
       Refuse {
@@ -723,6 +724,59 @@ fn ensure_review_spreadsheet(
         sheet_name: sheet_name,
         marker_value: marker_value,
       )
+  }
+}
+
+// ADOPTION ACCOUNTS FOR THE WHOLE IDENTITY, NOT ITS NEWEST SPELLING. A current-marker hit used to
+// return Noop without consulting the superseded field at all, which leaves this live state reported
+// as converged: properties reaches A, appProperties reaches B, no declaration installed. B is then
+// invisible to every later run -- the same cross-generation duplicate the create path was hardened
+// against, reached through ADOPT instead.
+//
+// ONLY A POSITIVE DISAGREEING FIND REFUSES, which is the rule this module already applies to a
+// declared id. An absent, unreadable or partial superseded answer is the ignorance this whole
+// migration generation lives inside; refusing there would stop every steady-state run for a
+// condition no read can settle, which is the over-prohibition DESIGN section 4d names. A search
+// that NAMES a second file is different: that is two lineages observed, and only an operator can
+// retire one.
+fn adopt_unless_a_legacy_lineage_disagrees(
+  current: NonEmptyStr,
+  superseded: SupersededSearchReading,
+  drive_id: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetPlan> {
+  match superseded {
+    SupersededNotConsulted => Noop
+    SupersededRead { observation: o, visibility: _ } =>
+      match o {
+        SheetObservedOne { file_id: legacy } =>
+          if (legacy as String) == (current as String) {
+            Noop
+          } else {
+            Refuse {
+              reason: join(
+                [
+                  "the current marker reaches ", current as String, " in ", drive_id as String,
+                  " while the superseded marker still reaches ", legacy as String,
+                  "; adopting the first would leave the second invisible to every later run, which is the cross-generation duplicate this converge exists to prevent. An operator must retire one lineage or declare which is real",
+                ], "",
+              ) as NonEmptyStr,
+            }
+          }
+        SheetDuplicated { file_ids: ids } =>
+          Refuse {
+            reason: join(
+              [
+                "the current marker reaches ", current as String, " in ", drive_id as String,
+                " while the superseded marker reaches ", join(ids, ", "),
+                "; more than one lineage exists and adopting the current one would hide the rest",
+              ], "",
+            ) as NonEmptyStr,
+          }
+        SheetAbsent => Noop
+        SheetSearchUnreadable { reason: _ } => Noop
+        SheetSearchIncomplete => Noop
+        SheetPageIncomplete { next_page_token: _ } => Noop
+      }
   }
 }
 

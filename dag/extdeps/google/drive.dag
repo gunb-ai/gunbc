@@ -412,6 +412,13 @@ service drive.Permissions {
 // every other property on the file untouched. A PUT would replace the resource and silently drop
 // properties this repository does not know about and did not write.
 //
+// THE FIELD MASK MUST SATISFY THE DECLARED RESPONSE TYPE. An earlier cut asked for `id` alone while
+// mapping 200 to DriveFile, whose id, name and mimeType are all required -- so a perfectly
+// successful PATCH would have decoded short and classified as RestExchangeUndecodable, reporting a
+// write that LANDED as a transport failure, and the readback would never have run. Asking for fewer
+// fields than the declared type requires is not an economy; it is a decode refusal waiting for its
+// first success.
+//
 // THE SUPERSEDED FIELD IS NOT CLEARED HERE, and that is deliberate rather than unfinished. A file
 // carrying BOTH markers is found by either search and is adoptable by both, so leaving the old
 // one is the state that fails safe while any reader of the old field may still exist. Clearing it
@@ -460,7 +467,7 @@ service drive.Files {
     transport rest {
       method: PATCH,
       path: "/files/\{file_id\}",
-      query: { supportsAllDrives: "true", fields: "id" },
+      query: { supportsAllDrives: "true", fields: "id,name,mimeType" },
       body: {
         properties: { gunbcReviewSheet: marker_property_value }
       }
