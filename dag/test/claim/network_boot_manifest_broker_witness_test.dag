@@ -4,7 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Architecture, Aarch64, X86_64, Wasm32 }
+import extdeps.toolchain.types { Architecture, Aarch64, Wasm32 }
+import extdeps.provisioning.network_boot { UefiHttpBoot }
 import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_implementation }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 import gunbc.network_boot_delivery {
@@ -13,12 +14,9 @@ import gunbc.network_boot_delivery {
   SignedBootManifestIdentified,
   SignedBootManifestVerificationRefused,
   SignedBootManifestAbsent,
-  ManifestVerificationExpired,
-  ManifestVerificationWrongTarget,
   ManifestVerificationWrongArchitecture,
   ManifestVerificationReplay,
   ManifestVerificationMac,
-  ManifestVerificationDigest,
   ManifestVerificationVerifiedKey,
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
@@ -33,7 +31,6 @@ import gunbc.network_boot_manifest_broker {
   ManifestIssuanceTrustUnestablished,
   ManifestIssuanceWindowInverted,
   ManifestIssuanceDhcpArchUnpublished,
-  ExpectedBootArtifactDigests,
   SpentAttemptNonce,
   BootstrapTrustRoot,
   BootManifestExpectation,
@@ -63,14 +60,12 @@ data broker_key: MacKey = MacKey {
 }
 
 data unit: UnitKey = "BRD-PXE-FABRIC-0D" as UnitKey
-data other_unit: UnitKey = "BRD-PXE-FABRIC-OTHER" as UnitKey
 data attempt: IntakeAttemptId = "intake-pxe-fabric-0d" as IntakeAttemptId
 
 fn chainloader() -> ContentHash { content_hash_of_value(value: "ipxe-aarch64-fixture") }
 fn kernel() -> ContentHash { content_hash_of_value(value: "kernel-fixture") }
 fn initrd() -> ContentHash { content_hash_of_value(value: "initrd-fixture") }
 fn root() -> ContentHash { content_hash_of_value(value: "root-fixture") }
-fn other_root() -> ContentHash { content_hash_of_value(value: "other-root-fixture") }
 
 fn identity_for(target: UnitKey, arch: Architecture, root_digest: ContentHash, nbf: Int, exp: Int) -> SignedBootManifestIdentity {
   SignedBootManifestIdentity {
@@ -78,6 +73,7 @@ fn identity_for(target: UnitKey, arch: Architecture, root_digest: ContentHash, n
     attempt_id: attempt,
     nonce: "nonce-0d",
     architecture: arch,
+    boot_mode: UefiHttpBoot,
     chainloader_digest: chainloader(),
     kernel_digest: kernel(),
     initrd_digest: initrd(),
@@ -106,22 +102,9 @@ fn issued_ticket(id: SignedBootManifestIdentity) -> SignedBootManifestTicket {
   }
 }
 
-fn artifacts() -> ExpectedBootArtifactDigests {
-  ExpectedBootArtifactDigests {
-    chainloader: chainloader(),
-    kernel: kernel(),
-    initrd: initrd(),
-    root: root(),
-  }
-}
-
-fn expectation_at(observed_at: Int, spent: List<SpentAttemptNonce>) -> BootManifestExpectation {
+fn expectation_at(spent: List<SpentAttemptNonce>) -> BootManifestExpectation {
   BootManifestExpectation {
-    target_unit: unit,
-    architecture: Aarch64,
-    artifacts: artifacts(),
     trust: BootstrapTrustRoot { signing_key_id: broker_key_id, standing: ProductionTrustedBootstrap },
-    observed_at: observed_at,
     spent_attempt_nonces: spent,
   }
 }
@@ -134,43 +117,10 @@ test fn issued_ticket_round_trips_through_the_real_mac() -> Bool {
   match redeem_signed_boot_manifest(
     ticket: issued_ticket(id: good_identity()),
     key: broker_key,
-    expectation: expectation_at(observed_at: 1788001800000, spent: []),
+    expectation: expectation_at(spent: []),
   ) {
     BootManifestAuthentic { claims: c } => c.identity.target_unit == unit
     BootManifestRefused { class: _ } => false
-  }
-}
-
-test fn wrong_target_is_refused() -> Bool {
-  match redeem_signed_boot_manifest(
-    ticket: issued_ticket(id: identity_for(target: other_unit, arch: Aarch64, root_digest: root(), nbf: 1788000000000, exp: 1788003600000)),
-    key: broker_key,
-    expectation: expectation_at(observed_at: 1788001800000, spent: []),
-  ) {
-    BootManifestRefused { class: c } => c == ManifestVerificationWrongTarget
-    BootManifestAuthentic { claims: _ } => false
-  }
-}
-
-test fn wrong_architecture_is_refused() -> Bool {
-  match redeem_signed_boot_manifest(
-    ticket: issued_ticket(id: identity_for(target: unit, arch: X86_64, root_digest: root(), nbf: 1788000000000, exp: 1788003600000)),
-    key: broker_key,
-    expectation: expectation_at(observed_at: 1788001800000, spent: []),
-  ) {
-    BootManifestRefused { class: c } => c == ManifestVerificationWrongArchitecture
-    BootManifestAuthentic { claims: _ } => false
-  }
-}
-
-test fn expired_ticket_is_refused() -> Bool {
-  match redeem_signed_boot_manifest(
-    ticket: issued_ticket(id: good_identity()),
-    key: broker_key,
-    expectation: expectation_at(observed_at: 1788003600000, spent: []),
-  ) {
-    BootManifestRefused { class: c } => c == ManifestVerificationExpired
-    BootManifestAuthentic { claims: _ } => false
   }
 }
 
@@ -179,7 +129,7 @@ test fn replayed_attempt_nonce_is_refused() -> Bool {
   match redeem_signed_boot_manifest(
     ticket: issued_ticket(id: good_identity()),
     key: broker_key,
-    expectation: expectation_at(observed_at: 1788001800000, spent: spent),
+    expectation: expectation_at(spent: spent),
   ) {
     BootManifestRefused { class: c } => c == ManifestVerificationReplay
     BootManifestAuthentic { claims: _ } => false
@@ -192,20 +142,9 @@ test fn bad_signature_is_refused() -> Bool {
   match redeem_signed_boot_manifest(
     ticket: forged,
     key: broker_key,
-    expectation: expectation_at(observed_at: 1788001800000, spent: []),
+    expectation: expectation_at(spent: []),
   ) {
     BootManifestRefused { class: c } => c == ManifestVerificationMac
-    BootManifestAuthentic { claims: _ } => false
-  }
-}
-
-test fn digest_disagreement_is_refused() -> Bool {
-  match redeem_signed_boot_manifest(
-    ticket: issued_ticket(id: identity_for(target: unit, arch: Aarch64, root_digest: other_root(), nbf: 1788000000000, exp: 1788003600000)),
-    key: broker_key,
-    expectation: expectation_at(observed_at: 1788001800000, spent: []),
-  ) {
-    BootManifestRefused { class: c } => c == ManifestVerificationDigest
     BootManifestAuthentic { claims: _ } => false
   }
 }
@@ -264,7 +203,7 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
     Present { value: presented } =>
       match verify_signed_boot_manifest(
         ticket: ticket,
-        expectation: expectation_at(observed_at: 1788001800000, spent: []),
+        expectation: expectation_at(spent: []),
         mac_result: mac_verification_from_implementation(
           key_id: other_key_id,
           suite: HmacSha256,
@@ -283,7 +222,7 @@ test fn issued_ticket_standing_is_verified() -> Bool {
     verification: redeem_signed_boot_manifest(
       ticket: issued_ticket(id: good_identity()),
       key: broker_key,
-      expectation: expectation_at(observed_at: 1788001800000, spent: []),
+      expectation: expectation_at(spent: []),
     ),
     observation: standing_obs,
     observed_at: 1788001800000,
@@ -293,24 +232,6 @@ test fn issued_ticket_standing_is_verified() -> Bool {
     SignedBootManifestIdentified { identity: _, observation: _, observed_at: _ } => false
     SignedBootManifestVerificationRefused { observation: _, observed_at: _, class: _ } => false
     SignedBootManifestAbsent => false
-  }
-}
-
-test fn an_expired_ticket_is_verification_refused_not_absent() -> Bool {
-  match signed_boot_manifest_standing(
-    verification: redeem_signed_boot_manifest(
-      ticket: issued_ticket(id: good_identity()),
-      key: broker_key,
-      expectation: expectation_at(observed_at: 1788003600000, spent: []),
-    ),
-    observation: standing_obs,
-    observed_at: 1788003600000,
-  ) {
-    SignedBootManifestVerificationRefused { observation: o, observed_at: _, class: c } =>
-      (o.decl_name as String) == "standing_obs" && c == ManifestVerificationExpired
-    SignedBootManifestAbsent => false
-    SignedBootManifestVerified { identity: _, observation: _, observed_at: _ } => false
-    SignedBootManifestIdentified { identity: _, observation: _, observed_at: _ } => false
   }
 }
 

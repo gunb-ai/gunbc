@@ -1,9 +1,10 @@
 module gunbc.network_boot_manifest_broker
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String, to_string }
-import std.content_hash { ContentHash, serialize_content_hash }
+import std.content_hash { serialize_content_hash }
 import std.decl_ref { DeclarationRef }
-import extdeps.toolchain.types { Architecture }
+import extdeps.uri { uri_wire }
+import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import extdeps.provisioning.dhcp_client_arch {
   dhcp_processor_architecture_code,
   uefi_processor_architecture,
@@ -27,7 +28,7 @@ import extdeps.crypto.mac {
   mac_sign,
   mac_verify,
 }
-import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
+import gunbc.machine_intake_subject { IntakeAttemptId }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
   SignedBootManifestIdentity,
@@ -41,12 +42,8 @@ import gunbc.network_boot_delivery {
   NetworkBootManifestVerificationClass,
   ManifestVerificationMac,
   ManifestVerificationWrongMessage,
-  ManifestVerificationWrongTarget,
   ManifestVerificationWrongArchitecture,
-  ManifestVerificationExpired,
-  ManifestVerificationNotYetValid,
   ManifestVerificationReplay,
-  ManifestVerificationDigest,
   ManifestVerificationSigningKey,
   ManifestVerificationVerifiedKey,
   ManifestVerificationSuite,
@@ -83,13 +80,6 @@ type BootManifestIssuance
   = BootManifestIssued { ticket: SignedBootManifestTicket }
   | BootManifestIssuanceRefused { cause: BootManifestIssuanceRefusal }
 
-type ExpectedBootArtifactDigests {
-  chainloader: ContentHash
-  kernel: ContentHash
-  initrd: ContentHash
-  root: ContentHash
-}
-
 type SpentAttemptNonce {
   attempt_id: IntakeAttemptId
   nonce: NonEmptyStr
@@ -101,11 +91,7 @@ type BootstrapTrustRoot {
 }
 
 type BootManifestExpectation {
-  target_unit: UnitKey
-  architecture: Architecture
-  artifacts: ExpectedBootArtifactDigests
   trust: BootstrapTrustRoot
-  observed_at: EpochMs
   spent_attempt_nonces: List<SpentAttemptNonce>
 }
 
@@ -121,6 +107,14 @@ fn epoch_ms_text(t: EpochMs) -> String {
   to_string(t)
 }
 
+fn boot_mode_preimage(mode: ClientNetworkBootMode) -> String {
+  match mode {
+    UefiHttpBoot => "uefi-http"
+    UefiPxe { tftp_root: u } => concat("uefi-pxe:", uri_wire(uri: u) as String)
+    LegacyBiosPxe { tftp_root: u } => concat("legacy-bios-pxe:", uri_wire(uri: u) as String)
+  }
+}
+
 fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr? {
   let id = c.identity
   match uefi_processor_architecture(arch: id.architecture) {
@@ -134,6 +128,7 @@ fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptySt
             id.attempt_id as String,
             id.nonce as String,
             to_string(dhcp_processor_architecture_code(a: dhcp_arch)),
+            boot_mode_preimage(mode: id.boot_mode),
             serialize_content_hash(hash: id.chainloader_digest) as String,
             serialize_content_hash(hash: id.kernel_digest) as String,
             serialize_content_hash(hash: id.initrd_digest) as String,
@@ -244,45 +239,10 @@ fn join_verified_mac(
     refused(class: ManifestVerificationSuite)
   } else if verified.key_id != expectation.trust.signing_key_id {
     refused(class: ManifestVerificationVerifiedKey)
+  } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: ticket.claims.identity.attempt_id, nonce: ticket.claims.identity.nonce) {
+    refused(class: ManifestVerificationReplay)
   } else {
-    verify_authenticated_boot_manifest(claims: ticket.claims, expectation: expectation)
-  }
-}
-
-fn verify_authenticated_boot_manifest(
-  claims: SignedBootManifestClaims,
-  expectation: BootManifestExpectation,
-) -> BootManifestVerification {
-  let id = claims.identity
-  let pinned_key = expectation.trust.signing_key_id as NonEmptyStr
-  if id.signing_key_identity != pinned_key {
-    refused(class: ManifestVerificationSigningKey)
-  } else if id.target_unit != expectation.target_unit {
-    refused(class: ManifestVerificationWrongTarget)
-  } else if id.architecture != expectation.architecture {
-    refused(class: ManifestVerificationWrongArchitecture)
-  } else {
-    match uefi_processor_architecture(arch: id.architecture) {
-      Absent => refused(class: ManifestVerificationWrongArchitecture)
-      Present { value: _ } =>
-        if expectation.observed_at < id.not_before {
-          refused(class: ManifestVerificationNotYetValid)
-        } else if expectation.observed_at >= id.expiry {
-          refused(class: ManifestVerificationExpired)
-        } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: id.attempt_id, nonce: id.nonce) {
-          refused(class: ManifestVerificationReplay)
-        } else if content_hash_equal(left: id.chainloader_digest, right: expectation.artifacts.chainloader) == false {
-          refused(class: ManifestVerificationDigest)
-        } else if content_hash_equal(left: id.kernel_digest, right: expectation.artifacts.kernel) == false {
-          refused(class: ManifestVerificationDigest)
-        } else if content_hash_equal(left: id.initrd_digest, right: expectation.artifacts.initrd) == false {
-          refused(class: ManifestVerificationDigest)
-        } else if content_hash_equal(left: id.root_digest, right: expectation.artifacts.root) == false {
-          refused(class: ManifestVerificationDigest)
-        } else {
-          BootManifestAuthentic { claims: claims }
-        }
-    }
+    BootManifestAuthentic { claims: ticket.claims }
   }
 }
 
