@@ -1,0 +1,21 @@
+module test.claim.bmc_custody_container_witness
+
+import std.types { Bool }
+import gunbc.tools.bmc_onboard {
+  BmcCustodyEstablished,
+  BmcCustodyRefused,
+  bmc_custody_refused,
+  bmc_custody_refusal_reason,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The store step stops on a refused custody container and carries its reason; an established one
+// lets it proceed. Resolving this module also typechecks the effectful custody step beside it,
+// whose arms are the actuator's already-witnessed observation and creation outcomes.
+test fn a_refused_custody_container_stops_the_store_with_its_reason() -> Bool {
+  bmc_custody_refused(custody: BmcCustodyRefused { reason: "custody: absent" })
+    && bmc_custody_refusal_reason(custody: BmcCustodyRefused { reason: "custody: absent" }) == "custody: absent"
+    && !bmc_custody_refused(custody: BmcCustodyEstablished)
+}

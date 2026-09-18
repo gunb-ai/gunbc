@@ -21,12 +21,29 @@ import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentityDecodeRefused,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import extdeps.transports.rest {
+  classify_rest_outcome,
+  RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
+  RestExchangeUnreached, RestExchangeUndecodable, RestReadExchange, RestExchangePerformance,
+}
+import gunbc.secret_provision_actuator {
+  SecretContainerAbsent,
+  SecretContainerCreated,
+  SecretContainerCreationOutcomeUnknown,
+  SecretContainerCreationRefused,
+  SecretContainerObserved,
+  SecretObservationRefused,
+  create_secret_container,
+  observe_secret_container,
+}
 import gunbc.auth.netrc_binding {
   NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
   place_netrc_binding,
 }
 import gunbc.bmc_onboarding {
   BmcOnboardingPlan,
+  srv1_onboarding_plan,
+  srv2_onboarding_plan,
   srv3_onboarding_plan,
   srv4_onboarding_plan,
   BmcCredentialProbeResult,
@@ -42,10 +59,14 @@ import gunbc.auth.access_token_source {
   AccessTokenReady,
   AccessTokenUpsertRequired,
   GcloudPrintToken,
+  AccessTokenSourceSelected,
+  AccessTokenSourceUnavailable,
+  select_access_token_source,
   access_token_upsert_required_reason,
   ensure_access_token,
 }
 import std.types { FilePath, NonEmptyStr, Secret, String }
+import std.algebra { trim }
 import std.logic { Bool }
 import std.resources { Network }
 import std.bytes { utf8_encode_bytes }
@@ -183,13 +204,13 @@ fn netrc_failure_reason(outcome: NetrcWriteOutcome, stage: NonEmptyStr) -> Strin
 // would leave the PREVIOUS credential's file in place, and the reauth would then appear to succeed
 // while proving nothing about the rotation it exists to confirm -- a green that means the opposite
 // of what it reads as.
-fn bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> ProcessExit
+fn bmc_rotate_credential(plan: BmcOnboardingPlan, current_password: String, new_credential: Secret) -> ProcessExit
   uses net: Network
 {
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  let rotate_w = write_netrc_outcome(host: host, account: account, password: plan.factory_login.published_password)
+  let rotate_w = write_netrc_outcome(host: host, account: account, password: current_password)
   if netrc_write_succeeded(outcome: rotate_w) == false {
     return exit_failure(reason: netrc_failure_reason(outcome: rotate_w, stage: "rotate"))
   }
@@ -274,7 +295,46 @@ fn bmc_readback_target(stored_name: String) -> BmcReadbackTarget {
 // fetches the CURRENT credential in order to probe with it, and has no preceding write whose version
 // it could address; "latest" is the question it actually means to ask. Sweeping both because they
 // share a spelling would have changed a correct read into a pinned one.
-fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret) -> ProcessExit
+// THE CUSTODY CONTAINER IS ESTABLISHED BEFORE THE FIRST VERSION IS WRITTEN, and before anything
+// touches the BMC. srv3 and srv4 had their containers created by hand; srv1 and srv2 have none, and
+// AddVersion against a missing container fails. That failure was already safe -- the store precedes
+// the rotation -- but it left a manual step outside the flow. The GET is taken before any mutation,
+// so a 404 is the store's answer and may authorize exactly one create; an unknown create outcome ends
+// the run for a human, because a later 404 no longer establishes absence. Creating needs the
+// project-level secrets.create permission, which an operator token carries and the least-privilege
+// federated identity deliberately does not: under the latter an absent container refuses as a
+// permission denial, which is the honest answer.
+type BmcCustodyContainer
+  = BmcCustodyEstablished
+  | BmcCustodyRefused { reason: String }
+
+fn bmc_establish_custody_container(secret_id: NonEmptyStr, token: Secret) -> BmcCustodyContainer
+  uses net: Network
+{
+  match observe_secret_container(project: fleet_secrets_gcp_project, secret_id: secret_id, token: token) {
+    SecretContainerObserved { container: _ } => BmcCustodyEstablished
+    SecretObservationRefused { cause: c } =>
+      BmcCustodyRefused { reason: concat("custody: the credential container could not be read: ", c as String) }
+    SecretContainerAbsent { project: _, secret_id: _ } =>
+      match create_secret_container(project: fleet_secrets_gcp_project, secret_id: secret_id, token: token) {
+        SecretContainerCreated { container: _ } => BmcCustodyEstablished
+        SecretContainerCreationRefused { cause: c } =>
+          BmcCustodyRefused { reason: concat("custody: the credential container is absent and could not be created: ", c as String) }
+        SecretContainerCreationOutcomeUnknown { cause: c } =>
+          BmcCustodyRefused { reason: concat("custody: CreateSecret outcome UNKNOWN -- do not re-run; confirm by hand whether the container exists: ", c as String) }
+      }
+  }
+}
+
+fn bmc_custody_refused(custody: BmcCustodyContainer) -> Bool {
+  match custody { BmcCustodyEstablished => false BmcCustodyRefused { reason: _ } => true }
+}
+
+fn bmc_custody_refusal_reason(custody: BmcCustodyContainer) -> String {
+  match custody { BmcCustodyEstablished => "" BmcCustodyRefused { reason: r } => r }
+}
+
+fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret, current_password: String) -> ProcessExit
   uses net: Network
 {
   let payload_b64 = encode_sm_access_version_payload_wire(credential: credential)
@@ -288,6 +348,10 @@ fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource
     AccessTokenEnsureRefused { reason: reason } =>
       return exit_failure(reason: reason as String)
     AccessTokenReady { token: token } => {
+      let custody = bmc_establish_custody_container(secret_id: secret_id, token: token)
+      if bmc_custody_refused(custody: custody) {
+        return exit_failure(reason: bmc_custody_refusal_reason(custody: custody))
+      }
       stored = gcp.SecretManager.AddVersion(
         access_token: token,
         secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
@@ -319,7 +383,7 @@ fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource
                 }
               }
 
-              return bmc_rotate_credential(plan: plan, new_credential: credential)
+              return bmc_rotate_credential(plan: plan, current_password: current_password, new_credential: credential)
         }
       }
     }
@@ -348,7 +412,7 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
     return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
   }
 
-  return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
+  return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password)
 }
 
 // A NETRC THAT COULD NOT BE WRITTEN IS NOT EVIDENCE ABOUT THE CREDENTIAL, and this probe keeps those
@@ -356,6 +420,20 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
 // arm, because reporting `factory login failed` for a local filesystem fault would send an operator
 // to the BMC to investigate a problem that is on this host. The same rule governs the stored-
 // credential arm below it.
+// A CUSTODY READ THAT DID NOT SUCCEED CARRIES NO PAYLOAD, and decoding one anyway crashed the
+// interpreter on a null (observed on srv1 2026-09-18, where no bmc-srv1-admin existed yet). The
+// outcome is classified before the payload is touched, so a missing or unreadable custody secret is
+// the typed unknown-phase refusal it always meant to be.
+fn bmc_stored_credential_read_succeeded(performance: RestExchangePerformance) -> Bool {
+  match performance {
+    RestExchangeSucceeded => true
+    RestExchangeStatusRefused { status: _, body: _ } => false
+    RestExchangeCommitAmbiguous { detail: _ } => false
+    RestExchangeUnreached { cause: _ } => false
+    RestExchangeUndecodable { status: _, cause: _ } => false
+  }
+}
+
 fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
   uses net: Network
 {
@@ -386,6 +464,9 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
         secret: onboarding_secret_id(plan: plan),
         version: "latest"
       )
+      if !bmc_stored_credential_read_succeeded(performance: classify_rest_outcome(standing: RestReadExchange { rest: secret_resp.outcome })) {
+        return CredentialStateUnknown { reason: "the factory credential was refused and no stored credential could be read from custody" }
+      }
       match decode_sm_access_version_secret_wire(data_b64: secret_resp.data_b64) {
         SmAccessVersionSecretDecoded { credential: password } => {
           let stored_w = write_netrc_outcome(host: host, account: account, password: password as String)
@@ -419,7 +500,7 @@ fn bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSou
 
   probe = bmc_probe_credential_phase(plan: plan, token_source: token_source)
   match probe {
-    FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
+    FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password)
     RotatedCredentialActive => return ExitSuccess
     CredentialAccessUpsertRequired { plan: upsert_plan } =>
       return exit_failure(
@@ -448,4 +529,82 @@ fn srv4_converge_credential() -> ProcessExit
   uses net: Network
 {
   bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)
+}
+
+// srv1 AND srv2 TAKE WHATEVER CREDENTIAL THE RUN HAS -- the Workload Identity token in a federated
+// workflow, or an operator token file in a session -- through the one selection authority, rather
+// than the gcloud CLI the older srv3/srv4 entries hard-code.
+fn bmc_converge_credential_selected(plan: BmcOnboardingPlan) -> ProcessExit
+  uses net: Network
+{
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)
+    AccessTokenSourceSelected { source: s } => return bmc_converge_credential(plan: plan, token_source: s)
+  }
+}
+
+// TAKEOVER: a BMC whose admin password was set by hand, outside custody. srv1 and srv2 were brought
+// up as a demo on an operator-chosen root password (operator, 2026-09-18), so neither the factory
+// probe nor custody can authenticate to them. The operator supplies that current password ONCE, in
+// a file named by the environment -- never in source, since this repository is its own audit log --
+// and it is proven against the BMC before anything is written. From there the flow is the factory
+// flow's: establish custody, mint, store, read back, rotate FROM the supplied password, re-authenticate.
+// After a takeover the supplied password is dead, which is the point: it has lived outside custody.
+data bmc_takeover_password_file_env: NonEmptyStr = "GUNBC_BMC_TAKEOVER_PASSWORD_FILE" as NonEmptyStr
+
+fn bmc_takeover_credential(plan: BmcOnboardingPlan) -> ProcessExit
+  uses net: Network
+{
+  let path = match shell.Env.Get(name: bmc_takeover_password_file_env).value {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
+  }
+  if path == "" {
+    return exit_failure(reason: concat(bmc_takeover_password_file_env as String, " is not set: a takeover needs the BMC's current password in a file"))
+  }
+  let read = Filesystem.Read(path: path)
+  if read.success == false {
+    return exit_failure(reason: concat("takeover: the current-password file could not be read: ", read.error))
+  }
+  let current = trim(s: read.content)
+  if current == "" {
+    return exit_failure(reason: "takeover: the current-password file is empty")
+  }
+  let current_w = write_netrc_outcome(host: plan.bmc.host, account: plan.factory_login.username, password: current)
+  if netrc_write_succeeded(outcome: current_w) == false {
+    return exit_failure(reason: netrc_failure_reason(outcome: current_w, stage: "takeover current credential"))
+  }
+  proof = redfish.Http.GetSystem(bmc_host: plan.bmc.host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
+  if proof.success == false {
+    return exit_failure(reason: concat("takeover: the supplied current password was refused; nothing was written: ", proof.body))
+  }
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)
+    AccessTokenSourceSelected { source: s } =>
+      return bmc_store_and_rotate(plan: plan, token_source: s, credential: mint_bmc_credential(), current_password: current)
+  }
+}
+
+fn srv1_takeover_credential() -> ProcessExit
+  uses net: Network
+{
+  bmc_takeover_credential(plan: srv1_onboarding_plan)
+}
+
+fn srv2_takeover_credential() -> ProcessExit
+  uses net: Network
+{
+  bmc_takeover_credential(plan: srv2_onboarding_plan)
+}
+
+fn srv1_converge_credential() -> ProcessExit
+  uses net: Network
+{
+  bmc_converge_credential_selected(plan: srv1_onboarding_plan)
+}
+
+fn srv2_converge_credential() -> ProcessExit
+  uses net: Network
+{
+  bmc_converge_credential_selected(plan: srv2_onboarding_plan)
 }
