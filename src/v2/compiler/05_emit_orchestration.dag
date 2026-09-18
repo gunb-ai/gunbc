@@ -95,7 +95,7 @@ import v2.std.orchestration {
   Exit,
   EnvBinding
 }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { FreeMonoid }
 import extdeps.posix.shell_command_language { posix_name_ok }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
 import v2.std.collection {
@@ -187,10 +187,19 @@ data orch_shell_unquoted_path_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcd
 
 // The empty path is refused by the Cons arm rather than by a length test: emptiness is the shape
 // of the carrier here, not a number this function has to compute and compare.
+//
+// THE VARIANTS ARE QUALIFIED RATHER THAN IMPORTED, AND THAT IS NOT STYLE. Adding `Cons, Empty` to
+// this module's std.algebra import changed what the BARE `Empty` denotes at `env: Empty` inside
+// orch_emit_retry_1level and orch_emit_retry_2level -- two functions this change has no business
+// touching -- and the namespace-wave-admission phase refused the head for exactly that:
+// `AuthoredReferenceResolution binding ... base {} -> head {std.algebra}`, twice, unadjudicated.
+// An import list reaches every bare occurrence in the module, not the lines its author wrote.
+// Qualifying here confines the new reference to the arm that needs it and leaves those two
+// occurrences binding what they bound before. Re-adding the import re-opens both deltas.
 fn orch_shell_unquoted_path_ok(path: String) -> Bool {
   match path {
-    Empty => false
-    Cons { head: _, tail: _ } =>
+    std.algebra.Empty => false
+    std.algebra.Cons { head: _, tail: _ } =>
       string_all_chars_in(s: path, alphabet: orch_shell_unquoted_path_alphabet)
   }
 }
@@ -663,8 +672,8 @@ data orch_shell_test_operand_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcde
 
 fn orch_shell_test_operand_ok(operand: String) -> Bool {
   match operand {
-    Empty => false
-    Cons { head: _, tail: _ } =>
+    std.algebra.Empty => false
+    std.algebra.Cons { head: _, tail: _ } =>
       string_all_chars_in(s: operand, alphabet: orch_shell_test_operand_alphabet)
   }
 }
