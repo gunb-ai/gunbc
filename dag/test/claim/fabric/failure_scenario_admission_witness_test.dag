@@ -281,26 +281,31 @@ test fn w_unobserved_supply_refuses_by_its_own_arm() -> Bool {
     == ["unobserved:owned-node-1", "unobserved:owned-node-2"]
 }
 
+// A SCENARIO CITES THE CLAIM THAT OWNS IT, which is a declaration this module really carries, so the
+// citation resolves without minting an anchor row for it. review 67458 is right that the two anchor
+// rows an earlier revision added were read by nothing - but consuming their VALUES in r(...) would
+// have cited "fsa-scenario-two-nodes", a declaration that does not exist, which is the dangling
+// citation this PR exists to remove. Naming the claim is the third option: no unread row, no minted
+// name.
+//
 // A HOST HAS NO DECLARATION, SO LOSING ONE IS AN IDENTITY, NOT A MINTED CITATION. Losing both owned
 // nodes by name leaves the exercised cloud's 20, which is exactly the required 15 + 5; losing one of
 // them and the exercised cloud's whole provider does not.
-data fsa_scenario_two_nodes: NonEmptyStr = "fsa-scenario-two-nodes"
-data fsa_scenario_node_and_cloud_x: NonEmptyStr = "fsa-scenario-node-and-cloud-x"
 
 test fn w_named_offers_are_lost_without_minting_a_citation_for_them() -> Bool {
   survived(a: admit(
     offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(),
-    scenarios: [losing_offers(name: "fsa_scenario_two_nodes", keys: ["owned-node-1", "owned-node-2"])]))
+    scenarios: [losing_offers(name: "w_named_offers_are_lost_without_minting_a_citation_for_them", keys: ["owned-node-1", "owned-node-2"])]))
 }
 
 test fn w_a_named_offer_and_a_lost_domain_compose() -> Bool {
   let mixed = FailureScenario {
-    scenario: r(name: "fsa_scenario_node_and_cloud_x"),
+    scenario: r(name: "w_a_named_offer_and_a_lost_domain_compose"),
     lost: [r(name: "fsa_cloud_x_provider")],
     lost_offers: [FabricIdentity { principal: "gunbc", key: "owned-node-1" }],
   }
   let a = admit(offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(), scenarios: [mixed])
-  tags(a: a) == ["short:fsa_scenario_node_and_cloud_x"] && shortfall_numbers(a: a) == [10, 20]
+  tags(a: a) == ["short:w_a_named_offer_and_a_lost_domain_compose"] && shortfall_numbers(a: a) == [10, 20]
 }
 
 // A SCENARIO THAT NAMES AN OFFER NOBODY HOLDS APPLIES NO LOSS, so the survival it would report is
@@ -309,6 +314,6 @@ test fn w_a_named_offer_and_a_lost_domain_compose() -> Bool {
 test fn w_a_scenario_naming_an_offer_nobody_holds_refuses() -> Bool {
   tags(a: admit(
     offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(),
-    scenarios: [losing_offers(name: "fsa_scenario_two_nodes", keys: ["owned-node-1", "owned-node-3"])]))
+    scenarios: [losing_offers(name: "w_a_scenario_naming_an_offer_nobody_holds_refuses", keys: ["owned-node-1", "owned-node-3"])]))
     == ["unknown-offer:owned-node-3"]
 }
