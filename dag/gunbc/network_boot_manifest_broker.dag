@@ -4,7 +4,6 @@ import std.types { Bool, EpochMs, List, NonEmptyStr, String, to_string }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.decl_ref { DeclarationRef }
 import extdeps.toolchain.types { Architecture }
-import extdeps.provisioning.network_boot { ClientNetworkBootMode }
 import extdeps.provisioning.dhcp_client_arch {
   dhcp_processor_architecture_code,
   uefi_processor_architecture,
@@ -44,7 +43,6 @@ import gunbc.network_boot_delivery {
   ManifestVerificationWrongMessage,
   ManifestVerificationWrongTarget,
   ManifestVerificationWrongArchitecture,
-  ManifestVerificationWrongFirmwareClass,
   ManifestVerificationExpired,
   ManifestVerificationNotYetValid,
   ManifestVerificationReplay,
@@ -66,7 +64,6 @@ data boot_manifest_mac_suite: MacSuite = HmacSha256
 
 type SignedBootManifestClaims {
   identity: SignedBootManifestIdentity
-  boot_mode: ClientNetworkBootMode
 }
 
 // Digests, identities, and a MAC tag only — no host credential, cloud token, or install secret field exists to put on a public origin.
@@ -106,7 +103,6 @@ type BootstrapTrustRoot {
 type BootManifestExpectation {
   target_unit: UnitKey
   architecture: Architecture
-  boot_mode: ClientNetworkBootMode
   artifacts: ExpectedBootArtifactDigests
   trust: BootstrapTrustRoot
   observed_at: EpochMs
@@ -269,9 +265,7 @@ fn verify_authenticated_boot_manifest(
     match uefi_processor_architecture(arch: id.architecture) {
       Absent => refused(class: ManifestVerificationWrongArchitecture)
       Present { value: _ } =>
-        if claims.boot_mode != expectation.boot_mode {
-          refused(class: ManifestVerificationWrongFirmwareClass)
-        } else if expectation.observed_at < id.not_before {
+        if expectation.observed_at < id.not_before {
           refused(class: ManifestVerificationNotYetValid)
         } else if expectation.observed_at >= id.expiry {
           refused(class: ManifestVerificationExpired)

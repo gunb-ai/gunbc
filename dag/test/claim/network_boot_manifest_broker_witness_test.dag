@@ -5,7 +5,6 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64, Wasm32 }
-import extdeps.provisioning.network_boot { UefiHttpBoot }
 import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_implementation }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 import gunbc.network_boot_delivery {
@@ -92,7 +91,7 @@ fn identity_for(target: UnitKey, arch: Architecture, root_digest: ContentHash, n
 }
 
 fn claims_for(id: SignedBootManifestIdentity) -> SignedBootManifestClaims {
-  SignedBootManifestClaims { identity: id, boot_mode: UefiHttpBoot }
+  SignedBootManifestClaims { identity: id }
 }
 
 fn issued_ticket(id: SignedBootManifestIdentity) -> SignedBootManifestTicket {
@@ -120,7 +119,6 @@ fn expectation_at(observed_at: Int, spent: List<SpentAttemptNonce>) -> BootManif
   BootManifestExpectation {
     target_unit: unit,
     architecture: Aarch64,
-    boot_mode: UefiHttpBoot,
     artifacts: artifacts(),
     trust: BootstrapTrustRoot { signing_key_id: broker_key_id, standing: ProductionTrustedBootstrap },
     observed_at: observed_at,
