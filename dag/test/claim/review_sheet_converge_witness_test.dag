@@ -30,6 +30,11 @@ import gunbc.review_sheet_projection {
   classify_review_sheet,
   DerivedPayloadErasure,
   conflict_reason,
+  LocatedDerivedConflict,
+  ReviewCellConflictCause,
+  DerivedFieldOccupied,
+  ListingStandingForeignValue,
+  DerivedErasureMarkForeignValue,
   append_listing_row,
   columns_by_name,
   judgement_for_listing,
@@ -54,6 +59,7 @@ import gunbc.review_sheet_projection {
   a1_column,
   a1_cell,
   a1_cell_wire,
+  a1_cell_eq,
   a1_row_span_wire,
   a1_origin_cell,
   A1Column,
@@ -293,13 +299,15 @@ test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> B
   )
   match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetConflict { conflict: c } =>
-      string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
-        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=title")
-        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "cell=B2")
-    ReviewSheetUnreadable { reason: r } =>
-      string_contains(s: r as String, pattern: "listing=L1")
-        && string_contains(s: r as String, pattern: "column=title")
-        && string_contains(s: r as String, pattern: "cell=B2")
+      (c.listing_id as String) == "L1"
+        && (c.column as String) == "title"
+        && a1_cell_eq(a: c.a1, b: A1Cell { column: A1Column { letter: "B" as NonEmptyStr }, row: 2 })
+        && match c.cause {
+          DerivedFieldOccupied { observed: o, desired: d } => o == "hand-edited" && d == "alpha"
+          ListingStandingForeignValue { raw: _ } => false
+          DerivedErasureMarkForeignValue { raw: _ } => false
+        }
+    ReviewSheetUnreadable { reason: _ } => false
     ReviewSheetConverged => false
     ReviewSheetNeedsWrite { plan: _ } => false
   }
@@ -1011,6 +1019,41 @@ test fn duplicate_header_refuses_rather_than_last_wins() -> Bool {
   }
 }
 
+fn conflict_cause_tag(c: ReviewSheetClassification) -> String {
+  match c {
+    ReviewSheetConflict { conflict: k } => match k.cause {
+      DerivedFieldOccupied { observed: _, desired: _ } => "occupied"
+      ListingStandingForeignValue { raw: _ } => "standing"
+      DerivedErasureMarkForeignValue { raw: _ } => "mark"
+    }
+    ReviewSheetUnreadable { reason: _ } => "unreadable"
+    ReviewSheetConverged => "converged"
+    ReviewSheetNeedsWrite { plan: _ } => "needs-write"
+  }
+}
+
+test fn the_three_conflict_causes_are_distinguishable_from_each_other() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let occupied = classify_review_sheet(
+    observed: w_observed(headers: w_headers(), rows: [["L1", "hand-edited", w_standing_observed(), "", ""]]),
+    projection: projection,
+    erasures: [],
+  )
+  let standing = classify_review_sheet(
+    observed: w_observed(headers: w_headers(), rows: [["L1", "alpha", "Obsered", "", ""]]),
+    projection: projection,
+    erasures: [],
+  )
+  let mark = classify_review_sheet(
+    observed: w_observed(headers: w_headers(), rows: [["L1", "alpha", w_standing_observed(), "", "Aplied"]]),
+    projection: projection,
+    erasures: [],
+  )
+  conflict_cause_tag(c: occupied) == "occupied"
+    && conflict_cause_tag(c: standing) == "standing"
+    && conflict_cause_tag(c: mark) == "mark"
+}
+
 test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
@@ -1019,9 +1062,14 @@ test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
   )
   match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetConflict { conflict: c } =>
-      string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
-        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=standing")
-        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "cell=C2")
+      (c.listing_id as String) == "L1"
+        && (c.column as String) == "standing"
+        && a1_cell_eq(a: c.a1, b: A1Cell { column: A1Column { letter: "C" as NonEmptyStr }, row: 2 })
+        && match c.cause {
+          ListingStandingForeignValue { raw: r } => r == "Obsered"
+          DerivedFieldOccupied { observed: _, desired: _ } => false
+          DerivedErasureMarkForeignValue { raw: _ } => false
+        }
     ReviewSheetUnreadable { reason: _ } => false
     ReviewSheetConverged => false
     ReviewSheetNeedsWrite { plan: _ } => false
