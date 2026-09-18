@@ -5,7 +5,8 @@ import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization {
-  AttemptIdentity, AuthorizationRequest, AuthorizationGranted,
+  AttemptIdentity, AuthorizationRequest,
+  authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
   claim_authorization, claim_transition_claimed, claim_transition_completed, claim_transition_aborted,
   authorization_claim_outcome, AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided,
 }
@@ -197,6 +198,7 @@ fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
 
 fn mtcollins1_boot_after_gate(
   gate: MtCollins1BootGate,
+  request: AuthorizationRequest<MtCollins1BootSubject>,
   password_raw: String,
   password_file: String,
   attempt: String,
@@ -208,12 +210,14 @@ fn mtcollins1_boot_after_gate(
   }
   match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
     Absent =>
-      exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot take the exclusive claim before a controller write")
+      exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot decide whether the operator grant has expired before a controller write")
     Present { value: at } =>
       match gate {
         BootGateAdmitted { authorization: auth } =>
-          match auth {
-            AuthorizationGranted { grant: g, claim: _ } =>
+          match authorize(authorization: auth, request: request, observed_at: at) {
+            AuthorizationRefused { cause: c } =>
+              exit_failure(reason: concat("mtcollins1 boot: ", authorization_refusal_reason(cause: c)))
+            AuthorizationPermitted { grant: g } =>
               match mtcollins1_claim_boot_authorization(escalation_id: g.escalation_id, attempt: g.attempt, at: at) {
                 ClaimLost { holder: who } =>
                   exit_failure(reason: concat("mtcollins1 boot: operator grant already claimed: ", who as String))
@@ -231,7 +235,6 @@ fn mtcollins1_boot_after_gate(
                     at: at,
                   )
               }
-            _ => mtcollins1_boot_refusal(gate: gate)
           }
         _ => mtcollins1_boot_refusal(gate: gate)
       }
@@ -453,6 +456,7 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
           }
           let actuated = mtcollins1_boot_after_gate(
             gate: gate,
+            request: request,
             password_raw: pw_read.content,
             password_file: cred,
             attempt: run_id,

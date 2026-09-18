@@ -2,7 +2,7 @@ module test.claim.machine_intake.mtcollins1_boot_authorization_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
-import std.scoped_authorization { AttemptIdentity }
+import std.scoped_authorization { AttemptIdentity, authorize, AuthorizationRefused, AuthorizationExpired }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   mtcollins1_boot_authorization_request, mtcollins1_boot_subject, mtcollins1_boot_required_scopes,
   mtcollins1_boot_controller_may_be_written, mtcollins1_boot_gate_from_poll,
@@ -84,4 +84,27 @@ test fn poll_approved_http_fields_admit_and_a_foreign_revision_does_not() -> Boo
       BootGateIntentMismatch { requested_revision: _, decided_revision: d } => d as String == "other-intent"
       _ => false
     }
+}
+
+test fn an_execute_by_that_lapses_after_poll_is_expired_on_the_actuation_clock() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+  )
+  let poll_at = "2026-09-16T20:30:00Z"
+  let until = "2026-09-16T20:45:00Z"
+  let matching = PollApproved {
+    revision: request_revision_of(request: r),
+    decided_by: "op" as NonEmptyStr,
+    decided_at: poll_at,
+    execute_by: until,
+  }
+  match mtcollins1_boot_gate_from_poll(poll: matching, request: r, observed_at: poll_at) {
+    BootGateAdmitted { authorization: auth } =>
+      match authorize(authorization: auth, request: r, observed_at: "2026-09-16T20:45:01Z") {
+        AuthorizationRefused { cause: AuthorizationExpired { expires_at: _, observed_at: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
 }
