@@ -210,8 +210,28 @@ test fn declaration_graft_record_type_only_reason_is_ambiguous() -> Bool {
   declaration_graft_assemble_reason(src: src_g_type_only) == "resolve_reason_ambiguous_symbol"
 }
 
-test fn declaration_graft_record_type_only_reason_is_malformed_imported() -> Bool {
-  declaration_graft_assemble_reason(src: src_g_type_only) == "resolve_reason_malformed_imported_root"
+test fn declaration_graft_record_reason_prefix_resolve_reason() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "resolve_reason")
+}
+
+test fn declaration_graft_record_reason_prefix_resolve_duplicate() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "resolve_duplicate")
+}
+
+test fn declaration_graft_record_reason_prefix_resolve_module() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "resolve_module")
+}
+
+test fn declaration_graft_record_reason_prefix_resolve_ambiguous() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "resolve_ambiguous")
+}
+
+test fn declaration_graft_record_reason_prefix_resolve_import() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "resolve_import")
+}
+
+test fn declaration_graft_record_reason_is_duplicate_module() -> Bool {
+  declaration_graft_assemble_reason(src: src_g_type_only) == "resolve_duplicate_module_name"
 }
 
 test fn declaration_graft_record_type_only_box_and_n_are_named() -> Bool {
