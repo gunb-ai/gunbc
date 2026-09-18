@@ -46,7 +46,7 @@ import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privi
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
-  ServiceSlice, slice_memory_max, slice_memory_high,
+  ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants,
   SystemdServiceDirective, ServiceType, ExecStart, Restart,
@@ -447,6 +447,19 @@ data live_deploy_slice_memory_max: ByteSize = byte_size(17179869184)
 
 data live_deploy_slice_memory_high: ByteSize = byte_size(16106127360)
 
+// THE SLICE FORBIDS SWAP, because the deployment is a latency-bound operator-facing service and a
+// swapped page is a stall on the request path, not a memory saving. The host it shares (srv1) also
+// runs the required floor's runners, whose working sets outrank an idle interpreter heap under
+// global reclaim; the observed state before this row was the serve process at VmSwap 9.7 GB against
+// VmRSS 0.4 GB, and every request after an idle gap paying the swap-in -- the 5-10 s /healthz and
+// /approvals stalls that refused a live deploy and two approval-gated boot transactions (GH runs
+// 35377916920 and 35380154698, both fail-closed on a poll that returned no bytes in 5 s). The
+// instrument is /proc/<serve pid>/status VmSwap beside the unit's journal gap; re-derive there, not
+// from this sentence. Zero rather than a bound: any admitted swap is admitted latency, and the
+// memory bound above already refuses growth past the envelope with a typed cgroup limit instead of
+// a silent page-out.
+data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
+
 fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   SliceUnitFile {
     unit: [
@@ -455,6 +468,7 @@ fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
     slice: [
       slice_memory_max(bytes: live_deploy_slice_memory_max),
       slice_memory_high(bytes: live_deploy_slice_memory_high),
+      slice_memory_swap_max(bytes: live_deploy_slice_memory_swap_max),
     ],
     install: NotInstallable,
   }
