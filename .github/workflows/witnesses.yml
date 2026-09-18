@@ -78,6 +78,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
+          rustflags: -D warnings
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
@@ -246,6 +247,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
+          rustflags: -D warnings
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
@@ -466,6 +468,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
+          rustflags: -D warnings
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
@@ -531,6 +534,7 @@ jobs:
           fi
           if [ -e ".gitignore" ]; then git add ".gitignore"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitignore"; fi
           if [ -e ".gitattributes" ]; then git add ".gitattributes"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitattributes"; fi
+          if [ -e ".cargo/config.toml" ]; then git add ".cargo/config.toml"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .cargo/config.toml"; fi
           if [ -e "ROADMAP.md" ]; then git add "ROADMAP.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: ROADMAP.md"; fi
           if [ -e "DESIGN.md" ]; then git add "DESIGN.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: DESIGN.md"; fi
           if [ -e "docs/design-rung-drops.md" ]; then git add "docs/design-rung-drops.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/design-rung-drops.md"; fi

@@ -385,7 +385,24 @@ type BoundObservationProducer {
   producer: DeclarationRef
 }
 
-type ObservationProducer
+// THIS IS A BINDING STANDING, NOT A PRODUCER, and the name matters beyond taste. It was
+// `ObservationProducer` until 2026-09-18, which collided with std.observation's type of the same
+// name -- a different concept entirely (CoordinatorProducer | OrdinaryWorkerProducer |
+// ScopedWorkerProducer, who produces an observation). The two are a DESIGN section 3 meaning fork:
+// one name, two materially different meanings.
+//
+// THE COLLISION WAS NOT INERT. operator_packet_or_producer_binding's `observation` parameter bound
+// the WRONG declaration, so a value constructed as ObservationProducerBound was read inside the
+// function as ObservationProducerAbsent, and the fold returned BindObservationProducer for a
+// producer that was bound. Three claims in test.claim.github_app_registry_witness therefore asserted
+// the OPPOSITE of what they read as, on main, with nothing refusing -- including the one that is the
+// executing evidence for the per-App binding annotation below. Rostered at
+// gunbc.recurring_failure_mode a_bare_type_name_binds_the_wrong_declaration.
+//
+// Absent and Bound are a STANDING over a required observation; the producer itself is what
+// BoundObservationProducer carries. Naming the standing after the thing it stands over is what made
+// the collision available in the first place.
+type ObservationProducerBinding
   = ObservationProducerAbsent { required_observation: RequiredObservation }
   | ObservationProducerBound { bound: BoundObservationProducer }
 
@@ -405,9 +422,9 @@ type GitHubAppNextAction
 // - including gunbai_bot, which no producer watches. That is a rung claim made on a subject
 // whose evidence does not exist (DESIGN §4b(1)), so the binding travels with the App.
 type AppObservationProducers {
-  app_registration: ObservationProducer
-  installation: ObservationProducer
-  signer_fingerprint: ObservationProducer
+  app_registration: ObservationProducerBinding
+  installation: ObservationProducerBinding
+  signer_fingerprint: ObservationProducerBinding
 }
 
 // The all-absent set: the honest standing for any App this repository does not yet observe.
@@ -425,7 +442,7 @@ fn operator_packet_or_producer_binding(
   action: GitHubAppOperatorAction,
   locator: Uri,
   postcondition: ControlPlanePostcondition,
-  observation: ObservationProducer
+  observation: ObservationProducerBinding
 ) -> GitHubAppNextAction {
   match observation {
     ObservationProducerAbsent { required_observation } =>
