@@ -46,7 +46,6 @@ import gunbc.live_deploy.fleet_request {
   LiveDeployFleetRequestUnknownInstance,
   LiveDeployFleetRequestRosterRefused,
   LiveDeployFleetRequestBasisRefused,
-  live_deploy_host_only_request_refusal_reason,
 }
 import gunbc.fleet_converge_plan {
   fleet_converge_scope_of_wire,
@@ -258,11 +257,6 @@ fn admit_live_deploy_request_for(row: DesiredDeployment) -> LiveDeployFleetReque
 
 fn admit_production_live_deploy_request() -> LiveDeployFleetRequestAdmission {
   admit_live_deploy_request_for(row: srv1_production_desired_deployment())
-}
-
-test fn a_host_only_live_deploy_request_has_no_spelling() -> Bool {
-  string_contains(s: live_deploy_host_only_request_refusal_reason(), pattern: "hostname")
-    && string_contains(s: live_deploy_host_only_request_refusal_reason(), pattern: "selected_identity")
 }
 
 test fn admit_binds_the_request_to_the_roster_selected_identity() -> Bool {

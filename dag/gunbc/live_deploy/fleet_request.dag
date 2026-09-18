@@ -323,10 +323,6 @@ fn live_deploy_admission_refusal_text(cause: LiveDeployAdmissionRefusal) -> Stri
   }
 }
 
-fn live_deploy_host_only_request_refusal_reason() -> String {
-  "a host-only LiveDeploy FleetConvergeRequest has no spelling; the arm is LiveDeployConverge bound to DesiredDeployment.selected_identity, not a hostname"
-}
-
 fn observed_member_baseline_row(o: ObservedMember) -> String {
   match o {
     MemberObserved { identity: i } =>
