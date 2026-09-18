@@ -4,7 +4,6 @@ import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha }
 import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512 }
 import std.content_hash {
   Fnv1a64Structural,
-  ContentHash,
   as_content_hash_structural,
   content_hash_eq_structural,
   serialize_content_hash,
