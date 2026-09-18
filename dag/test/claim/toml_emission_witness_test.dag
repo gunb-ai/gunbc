@@ -6,11 +6,12 @@ import extdeps.languages.toml.types {
   TomlString, TomlInteger, TomlBool, TomlArray, TomlInlineTable,
   toml_entry, toml_entry_noted, toml_entry_trailing, toml_strings
 }
-import extdeps.languages.toml.emit { serialize_toml, toml_render_value, toml_escape_basic_string }
+import extdeps.languages.toml.emit {
+  serialize_toml, toml_render_value, toml_escape_basic_string, toml_render_key, toml_render_comment
+}
 import extdeps.cargo_config {
-  CargoConfigEnvVar,
-  cargo_config_rustflags_value, cargo_config_jobs_value, cargo_config_env_value,
-  cargo_config_build_table, cargo_config_env_table, cargo_config_rustflags_key
+  CargoConfigEnvVar, CargoAnnotatedEnvVar, CargoBuildConfig, CargoBuildAnnotations,
+  cargo_config_env_value, cargo_config_document, cargo_config_rustflags_key
 }
 import gunbc.repo_self_warning_policy { repo_self_warning_denial }
 import gunbc.cargo_config_emit { expected_cargo_config_toml }
@@ -83,28 +84,91 @@ test fn a_document_without_a_preamble_opens_on_its_first_table() -> Bool {
   }) == "[build]\njobs = 1\n"
 }
 
-// CARGO'S SHAPES, asserted at cargo's boundary rather than through the file: the rustflags key is a
-// LIST of rustc arguments and an `[env]` row is an inline table carrying value and force. These are
-// the facts a consumer would otherwise re-coin as text.
-test fn cargo_config_renders_cargos_own_value_shapes() -> Bool {
-  (toml_render_value(v: cargo_config_jobs_value(count: 4)) == "4")
-    && (toml_render_value(v: cargo_config_rustflags_value(flags: ["-D", "warnings"]))
-        == "[\"-D\", \"warnings\"]")
-    && (toml_render_value(v: cargo_config_env_value(var: CargoConfigEnvVar {
-         name: "RUST_MIN_STACK", value: "16777216", force: false
-       })) == "{ value = \"16777216\", force = false }")
-    && (cargo_config_build_table == "build")
-    && (cargo_config_env_table == "env")
-    && (cargo_config_rustflags_key == "rustflags")
+// CARGO'S SCHEMA IS ASSERTED AS A RELATION, not as a key and a value that happen to be correct
+// separately. The discriminating content is WHICH VALUE STANDS UNDER WHICH KEY: an implementation
+// that swapped them would satisfy any claim that `"jobs"` is the jobs key and that an integer
+// renders as an integer. The mis-paired document is not merely absent from this claim -- it has no
+// constructor, because `CargoBuildConfig` takes the job count as an `Int` and the flags as a
+// `List<String>` and the caller never names a key at all.
+test fn cargo_binds_each_key_to_its_own_value_shape() -> Bool {
+  serialize_toml(doc: cargo_config_document(
+    preamble_comments: [],
+    build: CargoBuildConfig { jobs: Present { value: 4 }, rustflags: ["-D", "warnings"] },
+    build_annotations: CargoBuildAnnotations { jobs_comment: none, rustflags_comments: [] },
+    env: []
+  )) == "[build]\njobs = 4\nrustflags = [\"-D\", \"warnings\"]\n"
+}
+
+// An absent job count is cargo's own default and must not be written as a fabricated zero, and an
+// empty flag list must not emit an empty array that overrides an inherited value with nothing.
+test fn absent_build_facts_omit_their_keys() -> Bool {
+  serialize_toml(doc: cargo_config_document(
+    preamble_comments: [],
+    build: CargoBuildConfig { jobs: none, rustflags: [] },
+    build_annotations: CargoBuildAnnotations { jobs_comment: none, rustflags_comments: [] },
+    env: []
+  )) == "[build]\n"
+}
+
+// An env row is an inline table carrying value and force, and it lands in `[env]` -- a table a
+// caller cannot choose, because `cargo_config_document` takes env rows as their own argument.
+test fn env_rows_render_as_cargos_inline_table_in_the_env_section() -> Bool {
+  (toml_render_value(v: cargo_config_env_value(var: CargoConfigEnvVar {
+     name: "RUST_MIN_STACK", value: "16777216", force: false
+   })) == "{ value = \"16777216\", force = false }")
+    && (serialize_toml(doc: cargo_config_document(
+         preamble_comments: [],
+         build: CargoBuildConfig { jobs: none, rustflags: [] },
+         build_annotations: CargoBuildAnnotations { jobs_comment: none, rustflags_comments: [] },
+         env: [CargoAnnotatedEnvVar {
+           var: CargoConfigEnvVar { name: "K", value: "v", force: true },
+           leading_comments: [],
+           trailing_comment: none
+         }]
+       )) == "[build]\n\n[env]\nK = { value = \"v\", force = true }\n")
 }
 
 // THE RUSTFLAGS VALUE FOLLOWS ITS INPUT rather than being a constant that happens to agree with the
 // policy row today. A renderer that ignored its argument and returned the repository's own denial
 // would pass every claim above; this is the one it fails.
 test fn the_rustflags_value_follows_the_flags_it_is_given() -> Bool {
-  (toml_render_value(v: cargo_config_rustflags_value(flags: ["-A", "dead_code"]))
-     == "[\"-A\", \"dead_code\"]")
-    && (toml_render_value(v: cargo_config_rustflags_value(flags: [])) == "[]")
+  serialize_toml(doc: cargo_config_document(
+    preamble_comments: [],
+    build: CargoBuildConfig { jobs: none, rustflags: ["-A", "dead_code"] },
+    build_annotations: CargoBuildAnnotations { jobs_comment: none, rustflags_comments: [] },
+    env: []
+  )) == "[build]\nrustflags = [\"-A\", \"dead_code\"]\n"
+}
+
+// THE ADMITTED INPUT DOMAIN, closed rather than assumed. The model accepts any `String` for a
+// value, a key, a table name or a comment line, so each of these is a document the type system
+// permits and a serializer that rendered it verbatim would emit invalid or DIFFERENT TOML.
+test fn control_bearing_strings_stay_inside_their_basic_string() -> Bool {
+  (toml_render_value(v: TomlString { value: "a\nb" }) == "\"a\\nb\"")
+    && (toml_render_value(v: TomlString { value: "a\rb" }) == "\"a\\rb\"")
+    && (toml_render_value(v: TomlString { value: "a\tb" }) == "\"a\\tb\"")
+    && (toml_render_value(v: TomlString { value: "a\u{1}b" }) == "\"a\\u0001b\"")
+    && (toml_render_value(v: TomlString { value: "a\u{1f}b" }) == "\"a\\u001Fb\"")
+}
+
+// A key that is not a BARE key must be quoted, and `a.b` is the case that matters most: written
+// bare it is a dotted path naming a nested table, so quoting is what preserves the caller's
+// meaning rather than a cosmetic choice.
+test fn non_bare_keys_are_quoted_rather_than_written_as_paths() -> Bool {
+  (toml_render_key(key: "jobs") == "jobs")
+    && (toml_render_key(key: "RUST_MIN_STACK") == "RUST_MIN_STACK")
+    && (toml_render_key(key: "a-b") == "a-b")
+    && (toml_render_key(key: "a b") == "\"a b\"")
+    && (toml_render_key(key: "a.b") == "\"a.b\"")
+    && (toml_render_key(key: "") == "\"\"")
+    && (toml_render_key(key: "a\"b") == "\"a\\\"b\"")
+}
+
+// A comment carrying a newline would otherwise be prefixed ONCE, leaving its second line live TOML.
+test fn a_multi_line_comment_cannot_escape_into_live_toml() -> Bool {
+  (toml_render_comment(text: "one\ntwo") == "# one\n# two\n")
+    && (toml_render_comment(text: "one\r\ntwo") == "# one\n# two\n")
+    && (toml_render_comment(text: "plain") == "# plain\n")
 }
 
 // INHABITANCE: the real projection, run for real, carrying the real policy row. The claims above
@@ -116,7 +180,7 @@ test fn the_repository_config_is_rendered_by_this_serializer() -> Bool {
   let rendered = expected_cargo_config_toml()
   let denial_line = concat(
     concat(cargo_config_rustflags_key, " = "),
-    toml_render_value(v: cargo_config_rustflags_value(flags: repo_self_warning_denial))
+    toml_render_value(v: TomlArray { elements: repo_self_warning_denial |> map(f => TomlString { value: f }) })
   )
   string_contains(s: rendered, pattern: denial_line)
     && string_contains(s: rendered, pattern: "[build]\n")

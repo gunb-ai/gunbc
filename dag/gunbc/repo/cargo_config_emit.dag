@@ -2,16 +2,11 @@ module gunbc.cargo_config_emit
 
 import std.types { Bool, String, List, Int }
 import gunbc.repo_self_warning_policy { repo_self_warning_denial }
-import extdeps.languages.toml.types {
-  TomlDocument, TomlEntry,
-  toml_entry_noted, toml_entry_trailing
-}
+import extdeps.languages.toml.types { TomlDocument }
 import extdeps.languages.toml.emit { serialize_toml }
 import extdeps.cargo_config {
-  CargoConfigEnvVar,
-  cargo_config_jobs_key, cargo_config_rustflags_key,
-  cargo_config_jobs_value, cargo_config_rustflags_value,
-  cargo_config_env_entry, cargo_config_build_section, cargo_config_env_section
+  CargoConfigEnvVar, CargoAnnotatedEnvVar, CargoBuildConfig, CargoBuildAnnotations,
+  cargo_config_document
 }
 
 // THE COMMITTED PROJECTION OF THIS REPOSITORY'S OWN CARGO CONFIGURATION, and the only channel
@@ -20,15 +15,17 @@ import extdeps.cargo_config {
 // alone; the workflows' toolchain step sets RUSTFLAGS for a runner job. Neither is in the path of
 // a contributor typing `cargo test` locally.
 //
-// WHAT THIS MODULE MAY AND MAY NOT CONTAIN. It supplies POLICY -- which lint arguments, how many
-// jobs, which environment variables -- and the authored rationale a reader of the file needs. It
-// spells no TOML: the punctuation lives in `extdeps.languages.toml.emit`, and the table and key
-// names are cargo's, declared in `extdeps.cargo_config`. An earlier revision of this module built
-// the file by concatenating TOML text, which is the medium-as-string defect
-// `gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall` already names for the
-// seed-unavailable transport's manifest -- a second instance of a class this repository had
-// filed, authored while removing a different fork. The denial was derived and the MEDIUM was
-// hand-written, which is the same §3 defect one layer down.
+// WHAT THIS MODULE CONTAINS AND WHAT IT CANNOT. It supplies POLICY -- which lint arguments, how
+// many jobs, which environment variables -- and the authored rationale a reader of the file needs.
+// It spells no TOML, no cargo key, and no key-to-value pairing: the punctuation lives in
+// `extdeps.languages.toml.emit`, and the schema -- which key takes which value, which table a row
+// belongs to -- lives in `extdeps.cargo_config`, which hands back whole sections. Two earlier
+// revisions of this module got that boundary wrong in two different ways, and both are worth
+// naming because each looked finished. The first concatenated TOML text, which is the
+// medium-as-string defect `gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall`
+// already files for the seed-unavailable transport's manifest. The second imported cargo's KEY
+// NAMES and paired them with values here, which left `jobs` under the rustflags array writable and
+// well-typed -- cargo owning the names while this module owned the schema.
 //
 // THE DENIAL ITSELF IS NOT SPELLED HERE EITHER. It is `gunbc.repo_self_warning_policy`
 // `repo_self_warning_denial`, the row the clippy command and both workflow toolchain steps read,
@@ -56,67 +53,41 @@ data cargo_config_env_note: List<String> = [
   "Committed here so local + CI runners stay aligned (CI inherits this config; ci.yml does not re-set it)."
 ]
 
-// CARRIED, NOT INVENTED. These rows and the job count predate this module and are transcribed from
-// the hand-authored file this projection replaces, because emitting a file means emitting ALL of
-// it -- a projection that dropped them would delete live policy on its first regeneration. Neither
-// has a modeled authority to derive from today, which is an honest gap and not a reason to leave
-// the denial forked: the value this module exists to derive is the one that had two homes.
-//
-// The annotation travels WITH its row rather than being attached by matching on the variable's
-// name at render time. A name comparison would be a second, positional way to say which row a
-// note belongs to -- it goes stale silently the moment a row is renamed or reordered, and it is
-// exactly the kind of string dispatch this whole change exists to remove.
-type CargoConfigAnnotatedEnvVar {
-  var: CargoConfigEnvVar
-  leading_comments: List<String>
-  trailing_comment: String?
-}
-
-data cargo_config_env_vars: List<CargoConfigAnnotatedEnvVar> = [
-  CargoConfigAnnotatedEnvVar {
+// CARRIED, NOT INVENTED. These rows, the job count and their notes predate this module and are
+// transcribed from the hand-authored file this projection replaces, because emitting a file means
+// emitting ALL of it -- a projection that dropped them would delete live policy on its first
+// regeneration. None has a modeled authority to derive from today, which is an honest gap and not
+// a reason to leave the denial forked: the value this module exists to derive is the one that had
+// two homes.
+data cargo_config_env_vars: List<CargoAnnotatedEnvVar> = [
+  CargoAnnotatedEnvVar {
     var: CargoConfigEnvVar { name: "RUST_MIN_STACK", value: "16777216", force: false },
     leading_comments: cargo_config_env_note,
     trailing_comment: none
   },
-  CargoConfigAnnotatedEnvVar {
+  CargoAnnotatedEnvVar {
     var: CargoConfigEnvVar { name: "RUST_TEST_THREADS", value: "1", force: false },
     leading_comments: [],
     trailing_comment: Present { value: "max parallel test threads per binary" }
   }
 ]
 
-fn cargo_config_env_entries(vars: List<CargoConfigAnnotatedEnvVar>) -> List<TomlEntry> {
-  vars |> map(v => TomlEntry {
-    leading_comments: v.leading_comments,
-    pair: cargo_config_env_entry(var: v.var).pair,
-    trailing_comment: v.trailing_comment
-  })
+fn cargo_config_build() -> CargoBuildConfig {
+  CargoBuildConfig { jobs: Present { value: cargo_config_build_jobs }, rustflags: repo_self_warning_denial }
 }
 
-fn cargo_config_document() -> TomlDocument {
-  TomlDocument {
-    preamble_comments: cargo_config_memory_safety_note,
-    tables: [
-      cargo_config_build_section(
-        leading_comments: [],
-        entries: [
-          toml_entry_trailing(
-            key: cargo_config_jobs_key,
-            value: cargo_config_jobs_value(count: cargo_config_build_jobs),
-            trailing_comment: cargo_config_jobs_note
-          ),
-          toml_entry_noted(
-            key: cargo_config_rustflags_key,
-            value: cargo_config_rustflags_value(flags: repo_self_warning_denial),
-            leading_comments: cargo_config_rustflags_note
-          )
-        ]
-      ),
-      cargo_config_env_section(entries: cargo_config_env_entries(vars: cargo_config_env_vars))
-    ]
+fn cargo_config_build_annotations() -> CargoBuildAnnotations {
+  CargoBuildAnnotations {
+    jobs_comment: Present { value: cargo_config_jobs_note },
+    rustflags_comments: cargo_config_rustflags_note
   }
 }
 
 fn expected_cargo_config_toml() -> String {
-  serialize_toml(doc: cargo_config_document())
+  serialize_toml(doc: cargo_config_document(
+    preamble_comments: cargo_config_memory_safety_note,
+    build: cargo_config_build(),
+    build_annotations: cargo_config_build_annotations(),
+    env: cargo_config_env_vars
+  ))
 }
