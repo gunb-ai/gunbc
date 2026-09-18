@@ -1,0 +1,48 @@
+module v2.test.parse.weather_g0_prefix_parse_probe
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SH-1: weather.dag stopped at leftover `fn` because G0 had no float literal. v1 scan_number
+// admits `digits '.' digits` as ShLitFloat; v2 lexed only DigitChar+ as int, so `1.8` was
+// int+dot+int, postfix `.` demanded a binding name, the fn_decl failed, and the module repeat
+// left `fn` as the first remaining token. Coproduct variants with field blocks were not the gap:
+// those fixtures parsed before this row existed. The treatment is the smallest weather body
+// that contains a float; the standing red is a trailing-dot form v1 also refuses.
+
+data probe_cached_lm: LanguageModel = dag_language_model()
+
+fn parses(src: String) -> Bool {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data float_literal_source: String = "module m\nfn f() -> Float { 1.8 }\n"
+data int_literal_control_source: String = "module m\nfn f() -> Int { 1 }\n"
+data weather_first_fn_source: String = "module m\ntype Temperature { celsius: Float }\nfn to_fahrenheit(temp: Temperature) -> Float {\n  temp.celsius * 1.8 + 32.0\n}\n"
+data trailing_dot_red_source: String = "module m\nfn f() -> Float { 1. }\n"
+
+test fn float_literal_alone_parses_holds() -> Bool {
+  parses(src: float_literal_source)
+}
+
+test fn int_literal_control_parses_holds() -> Bool {
+  parses(src: int_literal_control_source)
+}
+
+test fn weather_first_fn_parses_holds() -> Bool {
+  parses(src: weather_first_fn_source)
+}
+
+test fn trailing_dot_float_still_refuses_holds() -> Bool {
+  match parses(src: trailing_dot_red_source) {
+    true => false
+    false => true
+  }
+}
