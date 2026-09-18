@@ -37,8 +37,7 @@ import gunbc.network_boot_delivery {
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
   SignedBootManifestVerified,
-  SignedBootManifestIdentified,
-  SignedBootManifestAbsent,
+  SignedBootManifestVerificationRefused,
   MeasuredNetworkBootFact,
   BootstrapTrustStanding,
   ProductionTrustedBootstrap,
@@ -356,6 +355,10 @@ fn signed_boot_manifest_standing(
         observation: observation,
         observed_at: observed_at,
       }
-    BootManifestRefused { cause: _ } => SignedBootManifestAbsent
+    BootManifestRefused { cause: _ } =>
+      SignedBootManifestVerificationRefused {
+        observation: observation,
+        observed_at: observed_at,
+      }
   }
 }
