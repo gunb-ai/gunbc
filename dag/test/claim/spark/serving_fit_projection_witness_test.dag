@@ -25,7 +25,7 @@ import gunbc.spark.serving_fit_projection {
   StaticCompatibilityQuestion, ArchitectureRegisteredInRuntime, QuantizationMethodShippedByRuntime, Fp4WeightsSupportedOnDevice,
   StaticCompatibilityAnswer, Established, MeasuredNegative, NotEstablished,
   answer_question, answer_is_established, static_question_label,
-  QuantizationPathReport, glm53_derived_image_modelopt_report,
+  RuntimeImageReport, glm53_group_b_image_report,
   ExpertOffloadProjection, OffloadRefusedUnifiedMemory, OffloadNotProjected, radixark_nvfp4_expert_offload,
 }
 
@@ -170,9 +170,10 @@ test fn w_tp4_refuses_on_fit_before_anything_else() -> Bool {
   }
 }
 
-// TP8 REFUSES TODAY, AND FOR THE RIGHT REASON: the quantization-path observation was reported under a
-// tag the arm does not pin, and no FP4-on-device probe row exists for the arm's digest. Neither is a
-// measured negative; both are named absences.
+// TP8 REFUSES TODAY, AND FOR THE RIGHT REASON: the image that was probed (the one Group B serves) is
+// not the image the modelled runtime row pins, and no FP4-on-device probe row exists for either. Neither
+// is a measured negative; both are named absences, and the first one is a finding -- the serving image
+// has no runtime row.
 test fn w_tp8_refuses_until_the_quantization_path_is_joined_to_the_pin() -> Bool {
   let p = radixark_nvfp4_tp8()
   match p.verdict {
@@ -183,7 +184,7 @@ test fn w_tp8_refuses_until_the_quantization_path_is_joined_to_the_pin() -> Bool
         && match answer_for(p: p, q: QuantizationMethodShippedByRuntime) {
           Absent => false
           Present { value: a } => match a {
-            NotEstablished { question: _, missing: m } => string_contains(s: m as String, pattern: "docker image inspect")
+            NotEstablished { question: _, missing: m } => string_contains(s: m as String, pattern: "they are different images")
             Established { question: _, evidence: _ } => false
             MeasuredNegative { question: _, evidence: _ } => false
           }
@@ -191,18 +192,22 @@ test fn w_tp8_refuses_until_the_quantization_path_is_joined_to_the_pin() -> Bool
   }
 }
 
-// THE DISCRIMINATING CONTROL: a report keyed by the arm's own pin flips the quantization answer to
-// Established. This is what a `docker image inspect` that returns the pinned content id would let the
-// report become, and it is the RED for a join that ignored the reference.
+// THE DISCRIMINATING CONTROL: a report keyed by the modelled runtime's own pin flips the quantization
+// answer to Established, and the FP4-on-device answer stays unestablished -- module presence never
+// stands in for the kernel probe. This is the RED for a join that ignored the reference, and for a
+// fold that let the weaker reading answer the stronger question.
 test fn w_a_report_keyed_by_the_pin_establishes_the_quantization_path() -> Bool {
   match serving_runtime_row(r: GunbcGlm53NopeDerivedGb10) {
     Absent => false
     Present { value: rrow } => {
-      let joined = QuantizationPathReport {
+      let joined = RuntimeImageReport {
         image_reference: runtime_artifact_wire(a: rrow.artifact),
-        quant_method: glm53_derived_image_modelopt_report.quant_method,
-        present: true,
-        reported_by: "fixture: the live report re-keyed by the arm's pin" as NonEmptyStr,
+        reached_through_tag: glm53_group_b_image_report.reached_through_tag,
+        vllm_version: glm53_group_b_image_report.vllm_version,
+        architecture_registered: glm53_group_b_image_report.architecture_registered,
+        quant_method_module_present: glm53_group_b_image_report.quant_method_module_present,
+        instrument: glm53_group_b_image_report.instrument,
+        reported_by: "fixture: the live report re-keyed by the modelled runtime's pin" as NonEmptyStr,
       }
       let p = project_deployment(
         checkpoint: Glm53RadixArkNvfp4Modelopt,

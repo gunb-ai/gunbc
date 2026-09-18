@@ -214,62 +214,77 @@ fn architecture_answer(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> St
   }
 }
 
-// ── THE QUANTIZATION-PATH OBSERVATION, TYPED AS WHAT IT IS ───────────────────────────────────
+// ── THE RUNTIME-IMAGE REPORT, TYPED AS WHAT IT IS ─────────────────────────────────────────────
 //
-// THE GLM PERFORMANCE LANE REPORTED, ON 2026-09-18, THAT THE IMAGE IN USE SHIPS THE modelopt
-// QUANTIZATION PATH, and named that image by a TAG: gunbc-vllm-glm53-gb10:derived-c99be081f219d123.
-// The serving-arm row for the live runtime pins its image by CONTENT ID, and the arm's own reading
-// discipline (gunbc.spark.runtime_architecture_registry_reading reading_applies_to) is exact string
-// equality with no near-match arm: two references that resolve to one image on one host are exactly
-// the inference the corpus declines to accept without reading it through the digest.
+// THE GLM PERFORMANCE LANE PROBED THE IMAGE GROUP B SERVES, and what it established is carried
+// here at exactly its strength. Instrument (run on the head, 2026-09-18):
+//   docker run --rm --entrypoint python3 gunbc-vllm-glm53-gb10:derived-c99be081f219d123 -c "<script>"
+// printing vllm.__version__, globbing vllm/model_executor/layers/quantization/*.py for modelopt.py,
+// and testing ModelRegistry.get_supported_archs() for GlmMoeDsaForCausalLM. That establishes the
+// ARCHITECTURE IS REGISTERED and a modelopt quantization MODULE IS PRESENT in the package. It does
+// NOT establish that the NVFP4 W4A4 path has working kernels for this architecture on SM121, and no
+// checkpoint was loaded -- that stronger claim is the Fp4WeightSupportedHere probe below, and this
+// report never stands in for it.
 //
-// SO THE OBSERVATION IS CARRIED UNDER THE REFERENCE IT WAS REPORTED AGAINST, with its provenance,
-// and the fold below JOINS it to the arm's pin rather than assuming the join. When the tag and the
-// pin name different strings the answer is NotEstablished with the one command that settles it. That
-// is DESIGN section 4d's first arm: what was reported is carried as a report, not promoted to a
-// probe of the arm's digest by a reader who did not take it.
+// THE FIRST REVISION OF THIS ROW WAS KEYED BY THE TAG, AND THE EXACT-MATCH JOIN REFUSED IT -- WHICH
+// CAUGHT SOMETHING REAL. `docker image inspect` on the head answered Id
+// sha256:c7d63d15... for the tag, and the running container's .Image is that id. The serving-arm
+// row this projection asks about (GunbcGlm53NopeDerivedGb10) pins sha256:41366caf..., which
+// `docker images` shows is a DIFFERENT repository, gunbc-vllm-glm53-nope-gb10, built five days
+// earlier. So the modelled runtime is the NoPE-derived image it was built as on 2026-09-13, and the
+// image Group B serves today has no runtime row at all. A lenient join would have attached this
+// report to the NoPE image and called the serving image covered; the refusal below says instead
+// that the serving image is unmodelled, which is the fact a deployment decision needs.
 //
+// THE REPORT IS KEYED BY THE CONTENT ID THAT WAS PROBED, never by the tag it was reached through.
 // THE PROBE THAT WOULD REPLACE THIS is a RuntimeCapabilityProbeRow in
-// gunbc.spark.serving_runtime_capability_probe, keyed by the arm's content id, with a capability
-// naming the modelopt config class; this report dissolves into that row when one is taken.
-type QuantizationPathReport {
+// gunbc.spark.serving_runtime_capability_probe keyed by this content id, once that image has a
+// runtime row of its own; this report dissolves into that row when one is taken.
+type RuntimeImageReport {
   image_reference: NonEmptyStr
-  quant_method: NonEmptyStr
-  present: Bool
+  reached_through_tag: NonEmptyStr
+  vllm_version: NonEmptyStr
+  architecture_registered: NonEmptyStr
+  quant_method_module_present: NonEmptyStr
+  instrument: NonEmptyStr
   reported_by: NonEmptyStr
 }
 
-data glm53_derived_image_modelopt_report: QuantizationPathReport = QuantizationPathReport {
-  image_reference: "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr,
-  quant_method: glm_5_3_nvfp4_quantization.quant_method,
-  present: true,
-  reported_by: "the GLM performance lane (calm-bat-65), 2026-09-18, in the brief that filed this projection: 'the image in use DOES register GlmMoeDsaForCausalLM and ships the modelopt quantization path; that was read from the image'. The instrument was not named and this session had no route to the host to re-execute it; the reference is the tag the lane used, not the content id the serving-arm row pins" as NonEmptyStr,
+data glm53_group_b_image_report: RuntimeImageReport = RuntimeImageReport {
+  image_reference: "sha256:c7d63d153f991b9f1bd7e6419dcd1a5109746670747be90f4ff6da74f0e8fe84" as NonEmptyStr,
+  reached_through_tag: "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr,
+  vllm_version: "0.1.dev1+g8d09804c8" as NonEmptyStr,
+  architecture_registered: "GlmMoeDsaForCausalLM" as NonEmptyStr,
+  quant_method_module_present: glm_5_3_nvfp4_quantization.quant_method,
+  instrument: "docker run --rm --entrypoint python3 <tag> -c: print vllm.__version__; glob vllm/model_executor/layers/quantization/*.py for modelopt.py and mxfp4.py; GlmMoeDsaForCausalLM in ModelRegistry.get_supported_archs()" as NonEmptyStr,
+  reported_by: "the GLM performance lane (calm-bat-65) on the Group B head, 2026-09-18: Id read by `docker image inspect --format '\{\{.Id\}\}'` on the tag, RepoDigests empty (locally built, never pushed), Created 2026-09-17T14:55:06-04:00, and the running container's .Image is the same id; vllm 0.1.dev1+g8d09804c8; modelopt.py present; the architecture membership True. The package's modelopt module being present is NOT evidence that NVFP4 W4A4 kernels run for this architecture on SM121" as NonEmptyStr,
 }
 
-fn quantization_answer(rrow: ServingRuntimeRow, report: QuantizationPathReport, required_method: NonEmptyStr) -> StaticCompatibilityAnswer {
+fn quantization_answer(rrow: ServingRuntimeRow, report: RuntimeImageReport, required_method: NonEmptyStr) -> StaticCompatibilityAnswer {
   let pin = runtime_artifact_wire(a: rrow.artifact)
   if (report.image_reference as String) != (pin as String) {
     NotEstablished {
       question: QuantizationMethodShippedByRuntime,
       missing: join([
-        "the only observation of the ", required_method as String, " path was reported against ",
-        report.image_reference as String, " and this arm pins ", pin as String,
-        "; nothing here has established that the two name one image. `docker image inspect --format '\{\{.Id\}\}' ",
-        report.image_reference as String,
-        "` on the host that holds it settles the join, after which this report is re-keyed by the content id or replaced by a probe row",
+        "the only observation of the ", required_method as String, " module was taken inside ",
+        report.image_reference as String, " (reached through ", report.reached_through_tag as String,
+        ") and this runtime row pins ", pin as String,
+        "; they are different images, so the image that was probed has no runtime row and the runtime this projection asks about was not probed. ",
+        "A runtime row for the probed image -- artifact identity, registry reading inside that digest, hub cli path -- is what makes the projection answer for the image that is actually serving",
       ], "") as NonEmptyStr,
     }
-  } else if (report.quant_method as String) != (required_method as String) {
+  } else if (report.quant_method_module_present as String) != (required_method as String) {
     NotEstablished {
       question: QuantizationMethodShippedByRuntime,
       missing: join([
-        "the report answers for ", report.quant_method as String, " and the checkpoint needs ", required_method as String,
+        "the report answers for ", report.quant_method_module_present as String, " and the checkpoint needs ", required_method as String,
       ], "") as NonEmptyStr,
     }
-  } else if report.present {
-    Established { question: QuantizationMethodShippedByRuntime, evidence: report.reported_by }
   } else {
-    MeasuredNegative { question: QuantizationMethodShippedByRuntime, evidence: report.reported_by }
+    Established { question: QuantizationMethodShippedByRuntime, evidence: join([
+      "the ", required_method as String, " quantization module is present in the package inside ", report.image_reference as String,
+      " (", report.instrument as String, "); this is module presence, not a kernel path -- the FP4-on-device question is asked separately",
+    ], "") as NonEmptyStr }
   }
 }
 
@@ -301,7 +316,7 @@ fn fp4_device_answer(rrow: ServingRuntimeRow, device: GpuComputeCapability) -> S
   }
 }
 
-fn static_compatibility_answers(crow: ServingCheckpointRow, rrow: ServingRuntimeRow, report: QuantizationPathReport, required_method: NonEmptyStr) -> List<StaticCompatibilityAnswer> {
+fn static_compatibility_answers(crow: ServingCheckpointRow, rrow: ServingRuntimeRow, report: RuntimeImageReport, required_method: NonEmptyStr) -> List<StaticCompatibilityAnswer> {
   [
     architecture_answer(rrow: rrow, architecture: crow.architecture),
     quantization_answer(rrow: rrow, report: report, required_method: required_method),
@@ -354,7 +369,7 @@ fn project_deployment(
   topology: ServingTopology,
   manifest: GlmCheckpointManifest,
   utilization: BasisPoint,
-  report: QuantizationPathReport,
+  report: RuntimeImageReport,
   required_method: NonEmptyStr,
 ) -> DeploymentProjection {
   let verdict = match serving_checkpoint_row(c: checkpoint) {
@@ -390,7 +405,7 @@ fn radixark_nvfp4_projection(topology: ServingTopology) -> DeploymentProjection 
     topology: topology,
     manifest: glm_5_3_nvfp4_manifest,
     utilization: live_arm_utilization(),
-    report: glm53_derived_image_modelopt_report,
+    report: glm53_group_b_image_report,
     required_method: glm_5_3_nvfp4_quantization.quant_method,
   )
 }
