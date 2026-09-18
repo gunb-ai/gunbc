@@ -1,6 +1,7 @@
 module gunbc.site_uefi_arm64_pxe_edge
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import extdeps.uri { Uri }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -100,7 +101,12 @@ type BootNetworkProbe
   | BootNetworkProbeFailed { observation: DeclarationRef, observed_at: EpochMs }
   | BootNetworkProbeUnobserved
 
+// The probes name the endpoints they were aimed at, so the reachability the edge mints says WHICH
+// broker and origin answered from the boot network; the join then requires those to equal the
+// fleet receipt's https_boot_endpoint and origin_custom_domain.
 type BootNetworkReachabilityObservation {
+  broker_endpoint: Uri
+  artifact_origin: Uri
   dns_resolution: BootNetworkProbe
   default_route: BootNetworkProbe
   global_https_fetch: BootNetworkProbe
@@ -150,7 +156,7 @@ fn global_https_reachability_from_boot_network(obs: BootNetworkReachabilityObser
     BootNetworkProbeUnobserved => GlobalHttpsEndpointUnreachable
     BootNetworkProbeSucceeded { observation: o, observed_at: t } =>
       if probe_succeeded(probe: obs.dns_resolution) && probe_succeeded(probe: obs.default_route) {
-        GlobalHttpsEndpointReachable { observation: o, observed_at: t }
+        GlobalHttpsEndpointReachable { broker_endpoint: obs.broker_endpoint, artifact_origin: obs.artifact_origin, observation: o, observed_at: t }
       } else {
         GlobalHttpsEndpointUnreachable
       }
@@ -208,7 +214,7 @@ fn observed_edge(roster: SiteEdgeRoster, discovery: SiteBootstrapDiscovery) -> S
 
 fn chainloader_hint(transport: SiteBootstrapTransport) -> BootDiscoveryHint {
   match transport {
-    ArchitectureChainloader { architecture: _, filename_hint: h, chainloader_digest: _ } => h
+    ArchitectureChainloader { architecture: _, filename_hint: h, chainloader_digest: _, tftp_root: _ } => h
   }
 }
 

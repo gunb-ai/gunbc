@@ -3,6 +3,7 @@ module test.claim.site_uefi_arm64_pxe_edge_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, mac_address }
 import std.content_hash { content_hash_of_value }
+import extdeps.uri { Uri, Https, Tftp }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64, X86_64 }
@@ -79,7 +80,7 @@ fn failed() -> BootNetworkProbe {
 }
 
 fn reach(dns: BootNetworkProbe, route: BootNetworkProbe, https: BootNetworkProbe) -> BootNetworkReachabilityObservation {
-  BootNetworkReachabilityObservation { dns_resolution: dns, default_route: route, global_https_fetch: https }
+  BootNetworkReachabilityObservation { broker_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" }, artifact_origin: Uri { scheme: Https, locator: "boot-origin.example.test" }, dns_resolution: dns, default_route: route, global_https_fetch: https }
 }
 
 fn boot_offer(mode: SiteBootstrapDiscovery, filename: NonEmptyStr) -> SiteDhcpOfferObservation {
@@ -94,6 +95,7 @@ fn roster(macs: List<Eui48Address>, offer: SiteDhcpOfferObservation, reachabilit
       architecture: Aarch64,
       filename_hint: DhcpFilenameHint { filename: chainloader_filename },
       chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+      tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
     },
     known_client_macs: macs,
     offer: offer,
@@ -260,6 +262,7 @@ test fn a_non_arm64_chainloader_is_refused_by_architecture() -> Bool {
       architecture: X86_64,
       filename_hint: DhcpFilenameHint { filename: chainloader_filename },
       chainloader_digest: content_hash_of_value(value: "ipxe-x86-fixture"),
+      tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
     },
     known_client_macs: r.known_client_macs,
     offer: r.offer,
