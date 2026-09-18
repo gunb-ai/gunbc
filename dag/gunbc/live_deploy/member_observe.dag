@@ -288,7 +288,7 @@ fn active_state_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
 }
 
 fn running_process_identity(spec: DeploymentSpec, transport: HostEffectTransport) -> ObservedMember {
-  match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: spec), transport: transport) {
+  match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: spec), spec: spec, transport: transport) {
     HealthzProbeRefused { probe_error } => MemberUnobservable { member: ServiceProcess, cause: join(["the process is active but /healthz refused: ", probe_error], "") }
     HealthzBodyRead { body } => match observe_running_release_identity(healthz_body: body) {
       RunningReleaseUnidentified { cause } =>

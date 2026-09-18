@@ -128,6 +128,13 @@ import gunbc.fleet_converge_plan {
   fleet_converge_member_set_fingerprint_matches,
   fleet_converge_plan_subject_scope_path,
   fleet_converge_apply_artifact_admits,
+  ApplyAdmitted,
+  ApplySubjectHostMismatch,
+  ApplyScopeUndecodable,
+  ApplyScopeMismatch,
+  ApplyMemberSetMismatch,
+  ApplyAllocationStorePrestateMismatch,
+  ApplyAwaitingCapability,
   fleet_converge_apply_admission_refusal_text,
   fleet_converge_scope_wire,
   fleet_converge_plan_subject,
@@ -166,7 +173,6 @@ import extdeps.git
 import gunbc.live_deploy.apply { live_deploy_apply_srv1_operator_local_wet }
 import gunbc.live_deploy.spec { deployment_plan_host_identity }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.live_deploy.fleet_request { live_deploy_host_only_request_refusal_reason }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repository { gunbc_repository }
 import gunbc.running_release_identity { release_revision_text_valid }
@@ -385,7 +391,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
     }
     ScopeDecoded { scope: LiveDeploy } =>
       FleetConvergeRequestUnobserved {
-        reason: live_deploy_host_only_request_refusal_reason(),
+        reason: "observe_fleet_converge_request_wet is host-and-scope-wire; LiveDeployConverge is minted from DesiredDeployment and LiveDeployMemberBasis, not a hostname",
       }
     ScopeDecoded { scope: FullHost } =>
           match observe_runner_slot_members_with_provenance_wet(host: host) {
@@ -1076,6 +1082,8 @@ fn fleet_converge_apply_bound_wet(
                   exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
                 ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
                   exit_failure(reason: join(["fleet_converge_apply: AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], ""))
+                ApplyAwaitingCapability { capability: c } =>
+                  exit_failure(reason: join(["fleet_converge_apply: AwaitingCapability ", c, " — nonempty live-deploy plan; wet apply is C8"], ""))
                 ApplyAdmitted =>
               if !fleet_converge_observed_baseline_matches(
                 observed_baseline_hex: trim(s: read_base.content),

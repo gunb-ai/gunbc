@@ -1,0 +1,247 @@
+module test.claim.ci_workflow_scan_producer_witness
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import extdeps.transports.rest { RestExchangePerformance, RestExchangeUnreached }
+import extdeps.github.code_search {
+  CodeSearchPage,
+  CodeSearchHit,
+  CodeSearchRepository,
+  retrievable_result_ceiling,
+  deepest_retrievable_page,
+}
+import gunbc.ci_workflow_source_read {
+  CodeSearchPageRead,
+  CodeSearchPageComplete,
+  CodeSearchPageTruncated,
+  CodeSearchPageRefused,
+  classify_code_search_page,
+}
+import gunbc.github_observation_record {
+  ObservationCompleteness,
+  ObservationComplete,
+  ObservationTruncatedUpstream,
+  ObservationMorePagesRemain,
+  ObservationRefused,
+}
+import gunbc.ci_workflow_scan_producer {
+  ScanWalkState,
+  ScanStop,
+  StoppedExhausted,
+  StoppedTruncated,
+  StoppedRefused,
+  StoppedAtBound,
+  PartitionEnumerability,
+  PartitionFullyEnumerable,
+  PartitionSaturated,
+  PartitionSizeUnobserved,
+  ScanReceipt,
+  initial_walk_state,
+  partition_enumerability,
+  fold_page_into_state,
+  page_completeness,
+  exhausted_if_short,
+  scan_is_a_declared_population,
+  walk_stop_or_bound,
+}
+
+// THE DECISIONS THIS DRIVES ARE THE ONES THAT DECIDE WHETHER A SAMPLE GETS CALLED A CENSUS, and
+// they are driven here WITHOUT A NETWORK because ci_workflow_source_read already split the
+// classification from the fetch for exactly this reason. A decision fused to an effect can only be
+// exercised against whatever a mock happens to publish -- and the mock publishes one result, so the
+// truncated and saturated arms would be unreachable through the effectful path.
+//
+// Every fixture below is a SUPPLIED page rather than a fetched one. The pairing obligation is met
+// by gunbc.ci_workflow_scan_producer scan_partition, which calls the same folds against
+// perform_code_search_page: the real route still executes, and these claims discriminate at the
+// boundary where the meaning is decided.
+
+fn w_repo() -> CodeSearchRepository {
+  CodeSearchRepository {
+    id: 1,
+    name: "fixture",
+    full_name: "fixture-org/fixture",
+    private: false,
+    fork: false,
+  }
+}
+
+fn w_refusal() -> RestExchangePerformance {
+  RestExchangeUnreached { cause: "fixture: the endpoint was never reached" as NonEmptyStr }
+}
+
+// The receipt fixture supplies only the two fields the gate reads. Everything else is filled with a
+// value that cannot be mistaken for an observation -- a receipt built here is a probe of the gate,
+// never a claim about a scan that ran.
+fn w_receipt(stop: ScanStop, enumerability: PartitionEnumerability) -> ScanReceipt {
+  ScanReceipt {
+    query: "fixture-query" as NonEmptyStr,
+    per_page: 100,
+    page_bound: 10,
+    pages_read: 0,
+    hits_read: 0,
+    enumerability: enumerability,
+    stop: stop,
+    records: [],
+  }
+}
+
+fn w_hit() -> CodeSearchHit {
+  CodeSearchHit {
+    name: "ci.yml",
+    path: ".github/workflows/ci.yml",
+    sha: "0123456789abcdef0123456789abcdef01234567",
+    repository: w_repo(),
+  }
+}
+
+fn w_hits(n: Int) -> List<CodeSearchHit> {
+  if n <= 0 { [] } else { concat([w_hit()], w_hits(n: n - 1)) }
+}
+
+fn w_page(total: Int, hits: Int, incomplete: Bool) -> CodeSearchPage {
+  CodeSearchPage { total_count: total, incomplete_results: incomplete, items: w_hits(n: hits) }
+}
+
+fn w_state_after(read: CodeSearchPageRead, page: Int) -> ScanWalkState {
+  fold_page_into_state(
+    state: initial_walk_state(),
+    read: read,
+    query: "fixture-query" as NonEmptyStr,
+    per_page: 100,
+    page: page,
+    observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
+    api_version: "2026-03-10" as NonEmptyStr,
+  )
+}
+
+// A SHORT PAGE IS THE END OF THE ANSWER. This is the arm that lets a walk stop before its bound, and
+// without it every scan would spend its whole page budget on every query.
+test fn a_short_page_exhausts_the_walk() -> Bool {
+  match exhausted_if_short(read_count: 42, per_page: 100, pages_read: 1) {
+    Present { value: StoppedExhausted { pages_read: n } } => n == 1
+    Present { value: StoppedTruncated { cause: _, pages_read: _ } } => false
+    Present { value: StoppedRefused { cause: _, pages_read: _ } } => false
+    Present { value: StoppedAtBound { pages_read: _ } } => false
+    Absent => false
+  }
+}
+
+// AND A FULL PAGE IS NOT EVIDENCE THAT MORE EXIST -- it is only the absence of evidence that they do
+// not, which is why the walk continues rather than concluding. This is the control that stops the
+// row above from being satisfied by a rule that ends every walk at page one.
+test fn a_full_page_does_not_exhaust_the_walk() -> Bool {
+  match exhausted_if_short(read_count: 100, per_page: 100, pages_read: 1) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// UPSTREAM SAYING IT GAVE UP ENDS THE WALK, and the record says so too. GitHub returns
+// incomplete_results when its own search timed out; the number of hits NOT returned is not reported
+// and cannot be derived, so continuing would deepen a hole rather than fill it.
+test fn a_truncated_page_stops_the_walk() -> Bool {
+  let state = w_state_after(read: classify_code_search_page(page: w_page(total: 500, hits: 100, incomplete: true)), page: 1)
+  match state.stop {
+    Present { value: StoppedTruncated { cause: _, pages_read: n } } => n == 1
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// A REFUSED PAGE STOPS THE WALK AND CONTRIBUTES NO HITS. A transport refusal is not an empty page:
+// folding it as one would shorten the population by however many results that page held.
+test fn a_refused_page_stops_the_walk_and_adds_no_hits() -> Bool {
+  let state = w_state_after(read: CodeSearchPageRefused { performance: w_refusal() }, page: 1)
+  match state.stop {
+    Present { value: StoppedRefused { cause: _, pages_read: _ } } => count(state.hits) == 0
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// THE SATURATION WALL. A query GitHub says has more results than it will ever surrender cannot be
+// enumerated by any walk, and this is the arm that stops a lower bound being reported as a total --
+// the exact error this lane's prototype made when it counted a capped query as a population.
+test fn a_query_above_the_ceiling_is_saturated() -> Bool {
+  match partition_enumerability(total_count_seen: retrievable_result_ceiling + 1, pages_read: 10) {
+    PartitionSaturated { total_count: t, ceiling: c, cause: _ } =>
+      t == retrievable_result_ceiling + 1 && c == retrievable_result_ceiling
+    PartitionFullyEnumerable { total_count: _ } => false
+    PartitionSizeUnobserved => false
+  }
+}
+
+// AND THE CONTROL: a query at or below the ceiling IS enumerable, so the wall above is a bound
+// rather than a refusal of everything.
+test fn a_query_at_the_ceiling_is_enumerable() -> Bool {
+  match partition_enumerability(total_count_seen: retrievable_result_ceiling, pages_read: 10) {
+    PartitionFullyEnumerable { total_count: t } => t == retrievable_result_ceiling
+    PartitionSaturated { total_count: _, ceiling: _, cause: _ } => false
+    PartitionSizeUnobserved => false
+  }
+}
+
+// A WALK THAT READ NOTHING KNOWS NOTHING about the query's size, which is different from knowing it
+// is small. Zero pages read must not report an enumerable partition of size zero.
+test fn no_pages_read_leaves_the_size_unobserved() -> Bool {
+  match partition_enumerability(total_count_seen: 0, pages_read: 0) {
+    PartitionSizeUnobserved => true
+    PartitionFullyEnumerable { total_count: _ } => false
+    PartitionSaturated { total_count: _, ceiling: _, cause: _ } => false
+  }
+}
+
+// THE THREE-WAY GATE. A population may be read only when the walk exhausted AND the query was
+// enumerable; each of the next three claims removes one leg and expects a refusal.
+test fn an_exhausted_walk_over_an_enumerable_query_is_a_population() -> Bool {
+  scan_is_a_declared_population(receipt: w_receipt(
+    stop: StoppedExhausted { pages_read: 3 },
+    enumerability: PartitionFullyEnumerable { total_count: 250 },
+  ))
+}
+
+test fn a_walk_that_hit_its_bound_is_not_a_population() -> Bool {
+  scan_is_a_declared_population(receipt: w_receipt(
+    stop: StoppedAtBound { pages_read: 10 },
+    enumerability: PartitionFullyEnumerable { total_count: 250 },
+  )) == false
+}
+
+test fn an_exhausted_walk_over_a_saturated_query_is_not_a_population() -> Bool {
+  scan_is_a_declared_population(receipt: w_receipt(
+    stop: StoppedExhausted { pages_read: 10 },
+    enumerability: PartitionSaturated {
+      total_count: 5000,
+      ceiling: retrievable_result_ceiling,
+      cause: "fixture" as NonEmptyStr,
+    },
+  )) == false
+}
+
+// THE BOUND IS DERIVED FROM THE ENDPOINT'S CEILING, not authored beside it, so a caller cannot ask
+// for a page the endpoint will never serve.
+test fn the_page_bound_comes_from_the_ceiling() -> Bool {
+  deepest_retrievable_page(per_page: 100) == 10
+    && deepest_retrievable_page(per_page: 50) == 20
+}
+
+// A WALK WITH NO STOP REASON STOPPED BECAUSE IT RAN OUT OF PAGES, and saying so is what keeps
+// "reached the bound" from being reported as "finished".
+test fn a_walk_with_no_stop_reason_stopped_at_its_bound() -> Bool {
+  match walk_stop_or_bound(state: initial_walk_state()) {
+    StoppedAtBound { pages_read: n } => n == 0
+    StoppedExhausted { pages_read: _ } => false
+    StoppedTruncated { cause: _, pages_read: _ } => false
+    StoppedRefused { cause: _, pages_read: _ } => false
+  }
+}
+
+// THE RECORD CARRIES THE NEXT PAGE, not a placeholder, so a resume can act on it.
+test fn a_full_page_record_names_the_next_page() -> Bool {
+  match page_completeness(read_count: 100, per_page: 100, page: 4) {
+    ObservationMorePagesRemain { next_page: n } => n == 5
+    ObservationComplete => false
+    ObservationTruncatedUpstream { cause: _ } => false
+    ObservationRefused { cause: _ } => false
+  }
+}
