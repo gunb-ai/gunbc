@@ -505,11 +505,37 @@ fn namespace_graft_named_edges_from_units(units: List<Node>) -> List<Edge> {
 // (the type shell was dropped). Neither arm is a refusal. Rehome type/data onto
 // Named containment first; reconstruct remains only when nothing first-class
 // survived (import-only and the lost-forest refusal still sit on that empty path).
+fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: sym } =>
+      if namespace_graft_parse_projection_edge(name: sym) {
+        false
+      } else if namespace_graft_is_metadata_edge(name: sym) {
+        false
+      } else {
+        !namespace_graft_is_machinery_symbol(sym: sym)
+      }
+    Positional => false
+  }
+}
+
+fn namespace_graft_flattened_member_edges(edges: List<Edge>) -> List<Edge> {
+  fold(edges, init: [], f: fn(acc, edge) {
+    if namespace_graft_keep_flattened_member_edge(edge: edge) {
+      list_snoc_item(xs: acc, item: edge)
+    } else {
+      acc
+    }
+  })
+}
+
 fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   let units = namespace_graft_collect_unit_nodes(node: working)
   let from_decls = namespace_graft_named_edges_from_units(units: units)
-  let flattened = namespace_graft_collect_body_edges_from_node(node: working)
+  let flattened = namespace_graft_flattened_member_edges(
+    edges: namespace_graft_collect_body_edges_from_node(node: working)
+  )
   let combined = concat(from_decls, flattened)
   if count(combined) == 0 {
     if count(units) == 0 {
