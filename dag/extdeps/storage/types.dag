@@ -1,7 +1,7 @@
 module extdeps.storage.types
 
 import std.measure { ByteSize, Bandwidth, bandwidth, bandwidth_count }
-import std.types { Int, NonEmptyStr, Bool }
+import std.types { Int, NonEmptyStr }
 import std.machine_shape { InterconnectLink }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -29,22 +29,10 @@ fn pcie_generation_per_lane_bandwidth(g: PcieGeneration) -> Bandwidth {
   }
 }
 
-fn pcie_generation_eq(a: PcieGeneration, b: PcieGeneration) -> Bool {
-  match a {
-    Gen3 => match b { Gen3 => true, Gen4 => false, Gen5 => false }
-    Gen4 => match b { Gen3 => false, Gen4 => true, Gen5 => false }
-    Gen5 => match b { Gen3 => false, Gen4 => false, Gen5 => true }
-  }
-}
-
 type PcieLink {
   generation: PcieGeneration
 
   lane_count: Int
-}
-
-fn pcie_link_eq(a: PcieLink, b: PcieLink) -> Bool {
-  pcie_generation_eq(a: a.generation, b: b.generation) && a.lane_count == b.lane_count
 }
 
 fn pcie_link_bandwidth(link: PcieLink) -> Bandwidth {

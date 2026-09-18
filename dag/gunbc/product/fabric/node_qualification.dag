@@ -8,7 +8,7 @@ import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import product.placement_supply { HostIdentity }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
-import extdeps.storage.types { PcieLink, pcie_link_eq, pcie_generation_eq }
+import extdeps.storage.types { PcieLink }
 import extdeps.nvidia.cuda_device_attribute {
   CudaDeviceAttributeReading, GpuDirectRdmaStanding,
   GpuDirectRdmaSupported, GpuDirectRdmaUnsupported,
@@ -317,10 +317,10 @@ fn qualify_nic_pcie(advertised: AdvertisedPcie, reading: PcieLinkReading) -> Nic
     }
     DgxSparkConnectX7PerPortAttachment => match reading {
       PcieLinkUnread { because: b } => NicPcieUnread { advertised: advertised.link, because: b }
-      PcieLinkRead { link: m, instrument: i } => if pcie_link_eq(a: advertised.link, b: m) {
+      PcieLinkRead { link: m, instrument: i } => if advertised.link == m {
         NicPcieAgrees { link: m, instrument: i }
       } else {
-        if pcie_generation_eq(a: advertised.link.generation, b: m.generation) {
+        if advertised.link.generation == m.generation {
           if m.lane_count < advertised.link.lane_count {
             NicPcieFallsShort { advertised: advertised.link, measured: m, instrument: i }
           } else {
