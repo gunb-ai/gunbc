@@ -3,7 +3,7 @@ module v1.compiler.emit_core_support
 import v1.std.core {
   Node, ErrorNode, TextFile, NewlineIndex,
   authored_name_at, field_init_node_name_at,
-  make_error_node, ModuleFilenameCollision,
+  make_error_node, ModuleFilenameCollision, EmittedSymbolCollision,
   Connective, NoConnective,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem
@@ -181,24 +181,8 @@ fn sanitize_service_name(name: String) -> String {
   pascal_parts |> join(separator: "")
 }
 
-// THE PROJECTION IS NOT INJECTIVE, AND NOTHING HERE REFUSES ON THE COLLISION YET.
-//
-// sanitize_service_name splits the authored name on "." and joins the capitalized segments with
-// nothing, so the segment boundary is erased: `collision.Probe` and `CollisionProbe` are two
-// distinct service identities that project to one symbol. Observed, not argued: two services so
-// named in one module emitted two `pub struct CollisionProbe` definitions and bound one parameter
-// for both, with zero blocking diagnostics. service_var_name is the second channel, since to_snake
-// of one symbol is one symbol. All three targets share this projection, so the collision is a fact
-// about the shared allocation rather than about any one emitter.
-//
-// THE WALL IS NOT IN THIS BRANCH AND THIS COMMENT IS NOT ONE. The refusal would need its own
-// CompilerDiagnostic variant, and that coproduct's seed projection is the receipt row this same PR
-// declares FROZEN -- so landing it here would have one commit declare a freeze and breach it. The
-// class is recorded at gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective
-// rather than in this comment, because no Accepted program can read a comment (DESIGN.md 4c) and a
-// deferral that lives only in prose is an unstated divergence (3b). Its retiring trigger is a
-// CAPABILITY and not a merge: a typed CompilerDiagnostic receipt carrier existing, so a new
-// diagnostic variant no longer edits a frozen hand-maintained figure.
+// THE PROJECTION IS NOT INJECTIVE. The refusal is emitted_symbol_collision_diagnostics, called
+// from every target emitter. The class is gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective.
 
 fn capitalize_first(s: String) -> String {
   let chars_list = s |> chars
@@ -414,4 +398,65 @@ fn is_type_decl_item(item: Node, source_indices: Map<String, NewlineIndex>) -> B
   (is_leaf_type_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
   || (item.module_item_kind == ModuleItemTypeDeclaration
       && item.params |> count > 0 && item.body == none && item.children |> count == 0)
+}
+
+type EmittedSymbolBinding {
+  symbol: String
+  identity: String
+}
+
+type EmittedSymbolOwners {
+  owners: Map<String, String>
+  diagnostics: List<ErrorNode>
+}
+
+fn emitted_symbol_bindings_for_item(item: Node, source_indices: Map<String, NewlineIndex>) -> List<EmittedSymbolBinding> {
+  let name = authored_name_at(source_indices: source_indices, node: item)
+  if item.module_item_kind == ModuleItemService {
+    [EmittedSymbolBinding { symbol: sanitize_service_name(name: name), identity: concat("service ", name) }]
+  } else if is_type_def_item(item: item)
+    || is_type_alias_item(item: item, source_indices: source_indices)
+    || is_type_decl_item(item: item, source_indices: source_indices) {
+    [EmittedSymbolBinding { symbol: name, identity: concat("type ", name) }]
+  } else {
+    []
+  }
+}
+
+// sanitize_service_name is MANY-TO-ONE across kinds: `type GitWorktree` and `service git.Worktree`
+// both render the emitted type `GitWorktree`. DuplicateDeclaration does not fire — the authored
+// names differ — so rustc reports E0428 after a silent emit. The mapping cannot be made injective
+// without renaming every emitted service, so the residue is refused (DESIGN.md section 5). Every
+// target emitter calls this over the module population before it emits.
+fn emitted_symbol_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
+  typed.modules |> flat_map(tm => {
+    let source_indices = tm.type_env.source_indices
+    let module_name = authored_name_at(source_indices: source_indices, node: tm.module)
+    let result = tm.items |> fold(init: EmittedSymbolOwners { owners: empty_map(), diagnostics: [] }, f: fn(acc, item) {
+      emitted_symbol_bindings_for_item(item: item, source_indices: source_indices) |> fold(init: acc, f: fn(inner, binding) {
+        match map_get(inner.owners, binding.symbol) {
+          Present { value: owner } =>
+            if owner == binding.identity {
+              inner
+            } else {
+              EmittedSymbolOwners {
+                owners: inner.owners,
+                diagnostics: list_push(inner.diagnostics, make_error_node(
+                  diagnostic: EmittedSymbolCollision {
+                    symbol: binding.symbol,
+                    identities: [owner, binding.identity],
+                    span: item.span
+                  },
+                  module_name: module_name))
+              }
+            }
+          Absent => EmittedSymbolOwners {
+            owners: map_insert(inner.owners, binding.symbol, binding.identity),
+            diagnostics: inner.diagnostics
+          }
+        }
+      })
+    })
+    result.diagnostics
+  })
 }
