@@ -811,10 +811,29 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_is_block_delimiter_token(id: Symbol) -> Bool {
+  (id == ^dag_token_lbrace) || (id == ^dag_token_rbrace)
+}
+
+fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
+  match sugar_sequence_pair_optional(
+    node: body_lower_unwrap_surface_shell(node: captured)
+  ) {
+    Absent => false
+    Present { value: pair } =>
+      match node_atom_identity_optional(
+        node: body_lower_deep_unwrap_optional(node: pair.left)
+      ) {
+        Present { value: id } => id == ^dag_token_lbrace
+        Absent => false
+      }
+  }
+}
+
 fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) {
+      if dag_lex_token_symbol(sym: id) && !body_lower_is_block_delimiter_token(id: id) {
         optional_present(
           value: node_synthetic(
             kind: TypeNode { connective: Atom { identity: id } },
@@ -1474,9 +1493,16 @@ fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> 
   }
 }
 
+// A brace-headed sequence is a block delimiter. This matcher must not
+// claim it as a call or infix: those arms would mint Transform with `{`
+// as operator and drop the interior. Absent here means not this strategy;
+// every call site then walks the interior. `{` is also unwritable as an
+// infix operator in body_lower_operator_atom_optional.
 fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: optional_present(value: node))
+  } else if body_lower_sequence_left_is_lbrace(captured: node) {
+    outcome_accepted(value: optional_absent())
   } else {
     match body_lower_try_fold_behavior_optional(node: node) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1832,21 +1858,6 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
-  match sugar_sequence_pair_optional(
-    node: body_lower_unwrap_surface_shell(node: captured)
-  ) {
-    Absent => false
-    Present { value: pair } =>
-      match node_atom_identity_optional(
-        node: body_lower_deep_unwrap_optional(node: pair.left)
-      ) {
-        Present { value: id } => id == ^dag_token_lbrace
-        Absent => false
-      }
-  }
-}
-
 fn body_lower_body_subtree_lower_control_forms(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_find_captured(
     root: captured,
@@ -1883,24 +1894,15 @@ fn body_lower_body_subtree_lower_control_forms(captured: Node) -> Outcome<Option
   }
 }
 
-// A brace-headed sequence is a block delimiter, not an expression operator.
-// body_lower_try_body_lowered's call/infix arms can still accept it: the `{`
-// token becomes the Transform operator and the interior (including a call)
-// is dropped with no diagnostic. Skip those matchers and lower the interior
-// through the statement/control/primary walk instead.
 fn body_lower_body_subtree_lower_rest(captured: Node) -> Outcome<Optional<Node>> {
-  if body_lower_sequence_left_is_lbrace(captured: captured) {
-    body_lower_body_subtree_lower_control_forms(captured: captured)
-  } else {
-    match body_lower_try_body_lowered(node: captured) {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: found, diagnostics: _ } =>
-        match found {
-          Present { value: lowered } =>
-            outcome_accepted(value: optional_present(value: lowered))
-          Absent => body_lower_body_subtree_lower_control_forms(captured: captured)
-        }
-    }
+  match body_lower_try_body_lowered(node: captured) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        Present { value: lowered } =>
+          outcome_accepted(value: optional_present(value: lowered))
+        Absent => body_lower_body_subtree_lower_control_forms(captured: captured)
+      }
   }
 }
 
