@@ -33,11 +33,11 @@ Mirror `gunbc.spark.bootstrap_credential` / `grant_privileged_operation`:
   - Add `auto_negotiation` to the lane intent/reading (G1).
   - Add `Crs812LinkOutcome` (negotiated speed, link state:
     LinkUp|Polling|AutoInitFailed|Down, fec-locked) as a two-ended live fact (G3, G4).
-  - Carry the FEC codeword the RouterOS label maps to (G2), a modeling nicety not a
-    capability gap: MikroTik documents `fec91` as the FEC for its `100G-baseCR2` mode, so
-    `fec91` is the desired FEC and there is no switch FEC limitation (the earlier RS(544,514)
-    "may not expose it" claim was an ungrounded IEEE inference, retracted). The converge
-    intent's FEC is `fec91`; it does not need a capability-refusal arm for FEC.
+  - Carry the FEC codeword the RouterOS label maps to (G2), a modeling nicety. The desired
+    FEC is `fec91` as a CANDIDATE -- the FEC the eight legs are observed running today -- not
+    a deduced fact: neither the earlier RS(544,514)-is-needed claim (IEEE inference) nor the
+    later fec91-per-MikroTik claim (uncited) is grounded, so the converge intent KEEPS a
+    FEC-capability refusal/observe arm rather than assuming `fec91` trains 100G (§4d).
   - `FabricSwitchCredentialStanding` + the two SecretRef rows.
   - Update `gunbc.spark.fabric_switch_observed` (G12): the 2026-09-17 recode is an EVENT
     (byte 192 0x0B->0x40, NIC Supported Cable Speed 50G_2X->100G_2X) plus the live 50G
@@ -63,8 +63,9 @@ Mirror `gunbc.spark.bootstrap_credential` / `grant_privileged_operation`:
   6. read both endpoints back and make VERIFIED restoration part of the terminal result;
   7. remove credentials only after confirmed success OR confirmed rollback.
   It mirrors `gunbc.spark.managed_access_apply` for the per-step typed-outcome/receipt
-  shape, run via `fleet-converge.yml`. The FEC is `fec91` (G2), so there is no
-  FEC-capability refusal arm.
+  shape, run via `fleet-converge.yml`. The desired FEC is the `fec91` candidate (G2); the
+  intent KEEPS a FEC-capability refusal/observe arm -- whether `fec91` trains 100G is
+  unwitnessed, so the actuator observes and refuses rather than assuming it works.
   **Sequencing rule (the design commits to this now):** because forcing the HOST end needs
   PR-4's mstlink set grant, the mutating switch effect and the host effect are components of
   ONE actuator -- PR-3 and PR-4 land together, or the switch converge stays READ-ONLY until
