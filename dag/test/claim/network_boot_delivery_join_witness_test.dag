@@ -19,6 +19,7 @@ import gunbc.machine_intake_subject {
   IntakeAttemptId,
   MachineIntakeSubject,
   UnitKey,
+  content_hash_equal,
   qualification_subject_of,
 }
 import gunbc.machine_intake_access { BootDeliveryTarget }
@@ -67,6 +68,9 @@ import gunbc.network_boot_delivery {
   ObservedClientBootModeReceipt,
   ObservedDhcpPxeClient,
   ProductionTrustedBootstrap,
+  FirmwareHttpsTrusted,
+  SecureBootChainloaderTrusted,
+  FirmwareHttpsAndSecureBootTrusted,
   BootstrapTrustObservation,
   BootstrapTrustStanding,
   SignedBootManifestAbsent,
@@ -260,20 +264,17 @@ fn complete_inputs() -> NetworkBootJoinInputs {
 test fn four_receipts_join_to_established() -> Bool {
   match join_network_boot_delivery(inputs: complete_inputs()) {
     NetworkBootDeliveryEstablished { evidence: e } =>
-      e.artifact_digest == artifact
+      content_hash_equal(left: e.manifest.root_digest, right: artifact)
       && (e.site.edge.site as String) == (onboarding_site as String)
       && (e.fleet.signing_key_identity as String) == "boot-manifest-key-0"
       && (e.manifest.kernel_cmdline as String) == "console=ttyAMA0"
       && match e.trust {
-        ProductionTrustedBootstrap { firmware_https: h, secure_boot_chainloader: sb } =>
-          match h {
-            Present { value: https } =>
+        ProductionTrustedBootstrap { grounds: g } =>
+          match g {
+            FirmwareHttpsTrusted { firmware_https: https } =>
               (https.observation.decl_name as String) == (obs.decl_name as String)
-              && match sb {
-                Absent => true
-                Present { value: _ } => false
-              }
-            Absent => false
+            SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => false
+            FirmwareHttpsAndSecureBootTrusted { firmware_https: _, secure_boot_chainloader: _ } => false
           }
         ControlledNetworkBootstrap { evidence: _ } => false
         BootstrapTrustUnestablished => false
@@ -746,15 +747,16 @@ test fn controlled_network_is_not_production_trust() -> Bool {
     ControlledNetworkBootstrap { evidence: e } =>
       (e.observation.decl_name as String) == (obs.decl_name as String)
       && match production_trust() {
-        ProductionTrustedBootstrap { firmware_https: h, secure_boot_chainloader: _ } =>
-          match h {
-            Present { value: _ } => true
-            Absent => false
+        ProductionTrustedBootstrap { grounds: g } =>
+          match g {
+            FirmwareHttpsTrusted { firmware_https: _ } => true
+            SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => false
+            FirmwareHttpsAndSecureBootTrusted { firmware_https: _, secure_boot_chainloader: _ } => false
           }
         ControlledNetworkBootstrap { evidence: _ } => false
         BootstrapTrustUnestablished => false
       }
-    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => false
+    ProductionTrustedBootstrap { grounds: _ } => false
     BootstrapTrustUnestablished => false
   }
 }
@@ -766,7 +768,7 @@ test fn neither_trust_input_is_unestablished() -> Bool {
     isolated_onboarding_network: Absent,
   ) {
     BootstrapTrustUnestablished => true
-    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => false
+    ProductionTrustedBootstrap { grounds: _ } => false
     ControlledNetworkBootstrap { evidence: _ } => false
   }
 }
@@ -777,7 +779,26 @@ test fn firmware_https_is_production_even_on_isolated_network() -> Bool {
     secure_boot_chainloader: Absent,
     isolated_onboarding_network: Present { value: trust_obs() },
   ) {
-    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => true
+    ProductionTrustedBootstrap { grounds: _ } => true
+    ControlledNetworkBootstrap { evidence: _ } => false
+    BootstrapTrustUnestablished => false
+  }
+}
+
+test fn both_grounds_present_names_both() -> Bool {
+  match bootstrap_trust_standing(
+    firmware_https: Present { value: trust_obs() },
+    secure_boot_chainloader: Present { value: trust_obs() },
+    isolated_onboarding_network: Absent,
+  ) {
+    ProductionTrustedBootstrap { grounds: g } =>
+      match g {
+        FirmwareHttpsAndSecureBootTrusted { firmware_https: h, secure_boot_chainloader: sb } =>
+          (h.observation.decl_name as String) == (obs.decl_name as String)
+          && (sb.observation.decl_name as String) == (obs.decl_name as String)
+        FirmwareHttpsTrusted { firmware_https: _ } => false
+        SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => false
+      }
     ControlledNetworkBootstrap { evidence: _ } => false
     BootstrapTrustUnestablished => false
   }
@@ -789,14 +810,11 @@ test fn secure_boot_ground_is_not_https_ground() -> Bool {
     secure_boot_chainloader: Present { value: trust_obs() },
     isolated_onboarding_network: Absent,
   ) {
-    ProductionTrustedBootstrap { firmware_https: h, secure_boot_chainloader: sb } =>
-      match h {
-        Absent =>
-          match sb {
-            Present { value: _ } => true
-            Absent => false
-          }
-        Present { value: _ } => false
+    ProductionTrustedBootstrap { grounds: g } =>
+      match g {
+        SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => true
+        FirmwareHttpsTrusted { firmware_https: _ } => false
+        FirmwareHttpsAndSecureBootTrusted { firmware_https: _, secure_boot_chainloader: _ } => false
       }
     ControlledNetworkBootstrap { evidence: _ } => false
     BootstrapTrustUnestablished => false
@@ -1093,7 +1111,7 @@ test fn controlled_network_trust_can_establish() -> Bool {
         ControlledNetworkBootstrap { evidence: ev } =>
           (ev.observation.decl_name as String) == (obs.decl_name as String)
           && (e.manifest.callback_identity as String) == "intake-callback-0"
-        ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => false
+        ProductionTrustedBootstrap { grounds: _ } => false
         BootstrapTrustUnestablished => false
       }
     NetworkBootDeliveryUnestablished { missing: _ } => false

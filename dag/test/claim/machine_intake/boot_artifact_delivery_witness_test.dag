@@ -136,7 +136,6 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryUnestablished,
   NetworkBootRequirement,
-  NetworkBootRequirementEvidence,
   NetworkBootServingInfrastructure,
   ObservedClientBootModeReceipt,
   ObservedDhcpPxeClient,
@@ -1119,18 +1118,6 @@ test fn configfs_path_established_for_another_target_is_refused() -> Bool {
 // Network boot: every axis observed AND the establishment naming the
 // requested digest selects PXE; the same establishment naming another digest
 // is a staged-artifact mismatch, never a plan.
-fn control_network_boot_axis(requirement: NetworkBootRequirement) -> NetworkBootRequirementEvidence {
-  NetworkBootRequirementEvidence {
-    requirement: requirement,
-    observation: DeclarationRef {
-      module_path: "test.claim.boot_artifact_delivery_witness_test",
-      decl_name: "established_network_boot_for",
-      field: WholeDeclaration,
-    },
-    observed_at: 1788000000000,
-  }
-}
-
 fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryStanding {
   let obs = DeclarationRef {
     module_path: "test.claim.boot_artifact_delivery_witness_test",
@@ -1197,11 +1184,6 @@ fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> N
       trust: ControlledNetworkBootstrap {
         evidence: BootstrapTrustObservation { observation: obs, observed_at: 1788000000000 },
       },
-      boot_source_override: control_network_boot_axis(requirement: NetworkBootBootSourceOverride),
-      client_boot_mode: control_network_boot_axis(requirement: NetworkBootClientBootMode),
-      serving_infrastructure: control_network_boot_axis(requirement: NetworkBootServingInfrastructure),
-      boot_artifacts: control_network_boot_axis(requirement: NetworkBootBootArtifacts),
-      artifact_digest: digest,
     },
   }
 }

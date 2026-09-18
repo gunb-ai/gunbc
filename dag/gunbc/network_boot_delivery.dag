@@ -42,20 +42,13 @@ type NetworkBootRequirement
   | NetworkBootServingInfrastructure
   | NetworkBootBootArtifacts
 
-// One observation per requirement axis. A single DeclarationRef standing for all four was the
-// same substitution this carrier exists to forbid, one level in: it let an authored plan satisfy
-// axes nobody observed. Establishing the delivery now requires naming an observation for each
-// axis, so a false claim has to be told four times rather than once.
-type NetworkBootRequirementEvidence {
-  requirement: NetworkBootRequirement
-  observation: DeclarationRef
-  observed_at: EpochMs
-}
-
-// The establishment names the TARGET it was established for (ruling 4 §1): four
-// observations and a digest bind an artifact, not a host, so without the
-// target a network boot established on one unit could authorize another's
-// request.
+// The establishment names the TARGET it was established for (ruling 4 §1): the
+// receipts bind an artifact, not a host, so without the target a network boot
+// established on one unit could authorize another's request. Each receipt IS
+// the per-axis observation — carrying a projected (observation, observed_at)
+// row beside it would be a second writable source for one fact (DESIGN §2/§3),
+// and the digest a reader wants is manifest.root_digest, which the join has
+// already proved equal to the requested one.
 type NetworkBootDeliveryEstablishment {
   target: BootDeliveryTarget
   fleet: FleetBootServiceReceipt
@@ -64,11 +57,6 @@ type NetworkBootDeliveryEstablishment {
   boot_control: NetworkBootBootControlReceipt
   manifest: SignedBootManifestIdentity
   trust: BootstrapTrustStanding
-  boot_source_override: NetworkBootRequirementEvidence
-  client_boot_mode: NetworkBootRequirementEvidence
-  serving_infrastructure: NetworkBootRequirementEvidence
-  boot_artifacts: NetworkBootRequirementEvidence
-  artifact_digest: ContentHash
 }
 
 type NetworkBootDeliveryStanding
@@ -299,48 +287,58 @@ type BootstrapTrustObservation {
   observed_at: EpochMs
 }
 
-type BootstrapTrustStanding
-  = ProductionTrustedBootstrap {
-      firmware_https: BootstrapTrustObservation?
-      secure_boot_chainloader: BootstrapTrustObservation?
+// Production trust is grounded, and WHICH ground held is the fact a later
+// reader needs. A record of two independent optionals admits the both-absent
+// state — a ProductionTrustedBootstrap with no observation behind it — so the
+// grounds are a coproduct of the three inhabited combinations instead: the
+// ungrounded state has no constructor (DESIGN §4b rung 4).
+type ProductionTrustGrounds
+  = FirmwareHttpsTrusted { firmware_https: BootstrapTrustObservation }
+  | SecureBootChainloaderTrusted { secure_boot_chainloader: BootstrapTrustObservation }
+  | FirmwareHttpsAndSecureBootTrusted {
+      firmware_https: BootstrapTrustObservation
+      secure_boot_chainloader: BootstrapTrustObservation
     }
+
+type BootstrapTrustStanding
+  = ProductionTrustedBootstrap { grounds: ProductionTrustGrounds }
   | ControlledNetworkBootstrap { evidence: BootstrapTrustObservation }
   | BootstrapTrustUnestablished
 
-fn production_trust_ground_observed(o: BootstrapTrustObservation?) -> Bool {
-  match o {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // HTTPS firmware trust and Secure-Boot-verified chainloader are independently
-// observed. Production is minted when at least one ground is present; the
-// established receipt keeps both observations so a later reader can tell which
-// held. Isolated onboarding is Controlled only when neither firmware ground is
+// observed. Production is minted when at least one ground is present, and the
+// grounds arm names WHICH held, so a later reader reads the ground rather than
+// two optionals. Isolated onboarding is Controlled only when neither firmware ground is
 // present — the two production arms are never the same standing as Controlled.
 fn bootstrap_trust_standing(
   firmware_https: BootstrapTrustObservation?,
   secure_boot_chainloader: BootstrapTrustObservation?,
   isolated_onboarding_network: BootstrapTrustObservation?,
 ) -> BootstrapTrustStanding {
-  if production_trust_ground_observed(o: firmware_https) {
-    ProductionTrustedBootstrap {
-      firmware_https: firmware_https,
-      secure_boot_chainloader: secure_boot_chainloader,
-    }
-  } else {
-    if production_trust_ground_observed(o: secure_boot_chainloader) {
-      ProductionTrustedBootstrap {
-        firmware_https: firmware_https,
-        secure_boot_chainloader: secure_boot_chainloader,
+  match firmware_https {
+    Present { value: https } =>
+      match secure_boot_chainloader {
+        Present { value: chainloader } =>
+          ProductionTrustedBootstrap {
+            grounds: FirmwareHttpsAndSecureBootTrusted {
+              firmware_https: https,
+              secure_boot_chainloader: chainloader,
+            },
+          }
+        Absent => ProductionTrustedBootstrap { grounds: FirmwareHttpsTrusted { firmware_https: https } }
       }
-    } else {
-      match isolated_onboarding_network {
-        Present { value: e } => ControlledNetworkBootstrap { evidence: e }
-        Absent => BootstrapTrustUnestablished
+    Absent =>
+      match secure_boot_chainloader {
+        Present { value: chainloader } =>
+          ProductionTrustedBootstrap {
+            grounds: SecureBootChainloaderTrusted { secure_boot_chainloader: chainloader },
+          }
+        Absent =>
+          match isolated_onboarding_network {
+            Present { value: e } => ControlledNetworkBootstrap { evidence: e }
+            Absent => BootstrapTrustUnestablished
+          }
       }
-    }
   }
 }
 
@@ -354,14 +352,6 @@ type NetworkBootJoinInputs {
   client: ObservedClientBootModeStanding
   boot_control: BootControlReceiptStanding
   manifest: SignedBootManifestStanding
-}
-
-fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRef, observed_at: EpochMs) -> NetworkBootRequirementEvidence {
-  NetworkBootRequirementEvidence {
-    requirement: requirement,
-    observation: observation,
-    observed_at: observed_at,
-  }
 }
 
 // 0WET stays unbound this slice: operator 2026-09-18 named Mt. Jade (arriving,
@@ -461,7 +451,7 @@ fn join_verified_ticket(
 ) -> NetworkBootDeliveryStanding {
   match inputs.trust {
     BootstrapTrustUnestablished => NetworkBootDeliveryTrustUnestablished
-    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => join_verified_ticket_after_trust(
+    ProductionTrustedBootstrap { grounds: _ } => join_verified_ticket_after_trust(
       inputs: inputs, fleet: fleet, site: site, client: client, control: control, id: id, manifest_obs: manifest_obs, manifest_at: manifest_at,
     )
     ControlledNetworkBootstrap { evidence: _ } => join_verified_ticket_after_trust(
@@ -531,11 +521,6 @@ fn join_verified_ticket_after_trust(
                               boot_control: control,
                               manifest: id,
                               trust: inputs.trust,
-                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
-                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
-                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
-                              boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
-                              artifact_digest: inputs.artifact_digest,
                             },
                           }
                               }

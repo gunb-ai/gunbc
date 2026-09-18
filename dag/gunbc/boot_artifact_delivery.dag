@@ -670,7 +670,7 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
       if same_boot_delivery_target(left: e.target, right: request.target) == false {
         CandidateIneligible { cause: CandidateEvidenceForOtherTarget { evidence_target: e.target } }
       } else {
-        staged_digest_standing(offered: e.artifact_digest, requested: request.artifact.digest)
+        staged_digest_standing(offered: e.manifest.root_digest, requested: request.artifact.digest)
       }
     NetworkBootDeliveryUnestablished { missing: m } => CandidateIneligible { cause: CandidateNetworkBootUnestablished { missing: m } }
     NetworkBootDeliveryEvidenceRefused { axis: axis, observation: observation } =>
