@@ -120,7 +120,7 @@ type OobBootHandoffOutcome
   | BootSelectionUnverifiable { requested: NonEmptyStr, readback: String }
   | BootSelectionFlagInvalid { requested: NonEmptyStr, readback: String }
   | BootSelectionNotOneShot { requested: NonEmptyStr, readback: String }
-  | BootSelectionNotEfi { requested: NonEmptyStr, readback: String }
+  | BootSelectionFirmwareMismatch { requested: NonEmptyStr, readback: String }
   | PowerCycleRefused { selected: NonEmptyStr }
   | BootHandoffNotAdmitted { admission: OobBootHandoffAdmission }
 
@@ -135,7 +135,7 @@ type BootReadbackVerdict
   = BootReadbackConfirmed
   | BootReadbackFlagInvalid
   | BootReadbackNotOneShot
-  | BootReadbackNotEfi
+  | BootReadbackFirmwareMismatch
   | BootReadbackSelectorAbsent
 
 data ipmi_boot_flag_invalid_rendering: NonEmptyStr = "Boot Flag Invalid"
@@ -148,7 +148,7 @@ fn boot_readback_verdict(readback: String, expected: BootParam5Expected) -> Boot
   } else if !(readback |> contains(expected.persistence as String)) {
     BootReadbackNotOneShot
   } else if !(readback |> contains(expected.firmware as String)) {
-    BootReadbackNotEfi
+    BootReadbackFirmwareMismatch
   } else if readback |> contains(expected.selector as String) {
     BootReadbackConfirmed
   } else {
@@ -240,7 +240,7 @@ fn oob_boot_handoff(
   return match boot_readback_verdict(readback: readback.stdout, expected: expected) {
     BootReadbackFlagInvalid => BootSelectionFlagInvalid { requested: device, readback: readback.stdout }
     BootReadbackNotOneShot => BootSelectionNotOneShot { requested: device, readback: readback.stdout }
-    BootReadbackNotEfi => BootSelectionNotEfi { requested: device, readback: readback.stdout }
+    BootReadbackFirmwareMismatch => BootSelectionFirmwareMismatch { requested: device, readback: readback.stdout }
     BootReadbackSelectorAbsent => BootSelectionNotApplied { requested: device, readback: readback.stdout }
     BootReadbackConfirmed =>
       oob_power_cycle_after_confirmed_selection(

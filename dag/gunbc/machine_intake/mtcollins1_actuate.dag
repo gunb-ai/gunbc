@@ -20,7 +20,7 @@ import gunbc.machine_intake_oob_boot_handoff {
   BootParam5Expected,
   BootSelectionFlagInvalid,
   BootSelectionNotApplied,
-  BootSelectionNotEfi,
+  BootSelectionFirmwareMismatch,
   BootSelectionNotOneShot,
   BootSelectionRefused,
   BootSelectionUnverifiable,
@@ -116,8 +116,8 @@ fn mtcollins1_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome)
       exit_failure(reason: concat(label as String, ": override for '", d as String, "' reported alongside an INVALID boot flag, so it will not be honoured; boot parameter 5 read back: ", r))
     BootSelectionNotOneShot { requested: d, readback: r } =>
       exit_failure(reason: concat(label as String, ": override for '", d as String, "' is not one-shot next-boot; boot parameter 5 read back: ", r))
-    BootSelectionNotEfi { requested: d, readback: r } =>
-      exit_failure(reason: concat(label as String, ": override for '", d as String, "' is not EFI; boot parameter 5 read back: ", r))
+    BootSelectionFirmwareMismatch { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' does not match the required firmware mode; boot parameter 5 read back: ", r))
     BootSelectionUnverifiable { requested: d, readback: r } =>
       exit_failure(reason: concat(label as String, ": boot parameter 5 read did not succeed, so the override for '", d as String, "' is unverified; output: ", r))
     PowerCycleRefused { selected: d } =>

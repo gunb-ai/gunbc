@@ -195,10 +195,6 @@ type MegaRacRedirectionStatus
   = RedirectionStopped
   | RedirectionStartedConnectionAccepted
   | RedirectionConnecting
-  | RedirectionRefusedWire2
-  | RedirectionRefusedWire3
-  | RedirectionRefusedWire4
-  | RedirectionRefusedWire5
   | RedirectionWireUncatalogued { wire: Int }
 
 type MegaRacRedirectionStatusLookup
@@ -216,14 +212,6 @@ fn megarac_redirection_status_of_wire(
       RedirectionStartedConnectionAccepted
     } else if wire == 100 {
       RedirectionConnecting
-    } else if wire == 2 {
-      RedirectionRefusedWire2
-    } else if wire == 3 {
-      RedirectionRefusedWire3
-    } else if wire == 4 {
-      RedirectionRefusedWire4
-    } else if wire == 5 {
-      RedirectionRefusedWire5
     } else {
       RedirectionWireUncatalogued { wire: wire }
     }
@@ -239,7 +227,6 @@ fn megarac_redirection_status_of_wire(
 type MegaRacRedirectionPresentationStanding
   = RedirectionPresenting
   | RedirectionKnownStopped
-  | RedirectionKnownRefused { wire: Int }
   | RedirectionPresentationUnknown
 
 fn megarac_redirection_presentation_standing(
@@ -252,10 +239,6 @@ fn megarac_redirection_presentation_standing(
         RedirectionStartedConnectionAccepted => RedirectionPresenting
         RedirectionConnecting => RedirectionPresenting
         RedirectionStopped => RedirectionKnownStopped
-        RedirectionRefusedWire2 => RedirectionKnownRefused { wire: 2 }
-        RedirectionRefusedWire3 => RedirectionKnownRefused { wire: 3 }
-        RedirectionRefusedWire4 => RedirectionKnownRefused { wire: 4 }
-        RedirectionRefusedWire5 => RedirectionKnownRefused { wire: 5 }
         RedirectionWireUncatalogued { wire: _ } => RedirectionPresentationUnknown
       }
   }

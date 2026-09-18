@@ -83,7 +83,7 @@ import gunbc.machine_intake_oob_boot_handoff {
   BootHandoffNotAdmitted,
   BootSelectionFlagInvalid,
   BootSelectionNotApplied,
-  BootSelectionNotEfi,
+  BootSelectionFirmwareMismatch,
   BootSelectionNotOneShot,
   BootSelectionRefused,
   BootSelectionUnverifiable,
@@ -332,9 +332,9 @@ fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs
       ResetRefusedByController {
         diagnostic: join(["the override for '", d as String, "' is not one-shot next-boot; read back: ", r], "") as NonEmptyStr,
       }
-    BootSelectionNotEfi { requested: d, readback: r } =>
+    BootSelectionFirmwareMismatch { requested: d, readback: r } =>
       ResetRefusedByController {
-        diagnostic: join(["the override for '", d as String, "' is not EFI; read back: ", r], "") as NonEmptyStr,
+        diagnostic: join(["the override for '", d as String, "' does not match the required firmware mode; read back: ", r], "") as NonEmptyStr,
       }
     BootSelectionUnverifiable { requested: d, readback: r } =>
       ResetRefusedByController {

@@ -190,10 +190,17 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
 // by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
 // rather than inventing a second CloseSession shape. A refused or uncertain close remains
 // SessionReleaseRefused, never NotAttempted.
+fn megarac_session_get_writeout_code(get_body: String) -> String {
+  match split(s: get_body, delimiter: "\n").last() {
+    Present { value: code } => code
+    Absent => ""
+  }
+}
+
 fn megarac_session_release_by_reobservation(get_succeeded: Bool, get_body: String) -> SessionRelease {
   if get_succeeded {
     SessionReleaseRefused { detail: concat("GET /api/session still succeeded after CloseSession: ", get_body) }
-  } else if string_contains(s: get_body, pattern: "\n401") {
+  } else if megarac_session_get_writeout_code(get_body: get_body) == "401" {
     SessionReleased
   } else {
     SessionReleaseRefused { detail: concat("GET /api/session after CloseSession was unreadable; refusing to treat the session as released: ", get_body) }
@@ -443,10 +450,6 @@ fn configuration_row_standing(
                       ) {
                         RedirectionPresenting => ConfigurationRowPresenting
                         RedirectionKnownStopped => ConfigurationRowNotThisPresentation
-                        RedirectionKnownRefused { wire: w } =>
-                          ConfigurationRowUnreadable {
-                            detail: concat("redirection_status ", to_string(w), " is a named media refusal, not presenting"),
-                          }
                         RedirectionPresentationUnknown =>
                           ConfigurationRowUnreadable {
                             detail: "redirection_status is uncatalogued for this firmware or wire",
