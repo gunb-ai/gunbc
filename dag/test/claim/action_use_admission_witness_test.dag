@@ -25,7 +25,7 @@ import gunbc.action_use_admission {
   realized_use_is_a_repository_selection,
 }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
-import gunbc.generated_artifact { artifact_location }
+import gunbc.generated_artifact { GeneratedArtifact, artifact_location, generated_artifact_registry, artifact_eq }
 import gunbc.generated_workflow_provenance { generated_workflow_artifacts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -326,4 +326,23 @@ test fn every_realized_workflow_action_use_is_modeled_and_executed_exactly() -> 
 test fn red_admitted_but_unselected_release_is_not_a_repository_selection() -> Bool {
   realized_use_is_a_repository_selection(uses_text: action_release_uses_text(action_release: upload_artifact_action))
     && !realized_use_is_a_repository_selection(uses_text: action_release_uses_text(action_release: rust_cache_v2_9_1))
+}
+
+// THE SKIP LIST IS A CHECKED PROJECTION OF THE REGISTRY, NOT A SECOND AUTHORITY. The census above
+// skips exactly the files gunbc.generated_workflow_provenance generated_workflow_artifacts names, so
+// that list must equal the registry's .github/workflows members at identity grain, both ways: a row
+// whose workflow is no longer generated would otherwise make the census skip a hand-authored file
+// that route 1 no longer covers either -- a silent widen. It is a separate claim because the
+// registry's evaluation alone is most of a claim's budget.
+fn registry_workflow_artifacts() -> List<GeneratedArtifact> {
+  fold(generated_artifact_registry, init: [], f: fn(acc, a) {
+    if artifact_location(a: a).directory == realized_workflow_directory { concat(acc, [a]) } else { acc }
+  })
+}
+
+test fn generated_workflow_artifacts_are_exactly_the_registry_workflows() -> Bool {
+  let registry = registry_workflow_artifacts()
+  (registry |> count) > 0
+    && all(registry, r => any(generated_workflow_artifacts, g => artifact_eq(a: g, b: r)))
+    && all(generated_workflow_artifacts, g => any(registry, r => artifact_eq(a: g, b: r)))
 }
