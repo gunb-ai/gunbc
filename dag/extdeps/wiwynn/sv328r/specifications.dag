@@ -12,6 +12,11 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.memory.types { DimmBuffering, Registered }
 import extdeps.standards.nic_attachment { NicAttachmentClass, OcpNic3, OnboardControllerUnstated, OnboardPhyUnstated, OnboardNetworkController }
 import extdeps.standards.ocp_nic_3_0 { Sff }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.cpu.ampere { ampere_altra_family_product_brief_authority }
 import extdeps.wiwynn.sv328r.subject {
   WiwynnSv328rProduct, sv328r_datasheet_authority, wiwynn_sv328r_product,
 }
@@ -82,14 +87,18 @@ data sv328r_bmc_manageability_network: OnboardNetworkController = OnboardNetwork
 type Sv328rProcessorConfiguration {
   socket_count: Nat
   cores_per_socket_stated_max: PhysicalCoreCount
-  architecture_label: NonEmptyStr
+  vendor: Vendor<Hardware>
+  altra_family_authority: ExternalAuthority
+  architecture: Architecture
   max_core_clock: Hertz
 }
 
 data sv328r_processors: Sv328rProcessorConfiguration = Sv328rProcessorConfiguration {
   socket_count: 2,
   cores_per_socket_stated_max: physical_core_count(count: 80),
-  architecture_label: "Ampere Altra, 64-bit Arm",
+  vendor: ampere_vendor,
+  altra_family_authority: ampere_altra_family_product_brief_authority,
+  architecture: Aarch64,
   max_core_clock: hertz(count: 3000000000),
 }
 

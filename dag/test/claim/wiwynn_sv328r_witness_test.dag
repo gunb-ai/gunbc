@@ -19,6 +19,9 @@ import extdeps.wiwynn.sv328r.specifications {
   sv328r_stated_weight,
   sv328r_storage,
 }
+import extdeps.cpu.ampere { ampere_altra_family_product_brief_authority }
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.toolchain.types { Aarch64 }
 import extdeps.memory.types { Registered }
 import extdeps.standards.nic_attachment { OnboardControllerUnstated, NamedOnboardController, OcpNic3 }
 import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
@@ -76,6 +79,9 @@ test fn w_memory_is_32_rdimm_slots_ddr4_3200() -> Bool {
 test fn w_processors_are_dual_altra_80_core_class() -> Bool {
   sv328r_processors.socket_count == 2
     && physical_core_count_value(c: sv328r_processors.cores_per_socket_stated_max) == 80
+    && sv328r_processors.vendor == ampere_vendor
+    && sv328r_processors.altra_family_authority == ampere_altra_family_product_brief_authority
+    && sv328r_processors.architecture == Aarch64
     && hertz_count(h: sv328r_processors.max_core_clock) == 3000000000
 }
 
