@@ -42,6 +42,7 @@ import gunbc.spark.host_commitment {
   SparkHostAdmitted,
   SparkHostRefused,
   admit_unplaced_host,
+  admit_unplaced_host_among,
   spark_host_commitment_causes_wire,
   spark_commitment_causes_text,
   spark_commitment_causes,
@@ -469,9 +470,15 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 // The three effectful roots -- the source build, the image build entry and the published-image probe
 // -- all reach a host through `admit_unplaced_host`. This is the control that the seam refuses a
 // claimed target and that its refusal names the actual cause rather than a generic sentence, which is
-// what the deleted hand-maintained producer list could never do. And the positive arm is the
-// scoping: srv10 is reserved for the GLM subject by ruling and is still admitted for a build,
-// because a ruling-derived serving reservation is not a placement.
+// what the deleted hand-maintained producer list could never do.
+//
+// srv10 IS NOW A REFUSAL, AND THAT IS THE HARM THIS SEAM EXISTS TO STOP. This claim used to admit
+// srv10 for a build, on the ground that a ruling-derived reservation is not a placement -- true, but
+// srv10 was also running the native GLM arm, which had no placement claim, so the seam would have
+// sent a source build or an image pull onto a serving host. Group B's assigned arm now claims it and
+// the real path refuses. The admitting arm is kept as a positive control over a SUPPLIED unplaced set
+// (admit_unplaced_host_among), because no production unit is unplaced any more: dropping it would let
+// a seam that refuses everything read as tested.
 test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
   (match admit_unplaced_host(raw: "srv9", purpose: "a fixture effect" as NonEmptyStr) {
      SparkHostRefused { cause: why } =>
@@ -489,8 +496,17 @@ test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
          SparkHostAdmitted { host: _ } => false
        })
     && (match admit_unplaced_host(raw: "srv10", purpose: "a fixture effect" as NonEmptyStr) {
+         SparkHostRefused { cause: why } =>
+           string_contains(s: why as String, pattern: "srv10") && string_contains(s: why as String, pattern: "serving arm")
+         SparkHostAdmitted { host: _ } => false
+       })
+    && (match admit_unplaced_host_among(raw: "srv10", purpose: "a fixture effect" as NonEmptyStr, unplaced: [operator_host_srv10], held_causes: h => "") {
          SparkHostAdmitted { host: h } => host_identity_eq(a: h, b: operator_host_srv10)
          SparkHostRefused { cause: _ } => false
+       })
+    && (match admit_unplaced_host_among(raw: "srv11", purpose: "a fixture effect" as NonEmptyStr, unplaced: [operator_host_srv10], held_causes: h => "held in fixture") {
+         SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "held in fixture")
+         SparkHostAdmitted { host: _ } => false
        })
 }
 
@@ -560,14 +576,18 @@ test fn the_derivation_partitions_the_unit_population() -> Bool {
 // claimed group and a cell role are desired state rather than observations -- see the type's note.)
 // srv10 carries exactly one cause in production and it is ruling-derived; srv9 carries the held arm
 // claim AND the ruling's reservation, and the two projections separate them.
+// srv10 USED TO BE THE RULING-ONLY SPECIMEN, and it was one only because the arm serving there had no
+// placement claim. Group B's assigned arm now claims every member, so srv10 carries one cause of each
+// kind like srv9. The fold still discriminates: a fold that failed to separate the kinds would count
+// two of each, not one.
 test fn authority_held_and_ruling_derived_causes_are_separable_by_a_fold() -> Bool {
   (match spark_host_standing(host: operator_host_srv10) {
      Absent => false
      Present { value: SparkHostUncommitted { host: _ } } => false
      Present { value: SparkHostCommitted { host: _, commitments: c } } =>
-       length(spark_authority_held_causes_of(c: c)) == 0
+       length(spark_authority_held_causes_of(c: c)) == 1
          && length(spark_ruling_derived_causes_of(c: c)) == 1
-         && all(spark_commitment_causes(c: c), x => is_ruling_reservation_for(c: x, subject: glm_group_b_serving_subject))
+         && any(spark_commitment_causes(c: c), x => is_ruling_reservation_for(c: x, subject: glm_group_b_serving_subject))
    })
     && (match spark_host_standing(host: operator_host_srv9) {
          Absent => false

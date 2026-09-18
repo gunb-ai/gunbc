@@ -44,7 +44,7 @@ import gunbc.spark.vllm_runtime_image_build {
   SparkHostUnreachable, SparkHostUnresolved,
   classify_reported_hostname, spark_host_answered,
 }
-import gunbc.spark.host_commitment { spark_unplaced_hosts, spark_host_is_unplaced, SparkHostAdmitted, SparkHostRefused, admit_unplaced_host }
+import gunbc.spark.host_commitment { spark_host_is_unplaced, SparkHostAdmitted, SparkHostRefused, admit_unplaced_host, admit_unplaced_host_among }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import gunbc.spark.serving_runtime_capability_probe {
   v41_sm121_capability_probe_rows, v41_gb10_source_build_probe, gb10_observed_compute_capability,
@@ -417,17 +417,28 @@ test fn every_published_image_observation_carries_its_instrument_and_date() -> B
 // literal back in or the fleet model changes under it -- which is the whole point of taking the host
 // as an argument. The derivation itself moved to gunbc.spark.host_commitment when serving selection
 // became its second consumer; this claim is about what THIS LANE refuses, which is unchanged, and the
-// set's own reds are in test.claim.spark.spark_host_commitment_witness. The positive half is asserted
-// BY IDENTITY: srv10 is reserved for the GLM subject by ruling, and that declared cause is scoped to
-// serving, so the build lane must still see it -- a non-emptiness length over the live set would not
-// say which host, and could be satisfied by the wrong one.
+// set's own reds are in test.claim.spark.spark_host_commitment_witness.
+//
+// GROUP B IS EXCLUDED TOO, AND THAT IS NOT A RESTRICTION THIS LANE CHOSE. This claim used to assert srv10
+// was admissible for a build, because group B's hosts carried only a ruling-derived reservation. They
+// were also running the native GLM arm tensor-parallel, with no placement claim, so a build here would
+// have competed with a serving rank for the unit's unified memory. Group B's assigned arm now claims
+// every member, so no production Spark unit is admissible for a build until one is freed. The positive
+// half therefore runs over a SUPPLIED unplaced set: asserting admission against the live census would
+// need a host the fleet does not have.
 test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
   !spark_host_is_unplaced(host: "srv5" as HostIdentity)
     && !spark_host_is_unplaced(host: "srv6" as HostIdentity)
     && !spark_host_is_unplaced(host: "srv7" as HostIdentity)
     && !spark_host_is_unplaced(host: "srv8" as HostIdentity)
-    && spark_host_is_unplaced(host: "srv10" as HostIdentity)
-    && any(spark_unplaced_hosts, h => (h as String) == "srv10")
+    && !spark_host_is_unplaced(host: "srv9" as HostIdentity)
+    && !spark_host_is_unplaced(host: "srv10" as HostIdentity)
+    && !spark_host_is_unplaced(host: "srv11" as HostIdentity)
+    && !spark_host_is_unplaced(host: "srv12" as HostIdentity)
+    && (match admit_unplaced_host_among(raw: "srv10", purpose: vllm_build_host_purpose, unplaced: ["srv10" as HostIdentity], held_causes: h => "") {
+      SparkHostAdmitted { host: h } => (h as String) == "srv10"
+      SparkHostRefused { cause: _ } => false
+    })
     && (match admit_unplaced_host(raw: "srv5", purpose: vllm_build_host_purpose) {
       SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "not admissible for")
       SparkHostAdmitted { host: _ } => false
