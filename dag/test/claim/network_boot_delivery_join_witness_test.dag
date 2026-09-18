@@ -40,6 +40,7 @@ import gunbc.network_boot_delivery {
   NetworkBootBootControlReceipt,
   NetworkBootBootSourceOverride,
   NetworkBootClientBootMode,
+  NetworkBootDeliveryArchitectureRefused,
   NetworkBootDeliveryEstablished,
   NetworkBootDeliveryEvidenceRefused,
   NetworkBootDeliveryUnestablished,
@@ -51,6 +52,7 @@ import gunbc.network_boot_delivery {
   ProductionTrustedBootstrap,
   SignedBootManifestAbsent,
   SignedBootManifestIdentified,
+  SignedBootManifestVerificationRefused,
   SignedBootManifestVerified,
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
@@ -209,6 +211,7 @@ test fn four_receipts_join_to_established() -> Bool {
     NetworkBootDeliveryEstablished { evidence: e } => e.artifact_digest == artifact
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -226,6 +229,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootServingInfrastructure)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -262,6 +266,30 @@ test fn unknown_architecture_does_not_establish() -> Bool {
     SitePxeEdgeArchitectureRefused { architecture: a } => a == X86_64
     SitePxeEdgeEstablished { receipt: _ } => false
     SitePxeEdgeUnestablished => false
+  }
+}
+
+test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
+  let site = site_pxe_edge_standing(
+    edge: reachable_edge(discovery: SiteNativeDhcp),
+    client_architecture: X86_64,
+    observation: obs,
+    observed_at: 1788000000000,
+  )
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site,
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryArchitectureRefused { architecture: a } => a == X86_64
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
   }
 }
 
@@ -322,6 +350,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootSourceOverride)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -358,6 +387,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -375,6 +405,7 @@ test fn absent_manifest_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -411,6 +442,26 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+  }
+}
+
+test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerificationRefused { observation: obs, observed_at: 1788000000000 },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryEvidenceRefused { axis: axis, observation: o } =>
+      axis == NetworkBootBootArtifacts && (o.decl_name as String) == (obs.decl_name as String)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -447,6 +498,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -464,6 +516,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootClientBootMode)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -520,6 +573,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
       axis == NetworkBootClientBootMode && (o.decl_name as String) == "srv4_bmc_netboot_serve_plan"
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
 
@@ -553,5 +607,6 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
       axis == NetworkBootServingInfrastructure && (o.decl_name as String) == "srv4_bmc_netboot_serve_plan"
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }

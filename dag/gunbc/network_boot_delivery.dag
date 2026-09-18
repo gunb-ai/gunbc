@@ -67,6 +67,7 @@ type NetworkBootDeliveryStanding
   = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
   | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
   | NetworkBootDeliveryEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
+  | NetworkBootDeliveryArchitectureRefused { architecture: Architecture }
 
 // An authored plan cannot inhabit MeasuredNetworkBootFact. The class travels on
 // the receipt so an unrostered DeclarationRef cannot silently establish.
@@ -238,6 +239,7 @@ type SignedBootManifestStanding
       observation: DeclarationRef
       observed_at: EpochMs
     }
+  | SignedBootManifestVerificationRefused { observation: DeclarationRef, observed_at: EpochMs }
   | SignedBootManifestAbsent
 
 type BootstrapTrustStanding
@@ -278,9 +280,14 @@ fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRe
 // 0WET stays unbound this slice: operator 2026-09-18 named Mt. Jade (arriving,
 // barebones) as first candidate and Mt. Collins after CD as fallback. No UnitKey
 // is minted here.
-// Production consumer of this join: BoundBootDeliveryEvidence.network_boot in
-// gunbc.boot_artifact_delivery pxe_chain_candidate. 0C (#11604) and 0D (#11605)
-// bind receipts and must call this function rather than minting Established.
+// Production consumer of this join: BoundBootDeliveryEvidence.network_boot, read
+// by gunbc.boot_artifact_delivery pxe_chain_candidate. That field is minted by
+// join_network_boot_delivery once one production assembler holds fleet + site +
+// client + control + a SignedBootManifestVerified ticket together. 0B/0C/0D each
+// own one receipt family and cannot call the join without assembling the others
+// (0D importing this module to wrap a ticket is not a join consumer). Trigger:
+// the intake evidence assembler that fills BoundBootDeliveryEvidence for a live
+// unit — not 0C/0D landing their PRs.
 fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliveryStanding {
   match inputs.fleet {
     FleetBootServiceUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
@@ -291,7 +298,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
         MeasuredNetworkBootFact =>
           match inputs.site {
             SitePxeEdgeUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
-            SitePxeEdgeArchitectureRefused { architecture: _ } => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
+            SitePxeEdgeArchitectureRefused { architecture: a } => NetworkBootDeliveryArchitectureRefused { architecture: a }
             SitePxeEdgeEstablished { receipt: _ } =>
               match inputs.client {
                 ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
@@ -323,6 +330,8 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                                         SignedBootManifestAbsent => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
                                         SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } =>
                                           NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                        SignedBootManifestVerificationRefused { observation: refused_obs, observed_at: _ } =>
+                                          NetworkBootDeliveryEvidenceRefused { axis: NetworkBootBootArtifacts, observation: refused_obs }
                                         SignedBootManifestVerified { identity: id, evidence_class: man_class, observation: manifest_obs, observed_at: manifest_at } =>
                                           match man_class {
                                             NonEstablishingNetworkBootPredecessor =>
