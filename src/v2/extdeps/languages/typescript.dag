@@ -132,6 +132,17 @@ import v2.std.compilers.target_model {
   CanonicalOperation,
   InfixToken,
   canonical_operation_op_add,
+  canonical_operation_op_sub,
+  canonical_operation_op_mul,
+  canonical_operation_op_div,
+  canonical_operation_op_and,
+  canonical_operation_op_or,
+  canonical_operation_op_eq,
+  canonical_operation_op_ne,
+  canonical_operation_op_lt,
+  canonical_operation_op_le,
+  canonical_operation_op_gt,
+  canonical_operation_op_ge,
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
@@ -677,8 +688,32 @@ fn ts_add_operator_realization_row() -> Node {
   )
 }
 
+// The default catalog carries the measured binary roster, spellings mirrored from the rust
+// sibling (rust_operator_realizations_catalog_node): one row per canonical operation the
+// surface canonicalization admits, each an InfixToken the modeled lex spells. A canonical
+// operation with no row still refuses at emit — the roster is the wall, not a fallback.
+fn ts_operator_realization_row(operation: CanonicalOperation, token: Symbol) -> Node {
+  target_operator_realization_node(
+    operation: operation,
+    shape: InfixToken { token: token }
+  )
+}
+
 fn ts_operator_realizations_catalog_node() -> Node {
-  target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row()])
+  target_operator_realizations_catalog_node(rows: [
+    ts_operator_realization_row(operation: canonical_operation_op_or(), token: ^ts_token_oror),
+    ts_operator_realization_row(operation: canonical_operation_op_and(), token: ^ts_token_andand),
+    ts_operator_realization_row(operation: canonical_operation_op_eq(), token: ^ts_token_eqeq),
+    ts_operator_realization_row(operation: canonical_operation_op_ne(), token: ^ts_token_neq),
+    ts_operator_realization_row(operation: canonical_operation_op_lt(), token: ^ts_token_lt),
+    ts_operator_realization_row(operation: canonical_operation_op_le(), token: ^ts_token_le),
+    ts_operator_realization_row(operation: canonical_operation_op_gt(), token: ^ts_token_gt),
+    ts_operator_realization_row(operation: canonical_operation_op_ge(), token: ^ts_token_ge),
+    ts_add_operator_realization_row(),
+    ts_operator_realization_row(operation: canonical_operation_op_sub(), token: ^ts_token_minus),
+    ts_operator_realization_row(operation: canonical_operation_op_mul(), token: ^ts_token_star),
+    ts_operator_realization_row(operation: canonical_operation_op_div(), token: ^ts_token_slash)
+  ])
 }
 
 fn ts_block_evaluation_mode() -> BlockEvaluationMode {
@@ -2431,6 +2466,15 @@ fn ts_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_plus, text: " + "),
       ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
       ts_lex_rule(token_class: ^ts_token_star, text: " * "),
+      ts_lex_rule(token_class: ^ts_token_slash, text: " / "),
+      ts_lex_rule(token_class: ^ts_token_eqeq, text: " == "),
+      ts_lex_rule(token_class: ^ts_token_neq, text: " != "),
+      ts_lex_rule(token_class: ^ts_token_lt, text: " < "),
+      ts_lex_rule(token_class: ^ts_token_le, text: " <= "),
+      ts_lex_rule(token_class: ^ts_token_gt, text: " > "),
+      ts_lex_rule(token_class: ^ts_token_ge, text: " >= "),
+      ts_lex_rule(token_class: ^ts_token_andand, text: " && "),
+      ts_lex_rule(token_class: ^ts_token_oror, text: " || "),
 
       ts_lex_rule(token_class: ^ts_token_eq, text: " ="),
       ts_lex_rule(token_class: ^ts_token_pipe, text: " | "),
