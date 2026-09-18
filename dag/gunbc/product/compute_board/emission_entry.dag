@@ -32,6 +32,12 @@ import product.compute_board.verilog_projection {
   project_article_to_verilog,
   power_interlock_verilog_bindings,
 }
+import product.compute_board.truth_table_projection {
+  TruthTableProjected,
+  TruthTableRefused,
+  TruthTableRefusal,
+  project_article_to_truth_table,
+}
 
 // THE ENTRY POINTS THAT ACTUALLY PRODUCE THE ARTIFACTS, AND THE REFUSAL THEY USED TO SWALLOW.
 // Everything else in this product returns a typed projection that a witness inspects; these are the
@@ -91,6 +97,22 @@ fn emit_verilog_for(article: BoardPowerInterfaceArticle) -> BoardEmission<Verilo
   }
 }
 
+// THE FOURTH TARGET, ADDED AS AN INSTANTIATION AND NOTHING ELSE. This entry is the evidence for the
+// shape claim the type above makes: a new target costs one projection off the board's own
+// vocabulary plus one `BoardEmission<ItsOwnRefusal>` here. No enum widened, no caller of the other
+// three changed, and no converter from Verilog, SPICE or the pin file exists — the truth table is
+// derived from the same digital-control equations those targets render, not from their output.
+fn emit_truth_table_for(article: BoardPowerInterfaceArticle) -> BoardEmission<TruthTableRefusal> {
+  match admit_board_article(a: article) {
+    BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_truth_table(admitted: adm) {
+        TruthTableProjected { receipt: r } => BoardEmitted { source: r.source }
+        TruthTableRefused { cause: c } => BoardTargetRefused { cause: c }
+      }
+  }
+}
+
 fn emit_ngspice_run_for(article: BoardPowerInterfaceArticle) -> BoardEmission<SpiceProjectionRefusal> {
   match admit_board_article(a: article) {
     BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
@@ -134,6 +156,10 @@ fn emit_verilog() -> BoardEmission<VerilogProjectionRefusal> {
 
 fn emit_ngspice_run() -> BoardEmission<SpiceProjectionRefusal> {
   emit_ngspice_run_for(article: power_interlock_article)
+}
+
+fn emit_truth_table() -> BoardEmission<TruthTableRefusal> {
+  emit_truth_table_for(article: power_interlock_article)
 }
 
 fn emit_pin_constraints() -> BoardEmission<PinChainRefusalSet> {

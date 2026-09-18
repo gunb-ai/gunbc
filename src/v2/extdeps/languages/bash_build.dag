@@ -297,6 +297,25 @@ fn bash_build_if(cond: Node, body: Node) -> Node {
   }
 }
 
+// if/else carries a builder-only stmt tag, exactly as bash_build_negation does: the serializer binds
+// it to the bash_orch_if bash_stmt_if_else target model, so the else arm is one more row read by
+// the one serializer rather than a second emitter. then_body and else_body are stmt lists.
+fn bash_build_if_else(cond: Node, then_body: Node, else_body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_build_stmt_if_else)
+      },
+      Edge { label: Positional, target: cond },
+      Edge { label: Positional, target: then_body },
+      Edge { label: Positional, target: else_body }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn bash_build_with_redir(inner: Node, redir: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },

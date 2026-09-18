@@ -1,6 +1,7 @@
 module gunbc.whole_corpus_compile_admission
 
-import std.types { Int, String, NonEmptyStr, Bool }
+import std.types { Int, String, NonEmptyStr, Bool, List }
+import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -72,10 +73,11 @@ data whole_corpus_compile_measured_demand_note: String = "WHERE THE THRESHOLD CO
 // demand note. A run that clears this and dies anyway is a re-measure trigger, not a defect in the
 // refusal.
 //
-// NEXT-RUNG TRIGGER: a per-run resident-set prediction derived from the compile's own declared
-// inputs rather than a fleet-wide constant, at which point the admission becomes a real fit
-// predicate and can climb toward mechanical prevention. Until then the class is declared here
-// rather than left to be rediscovered.
+// NEXT-RUNG TRIGGER: a .dag instrument that measures a root's peak and mints its MeasuredForRoot row
+// in one carrier, so a row cannot be authored without the run behind it. The demand is already a
+// fact of the root compiled (the root join below); what stays unconstructed is the receipt. A
+// resident-set prediction scaled from a root's source census is NOT this trigger: it is a DESIGN
+// section 4d bet, and this admission refuses an unmeasured root rather than admitting on one.
 
 // SCOPED COMPILES REACH NO ADMISSION ARM AT ALL, and that placement is unchanged — but THE
 // ASYMMETRY THIS NOTE USED TO REST ON HAS CLOSED, and saying so is the point of this paragraph. It
@@ -117,16 +119,218 @@ data whole_corpus_compile_measured_demand_note: String = "WHERE THE THRESHOLD CO
 // its own refusal text. An entry measurement needs a runner that exposes a real limit, at which
 // point no declaration is involved and the refusal never fires.
 
-// The demand figure: the highest available COMPLETING-run peak on the compile route (15871708 kB,
-// --target dag), rounded up to whole-gibibyte grain. This session's own three peaks are all lower
-// AND all from REFUSING runs, so declaring one of them would leave the band between them and the
-// completing evidence admitted without evidence it can complete. See
-// whole_corpus_compile_measured_demand_note for why the higher figure is adopted despite being
-// attributed rather than reproduced here, the grain argument, and the re-measure trigger.
-fn whole_corpus_compile_measured_peak_demand() -> ByteSize {
-  byte_size(17179869184)
+// THE DEMAND IS A FACT OF THE ROOT COMPILED, NOT OF THE COMPILER. Until 2026-09-13 the figure below
+// was a population-blind constant: whole_corpus_compile_measured_peak_demand returned 16 GiB for ANY
+// primary root, although whole_corpus_compile_measured_demand_note records that it was measured on
+// ONE subject -- this repository's dag-primary compile with src/v2 as a dependency pool. That one
+// defect read in two directions: a smaller root (gunbc-private, 548 sources on a 6 GiB runner) was
+// refused a whole-root compile on another root's number, and a root larger than the measured one
+// would have been ADMITTED on a number that undercounts it. The constant is deleted rather than
+// kept beside the join, so no consumer can keep answering in its vocabulary.
+//
+// THE KEY IS REPOSITORY, PRIMARY ROOT AND THE ORDERED DEPENDENCY POOLS, because every one of them
+// changes the resident set. A root spelled `dag` is not an identity -- two repositories spell it --
+// so without the repository the defect survives for any repository that happens to reuse the
+// spelling. The pools are in the key because a pool is indexed into the name census even when it is
+// not the compile subject, and gunbc.recurring_failure_mode records resident set tracking that
+// census; a dag compile with no pool and one with src/v2 as pool are different subjects.
+type WholeCorpusCompileRootIdentity {
+  repository: RepositoryIdentity
+  primary_root: SourceRootIdentity
+  dependency_pools: List<SourceRootIdentity>
 }
 
+// The population the measured run REPORTED as its subject. It is evidence of what was measured and
+// deliberately NOT part of the join: a census key would refuse every commit that changes a byte,
+// and a coefficient derived from it (demand per source, demand per byte) is a DESIGN section 4d bet
+// typed as a fact -- the scaling law whole_corpus_compile_measured_demand_note already declines.
+// Bytes are carried with their standing because the public receipt recorded a count and no bytes.
+type WholeCorpusCompileSourceBytes
+  = SourceBytesRecorded { bytes: ByteSize }
+  | SourceBytesNotRecordedByReceipt { read_obligation: NonEmptyStr }
+
+type WholeCorpusCompileSourceCensus {
+  source_count: Int
+  source_bytes: WholeCorpusCompileSourceBytes
+}
+
+type WholeCorpusCompileDemandReceipt {
+  measured_on: NonEmptyStr
+  instrument_run: NonEmptyStr
+  evidence: DeclarationRef
+}
+
+type WholeCorpusCompileDemand
+  = MeasuredForRoot {
+      root: WholeCorpusCompileRootIdentity,
+      census: WholeCorpusCompileSourceCensus,
+      peak: ByteSize,
+      receipt: WholeCorpusCompileDemandReceipt,
+    }
+  | UnmeasuredRoot { root: WholeCorpusCompileRootIdentity }
+
+// Element-wise and ordered: pool order is precedence order under primary-precedence indexing, so
+// [a, b] and [b, a] are different subjects. Structural list equality over the unbranded spellings is
+// one linear walk and compares elements, never a joined string, so ["a,b"] and ["a", "b"] stay distinct.
+fn whole_corpus_compile_source_roots_eq(a: List<SourceRootIdentity>, b: List<SourceRootIdentity>) -> Bool {
+  (a |> map(r => r as String)) == (b |> map(r => r as String))
+}
+
+fn whole_corpus_compile_root_identity_eq(a: WholeCorpusCompileRootIdentity, b: WholeCorpusCompileRootIdentity) -> Bool {
+  (a.repository as String) == (b.repository as String)
+    && (a.primary_root as String) == (b.primary_root as String)
+    && whole_corpus_compile_source_roots_eq(a: a.dependency_pools, b: b.dependency_pools)
+}
+
+fn whole_corpus_compile_root_identity_label(r: WholeCorpusCompileRootIdentity) -> NonEmptyStr {
+  concat(
+    concat(r.repository as String, concat(" primary-root ", r.primary_root as String)),
+    if count(r.dependency_pools) == 0 { " (no dependency pools)" }
+    else { concat(" + dependency pools ", r.dependency_pools |> map(p => p as String) |> join(separator: ", ")) }
+  ) as NonEmptyStr
+}
+
+// THIS REPOSITORY'S DECLARED IDENTITY, the repository coordinate of every root it measures and the
+// value its whole-root compiles are handed as --repository. Declared, never read from a host path
+// or a remote.
+data whole_corpus_compile_repository: RepositoryIdentity = "gunbc" as RepositoryIdentity
+
+// THE PUBLIC ROOT'S ROW. The peak is the figure this module declared before the root join, CITED
+// and not re-measured: warm-ant-908's completing --target dag run, 15871708 kB rounded up to
+// whole-gibibyte grain, with the adoption argument, the grain rule and the re-measure trigger in
+// whole_corpus_compile_measured_demand_note. The census is the subject line the three receipted
+// runs of that note printed; the adopted completing run recorded no census of its own, which the
+// note already discloses as a provenance weakening and this row does not repair.
+data whole_corpus_compile_public_root: WholeCorpusCompileRootIdentity = WholeCorpusCompileRootIdentity {
+  repository: whole_corpus_compile_repository,
+  primary_root: "dag" as SourceRootIdentity,
+  dependency_pools: ["src/v2" as SourceRootIdentity],
+}
+
+data whole_corpus_compile_public_root_census: WholeCorpusCompileSourceCensus = WholeCorpusCompileSourceCensus {
+  source_count: 3109,
+  source_bytes: SourceBytesNotRecordedByReceipt {
+    read_obligation: "the next public MeasuredForRoot receipt records the subject's source bytes beside its count, read from the same run that reports the peak" as NonEmptyStr,
+  },
+}
+
+data whole_corpus_compile_public_root_receipt: WholeCorpusCompileDemandReceipt = WholeCorpusCompileDemandReceipt {
+  measured_on: "2026-08-28" as NonEmptyStr,
+  instrument_run: "gunbc compile --source-root dag --source-root src/v2 --target dag under /usr/bin/time -v on srv1: completing run by warm-ant-908 at be89e236c9 (exit 0), refusing runs by clever-tern-899 at 91c05c1b34" as NonEmptyStr,
+  evidence: DeclarationRef {
+    module_path: "gunbc.whole_corpus_compile_admission",
+    decl_name: "whole_corpus_compile_measured_demand_note",
+    field: WholeDeclaration
+  },
+}
+
+data whole_corpus_compile_public_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {
+  root: whole_corpus_compile_public_root,
+  census: whole_corpus_compile_public_root_census,
+  peak: byte_size(17179869184),
+  receipt: whole_corpus_compile_public_root_receipt,
+}
+
+// THE ROSTER OF MEASURED ROOTS IN THIS REPOSITORY. A repository carries its own roots' rows; another
+// repository's row is added in that repository, measured once on its own runner with its receipt.
+// THE XL-1 TAP'S FIXTURE ROOT. The only root the namespace program's live tap compiles on a
+// required route: the eleven-module reference-derived-graph fixture as primary root with dag as its
+// dependency pool (the fixture imports std.types, so it is not compilable alone; dag/std is the
+// smallest pool that resolves it, and the pool is part of the identity). Measured once by the
+// modeled instrument on a session host whose cgroup memory.max bound the child; the receipt's
+// completed arm (exit 0, census reported) is what gunbc.root_demand_measurement
+// measured_for_root_from_receipt admits, and the peak is at that module's grain (278921216 bytes
+// rounded up to whole gibibytes). Re-measure trigger: the same as the public row's - a later
+// completing peak that exceeds this figure.
+data whole_corpus_compile_xl1_fixture_root: WholeCorpusCompileRootIdentity = WholeCorpusCompileRootIdentity {
+  repository: whole_corpus_compile_repository,
+  primary_root: "dag/test/fixture/reference_derived_graph" as SourceRootIdentity,
+  dependency_pools: ["dag/std" as SourceRootIdentity],
+}
+
+data whole_corpus_compile_xl1_fixture_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {
+  root: whole_corpus_compile_xl1_fixture_root,
+  census: WholeCorpusCompileSourceCensus {
+    source_count: 14,
+    source_bytes: SourceBytesRecorded { bytes: byte_size(73093) },
+  },
+  peak: byte_size(1073741824),
+  receipt: WholeCorpusCompileDemandReceipt {
+    measured_on: "2026-09-17" as NonEmptyStr,
+    instrument_run: "gunbc measure-root-demand --repository gunbc --source-root dag/test/fixture/reference_derived_graph --source-root dag/std (3d35de172cc5c26bce303073efde2a7dfa00efd6-dirty, child pid 737628 at unix 1789616975) on 60e1d18cada1 under cgroup memory.max (/sys/fs/cgroup/), limit 33578549248: completed, exit 0, peak 278921216" as NonEmptyStr,
+    evidence: DeclarationRef {
+      module_path: "gunbc.root_demand_measurement",
+      decl_name: "measured_for_root_from_receipt",
+      field: WholeDeclaration
+    },
+  },
+}
+
+data whole_corpus_compile_measured_root_demands: List<WholeCorpusCompileDemand> = [
+  whole_corpus_compile_public_root_demand,
+  whole_corpus_compile_xl1_fixture_root_demand,
+]
+
+// THE JOIN. A root with no MeasuredForRoot row in the roster is UnmeasuredRoot -- never the nearest
+// row, never a scaled row. Root identity is the whole join, so a row for a different root is not a
+// candidate at any budget.
+fn whole_corpus_compile_demand_for_root(
+  root: WholeCorpusCompileRootIdentity,
+  demands: List<WholeCorpusCompileDemand>
+) -> WholeCorpusCompileDemand {
+  fold(demands, init: UnmeasuredRoot { root: root }, f: fn(acc, d) {
+    match acc {
+      MeasuredForRoot { root: _, census: _, peak: _, receipt: _ } => acc
+      UnmeasuredRoot { root: _ } => match d {
+        MeasuredForRoot { root: r, census: _, peak: _, receipt: _ } =>
+          if whole_corpus_compile_root_identity_eq(a: r, b: root) { d } else { acc }
+        UnmeasuredRoot { root: _ } => acc
+      }
+    }
+  })
+}
+
+// THE MEASUREMENT RECIPE an UnmeasuredRoot refusal names, rendered from the root so the argv is the
+// one that produces THAT root's row. No .dag instrument re-derives the peak yet
+// (whole_corpus_compile_measured_demand_note, next-rung trigger), so the recipe is the hand
+// procedure the public row's receipt followed, stated as the row shape it must produce.
+fn whole_corpus_compile_measurement_recipe(root: WholeCorpusCompileRootIdentity) -> NonEmptyStr {
+  concat(
+    concat(
+      "measure once, on a host where a cgroup memory.max binds the process: gunbc measure-root-demand --repository ",
+      concat(root.repository as String,
+        concat(" --source-root ",
+          concat(root.primary_root as String,
+            concat(root.dependency_pools |> map(p => concat(" --source-root ", p as String)) |> join(separator: ""),
+              " --receipt <receipt.json>"))))
+    ),
+    concat(
+      "; the run's only product is that receipt. Author the MeasuredForRoot row for ",
+      concat(whole_corpus_compile_root_identity_label(r: root) as String,
+        " from it with gunbc.root_demand_measurement measured_for_root_from_receipt in that repository's own measured-root demands, regenerate the repository's demand projection, and hand its location to the compile")
+    )
+  ) as NonEmptyStr
+}
+
+// WHERE THE ROWS WERE READ FROM, AS AN OUTCOME AND NOT AS A LIST. The admission runs before any
+// source is resolved, so the rows reach it as a projection read from a location the run was handed
+// (gunbc.whole_corpus_compile_demand_projection). Three outcomes with three remedies: nothing was
+// declared, the declared location did not read, or it read. Collapsing the first two into an empty
+// list would erase the cause at the one place a reader needs it.
+type WholeCorpusCompileDemandsRead
+  = DemandsProjectionNotDeclared
+  | DemandsProjectionUnreadable { location: NonEmptyStr, reason: NonEmptyStr }
+  | DemandsProjectionRead { location: NonEmptyStr, demands: List<WholeCorpusCompileDemand> }
+
+type WholeCorpusCompileUnmeasuredCause
+  = NoDemandsProjectionDeclared
+  | DemandsProjectionNotRead { location: NonEmptyStr, reason: NonEmptyStr }
+  | NoRowForRoot { location: NonEmptyStr }
+
+// THE MISMATCH ARM: a projection none of whose rows belongs to the run's repository is ANOTHER
+// REPOSITORY'S projection, not an incomplete one of this repository. Handing a compile another
+// repository's projection is the population-blind defect re-entered through the location, so it
+// refuses with the repositories it did carry rather than reading as merely unmeasured.
 type WholeCorpusCompileAdmission
   = WholeCorpusCompileAdmitted { budget: ByteSize, required: ByteSize }
   | WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
@@ -135,26 +339,55 @@ type WholeCorpusCompileAdmission
       source: NonEmptyStr,
     }
   | WholeCorpusCompileRefusedBudgetUnreadable { reason: NonEmptyStr }
+  | WholeCorpusCompileRefusedUnmeasuredRoot {
+      root: WholeCorpusCompileRootIdentity,
+      cause: WholeCorpusCompileUnmeasuredCause,
+      recipe: NonEmptyStr,
+    }
+  | WholeCorpusCompileRefusedDemandsForAnotherRepository {
+      root: WholeCorpusCompileRootIdentity,
+      location: NonEmptyStr,
+      projected_repositories: List<RepositoryIdentity>,
+    }
 
 fn whole_corpus_compile_admission_at_budget(
   bytes: ByteSize,
-  source: HostBudgetSource
+  source: HostBudgetSource,
+  peak: ByteSize
 ) -> WholeCorpusCompileAdmission {
-  if byte_size_count(b: bytes) < byte_size_count(b: whole_corpus_compile_measured_peak_demand()) {
+  if byte_size_count(b: bytes) < byte_size_count(b: peak) {
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
       budget: bytes,
-      required: whole_corpus_compile_measured_peak_demand(),
+      required: peak,
       source: host_budget_source_label(s: source),
     }
   } else {
-    WholeCorpusCompileAdmitted {
-      budget: bytes,
-      required: whole_corpus_compile_measured_peak_demand(),
-    }
+    WholeCorpusCompileAdmitted { budget: bytes, required: peak }
   }
 }
 
-fn whole_corpus_compile_admission(budget: HostBudgetResolution) -> WholeCorpusCompileAdmission {
+fn whole_corpus_compile_unmeasured(
+  root: WholeCorpusCompileRootIdentity,
+  cause: WholeCorpusCompileUnmeasuredCause
+) -> WholeCorpusCompileAdmission {
+  WholeCorpusCompileRefusedUnmeasuredRoot {
+    root: root,
+    cause: cause,
+    recipe: whole_corpus_compile_measurement_recipe(root: root),
+  }
+}
+
+fn whole_corpus_compile_demand_repositories(demands: List<WholeCorpusCompileDemand>) -> List<RepositoryIdentity> {
+  demands |> flat_map(d => match d {
+    MeasuredForRoot { root: r, census: _, peak: _, receipt: _ } => [r.repository]
+    UnmeasuredRoot { root: r } => [r.repository]
+  })
+}
+
+fn whole_corpus_compile_budget_against_peak(
+  budget: HostBudgetResolution,
+  peak: ByteSize
+) -> WholeCorpusCompileAdmission {
   match budget {
     HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
     HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
@@ -162,7 +395,39 @@ fn whole_corpus_compile_admission(budget: HostBudgetResolution) -> WholeCorpusCo
       effective_bytes: b,
       requested_bytes: _,
       observation: HostBudgetObserved { source: s, bytes: _ }
-    } => whole_corpus_compile_admission_at_budget(bytes: b, source: s)
+    } => whole_corpus_compile_admission_at_budget(bytes: b, source: s, peak: peak)
+  }
+}
+
+// The root is resolved against the projection before the budget is read, so a root with no row
+// refuses with its cause and recipe even where the budget is unreadable: the missing row is the
+// deficit a larger or better-instrumented host cannot fix. No arm falls back to another root's row.
+fn whole_corpus_compile_admission(
+  budget: HostBudgetResolution,
+  root: WholeCorpusCompileRootIdentity,
+  read: WholeCorpusCompileDemandsRead
+) -> WholeCorpusCompileAdmission {
+  match read {
+    DemandsProjectionNotDeclared => whole_corpus_compile_unmeasured(root: root, cause: NoDemandsProjectionDeclared)
+    DemandsProjectionUnreadable { location: l, reason: why } =>
+      whole_corpus_compile_unmeasured(root: root, cause: DemandsProjectionNotRead { location: l, reason: why })
+    DemandsProjectionRead { location: l, demands: ds } => {
+      let repositories = whole_corpus_compile_demand_repositories(demands: ds)
+      let ours = count(filter(repositories, r => (r as String) == (root.repository as String)))
+      if count(repositories) > 0 && ours == 0 {
+        WholeCorpusCompileRefusedDemandsForAnotherRepository {
+          root: root,
+          location: l,
+          projected_repositories: repositories,
+        }
+      } else {
+        match whole_corpus_compile_demand_for_root(root: root, demands: ds) {
+          UnmeasuredRoot { root: _ } => whole_corpus_compile_unmeasured(root: root, cause: NoRowForRoot { location: l })
+          MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } =>
+            whole_corpus_compile_budget_against_peak(budget: budget, peak: p)
+        }
+      }
+    }
   }
 }
 
@@ -171,6 +436,8 @@ fn whole_corpus_compile_admits(a: WholeCorpusCompileAdmission) -> Bool {
     WholeCorpusCompileAdmitted { budget: _, required: _ } => true
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+    WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
 }
 
@@ -189,48 +456,52 @@ data whole_corpus_compile_seed_mirror_disposition: Disposition = Scaffold {
   }
 }
 
-data whole_corpus_compile_seed_mirror_note: String = "v1 HAND-REALIZES THIS, FOR THE SAME BOOTSTRAP REASON gunbc.host_budget_source host_budget_source_seed_mirror_note and gunbc.typed_module_cache_capacity typed_module_cache_capacity_seed_mirror_note give, and no other: the decision runs BEFORE any .dag value could exist, because it is the decision about whether resolving the corpus may begin at all. It cannot be a value obtained by resolving the corpus. That is a bootstrap constraint, not ordinary seed-shrink debt, and conflating the two would misprice the work. The mirror is v1_compiler.memory_governor DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES and whole_corpus_compile_admission over the same budget authority read_host_budget_bytes, joined in v1_compiler.cli_run `compile_emission`, on that transaction's PrimaryRoot arm, before the module index is built and deliberately not asked of Entry.\n\nTHIS SENTENCE NAMED main.rs UNTIL 2026-08-28 AND THE JOIN IS NOT THERE, which is worth recording because of what the stale citation cost a reader. A reviewer searching main.rs for the call site found none, and concluded from its absence that NO PRODUCTION CALLER EXISTS — that the arm is dormant and the refusal has never executed. That inference was wrong and the citation is why it was available. Refuted by EXECUTION on 2026-08-28: a whole-root compile under GUNBC_MEMORY_BUDGET_BYTES=5368709120 exits 1 with WholeCorpusCompileBudgetBelowMeasuredDemand naming both quantities, the source and the remedy, while a scoped --entry compile under the SAME budget is not refused by this arm and proceeds to the frontend. Two arms, one varied input, opposite outcomes: the arm is wired and the Entry asymmetry is real. A grep of the file a note names is not a census of callers, and the remedy for that is to name the symbol that holds the call rather than the file someone remembers it in (DESIGN section 3).\n\nTHIS ROW DECLARES NO DISSOLUTION OF ITS OWN, AND THAT IS THE POINT. typed_module_cache_capacity_seed_mirror_note already specifies the exact mechanism that retires this constant: one lens reading the seed's constants against the rows that own them, which it says would cover gunbc.typed_module_cache_capacity, gunbc.host_budget_source and DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES together. DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES lives in the same file as that last one and is retired by the same lens on the same day. Authoring a fourth locally-argued dissolution beside three identical ones is the forked-logic tell DESIGN section 3 names — the merge is already specified, so this row joins it rather than restating it. The wider dissolution is the same one those notes carry: the emit path bakes these constants into the seed and the seed stops composing its own arithmetic.\n\nTHE TRIGGER WAS INERT WHEN THIS ROW WAS WRITTEN AND IS BEING BUILT NOW; a reader must not infer a guard from the citation above without reading this paragraph. Measured at 517fdac4dd by stern-heron-695 and re-checked here: dag/test/claim/typed_module_cache_capacity_witness_test.dag carried eight test fns and referenced no .rs path, no stage0 projection, and not the per-entry byte literal — it checked the model against itself. memory_governor.rs is a hand_maintained_stage0_filenames() member and so is excluded from the derived generated population (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths), confirming it is hand-maintained source rather than a generated projection, so this constant is knowingly-added seed source. The cost of the gap was not hypothetical: DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES sat eleven days at a value its authority had superseded, under a note that read as though the drift were guarded.\n\nWHAT IS LANDING, AND WHAT IT WILL AND WILL NOT BUY. gunbc#8638 builds that lens (test.claim.seed_mirror_constant_lens_witness_test), joining seed constants to their authority rows and REFUSING an uncited or unparseable one rather than skipping it. Its in-scope set is an ENUMERATED list, not a set derived from the seed file, so a constant that is not on it — including this one at the time of writing — is neither checked nor refused; joining is a row someone adds, which is why the seed constant here is written as a canonical decimal literal and names its authority symbol in a doc comment, so that adding the row is a one-liner. Its ENROLLMENT MARKER is deliberately withheld: that lens's backward arm requires marker occurrences per seed file to equal roster rows homed in that file, so a marked constant with no row reds main for however long the two land apart. Row and marker land together, in whichever PR is second. When it lands the class becomes MECHANICALLY PREVENTABLE and not structural: the invalid state stays writable and safety depends on the lens executing and staying enrolled. THIS PARAGRAPH IS REWRITTEN, NOT AMENDED, WHEN THE SIXTH ROW LANDS."
+data whole_corpus_compile_seed_mirror_note: String = "v1 HAND-REALIZES THE ADMISSION, FOR THE BOOTSTRAP REASON gunbc.host_budget_source host_budget_source_seed_mirror_note gives and no other: the decision runs BEFORE any .dag value could exist, because it decides whether resolving the corpus may begin. The mirror is v1_compiler.memory_governor whole_corpus_compile_admission over the budget authority read_host_budget_bytes, joined in v1_compiler.cli_run compile_emission on that transaction's PrimaryRoot arm before the module index is built, and deliberately not asked of Entry.\n\nTHE SEED CARRIES NO DEMAND FIGURE. Until 2026-09-13 it mirrored one population-blind constant, DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES, pinned by a seed-mirror lens row; both are deleted. The rows are facts of the repository that owns them, so they reach the seed as DATA: gunbc.whole_corpus_compile_demand_projection renders a repository's MeasuredForRoot rows, the generated-artifact registry commits this repository's projection under the drift gate, and the compile is handed its location (--measured-root-demands) and the repository's declared identity (--repository). A new root is a row in its own repository and never a seed change; another repository's rows never enter this seed. What pins the seed to the rows ON THE ACCEPTANCE PATH is structural: the seed holds no figure, it reads the committed projection at run time, and the generated-artifact drift gate holds that projection to the rows. The seed's unit tests also read the committed projection, but cargo unit tests run on no CI step (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so they are local evidence and are not cited as the executing pin -- which is why gunbc.rung_drop.seed_whole_corpus_demand_population_blind stays Standing.\n\nWHAT REMAINS HAND-REALIZED is the join and its refusal arms, arm for arm with whole_corpus_compile_admission, and the projection parser. Its dissolution is the one the sibling mirrors carry: the emit path bakes the modeled admission into the seed and the seed stops composing it."
 
 data whole_corpus_compile_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
-    DeclarationRef {
-      module_path: "v1_compiler.memory_governor",
-      decl_name: "DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.memory_governor",
-      decl_name: "WholeCorpusCompileAdmission",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.memory_governor",
-      decl_name: "whole_corpus_compile_admission",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.memory_governor",
-      decl_name: "whole_corpus_compile_refusal_diagnostic",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.memory_governor.tests",
-      decl_name: "whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_admits_the_ci_runner",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.memory_governor.tests",
-      decl_name: "whole_corpus_compile_admission_is_tight_at_the_measured_demand",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.memory_governor.tests",
-      decl_name: "whole_corpus_compile_unreadable_budget_refuses_rather_than_widening",
-      field: WholeDeclaration
-    }
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "WholeCorpusCompileRootIdentity", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "MeasuredRootDemandRow", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "WholeCorpusCompileDemandsRead", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "WHOLE_CORPUS_COMPILE_DEMAND_PROJECTION_SCHEMA", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "parse_whole_corpus_compile_demand_projection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "read_whole_corpus_compile_demands", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "WholeCorpusCompileUnmeasuredCause", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "WholeCorpusCompileAdmission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "whole_corpus_compile_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "whole_corpus_compile_measurement_recipe", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "whole_corpus_compile_refusal_diagnostic", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "RootDemandDeclaration", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "AdmittedRootDemandMeasurement", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementAdmission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementLimitReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "read_root_demand_measurement_limit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_refusal_diagnostic", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementWait", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementCensus", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementRun", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementReceipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "SIGKILL_SIGNAL", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "ROOT_DEMAND_MEASUREMENT_RECEIPT_SCHEMA", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_receipt_json", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "parse_root_demand_measurement_census", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "measure_root_demand", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_declared_budget_refuses_as_the_model_does", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_needs_memory_max", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_receipt_types_the_kill", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_census_line_round_trips", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_refuses_the_ci_runner", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_admission_is_tight_at_the_measured_demand", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_unmeasured_root_refuses_naming_the_recipe", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_another_repositorys_projection_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_undeclared_or_unreadable_projection_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_unreadable_budget_refuses_rather_than_widening", field: WholeDeclaration }
   ],
-  reason: "WHY RUST IS STILL NEEDED, and it is the bootstrap constraint rather than seed-shrink debt: this decides whether resolving the corpus may BEGIN, so it cannot be a value obtained by resolving the corpus. whole_corpus_compile_seed_mirror_note argues that at length and binds this growth to the dissolution the sibling mirrors already specify rather than authoring a fourth.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE — it serves the v2 self-host program. The instrument this refusal guards, gunbc compile --target dag over both source roots, IS the self-emission instrument, and it was OOM-killed into a silent exit-137 zero. This is defect repair on the self-host path, not growth of the seed for its own sake.\n\nHAND-ITEM DELTA: +7, all citable above, enumerated rather than counted from what was touched — the method stage0_rust_observation_seed_growth_justification records having got wrong twice. Four are production (the demand constant, the admission coproduct, the fold over it, the refusal renderer) and three are the tests that discriminate it. HAND-LOC DELTA: +173 in memory_governor.rs and +29 in main.rs against origin/main, a large share of it the doc comments carrying the receipts and the refusal strings.\n\nNO NEW UNCITABLE ITEM, DELIBERATELY. whole_corpus_compile_refusal_diagnostic is a free function and not an inherent method on WholeCorpusCompileAdmission, because DeclField offers WholeDeclaration or NamedField and neither names a method on an impl block. The sibling receipt carries one such item in prose only because its Display realization had no citable form; this one had a citable form available and takes it rather than growing that class.\n\nWHAT IS NOT GROWTH AND IS NOT LISTED: the main.rs join itself. It adds no declaration — it is an arm inside the existing Compile match, so its disposition is ExistingSeedItemModified, and listing it would net a modification into an addition census.",
+  reason: "WHY RUST IS STILL NEEDED: this decides whether resolving the corpus may BEGIN, so it cannot be a value obtained by resolving the corpus; whole_corpus_compile_seed_mirror_note carries the argument. WHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE, and this is seed maintenance serving the self-host program's own instrument -- the whole-root compile that tools.emission_entry_instrument drives -- which was admitting every root on one root's measured peak. WHAT CHANGED IN THE SEED: the demand constant DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES is DELETED (a declaration removed, not listed); the admission coproduct, its fold and its diagnostic are modified to join on the root's identity; the identity, the projection read and its parser, the unmeasured cause, the recipe renderer and RootDemandDeclaration are added, with the tests that discriminate each refusal arm beside the at-peak positive control. THE MEASUREMENT SUBJECT (direction ruling on review 65495): CompileSubject gains a RootDemandMeasurement arm constructible only from AdmittedRootDemandMeasurement, CompileRun gains closure_source_bytes for the census, and measure_root_demand is the parent/child measurement whose only product is a receipt. The CLI surface's two flags and the measure-root-demand verb are generated from gunbc.cli_dispatch_surface and the emitted driver's CompileRequest literal from v1.compiler.emit_rust, so neither is hand-authored growth.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete all seven declarations when the emit path bakes gunbc.whole_corpus_compile_admission into the seed and main.rs reads the modeled admission instead of composing it — the same trigger gunbc.typed_module_cache_capacity typed_module_cache_capacity_seed_mirror_note and gunbc.host_budget_source host_budget_source_seed_mirror_note carry for their own mirrors, joined rather than restated.",
-  current_boundary: "gunbc.whole_corpus_compile_admission whole_corpus_compile_admission -> v1_compiler.memory_governor whole_corpus_compile_admission -> v1_compiler.main Commands::Compile"
+  trigger: "Delete these declarations when the emit path bakes gunbc.whole_corpus_compile_admission into the seed and compile_emission reads the modeled admission instead of composing it -- the same trigger gunbc.host_budget_source host_budget_source_seed_mirror_note carries for its own mirror, joined rather than restated.",
+  current_boundary: "gunbc.whole_corpus_compile_admission whole_corpus_compile_admission -> v1_compiler.memory_governor whole_corpus_compile_admission -> v1_compiler.cli_run compile_emission"
 }

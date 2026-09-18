@@ -1,0 +1,48 @@
+module gunbc.rung_drop.consumed_row_owner_charge_unenforced
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 2026-09-16 beside the change that lowers the rung (gunbc#11481), which removed the two
+// merge_group follow-up arms of wave_admission_refusal on an operator ruling that mandating a
+// deletion follow-up pull request is not worth its cost.
+//
+// BOTH REMOVALS ARE DROPS AND EACH HAS ITS OWN ROW. An earlier revision of this row said only one
+// was, on the ground that OwnerFollowUpAbsent established a number had been TYPED and nothing more.
+// That is true of its GREEN and does not make it a decoration -- section 4b reserves that word for a
+// check whose forbidden state cannot be expressed anywhere the check could run, and that arm's RED
+// was authorable and fired. Review 67014 caught it. The owner-side class is declared separately at
+// gunbc.rung_drop.owner_deletion_follow_up_charge_removed, which is where the reasoning lives.
+//
+// THIS ROW IS FOR ConsumedRowOwnerChargeBypassed, whose lost coverage is a different class with a
+// different restoration trigger: its RED discriminated on the ABSENCE of any number on a BYSTANDER
+// composition, and what has to come back is the ability to adjudicate a consumed row at all.
+//
+// WHY THE LANDING ARM DOES NOT COVER IT, measured rather than assumed. The surviving consumed-row
+// arm fires when roster_due, and roster_due is base == head OR roster_touched. Lane ruling
+// (fierce-lark-661, 2026-09-13) moved the required verdict off the push to the default branch, and
+// with it the only run where base == head. On the required path roster_due is therefore
+// roster_touched alone, so a base-consumed row whose owner authored no follow-up now refuses on no
+// required run until somebody happens to edit the roster directory. An earlier revision of the
+// gunbc#11481 change claimed otherwise; that claim was wrong and review 66992 caught it.
+
+data consumed_row_owner_charge_unenforced: RungDrop = RungDrop {
+  identity: "consumed_row_owner_charge_unenforced" as NonEmptyStr,
+
+  subject: "a transition-admission row consumed at the base, whose owning change authored no deletion_follow_up, is refused on some required run before the roster is next touched",
+
+  declared: "2026-09-16",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "base-consumed transition-admission rows whose owning change authored no deletion_follow_up, on any merge_group composition that does not touch dag/gunbc/namespace/transition_admission/"
+    ],
+    restoration_trigger: "THE CAPABILITY: a required run that adjudicates a consumed transition-admission row WITHOUT depending on base == head or on the roster being touched -- that is, the consumed-row charge evaluated on the composition that actually lands, the way the merge queue now supplies the required verdict. Nothing smaller retires this row. In particular, re-adding a merge_group arm that refuses a BYSTANDER composition does not: that was the arm removed here, it billed a change for a debt its own comment said was not its own, and DESIGN section 5 names that externalization. Nor does authoring follow-up numbers on the rows standing today, which changes the population and not the coverage. The debt itself stays visible meanwhile: used_without_follow_up is still counted in the refusal message, and deletion_follow_up is still carried on every row.",
+  }
+}

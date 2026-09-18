@@ -262,6 +262,119 @@ mod compiler_tests {
     }
 
     #[test]
+    fn parse_multiline_two_param_fn_and_two_arg_call_yields_expected_module() {
+        let src = concat!(
+            "module test\n",
+            "fn add(\n",
+            "  a: Int,\n",
+            "  b: Int\n",
+            ") -> Int {\n",
+            "  a\n",
+            "}\n",
+            "fn use_add() -> Int {\n",
+            "  add(\n",
+            "    1,\n",
+            "    2\n",
+            "  )\n",
+            "}\n",
+        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("parse-multiline-two".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let tokens = tokenize(
+                    src.to_string(),
+                    "test.dag".to_string(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
+                let result =
+                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                let verdict = (|| {
+                    if result.error.is_some() {
+                        return Err(format!("parse error: {:?}", result.error));
+                    }
+                    let module = result
+                        .module
+                        .as_ref()
+                        .ok_or_else(|| "missing module".to_string())?;
+                    if module.name != "test" {
+                        return Err(format!("name {}", module.name));
+                    }
+                    let items = crate::v1_std_core::module_items(module.clone());
+                    let fns: Vec<_> = items
+                        .iter()
+                        .filter(|it| {
+                            matches!(
+                                it.module_item_kind,
+                                crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
+                            )
+                        })
+                        .cloned()
+                        .collect();
+                    if fns.len() != 2 {
+                        return Err(format!("fn count {}", fns.len()));
+                    }
+                    let add = fns
+                        .iter()
+                        .find(|f| f.name == "add")
+                        .ok_or_else(|| "no add".to_string())?;
+                    if add.params.len() != 2 {
+                        return Err("param count".to_string());
+                    }
+                    if add.params[0].name != "a" || add.params[1].name != "b" {
+                        return Err("param names".to_string());
+                    }
+                    let use_add = fns
+                        .iter()
+                        .find(|f| f.name == "use_add")
+                        .ok_or_else(|| "no use_add".to_string())?;
+                    let body = use_add.body.as_ref().ok_or_else(|| "no body".to_string())?;
+                    let calls = collect_expr_calls(body);
+                    if calls.len() != 1 {
+                        return Err(format!("call count {}", calls.len()));
+                    }
+                    if calls[0].children.len() != 2 {
+                        return Err("arg count".to_string());
+                    }
+                    Ok(())
+                })();
+                let _ = tx.send(verdict);
+            })
+            .expect("spawn parse-multiline-two");
+        rx.recv_timeout(std::time::Duration::from_secs(8))
+            .expect("seed parser hung on a multiline 2-param fn / 2-arg call (parse_param_list_acc or parse_arg_list_acc TCO)")
+            .expect("expected parse result");
+    }
+
+    fn collect_expr_calls(
+        n: &std::rc::Rc<crate::v1_std_core::Node>,
+    ) -> Vec<std::rc::Rc<crate::v1_std_core::Node>> {
+        let mut out = Vec::new();
+        collect_expr_calls_into(n, &mut out);
+        out
+    }
+
+    fn collect_expr_calls_into(
+        n: &std::rc::Rc<crate::v1_std_core::Node>,
+        out: &mut Vec<std::rc::Rc<crate::v1_std_core::Node>>,
+    ) {
+        if matches!(*n.expr_data, crate::v1_std_core::ExprData::ExprCall { .. }) {
+            out.push(n.clone());
+        }
+        if let Some(b) = n.body.as_ref() {
+            {
+                collect_expr_calls_into(b, out);
+            }
+        }
+        for c in n.children.iter() {
+            {
+                collect_expr_calls_into(c, out);
+            }
+        }
+    }
+
+    #[test]
     fn self_parse_tokenize_dag() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
@@ -303,6 +416,236 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("self-parse test panicked");
+    }
+
+    fn parse_item_kinds(
+        src: &'static str,
+    ) -> Result<
+        Vec<(
+            String,
+            crate::v1_std_core::ParsedModuleItemKind,
+            crate::v1_std_core::DeclarationMarker,
+        )>,
+        String,
+    > {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("parse-test-marker".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let tokens = tokenize(
+                    src.to_string(),
+                    "test.dag".to_string(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
+                let result =
+                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                let verdict = match (&result.error, &result.module) {
+                    (Some(e), _) => Err(format!("{:?}", e)),
+                    (None, Some(m)) => Ok(crate::v1_std_core::module_items(m.clone())
+                        .iter()
+                        .map(|n| (n.name.clone(), n.module_item_kind, n.declaration_marker))
+                        .collect::<Vec<_>>()),
+                    (None, None) => Err("missing module".to_string()),
+                };
+                let _ = tx.send(verdict);
+            })
+            .expect("spawn parse-test-marker");
+        rx.recv_timeout(std::time::Duration::from_secs(8))
+            .expect("seed parser hung")
+    }
+
+    // The `test` marker is carried onto the item and leaves its kind alone; unmarked forms stay Unmarked:
+    // the positive control that the marker is carried rather than dropped.
+    #[test]
+    fn test_marker_selects_the_test_item_kind() {
+        use crate::v1_std_core::DeclarationMarker::*;
+        use crate::v1_std_core::ParsedModuleItemKind::*;
+        let items = parse_item_kinds("module test\n\ntest fn t() -> Bool {\n  true\n}\n\nfn f() -> Bool {\n  true\n}\n\ntest data d: Bool = true\n\ndata e: Bool = true\n").expect("parses");
+        let kind = |n: &str| items.iter().find(|i| i.0 == n).map(|i| (i.1, i.2));
+        assert_eq!(kind("t"), Some((ModuleItemFunction, TestMarked)));
+        assert_eq!(kind("f"), Some((ModuleItemFunction, Unmarked)));
+        assert_eq!(kind("d"), Some((ModuleItemDataValue, TestMarked)));
+        assert_eq!(kind("e"), Some((ModuleItemDataValue, Unmarked)));
+    }
+
+    // The discriminating red: the marker used to be dropped before ANY item form, so a marked type
+    // declaration parsed as an ordinary one. It must refuse.
+    #[test]
+    fn test_marker_on_a_type_declaration_is_refused() {
+        let err = parse_item_kinds("module test\n\ntest type T {\n  a: Bool\n}\n")
+            .expect_err("a test-marked type declaration must refuse");
+        assert!(
+            err.contains("the `test` marker applies only to a fn or data item"),
+            "{}",
+            err
+        );
+        // pattern and interface are BlockBody forms whose constructor stamps ModuleItemFunction,
+        // so a check on the parsed kind admits them; these two rows are what discriminate it.
+        for src in [
+            "module test\n\ntest pattern P(x: Int) {\n  x\n}\n",
+            "module test\n\ntest interface I(x: Int) {\n  x\n}\n",
+        ] {
+            let err =
+                parse_item_kinds(src).expect_err("a test-marked block-bodied form must refuse");
+            assert!(
+                err.contains("the `test` marker applies only to a fn or data item"),
+                "{}",
+                err
+            );
+        }
+    }
+
+    fn tco_slot(name: &str) -> String {
+        {
+            crate::v1_compiler_emit::tco_loop_slot_name(name.to_string())
+        }
+    }
+
+    fn tco_assert_reassign_structure(
+        block: &str,
+        slots: &[String],
+        temp_prefix: &str,
+        continue_needle: &str,
+    ) {
+        {
+            let lines: Vec<&str> = block
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect();
+            let cont_at = lines
+                .iter()
+                .position(|l| l.contains(continue_needle))
+                .expect("continue in reassignment block");
+            let before = &lines[..cont_at];
+            let n = slots.len();
+            assert_eq!(before.len(), n * 2, "temps then slot writes: {:?}", before);
+            for (i, line) in before.iter().take(n).enumerate() {
+                {
+                    let temp = format!("{}{}", temp_prefix, i);
+                    assert!(line.contains(&temp), "temp before slot writes: {}", line);
+                    for slot in slots {
+                        {
+                            let dest = format!("{} =", slot);
+                            assert!(
+                                !line.contains(&dest),
+                                "slot write before all temps evaluated: {}",
+                                line
+                            );
+                        }
+                    }
+                }
+            }
+            let assigns = &before[n..];
+            assert_eq!(assigns.len(), n);
+            for (i, slot) in slots.iter().enumerate() {
+                {
+                    let dest = format!("{} =", slot);
+                    let dest_count = assigns.iter().filter(|l| l.contains(&dest)).count();
+                    assert_eq!(
+                        dest_count, 1,
+                        "slot dest must appear exactly once: {:?}",
+                        assigns
+                    );
+                    let temp = format!("{}{}", temp_prefix, i);
+                    assert!(
+                        assigns[i].contains(slot) && assigns[i].contains(&temp),
+                        "param order: {}",
+                        assigns[i]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tco_tail_call_assigns_every_loop_slot() {
+        {
+            let acc = tco_slot("acc");
+            let nslot = tco_slot("n");
+            let slots = vec![acc.clone(), nslot.clone()];
+            let args = std::rc::Rc::new(im::vector!["acc".to_string(), "(n - 1)".to_string()]);
+            let names = std::rc::Rc::new(im::Vector::from(slots.clone()));
+            let rust_spec = crate::v1_compiler_emit_core_support::language_spec(
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            let py_spec = crate::v1_compiler_emit_core_support::language_spec(
+                crate::v1_compiler_artifact::RenderTarget::Python,
+            );
+            let go_spec = crate::v1_compiler_emit_core_support::language_spec(
+                crate::v1_compiler_artifact::RenderTarget::Go,
+            );
+            let rust_block = crate::v1_compiler_emit::shared_tco_reassign(
+                args.clone(),
+                names.clone(),
+                rust_spec.clone(),
+            );
+            let py_block = crate::v1_compiler_emit::shared_tco_reassign(
+                args.clone(),
+                names.clone(),
+                py_spec.clone(),
+            );
+            let go_block = crate::v1_compiler_emit::shared_tco_reassign(
+                args.clone(),
+                names.clone(),
+                go_spec.clone(),
+            );
+            tco_assert_reassign_structure(
+                &rust_block,
+                &slots,
+                &rust_spec.tco.temp_var_prefix,
+                "continue",
+            );
+            tco_assert_reassign_structure(
+                &py_block,
+                &slots,
+                &py_spec.tco.temp_var_prefix,
+                "continue",
+            );
+            tco_assert_reassign_structure(
+                &go_block,
+                &slots,
+                &go_spec.tco.temp_var_prefix,
+                "continue",
+            );
+            let src = concat!(
+                "module tco_slot_fixture\n",
+                "fn walk(acc: Int, n: Int) -> Int {\n",
+                "  if n == 0 { acc } else {\n",
+                "    let acc = acc + 1\n",
+                "    walk(acc, n - 1)\n",
+                "  }\n",
+                "}\n",
+            );
+            let compiled = crate::v1_compiler_compile::compile_sources(
+                std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                    crate::v1_compiler_compile::SourceFile {
+                        path: "tco_slot_fixture.dag".to_string(),
+                        content: src.to_string(),
+                    }
+                )]),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            assert!(
+                compiled.diagnostics.is_empty(),
+                "fixture must compile, got {:?}",
+                compiled.diagnostics
+            );
+            let emitted = compiled
+                .files
+                .iter()
+                .find(|f| f.path.ends_with("tco_slot_fixture.rs"))
+                .expect("rust emit");
+            let walk_at = emitted.content.find("fn walk").expect("walk");
+            let rest = &emitted.content[walk_at..];
+            let tco_at = rest.find("let __tco_0").expect("TCO temps in walk");
+            let cont_rel = rest[tco_at..]
+                .find("continue")
+                .expect("TCO continue in walk");
+            let block = &rest[tco_at..tco_at + cont_rel + "continue".len()];
+            tco_assert_reassign_structure(block, &slots, "__tco_", "continue");
+        }
     }
 
     #[test]
@@ -3622,6 +3965,7 @@ mod compiler_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
@@ -3870,6 +4214,7 @@ mod compiler_tests {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
                 expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
             })
         }
@@ -4196,6 +4541,143 @@ mod compiler_tests {
         );
     }
 
+    // CARRIER-KEY-1: THE SPLIT OF THE REFERENCE-SITE FALLBACK ARM. v1.std.core
+    // type_reference_provenance answers the file the node SITS in whenever no Resolved node is bound,
+    // so a reference whose declaration was not recovered is keyed on a location.
+    // type_reference_identity splits that arm by STRUCTURE. These rows supply nodes shaped like the
+    // ones v1.tests.claim.carrier_realization_census observes on the typed tree, which is where the
+    // real producer's shapes are read.
+    //
+    // THE RED is the first row. An implementation that restores the own-span fallback answers
+    // ReferenceIsTheDeclaration on the reference's file and fails it. The legacy read is asserted on
+    // the same node so the row shows the fabricated key it refuses, not just that some refusal happens.
+    // The rows assert nothing about production, which still reads type_reference_provenance
+    // (gunbc.rung_drop type_reference_location_fallback_keys_production_realization).
+    #[test]
+    fn type_reference_identity_split_refuses_where_the_key_is_a_location() {
+        use crate::std_coercion::{
+            ReferenceIdentityUnavailableCause as Cause, TypeDeclarationProvenance as Prov,
+            TypeReferenceIdentity as Id,
+        };
+        fn node(
+            name: &str,
+            file: &str,
+            kind: crate::v1_std_core::ParsedModuleItemKind,
+            resolved: Option<std::rc::Rc<crate::v1_std_core::Node>>,
+        ) -> std::rc::Rc<crate::v1_std_core::Node> {
+            let base = shaped_type_node(name, Vec::new());
+            std::rc::Rc::new(crate::v1_std_core::Node {
+                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: file.to_string(),
+                    start: 0,
+                    end: 0,
+                })),
+                module_item_kind: kind,
+                inferred: resolved.map(|rt| {
+                    std::rc::Rc::new(crate::v1_std_core::InferredNode::Resolved { node: rt })
+                }),
+                ..(*base).clone()
+            })
+        }
+        use crate::v1_std_core::ParsedModuleItemKind::{
+            ModuleItemTypeDeclaration as Decl, NotAModuleItem as Ref,
+        };
+        let identity = |n: std::rc::Rc<crate::v1_std_core::Node>| {
+            (*crate::v1_std_core::type_reference_identity(n)).clone()
+        };
+        let legacy = |n: std::rc::Rc<crate::v1_std_core::Node>| {
+            (*crate::v1_std_core::type_reference_provenance(n)).clone()
+        };
+
+        // (1) THE RED: a field-position reference with no resolution, sitting outside its declaring module.
+        let unresolved = node("String", "src/v2/compiler/01_tokenize.dag", Ref, None);
+        assert!(
+            matches!(identity(unresolved.clone()), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::NoResolutionBoundAtReference)),
+            "an unresolved reference must refuse, never key on the file it sits in"
+        );
+        assert!(
+            matches!(legacy(unresolved), Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/compiler/01_tokenize.dag"),
+            "the legacy read keys that same reference on its own location -- the answer the split refuses"
+        );
+
+        // (2) A node that IS its declaration keeps its own span as a legitimate key.
+        let declaration = node("String", "src/v2/std/text.dag", Decl, None);
+        assert!(
+            matches!(identity(declaration), Id::ReferenceIsTheDeclaration { provenance } if matches!(&*provenance, Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/std/text.dag")),
+            "a type declaration node answers its own declaring file"
+        );
+
+        // (3) The kernel mint for its own name is a declaration with no corpus file.
+        let kernel = node(
+            "String",
+            &crate::v1_std_core::kernel_span("String".to_string()).file,
+            Ref,
+            None,
+        );
+        assert!(
+            matches!(identity(kernel), Id::ReferenceIsTheDeclaration { provenance } if matches!(&*provenance, Prov::KernelMinted { minted_name } if minted_name == "String")),
+            "a kernel-minted node answers KernelMinted through the existing kernel recognizer"
+        );
+
+        // (4) A reference resolved to a declaration node answers that declaration, not its own file.
+        let resolved = node(
+            "List",
+            "src/v2/std/node.dag",
+            Ref,
+            Some(node("List", "dag/std/types.dag", Decl, None)),
+        );
+        assert!(
+            matches!(identity(resolved), Id::ReferenceResolvedToDeclaration { provenance } if matches!(&*provenance, Prov::CorpusDeclared { decl_file } if decl_file == "dag/std/types.dag")),
+            "a Resolved declaration node answers its declaring file"
+        );
+
+        // (5) A Resolved node that is NOT a declaration (the applied-reference expansion built on the
+        // reference's own span) refuses; the legacy read keys it on the reference's file.
+        let expansion = node("FreeMonoid", "src/v2/std/algebra.dag", Ref, None);
+        let applied = node("FreeMonoid", "src/v2/std/algebra.dag", Ref, Some(expansion));
+        assert!(
+            matches!(identity(applied.clone()), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::ResolvedNodeIsNotADeclaration)),
+            "a Resolved node that is not a declaration must refuse, not be read as one"
+        );
+        assert!(
+            matches!(legacy(applied), Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/std/algebra.dag"),
+            "the legacy read keys the non-declaration Resolved node on the reference's location"
+        );
+
+        // (7) A type-variable binder is neither a declaration nor a refusal. Its binding is minted on a
+        // kernel span, so without this arm it would be misfiled as KernelMinted.
+        let binder = std::rc::Rc::new(crate::v1_std_core::Node {
+            inferred: Some(std::rc::Rc::new(
+                crate::v1_std_core::InferredNode::TypeVariable {
+                    id: "T".to_string(),
+                },
+            )),
+            ..(*node(
+                "T",
+                &crate::v1_std_core::kernel_span("T".to_string()).file,
+                Ref,
+                None,
+            ))
+            .clone()
+        });
+        assert!(
+            matches!(identity(binder.clone()), Id::ReferenceIsTypeVariableBinder { binder_name } if binder_name == "T"),
+            "a type-variable binding answers the binder arm, not KernelMinted"
+        );
+        let bound_reference = node("T", "src/v2/std/optional.dag", Ref, Some(binder));
+        assert!(
+            matches!(identity(bound_reference), Id::ReferenceIsTypeVariableBinder { binder_name } if binder_name == "T"),
+            "a reference resolved to a type-variable binding answers the binder arm"
+        );
+
+        // (6) A declaration node with no span is a refusal with its own cause, not a reference miss.
+        let spanless = node("Widget", "", Decl, None);
+        assert!(
+            matches!(identity(spanless), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::DeclarationNodeCarriesNoSpan)),
+            "a declaration without a span refuses with DeclarationNodeCarriesNoSpan"
+        );
+    }
+
     fn item_of_kind(
         name: &str,
         kind: crate::v1_std_core::ParsedModuleItemKind,
@@ -4208,6 +4690,7 @@ mod compiler_tests {
         std::rc::Rc::new(crate::v1_std_core::Node {
             properties: std::rc::Rc::new(props),
             module_item_kind: kind,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             ..(*shaped_type_node(name, Vec::new())).clone()
         })
     }

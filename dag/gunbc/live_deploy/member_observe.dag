@@ -21,7 +21,7 @@ import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, Typ
 import gunbc.live_deploy.spec {
   DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
   DeploymentStep, ArtifactStep, Dependency,
-  DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot,
+  DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, FabricEventLogRoot,
 }
 import gunbc.live_deploy.candidate { CandidateRelease }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for, ReleaseRevisionBinding, RevisionBoundAtEmission }
@@ -475,16 +475,17 @@ fn desired_tree(candidate: CandidateRelease) -> MemberIdentity {
 // could not do because a slot left unwritten is a type error somewhere else entirely.
 // THE ROOT ROSTER COMES FROM THE SPEC, not from a list here. A second host, or the twin, owns
 // different roots at different paths, and a roster written here would be a second authority for
-// what the deployment owns -- the steps already say it. Only the three directory roots join today;
-// the timer units and the tailscale route are still on the apply-all path and contribute no member,
-// which is what keeps this an incremental frontier rather than a rewrite: a kind that names no
-// member emits exactly as it does now.
+// what the deployment owns -- the steps already say it. The four directory roots join as
+// DirectoryRoot; the timer units and the tailscale route stay on the apply-all path and
+// contribute no member. A kind that names no member emits exactly as it does now. Provider
+// state is Ensured, not Owned, and is not a DirectoryRoot here.
 fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
   match st {
     ArtifactStep { step: art } => match art.kind {
       DispatchWorktreeRoot => [DirectoryRoot { path: art.path }]
       AttemptStateRoot => [DirectoryRoot { path: art.path }]
       ComputeRoot => [DirectoryRoot { path: art.path }]
+      FabricEventLogRoot => [DirectoryRoot { path: art.path }]
       _ => []
     }
     Dependency { step: _ } => []

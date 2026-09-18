@@ -156,6 +156,25 @@ import gunbc.ci_deploy_access {
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
+import gunbc.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
+import gunbc.runner_host_deploy {
+  runner_host_deploy_for,
+  RunnerHostDeployFound,
+  RunnerHostDeployUnmodeled,
+  RunnerHostDeployRefused,
+}
+import gunbc.runner_slot_population_census {
+  SlotCensus,
+  slot_census_from_command_outcome,
+  surplus_observation,
+}
+import gunbc.runner_slot_retirement {
+  transition_required_retiring,
+  observe_retirement_standings,
+  surplus_observation_from_census_and_retirement,
+}
+import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
+import gunbc.shell_command_text { shell_command_text_of_argv }
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
@@ -3811,6 +3830,75 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
   }
 }
 
+// THE CENSUS, TAKEN OVER THE TRANSPORT THE REALIZER ALREADY HOLDS.
+//
+// `gunbc.runner_slot_population_census` owns the JUDGMENT and names no transport: it classifies a
+// `systemctl list-units` outcome into a `SlotCensus`. This is the second binding of that one
+// judgment -- the first is `observe_slot_population_over_ssh` over the fleet SSH edge -- and it exists
+// because the realizer's subject is reached through `HostEffectTransport`, not through a fleet
+// `SshTarget`. Two transports, one classifier, per DESIGN section 2's horizontal rule; the alternative
+// was a second place deciding what a nonzero exit means about a host's slot population, and one of
+// two such places rendering an unreadable host as an empty one is the narrow that raises caps on a
+// host nobody read.
+//
+// THE DIRECTION OF THE IMPORT IS WHY THE CLASSIFIER TAKES LOOSE FIELDS. `ShellExecObserved` is
+// declared in THIS module, so a classifier that accepted it would have to be imported from here --
+// and the census module is already imported BY here. Handing it the outcome fields keeps the edge
+// one-way and leaves the census module able to serve any further transport without knowing of it.
+fn observe_slot_population_over_host_effect_transport(
+  host: HostIdentity,
+  transport: HostEffectTransport,
+) -> SlotCensus {
+  let observed = run_shell_transport(
+    script: retained_srvn(
+      body: shell_command_text_of_argv(argv: systemctl_list_all_service_units_argv()),
+      reason: "runner slot population census (systemctl list-units)",
+    ),
+    transport: transport,
+  )
+  slot_census_from_command_outcome(
+    host: host,
+    success: observed.success,
+    exit_code: observed.exit_code,
+    stdout: observed.stdout,
+    stderr: observed.stderr,
+  )
+}
+
+// THIS IS THE ONE PLACE THE CAP AUTHORIZATION IS SUPPLIED, AND IT IS NOW DERIVED FROM A LIVE READ.
+//
+// Everything below this function takes the decision as a parameter -- `live_deploy_apply_script_for`,
+// `apply_intent_from_effects`, `deploy_memory_cap_apply_steps` -- so this is the single visible point
+// at which a real one is provided. An earlier revision supplied a HARDCODED `CapConvergeWithheld`
+// here whose cause said no caller could obtain the evidence. That was safe and it was also wrong
+// about itself: this realize is the EFFECTFUL layer -- it holds the transport and already executes a
+// shell over it through `realize_shell_on_host` -- so the claim that "this apply chain is pure and
+// cannot obtain it" described the RENDERER below it, not this function. The renderer stays pure and
+// still takes the decision as a parameter; the observation is taken HERE, where the transport is, and
+// threaded down. That is the plan/execute boundary held rather than dissolved.
+//
+// WHY A DERIVED WITHHELD IS NOT THE SAME ARTIFACT AS A LITERAL ONE, even on a pass where every host
+// still renders withheld: a literal refusal cannot change when the world does, so it carries no
+// information and would keep reporting the same sentence after the slots retired. A derived one names
+// which units it is waiting on and flips to authorized on the pass where they are gone, without an
+// edit here.
+//
+// TWO OBSERVATIONS ARE TAKEN, NOT ONE, and the join is what makes the decision answerable at all. The
+// census reads the unit listing and is authoritative about PRESENCE; it cannot produce retirement
+// evidence, because `surplus_observation` returns `retired: []` by construction. The per-unit
+// retirement standings read `UnitFileState`, `LoadState` and `TasksCurrent` and are authoritative
+// about COMPLETION -- including the cgroup occupancy no listing can see.
+// `surplus_observation_from_census_and_retirement` unions the blocking side of both, so a slot must
+// be absent from the listing AND report no pending standing before it stops charging capacity.
+//
+// THIS REALIZE ONLY READS. Retirement is a destructive, operator-scoped action and is NOT performed
+// here: the apply path observes what the host already is and decides, so a deploy can never acquire
+// its own authorization by stopping the work it was waiting on.
+//
+// WHAT IS STILL OUTSTANDING, named rather than left to be inferred from a green run: nothing masks a
+// surplus slot yet, so `replacement_inhibited` reads false on every live unit and every standing is
+// `RetirementPendingDrain`. The observer is honest about that -- it is reporting a real host state,
+// not a missing wire -- but it means the authorized branch stays unreached until the inhibitor lands.
 fn realize_live_deploy_apply_on_host(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
@@ -3822,9 +3910,37 @@ fn realize_live_deploy_apply_on_host(
   if locus_refusal != "" {
     NotConverged { reason: locus_refusal, applied: intent }
   } else {
+    let host = spec.target.host.identity
+    let census = surplus_observation(
+      census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
+    )
+    let required = transition_required_retiring(host: host)
+    let admission = runner_host_deploy_for(host: host)
     realize_shell_on_host(
       script: retained_srvn(
-        body: live_deploy_apply_script_for(spec: spec, plan: plan),
+        body: live_deploy_apply_script_for(
+          spec: spec,
+          plan: plan,
+          cap_authorization: match admission {
+            RunnerHostDeployRefused { host: rh, cause: rc } =>
+              CapConvergeWithheld {
+                cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
+              }
+            RunnerHostDeployUnmodeled { host: uh } =>
+              CapConvergeWithheld {
+                cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
+              }
+            RunnerHostDeployFound { deploy: _ } =>
+              cap_converge_decision(
+                host: host,
+                required_retiring: required,
+                observation: surplus_observation_from_census_and_retirement(
+                  census: census,
+                  standings: observe_retirement_standings(transport: transport, units: required),
+                ),
+              )
+          },
+        ),
         reason: "live_deploy apply (unit install + start)",
       ),
       transport: transport,

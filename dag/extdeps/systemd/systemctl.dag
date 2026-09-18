@@ -410,6 +410,23 @@ service systemd.Systemctl {
     }
   }
 
+  operation MaskNow {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "mask", "--now", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl mask --now failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.MaskNow"
+    }
+  }
+
   operation SetProperty {
     input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
     output {

@@ -1,6 +1,7 @@
 module v1.compiler.runtime_rust
 
 import extdeps.filesystem.rust_realization { rust_file_create_new_canonical_block }
+import extdeps.cargo { CargoFeature }
 
 fn rt_header() -> String {
   concat(
@@ -12,19 +13,39 @@ fn rt_header() -> String {
     "use std::rc::Rc;\n\n")
 }
 
+// THE RUNTIME OWNS THE FEATURES IT GATES ON. `v1_rt.rs` is copied into every emitted crate and
+// carries `#[cfg(feature = ...)]` arms, so every manifest that compiles it must declare those
+// features or rustc reports `unexpected_cfgs` (a hard error under `-D warnings`). The cfg lines
+// below and every manifest writer read the name from here, so the two cannot drift apart.
+fn rt_text_lookup_work_counter_feature() -> CargoFeature {
+  CargoFeature { name: "text_lookup_work_counter", dependencies: [] }
+}
+
+fn rust_runtime_cargo_features() -> List<CargoFeature> {
+  [rt_text_lookup_work_counter_feature()]
+}
+
+fn rt_text_lookup_work_counter_cfg_on() -> String {
+  concat("#[cfg(feature = \"", rt_text_lookup_work_counter_feature().name, "\")]\n")
+}
+
+fn rt_text_lookup_work_counter_cfg_off() -> String {
+  concat("#[cfg(not(feature = \"", rt_text_lookup_work_counter_feature().name, "\"))]\n")
+}
+
 fn rt_text_lookup_work_counter() -> String {
   concat(
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "thread_local! {\n",
     "    static TEXT_LOOKUP_CHARS_WALKED: Cell<u64> = Cell::new(0);\n",
     "}\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "pub fn reset_text_lookup_chars_walked() {\n",
     "    TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(0));\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "pub fn reset_text_lookup_chars_walked() {}\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "pub fn take_text_lookup_chars_walked() -> u64 {\n",
     "    TEXT_LOOKUP_CHARS_WALKED.with(|c| {\n",
     "        let walked = c.get();\n",
@@ -32,9 +53,9 @@ fn rt_text_lookup_work_counter() -> String {
     "        walked\n",
     "    })\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "pub fn take_text_lookup_chars_walked() -> u64 { 0 }\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "fn record_substring_chars_walked(s: &str, start: usize, take_len: usize) {\n",
     "  let walked = if s.is_ascii() {\n",
     "    take_len as u64\n",
@@ -43,19 +64,19 @@ fn rt_text_lookup_work_counter() -> String {
     "  };\n",
     "  TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + walked));\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "fn record_substring_chars_walked(_s: &str, _start: usize, _take_len: usize) {}\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "fn record_source_chars_slice_walked(units: u64) {\n",
     "  TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + units));\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "fn record_source_chars_slice_walked(_units: u64) {}\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "pub fn record_source_chars_index_lookup() {\n",
     "  TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + 1));\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "pub fn record_source_chars_index_lookup() {}\n\n")
 }
 
@@ -589,12 +610,38 @@ fn rt_rc_container_ops() -> String {
 // runtime is mirrored into the partition's foundation crate, so `v1_rt::` resolves from a
 // partitioned crate as well as from the monolithic one. A crate-root definition would not: the
 // partition crates re-export only what stage0_crates names explicitly.
+// THE DIVERGING SEAM HELPER, AND WHY IT IS GENERIC RATHER THAN A BARE `panic!`.
+//
+// An unrealized host seam must refuse, and `panic!` is the refusal: a primitive whose body is a bare
+// self-call has no behaviour on this target, and emitting that shape verbatim produces a function
+// that compiles, runs and returns to no caller (DESIGN section 5 silent wrongness). What `panic!`
+// alone cannot do is stand where its RESULT IS CONSUMED. `!` coerces to any type in value position,
+// but it is not a method receiver, so `panic!("...").len()` refuses with E0599 and every argument
+// after it with `unreachable`. Measured on the v2-native CLI closure: two seams, five errors, none
+// of which named a seam.
+//
+// `unrealized_host_seam::<T>` is the same divergence with a NAME FOR ITS TYPE. The emitter renders
+// the turbofish from the call's own inferred type, so the expression is concrete, method resolution
+// works, and the program still cannot get past it. Nothing is fabricated: the function has no return
+// path.
+//
+// WHY NOT REFUSE THE WHOLE FUNCTION INSTEAD, which type-checks trivially because `!` coerces in
+// return position. That was built and withdrawn: deciding "does this body reach an unrealized seam"
+// needs a realizability predicate the emitter does not have -- `rt_functions()` is not the set of
+// realizable primitives, since collection folds, pipelines and the operators are rendered by
+// dedicated arms with no bridge row -- so a body walk refused `v1.compiler.tokenize
+// source_code_point` and `v1.compiler.infer typecheck_module`, and the rebuilt seed panicked on its
+// own first tokenize. Typing the expression needs no such predicate: the call site already knows
+// what the call was supposed to return.
 fn rt_filesystem() -> String {
   concat(
     rust_file_create_new_canonical_block(), "\n",
     "#[derive(Debug, Clone)]\n",
     "pub struct FilesystemReadResult {\n",
     "    pub content: String,\n",
+    "}\n\n",
+    "pub fn unrealized_host_seam<T>(seam: &str) -> T {\n",
+    "    panic!(\"{}\", seam);\n",
     "}\n\n",
     "pub fn filesystem_read(path: String) -> FilesystemReadResult {\n",
     "    let content = std::fs::read_to_string(&path)\n",

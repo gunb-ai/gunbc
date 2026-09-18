@@ -31,11 +31,14 @@ import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
   CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused,
+  CasUnreadableObservationBoundExceeded,
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
 import product.fabric.demand { Demand }
 import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.candidate_field { FieldRequest, CandidateField, assemble_candidate_field }
+import product.fabric.route_readiness { ExerciseOfRoute }
 import product.fabric.selection {
   DispatchInputs,
   OfferCandidacy, OfferPriced, OfferNotFungible, OfferUnavailableForGrant,
@@ -475,7 +478,7 @@ fn fci1_live_reserve_generation(root: NonEmptyStr, generation: Int) -> CellReser
 // refuses. The caller never authors the fence.
 fn fci1_live_reserve_available(root: NonEmptyStr) -> CellReservation {
   match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: cause } => StoreUnavailable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: cause }
+    CasObservedUnreadable { cause: cause } => StoreUnavailable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: CasSlotObservationRefused { cause: cause } }
     CasObservedReadable { readable: CasReadableAbsent } => fci1_live_reserve(root: root, expected: ExpectSlotAbsent)
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
       match decode_cell_slot_payload(payload: version.value) {
@@ -489,7 +492,7 @@ fn fci1_live_reserve_available(root: NonEmptyStr) -> CellReservation {
 
 fn fci1_live_replace_held(root: NonEmptyStr) -> CellReservation {
   match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: cause } => StoreUnavailable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: cause }
+    CasObservedUnreadable { cause: cause } => StoreUnavailable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: CasSlotObservationRefused { cause: cause } }
     CasObservedReadable { readable: CasReadableAbsent } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
       match decode_cell_slot_payload(payload: version.value) {
@@ -550,7 +553,7 @@ fn fci1_cell_reservation_wire(reservation: CellReservation) -> String {
     ReservationLost { slot_key: slot } => join(["reservation-lost|slot=", slot as String], "")
     StoreUnavailable { slot_key: slot, cause: cause } => join([
       "reservation-store-unavailable|slot=", slot as String,
-      "|cause=", fci1_cas_unreadable_wire(cause: cause) as String,
+      "|cause=", fci1_cas_store_failure_wire(cause: cause) as String,
     ], "")
     AttemptRefused { slot_key: slot, detail: detail } => join([
       "reservation-attempt-refused|slot=", slot as String, "|detail=", detail as String,
@@ -573,6 +576,20 @@ fn fci1_cas_unreadable_wire(cause: CasUnreadableSlot) -> NonEmptyStr {
     CasUnreadableContentMissing { referenced: hash } =>
       join(["cas-content-missing|hash=", serialize_content_hash(hash: hash) as String], "") as NonEmptyStr
     CasUnreadableReadRefused { detail: _ } => "cas-read-refused"
+    CasUnreadableObservationBoundExceeded { bound: b } =>
+      join(["cas-observation-bound-exceeded|bound=", b as String], "") as NonEmptyStr
+  }
+}
+
+// THE TWO WAYS A STORE CAN FAIL RENDER AS TWO WIRES. This probe rendered the reservation and hold
+// store-failure arms through the UNREADABLE wire while their carriers had already been widened to
+// `CasStoreFailure`, so the module did not resolve at all -- and nothing found it, because no claim
+// and no suite entry runs this instrument. That is the specification-without-execution boundary
+// DESIGN section 5 names, on the author's own diff.
+fn fci1_cas_store_failure_wire(cause: CasStoreFailure) -> NonEmptyStr {
+  match cause {
+    CasSlotObservationRefused { cause: c } => fci1_cas_unreadable_wire(cause: c)
+    CasGenerationPublicationRefused { detail: _ } => "cas-publication-refused"
   }
 }
 
@@ -1820,6 +1837,10 @@ fn cp_probe_scope(work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseScop
 // was a question nothing on this path asked. It now goes through the offer-to-route correspondence
 // like any other consumer, so a facts row that drifted onto the wrong route would refuse here
 // instead of admitting quietly.
+// THE PROBE IS AN EXERCISE OF ITS OWN ROUTE (product.fabric.route_readiness), so it is admitted
+// onto that one route for this one work without a prior exercise; a probe that could only run on an
+// already-exercised route could never produce the first exercise. The decision instant is unread
+// on that arm, which is why it is zero rather than a clock reading.
 fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> CandidateField<NonEmptyStr> {
   assemble_candidate_field(
     routes: [
@@ -1829,6 +1850,9 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
     active: cp_probe_posture(),
     scope: cp_probe_scope(work: work),
     decision_receipt: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_decision_receipt"),
+    exercises: [],
+    readiness: ExerciseOfRoute { route: probe_route(), work: work },
+    at: 0,
     requests: [
       FieldRequest {
         offer: cp_probe_offer_for(executor: executor),
@@ -1848,7 +1872,7 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
             rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
             receipt: "gunbc.observation.power-1",
           },
-          opportunity: NoFeasibleAlternativeUse,
+          opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.opportunity-1" },
         },
       },
     ],
@@ -1969,7 +1993,7 @@ fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
     HoldEndLost { slot_key: slot } => join(["hold-lost|slot=", slot as String], "")
     HoldEndStoreUnavailable { slot_key: slot, cause: cause } => join([
       "hold-store-unavailable|slot=", slot as String,
-      "|cause=", fci1_cas_unreadable_wire(cause: cause) as String,
+      "|cause=", fci1_cas_store_failure_wire(cause: cause) as String,
     ], "")
     HoldEndAttemptRefused { slot_key: slot, detail: detail } => join([
       "hold-attempt-refused|slot=", slot as String, "|detail=", detail as String,

@@ -364,11 +364,27 @@ data excl_local_repo_wet_reason: String = "real host-effect execution witness ov
 
 data excl_local_repo_wet_tempdir_write_reason: String = "real host-effect execution witness whose effect is a FILESYSTEM WRITE INTO A THROWAWAY TEMP DIRECTORY -- refused by the hermetic envelope (Filesystem.Write and shell.Mktemp.Dir have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT FROM BOTH NEIGHBOURS AND IS NAMED RATHER THAN FOLDED INTO EITHER: it is not excl_local_repo_wet_reason's throwaway REPOSITORY property -- no repository is built and no git operation runs -- and it is not excl_local_repo_wet_host_probe_reason, which admits read-only probes that write NOTHING. What admits it to the same lane is the negative half those rows share: no network, no cargo, no remote host, no install media, and nothing outside a directory the witness created and removes. IT IS ENROLLED IN THE IDENTITY-GRAIN LANE DELIBERATELY rather than in the dark bin-wet class, because the whole purpose of the witness is that a wall which stops executing must REFUSE rather than read as covered -- enrolling a witness about silent absence somewhere it could be silently absent would reproduce its own subject."
 
+// Capture verification hashes the supplied bytes through stdin. The capture
+// reader may first read a committed file; neither route creates a directory.
+data excl_local_repo_wet_digest_stdin_reason: String = "real host-effect capture-verification witnesses reach extdeps.tools.sha256sum Sha256.DigestStdin through gunbc.memory_observation verify_memory_capture_content. DigestStdin has no mock_response, so hermetic execution refuses before a verdict. read_verified_memory_capture additionally reads committed artifact bytes through Filesystem.Read; neither route writes files or creates a temporary repository/directory. The required floor executes these identities through v2.workflow.local_repo_wet_terminal local_repo_wet_schedule and retains their DigestStdin route gaps in floor_route_gap_expectations."
+
+data excl_local_repo_wet_digest_stdin_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage for extdeps.tools.sha256sum Sha256.DigestStdin becomes sufficient to execute all enrolled capture-verification assertions through verify_memory_capture_content and read_verified_memory_capture, including known-answer, changed-content refusal, and committed-artifact replay controls. Verify those identities on the hermetic route, explicitly re-enroll them in discovery, and remove their LocalRepoWetLane exclusions, corresponding wet schedule entries and DigestStdin route gaps together; only then delete this reason/trigger. Mktemp.Dir, Filesystem.Write or git mock coverage alone cannot discharge this trigger.")
+
+data excl_local_repo_wet_bash_materialized_reason: String = "real host-effect execution witness whose effect is EXECUTING A MATERIALIZED EFFECT-PLAN SCRIPT UNDER BASH (shell.Exec.Run over the sealed transport script) -- refused by the hermetic envelope (no mock_response for operation Run), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every function in the file on that schedule. THIS IS A DISTINCT ADMITTED EFFECT FROM ITS NEIGHBOURS AND IS NAMED RATHER THAN FOLDED IN: the commands the scripts run are id -u, test -x / test -f over fixed paths, printf and true -- directly or through a Let-bound shell variable -- so no repository is built (not excl_local_repo_wet_reason), nothing is written (not excl_local_repo_wet_tempdir_write_reason), and the probe is of the EMITTED BYTES' behaviour under a real shell rather than of a host tool's presence (not excl_local_repo_wet_host_probe_reason). What admits it to the same lane is the shared negative half: no network, no cargo, no remote host, no install media, nothing outside the process. THIS FILE'S MOVE: on gunbc#11357 it is one of the entry files that leaves the bin-witness wet class -- whose standing excl_bin_wet_reason records and whose restoration that row leaves to the lanes that do it -- and gains a real per-PR executor, because the If / Let / Call witnesses became changed identities ending in a route gap, which the floor admits only with a wet terminal joined (changed_witness_planned_without_terminal_verdict). The three members that predate that change are enrolled deliberately alongside them: under the dark class they were not evidence either."
+
+data excl_local_repo_wet_bash_materialized_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Exec.Run over a sealed transport script and the emitted-bytes assertions are re-checked under a fixed mock -- which the transport_script_stdin_byte_fidelity note already refuses as vacuous for a byte-fidelity claim -- OR the bin-witness wet class regains an executing per-PR consumer; then these fns re-enroll there, drop off local_repo_wet_schedule, and this row deletes")
+
 data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution witness whose ONLY effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check, i.e. command -v) -- refused by the hermetic envelope (no mock_response for operation Check), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT, NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: these fns build no temporary repository and write nothing. What they share with that class, and what admits them to the same lane, is the negative half -- no network, no cargo, no remote host, no install media. THE VERDICT IS HOST-INDEPENDENT ON THE TOOL-PRESENCE AXIS, MEASURED RATHER THAN ASSUMED (2026-09-02, PR #10055): every arm of both fns returns the literal true, and the npm fn was executed on one host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- returning the same verdict in each. So admitting them imports no host-conditional red. The residual red these fns CAN produce is route-unreachability (no shell at all: TypeError failed to execute sh), which is the same reachability risk every member of this lane already carries and is not specific to the probed tool. PROVENANCE CARRIED FORWARD from the bin-wet row this replaces: falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590)."
 
 data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
+data excl_local_repo_wet_tempdir_write_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Mktemp.Dir and Filesystem.Write, sufficient for sha256sum_verify_via_shell to be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
+
 data excl_local_repo_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the git plumbing these witnesses reach and the assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
+
+data excl_local_repo_wet_declared_unit_digest_reason: String = "real host-effect execution witnesses that admit ONE hermetic-refused effect: SHA-256 OVER STDIN (extdeps.tools.sha256sum Sha256.DigestStdin), reached through gunbc.spark.pair_serving_realization spark_pair_rendered_unit_digest (byte-level, unsealed) and spark_pair_declared_head_digest (the corpus's only constructor of the sealed DeclaredUnitDigestEvidence, which renders the CURRENT declaration for a modeled FabricGroup). A fixture cannot author a sealed standing and cannot reach one through bytes either -- the byte-level fold returns the UNSEALED RenderedUnitDigestStanding -- so every witness that needs a declared digest executes the real production producer. That is the inhabitance half of DESIGN section 3's supplied-input pairing obligation and is why these files are here rather than hermetic. DigestStdin has no usable mock_response. Excluded from the discovery corpus and executed by the required floor local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every function in the named file on that schedule. NO FILESYSTEM EFFECT IS ADMITTED BY THIS ROW: the apply-written declared-unit artifact store was deleted, so there is no Write, Read, List or Delete of a receipt file to cover. This is not the tempdir-write row (not excl_local_repo_wet_tempdir_write_reason), not a throwaway git repository (not excl_local_repo_wet_reason), not a bash transport script, not a host-path probe. It is separate from excl_local_repo_wet_digest_stdin_reason only in the population it names, not in the capability: both retire on the same sha256sum mock coverage."
+
+data excl_local_repo_wet_declared_unit_digest_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for extdeps.tools.sha256sum Sha256.DigestStdin that is SUFFICIENT FOR replaying a digest over caller-supplied stdin bytes, and the digest-of-bytes assertions and the mint-to-bind carry assertions are re-checked under that mock. Then the fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
 data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
 
@@ -466,6 +482,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated by CI run 30719890594: witness_checked_in_screenshots_match_receipts executes sha256sum and wc shell transports against checked-in PNG bytes; their real execution reaches shell.Mktemp.Dir and other host effects with no mock_response, so hermetic discovery correctly REFUSES rather than fabricating a temporary directory or file result. The pure FileByteCountVerification coproduct controls are split into wc_byte_count_verification_witness_test.dag and remain ordinary per-PR discovery; only the live artifact observation is excluded.",
     dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live checked-in-artifact integrity rows under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag --function witness_checked_in_screenshots_match_receipts")
   },
+  WitnessExclusionRow {
+    pattern: "pre_os_capture_replay_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_digest_stdin_reason,
+    dissolution: excl_local_repo_wet_digest_stdin_dissolve},
+  WitnessExclusionRow {
+    pattern: "megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
   WitnessExclusionRow {
     pattern: "emit_source_store_test.dag",
     classification: OfflineLocalRecipe,
@@ -915,10 +941,35 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "memory_capture_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_reason,
-    dissolution: excl_local_repo_wet_dissolve},
+    reason: excl_local_repo_wet_digest_stdin_reason,
+    dissolution: excl_local_repo_wet_digest_stdin_dissolve},
+  WitnessExclusionRow {
+    pattern: "spark_pair_head_unit_digest_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_declared_unit_digest_reason,
+    dissolution: excl_local_repo_wet_declared_unit_digest_dissolve},
+  WitnessExclusionRow {
+    pattern: "serving_availability_bind_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_declared_unit_digest_reason,
+    dissolution: excl_local_repo_wet_declared_unit_digest_dissolve},
+  WitnessExclusionRow {
+    pattern: "pair_incumbent_identity_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_declared_unit_digest_reason,
+    dissolution: excl_local_repo_wet_declared_unit_digest_dissolve},
+  WitnessExclusionRow {
+    pattern: "spark_serving_offer_route_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_declared_unit_digest_reason,
+    dissolution: excl_local_repo_wet_declared_unit_digest_dissolve},
   WitnessExclusionRow {
     pattern: "materialization_store_local_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "durable_cas_file_store_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
@@ -929,9 +980,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "effect_plan_bash_materialize_real_execution_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: excl_bin_wet_reason,
-    dissolution: excl_bin_wet_dissolve},
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_bash_materialized_reason,
+    dissolution: excl_local_repo_wet_bash_materialized_dissolve},
   WitnessExclusionRow {
     pattern: "transport_script_stdin_byte_fidelity_witness_test.dag",
     classification: BinWitnessWet,

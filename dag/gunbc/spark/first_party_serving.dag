@@ -477,7 +477,10 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // THE ENDPOINT AND THE INCARNATION ARE THE SERVICE HALF'S EVIDENCE. The endpoint is the process the
 // route answered on; the incarnation standing says whether anything observed which engine launch that
 // process belongs to. The production caller, gunbc.harness.harness_seat harness_serving_realization,
-// has no such observer and says so with EndpointIncarnationUnobserved. Only
+// takes that standing from gunbc.spark.serving_incarnation_observe -- the producer that binds the
+// answering endpoint to an engine launch over the fleet key session -- so it carries
+// EndpointIncarnationObserved on a bind that observed and EndpointIncarnationUnobserved (with the
+// specific cause) on one that did not. Only
 // gunbc.spark.serving_offer spark_serving_route_standing reads them. The telemetry standing does not,
 // and should not: knowing which incarnation answered is not a reading of its effective environment.
 type SparkServingRealization {
@@ -593,7 +596,7 @@ data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extd
 // leaves open, since matching a configuration is not being the launch that configuration describes.
 // Adding comparisons to the join makes the match narrower without making the attribution licensed,
 // so every arm refuses while the environment is declared rather than read.
-data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the only environment this repository holds for a serving container is the one gunbc.spark.pair_serving_realization spark_pair_container_env declares it is CREATED with, and no producer anywhere in the corpus reads the environment of a container that is already running. So whether this deployment's reporter is disabled is unknown for THIS deployment, however well its declared configuration matches. THE CAPABILITY THAT DISCHARGES THIS, and nothing smaller does: a reading of the EFFECTIVE TELEMETRY CONFIGURATION OF THE PROCESS THAT ANSWERED, bound to the offered launch, covering BOTH whether the reporter runs AND WHERE IT SENDS. The destination is not a detail: extdeps.vllm.usage_stats vllm_usage_stats_reporting carries server_override_env VLLM_USAGE_STATS_SERVER beside its default_server, so a launch matching our declared model path, served name and context length can still be reporting to a DIFFERENT RECIPIENT, and a payload that stays metadata-only says nothing about who receives it. A second construction function, a wider configuration comparison, or a restatement of the declared environment does NOT discharge it, because none of them observes the process; what is missing is a reading, not a better declaration. Note also that the content class it would be read against is itself bound to a revision by that module's established_against, so it is a fact about the vLLM source that was read and not a timeless property of anything presenting a vLLM-compatible response."
+data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the only environment this repository holds for a serving container is the one gunbc.spark.pair_serving_realization spark_pair_container_env declares it is CREATED with, and no producer anywhere in the corpus reads the environment of a container that is already running. So whether this deployment's reporter is disabled is unknown for THIS deployment, however well its declared configuration matches. THE CAPABILITY THAT DISCHARGES THIS, and nothing smaller does: a reading of the EFFECTIVE TELEMETRY CONFIGURATION OF THE PROCESS THAT ANSWERED, bound to the offered launch, covering BOTH whether the reporter runs AND WHERE IT SENDS. The destination is not a detail: extdeps.vllm.usage_stats vllm_usage_stats_reporting carries server_override_env VLLM_USAGE_STATS_SERVER beside its default_server, so a launch matching our declared model path, served name and context length can still be reporting to a DIFFERENT RECIPIENT, and a payload that stays metadata-only says nothing about who receives it. A second construction function, a wider configuration comparison, or a restatement of the declared environment does NOT discharge it, because none of them observes the process; what is missing is a reading, not a better declaration. THE READING NEEDS ACCESS NOBODY HOLDS: the serving container gunbc.spark.pair_serving_realization spark_pair_container_name is readable only through the docker socket, and the one principal that reaches the Sparks holds no grant to it, so the reader cannot run until gunbc.spark.managed_access_bootstrap InspectServingContainer is installed through gunbc.spark.managed_grant_install. That grant yields Config.Env of the container, which is the environment docker exec hands vllm serve because the pair realization execs it with no added environment; it is still a reading of the container rather than of the process, so the destination half of this obligation stays a claim about the container until a process-grain read exists. Note also that the content class it would be read against is itself bound to a revision by that module's established_against, so it is a fact about the vLLM source that was read and not a timeless property of anything presenting a vLLM-compatible response."
 
 data spark_serving_usage_stats_unobserved_hosts_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: one or more hosts of the realization that answered has no observed fabric lane, so the telemetry answer would rest on its siblings. Partial evidence is missing evidence, and this arm refuses rather than answering from the observed half. READING THOSE LANES IS NECESSARY AND IS NOT SUFFICIENT: an earlier spelling ended by asking for them as though the path would then resolve. A fully lane-covered realization still refuses, because a lane's DECLARED container environment is not a reading of the process that answered -- see spark_serving_usage_stats_declared_environment_obligation."
 
@@ -764,14 +767,13 @@ fn spark_first_party_use_scope<P>(
 // another data class -- reaches the same producer and is refused by it, instead of the refusal being
 // a state only a fixture could construct.
 //
-// DECLARED FRONTIER (DESIGN section 3c). The production consumer of this function is
-// gunbc.harness.harness_seat, which cannot call it yet: product.fabric.selection bind_candidate
-// needs a demand identity and a work identity, a WorkKey comes only from product.fabric.work
-// derive_work_key, and gunbc.serving.turn_demand serving_turn_contract refuses to produce the source
-// manifest that would feed it until the weights, tokenizer and runtime components are each observed.
-// TRIGGER: observers of the loaded weight and tokenizer bytes and of the answering incarnation, SUFFICIENT FOR gunbc.serving.turn_demand
-// serving_turn_work to return TurnWorkBound for a harness turn. Until then this producer is executed
-// by test.claim.spark.spark_first_party_serving_witness_test, which exercises both arms.
+// CONSUMED. The production consumer is gunbc.harness.harness_seat harness_admit_bound_offer, which
+// calls this with spark_first_party_use_scope over the turn subject's Demand and Work id -- both
+// constructed once by harness_turn_subject before candidate enumeration -- and hands the result to
+// product.fabric.selection bind_candidate as its admission. Only CandidateBound becomes a harness
+// candidate; a refusal here surfaces as OfferNotAdmittedForUse carrying this producer's
+// refusal_reason unchanged.
+// test.claim.spark.spark_first_party_serving_witness_test exercises both arms directly.
 fn spark_first_party_admission<P>(
   realization: SparkServingRealization,
   scope: ProviderUseScope<P>,

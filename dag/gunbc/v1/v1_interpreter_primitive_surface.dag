@@ -329,6 +329,10 @@ data arm_accepted_shape_gap_note: String = "ARITY IS NOT DERIVABLE FROM THIS DIS
 // live interpreter macro census on 2026-08-02; ongoing edits are manual at this carrier, not
 // regenerated from Rust.
 
+// Deletion obligation: gunbc.parsed_import_statement_bridge_seed_growth
+// parsed_import_statement_bridge_seed_growth_justification, enrolled by
+// gunbc.seed_growth_admission. This exception-only arm is deleted, never migrated,
+// when the native context fold supplies the acquired inventory to the census.
 fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm> {
   [
     InterpreterPrimitiveDispatchArm {
@@ -488,6 +492,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       arm: InterpreterPrimitiveArmId { identity: "free_call.hmac_sha256_verify_hex" },
       form: FreeCall,
       authored_spelling: "hmac_sha256_verify_hex",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.hmac_sha256_hex" },
+      form: FreeCall,
+      authored_spelling: "hmac_sha256_hex",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,
@@ -980,6 +993,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.type_declarer_qualified_names" },
+      form: FreeCall,
+      authored_spelling: "type_declarer_qualified_names",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.module_declaration_facts" },
       form: FreeCall,
       authored_spelling: "module_declaration_facts",
@@ -1178,6 +1200,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.floor_discovery_source_inventory" },
+      form: FreeCall,
+      authored_spelling: "floor_discovery_source_inventory",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.parsed_import_statements" },
       form: FreeCall,
       authored_spelling: "parsed_import_statements",
@@ -1190,6 +1221,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       arm: InterpreterPrimitiveArmId { identity: "free_call.namespace_structural_observation_admissions" },
       form: FreeCall,
       authored_spelling: "namespace_structural_observation_admissions",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.emit_rust_reference_derived_rows_bridge" },
+      form: FreeCall,
+      authored_spelling: "emit_rust_reference_derived_rows_bridge",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,
@@ -1235,6 +1275,33 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       arm: InterpreterPrimitiveArmId { identity: "free_call.compile_dag_reference_occurrence_binding_census" },
       form: FreeCall,
       authored_spelling: "compile_dag_reference_occurrence_binding_census",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.compile_dag_importer_resolved_call_edges" },
+      form: FreeCall,
+      authored_spelling: "compile_dag_importer_resolved_call_edges",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.compile_dag_callsite_resolved_call_edges" },
+      form: FreeCall,
+      authored_spelling: "compile_dag_callsite_resolved_call_edges",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.compile_dag_call_form_leaf_guard" },
+      form: FreeCall,
+      authored_spelling: "compile_dag_call_form_leaf_guard",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,
@@ -1931,15 +1998,6 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
       dispatch_emit_site: EvalAlgebraMethodInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "v4_bridge.resolve_type_node" },
-      form: FreeCall,
-      authored_spelling: "resolve_type_node",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node_reflection") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {

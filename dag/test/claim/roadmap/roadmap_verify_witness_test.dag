@@ -92,7 +92,7 @@ fn empty_contract() -> WorkItemExecutionContract {
 fn one_validation_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/roadmap/roadmap_verify_witness_test.dag" as FilePath,
-    function: "roadmap_verify_keystone_holds" as NonEmptyStr,
+    function: "empty_contract_closes_nothing_and_is_not_bound" as NonEmptyStr,
   )
 }
 
@@ -283,17 +283,4 @@ test fn operator_exclusive_verify_is_not_contract_needed() -> Bool {
     VerificationRefused { node_id: _, label: _, reason: _ } => false
     VerificationNodeNotFound { node_id: _ } => false
   }
-}
-
-test fn roadmap_verify_keystone_holds() -> Bool {
-  verification_host_follows_the_transport_not_the_controller()
-    && the_two_lab_instances_really_do_straddle_the_transport_split()
-    && empty_contract_closes_nothing_and_is_not_bound()
-    && a_real_contract_is_bound_and_carries_its_validations()
-    && passing_verification_exits_success()
-    && refusal_and_failure_and_unbound_all_exit_failure()
-    && receipt_projection_carries_host_worktree_revision_and_command()
-    && unobserved_exit_never_serializes_as_zero()
-    && refusal_blocks_the_environment_and_does_not_warrant_dispatch()
-    && operator_exclusive_verify_is_not_contract_needed()
 }

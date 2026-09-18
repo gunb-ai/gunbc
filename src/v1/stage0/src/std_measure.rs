@@ -27,6 +27,7 @@ pub use crate::extdeps_units_iso_80000_3::{
     arcseconds_per_degree_derived, arcseconds_per_turn, cubic_millimetres_per_cubic_metre,
     degrees_per_turn, square_millimetres_per_square_metre,
 };
+pub use crate::std_algebra::FieldOfFractions;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
@@ -54,6 +55,7 @@ pub enum Quantity {
     DataRate,
     Frequency,
     Count,
+    HardwareThreadTime,
     Currency,
     Power,
     ApparentPower,
@@ -425,6 +427,9 @@ pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, i64>>;
 
 pub type HardwareThreadCount = Rc<Measure<Count, One, i64>>;
 
+pub type HardwareThreadMinute =
+    Rc<Measure<HardwareThreadTime, Sixty, Rc<crate::std_algebra::FieldOfFractions<i64>>>>;
+
 pub type PhysicalCoreCount = Rc<Measure<Count, One, i64>>;
 
 pub type CharacterCount = Rc<Measure<Count, One, i64>>;
@@ -438,6 +443,8 @@ pub type AttentionLayerCount = Rc<Measure<Count, One, i64>>;
 pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
+
+pub type EvalStepCount = Rc<Measure<Count, One, i64>>;
 
 pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
 
@@ -1200,6 +1207,17 @@ pub fn parameter_count_value(p: ParameterCount) -> Nat {
     measure_count(p.clone())
 }
 
+pub fn eval_step_count(count: Nat) -> EvalStepCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn eval_step_count_value(s: EvalStepCount) -> Nat {
+    measure_count(s.clone())
+}
+
 pub fn token_count(count: Nat) -> TokenCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1299,6 +1317,19 @@ pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
 }
 
 pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
+pub type EvalStepsPerMillisecond = Rc<Measure<Frequency, Kilo, i64>>;
+
+pub fn eval_steps_per_millisecond(count: Nat) -> EvalStepsPerMillisecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn eval_steps_per_millisecond_count(r: EvalStepsPerMillisecond) -> Nat {
     measure_count(r.clone())
 }
 
@@ -1800,6 +1831,8 @@ pub struct DataRate;
 pub struct Frequency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Count;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HardwareThreadTime;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Currency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

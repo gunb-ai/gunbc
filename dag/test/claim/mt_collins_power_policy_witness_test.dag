@@ -1,7 +1,6 @@
 module test.claim.mt_collins_power_policy_witness
 
-import std.types { Bool, String, NonEmptyStr }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { Bool, String }
 import std.decl_ref { declaration_ref_eq }
 import product.mt_collins_power_policy {
   mt_collins_power_policy_standing,
@@ -110,20 +109,5 @@ test fn mt_collins_fan_power_is_objective_under_modeling() -> Bool {
         ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: _ } => false
       }
     PhysicalModelUnestablished { subject: _, read_obligation: _ } => false
-  }
-}
-
-fn mt_collins_power_policy_witness_main() -> ProcessExit {
-  let all_pass =
-    mt_collins_power_policy_standing_is_refused_under_modeled()
-      && mt_collins_power_policy_acceptance_rejects_under_modeled()
-      && mt_collins_names_memory_unread_and_bmc_sweep_obligations()
-      && mt_collins_objective_is_one_structural_measure()
-      && mt_collins_required_cells_cover_both_variables_and_both_terms()
-      && mt_collins_fan_power_is_objective_under_modeling()
-  if all_pass {
-    ExitSuccess
-  } else {
-    ExitFailure { code: 1, reason: "mt collins power policy witness failed" as NonEmptyStr }
   }
 }

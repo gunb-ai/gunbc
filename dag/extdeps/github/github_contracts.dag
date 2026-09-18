@@ -2,7 +2,8 @@ module extdeps.github.github_contracts
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored, SnakeCase, CoproductWireContract }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -12,3 +13,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
+
+// GitHub's user object carries `type` as "User", "Bot" or "Organization" -- the arm names as authored.
+data user_type_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.github.github", decl_name: "UserType", field: WholeDeclaration },
+  encoding: StringVariant { naming: AsAuthored }
+}
+
+// An issue's `state` is "open" or "closed" (docs.github.com/en/rest/issues/issues).
+data issue_state_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.github.issues", decl_name: "IssueState", field: WholeDeclaration },
+  encoding: StringVariant { naming: SnakeCase }
+}

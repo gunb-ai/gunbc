@@ -1,7 +1,7 @@
 module test.claim.floor_cost_distribution_witness
 
 import std.types { Bool, Int, String, NonEmptyStr }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond, millisecond_count, eval_step_count, eval_step_count_value }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import tools.floor_cost_distribution_instrument {
   RunLoad,
@@ -17,7 +17,15 @@ import tools.floor_cost_distribution_instrument {
   FloorAttemptPair,
   attempt_label,
   attempt_cost_path,
-  attempt_pair_lines
+  attempt_pair_lines,
+  CalibrationSpecimenGrounding,
+  SpecimenJoined,
+  SpecimenAbsentFromRun,
+  SpecimenStepsNotDeterministic,
+  SpecimenStepsRightCensored,
+  SpecimenRunUnavailable,
+  specimen_row_grounding,
+  calibration_specimen_grounding_holds
 }
 import gunbc.floor_cost_distribution {
   ClaimCostColumns,
@@ -60,12 +68,16 @@ import gunbc.floor_cost_distribution {
   ClaimCostReading,
   ObservedCpuReading,
   RightCensoredCpuReading,
+  CpuLowerBoundWithoutCeiling,
   WorstCost,
   WorstObserved,
   WorstIsLowerBound,
   worst_cost_at_least_ms,
   observed_cpu_ms,
   cpu_at_least_ms,
+  observed_eval_steps,
+  eval_steps_at_least,
+  performed_steps_agree,
   censored_rows,
   RowCrossing,
   RowCrossed,
@@ -117,13 +129,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Shape: two runs over the same three identities in two modules, one of which ("hot") crosses the
 // 500ms ceiling on run B only. That is the exact shape the real analysis turns on -- a row whose
 // membership in the crossing set depends on the run rather than on the row.
-data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 400) }, eval_steps: 9000, reachability: none }
-data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200) }, eval_steps: 4000, reachability: none }
-data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 50) }, eval_steps: 900, reachability: none }
+data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 400), eval_steps: eval_step_count(count: 9000) }, reachability: none }
+data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200), eval_steps: eval_step_count(count: 4000) }, reachability: none }
+data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 50), eval_steps: eval_step_count(count: 900) }, reachability: none }
 
-data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 600) }, eval_steps: 9000, reachability: none }
-data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 300) }, eval_steps: 4400, reachability: none }
-data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100) }, eval_steps: 900, reachability: none }
+data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 600), eval_steps: eval_step_count(count: 9000) }, reachability: none }
+data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 300), eval_steps: eval_step_count(count: 4400) }, reachability: none }
+data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100), eval_steps: eval_step_count(count: 900) }, reachability: none }
 
 // THE CENSORED FIXTURE ROW, and it is deliberately given a bound of 502ms against a 500ms
 // ceiling -- the shape every interrupted row in the real artifact has, because a row is stopped
@@ -138,8 +150,7 @@ data row_c_censored: FloorCostRow = FloorCostRow {
   identity: "m.hot.k",
   module: "m.hot",
   verdict_reached: false,
-  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 502), censoring_ceiling_ms: millisecond(count: 500) },
-  eval_steps: 163840,
+  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 502), censoring_ceiling_ms: millisecond(count: 500), eval_steps_before_censor: eval_step_count(count: 163840) },
   reachability: none
 }
 
@@ -169,8 +180,9 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
   cost_reading: 4,
   observed_cpu_ms: 6,
   cpu_at_least_ms: 8,
-  censoring_cpu_limit_ms: 10,
+  censoring_cpu_limit_ms: Present { value: 10 },
   eval_steps: 12,
+  eval_steps_at_least: none,
   preemption_reachability: none
 }
 
@@ -283,7 +295,10 @@ test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
         Absent => false
-        Present { value: c } => millisecond_count(m: c) == 400 && r.eval_steps == 1000
+        Present { value: c } => millisecond_count(m: c) == 400 && match observed_eval_steps(reading: r.cost) {
+          Absent => false
+          Present { value: st } => eval_step_count_value(s: st) == 1000
+        }
       }
   }
 }
@@ -444,7 +459,10 @@ test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool {
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
         Absent => false
-        Present { value: c } => r.eval_steps == 1000 && millisecond_count(m: c) == 400
+        Present { value: c } => millisecond_count(m: c) == 400 && match observed_eval_steps(reading: r.cost) {
+          Absent => false
+          Present { value: st } => eval_step_count_value(s: st) == 1000
+        }
       }
   }
 }
@@ -693,8 +711,7 @@ test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_co
     identity: "m.hot.x",
     module: "m.hot",
     verdict_reached: false,
-    cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500) },
-    eval_steps: 8000,
+    cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500), eval_steps_before_censor: eval_step_count(count: 8000) },
     reachability: none
   }
   let missing = SameHeadAttemptPair {
@@ -859,9 +876,9 @@ test fn the_same_runs_without_the_refused_member_do_produce_figures() -> Bool {
 // so the third run is what makes the discriminating red authorable at all: `m.hot.x` reaches its
 // maximum on run C, so a pair of A and B reports 1500 permille where the three-run envelope
 // reports 2250.
-data row_c1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 900) }, eval_steps: 9000, reachability: none }
-data row_c2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 250) }, eval_steps: 4000, reachability: none }
-data row_c3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 60) }, eval_steps: 900, reachability: none }
+data row_c1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 900), eval_steps: eval_step_count(count: 9000) }, reachability: none }
+data row_c2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 250), eval_steps: eval_step_count(count: 4000) }, reachability: none }
+data row_c3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 60), eval_steps: eval_step_count(count: 900) }, reachability: none }
 
 // PRESENT IN TWO RUNS OF THREE, and enormously spread across the two it is present in. An envelope
 // computed over "however many runs happened to carry the row" would report 5000 permille for it and
@@ -873,8 +890,8 @@ data row_c3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid",
 // completeness witness stayed GREEN under a mutation that broke the completeness predicate, because
 // the guarantee it was named for was being supplied by its NEIGHBOUR. Measured, not reasoned:
 // relaxing `runs_observed == runs_expected` to `>= 1` reddened two other witnesses and not that one.
-data row_a4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200) }, eval_steps: 100, reachability: none }
-data row_b4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 1000) }, eval_steps: 100, reachability: none }
+data row_a4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200), eval_steps: eval_step_count(count: 100) }, reachability: none }
+data row_b4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 1000), eval_steps: eval_step_count(count: 100) }, reachability: none }
 
 // PRESENT IN ALL THREE RUNS AND WITHOUT A VERDICT IN ONE. `verdict_reached: false` says only that
 // the row reached no verdict; it says NOTHING about whether the cost beside it is exact, and this
@@ -887,16 +904,16 @@ data row_b4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part
 // cost-axis case is `m.bound.b` below, which reaches its verdict and still carries a bound.
 //
 // Admitting this row would report a 120x envelope for a row nobody completed.
-data row_a5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100) }, eval_steps: 2000, reachability: none }
-data row_b5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 120) }, eval_steps: 2000, reachability: none }
-data row_c5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: false, cost: ObservedCpuReading { cpu_ms: millisecond(count: 1) }, eval_steps: 5, reachability: none }
+data row_a5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100), eval_steps: eval_step_count(count: 2000) }, reachability: none }
+data row_b5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 120), eval_steps: eval_step_count(count: 2000) }, reachability: none }
+data row_c5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: false, cost: ObservedCpuReading { cpu_ms: millisecond(count: 1), eval_steps: eval_step_count(count: 5) }, reachability: none }
 
 // A ROW THE ARTIFACT RECORDS AS COSTING NOTHING, present in every run. It is a real shape -- the
 // per-claim cost artifact records whole milliseconds and 1388 rows measured zero on one sampled run
 // -- and max-over-min is undefined for it, which is what makes the refusal arm authorable here.
-data row_a6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 0) }, eval_steps: 12, reachability: none }
-data row_b6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 0) }, eval_steps: 12, reachability: none }
-data row_c6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 0) }, eval_steps: 12, reachability: none }
+data row_a6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 0), eval_steps: eval_step_count(count: 12) }, reachability: none }
+data row_b6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 0), eval_steps: eval_step_count(count: 12) }, reachability: none }
+data row_c6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 0), eval_steps: eval_step_count(count: 12) }, reachability: none }
 
 // CENSORED ON THE COST AXIS ALONE, AND THAT IS THE ENTIRE POINT OF THE ROW. `m.noverdict.c` above is
 // excluded by `verdict_reached: false` while its reading is EXACT, so the envelope's verdict filter
@@ -908,9 +925,9 @@ data row_c6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero
 // inputs rather than one fact spelled two ways -- each holds one input fixed and varies the other. Its bound is deliberately far below the observed pair:
 // admitting it would report a 120x envelope for a row nobody measured, and 1ms describes the
 // ceiling that stopped the instrument rather than what the row cost.
-data row_a7: FloorCostRow = FloorCostRow { identity: "m.bound.b", module: "m.bound", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100) }, eval_steps: 2000, reachability: none }
-data row_b7: FloorCostRow = FloorCostRow { identity: "m.bound.b", module: "m.bound", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 120) }, eval_steps: 2000, reachability: none }
-data row_c7: FloorCostRow = FloorCostRow { identity: "m.bound.b", module: "m.bound", verdict_reached: true, cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 1), censoring_ceiling_ms: millisecond(count: 1) }, eval_steps: 5, reachability: none }
+data row_a7: FloorCostRow = FloorCostRow { identity: "m.bound.b", module: "m.bound", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100), eval_steps: eval_step_count(count: 2000) }, reachability: none }
+data row_b7: FloorCostRow = FloorCostRow { identity: "m.bound.b", module: "m.bound", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 120), eval_steps: eval_step_count(count: 2000) }, reachability: none }
+data row_c7: FloorCostRow = FloorCostRow { identity: "m.bound.b", module: "m.bound", verdict_reached: true, cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 1), censoring_ceiling_ms: millisecond(count: 1), eval_steps_before_censor: eval_step_count(count: 5) }, reachability: none }
 
 data env_run_a: RunCost = RunCost { run: "runA" as NonEmptyStr, rows: [row_a1, row_a2, row_a3, row_a4, row_a5, row_a6, row_a7] }
 data env_run_b: RunCost = RunCost { run: "runB" as NonEmptyStr, rows: [row_b1, row_b2, row_b3, row_b4, row_b5, row_b6, row_b7] }
@@ -1225,8 +1242,7 @@ fn reach_row(identity: String, cpu: Int, reach: PreemptionReachability) -> Floor
     identity: identity,
     module: "m.cross",
     verdict_reached: true,
-    cost: ObservedCpuReading { cpu_ms: millisecond(count: cpu) },
-    eval_steps: 1000,
+    cost: ObservedCpuReading { cpu_ms: millisecond(count: cpu), eval_steps: eval_step_count(count: 1000) },
     reachability: Present { value: reach }
   }
 }
@@ -1238,8 +1254,7 @@ data cross_unrecorded: FloorCostRow = FloorCostRow {
   identity: "m.cross.unrecorded",
   module: "m.cross",
   verdict_reached: true,
-  cost: ObservedCpuReading { cpu_ms: millisecond(count: 503) },
-  eval_steps: 1000,
+  cost: ObservedCpuReading { cpu_ms: millisecond(count: 503), eval_steps: eval_step_count(count: 1000) },
   reachability: none
 }
 data cross_below: FloorCostRow = reach_row(identity: "m.cross.below", cpu: 499, reach: ReachabilityCooperativelyPollable)
@@ -1247,16 +1262,14 @@ data cross_censored: FloorCostRow = FloorCostRow {
   identity: "m.cross.censored",
   module: "m.cross",
   verdict_reached: false,
-  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 502), censoring_ceiling_ms: millisecond(count: 500) },
-  eval_steps: 9,
+  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 502), censoring_ceiling_ms: millisecond(count: 500), eval_steps_before_censor: eval_step_count(count: 9) },
   reachability: Present { value: ReachabilityCooperativelyPollable }
 }
 data cross_undecidable: FloorCostRow = FloorCostRow {
   identity: "m.cross.undecidable",
   module: "m.cross",
   verdict_reached: false,
-  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 300), censoring_ceiling_ms: millisecond(count: 8000) },
-  eval_steps: 9,
+  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 300), censoring_ceiling_ms: millisecond(count: 8000), eval_steps_before_censor: eval_step_count(count: 9) },
   reachability: Present { value: ReachabilityCooperativelyPollable }
 }
 
@@ -1387,16 +1400,14 @@ data both_preempted: FloorCostRow = FloorCostRow {
   identity: "m.cross.both",
   module: "m.cross",
   verdict_reached: false,
-  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500) },
-  eval_steps: 9,
+  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500), eval_steps_before_censor: eval_step_count(count: 9) },
   reachability: Present { value: ReachabilityCooperativelyPollable }
 }
 data only_preempted: FloorCostRow = FloorCostRow {
   identity: "m.cross.onlypreempted",
   module: "m.cross",
   verdict_reached: false,
-  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500) },
-  eval_steps: 9,
+  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500), eval_steps_before_censor: eval_step_count(count: 9) },
   reachability: Present { value: ReachabilityCooperativelyPollable }
 }
 
@@ -1432,8 +1443,7 @@ data panicked_exact: FloorCostRow = FloorCostRow {
   identity: "m.cross.panicked",
   module: "m.cross",
   verdict_reached: false,
-  cost: ObservedCpuReading { cpu_ms: millisecond(count: 12) },
-  eval_steps: 40,
+  cost: ObservedCpuReading { cpu_ms: millisecond(count: 12), eval_steps: eval_step_count(count: 40) },
   reachability: Present { value: ReachabilityCooperativelyPollable }
 }
 
@@ -1486,19 +1496,18 @@ data attempt_pair_cross_tree: FloorAttemptPair = FloorAttemptPair { left: attemp
 // THE PAIR FIXTURE: one identity whose steps AGREE while its cpu moves, one whose steps DIFFER, and
 // one that completed on the right and was preempted on the left. So the violation report has an
 // arm to exercise in three directions and the envelope has exactly one admissible member.
-data pair_l_stable: FloorCostRow = FloorCostRow { identity: "m.p.stable", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 503) }, eval_steps: 90000, reachability: none }
-data pair_r_stable: FloorCostRow = FloorCostRow { identity: "m.p.stable", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 349) }, eval_steps: 90000, reachability: none }
-data pair_l_drift: FloorCostRow = FloorCostRow { identity: "m.p.drift", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200) }, eval_steps: 155648, reachability: none }
-data pair_r_drift: FloorCostRow = FloorCostRow { identity: "m.p.drift", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200) }, eval_steps: 171124, reachability: none }
+data pair_l_stable: FloorCostRow = FloorCostRow { identity: "m.p.stable", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 503), eval_steps: eval_step_count(count: 90000) }, reachability: none }
+data pair_r_stable: FloorCostRow = FloorCostRow { identity: "m.p.stable", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 349), eval_steps: eval_step_count(count: 90000) }, reachability: none }
+data pair_l_drift: FloorCostRow = FloorCostRow { identity: "m.p.drift", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200), eval_steps: eval_step_count(count: 155648) }, reachability: none }
+data pair_r_drift: FloorCostRow = FloorCostRow { identity: "m.p.drift", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200), eval_steps: eval_step_count(count: 171124) }, reachability: none }
 data pair_l_preempted: FloorCostRow = FloorCostRow {
   identity: "m.p.preempted",
   module: "m.p",
   verdict_reached: false,
-  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 504), censoring_ceiling_ms: millisecond(count: 500) },
-  eval_steps: 9,
+  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 504), censoring_ceiling_ms: millisecond(count: 500), eval_steps_before_censor: eval_step_count(count: 9) },
   reachability: none
 }
-data pair_r_preempted: FloorCostRow = FloorCostRow { identity: "m.p.preempted", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 380) }, eval_steps: 175664, reachability: none }
+data pair_r_preempted: FloorCostRow = FloorCostRow { identity: "m.p.preempted", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 380), eval_steps: eval_step_count(count: 175664) }, reachability: none }
 
 data pair_left_run: RunCost = RunCost { run: "33846875188/attempt-1" as NonEmptyStr, rows: [pair_l_stable, pair_l_drift, pair_l_preempted] }
 data pair_right_run: RunCost = RunCost { run: "33846875188/attempt-2" as NonEmptyStr, rows: [pair_r_stable, pair_r_drift, pair_r_preempted] }
@@ -1579,4 +1588,119 @@ test fn an_unreadable_left_side_names_the_left_rather_than_the_right() -> Bool {
   )
   count(lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING -- the left attempt"))) == 1
     && count(lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING -- the right attempt"))) == 0
+}
+
+// ── A CENSORED SPECIMEN ROW MAY NOT ANSWER AN EQUALITY QUESTION ────────────────────────────
+//
+// `FloorCostRow.eval_steps` is a POINT for an observed row and a LOWER BOUND for a censored one --
+// the parse fills it from `eval_steps_at_least` on the censored arm. So a censored row whose bound
+// happens to EQUAL the pinned specimen count would, without the case split, report
+// `SpecimenStepsMatchThePin` and succeed -- asserting an equality the run never established, which
+// is DESIGN section 5's fabricated plausible output. Found by review 65748.
+//
+// THE FIXTURES ARE THE SAME NUMBER ON BOTH ARMS, WHICH IS THE WHOLE POINT. Both carry the pinned
+// 55,011; they differ only in the reading. If the split is removed both go green, so the pair
+// discriminates on the reading and on nothing else.
+data specimen_identity_fixture: String = "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work"
+
+data specimen_row_observed: FloorCostRow = FloorCostRow {
+  identity: specimen_identity_fixture,
+  module: "test.claim.floor_eval_step_calibration_specimen_test",
+  verdict_reached: true,
+  cost: ObservedCpuReading { cpu_ms: millisecond(count: 57), eval_steps: eval_step_count(count: 55011) },
+  reachability: none
+}
+
+data specimen_row_censored: FloorCostRow = FloorCostRow {
+  identity: specimen_identity_fixture,
+  module: "test.claim.floor_eval_step_calibration_specimen_test",
+  verdict_reached: false,
+  cost: RightCensoredCpuReading {
+    cpu_lower_bound_ms: millisecond(count: 8000),
+    censoring_ceiling_ms: millisecond(count: 8000), eval_steps_before_censor: eval_step_count(count: 55011) },
+  reachability: none
+}
+
+// THE CONTROL: an observed row carrying the pin joins and holds.
+test fn an_observed_specimen_row_joins_the_pin() -> Bool {
+  calibration_specimen_grounding_holds(
+    g: specimen_row_grounding(rows: [specimen_row_observed], run: "runFixture" as NonEmptyStr)
+  )
+}
+
+// THE RED: the SAME step figure on a censored reading refuses, and names why rather than reporting
+// a mismatch it did not measure.
+test fn a_censored_specimen_row_refuses_rather_than_matching_the_pin() -> Bool {
+  match specimen_row_grounding(rows: [specimen_row_censored], run: "runFixture" as NonEmptyStr) {
+    SpecimenStepsRightCensored { identity: i, lower_bound: b } =>
+      i == specimen_identity_fixture && b == 55011
+    SpecimenJoined { grounding: _ } => false
+    SpecimenAbsentFromRun { identity: _, run: _ } => false
+    SpecimenStepsNotDeterministic { identity: _, low: _, high: _ } => false
+    SpecimenRunUnavailable { load: _ } => false
+  }
+}
+
+// ── PHASE 1 EVIDENCE: A BOUND IS NOT WORK PERFORMED ────────────────────────────────────────────
+//
+// THE DISCRIMINATING RED, AND IT IS RED ONLY BECAUSE THE COUNT MOVED INSIDE THE ARMS. Before
+// gunbc#11366 the step count was a bare `Int` on the row, so two rows carrying 4096 compared EQUAL
+// whatever had produced those counts -- a claim that performed 4096 steps and a claim that was
+// stopped after 4096. `performed_steps_agree` now answers false for the second pair, and no
+// re-spelling of the comparison can recover the old answer, because the bound is not reachable
+// through `observed_eval_steps` at all.
+//
+// TWO EQUAL BOUNDS ARE THE SHARPEST CASE and are the reason this is not merely a rename. It is
+// tempting to admit them -- the numbers match -- but "at least 4096" twice says nothing about
+// whether the two claims did the same work, and the cohort that consumes this would attribute the
+// whole difference between them to inflation.
+test fn two_equal_bounds_do_not_agree_on_performed_work() -> Bool {
+  let bound_a = CpuLowerBoundWithoutCeiling {
+    cpu_lower_bound_ms: millisecond(count: 500),
+    eval_steps_before_censor: eval_step_count(count: 4096)
+  }
+  let bound_b = CpuLowerBoundWithoutCeiling {
+    cpu_lower_bound_ms: millisecond(count: 900),
+    eval_steps_before_censor: eval_step_count(count: 4096)
+  }
+  let performed = ObservedCpuReading {
+    cpu_ms: millisecond(count: 500),
+    eval_steps: eval_step_count(count: 4096)
+  }
+  (performed_steps_agree(a: bound_a, b: bound_b) == false)
+    && (performed_steps_agree(a: performed, b: bound_b) == false)
+    && performed_steps_agree(a: performed, b: performed)
+}
+
+// THE POSITIVE CONTROL FOR THE ACCESSOR PAIR, so neither is a decoration: the point question is
+// answerable on exactly one arm, and the lower-bound question on all three.
+test fn the_point_question_answers_on_one_arm_and_the_bound_question_on_every_arm() -> Bool {
+  let performed = ObservedCpuReading {
+    cpu_ms: millisecond(count: 500),
+    eval_steps: eval_step_count(count: 4096)
+  }
+  let censored = RightCensoredCpuReading {
+    cpu_lower_bound_ms: millisecond(count: 500),
+    censoring_ceiling_ms: millisecond(count: 500),
+    eval_steps_before_censor: eval_step_count(count: 77)
+  }
+  let unbounded = CpuLowerBoundWithoutCeiling {
+    cpu_lower_bound_ms: millisecond(count: 500),
+    eval_steps_before_censor: eval_step_count(count: 88)
+  }
+  match observed_eval_steps(reading: performed) {
+    Absent => false
+    Present { value: p } =>
+      eval_step_count_value(s: p) == 4096
+        && match observed_eval_steps(reading: censored) {
+             Present { value: _ } => false
+             Absent => match observed_eval_steps(reading: unbounded) {
+               Present { value: _ } => false
+               Absent =>
+                 eval_step_count_value(s: eval_steps_at_least(reading: performed)) == 4096
+                   && eval_step_count_value(s: eval_steps_at_least(reading: censored)) == 77
+                   && eval_step_count_value(s: eval_steps_at_least(reading: unbounded)) == 88
+             }
+           }
+  }
 }

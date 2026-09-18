@@ -15,6 +15,7 @@ import extdeps.vllm.source_build {
   vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
   vllm_torch_cuda_arch_entry,
   vllm_07b75534_registry_maps_deepseek_v4_1, vllm_07b75534_registry_answers_for,
+  vllm_d2d649e6_registry_answers_for,
   vllm_clone_url,
 }
 import extdeps.vllm.deepseek_v4_1_sm12 {
@@ -38,7 +39,7 @@ import gunbc.spark.vllm_runtime_image_build {
   vllm_source_is_clean, vllm_image_provenance_wire, BuiltByThisRun, AdoptedUnderExpectedTag,
   vllm_source_dir,
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
-  v41_gb10_recipe, vllm_build_host_purpose, vllm_image_build_key, vllm_image_tag, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
+  v41_gb10_recipe, vllm_build_host_purpose, vllm_image_build_key, vllm_image_tag, vllm_image_tag_for_key, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
   SparkHostAnswered, SparkHostIdentityMismatch, SparkHostIdentityUnjoinable,
   SparkHostUnreachable, SparkHostUnresolved,
   classify_reported_hostname, spark_host_answered,
@@ -131,17 +132,48 @@ test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> 
 // THE BUILD KEY IS A FUNCTION OF THE INPUTS AND THE TAG IS A FUNCTION OF THE KEY. The discriminating
 // half is the second pair: a key that ignored the arch list would give the sm_121 build and a 12.0
 // build the same tag, which is exactly the collision the key exists to prevent.
+// THE CONNECTOR BUILD ARGUMENT DECIDES WHAT IS IN THE IMAGE, SO IT IS IN THE KEY. docker/Dockerfile
+// declares `ARG INSTALL_KV_CONNECTORS=false` and installs an extra package set when it is true, while both
+// revisions' release pipelines pass true -- so the default recipe and the release recipe describe images
+// with different contents. Before this axis existed, two recipes differing only in that argument keyed the
+// same, which is a key standing for two materially different sets of bytes. The second conjunct is the
+// control that keeps this a statement about the argument rather than about recipes differing at all: the
+// release recipe keys differently from the same recipe with the argument flipped, and nothing else moved.
+//
+// THE ARGV MOVES WITH IT TOO, AND THAT IS THE HALF THAT NEARLY DID NOT LAND. A key that moves while the
+// invocation does not is the defect this module already carries once -- a flashinfer version keyed and
+// never handed to the build: the tag would say connectors-on while docker fell back to the Dockerfile's
+// `false`, so one identity would stand for two different sets of bytes. Both directions are asserted.
+test fn the_key_moves_with_the_connector_build_argument() -> Bool {
+  let with_conn = vllm_07b75534_aarch64_release_recipe
+  let without = vllm_recipe_targeting(
+    base: with_conn,
+    torch_cuda_arch_list: with_conn.torch_cuda_arch_list,
+    install_kv_connectors: false,
+    max_jobs: with_conn.max_jobs,
+    nvcc_threads: with_conn.nvcc_threads,
+  )
+  with_conn.install_kv_connectors
+    && !without.install_kv_connectors
+    && (serialize_content_hash(hash: vllm_image_build_key(r: without)) as String)
+       != (serialize_content_hash(hash: vllm_image_build_key(r: with_conn)) as String)
+    && string_contains(s: join(argv_words(command: docker_build_spec_command(spec: vllm_image_build_spec(r: with_conn))), " "), pattern: "--build-arg INSTALL_KV_CONNECTORS=true")
+    && string_contains(s: join(argv_words(command: docker_build_spec_command(spec: vllm_image_build_spec(r: without))), " "), pattern: "--build-arg INSTALL_KV_CONNECTORS=false")
+}
+
 test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bool {
   let fleet = v41_gb10_recipe()
   let other_arch = vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: ["12.0" as NonEmptyStr],
+    install_kv_connectors: vllm_07b75534_aarch64_release_recipe.install_kv_connectors,
     max_jobs: v41_build_max_jobs,
     nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
   )
   let other_jobs = vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+    install_kv_connectors: vllm_07b75534_aarch64_release_recipe.install_kv_connectors,
     max_jobs: 1,
     nvcc_threads: 1,
   )
@@ -149,6 +181,7 @@ test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bo
   (serialize_content_hash(hash: vllm_image_build_key(r: other_arch)) as String) != fleet_key
     && (serialize_content_hash(hash: vllm_image_build_key(r: other_jobs)) as String) == fleet_key
     && string_contains(s: vllm_image_tag(r: fleet) as String, pattern: fleet_key)
+    && (vllm_image_tag(r: fleet) as String) == (vllm_image_tag_for_key(key: vllm_image_build_key(r: fleet)) as String)
     && (vllm_image_tag(r: other_arch) as String) != (vllm_image_tag(r: fleet) as String)
 }
 
@@ -160,6 +193,7 @@ test fn the_build_argv_carries_the_arch_list_the_aarch64_base_and_the_context_la
   let line = join(words, " ")
   string_contains(s: line, pattern: "--build-arg torch_cuda_arch_list=12.1")
     && string_contains(s: line, pattern: "--build-arg BUILD_BASE_IMAGE=pytorch/manylinuxaarch64-builder:cuda13.0-b8b5f17a7d9ccfc25bbc5cf17b3fcea12964a042")
+    && string_contains(s: line, pattern: "--build-arg INSTALL_KV_CONNECTORS=true")
     && string_contains(s: line, pattern: "--target vllm-openai")
     && string_contains(s: line, pattern: "--platform linux/arm64")
     && string_contains(s: line, pattern: join([vllm_source_dir() as String, "/", v41_gb10_recipe().dockerfile_path as String], ""))
@@ -321,6 +355,23 @@ test fn the_in_image_registry_and_the_source_registry_agree_that_v41_is_unmapped
     && !vllm_07b75534_registry_maps_deepseek_v4_1
     && v41_probed_sibling_architecture_present
     && vllm_07b75534_registry_answers_for(architecture: v41_probed_sibling_architecture)
+    && !vllm_07b75534_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
+}
+
+// THE SAME TWO QUESTIONS ASKED OF THE PINNED REVISION, AND THE ANSWER IS WHY IT IS THE PIN. The negative
+// above is about 07b75534; on its own it says a build from that tree cannot answer for the checkpoint's
+// architecture, and says nothing about which tree can. This is the other half of that pair, and it is the
+// whole justification for moving the runtime subject to d2d649e6, so it is asserted rather than left as a
+// row a reader is trusted to have read.
+//
+// THE CONJUNCT ABOUT ENGRAM STORAGE IS GONE AND ITS ABSENCE IS THE POINT. It asserted that every modelled
+// realization at this revision is memory-backed, against a predicate that returned true for every arm --
+// so it could only go red by editing the declaration it read, which is DESIGN section 4b's decoration
+// rather than a wall. The premise it was standing in for refuses where it is load-bearing instead: the
+// live candidate's patch population names this revision in an obligation and keys nothing without a patch.
+test fn the_pinned_revision_answers_for_the_checkpoints_architecture() -> Bool {
+  vllm_d2d649e6_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
+    && !vllm_d2d649e6_registry_answers_for(architecture: v41_probed_sibling_architecture)
     && !vllm_07b75534_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
 }
 

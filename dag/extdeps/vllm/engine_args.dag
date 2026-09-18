@@ -173,6 +173,31 @@ fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
   }
 }
 
+// ── WHETHER A DRAFT MODEL WAS PROPOSING TOKENS, WHICH IS A MEASUREMENT AXIS ────────────────────
+//
+// WHY THIS IS MODELLED HERE RATHER THAN BESIDE A MEASUREMENT. gunbc.spark.prefill_batch_sweep states
+// the consequence in its own prose: "a budget measurement taken with speculation OFF does not
+// describe a product served with it ON" -- draft tokens consume the same batch budget, and a step
+// that accepts a BURST instead of exactly one decode token has a different felt cadence at the same
+// step duration. So a measurement's speculative policy decides whether it transfers, which makes it
+// an engine argument like the others rather than a fact about any one experiment.
+//
+// EVERY ARM IS A POLICY THAT WAS READ. The fleet's existing measurements do not record this, and
+// answering "off" for them would be a fabricated default on an axis whose whole purpose is to expire
+// a number -- but the fix is not a third arm saying "unread". Absence of a reading is the absence of
+// this value, spelled by an optional at the use site; a policy type whose arms include "no policy
+// was observed" forces every consumer to carry a bespoke guard for a state the option already has.
+type VllmSpeculativePolicy
+  = SpeculativeDecodingOff
+  | SpeculativeDecodingOn { proposer: NonEmptyStr }
+
+fn vllm_speculative_policy_wire(p: VllmSpeculativePolicy) -> NonEmptyStr {
+  match p {
+    SpeculativeDecodingOff => "speculation-off" as NonEmptyStr
+    SpeculativeDecodingOn { proposer: n } => join(["speculation-on:", n as String], "") as NonEmptyStr
+  }
+}
+
 type VllmDistributedExecutorBackend = ExecutorMp | ExecutorRay | ExecutorExternalLauncher
 
 fn vllm_distributed_executor_backend_wire(backend: VllmDistributedExecutorBackend) -> NonEmptyStr {
@@ -272,3 +297,168 @@ data vllm_verified_negatives: List<VllmVerifiedNegative> = [
   vllm_negative_nvfp4_kv_for_mla,
   vllm_negative_dcp_with_sliding_window,
 ]
+
+// ── THE READBACK DIRECTION: WHAT A RUNNING ENGINE'S OWN ARGUMENTS SAY ─────────────────────────
+//
+// WHY THIS LIVES HERE. The projections above render this CLI's flags; reading a value back OUT of a
+// rendered argv is the same grammar asked in the other direction, so it is one authority rather than
+// two. A consumer that split on "--node-rank" itself would be a second, positional spelling of a
+// grammar this module already owns.
+//
+// AND THIS IS WHAT MAKES THE RANK READABLE AT ALL. Group B's rank order is NOT its address order --
+// 192.168.1.236 is rank 0, .237 rank 1, .239 rank 2, .238 rank 3 -- so a reader that derived the rank
+// from a host roster would mislabel two of the four ranks and then attribute their readings to each
+// other. The rank a container IS, is the one in the argv it was created with, and nothing else.
+type VllmArgvValueRead
+  = VllmArgvValue { value: String }
+  | VllmArgvFlagAbsent
+  | VllmArgvFlagWithoutValue
+  | VllmArgvFlagRepeated { values: List<String> }
+
+type VllmArgvScan {
+  values: List<String>
+  awaiting: Bool
+}
+
+// A FLAG AT THE END OF THE ARGV WITH NOTHING AFTER IT IS A DISTINCT FACT, not an absent flag. It
+// means the argv was truncated or mis-assembled, and reporting it as "not set" would let a readback
+// agree with a plan that does not set it either. The scan carries that as `awaiting` still true when
+// the list runs out.
+//
+// ONE LEFT-TO-RIGHT PASS, and the value position is consumed rather than re-searched: a word taken as
+// a value is never also read as a flag, so `--node-rank --node-rank` reads as ONE occurrence whose
+// value is the literal second word rather than as two occurrences. Indexing into the list per word
+// would have made this quadratic for no additional fact.
+fn vllm_argv_scan(argv: List<String>, flag: String) -> VllmArgvScan {
+  fold(argv, init: VllmArgvScan { values: [], awaiting: false }, f: (acc, word) =>
+    if acc.awaiting {
+      VllmArgvScan { values: concat(acc.values, [word]), awaiting: false }
+    } else if word == flag {
+      VllmArgvScan { values: acc.values, awaiting: true }
+    } else {
+      acc
+    })
+}
+
+// A FLAG GIVEN TWICE IS REFUSED RATHER THAN RESOLVED. argparse takes the last occurrence, so a
+// reader could answer -- but a launch carrying one flag twice is a launch nobody wrote on purpose,
+// and silently answering with one of the two values would hide the only evidence that the argv was
+// assembled wrong. The refusal carries BOTH values so the reader can see what happened.
+fn vllm_argv_value(argv: List<String>, flag: String) -> VllmArgvValueRead {
+  let scan = vllm_argv_scan(argv: argv, flag: flag)
+  if count(scan.values) > 1 {
+    VllmArgvFlagRepeated { values: scan.values }
+  } else {
+    match scan.values.first() {
+      Present { value: v } => VllmArgvValue { value: v }
+      Absent => if scan.awaiting { VllmArgvFlagWithoutValue } else { VllmArgvFlagAbsent }
+    }
+  }
+}
+
+fn vllm_argv_value_text(r: VllmArgvValueRead, flag: String) -> String {
+  match r {
+    VllmArgvValue { value: v } => v
+    VllmArgvFlagAbsent => join(["the argv carries no ", flag], "")
+    VllmArgvFlagWithoutValue => join(["the argv ends with ", flag, " and no value after it"], "")
+    VllmArgvFlagRepeated { values: vs } => join(["the argv carries ", flag, " ", to_string(count(vs)), " times: ", join(vs, ", ")], "")
+  }
+}
+
+// EVERY FLAG THIS MODULE RENDERS OR READS IS SPELLED HERE ONCE. A consumer that wants to reason about
+// one of these arguments -- which axis a changed word sits on, say -- takes the name from this module
+// rather than repeating the literal, because a second spelling of a flag is a second authority for
+// the grammar this module exists to own, and it drifts silently the first time upstream renames one.
+data vllm_node_rank_flag: String = "--node-rank"
+data vllm_gpu_memory_utilization_flag: String = "--gpu-memory-utilization"
+data vllm_max_num_seqs_flag: String = "--max-num-seqs"
+
+type VllmArgvNatRead
+  = VllmArgvNat { value: Nat }
+  | VllmArgvNatUnread { cause: NonEmptyStr }
+
+fn vllm_argv_nat(argv: List<String>, flag: String) -> VllmArgvNatRead {
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvValue { value: v } =>
+      match parse_int(s: v) {
+        Absent => VllmArgvNatUnread { cause: join([flag, " carries ", v, ", which is not an integer"], "") as NonEmptyStr }
+        Present { value: n } =>
+          if n < 0 {
+            VllmArgvNatUnread { cause: join([flag, " carries ", v, ", which is negative"], "") as NonEmptyStr }
+          } else {
+            VllmArgvNat { value: n }
+          }
+      }
+    VllmArgvFlagAbsent => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagWithoutValue => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+  }
+}
+
+fn vllm_argv_node_rank(argv: List<String>) -> VllmArgvNatRead {
+  vllm_argv_nat(argv: argv, flag: vllm_node_rank_flag)
+}
+
+// ── THE UTILIZATION FRACTION, READ BACK INTO THE BASIS POINTS IT WAS RENDERED FROM ────────────
+//
+// `vllm_basis_point_fraction_wire` renders 8567 basis points as `0.8567`; this inverts exactly that
+// projection, so the two are one grammar and a round trip is a real question. IT REFUSES A FRACTION
+// IT CANNOT INVERT EXACTLY: `0.84` is 8400 basis points and `0.856789` is not representable, so the
+// second is a refusal rather than a rounding. A readback that rounded would report agreement between
+// a plan and a container that were given different numbers.
+fn vllm_argv_utilization_basis_points(argv: List<String>) -> VllmArgvNatRead {
+  let flag = vllm_gpu_memory_utilization_flag
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvValue { value: v } => vllm_basis_points_of_fraction(text: v, flag: flag)
+    VllmArgvFlagAbsent => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagWithoutValue => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+  }
+}
+
+fn vllm_basis_points_of_fraction(text: String, flag: String) -> VllmArgvNatRead {
+  let parts = split(s: text, delimiter: ".")
+  if count(parts) != 2 {
+    VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which is not a decimal fraction of the form the renderer produces"], "") as NonEmptyStr }
+  } else {
+    match parts.first() {
+      Absent => VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which has no whole part"], "") as NonEmptyStr }
+      Present { value: whole } =>
+        match parts |> skip(1) |> first {
+          Absent => VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which has no fractional part"], "") as NonEmptyStr }
+          Present { value: fraction } =>
+            if string_length(s: fraction) > 4 {
+              VllmArgvNatUnread { cause: join([flag, " carries ", text, ", whose ", to_string(string_length(s: fraction)), " fractional digits cannot be held exactly in basis points; it is refused rather than rounded"], "") as NonEmptyStr }
+            } else {
+              match parse_int(s: whole) {
+                Absent => VllmArgvNatUnread { cause: join([flag, " carries ", text, ", whose whole part is not an integer"], "") as NonEmptyStr }
+                Present { value: w } =>
+                  match parse_int(s: vllm_pad_fraction_to_basis_points(fraction: fraction)) {
+                    Absent => VllmArgvNatUnread { cause: join([flag, " carries ", text, ", whose fractional part is not an integer"], "") as NonEmptyStr }
+                    Present { value: f } =>
+                      if w < 0 || f < 0 {
+                        VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which is negative"], "") as NonEmptyStr }
+                      } else {
+                        VllmArgvNat { value: w * 10000 + f }
+                      }
+                  }
+              }
+            }
+        }
+    }
+  }
+}
+
+// `0.84` is 8400 basis points and NOT 84, so the fractional digits are right-padded to four before
+// they are read as a number. This is the inverse of vllm_pad_four above, which is why both live in
+// this module: a padding rule split across two modules is a fork that disagrees the first time one
+// of them is edited.
+fn vllm_pad_fraction_to_basis_points(fraction: String) -> String {
+  if string_length(s: fraction) >= 4 {
+    fraction
+  } else {
+    vllm_pad_fraction_to_basis_points(fraction: join([fraction, "0"], ""))
+  }
+}

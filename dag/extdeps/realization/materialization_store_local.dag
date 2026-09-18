@@ -38,7 +38,10 @@ import std.access { Permit, Deny }
 import std.effect_grant { Verb, Read, Write, NamespacePosition }
 import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame }
-import std.materialization_provider { ArtifactRequest, request_key }
+import std.materialization_provider {
+  ArtifactRequest, request_key, evaluation_store_address,
+  Admitted, FamilyRefused
+}
 import std.materialization_store_grant {
   MaterializationStoreRoot,
   MaterializationStoreDurability,
@@ -55,9 +58,10 @@ import std.materialization_object {
   StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
   OpenedMaterializationStore,
   StoreLookup, StoreLookupRefused, StoreLookupObjectUnavailable,
+  StoreLookupStoreFamilyRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
-  store_object_name, store_lookup_decide, store_commit_prepare, store_commit_settle,
+  store_object_name, store_lookup_from_address, store_commit_prepare, store_commit_settle,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -263,12 +267,23 @@ fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializati
         key: request_key(req: req),
         refusal: StoreLookupObjectUnavailable { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("read grant refused for ", root_path) } }
       }
-    Permit =>
-      store_lookup_decide(
-        store: store,
-        req: req,
-        read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(key: request_key(req: req)))))
-      )
+    Permit => {
+      let read = match evaluation_store_address(req: req) {
+        FamilyRefused { family: f, scope: sc } =>
+          StoreLookupRefused {
+            key: request_key(req: req),
+            refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc }
+          }
+        Admitted { address: addr } =>
+          store_lookup_from_address(
+            store: store,
+            req: req,
+            address: addr,
+            read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
+          )
+      }
+      read
+    }
   }
 }
 
@@ -281,7 +296,7 @@ fn local_store_commit(
   let root_path = materialization_store_root_path(root: root)
   match store_commit_prepare(req: req, payloads: payloads) {
     StoreCommitNotPrepared { commit: c } => c
-    StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered } =>
+    StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
       match materialization_store_admissible(root: root, verb: Write) {
         Deny { refusal: _ } =>
           StoreCommitRefused {
@@ -294,6 +309,7 @@ fn local_store_commit(
             store: store,
             prepared_key: k,
             offered_digest: offered,
+            offered_result: offered_result,
             publish: publish,
             read_back: local_store_lookup(root: root, store: store, req: req)
           )

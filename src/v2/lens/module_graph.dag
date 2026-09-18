@@ -6,7 +6,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { any, contains, fold_list, list_append, list_reverse, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, is_empty, list_append, list_reverse, list_snoc_item }
 import v2.std.collection {
   List,
   Map,
@@ -19,9 +19,52 @@ import v2.std.optional {
   Optional,
   Present
 }
-import v2.std.diagnostic { Outcome, outcome_accepted }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable,
+  WholeFile,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected
+}
 import v2.std.logic { Bool }
-import v2.std.text { String }
+import v2.std.node { Node, Symbol, symbol_eq }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_to_dotted_string
+}
+import v2.std.symbol_index {
+  SymbolIndex,
+  empty_symbol_index
+}
+import v2.std.text { String, string_eq }
+import v2.compiler.program_assembly { located_module_roots_from_source_root_ingest }
+import v2.compiler.reference_site_collector {
+  ReferenceSiteCollection,
+  UnreadableModuleRoot,
+  collect_module_reference_sites
+}
+import v2.compiler.resolution_provenance {
+  FileDependencyProvenance,
+  ReferenceSite,
+  module_dependencies_from_sites
+}
+import v2.compiler.source_authority {
+  SourceRef,
+  SourceRootIngest,
+  source_ref_for_storage_path
+}
+import v2.compiler.source_authority_read { source_root_ingest_from_source_refs }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  qualified_name_from_module_node
+}
 
 type ModuleDeclarationFact {
   module: String
@@ -40,7 +83,7 @@ type ModuleDependencyEdge {
   target_declared: Bool
 }
 
-data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_derived_import_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged_pending_reference_producer and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
+data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_derived_import_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
 
 // Namespace-lane handoff specimens from gunbc#7908 (operator ruling 2026-08-06, msg_8e1c9e9d):
 // three closure-binding failures from #6848 import stripping that whole-tree compile-clean repaired
@@ -60,12 +103,12 @@ data reference_derived_edge_source_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "v2.lens.module_graph",
-    decl_name: "reference_derived_resolution_facts_flagged_pending_reference_producer",
+    decl_name: "reference_derived_resolution_facts",
     field: WholeDeclaration
   }
 }
 
-data reference_derived_edge_source_dissolution_note: String = "Scaffold producer for namespace terminal step (docs/plans/namespace-resolution-design.md §8 step 5): module-graph dependency edges derived from parsed-tree container.member qualified-name use sites (v2.lens.reference_deps.reference_resolution_facts_from_parsed_corpus census today; symbol_index_fill projection at steady state). Not wired into dependency_resolution_facts_live until the import grammar is deleted — dependency_resolution_facts_live already unions strict-tier host reference_resolution_facts with import_resolution_facts_live; this scaffold is the import-only stand-in for the terminal reference-only swap. Name suffix _pending_reference_producer marks that the body is still import-backed (interim stand-in), not parsed-tree reference-derived yet. On the import-only corpus the reference census matches import facts at module-prefix grain (reference_closure_b2_safety_wall_holds); this scaffold maps import facts through ModuleDependencyEdge until the swap repoints dependency_resolution_facts_live here without changing closure consumers."
+data reference_derived_edge_source_dissolution_note: String = "XL-4 swap body: collect_module_reference_sites.sites plus module_dependencies_from_sites. Unreadable roots travel on ReferenceDerivedEdgeFold; production Outcome refuses on the first unreadable root (outcome_from_reference_derived_edge_fold). Import-syntax mentions dropped in the EDGE fold. File ingest is located_roots_from_source_root_ingest. Collector-only: do not feed v2.lens.reference_deps parse-QN sites. Frontiers: the DissolutionCondition rows beside this carrier."
 
 fn import_resolution_facts_live(
   pool_roots: List<String>,
@@ -181,24 +224,375 @@ fn dependency_resolution_facts_live(
   )
 }
 
-fn reference_derived_resolution_facts_flagged_pending_reference_producer(
+data no_located_roots: List<LocatedModuleRoot> = []
+
+data no_source_refs: List<SourceRef> = []
+
+data no_reference_derived_edges: List<ModuleDependencyEdge> = []
+
+data no_reference_sites: FreeMonoid<ReferenceSite> = Empty
+
+type ReferenceDerivedPool {
+  index: SymbolIndex
+  trees: Map<String, Node>
+  roster: FreeMonoid<QualifiedName>
+  qn_by_path: Map<String, QualifiedName>
+}
+
+type LocatedModuleRoot {
+  path: String
+  root: Node
+}
+
+type ReferenceDerivedEdgeFold {
+  edges: List<ModuleDependencyEdge>
+  unreadable_roots: FreeMonoid<UnreadableModuleRoot>
+}
+
+data empty_reference_derived_edge_fold: ReferenceDerivedEdgeFold = ReferenceDerivedEdgeFold {
+  edges: [],
+  unreadable_roots: Empty
+}
+
+fn reference_derived_edge_fold_is_total(fold: ReferenceDerivedEdgeFold) -> Bool {
+  is_empty(xs: fold.unreadable_roots)
+}
+
+fn reference_derived_path_excluded(path: String, exclude_substrings: List<String>) -> Bool {
+  any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, sub: sub) })
+}
+
+fn reference_derived_path_under_roots(path: String, roots: List<String>) -> Bool {
+  any(xs: roots, predicate: fn(root) { starts_with(s: path, prefix: concat(root, "/")) })
+}
+
+fn source_refs_from_declared(declared: List<ModuleDeclarationFact>) -> List<SourceRef> {
+  fold_list(
+    xs: declared,
+    empty: no_source_refs,
+    cons: fn(acc, fact) {
+      list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: fact.path))
+    }
+  )
+}
+
+// The path-to-tree association is read from the assembly fold that produced it
+// (LocatedNormalizedTree), never recovered by zipping two lists positionally: a mislocated
+// mention is a fabricated plausible answer (DESIGN 5), and a count check cannot tell a
+// reordering from a correct pairing. An unpaired root has no representation here.
+fn located_roots_from_source_root_ingest(
+  ingest: SourceRootIngest
+) -> Outcome<List<LocatedModuleRoot>> {
+  bind_outcome(
+    o: located_module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model()),
+    f: fn(located) {
+      outcome_accepted(
+        value: fold_list(
+          xs: located,
+          empty: no_located_roots,
+          cons: fn(acc, item) {
+            list_snoc_item(
+              xs: acc,
+              item: LocatedModuleRoot { path: item.path, root: item.tree.root }
+            )
+          }
+        )
+      )
+    }
+  )
+}
+
+fn site_is_import_syntax_mention(site: ReferenceSite) -> Bool {
+  contains(xs: site.position, item: ^dag_surface_import_decl, eq: symbol_eq)
+    || contains(xs: site.position, item: ^dag_surface_import_block, eq: symbol_eq)
+    || contains(
+      xs: site.position,
+      item: ^dag_surface_import_decl_qualified_name,
+      eq: symbol_eq
+    )
+}
+
+fn reference_sites_excluding_import_syntax(
+  sites: FreeMonoid<ReferenceSite>
+) -> FreeMonoid<ReferenceSite> {
+  fold_list(
+    xs: sites,
+    empty: no_reference_sites,
+    cons: fn(acc, site) {
+      if site_is_import_syntax_mention(site: site) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: site)
+      }
+    }
+  )
+}
+
+fn snoc_reference_edge_unique(
+  acc: List<ModuleDependencyEdge>,
+  edge: ModuleDependencyEdge
+) -> List<ModuleDependencyEdge> {
+  if any(xs: acc, predicate: fn(existing) {
+    string_eq(a: existing.path, b: edge.path) && string_eq(a: existing.target_module, b: edge.target_module)
+  }) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: edge)
+  }
+}
+
+fn edges_from_provenance_owners(
+  rel_path: String,
+  provenance: FileDependencyProvenance
+) -> List<ModuleDependencyEdge> {
+  fold_list(
+    xs: provenance.dependencies,
+    empty: no_reference_derived_edges,
+    cons: fn(acc, owner) {
+      snoc_reference_edge_unique(
+        acc: acc,
+        edge: ModuleDependencyEdge {
+          path: rel_path,
+          target_module: qualified_name_to_dotted_string(qn: owner),
+          target_declared: true
+        }
+      )
+    }
+  )
+}
+
+fn load_reference_derived_pool(
+  declared: List<ModuleDeclarationFact>
+) -> Outcome<ReferenceDerivedPool> {
+  bind_outcome(
+    o: source_root_ingest_from_source_refs(refs: source_refs_from_declared(declared: declared)),
+    f: fn(ingest) {
+      bind_outcome(
+        o: located_roots_from_source_root_ingest(ingest: ingest),
+        f: fn(items) {
+          outcome_accepted(value: reference_derived_pool_from_located_roots(items: items))
+        }
+      )
+    }
+  )
+}
+
+// The production site selection: every mention the collector yields MINUS import-syntax
+// mentions. It is a fixed composition, not a mode - an unused import must never mint a
+// reference-derived edge, and that property is not caller-selectable (DESIGN 3 meaning fork,
+// DESIGN 5 escape hatch). The discriminating mutant that re-admits import mentions is
+// composed at the test boundary from collect_module_reference_sites and
+// reference_edges_for_located_root_sites, never through a flag here (review 65639).
+fn sites_for_reference_edge_fold(root: Node) -> ReferenceSiteCollection {
+  let collected = collect_module_reference_sites(root: root)
+  ReferenceSiteCollection {
+    sites: reference_sites_excluding_import_syntax(sites: collected.sites),
+    unreadable_roots: collected.unreadable_roots
+  }
+}
+
+fn emit_reference_edges_for_located_root(
+  item: LocatedModuleRoot,
+  pool: ReferenceDerivedPool
+) -> ReferenceDerivedEdgeFold {
+  reference_edges_for_located_root_sites(
+    item: item,
+    pool: pool,
+    collected: sites_for_reference_edge_fold(root: item.root)
+  )
+}
+
+// Edge derivation over an already-selected site collection. Consumed by the production
+// composition above and by the test-boundary mutant.
+// THE ABSENT ARM IS REACHED ONLY FOR A ROOT THE COLLECTOR HAS ALREADY COUNTED AS UNREADABLE.
+// The pool leaves a path out of qn_by_path exactly when qualified_name_from_module_node
+// rejects the root, and reference_site_collector module_reference_sites rejects on the SAME
+// call and snocs the root into unreadable_roots at its locus - one predicate, two consumers.
+// So `edges: none` here is not a silent drop: `collected.unreadable_roots` carries the root,
+// reference_derived_edge_fold_is_total answers false, and the production Outcome refuses.
+// Executed evidence, both root shapes:
+// v2.test.claim.reference_derived_graph_witness unreadable_root_is_counted_not_a_silent_leaf
+// (bare Atom) and a_headerless_module_root_is_counted_unreadable_not_zero_edges (a Conj
+// with a body and no header) - review 66859 on gunbc#11461 read this arm as uncounted; it
+// is counted one call earlier, and counting it here again would double the roster.
+fn reference_edges_for_located_root_sites(
+  item: LocatedModuleRoot,
+  pool: ReferenceDerivedPool,
+  collected: ReferenceSiteCollection
+) -> ReferenceDerivedEdgeFold {
+  match map_lookup_where_rejected_unreachable(m: pool.qn_by_path, key: item.path) {
+    Absent =>
+      ReferenceDerivedEdgeFold {
+        edges: no_reference_derived_edges,
+        unreadable_roots: collected.unreadable_roots
+      }
+    Present { value: module_qn } =>
+      ReferenceDerivedEdgeFold {
+        edges: edges_from_provenance_owners(
+          rel_path: item.path,
+          provenance: module_dependencies_from_sites(
+            index: pool.index,
+            roster: pool.roster,
+            module_qn: module_qn,
+            sites: collected.sites
+          )
+        ),
+        unreadable_roots: collected.unreadable_roots
+      }
+  }
+}
+
+fn empty_reference_derived_pool() -> ReferenceDerivedPool {
+  ReferenceDerivedPool {
+    index: empty_symbol_index(),
+    trees: empty_map(),
+    roster: Empty,
+    qn_by_path: empty_map()
+  }
+}
+
+fn reference_derived_pool_from_located_roots(
+  items: List<LocatedModuleRoot>
+) -> ReferenceDerivedPool {
+  fold_list(
+    xs: items,
+    empty: empty_reference_derived_pool(),
+    cons: fn(pool, item) {
+      match qualified_name_from_module_node(root: item.root) {
+        Rejected { diagnostics: _ } =>
+          ReferenceDerivedPool {
+            index: symbol_index_fill_module_root(index: pool.index, root: item.root),
+            trees: map_insert(m: pool.trees, key: item.path, value: item.root),
+            roster: pool.roster,
+            qn_by_path: pool.qn_by_path
+          }
+        Accepted { value: module_qn, diagnostics: _ } =>
+          ReferenceDerivedPool {
+            index: symbol_index_fill_module_root(index: pool.index, root: item.root),
+            trees: map_insert(m: pool.trees, key: item.path, value: item.root),
+            roster: list_snoc_item(xs: pool.roster, item: module_qn),
+            qn_by_path: map_insert(m: pool.qn_by_path, key: item.path, value: module_qn)
+          }
+      }
+    }
+  )
+}
+
+fn reference_derived_edges_from_located_roots(
+  items: List<LocatedModuleRoot>
+) -> ReferenceDerivedEdgeFold {
+  let pool = reference_derived_pool_from_located_roots(items: items)
+  fold_list(
+    xs: items,
+    empty: empty_reference_derived_edge_fold,
+    cons: fn(acc, item) {
+      let piece = emit_reference_edges_for_located_root(item: item, pool: pool)
+      ReferenceDerivedEdgeFold {
+        edges: list_append(left: acc.edges, right: piece.edges),
+        unreadable_roots: list_append(left: acc.unreadable_roots, right: piece.unreadable_roots)
+      }
+    }
+  )
+}
+
+// The pool is keyed from the same declared list the importer fold iterates, so an importer absent
+// from it is a broken invariant (e.g. declared-path and ingest-path spellings disagree), never an
+// importer with no references. It refuses with a typed, located cause rather than contributing an
+// empty edge fold (review 64967 on gunbc#11202; DESIGN 5).
+fn importer_absent_from_reference_pool() -> Outcome<ReferenceDerivedEdgeFold> {
+  outcome_rejected(
+    d: Diagnostic {
+      reason: ^reference_derived_importer_absent_from_pool,
+      at: Textual { file: ^reference_derived_importer_absent_from_pool, extent: WholeFile },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
+fn emit_reference_edges_for_importer(
+  fact: ModuleDeclarationFact,
+  pool: ReferenceDerivedPool
+) -> Outcome<ReferenceDerivedEdgeFold> {
+  match map_lookup_where_rejected_unreachable(m: pool.trees, key: fact.path) {
+    Absent => importer_absent_from_reference_pool()
+    Present { value: root } =>
+      outcome_accepted(
+        value: emit_reference_edges_for_located_root(
+          item: LocatedModuleRoot { path: fact.path, root: root },
+          pool: pool
+        )
+      )
+  }
+}
+
+fn append_outcome_edge_folds(
+  acc: Outcome<ReferenceDerivedEdgeFold>,
+  more: Outcome<ReferenceDerivedEdgeFold>
+) -> Outcome<ReferenceDerivedEdgeFold> {
+  bind_outcome(
+    o: acc,
+    f: fn(acc_fold) {
+      bind_outcome(
+        o: more,
+        f: fn(more_fold) {
+          outcome_accepted(
+            value: ReferenceDerivedEdgeFold {
+              edges: list_append(left: acc_fold.edges, right: more_fold.edges),
+              unreadable_roots: list_append(
+                left: acc_fold.unreadable_roots,
+                right: more_fold.unreadable_roots
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn outcome_from_reference_derived_edge_fold(
+  fold: ReferenceDerivedEdgeFold
+) -> Outcome<List<ModuleDependencyEdge>> {
+  match fold.unreadable_roots |> first {
+    Absent => outcome_accepted(value: fold.edges)
+    Present { value: unreadable } =>
+      outcome_rejected(
+        d: Diagnostic {
+          reason: ^reference_derived_graph_unreadable_roots,
+          at: unreadable.locus,
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+
+fn reference_derived_resolution_facts(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
 ) -> Outcome<List<ModuleDependencyEdge>> {
-  outcome_accepted(
-    value: dependency_edges_from_import_facts(
-      edges: import_resolution_facts_live(
-        pool_roots: pool_roots,
-        importer_roots: importer_roots,
-        exclude_substrings: exclude_substrings
+  let declared = module_declaration_facts_live(pool_roots: pool_roots)
+    |> filter(fact => !reference_derived_path_excluded(path: fact.path, exclude_substrings: exclude_substrings))
+  bind_outcome(
+    o: load_reference_derived_pool(declared: declared),
+    f: fn(pool) {
+      bind_outcome(
+        o: fold_list(
+          xs: declared |> filter(fact => reference_derived_path_under_roots(path: fact.path, roots: importer_roots)),
+          empty: outcome_accepted(value: empty_reference_derived_edge_fold),
+          cons: fn(acc, fact) {
+            append_outcome_edge_folds(
+              acc: acc,
+              more: emit_reference_edges_for_importer(fact: fact, pool: pool)
+            )
+          }
+        ),
+        f: fn(fold) {
+          outcome_from_reference_derived_edge_fold(fold: fold)
+        }
       )
-    )
+    }
   )
-}
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
 }
 
 data no_paths: FreeMonoid<String> = Empty
@@ -492,4 +886,12 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-data reference_derived_edge_source_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the namespace terminal step (namespace-resolution-design section 8 step 5) makes container.member references the derived dependency authority, at which point this scaffold producer over parsed-tree use sites deletes")
+data reference_derived_edge_source_dissolve_on: DissolutionCondition = unbound_dissolution(description: "NAMESPACE-XL STAGE XL-6 swaps dependency_resolution_facts_live onto this producer; until then the live edge source stays the import/reference union and this body stays the unused swap target")
+
+data reference_derived_call_contents_frontier: DissolutionCondition = unbound_dissolution(description: "Call-argument and callee mentions wait on eager-raven-113 lowering, then this ingest. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_call_contents_are_missing_today_holds, production_route_callee_with_no_arguments_is_missing_today_holds; v2.test.claim.reference_derived_graph_call_arg_tree call_argument_only_reference_is_missing_from_parse_tree_today_holds, call_argument_only_reference_is_missing_from_normalized_tree_today_holds, body_value_outside_call_is_missing_from_parse_tree_today_holds, body_value_outside_call_is_missing_from_normalized_tree_today_holds.")
+
+data reference_derived_qualified_mention_frontier: DissolutionCondition = unbound_dissolution(description: "Qualified / dotted reference in any position waits on the dotted-reference capability. Type-shaped mentions additionally wait on filled-symbol-index Named edges (sleek-lynx-500 case 4: v2.test.claim.namespace.cross_module_resolve_witness, head reason resolve_reason_unbound_symbol). Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_reference_only_plain_value_is_missing_today_holds, production_route_both_plain_value_is_missing_today_holds, production_route_type_position_qualified_site_is_missing_today_holds, production_route_type_position_qualified_edge_is_missing_today_holds; v2.test.claim.reference_derived_graph_call_arg_tree type_position_only_is_missing_from_parse_tree_today_holds, type_position_only_is_missing_from_normalized_tree_today_holds.")
+
+data reference_derived_bare_field_type_frontier: DissolutionCondition = unbound_dissolution(description: "Bare FIELD type site is absent at the collector; tree-side census cause unverified. No collector trigger until those separate. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_bare_field_type_site_is_missing_today_holds, production_tree_field_fixture_wrapper_name_unfindable_today_holds, production_tree_field_fixture_field_name_unfindable_today_holds, production_tree_field_fixture_field_type_unfindable_today_holds. Positive controls: production_route_bare_param_type_in_field_fixture_is_present_holds, production_tree_field_fixture_param_type_atom_is_present_holds, production_route_bare_local_type_position_site_is_present_holds.")
+
+data reference_derived_imported_bare_parameter_edge_frontier: DissolutionCondition = unbound_dissolution(description: "Imported bare parameter-type site is present and still yields no edge. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_type_imported_bare_site_is_present_holds, production_route_type_imported_site_does_not_yield_edge_today_holds.")

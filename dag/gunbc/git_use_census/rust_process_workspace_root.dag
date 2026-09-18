@@ -1,0 +1,22 @@
+module gunbc.git_use_census.rust_process_workspace_root
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.git_use_authority { GitUseRow, RustGitDependency, ClassifiedGitUse, GitWorkspaceSourceAuthority, DeclaredLegacyGitUse }
+
+// SOURCE-VERIFIED live Rust use. The direct .dag import wall does not reach this identity.
+// Coverage trigger: a Node-derived dependency producer whose source scope includes Rust.
+data rust_process_workspace_root: GitUseRow = GitUseRow {
+  consumer: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "resolve_process_workspace_root"),
+
+  surface: RustGitDependency { operation: "Run git rev-parse --show-toplevel before the existing Cargo.toml plus dag ancestor search." as NonEmptyStr },
+
+  classification: ClassifiedGitUse {
+    role: GitWorkspaceSourceAuthority,
+    authorization: DeclaredLegacyGitUse { retirement_capability: "All process workspace consumers receive and use an explicit native workspace binding." as NonEmptyStr }
+  },
+
+  bridge_disposition: "Declare the Git-derived root as legacy source authority and migrate each process workspace consumer to the explicit native binding." as NonEmptyStr,
+
+  cutover_disposition: "Use the explicit native workspace binding; no Git command selects source authority." as NonEmptyStr,
+}

@@ -214,21 +214,6 @@ test fn the_evidence_names_its_execution() -> Bool {
     && srv1_session_aggregate_citation.host == "srv1"
 }
 
-test fn session_reservation_policy_holds() -> Bool {
-  the_two_empty_knob_answers_are_distinguishable()
-    && an_allowance_below_its_evidence_floor_is_refused_not_charged()
-    &&
-  the_sizing_table_answers_only_how_much()
-    && an_allowance_on_a_session_free_host_refuses()
-    && a_session_host_with_no_sizing_row_refuses()
-    && the_two_absences_are_distinguishable()
-    && every_production_projection_agrees_on_every_host()
-    && converge_knobs_are_derived_per_host()
-    && an_allowance_may_not_sit_below_its_evidence()
-    && an_unestablished_denominator_grounds_no_floor()
-    && the_evidence_names_its_execution()
-}
-
 // THE TWO EMPTY ANSWERS ARE NOW DISTINGUISHABLE, AND THIS ARM PROVES IT. Asserting only that srv2
 // and srv3 both yield no knobs passes against the collapsed form this replaces -- both returned the
 // same empty list. The standing separates them: srv3 owes nothing, srv2's reservation could not be

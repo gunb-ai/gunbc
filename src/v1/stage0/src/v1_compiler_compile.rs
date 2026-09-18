@@ -2807,6 +2807,7 @@ pub fn census_heads_node(
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: std::option::Option::None,
         module_item_kind: node.module_item_kind.clone(),
+        declaration_marker: node.declaration_marker.clone(),
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -2868,8 +2869,8 @@ pub enum CensusModuleRetention {
 
 pub fn census_retain_module(module: Rc<Node>, retention: CensusModuleRetention) -> Rc<Node> {
     match retention.clone() {
-        CensusModuleRetention::RetainParsedModules => module,
-        CensusModuleRetention::RetainDeclarationHeads => census_heads_module_node(module),
+        CensusModuleRetention::RetainParsedModules => module.clone(),
+        CensusModuleRetention::RetainDeclarationHeads => census_heads_module_node(module.clone()),
     }
 }
 

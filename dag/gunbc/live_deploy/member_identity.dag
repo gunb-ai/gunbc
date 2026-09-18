@@ -30,11 +30,12 @@ import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, D
 // executable fixture in member_identity_witness_test is exactly that control.
 // A MEMBER CARRIES ITS OWN KEY WHERE IT HAS ONE. The release members are singular -- there is one
 // executable, one published tree, one serve unit -- so they are nullary. A directory root is not:
-// the deployment owns three, they differ only by path, and minting DispatchWorktreeRoot /
-// AttemptStateRoot / ComputeRoot as three nullary variants would be three names for one concept
-// (DESIGN section 2, one concept at every breadth). The path is the key, so it lives on the variant
-// and converged_member_label renders it -- which is also what keeps converged_member_eq correct for
-// a payload-carrying member, since that equality is defined through the label.
+// the deployment owns several, they differ only by path, and minting DispatchWorktreeRoot /
+// AttemptStateRoot / ComputeRoot / FabricEventLogRoot as nullary variants would be several names
+// for one concept (DESIGN section 2, one concept at every breadth). The path is the key, so it
+// lives on the variant and converged_member_label renders it -- which is also what keeps
+// converged_member_eq correct for a payload-carrying member, since that equality is defined
+// through the label.
 type ConvergedMember
   = TreePublication
   | Executable

@@ -16,8 +16,8 @@ import extdeps.languages.json.parse {
 }
 import extdeps.shell.credentials { env_credential }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
-import gunbc.auth.gcp_secret_access { secret_access_ensure_for, secret_accessor_grant, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
-import gunbc.auth.access_token_source { OperatorSuppliedToken }
+import gunbc.auth.gcp_secret_access { secret_access_ensure_for, secret_accessor_grant }
+import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import extdeps.github.org_admin_auth { RunnerGroupsRead, RunnerGroupRepositoriesRead }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }

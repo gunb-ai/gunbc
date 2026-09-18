@@ -10,7 +10,10 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_capacity_subject,
+  CapacityOrdinarySubject, CapacitySuspendedSubject, CapacityReleasedSubject,
+}
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, admit_kv_layout,
@@ -498,11 +501,57 @@ fn group_report(group: FabricGroup) -> GroupStanding {
   ], ""))
 }
 
-fn fabric_capacity_standing() -> ProcessExit {
-  let standings = map(spark_pair_serving_groups, g => group_report(group: g))
-  if all(standings, st => st.admitting) {
+// AN EMPTY ROSTER IS A MISSING SUBJECT, NOT A PASS. `all` over an empty list is true, so with
+// spark_pair_serving_groups empty this instrument would reach ExitSuccess having examined nothing --
+// gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain, whose recognition rule is
+// that a predicate true on the empty case is not a check until its domain is proven non-empty. That
+// roster's domain is currently populated rather than structurally non-empty: it carries exactly one
+// member, so a single edit empties it, and this instrument would then green loudest at the moment it
+// had least to say.
+//
+// THE BOUND IS THE REPAIR, NOT A DIFFERENT PREDICATE. The length guard below conjoins with the same
+// `all`, exactly as the failure-mode row prescribes, and the sibling actuator already does it --
+// gunbc.spark.pair_serving_apply refuses on an empty plan list rather than succeeding over one.
+// THE VERDICT TAKES ITS ROSTER, AND THAT SPLIT IS THE POINT. Folding the roster read into the entry
+// point would leave the guard below reachable only by deleting the live row, so its refusal would be
+// unauthorable and the wall would carry no executed evidence. The controls that exercise both arms
+// live on test.claim.spark.fabric_capacity_standing_witness, against this seam rather than a copy.
+// A SUSPENDED GROUP IS A STANDING, NOT AN ABSENCE. The roster keeps its member through a replacement
+// transaction, so this instrument keeps its subject -- but probing a deliberately paused group and
+// refusing it for not answering reports a fleet defect where there is a fleet decision. The three
+// subjects of gunbc.spark.pair_serving_authority pair_serving_capacity_subject partition that, and
+// none of them is an empty population, which is the property the length guard below depends on: the
+// guard catches a roster that lost its subject, not a group that is deliberately quiet.
+//
+// RELEASED IS NOT SUSPENDED AND IS NOT ORDINARY. A released group's hosts are no longer ours, so this
+// instrument cannot stand for their capacity and says so rather than probing hardware we do not hold.
+fn standing_for_authority(a: PairServingGroupAuthority) -> GroupStanding {
+  match pair_serving_capacity_subject(a: a) {
+    CapacityOrdinarySubject { group: g } => group_report(group: g)
+    CapacitySuspendedSubject { group: g, reason: r } =>
+      refused_standing(text: join([
+        fabric_group_wire(g: g) as String,
+        ": serving authority is suspended, so this group is deliberately not admitting rather than failing to answer -- ",
+        r as String,
+      ], ""))
+    CapacityReleasedSubject { group: g } =>
+      refused_standing(text: join([
+        fabric_group_wire(g: g) as String,
+        ": released to the fleet, so this repository no longer claims these hosts and cannot stand for their capacity",
+      ], ""))
+  }
+}
+
+fn capacity_standing_verdict(standings: List<GroupStanding>) -> ProcessExit {
+  if length(standings) == 0 {
+    exit_failure(reason: "fabric capacity standing: no serving group is claimed, so this instrument has no subject -- an empty roster is a missing subject rather than a passing fleet" as NonEmptyStr)
+  } else if all(standings, st => st.admitting) {
     ExitSuccess
   } else {
     exit_failure(reason: join(concat(["fabric capacity standing"], map(standings, st => st.text)), "\n"))
   }
+}
+
+fn fabric_capacity_standing() -> ProcessExit {
+  capacity_standing_verdict(standings: map(spark_pair_serving_authorities, a => standing_for_authority(a: a)))
 }

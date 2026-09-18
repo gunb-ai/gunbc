@@ -180,6 +180,12 @@ pub struct ModuleDeclarationRecord {
     pub declared: BTreeSet<String>,
     /// Coproduct variant names, which the import surface also exports.
     pub variants: BTreeSet<String>,
+    /// The SAME variant names at DECLARATION grain: coproduct name -> its arm set. `variants`
+    /// is this map's flattened value union and stays because the import surface is answered at
+    /// module grain; a consumer asking "did THIS coproduct's arm set change" cannot be answered
+    /// from the union (two coproducts trading an arm leave the union fixed), so the grain the
+    /// question is asked at is carried rather than re-derived from a walk.
+    pub coproduct_arms: BTreeMap<String, BTreeSet<String>>,
     /// Names this module re-exports because its own imports list them. Kept apart from
     /// `declared`: an import member may legitimately be a re-export, while a CITATION naming
     /// a re-export names the wrong authority (§3 — a fact's home is the declaring module).
@@ -234,6 +240,14 @@ pub struct ModuleDeclarationRecord {
     /// wanting every authored reference takes the union without knowing which channel supplied
     /// which row.
     pub authored_type_references: BTreeSet<(String, String)>,
+    /// MATCH-ARM CONSTRUCTOR OCCURRENCES, kept apart from `referenced` at the one site that
+    /// reads them (the `VariantPattern` head in `collect_reference_occurrences`). `referenced`
+    /// already carries the same spelling, but not the fact that it was a PATTERN HEAD -- and
+    /// that fact is what decides whether a module carries a `match` over a coproduct, which is
+    /// the consumer the required floor must plan when that coproduct's arm set changes. Keyed
+    /// `(enclosing declaration, constructor spelling)` like its peers; a wildcard or binder
+    /// pattern contributes nothing, because a match with one stays exhaustive under growth.
+    pub matched_arms: BTreeSet<(String, String)>,
     pub declares_construction_justification: bool,
     /// Whether this module is a witness or fixture carrier. See `module_is_fixture_carrier`.
     pub is_fixture_carrier: bool,
@@ -577,6 +591,7 @@ fn collect_reference_occurrences(
     in_declaration: &str,
     ident_is_a_binder_or_label: bool,
     out: &mut BTreeSet<(String, String)>,
+    matched: &mut BTreeSet<(String, String)>,
 ) {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_projection_member = matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. });
@@ -607,25 +622,26 @@ fn collect_reference_occurrences(
                 in_declaration,
                 children_are_field_labels,
                 out,
+                matched,
             );
         }
         for c in node.params.iter() {
-            collect_reference_occurrences(c, source_indices, in_declaration, true, out);
+            collect_reference_occurrences(c, source_indices, in_declaration, true, out, matched);
         }
         for c in node.properties.iter() {
-            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out, matched);
         }
         for c in node.uses.iter() {
-            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out, matched);
         }
         if let Some(b) = node.body.as_ref() {
-            collect_reference_occurrences(b, source_indices, in_declaration, false, out);
+            collect_reference_occurrences(b, source_indices, in_declaration, false, out, matched);
         }
         if let Some(t) = node.transport.as_ref() {
-            collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+            collect_reference_occurrences(t, source_indices, in_declaration, false, out, matched);
         }
         if let Some(t) = node.type_annotation.as_ref() {
-            collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+            collect_reference_occurrences(t, source_indices, in_declaration, false, out, matched);
         }
 
         // THE VARIANT-PATTERN CONSTRUCTOR NAME -- THE ONE AUTHORED REFERENCE WITH NO
@@ -677,6 +693,7 @@ fn collect_reference_occurrences(
             if let MatchPattern::VariantPattern { name, .. } = &**pattern {
                 if !name.is_empty() {
                     out.insert((in_declaration.to_string(), name.clone()));
+                    matched.insert((in_declaration.to_string(), name.clone()));
                 }
             }
         }
@@ -763,6 +780,7 @@ pub fn record_from_module(
     let module_path = authored_name_at(source_indices.clone(), module.clone());
     let mut declared = BTreeSet::new();
     let mut variants = BTreeSet::new();
+    let mut coproduct_arms: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut decl_fields = BTreeMap::new();
     for item in module_items(module.clone()).iter() {
         let name = authored_name_at(source_indices.clone(), item.clone());
@@ -770,10 +788,12 @@ pub fn record_from_module(
             continue;
         }
         if item.connective == Connective::Disj {
+            let arms = coproduct_arms.entry(name.clone()).or_default();
             for v in item.children.iter() {
                 let vname = authored_name_at(source_indices.clone(), v.clone());
                 if !vname.is_empty() {
-                    variants.insert(vname);
+                    variants.insert(vname.clone());
+                    arms.insert(vname);
                 }
             }
         }
@@ -832,6 +852,7 @@ pub fn record_from_module(
     }
 
     let mut referenced = BTreeSet::new();
+    let mut matched_arms = BTreeSet::new();
     let mut called = BTreeSet::new();
     for item in module_items(module.clone()).iter() {
         let in_declaration = authored_name_at(source_indices.clone(), item.clone());
@@ -841,6 +862,7 @@ pub fn record_from_module(
             &in_declaration,
             false,
             &mut referenced,
+            &mut matched_arms,
         );
         for_each_node(item, &mut |node| {
             if is_call(node) && !node.name.is_empty() {
@@ -854,6 +876,7 @@ pub fn record_from_module(
 
     ModuleDeclarationRecord {
         referenced,
+        matched_arms,
         called,
         authored_type_references: authored_type_references_from_transport(transport, &declared),
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
@@ -862,6 +885,7 @@ pub fn record_from_module(
         rel_path: rel_path.to_string(),
         declared,
         variants,
+        coproduct_arms,
         reexported,
         decl_fields,
         imports,
@@ -2792,7 +2816,6 @@ mod import_binding_authority_tests {
                 formals: Rc::new(im::Vector::new()),
             }),
             inferred: crate::v1_std_core::unit_type(),
-            is_async: false,
             output_provenance: Rc::new(im::Vector::new()),
             variant_provenance: crate::v1_rt::rc_empty_map(),
         });

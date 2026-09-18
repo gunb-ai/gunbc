@@ -1,0 +1,182 @@
+module test.claim.readiness_algebra_witness
+
+import std.types { Bool, String, FilePath, NonEmptyStr }
+import v2.std.collection { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.readiness {
+  Ready,
+  Pending,
+  Refused,
+}
+import gunbc.dashboard_provider_readiness {
+  classify_dashboard_provider_readiness,
+  observe_dashboard_provider_readiness,
+  ProviderReadyEvidence,
+  ProviderStateRootAbsent,
+  ProviderUnauthenticated,
+  ProviderExecutableUnplaced,
+  ProviderObservationUnusable,
+  ProviderRuntimeUnavailable,
+}
+import gunbc.host_layout { GunbcHostLayout }
+import gunbc.roadmap_dashboard_instance {
+  isolated_dashboard_instance,
+  DashboardActuating,
+  DashboardLocalProvision,
+}
+import gunbc.roadmap_dashboard_instance_observe {
+  DashboardExecResult,
+  PathObservedPresent,
+  PathObservedAbsent,
+  PathObservationRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ok_probe(detail: String) -> DashboardExecResult {
+  DashboardExecResult { success: true, stdout: detail, stderr: "" }
+}
+
+fn fail_probe(detail: String) -> DashboardExecResult {
+  DashboardExecResult { success: false, stdout: "not empty", stderr: detail }
+}
+
+test fn witness_red_control_state_root_absent_is_pending_not_refused() -> Bool {
+  match classify_dashboard_provider_readiness(
+    executable: Present { value: "/usr/bin/codex" as FilePath },
+    executable_refusal: "",
+    state_root: "/tmp/state" as FilePath,
+    state_root_obs: Present { value: PathObservedAbsent },
+    runtime: Absent,
+    auth: Absent,
+    login_command: "login",
+  ) {
+    Pending { cause: ProviderStateRootAbsent { state_root: _, remediation } } =>
+      remediation == "login"
+    Ready { evidence: _ } => false
+    Pending { cause: ProviderUnauthenticated { state_root: _, detail: _, remediation: _ } } => false
+    Refused { cause: _ } => false
+  }
+}
+
+test fn witness_red_control_transport_refusal_is_refused_not_pending() -> Bool {
+  match classify_dashboard_provider_readiness(
+    executable: Present { value: "/usr/bin/codex" as FilePath },
+    executable_refusal: "",
+    state_root: "/tmp/state" as FilePath,
+    state_root_obs: Present { value: PathObservationRefused { reason: "ssh refused" } },
+    runtime: Absent,
+    auth: Absent,
+    login_command: "login",
+  ) {
+    Refused { cause: ProviderObservationUnusable { stage, reason } } =>
+      (stage as String) == "provider-state-root" && reason == "ssh refused"
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => false
+    Refused { cause: ProviderExecutableUnplaced { reason: _ } } => false
+    Refused { cause: ProviderRuntimeUnavailable { executable: _, detail: _ } } => false
+  }
+}
+
+test fn witness_red_control_unauthenticated_is_pending_not_ready() -> Bool {
+  match classify_dashboard_provider_readiness(
+    executable: Present { value: "/usr/bin/codex" as FilePath },
+    executable_refusal: "",
+    state_root: "/tmp/state" as FilePath,
+    state_root_obs: Present { value: PathObservedPresent },
+    runtime: Present { value: ok_probe(detail: "codex-cli") },
+    auth: Present { value: fail_probe(detail: "not logged in") },
+    login_command: "login",
+  ) {
+    Pending { cause: ProviderUnauthenticated { state_root: _, detail, remediation } } =>
+      detail == "not logged in" && remediation == "login"
+    Ready { evidence: _ } => false
+    Pending { cause: ProviderStateRootAbsent { state_root: _, remediation: _ } } => false
+    Refused { cause: _ } => false
+  }
+}
+
+test fn witness_provider_ready_when_runtime_and_auth_succeed() -> Bool {
+  match classify_dashboard_provider_readiness(
+    executable: Present { value: "/usr/bin/codex" as FilePath },
+    executable_refusal: "",
+    state_root: "/tmp/state" as FilePath,
+    state_root_obs: Present { value: PathObservedPresent },
+    runtime: Present { value: ok_probe(detail: "codex-cli") },
+    auth: Present { value: ok_probe(detail: "logged in") },
+    login_command: "login",
+  ) {
+    Ready { evidence: ProviderReadyEvidence { runtime_detail, auth_detail } } =>
+      runtime_detail == "codex-cli" && auth_detail == "logged in"
+    Pending { cause: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+test fn witness_red_control_missing_executable_is_refused() -> Bool {
+  match classify_dashboard_provider_readiness(
+    executable: Absent,
+    executable_refusal: "no placement",
+    state_root: "/tmp/state" as FilePath,
+    state_root_obs: Absent,
+    runtime: Absent,
+    auth: Absent,
+    login_command: "",
+  ) {
+    Refused { cause: ProviderExecutableUnplaced { reason } } => reason == "no placement"
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => false
+    Refused { cause: ProviderObservationUnusable { stage: _, reason: _ } } => false
+    Refused { cause: ProviderRuntimeUnavailable { executable: _, detail: _ } } => false
+  }
+}
+
+test fn witness_red_control_runtime_unavailable_is_refused() -> Bool {
+  match classify_dashboard_provider_readiness(
+    executable: Present { value: "/usr/bin/codex" as FilePath },
+    executable_refusal: "",
+    state_root: "/tmp/state" as FilePath,
+    state_root_obs: Present { value: PathObservedPresent },
+    runtime: Present { value: fail_probe(detail: "not found") },
+    auth: Absent,
+    login_command: "login",
+  ) {
+    Refused { cause: ProviderRuntimeUnavailable { executable, detail } } =>
+      (executable as String) == "/usr/bin/codex" && detail == "not found"
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => false
+    Refused { cause: ProviderExecutableUnplaced { reason: _ } } => false
+    Refused { cause: ProviderObservationUnusable { stage: _, reason: _ } } => false
+  }
+}
+
+fn witness_unplaced_executable_layout() -> GunbcHostLayout {
+  GunbcHostLayout {
+    host_identity: "witness-host" as NonEmptyStr,
+    gunbc_serve_binary: "/witness/bin/gunbc" as FilePath,
+    roadmap_codex_home: "/witness/codex-home" as FilePath,
+    controller_repo: "/witness/controller-repo" as FilePath,
+    codex_bundled_executable: Absent,
+  }
+}
+
+test fn witness_red_control_observe_unplaced_executable_runs_the_producer() -> Bool {
+  match observe_dashboard_provider_readiness(
+    instance: isolated_dashboard_instance(
+      instance_id: "witness-unplaced-provider" as NonEmptyStr,
+      layout: witness_unplaced_executable_layout(),
+      root: "/witness/root" as FilePath,
+      serve_function: "witness_handler" as NonEmptyStr,
+      listen_port: 19998,
+      source_anchor_ref: "refs/heads/witness-anchor" as NonEmptyStr,
+      actuation: DashboardActuating,
+      provision_transport: DashboardLocalProvision,
+    ),
+  ) {
+    Refused { cause: ProviderExecutableUnplaced { reason } } =>
+      string_contains(s: reason, pattern: "fail-closed")
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => false
+    Refused { cause: _ } => false
+  }
+}

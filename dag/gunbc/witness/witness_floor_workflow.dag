@@ -51,7 +51,6 @@ import extdeps.github.actions {
   RunnerSpec,
   checkout_action, setup_rust_action,
   github_event_name_pull_request,
-  github_event_name_push,
   github_event_name_merge_group,
   github_event_name_workflow_dispatch
 }
@@ -275,7 +274,6 @@ fn gha_format_prefix(prefix: String, arg: Expression) -> Expression {
 }
 
 fn github_sha_expr() -> Expression { ContextAccess { context: Github, path: ["sha"] } }
-fn github_ref_expr() -> Expression { ContextAccess { context: Github, path: ["ref"] } }
 fn github_run_id_expr() -> Expression { ContextAccess { context: Github, path: ["run_id"] } }
 fn github_pr_number_expr() -> Expression { ContextAccess { context: Github, path: ["event", "pull_request", "number"] } }
 fn github_dispatch_input_expr(name: String) -> Expression { ContextAccess { context: Github, path: ["event", "inputs", name] } }
@@ -284,7 +282,6 @@ type WitnessFloorGroupBranch
   = ShaAfterEvent { event: String, prefix: String }
   | NonemptyInputAfterEvent { event: String, input: String, prefix: String }
   | PrNumberAfterEvent { event: String, prefix: String }
-  | RefAfterEvent { event: String }
   | RunIdFallback { prefix: String }
 
 fn nonempty_input_after_event_expr(event: String, input: String, prefix: String) -> Expression {
@@ -305,8 +302,6 @@ fn group_branch_expr(branch: WitnessFloorGroupBranch) -> Expression {
       nonempty_input_after_event_expr(event: e, input: i, prefix: p)
     PrNumberAfterEvent { event: e, prefix: p } =>
       LogicalAnd { left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr()) }
-    RefAfterEvent { event: e } =>
-      LogicalAnd { left: github_event_name_equals(event: e), right: github_ref_expr() }
     RunIdFallback { prefix: p } =>
       gha_format_prefix(prefix: p, arg: github_run_id_expr())
   }
@@ -337,7 +332,6 @@ fn witness_floor_group_branches() -> List<WitnessFloorGroupBranch> {
       prefix: "heal-"
     },
     PrNumberAfterEvent { event: github_event_name_pull_request, prefix: "pr-" },
-    RefAfterEvent { event: github_event_name_push },
     RunIdFallback { prefix: "run-" }
   ]
 }
@@ -446,10 +440,10 @@ fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> Witn
 // reseeded, still medians 22.8 minutes against srv4's 11.8.
 //
 // THE COST OF THIS ROW IS N CONCURRENT RUNS PER PULL REQUEST where one used to survive. That is
-// not the grouping trade: witness_floor_group_branches keys push by github.ref
-// (RefAfterEvent), so GitHub may replace PENDING members of witness-floor-refs/heads/main —
-// declared as gunbc.rung_drop.main_per_commit_floor_verdict — while this running-cancel row stays
-// false for every event, including those main runs. Cancelling a RUNNING job is only cheaper than
+// not the grouping trade: the push-on-main trigger and its github.ref group branch are GONE, cut
+// with the merge queue's arrival, so the group a landing occupies is mg-<sha> -- one member, never
+// superseded -- and gunbc.rung_drop.main_per_commit_floor_verdict retired with the population it
+// named. This running-cancel row stays false for every remaining event. Cancelling a RUNNING job is only cheaper than
 // letting it finish while the permits come back; replacing a pending one never held a permit.
 //
 // DISSOLVE-ON, and it is the CAPABILITY rather than any artifact: no client of the required floor
@@ -1395,8 +1389,9 @@ data long_home_storage_agreement_artifact_name: String = "long-home-storage-agre
 // required run since the floor cut.
 //
 // WHAT THAT COSTS: a measurement the corpus could not take. The floor carries TWO INDEPENDENT
-// BLOCKING DEADLINES on two different clocks: `v2.workflow.required_floor`
-// `required_floor_claim_cpu_safety_limit_ms` and `required_floor_claim_wall_safety_limit_ms` --
+// BLOCKING LIMITS on two different quantities: `v2.workflow.required_floor`
+// `claim_eval_step_budget_for_identity` (work performed, compared once against a completed
+// claim) and `required_floor_claim_wall_safety_limit_ms` (the one armed deadline) --
 // NEITHER VALUE IS TRANSCRIBED HERE, because this clause carried a parenthesised value beside each
 // name and the wall one was wrong: it disagreed with the constant set by the very change that
 // wrote the note, and with the preemption fixture one file away. Two numerals, one authority, and
@@ -2764,8 +2759,10 @@ fn required_lanes_aggregate_job() -> Job {
 // Measured with `claim_batch --functions`, one witness per subject. What transfers is the shape. The assembled workflow is dominated by one job:
 // `required_lanes_aggregate_job` is about seven eighths of its cost and the six lane jobs together
 // are the remaining eighth. So a witness asking "is the dispatch input declared" was serializing a
-// gate script it says nothing about, and three such rows exceeded `v2.workflow.required_floor`
-// `required_floor_claim_cpu_safety_limit_ms` on that check.
+// gate script it says nothing about, and three such rows exceeded the 500ms CPU line then standing
+// on that check (that line no longer gates anything: `v2.workflow.required_floor` carries the same
+// 500 as `required_floor_claim_work_envelope_ms`, the policy its eval-step budget is grounded
+// against, and CPU is observed-only for every claim).
 //
 // AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED A FIXED "FLOOR FOR REACHING THIS MODULE AT ALL",
 // AND THERE IS NO SUCH FLOOR. It was inferred from a first probe in which all six per-job subjects
@@ -2798,8 +2795,9 @@ fn required_lanes_aggregate_job() -> Job {
 // CLAIM. Its subject IS the six lanes -- "every witness-bearing lane" quantifies over them, and a
 // roster-backed version would be a worse artifact at any price, since a roster stops being a
 // denominator the moment someone adds a lane. THE MODELLED ALTERNATIVE IS NOT AVAILABLE, checked
-// rather than assumed: `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms` is a
-// single constant and is not keyed by identity, so no row can be given its own ceiling; the
+// rather than assumed: `v2.workflow.required_floor` `claim_eval_step_budget_for_identity` is keyed
+// by TIER and not by row -- an identity gets the grandfathered or the new-witness budget and nothing
+// in between -- so no row can be given its own ceiling; the
 // interpreter's own remedy sentence asks for a lane that declares a dated ceiling AND names the row
 // as an executing consumer; and `gunbc.fleet.fleet_converge_plan` records that no such lane exists
 // that executes anything, with relocation into a non-executing home being the bare de-enrollment
@@ -2829,7 +2827,6 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
   [
     WorkflowDispatch { inputs: [ci_heal_expected_healed_sha_input] },
     MergeGroup,
-    Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],
       types: witness_floor_pull_request_activity_types

@@ -46,6 +46,20 @@ import gunbc.command_runner {
   LocalExec,
 }
 import extdeps.tools.gnu_coreutils { ls_one_per_line_command }
+import gunbc.runner_unit { runner_unit_prefix, runner_unit_suffix }
+import extdeps.systemd.systemctl { systemctl_mask_now_argv }
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import gunbc.shell_command_text { shell_command_text_of_argv }
+import gunbc.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  RemovalRetirementRefused,
+  RemovalActuationRequired,
+  RemovalRetirementPending,
+  RemovalTeardownAuthorized,
+  slot_removal_realization,
+}
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
@@ -121,6 +135,30 @@ type RunnerSlotMember {
   instance_name: NonEmptyStr
   slot_dir: NonEmptyStr
   provenance: RunnerSlotProvenance
+}
+
+// THE UNIT NAME A SLOT MEMBER IMPLIES. The member is keyed by its instance name and its tree; the
+// retirement authority is keyed by the systemd unit. One derivation, so the two cannot drift.
+fn slot_member_unit_name(m: RunnerSlotMember) -> NonEmptyStr {
+  join([runner_unit_prefix, m.instance_name as String, runner_unit_suffix], "") as NonEmptyStr
+}
+
+// A WITHHELD DELETION SAYS SO RATHER THAN VANISHING. A skipped teardown that printed nothing would
+// leave a narrowing host quietly accumulating trees with no record of which units were waiting on
+// what, which is the silent-degradation arm DESIGN section 5 forbids.
+fn slot_removal_withheld_line(unit: String, tree: NonEmptyStr, cause: String) -> String {
+  join(
+    [
+      "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot teardown: unit=",
+      unit,
+      " tree=",
+      tree as String,
+      " cause=",
+      cause,
+      "' >&2",
+    ],
+    "",
+  )
 }
 
 fn runner_slot_provenance_is_retired_incarnation(p: RunnerSlotProvenance) -> Bool {
@@ -319,6 +357,7 @@ type RunnerSlotProvisionPlan {
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
   base_dir_script: String
   upsert_extract_scripts: List<String>
+  retirement_scripts: List<String>
   teardown_scripts: List<String>
 }
 
@@ -351,10 +390,23 @@ fn gunbc_runner_slot_privileged_commands(
   }
 }
 
+// THE REMOVAL REALIZATION IS A PARAMETER, AND WITHOUT ONE NOTHING IS DELETED.
+//
+// `MemberRemoved` stays the membership answer. What changed is that its realization now consults
+// `gunbc.runner_slot_retirement`, which separates permission from measurement from effect. The
+// default a caller with no evidence supplies is `SlotRetirementEvidenceAbsent`, and that renders
+// refusals rather than deletions -- so a route that has not been taught to observe retirement cannot
+// silently keep deleting trees.
+//
+// WHY THE MASK IS EMITTED HERE RATHER THAN BY A SEPARATE ACTUATOR CALL: this is the existing removal
+// transaction, and a second top-level path that masked slots beside it would be two authorities over
+// one population. The retirement scripts and the teardown scripts are separate lists on the plan so
+// apply can order them explicitly and so a reader can see that no pass does both to one unit.
 fn runner_slot_provision_plan(
   deploy: RunnerHostDeploy,
   artifact: ActionsRunnerBinaryArtifact,
   observed: List<RunnerSlotMember>,
+  retirement_evidence: SlotRetirementEvidence,
 ) -> RunnerSlotProvisionPlan {
   let membership = runner_slot_membership_reconcile(
     desired: desired_runner_slot_members(deploy: deploy),
@@ -398,10 +450,41 @@ fn runner_slot_provision_plan(
         MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
     ),
+    retirement_scripts: flat_map(membership.actions, a =>
+      match a {
+        MemberRemoved { at: _, from: m } =>
+          match slot_removal_realization(
+            evidence: retirement_evidence,
+            unit: slot_member_unit_name(m: m) as String,
+          ) {
+            RemovalActuationRequired { unit: u } =>
+              [shell_command_text_of_argv(argv: sudo_elevate_argv(command: systemctl_mask_now_argv(unit: u as NonEmptyStr)))]
+            RemovalRetirementRefused { unit: _, cause: _ } => []
+            RemovalRetirementPending { unit: _, cause: _ } => []
+            RemovalTeardownAuthorized { unit: _ } => []
+          }
+        MemberAdded { at: _, to: _ } => []
+        MemberChanged { at: _, from: _, to: _ } => []
+        MemberRemovalRefused { from: _, cause: _ } => []
+        MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+      }
+    ),
     teardown_scripts: flat_map(membership.actions, a =>
       match a {
         MemberRemoved { at: _, from: m } =>
-          [executor_privileged_operation_shell_command(op: RemoveDirectoryTree { path: m.slot_dir })]
+          match slot_removal_realization(
+            evidence: retirement_evidence,
+            unit: slot_member_unit_name(m: m) as String,
+          ) {
+            RemovalTeardownAuthorized { unit: _ } =>
+              [executor_privileged_operation_shell_command(op: RemoveDirectoryTree { path: m.slot_dir })]
+            RemovalActuationRequired { unit: u } =>
+              [slot_removal_withheld_line(unit: u, tree: m.slot_dir, cause: "retirement was actuated on this pass; the postcondition is observed independently on the next one")]
+            RemovalRetirementPending { unit: u, cause: c } =>
+              [slot_removal_withheld_line(unit: u, tree: m.slot_dir, cause: c)]
+            RemovalRetirementRefused { unit: u, cause: c } =>
+              [slot_removal_withheld_line(unit: u, tree: m.slot_dir, cause: c)]
+          }
         MemberAdded { at: _, to: _ } => []
         MemberChanged { at: _, from: _, to: _ } => []
         MemberRemovalRefused { from: _, cause: _ } => []
@@ -411,16 +494,22 @@ fn runner_slot_provision_plan(
   }
 }
 
-// THE TEARDOWN ARGV IS THE ONE THE GRANT ROSTER ALREADY SPELLS for desired slot dirs
-// (runner_slot_privileged_operations enrolls RemoveDirectoryTree per desired member), rendered
-// through the same seam. What the roster does NOT enroll is a retired tree outside the desired
-// range, because sudoers is derived from desired state at deploy time and cannot name a population
-// observed at plan time. On a host whose sudoers has been narrowed to the model, a retired-tree
-// removal therefore refuses at apply (sudo -n fails under set -e, locked_apply_exit_code nonzero,
-// receipt red) rather than silently succeeding; on a host still carrying the wide rm grant it
-// succeeds. Closing that gap is a grant-roster question -- enrolling the host's whole slot grammar
-// rather than its current width -- and is declared here rather than solved by widening sudoers.
-data runner_slot_teardown_grant_note: String = "retired-tree removal rides RemoveDirectoryTree through executor_privileged_operation_shell_command; the grant roster enrolls only desired slot dirs, so on a narrowed host the removal refuses at apply and the climb is to enroll the slot grammar rather than the current width"
+// THE TEARDOWN ARGV IS THE ONE THE GRANT ROSTER ALREADY SPELLS, rendered through the same seam.
+//
+// THIS NOTE PREVIOUSLY CLAIMED A SUDO BRAKE THAT DOES NOT EXIST, and the correction matters because
+// the claim was load-bearing in the wrong direction: it said the roster enrolls only DESIRED slot
+// dirs, so a retired tree outside the current width would refuse at apply and a narrowing host was
+// therefore protected by sudoers. Measured against the grant authority, that is false.
+// `gunbc.runner_host_grants` enrolls `RemoveDirectoryTree` for every slot in the host's grammar up to
+// `runner_slot_teardown_grant_index_bound`, which is 64 -- so slots 13..21 are squarely inside the
+// granted population and a narrowing host has no privilege-level obstacle to deleting them.
+//
+// WHY A STALE SAFETY CLAIM IS WORSE THAN NO CLAIM: it was cited, by me, as the reason a destructive
+// path was survivable while its real guard was being examined. Sudo denial must not be treated as a
+// safety mechanism in the model or the plan. Whether each host's INSTALLED sudoers bytes match the
+// current artifact is a separate readback question, and the answer cannot be assumed in either
+// direction -- which is exactly why the guard has to live where the plan can see it.
+data runner_slot_teardown_grant_note: String = "retired-tree removal rides RemoveDirectoryTree through executor_privileged_operation_shell_command; the grant roster enrolls the host slot grammar to runner_slot_teardown_grant_index_bound (64), so slots outside the current desired width ARE granted and sudo denial is not a teardown brake"
 
 fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
   membership_added_count(plan: plan.membership) > 0
@@ -496,6 +585,7 @@ fn runner_slot_converge_verdict(
   deploy: RunnerHostDeploy,
   artifact: ActionsRunnerBinaryArtifact,
   observation: RunnerSlotObservation,
+  retirement_evidence: SlotRetirementEvidence,
 ) -> RunnerSlotConvergeVerdict {
   match observation {
     RunnerSlotsUnobserved { reason: r } =>
@@ -503,7 +593,12 @@ fn runner_slot_converge_verdict(
     RunnerSlotsObserved { members: obs } =>
       RunnerSlotConvergePlanned {
         host: host,
-        plan: runner_slot_provision_plan(deploy: deploy, artifact: artifact, observed: obs),
+        plan: runner_slot_provision_plan(
+          deploy: deploy,
+          artifact: artifact,
+          observed: obs,
+          retirement_evidence: retirement_evidence,
+        ),
       }
   }
 }

@@ -3,7 +3,7 @@ module gunbc.cloudflare.r2_s3_netrc
 import std.types { String, NonEmptyStr, Secret, Bool, FilePath }
 import std.resources { Network }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash
 import extdeps.crypto.hash { sha256sum_line_digest }
 import extdeps.cloud.gcp.secret_ref { SecretRef }

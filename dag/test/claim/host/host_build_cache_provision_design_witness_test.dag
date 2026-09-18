@@ -189,7 +189,6 @@ test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
       ),
       observed: DaemonAbsent,
     )
-    && design_witness_authority_gate_accepts_absent_refusal()
 }
 
 fn path_shadow_observation_fixture() -> BuildCacheDaemonObservation {

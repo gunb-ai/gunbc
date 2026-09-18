@@ -69,6 +69,47 @@ type MacKey {
 
 data symmetric_verification_is_issuance_note: NonEmptyStr = "With HMAC the verifier's secret is the issuer's secret: anything that can check a tag can mint one. 'Verification-only' is therefore a POLICY state enforced by custody, never a cryptographic restriction, and a design that needs a genuinely non-issuing verifier needs an asymmetric construction instead. This note exists so that a later reader does not distribute a verification key on the assumption that it is the weaker half."
 
+// ── Issuance ─────────────────────────────────────────────────────────────────────────────────
+// THE KEY HOLDER'S OPERATION, and the note above is why it lives here beside verification rather
+// than being withheld: with a symmetric MAC whoever holds a MacKey can already mint, so refusing to
+// model minting protects nothing and leaves the one legitimate issuer (the broker) with no modeled
+// route. What stays true is custody: mac_sign takes the whole MacKey, and the keyring that holds
+// MacKeys lives inside the broker.
+//
+// This does NOT reopen the timing oracle mac_is_interface_only_note closes. That note is about a
+// VERIFIER comparing a computed tag itself; mac_verify still hands its comparison to the bound
+// implementation and still yields no tag. A MacTag is what an issuer transmits, and nothing in this
+// module compares one.
+//
+// The tag names the key and suite it was produced under so an issuer cannot place it in an envelope
+// claiming a different key without that disagreement being visible (gunbc.auth.approval_capability
+// issue_capability refuses exactly that). The material never appears: MacTag has no Secret field.
+type MacTag {
+  key_id: MacKeyId
+  suite: MacSuite
+  hex: NonEmptyStr
+}
+
+// Issuance refuses rather than fabricating. The only malformed input the bound implementation can
+// see is key material that is not hex -- there is then no key, so there is no tag to report.
+type MacSigning
+  = MacSigned { tag: MacTag }
+  | MacKeyMaterialNotHex { key_id: MacKeyId }
+
+// `hmac_sha256_hex` is the issuing twin of hmac_sha256_verify_hex: the same RustCrypto Hmac<Sha256>,
+// the same hex key spelling, absent (never a tag) on a non-hex key. The suite match is total so a
+// second MacSuite arm cannot be signed by the HMAC-SHA-256 implementation without an authored arm.
+fn mac_sign(key: MacKey, message: NonEmptyStr) -> MacSigning {
+  match key.suite {
+    HmacSha256 =>
+      match hmac_sha256_hex(key.material as String, message as String) {
+        Absent => MacKeyMaterialNotHex { key_id: key.id }
+        Present { value: hex } =>
+          MacSigned { tag: MacTag { key_id: key.id, suite: key.suite, hex: hex as NonEmptyStr } }
+      }
+  }
+}
+
 // ── Verification ─────────────────────────────────────────────────────────────────────────────
 // WHAT A SUCCESS MUST CARRY, AND WHY IT IS NOT A FLAG.
 //

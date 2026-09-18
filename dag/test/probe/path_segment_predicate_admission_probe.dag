@@ -1,0 +1,33 @@
+module test.probe.path_segment_predicate_admission_probe
+
+// THIS MODULE RESOLVES TODAY, AND THAT IS THE FINDING -- an EXPECTING-RED hole, as its sibling
+// test.probe.refinement_seam_admission_probe.
+//
+// std.types path_segment_safety_note names the whole law: `/` and `\` introduce a level, `.` and
+// `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL
+// terminates the string at the syscall boundary. NONE OF IT IS A REFINEMENT PREDICATE.
+// `PathSegment = NonEmptyStr where brand("PathSegment")`, and `brand` is on the compiler's
+// DEFERRED list (v1.compiler.infer where_refinement_is_deferred_predicate), so PathSegment
+// contributes no decidable predicate of its own and inherits only `non_empty` transitively. The
+// law itself lives in std.types path_segment_is_safe, an ordinary runtime fn that no seam
+// consults.
+//
+// So of the characters that note calls the law, ZERO are refused at any seam, on any route, in any
+// spelling -- INCLUDING a bare literal, which is where every other predicate in this corpus does
+// refuse. The blank is the sole refusal, and only because `non_empty` reached it.
+
+import std.types { String, PathSegment, GlobSegment }
+
+data navigates_out_of_its_parent: PathSegment = ".." as PathSegment
+
+data introduces_a_level: PathSegment = "a/b" as PathSegment
+
+data introduces_a_level_backslash: PathSegment = "a\\b" as PathSegment
+
+data terminates_a_line_oriented_record: PathSegment = "a\nb" as PathSegment
+
+data terminates_at_the_syscall_boundary: PathSegment = "a\x00b" as PathSegment
+
+data a_glob_segment_navigates_too: GlobSegment = ".." as GlobSegment
+
+fn any_string_becomes_a_segment(raw: String) -> PathSegment { raw as PathSegment }

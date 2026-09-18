@@ -1,0 +1,264 @@
+module extdeps.flashinfer.flashinfer
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.content_hash { Sha256Digest, Sha256DigestHex, sha256_hex_digest }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// FLASHINFER IS ITS OWN UPSTREAM. It is independently versioned, released and published, so its facts
+// live here rather than as a bare version string inside the product that consumes it (DESIGN section 3,
+// external upstream decomposition): a FlashInfer fact must not require editing vLLM's module. This
+// module is model-agnostic -- it carries what FlashInfer publishes, never which model a fleet serves on
+// it or what a fleet measured on those bytes; those are consumer-side receipts.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/flashinfer-ai/flashinfer"
+  },
+}
+
+data flashinfer_repository: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer" as NonEmptyStr
+
+// WHICH CHANNEL PUBLISHED A BUILD IS A CLOSED SET. PyPI, the project's stable index
+// (https://flashinfer.ai/whl/) and its nightly index (https://flashinfer.ai/whl/nightly/) publish
+// different package populations, so "is this reachable" dispatches on a variant rather than on a
+// substring of a human-readable locator.
+type FlashInferChannel
+  = FlashInferPyPi
+  | FlashInferProjectStable
+  | FlashInferProjectNightly
+
+fn flashinfer_channel_key(c: FlashInferChannel) -> NonEmptyStr {
+  match c {
+    FlashInferPyPi => "pypi" as NonEmptyStr
+    FlashInferProjectStable => "flashinfer.ai/whl" as NonEmptyStr
+    FlashInferProjectNightly => "flashinfer.ai/whl/nightly" as NonEmptyStr
+  }
+}
+
+// HOW A DEPENDENCY IS OBTAINED IS PART OF WHAT IT IS. A published release names the channel and index it
+// resolves against; a source revision names why it is not a release, because that reason is what must be
+// re-checked before the pin can retire. A version string alone cannot say which of these it is.
+type FlashInferAcquisition
+  = FlashInferPublishedRelease { version: NonEmptyStr, channel: FlashInferChannel, index: NonEmptyStr }
+  | FlashInferSourceRevision { revision: NonEmptyStr, reason_unreleased: NonEmptyStr }
+
+fn flashinfer_acquisition_key(a: FlashInferAcquisition) -> String {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: c, index: _ } =>
+      join(["release:", v as String, "@", flashinfer_channel_key(c: c) as String], "")
+    FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
+      join(["source:", flashinfer_repository as String, "@", r as String], "")
+  }
+}
+
+// ONLY A PUBLISHED RELEASE HAS A PACKAGE VERSION. A caller holding a source revision learns that a
+// version-shaped argument (vLLM's FLASHINFER_VERSION build arg, a `pkg==V` requirement) cannot say what
+// it means, instead of receiving a spelling that would install something else.
+fn flashinfer_published_version(a: FlashInferAcquisition) -> NonEmptyStr? {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: _, index: _ } => Present { value: v }
+    FlashInferSourceRevision { revision: _, reason_unreleased: _ } => none
+  }
+}
+
+// THE 0.6.18.post1 VERSION, the single home of the spelling. Cited: the GitHub release tag v0.6.18.post1
+// (github.com/flashinfer-ai/flashinfer/releases/tag/v0.6.18.post1, published 2026-09-05). vLLM pins it at
+// 07b75534651a0dd584c6f3be75d8c62fb8426397 and at d2d649e674c75425d2d6975c87eb89fd4d55fff8 identically
+// (requirements/cuda.txt flashinfer-python==0.6.18.post1 and flashinfer-cubin==0.6.18.post1;
+// docker/Dockerfile ARG FLASHINFER_VERSION=0.6.18.post1), read 2026-09-14; extdeps.vllm.source_build
+// reads the version from here.
+data flashinfer_0_6_18_post1_version: NonEmptyStr = "0.6.18.post1" as NonEmptyStr
+
+// THE CHANNEL IS THE PROJECT'S STABLE INDEX, NOT PyPI. vLLM's requirements/cuda.txt at both revisions
+// above states `flashinfer-cubin is not on PyPI since 0.6.14` and resolves it through
+// `--extra-index-url https://flashinfer.ai/whl/`; the jit-cache wheel is published only on the per-CUDA
+// index https://flashinfer.ai/whl/cu130/. flashinfer-python is on both PyPI and the stable index with the
+// same digest, so the one channel that carries the whole package population is the stable one.
+data flashinfer_0_6_18_post1: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: flashinfer_0_6_18_post1_version,
+  channel: FlashInferProjectStable,
+  index: "flashinfer.ai/whl for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/cu130 for flashinfer-jit-cache" as NonEmptyStr,
+}
+
+// A PIN IS THE ARTIFACT, AND THE DIGEST IS WHAT MAKES IT ONE. The digest is std.content_hash's
+// Sha256Digest rather than a string, so a malformed digest literal has no representation. The
+// architecture and CUDA version live in the wheel filename (binary distribution format: name, version
+// with local label, python, abi and platform tags), which is why the filename is exact rather than a
+// package-and-version pair: the x86_64 jit-cache wheel sits beside the aarch64 one at the same version.
+type FlashInferWheel sole_constructor {
+  package: NonEmptyStr
+  filename: NonEmptyStr
+  sha256: Sha256Digest
+}
+
+// THE THREE 0.6.18.post1 WHEELS AN aarch64 cu130 IMAGE INSTALLS. Each digest was read 2026-09-14 from two
+// independent upstream surfaces that agree: the `#sha256=` fragment of the index link
+// (https://flashinfer.ai/whl/flashinfer-python/, https://flashinfer.ai/whl/flashinfer-cubin/,
+// https://flashinfer.ai/whl/cu130/flashinfer-jit-cache/) and the `digest` field of the matching asset on
+// the GitHub release v0.6.18.post1. flashinfer-python's digest additionally matches PyPI's simple index and
+// the sha256 of the downloaded wheel; the cubin (1.57 GB) and jit-cache (1.13 GB) wheels were not
+// downloaded, so their digests rest on the two published listings.
+data flashinfer_0_6_18_post1_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "bbacb5b8bbf429e43bf2740bb45551d981f41d0462842e36ee6fb3e3452763ab" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "860ec5ce11a1d686bde04dbef4bedee15c39e3ec5e10adccb186dfee2e4113f2" as Sha256DigestHex },
+  },
+]
+
+// THE FIELDS OF A COMPLETE WHEEL FILENAME (binary distribution format, PEP 427,
+// packaging.python.org/en/latest/specifications/binary-distribution-format/):
+// `{distribution}-{version}(-{build})?-{python}-{abi}-{platform}.whl`. The version field keeps its local
+// label (`0.6.18.post1+cu130`), because that label is where the CUDA build lives; the optional build tag
+// is validated and not carried, since nothing in this module selects on it.
+type FlashInferWheelFilenameFields {
+  distribution: String
+  version: String
+  python: String
+  abi: String
+  platform: String
+}
+
+// A FILENAME IS COMPLETE ONLY WITH THE `.whl` SUFFIX, FIVE OR SIX NON-EMPTY DASH-SEPARATED FIELDS, AND A
+// BUILD TAG (the sixth-field case) THAT BEGINS WITH A DIGIT. Anything else is Absent: a string that merely
+// begins with a distribution and a version is not a wheel filename.
+fn flashinfer_wheel_filename_fields(filename: String) -> FlashInferWheelFilenameFields? {
+  if !ends_with(s: filename, suffix: ".whl") || string_length(s: filename) <= 4 {
+    none
+  } else {
+    let fields = split(s: substring(s: filename, start: 0, end: string_length(s: filename) - 4), separator: "-")
+    let n = count(fields)
+    if !(n == 5 || n == 6) || !all(fields, f => string_length(s: f) > 0) {
+      none
+    } else {
+      let offset = n - 5
+      let build_ok = if n == 6 {
+        match get(xs: fields, index: 2) {
+          Present { value: b } =>
+            code_point(substring(s: b, start: 0, end: 1)) >= 48 && code_point(substring(s: b, start: 0, end: 1)) <= 57
+          Absent => false
+        }
+      } else { true }
+      if !build_ok {
+        none
+      } else {
+        match get(xs: fields, index: 0) {
+          Absent => none
+          Present { value: distribution } => match get(xs: fields, index: 1) {
+            Absent => none
+            Present { value: version } => match get(xs: fields, index: 2 + offset) {
+              Absent => none
+              Present { value: python } => match get(xs: fields, index: 3 + offset) {
+                Absent => none
+                Present { value: abi } => match get(xs: fields, index: 4 + offset) {
+                  Absent => none
+                  Present { value: platform } => Present { value: FlashInferWheelFilenameFields {
+                    distribution: distribution,
+                    version: version,
+                    python: python,
+                    abi: abi,
+                    platform: platform,
+                  } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE PLATFORM TAG OF A WHEEL ROW: `any` for the pure-python wheels, `manylinux_2_28_aarch64` for the
+// aarch64 jit-cache build. Absent when the row's filename is not a complete wheel filename, rather than an
+// empty string standing in for a tag that was never read.
+fn flashinfer_wheel_platform_tag(w: FlashInferWheel) -> String? {
+  match flashinfer_wheel_filename_fields(filename: w.filename as String) {
+    Present { value: f } => Present { value: f.platform }
+    Absent => none
+  }
+}
+
+// WHY A WHEEL ROW REFUSES, one reason per distinct repair. A filename that is not a complete wheel filename
+// is not an artifact name at all; a digest that is not 64 lowercase hex digits is a transcription error; a filename whose distribution segment is not the package's is a row pasted
+// under the wrong package; a filename that does not carry the release version is a row from another
+// release; and a source revision has no published wheels at all, so pinning one against it is a category
+// error rather than a missing row.
+type FlashInferWheelRefusal
+  = FlashInferWheelFilenameMalformed { filename: NonEmptyStr }
+  | FlashInferWheelDigestMalformed { digest: String }
+  | FlashInferWheelFilenameNotForPackage { package: NonEmptyStr, filename: NonEmptyStr }
+  | FlashInferWheelFilenameNotForVersion { version: NonEmptyStr, filename: NonEmptyStr }
+  | FlashInferWheelAcquisitionUnpublished { revision: NonEmptyStr }
+
+type FlashInferWheelAdmission
+  = FlashInferWheelAdmitted { wheel: FlashInferWheel }
+  | FlashInferWheelRefused { refusal: FlashInferWheelRefusal }
+
+// THE WHEEL-FILENAME DISTRIBUTION SEGMENT, normalized the way the binary distribution format spells it:
+// runs of `-` and `.` in the project name become `_`. Package names in this module are already lowercase.
+fn flashinfer_wheel_distribution_segment(package: NonEmptyStr) -> String {
+  join(split(s: join(split(s: package as String, separator: "."), "_"), separator: "-"), "_")
+}
+
+// THE ONLY MINT FOR A WHEEL ROW FROM UNTRUSTED TEXT. The filename must first parse as a complete wheel
+// filename; then its distribution field must equal the package's normalized segment, and its version field
+// must be the release version exactly or that version followed by a local label (`+`), so `0.6.18` does not
+// admit a `0.6.18.post1` file and `flashinfer-python` does not admit a `flashinfer_python_extra` file.
+fn admit_flashinfer_wheel(
+  acquisition: FlashInferAcquisition,
+  package: NonEmptyStr,
+  filename: NonEmptyStr,
+  sha256_hex: String,
+) -> FlashInferWheelAdmission {
+  match acquisition {
+    FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
+      FlashInferWheelRefused { refusal: FlashInferWheelAcquisitionUnpublished { revision: r } }
+    FlashInferPublishedRelease { version: v, channel: _, index: _ } =>
+      match flashinfer_wheel_filename_fields(filename: filename as String) {
+        Absent => FlashInferWheelRefused { refusal: FlashInferWheelFilenameMalformed { filename: filename } }
+        Present { value: fields } =>
+          if fields.distribution != flashinfer_wheel_distribution_segment(package: package) {
+            FlashInferWheelRefused { refusal: FlashInferWheelFilenameNotForPackage { package: package, filename: filename } }
+          } else if !(fields.version == (v as String) || starts_with(s: fields.version, prefix: join([v as String, "+"], ""))) {
+            FlashInferWheelRefused { refusal: FlashInferWheelFilenameNotForVersion { version: v, filename: filename } }
+          } else {
+            match sha256_hex_digest(hex: sha256_hex) {
+              Absent => FlashInferWheelRefused { refusal: FlashInferWheelDigestMalformed { digest: sha256_hex } }
+              Present { value: d } =>
+                FlashInferWheelAdmitted { wheel: FlashInferWheel { package: package, filename: filename, sha256: d } }
+            }
+          }
+      }
+  }
+}
+
+// UPSTREAM vLLM's DOCKERFILE REFERENCES ONLY THE PyPI AND STABLE-INDEX CHANNELS. At both vLLM revisions
+// cited above, docker/Dockerfile installs `flashinfer-jit-cache==${FLASHINFER_VERSION}` with
+// `--index-url https://flashinfer.ai/whl/cu<major><minor>` and requirements/cuda.txt uses
+// `--extra-index-url https://flashinfer.ai/whl/`. This answers only whether an acquisition's CHANNEL is one
+// those files name: the nightly index and a source revision are not. It does not establish that a given
+// version publishes flashinfer-python, flashinfer-cubin and flashinfer-jit-cache in the variant an image
+// needs, so a true here is not reachability of the release.
+fn flashinfer_channel_is_referenced_by_upstream_dockerfile(a: FlashInferAcquisition) -> Bool {
+  match a {
+    FlashInferPublishedRelease { version: _, channel: c, index: _ } =>
+      match c {
+        FlashInferPyPi => true
+        FlashInferProjectStable => true
+        FlashInferProjectNightly => false
+      }
+    FlashInferSourceRevision { revision: _, reason_unreleased: _ } => false
+  }
+}
