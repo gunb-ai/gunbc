@@ -1673,10 +1673,11 @@ fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
 // that slot and widen past v1. Order is the same two optional drops: reversed or unknown
 // spellings remain tokens-remain refusals.
 //
-// PARSE ADMISSION IS NOT THE SEALING / OPAQUE PROPERTY. Declared drop:
+// PARSE ADMISSION IS NOT THE SEALING PROPERTY. Declared drop:
 // gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property. v1 mints
-// sole_constructor on the type item via parsed_sole_constructor_properties after the drop;
-// G0 only consumes the tokens so the native door can continue.
+// only sole_constructor via parsed_sole_constructor_properties; G0 only consumes
+// the tokens so the native door can continue. nominal_opaque is dropped in v1 and
+// mints nothing.
 fn dag_grammar_type_decl_modifiers_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_optional(
