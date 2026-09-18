@@ -146,6 +146,29 @@ type GlmCheckpointManifest sole_constructor {
   read_by: NonEmptyStr
 }
 
+// THE MINT, BECAUSE THE SEAL IS PER MODULE AND THE TYPE IS NOT. sole_constructor refuses a record
+// literal of this type outside this file, which is right for the seal's purpose -- a partial or
+// reordered manifest has no spelling -- and wrong as a boundary for who may HAVE a manifest: the base
+// GLM-5.3 and a third party's quantization of it are checkpoints with exactly these five facts each.
+// Minting a second manifest type in each of their modules is the concept re-invention DESIGN
+// section 2 measures a change by, so they come through this function. It adds no fact and checks
+// nothing the literal does not; it only lets the one type serve every checkpoint that inhabits it.
+fn glm_checkpoint_manifest(
+  revision: NonEmptyStr,
+  safetensors_shard_count: Nat,
+  safetensors_bytes: ByteSize,
+  repository_total_bytes: ByteSize,
+  read_by: NonEmptyStr,
+) -> GlmCheckpointManifest {
+  GlmCheckpointManifest {
+    revision: revision,
+    safetensors_shard_count: safetensors_shard_count,
+    safetensors_bytes: safetensors_bytes,
+    repository_total_bytes: repository_total_bytes,
+    read_by: read_by,
+  }
+}
+
 data glm_5_3_flash_native_manifest: GlmCheckpointManifest = GlmCheckpointManifest {
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   safetensors_shard_count: 62,

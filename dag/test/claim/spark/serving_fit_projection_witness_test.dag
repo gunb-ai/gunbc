@@ -1,0 +1,231 @@
+module test.claim.spark.serving_fit_projection_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { byte_size, byte_size_count, basis_point }
+import extdeps.zhipu.glm_5_3 { glm_5_3_shape, glm_5_3_moe_layer_count, glm_5_3_routed_expert_visits_per_token }
+import extdeps.radixark.glm_5_3_nvfp4 {
+  GlmMoeDsaModuleClass, RoutedExperts, glm_moe_dsa_module_class_label,
+  glm_5_3_nvfp4_manifest, glm_5_3_nvfp4_quantization,
+  nvfp4_representative_expert_bytes, nvfp4_expert_bytes_from_shape, nvfp4_group_size_from_layout,
+  nvfp4_routed_experts_total_bytes, nvfp4_measured_partition,
+  nvfp4_routed_experts_share_basis_points, nvfp4_share_of_native_basis_points, nvfp4_quantized_classes,
+}
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, Glm53RadixArkNvfp4Modelopt, ServingRuntime, GunbcGlm53NopeDerivedGb10,
+  ServingTopology, FourSparkTp4, EightSparkTp8,
+  serving_runtime_row, runtime_artifact_wire,
+}
+import gunbc.spark.serving_fit_projection {
+  WeightFitProjection, WeightFitVerdict, WeightsFitWithHeadroom, WeightsExceedUsable,
+  project_weight_fit, radixark_nvfp4_fit, glm53_flash_native_live_arm_fit, kv_headroom_per_rank,
+  projection_leaves_more_kv_than_live_arm,
+  DeploymentProjection, DeploymentProjectionVerdict, ProjectionAdmitsStatically, ProjectionRefused,
+  radixark_nvfp4_tp4, radixark_nvfp4_tp8, project_deployment, live_arm_utilization,
+  StaticCompatibilityQuestion, ArchitectureRegisteredInRuntime, QuantizationMethodShippedByRuntime, Fp4WeightsSupportedOnDevice,
+  StaticCompatibilityAnswer, Established, MeasuredNegative, NotEstablished,
+  answer_question, answer_is_established, static_question_label,
+  QuantizationPathReport, glm53_derived_image_modelopt_report,
+  ExpertOffloadProjection, OffloadRefusedUnifiedMemory, OffloadNotProjected, radixark_nvfp4_expert_offload,
+}
+
+// ── THE BYTE MODEL AGAINST THE FORMAT ─────────────────────────────────────────────────────────
+//
+// THE SHAPE-DERIVED BYTES OF ONE ROUTED EXPERT EQUAL THE HEADER'S, AT BYTE GRAIN. The derivation
+// takes the base model's shape (three projections of hidden by moe_intermediate), the declared
+// scheme (4-bit values, one fp8 scale per 16, two F32 scalars per projection) and nothing else; the
+// header sum takes the twelve data_offsets spans and nothing else. A wrong group size, a wrong
+// scalar count or a wrong projection count moves one side and not the other.
+test fn w_expert_bytes_from_shape_equal_the_header_sum() -> Bool {
+  byte_size_count(b: nvfp4_expert_bytes_from_shape(s: glm_5_3_shape, q: glm_5_3_nvfp4_quantization))
+    == byte_size_count(b: nvfp4_representative_expert_bytes())
+}
+
+test fn w_group_size_read_off_the_scale_tensor_equals_the_declared_one() -> Bool {
+  match nvfp4_group_size_from_layout(s: glm_5_3_shape) {
+    Absent => false
+    Present { value: g } => g == glm_5_3_nvfp4_quantization.group_size
+  }
+}
+
+// THE ROUTED-EXPERT TOTAL, DERIVED FROM ONE EXPERT AND THE SHAPE, EQUALS THE TOTAL MEASURED OVER ALL
+// 47 HEADERS. This is the independent verification the brief asked for: 725B parameters at
+// 4.5 bits each is a derivation, and the measured 407,686,809,600 is the instrument's answer.
+test fn w_routed_expert_total_derived_equals_measured() -> Bool {
+  byte_size_count(b: nvfp4_routed_experts_total_bytes(s: glm_5_3_shape))
+    == byte_size_count(b: nvfp4_measured_partition.routed_experts)
+}
+
+// THE TWO MEASURED CLASSES SIT INSIDE THE MANIFEST, and the artifact is a compression of the base:
+// between 60 and 65 percent of Z.ai's native FP8 bytes.
+test fn w_measured_partition_sits_inside_the_manifest_and_compresses_the_base() -> Bool {
+  let routed = byte_size_count(b: nvfp4_measured_partition.routed_experts)
+  let nextn = byte_size_count(b: nvfp4_measured_partition.nextn_layer)
+  let share = nvfp4_share_of_native_basis_points()
+  routed + nextn < byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes)
+    && share >= 6000 && share < 6500
+}
+
+// AND IT IS 87.7 PERCENT OF THE ARTIFACT, not 88 and not 92: the nextn layer's 256 bf16 experts are
+// the difference between "every expert tensor" and "every NVFP4 expert tensor".
+test fn w_routed_experts_are_between_8700_and_8800_basis_points_of_the_safetensors() -> Bool {
+  let bp = nvfp4_routed_experts_share_basis_points(m: glm_5_3_nvfp4_manifest)
+  bp >= 8700 && bp < 8800
+}
+
+test fn w_only_the_routed_experts_are_quantized() -> Bool {
+  let quantized = nvfp4_quantized_classes(q: glm_5_3_nvfp4_quantization)
+  length(quantized) == 1
+    && any(quantized, c => glm_moe_dsa_module_class_label(c: c) == glm_moe_dsa_module_class_label(c: RoutedExperts))
+}
+
+test fn w_the_moe_layer_count_is_derived_from_layers_and_dense_prefix() -> Bool {
+  glm_5_3_moe_layer_count(s: glm_5_3_shape) == 75
+    && glm_5_3_routed_expert_visits_per_token(s: glm_5_3_shape) == 600
+}
+
+// ── THE FIT FOLD, ON SUPPLIED VALUES ──────────────────────────────────────────────────────────
+//
+// ROUNDING GOES THE REFUSING WAY. Ten bytes over three ranks is four per rank, not three; a pool of
+// ten at 8400 basis points is eight usable, not nine. Supplied values, because the claim is about
+// the fold's arithmetic and not about any manifest.
+test fn w_weights_per_rank_round_up_and_usable_rounds_down() -> Bool {
+  let p = project_weight_fit(weights: byte_size(count: 10), ranks: 3, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400))
+  byte_size_count(b: p.weights_per_rank) == 4 && byte_size_count(b: p.usable_per_rank) == 8
+}
+
+test fn w_weights_equal_to_usable_fit_with_zero_headroom() -> Bool {
+  let p = project_weight_fit(weights: byte_size(count: 800), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000))
+  match p.verdict {
+    WeightsFitWithHeadroom { kv_headroom_per_rank: h } => byte_size_count(b: h) == 0
+    WeightsExceedUsable { shortfall_per_rank: _ } => false
+  }
+}
+
+test fn w_one_byte_over_usable_refuses_with_a_one_byte_shortfall() -> Bool {
+  let p = project_weight_fit(weights: byte_size(count: 801), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000))
+  match p.verdict {
+    WeightsFitWithHeadroom { kv_headroom_per_rank: _ } => false
+    WeightsExceedUsable { shortfall_per_rank: s } => byte_size_count(b: s) == 1
+  }
+}
+
+// ── THE PROJECTION THE OPERATOR ASKED FOR, THROUGH THE REAL MANIFEST AND THE LIVE ARM'S PROFILE ─
+
+test fn w_tp4_does_not_fit_the_live_utilisation() -> Bool {
+  match radixark_nvfp4_fit(topology: FourSparkTp4).verdict {
+    WeightsFitWithHeadroom { kv_headroom_per_rank: _ } => false
+    WeightsExceedUsable { shortfall_per_rank: s } => byte_size_count(b: s) > 0
+  }
+}
+
+test fn w_tp8_fits_the_live_utilisation() -> Bool {
+  match radixark_nvfp4_fit(topology: EightSparkTp8).verdict {
+    WeightsFitWithHeadroom { kv_headroom_per_rank: h } => byte_size_count(b: h) > 0
+    WeightsExceedUsable { shortfall_per_rank: _ } => false
+  }
+}
+
+// MORE KV PER RANK THAN THE ARM SERVING TODAY, and the comparison is made by one fold over both
+// manifests so the two headrooms are the same quantity.
+test fn w_tp8_leaves_more_kv_per_rank_than_the_live_flash_arm() -> Bool {
+  projection_leaves_more_kv_than_live_arm(topology: EightSparkTp8)
+    && !projection_leaves_more_kv_than_live_arm(topology: FourSparkTp4)
+}
+
+test fn w_the_live_flash_arm_itself_fits_under_this_fold() -> Bool {
+  match kv_headroom_per_rank(p: glm53_flash_native_live_arm_fit()) {
+    Absent => false
+    Present { value: h } => byte_size_count(b: h) > 0
+  }
+}
+
+// ── THE STATIC RECEIPT, AND WHY TP8 STILL REFUSES ─────────────────────────────────────────────
+
+fn answer_for(p: DeploymentProjection, q: StaticCompatibilityQuestion) -> StaticCompatibilityAnswer? {
+  let answers = match p.verdict {
+    ProjectionAdmitsStatically { fit: _, answers: a } => a
+    ProjectionRefused { cause: _, fit: _, answers: a } => a
+  }
+  first(filter(answers, a => static_question_label(q: answer_question(a: a)) == static_question_label(q: q)))
+}
+
+fn established(p: DeploymentProjection, q: StaticCompatibilityQuestion) -> Bool {
+  match answer_for(p: p, q: q) {
+    Absent => false
+    Present { value: a } => answer_is_established(a: a)
+  }
+}
+
+// THE ARCHITECTURE IS ESTABLISHED THROUGH THE REAL ROUTE: the derived NoPE runtime row, its registry
+// reading taken inside its own digest, and GlmMoeDsaForCausalLM found among the answered names.
+test fn w_the_derived_runtime_registers_the_architecture() -> Bool {
+  established(p: radixark_nvfp4_tp8(), q: ArchitectureRegisteredInRuntime)
+}
+
+test fn w_tp4_refuses_on_fit_before_anything_else() -> Bool {
+  match radixark_nvfp4_tp4().verdict {
+    ProjectionAdmitsStatically { fit: _, answers: _ } => false
+    ProjectionRefused { cause: c, fit: _, answers: _ } => string_contains(s: c as String, pattern: "the weights do not fit")
+  }
+}
+
+// TP8 REFUSES TODAY, AND FOR THE RIGHT REASON: the quantization-path observation was reported under a
+// tag the arm does not pin, and no FP4-on-device probe row exists for the arm's digest. Neither is a
+// measured negative; both are named absences.
+test fn w_tp8_refuses_until_the_quantization_path_is_joined_to_the_pin() -> Bool {
+  let p = radixark_nvfp4_tp8()
+  match p.verdict {
+    ProjectionAdmitsStatically { fit: _, answers: _ } => false
+    ProjectionRefused { cause: _, fit: _, answers: _ } =>
+      !established(p: p, q: QuantizationMethodShippedByRuntime)
+        && !established(p: p, q: Fp4WeightsSupportedOnDevice)
+        && match answer_for(p: p, q: QuantizationMethodShippedByRuntime) {
+          Absent => false
+          Present { value: a } => match a {
+            NotEstablished { question: _, missing: m } => string_contains(s: m as String, pattern: "docker image inspect")
+            Established { question: _, evidence: _ } => false
+            MeasuredNegative { question: _, evidence: _ } => false
+          }
+        }
+  }
+}
+
+// THE DISCRIMINATING CONTROL: a report keyed by the arm's own pin flips the quantization answer to
+// Established. This is what a `docker image inspect` that returns the pinned content id would let the
+// report become, and it is the RED for a join that ignored the reference.
+test fn w_a_report_keyed_by_the_pin_establishes_the_quantization_path() -> Bool {
+  match serving_runtime_row(r: GunbcGlm53NopeDerivedGb10) {
+    Absent => false
+    Present { value: rrow } => {
+      let joined = QuantizationPathReport {
+        image_reference: runtime_artifact_wire(a: rrow.artifact),
+        quant_method: glm53_derived_image_modelopt_report.quant_method,
+        present: true,
+        reported_by: "fixture: the live report re-keyed by the arm's pin" as NonEmptyStr,
+      }
+      let p = project_deployment(
+        checkpoint: Glm53RadixArkNvfp4Modelopt,
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: EightSparkTp8,
+        manifest: glm_5_3_nvfp4_manifest,
+        utilization: live_arm_utilization(),
+        report: joined,
+        required_method: glm_5_3_nvfp4_quantization.quant_method,
+      )
+      established(p: p, q: QuantizationMethodShippedByRuntime)
+        && !established(p: p, q: Fp4WeightsSupportedOnDevice)
+    }
+  }
+}
+
+// ── EXPERT OFFLOAD IS REFUSED ON GB10, WITH THE FIGURE DERIVED ────────────────────────────────
+test fn w_expert_offload_is_refused_on_unified_memory_with_the_per_token_bytes() -> Bool {
+  match radixark_nvfp4_expert_offload() {
+    OffloadNotProjected { device: _, memory_kind: _ } => false
+    OffloadRefusedUnifiedMemory { device: _, expert_bytes_per_token: b, expert_visits_per_token: v } =>
+      v == glm_5_3_routed_expert_visits_per_token(s: glm_5_3_shape)
+        && byte_size_count(b: b) == v * byte_size_count(b: nvfp4_representative_expert_bytes())
+        && byte_size_count(b: b) > 12000000000
+  }
+}

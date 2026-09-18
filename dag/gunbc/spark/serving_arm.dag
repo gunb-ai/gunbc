@@ -7,6 +7,10 @@ import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_integration_commit,
 }
+import extdeps.zhipu.glm_5_3 { glm_5_3_architecture_class }
+import extdeps.radixark.glm_5_3_nvfp4 {
+  glm_5_3_nvfp4_hub_repo, glm_5_3_nvfp4_manifest, glm_5_3_nvfp4_quantization,
+}
 import extdeps.vllm.runtime_defaults {
   ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804,
   defaults_source_revision, defaults_gpu_utilization,
@@ -48,6 +52,7 @@ type ServingCheckpoint
   | Glm53Exl3_205
   | Glm53Nvfp4CompressedTensors
   | DeepseekV4FlashIq3sSplit
+  | Glm53RadixArkNvfp4Modelopt
 
 type ServingRuntime
   = GunbcSparkrunVllmDs4Gb10
@@ -56,16 +61,22 @@ type ServingRuntime
   | VllmOpenaiGlm53Flash
   | GunbcGlm53NopeDerivedGb10
 
+// THE EIGHT-RANK TOPOLOGY IS A CANDIDATE SHAPE, NOT A DEPLOYED ONE. It exists because
+// gunbc.spark.serving_fit_projection projects the RadixArk GLM-5.3 NVFP4 checkpoint onto it and finds
+// it is the smallest degree at which the weights fit under the live utilisation; nothing here claims
+// eight Sparks have been fabric-joined or that an engine has run across them.
 type ServingTopology
   = SingleSparkTp1
   | SparkPairTp2
   | FourSparkTp4
+  | EightSparkTp8
 
 fn serving_topology_rank_count(t: ServingTopology) -> Nat {
   match t {
     SingleSparkTp1 => 1
     SparkPairTp2 => 2
     FourSparkTp4 => 4
+    EightSparkTp8 => 8
   }
 }
 
@@ -82,6 +93,7 @@ data serving_topologies: List<ServingTopology> = [
   SingleSparkTp1,
   SparkPairTp2,
   FourSparkTp4,
+  EightSparkTp8,
 ]
 
 fn serving_topology_of_rank_count(ranks: Nat) -> ServingTopology? {
@@ -101,6 +113,7 @@ fn serving_checkpoint_wire(c: ServingCheckpoint) -> NonEmptyStr {
     Glm53Exl3_205 => "glm-5.3-flash-exl3-2.05" as NonEmptyStr
     Glm53Nvfp4CompressedTensors => "glm-5.3-flash-nvfp4-compressed-tensors" as NonEmptyStr
     DeepseekV4FlashIq3sSplit => "deepseek-v4-flash-iq3s-split" as NonEmptyStr
+    Glm53RadixArkNvfp4Modelopt => "glm-5.3-radixark-nvfp4-modelopt" as NonEmptyStr
   }
 }
 
@@ -122,6 +135,7 @@ fn serving_topology_wire(t: ServingTopology) -> NonEmptyStr {
     SingleSparkTp1 => "tp1" as NonEmptyStr
     SparkPairTp2 => "tp2" as NonEmptyStr
     FourSparkTp4 => "tp4" as NonEmptyStr
+    EightSparkTp8 => "tp8" as NonEmptyStr
   }
 }
 
@@ -229,12 +243,29 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
 
+// THE RadixArk NVFP4 ROW IS GLM-5.3, NOT GLM-5.3-FLASH -- a different base model with a different
+// architecture class, which is why its architecture is read from extdeps.zhipu.glm_5_3 and not from
+// the Flash rows above it. Its bytes are the redistribution's manifest; nothing on this fleet has
+// fetched it, and the row says so. It exists so the fit projection and the admission fold have one
+// checkpoint identity to ask about, exactly as the native Flash row does.
+data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
+  checkpoint: Glm53RadixArkNvfp4Modelopt,
+  repo: glm_5_3_nvfp4_hub_repo,
+  revision: glm_5_3_nvfp4_manifest.revision,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  architecture: glm_5_3_architecture_class,
+  weight_gib: glm_manifest_gibibytes(m: glm_5_3_nvfp4_manifest),
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_nvfp4_quantization.quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, its group size, its kv_cache_scheme and a 240-entry ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  provenance: "revision and byte population are extdeps.radixark.glm_5_3_nvfp4 glm_5_3_nvfp4_manifest, read from the Hub model API at that exact revision on 2026-09-18; the GiB figure is derived from those bytes. The architecture is extdeps.zhipu.glm_5_3 glm_5_3_architecture_class, the sole entry of `architectures` in the base model's config.json and, diffed on the same day, in this checkpoint's. NOT fetched, NOT launched and NOT measured on this fleet: this row is a projection subject, and gunbc.spark.serving_fit_projection is its consumer" as NonEmptyStr,
+}
+
 fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
   match c {
     Glm53Exl3_205 => Present { value: glm53_exl3_205_row }
     Glm53NativeFp8 => Present { value: glm53_native_fp8_row }
     Glm53Nvfp4CompressedTensors => none
     DeepseekV4FlashIq3sSplit => none
+    Glm53RadixArkNvfp4Modelopt => Present { value: glm53_radixark_nvfp4_row }
   }
 }
 

@@ -1,0 +1,556 @@
+module gunbc.spark.serving_fit_projection
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure {
+  ByteSize, byte_size, byte_size_count,
+  gibibyte, gibibyte_to_byte_size,
+  BasisPoint, basis_point_count, basis_point_unity_count,
+}
+import extdeps.memory.types { MemoryKind, Dram, Hbm, UnifiedShared }
+import extdeps.systems.nvidia { nvidia_gb10_gpu_catalog }
+import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.zhipu.glm_5_3_flash { GlmCheckpointManifest, glm_5_3_flash_native_manifest }
+import extdeps.zhipu.glm_5_3 { GlmMoeDsaShape, glm_5_3_shape, glm_5_3_routed_expert_visits_per_token }
+import extdeps.radixark.glm_5_3_nvfp4 {
+  glm_5_3_nvfp4_manifest, glm_5_3_nvfp4_quantization, nvfp4_representative_expert_bytes,
+}
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, Glm53RadixArkNvfp4Modelopt,
+  ServingRuntime, GunbcGlm53NopeDerivedGb10,
+  ServingTopology, FourSparkTp4, EightSparkTp8,
+  serving_topology_rank_count, serving_topology_wire, serving_checkpoint_wire, serving_runtime_wire,
+  gb10_unified_pool_gib,
+  ServingCheckpointRow, serving_checkpoint_row,
+  ServingRuntimeRow, serving_runtime_row, runtime_registers, runtime_reading_is_current,
+  runtime_artifact_wire,
+  glm_native_initial_profile,
+}
+import gunbc.spark.serving_runtime_capability_probe {
+  Fp4WeightSupportedHere, runtime_kernel_capability_label,
+  KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused, KernelProbeSymbolUngrounded,
+  OutcomeFound, OutcomeUnrecorded, OutcomeConflicted,
+  capability_outcome, v41_sm121_capability_probe_rows, gb10_observed_compute_capability,
+}
+
+// ── WHAT THIS MODULE IS FOR ──────────────────────────────────────────────────────────────────
+//
+// IT ANSWERS THE FITTING QUESTION FROM MODELLED FACTS, so a deployment decision that has not been
+// made can read its projection off the corpus instead of off a person with a calculator. Given a
+// checkpoint's manifest, a topology's rank count, one GB10's unified pool and a declared
+// gpu_memory_utilization, it derives the weight bytes each rank must hold, the bytes the engine may
+// use, whether the first fits inside the second, and what is left for KV. Beside that it derives the
+// static execution-compatibility receipt -- does the runtime register the architecture, does it
+// ship the quantization path, do the FP4 kernels run on this device -- from the readings the corpus
+// already carries, and refuses by name where no reading exists.
+//
+// NOTHING HERE IS A LAUNCH RECEIPT. The strongest thing this module can say is that a tuple is
+// STATICALLY plausible; gunbc.spark.serving_compatibility's ExecutionCompatible arm is earned only
+// by an engine that loaded, served and answered, and no projection substitutes for it.
+//
+// THE ARITHMETIC IS EXACT AND ROUNDS IN THE REFUSING DIRECTION. Weights per rank round UP (a rank
+// holding one byte more than an even share is still a rank that must hold it); usable bytes round
+// DOWN (the engine's fraction of the pool is a floor, not a ceiling). A screen that rounded the
+// other way could admit a tuple a byte-exact test refuses, which is the wrong error for a wall.
+
+// ── THE WEIGHT-FIT PROJECTION ────────────────────────────────────────────────────────────────
+
+type WeightFitVerdict
+  = WeightsFitWithHeadroom { kv_headroom_per_rank: ByteSize }
+  | WeightsExceedUsable { shortfall_per_rank: ByteSize }
+
+type WeightFitProjection sole_constructor {
+  weights: ByteSize
+  ranks: Nat
+  weights_per_rank: ByteSize
+  pool_per_rank: ByteSize
+  utilization: BasisPoint
+  usable_per_rank: ByteSize
+  verdict: WeightFitVerdict
+}
+
+fn ceil_div(n: Nat, d: Nat) -> Nat {
+  if d == 0 { d } else { (n + (d - 1)) / d }
+}
+
+fn weights_per_rank_bytes(weights: ByteSize, ranks: Nat) -> ByteSize {
+  byte_size(count: ceil_div(n: byte_size_count(b: weights), d: ranks))
+}
+
+fn usable_bytes(pool: ByteSize, utilization: BasisPoint) -> ByteSize {
+  byte_size(count: (byte_size_count(b: pool) * basis_point_count(bp: utilization)) / basis_point_unity_count())
+}
+
+fn project_weight_fit(weights: ByteSize, ranks: Nat, pool_per_rank: ByteSize, utilization: BasisPoint) -> WeightFitProjection {
+  let per_rank = weights_per_rank_bytes(weights: weights, ranks: ranks)
+  let usable = usable_bytes(pool: pool_per_rank, utilization: utilization)
+  let per_rank_count = byte_size_count(b: per_rank)
+  let usable_count = byte_size_count(b: usable)
+  WeightFitProjection {
+    weights: weights,
+    ranks: ranks,
+    weights_per_rank: per_rank,
+    pool_per_rank: pool_per_rank,
+    utilization: utilization,
+    usable_per_rank: usable,
+    verdict: if usable_count >= per_rank_count {
+      WeightsFitWithHeadroom { kv_headroom_per_rank: byte_size(count: usable_count - per_rank_count) }
+    } else {
+      WeightsExceedUsable { shortfall_per_rank: byte_size(count: per_rank_count - usable_count) }
+    },
+  }
+}
+
+// THE POOL IS THE SERVING-ARM AUTHORITY'S, AND THE UTILISATION IS THE LIVE ARM'S. gb10_unified_pool_gib
+// was read off a live member; glm_native_initial_profile carries the 8400 basis points the serving
+// Group B arm launched with. Reading both from their homes is what makes this projection comparable
+// to that arm: the same pool, the same fraction, a different checkpoint and rank count.
+fn gb10_pool_bytes() -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: gb10_unified_pool_gib))
+}
+
+fn project_on_gb10(manifest: GlmCheckpointManifest, topology: ServingTopology, utilization: BasisPoint) -> WeightFitProjection {
+  project_weight_fit(
+    weights: manifest.safetensors_bytes,
+    ranks: serving_topology_rank_count(t: topology),
+    pool_per_rank: gb10_pool_bytes(),
+    utilization: utilization,
+  )
+}
+
+fn live_arm_utilization() -> BasisPoint {
+  glm_native_initial_profile.decided_gpu_memory_basis_points
+}
+
+// ── THE STATIC EXECUTION-COMPATIBILITY RECEIPT ───────────────────────────────────────────────
+//
+// THREE QUESTIONS, EACH ANSWERED FROM A READING OR REFUSED BY NAME. They are kept apart because
+// each names a different remedy when it fails: an unregistered architecture needs a newer engine, a
+// missing quantization path needs a build, FP4 kernels that do not run here need different hardware
+// or a different checkpoint. A single Bool could not say which.
+type StaticCompatibilityQuestion
+  = ArchitectureRegisteredInRuntime
+  | QuantizationMethodShippedByRuntime
+  | Fp4WeightsSupportedOnDevice
+
+fn static_question_label(q: StaticCompatibilityQuestion) -> String {
+  match q {
+    ArchitectureRegisteredInRuntime => "architecture registered in the runtime's model registry"
+    QuantizationMethodShippedByRuntime => "quantization method shipped by the runtime"
+    Fp4WeightsSupportedOnDevice => "fp4 weight kernels supported on this device"
+  }
+}
+
+// ESTABLISHED, MEASURED-NEGATIVE AND NOT-ESTABLISHED ARE THREE ANSWERS. A reading that says no is
+// evidence against the tuple; a reading that does not exist for this digest is not, and an arm that
+// collapsed the two would turn an unprobed image into a refused one -- or, worse, a reported one
+// into a probed one. Every NotEstablished arm names the one act that would establish it.
+type StaticCompatibilityAnswer
+  = Established { question: StaticCompatibilityQuestion, evidence: NonEmptyStr }
+  | MeasuredNegative { question: StaticCompatibilityQuestion, evidence: NonEmptyStr }
+  | NotEstablished { question: StaticCompatibilityQuestion, missing: NonEmptyStr }
+
+fn answer_question(a: StaticCompatibilityAnswer) -> StaticCompatibilityQuestion {
+  match a {
+    Established { question: q, evidence: _ } => q
+    MeasuredNegative { question: q, evidence: _ } => q
+    NotEstablished { question: q, missing: _ } => q
+  }
+}
+
+fn answer_is_established(a: StaticCompatibilityAnswer) -> Bool {
+  match a {
+    Established { question: _, evidence: _ } => true
+    MeasuredNegative { question: _, evidence: _ } => false
+    NotEstablished { question: _, missing: _ } => false
+  }
+}
+
+fn answer_text(a: StaticCompatibilityAnswer) -> String {
+  match a {
+    Established { question: q, evidence: e } => join([static_question_label(q: q), ": ESTABLISHED -- ", e as String], "")
+    MeasuredNegative { question: q, evidence: e } => join([static_question_label(q: q), ": MEASURED NEGATIVE -- ", e as String], "")
+    NotEstablished { question: q, missing: m } => join([static_question_label(q: q), ": NOT ESTABLISHED -- ", m as String], "")
+  }
+}
+
+// THE ARCHITECTURE QUESTION IS THE ADMISSION FOLD'S OWN CHECK, asked through the same two functions
+// serving_arm_admits uses -- the reading must have been taken inside the digest this arm would
+// launch, and it must contain the class. No second registry lookup is written here.
+fn architecture_answer(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> StaticCompatibilityAnswer {
+  if !runtime_reading_is_current(rrow: rrow) {
+    NotEstablished {
+      question: ArchitectureRegisteredInRuntime,
+      missing: join([
+        "no registry reading was taken inside ", runtime_artifact_wire(a: rrow.artifact) as String,
+        "; one execution of the registry instrument inside that digest settles it",
+      ], "") as NonEmptyStr,
+    }
+  } else if runtime_registers(rrow: rrow, architecture: architecture) {
+    match rrow.registry_reading {
+      Absent => NotEstablished { question: ArchitectureRegisteredInRuntime, missing: "unreachable: a current reading is present" as NonEmptyStr }
+      Present { value: r } => Established {
+        question: ArchitectureRegisteredInRuntime,
+        evidence: join([
+          architecture as String, " is among the ", to_string(length(r.architectures)),
+          " architectures the registry answered inside ", r.image_reference as String,
+          " on ", r.host as String, ", ", r.observed_at as String,
+        ], "") as NonEmptyStr,
+      }
+    }
+  } else {
+    match rrow.registry_reading {
+      Absent => NotEstablished { question: ArchitectureRegisteredInRuntime, missing: "unreachable: a current reading is present" as NonEmptyStr }
+      Present { value: r } => MeasuredNegative {
+        question: ArchitectureRegisteredInRuntime,
+        evidence: join([
+          architecture as String, " is not among the ", to_string(length(r.architectures)),
+          " architectures the registry answered inside ", r.image_reference as String,
+          " on ", r.observed_at as String,
+        ], "") as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// ── THE QUANTIZATION-PATH OBSERVATION, TYPED AS WHAT IT IS ───────────────────────────────────
+//
+// THE GLM PERFORMANCE LANE REPORTED, ON 2026-09-18, THAT THE IMAGE IN USE SHIPS THE modelopt
+// QUANTIZATION PATH, and named that image by a TAG: gunbc-vllm-glm53-gb10:derived-c99be081f219d123.
+// The serving-arm row for the live runtime pins its image by CONTENT ID, and the arm's own reading
+// discipline (gunbc.spark.runtime_architecture_registry_reading reading_applies_to) is exact string
+// equality with no near-match arm: two references that resolve to one image on one host are exactly
+// the inference the corpus declines to accept without reading it through the digest.
+//
+// SO THE OBSERVATION IS CARRIED UNDER THE REFERENCE IT WAS REPORTED AGAINST, with its provenance,
+// and the fold below JOINS it to the arm's pin rather than assuming the join. When the tag and the
+// pin name different strings the answer is NotEstablished with the one command that settles it. That
+// is DESIGN section 4d's first arm: what was reported is carried as a report, not promoted to a
+// probe of the arm's digest by a reader who did not take it.
+//
+// THE PROBE THAT WOULD REPLACE THIS is a RuntimeCapabilityProbeRow in
+// gunbc.spark.serving_runtime_capability_probe, keyed by the arm's content id, with a capability
+// naming the modelopt config class; this report dissolves into that row when one is taken.
+type QuantizationPathReport {
+  image_reference: NonEmptyStr
+  quant_method: NonEmptyStr
+  present: Bool
+  reported_by: NonEmptyStr
+}
+
+data glm53_derived_image_modelopt_report: QuantizationPathReport = QuantizationPathReport {
+  image_reference: "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr,
+  quant_method: glm_5_3_nvfp4_quantization.quant_method,
+  present: true,
+  reported_by: "the GLM performance lane (calm-bat-65), 2026-09-18, in the brief that filed this projection: 'the image in use DOES register GlmMoeDsaForCausalLM and ships the modelopt quantization path; that was read from the image'. The instrument was not named and this session had no route to the host to re-execute it; the reference is the tag the lane used, not the content id the serving-arm row pins" as NonEmptyStr,
+}
+
+fn quantization_answer(rrow: ServingRuntimeRow, report: QuantizationPathReport, required_method: NonEmptyStr) -> StaticCompatibilityAnswer {
+  let pin = runtime_artifact_wire(a: rrow.artifact)
+  if (report.image_reference as String) != (pin as String) {
+    NotEstablished {
+      question: QuantizationMethodShippedByRuntime,
+      missing: join([
+        "the only observation of the ", required_method as String, " path was reported against ",
+        report.image_reference as String, " and this arm pins ", pin as String,
+        "; nothing here has established that the two name one image. `docker image inspect --format '\{\{.Id\}\}' ",
+        report.image_reference as String,
+        "` on the host that holds it settles the join, after which this report is re-keyed by the content id or replaced by a probe row",
+      ], "") as NonEmptyStr,
+    }
+  } else if (report.quant_method as String) != (required_method as String) {
+    NotEstablished {
+      question: QuantizationMethodShippedByRuntime,
+      missing: join([
+        "the report answers for ", report.quant_method as String, " and the checkpoint needs ", required_method as String,
+      ], "") as NonEmptyStr,
+    }
+  } else if report.present {
+    Established { question: QuantizationMethodShippedByRuntime, evidence: report.reported_by }
+  } else {
+    MeasuredNegative { question: QuantizationMethodShippedByRuntime, evidence: report.reported_by }
+  }
+}
+
+// THE FP4-ON-DEVICE QUESTION IS ASKED OF THE CAPABILITY PROBE ROSTER, keyed by the arm's own digest
+// and this fleet's observed compute capability. That roster has a Present answer for a DIFFERENT
+// image (the V4.1 published arm64 build, srv9, 2026-09-11) and no row for the GLM derived image, so
+// today this answers NotEstablished -- which is the honest state: cutlass_scaled_mm_supports_fp4 has
+// been called on a GB10 inside some image, not inside this one.
+fn fp4_device_answer(rrow: ServingRuntimeRow, device: GpuComputeCapability) -> StaticCompatibilityAnswer {
+  let pin = runtime_artifact_wire(a: rrow.artifact)
+  match capability_outcome(rows: v41_sm121_capability_probe_rows(), image_reference: pin, capability: Fp4WeightSupportedHere, device: device) {
+    OutcomeUnrecorded => NotEstablished {
+      question: Fp4WeightsSupportedOnDevice,
+      missing: join([
+        "no ", runtime_kernel_capability_label(c: Fp4WeightSupportedHere), " probe row exists for ", pin as String,
+        "; gunbc.spark.v41_runtime_image_probe executed inside that digest on a GB10 produces one",
+      ], "") as NonEmptyStr,
+    }
+    OutcomeConflicted { distinct_answers: n } => NotEstablished {
+      question: Fp4WeightsSupportedOnDevice,
+      missing: join(["the probe roster holds ", to_string(n), " distinct answers for ", pin as String, "; re-probe rather than choose"], "") as NonEmptyStr,
+    }
+    OutcomeFound { outcome: o } => match o {
+      KernelObservedPresent { symbol: s } => Established { question: Fp4WeightsSupportedOnDevice, evidence: s }
+      KernelObservedAbsent { symbol: s } => MeasuredNegative { question: Fp4WeightsSupportedOnDevice, evidence: s }
+      KernelProbeRefused { reason: r } => NotEstablished { question: Fp4WeightsSupportedOnDevice, missing: r }
+      KernelProbeSymbolUngrounded { roster: _, defect: d } => NotEstablished { question: Fp4WeightsSupportedOnDevice, missing: d }
+    }
+  }
+}
+
+fn static_compatibility_answers(crow: ServingCheckpointRow, rrow: ServingRuntimeRow, report: QuantizationPathReport, required_method: NonEmptyStr) -> List<StaticCompatibilityAnswer> {
+  [
+    architecture_answer(rrow: rrow, architecture: crow.architecture),
+    quantization_answer(rrow: rrow, report: report, required_method: required_method),
+    fp4_device_answer(rrow: rrow, device: gb10_observed_compute_capability),
+  ]
+}
+
+// ── THE DEPLOYMENT PROJECTION, ONE VALUE PER (CHECKPOINT, RUNTIME, TOPOLOGY, UTILISATION) ──────
+//
+// ADMITTED MEANS STATICALLY PLAUSIBLE AND NOTHING MORE: the weights fit with headroom AND every
+// static question is Established. A single NotEstablished answer refuses -- the projection does not
+// guess -- and the refusal carries every answer so a reader sees which fact is missing and which act
+// supplies it, rather than re-deriving the list.
+type DeploymentProjectionVerdict
+  = ProjectionAdmitsStatically { fit: WeightFitProjection, answers: List<StaticCompatibilityAnswer> }
+  | ProjectionRefused { cause: NonEmptyStr, fit: WeightFitProjection?, answers: List<StaticCompatibilityAnswer> }
+
+type DeploymentProjection sole_constructor {
+  checkpoint: ServingCheckpoint
+  runtime: ServingRuntime
+  topology: ServingTopology
+  verdict: DeploymentProjectionVerdict
+}
+
+fn fit_refusal_text(p: WeightFitProjection) -> String? {
+  match p.verdict {
+    WeightsFitWithHeadroom { kv_headroom_per_rank: _ } => none
+    WeightsExceedUsable { shortfall_per_rank: s } => Present { value: join([
+      "the weights do not fit: ", to_string(byte_size_count(b: p.weights_per_rank)), " bytes per rank across ",
+      to_string(p.ranks), " rank(s) against ", to_string(byte_size_count(b: p.usable_per_rank)),
+      " usable bytes per rank (", to_string(byte_size_count(b: p.pool_per_rank)), " pool at ",
+      to_string(basis_point_count(bp: p.utilization)), " basis points), short by ",
+      to_string(byte_size_count(b: s)), " bytes per rank before any KV",
+    ], "") }
+  }
+}
+
+fn unestablished_text(answers: List<StaticCompatibilityAnswer>) -> String? {
+  let failing = filter(answers, a => !answer_is_established(a: a))
+  if length(failing) == 0 {
+    none
+  } else {
+    Present { value: join(map(failing, a => answer_text(a: a)), "; ") }
+  }
+}
+
+fn project_deployment(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  manifest: GlmCheckpointManifest,
+  utilization: BasisPoint,
+  report: QuantizationPathReport,
+  required_method: NonEmptyStr,
+) -> DeploymentProjection {
+  let verdict = match serving_checkpoint_row(c: checkpoint) {
+    Absent => ProjectionRefused { cause: "no checkpoint row: the checkpoint's architecture and footprint are unmodelled" as NonEmptyStr, fit: none, answers: [] }
+    Present { value: crow } =>
+      match serving_runtime_row(r: runtime) {
+        Absent => ProjectionRefused { cause: "no runtime row: the image has no modelled identity to ask about" as NonEmptyStr, fit: none, answers: [] }
+        Present { value: rrow } => {
+          let fit = project_on_gb10(manifest: manifest, topology: topology, utilization: utilization)
+          let answers = static_compatibility_answers(crow: crow, rrow: rrow, report: report, required_method: required_method)
+          match fit_refusal_text(p: fit) {
+            Present { value: t } => ProjectionRefused { cause: t as NonEmptyStr, fit: Present { value: fit }, answers: answers }
+            Absent => match unestablished_text(answers: answers) {
+              Present { value: t } => ProjectionRefused { cause: t as NonEmptyStr, fit: Present { value: fit }, answers: answers }
+              Absent => ProjectionAdmitsStatically { fit: fit, answers: answers }
+            }
+          }
+        }
+      }
+  }
+  DeploymentProjection { checkpoint: checkpoint, runtime: runtime, topology: topology, verdict: verdict }
+}
+
+// ── THE RadixArk NVFP4 PROJECTIONS ON THE LIVE RUNTIME ───────────────────────────────────────
+//
+// THE TWO ROWS THE OPERATOR ASKED FOR, and one more that is the comparison baseline. Both NVFP4 rows
+// use the derived NoPE runtime the Group B arm serves on, the live arm's utilisation and the
+// redistribution's manifest; only the rank count differs.
+fn radixark_nvfp4_projection(topology: ServingTopology) -> DeploymentProjection {
+  project_deployment(
+    checkpoint: Glm53RadixArkNvfp4Modelopt,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: topology,
+    manifest: glm_5_3_nvfp4_manifest,
+    utilization: live_arm_utilization(),
+    report: glm53_derived_image_modelopt_report,
+    required_method: glm_5_3_nvfp4_quantization.quant_method,
+  )
+}
+
+fn radixark_nvfp4_tp4() -> DeploymentProjection {
+  radixark_nvfp4_projection(topology: FourSparkTp4)
+}
+
+fn radixark_nvfp4_tp8() -> DeploymentProjection {
+  radixark_nvfp4_projection(topology: EightSparkTp8)
+}
+
+// THE WEIGHT FIT ALONE, for the two rows and for the arm that is serving today. These are the numbers
+// a reader compares: bytes per rank, usable bytes per rank, headroom.
+fn radixark_nvfp4_fit(topology: ServingTopology) -> WeightFitProjection {
+  project_on_gb10(manifest: glm_5_3_nvfp4_manifest, topology: topology, utilization: live_arm_utilization())
+}
+
+fn glm53_flash_native_live_arm_fit() -> WeightFitProjection {
+  project_on_gb10(manifest: glm_5_3_flash_native_manifest, topology: FourSparkTp4, utilization: live_arm_utilization())
+}
+
+fn kv_headroom_per_rank(p: WeightFitProjection) -> ByteSize? {
+  match p.verdict {
+    WeightsFitWithHeadroom { kv_headroom_per_rank: h } => Present { value: h }
+    WeightsExceedUsable { shortfall_per_rank: _ } => none
+  }
+}
+
+// DOES THE PROJECTED ARM LEAVE MORE PER-RANK KV ROOM THAN THE LIVE ONE. Both sides through one fold,
+// so the comparison cannot be premised on two different notions of headroom.
+fn projection_leaves_more_kv_than_live_arm(topology: ServingTopology) -> Bool {
+  match kv_headroom_per_rank(p: radixark_nvfp4_fit(topology: topology)) {
+    Absent => false
+    Present { value: projected } =>
+      match kv_headroom_per_rank(p: glm53_flash_native_live_arm_fit()) {
+        Absent => true
+        Present { value: live } => byte_size_count(b: projected) > byte_size_count(b: live)
+      }
+  }
+}
+
+// ── EXPERT OFFLOAD IS REFUSED ON THIS HARDWARE, WITH THE REASON DERIVED ──────────────────────
+//
+// THE OBVIOUS WAY TO FIT A 465 GB MoE ON FEWER NODES IS TO KEEP THE EXPERTS SOMEWHERE LARGER AND
+// STREAM THE EIGHT A TOKEN NEEDS. That works when the accelerator has a smaller pool than the host:
+// the experts live in host DRAM and cross a bus. GB10 has no such pair. Its memory_kind is
+// UnifiedShared -- the host RAM and the GPU pool are the same physical LPDDR5x -- so "offload to host"
+// spills into the pool it was meant to relieve, and the next tier down is NVMe. The bytes that tier
+// would have to deliver per decoded token are derived below: the experts one token visits across the
+// stack, times one expert's on-disk bytes. Uncached, that is a per-token read no NVMe sustains at
+// interactive rates, and the refusal carries the figure so nobody re-derives it.
+//
+// THE DECISION IS MADE ON THE CATALOG'S MEMORY KIND, NOT ON PROSE. A GPU whose memory is Dram or Hbm
+// (a discrete part with a host behind it) is not refused here; the answer for it is NotProjected
+// because this module models no bus.
+type ExpertOffloadProjection
+  = OffloadRefusedUnifiedMemory { device: NonEmptyStr, expert_bytes_per_token: ByteSize, expert_visits_per_token: Nat }
+  | OffloadNotProjected { device: NonEmptyStr, memory_kind: String }
+
+fn memory_kind_label(k: MemoryKind) -> String {
+  match k {
+    Dram => "dram"
+    Hbm => "hbm"
+    UnifiedShared => "unified-shared"
+  }
+}
+
+fn expert_bytes_per_token(shape: GlmMoeDsaShape, expert_bytes: ByteSize) -> ByteSize {
+  byte_size(count: glm_5_3_routed_expert_visits_per_token(s: shape) * byte_size_count(b: expert_bytes))
+}
+
+fn project_expert_offload(shape: GlmMoeDsaShape, expert_bytes: ByteSize) -> ExpertOffloadProjection {
+  let device = nvidia_gb10_gpu_catalog.model
+  match nvidia_gb10_gpu_catalog.memory.memory_kind {
+    UnifiedShared => OffloadRefusedUnifiedMemory {
+      device: device,
+      expert_bytes_per_token: expert_bytes_per_token(shape: shape, expert_bytes: expert_bytes),
+      expert_visits_per_token: glm_5_3_routed_expert_visits_per_token(s: shape),
+    }
+    Dram => OffloadNotProjected { device: device, memory_kind: memory_kind_label(k: Dram) }
+    Hbm => OffloadNotProjected { device: device, memory_kind: memory_kind_label(k: Hbm) }
+  }
+}
+
+fn radixark_nvfp4_expert_offload() -> ExpertOffloadProjection {
+  project_expert_offload(shape: glm_5_3_shape, expert_bytes: nvfp4_representative_expert_bytes())
+}
+
+// ── THE READOUT, ONE TEXT PER PROJECTION FOR A PERSON ────────────────────────────────────────
+fn fit_text(p: WeightFitProjection) -> String {
+  join([
+    to_string(p.ranks), " rank(s): ", to_string(byte_size_count(b: p.weights_per_rank)), " weight bytes per rank, ",
+    to_string(byte_size_count(b: p.usable_per_rank)), " usable bytes per rank at ",
+    to_string(basis_point_count(bp: p.utilization)), " basis points of ",
+    to_string(byte_size_count(b: p.pool_per_rank)), " -- ",
+    match p.verdict {
+      WeightsFitWithHeadroom { kv_headroom_per_rank: h } => join(["FITS with ", to_string(byte_size_count(b: h)), " bytes per rank left for KV"], "")
+      WeightsExceedUsable { shortfall_per_rank: s } => join(["DOES NOT FIT, short by ", to_string(byte_size_count(b: s)), " bytes per rank"], "")
+    },
+  ], "")
+}
+
+fn projection_text(p: DeploymentProjection) -> String {
+  let head = join([
+    serving_checkpoint_wire(c: p.checkpoint) as String, " on ", serving_runtime_wire(r: p.runtime) as String,
+    " at ", serving_topology_wire(t: p.topology) as String, ": ",
+  ], "")
+  match p.verdict {
+    ProjectionAdmitsStatically { fit: f, answers: a } => join([
+      head, "ADMITTED STATICALLY (no launch has run). ", fit_text(p: f), ". ",
+      join(map(a, x => answer_text(a: x)), "; "),
+    ], "")
+    ProjectionRefused { cause: c, fit: f, answers: _ } => join([
+      head, "REFUSED: ", c as String, ". ",
+      match f {
+        Present { value: fp } => fit_text(p: fp)
+        Absent => "no fit computed"
+      },
+    ], "")
+  }
+}
+
+fn offload_text(o: ExpertOffloadProjection) -> String {
+  match o {
+    OffloadRefusedUnifiedMemory { device: d, expert_bytes_per_token: b, expert_visits_per_token: v } => join([
+      "expert offload REFUSED on ", d as String, ": its memory is unified-shared, so there is no larger host tier to spill into and the next tier is NVMe; uncached that is ",
+      to_string(v), " expert visits per token at ", to_string(byte_size_count(b: b)), " bytes per token",
+    ], "")
+    OffloadNotProjected { device: d, memory_kind: k } => join([
+      "expert offload NOT PROJECTED on ", d as String, " (", k, "): this module models no host-to-device bus",
+    ], "")
+  }
+}
+
+fn radixark_nvfp4_gb10_readout() -> String {
+  join([
+    projection_text(p: radixark_nvfp4_tp4()),
+    projection_text(p: radixark_nvfp4_tp8()),
+    join(["live GLM-5.3-Flash arm for comparison: ", fit_text(p: glm53_flash_native_live_arm_fit())], ""),
+    offload_text(o: radixark_nvfp4_expert_offload()),
+  ], "\n")
+}
+
+// THE RUN ENTRY. `gunbc run --entry dag/gunbc/spark/serving_fit_projection.dag --function
+// radixark_nvfp4_gb10_exit` is the instrument that re-derives every figure above; the exit is
+// success only when the eight-rank projection admits statically, and the readout travels in the
+// reason either way so a refusing run still says what it computed and which fact is missing.
+fn projection_admits(p: DeploymentProjection) -> Bool {
+  match p.verdict {
+    ProjectionAdmitsStatically { fit: _, answers: _ } => true
+    ProjectionRefused { cause: _, fit: _, answers: _ } => false
+  }
+}
+
+fn radixark_nvfp4_gb10_exit() -> ProcessExit {
+  let readout = radixark_nvfp4_gb10_readout()
+  if projection_admits(p: radixark_nvfp4_tp8()) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: readout)
+  }
+}

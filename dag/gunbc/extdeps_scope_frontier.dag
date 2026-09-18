@@ -523,6 +523,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/cloudflare/account_api_tokens.dag",
   "dag/extdeps/cloudflare/r2.dag",
   "dag/extdeps/deepseek/deepseek_v4_1_flash.dag",
+  "dag/extdeps/zhipu/glm_5_3.dag",
+  "dag/extdeps/radixark/glm_5_3_nvfp4.dag",
   "dag/extdeps/docker/images/gitcommit90_glm_53_one_spark.dag",
   "dag/extdeps/docker/images/timothystewart6_vllm_gb10.dag",
   "dag/extdeps/docker/images/xomoxcc_dgx_spark_sglang.dag",
