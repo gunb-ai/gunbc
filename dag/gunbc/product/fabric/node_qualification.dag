@@ -249,7 +249,9 @@ type CollectiveGroupReceipt {
   advertised: CollectiveGroupAdvertised
   collective_latency: CollectiveLatencyStanding
   collective_bandwidth: CollectiveBandwidthStanding
+  all_to_all_latency: CollectiveLatencyStanding
   rank_symmetry: RankSymmetryStanding
+  host_registered_ib_fallback: HostRegisteredIbFallbackStanding
 }
 
 type NodeQualificationReceipt {
@@ -266,6 +268,8 @@ type QualificationRefusal
   | CollectiveBandwidthDidNotHold { standing: CollectiveBandwidthStanding }
   | RankSymmetryDidNotHold { standing: RankSymmetryStanding }
   | GpuDirectRdmaDidNotHold { standing: GpuDirectRdmaQualification }
+  | AllToAllLatencyDidNotHold { standing: CollectiveLatencyStanding }
+  | HostRegisteredIbFallbackDidNotHold { standing: HostRegisteredIbFallbackStanding }
 
 type NodeQualificationAdmission
   = NodeQualified { receipt: NodeQualificationReceipt }
@@ -446,7 +450,7 @@ fn first_unread_rank(ranks: List<RankCollectiveReading>) -> RankCollectiveReadin
   }))
 }
 
-fn rank_first_latency(curve: CollectiveCurveReading) -> Nat? {
+fn rank_latency_at(curve: CollectiveCurveReading, at: ByteSize) -> Nat? {
   match curve {
     CollectiveCurveUnread { because: _ } => none
     CollectiveCurveRead {
@@ -459,19 +463,19 @@ fn rank_first_latency(curve: CollectiveCurveReading) -> Nat? {
       primitive_attribution: _,
       window: _,
     } =>
-      match samples.first() {
+      match sample_at_message_bytes(samples: samples, want: at) {
         Absent => none
         Present { value: s } => Present { value: nanosecond_count(n: sample_stricter_latency(s: s)) }
       }
   }
 }
 
-fn min_rank_latency(ranks: List<RankCollectiveReading>) -> Nat? {
+fn min_rank_latency(at: ByteSize, ranks: List<RankCollectiveReading>) -> Nat? {
   match ranks.first() {
     Absent => none
     Present { value: r } => {
-      let rest = min_rank_latency(ranks: ranks.skip(n: 1))
-      match rank_first_latency(curve: r.curve) {
+      let rest = min_rank_latency(at: at, ranks: ranks.skip(n: 1))
+      match rank_latency_at(curve: r.curve, at: at) {
         Absent => rest
         Present { value: lat } => match rest {
           Absent => Present { value: lat }
@@ -482,12 +486,12 @@ fn min_rank_latency(ranks: List<RankCollectiveReading>) -> Nat? {
   }
 }
 
-fn first_rank_without_latency(ranks: List<RankCollectiveReading>) -> HostIdentity? {
+fn first_rank_without_latency(at: ByteSize, ranks: List<RankCollectiveReading>) -> HostIdentity? {
   match ranks.first() {
     Absent => none
-    Present { value: r } => match rank_first_latency(curve: r.curve) {
+    Present { value: r } => match rank_latency_at(curve: r.curve, at: at) {
       Absent => Present { value: r.rank }
-      Present { value: _ } => first_rank_without_latency(ranks: ranks.skip(n: 1))
+      Present { value: _ } => first_rank_without_latency(at: at, ranks: ranks.skip(n: 1))
     }
   }
 }
@@ -495,14 +499,16 @@ fn first_rank_without_latency(ranks: List<RankCollectiveReading>) -> HostIdentit
 fn first_degraded_rank(
   floor: Nat,
   max_latency_multiple: Nat,
+  at: ByteSize,
   ranks: List<RankCollectiveReading>,
 ) -> HostIdentity? {
   match ranks.first() {
     Absent => none
-    Present { value: r } => match rank_first_latency(curve: r.curve) {
+    Present { value: r } => match rank_latency_at(curve: r.curve, at: at) {
       Absent => first_degraded_rank(
         floor: floor,
         max_latency_multiple: max_latency_multiple,
+        at: at,
         ranks: ranks.skip(n: 1),
       )
       Present { value: lat } => if lat > (floor * max_latency_multiple) {
@@ -511,6 +517,7 @@ fn first_degraded_rank(
         first_degraded_rank(
           floor: floor,
           max_latency_multiple: max_latency_multiple,
+          at: at,
           ranks: ranks.skip(n: 1),
         )
       }
@@ -550,6 +557,7 @@ fn qualify_rank_symmetry(
   expected: List<HostIdentity>,
   ranks: List<RankCollectiveReading>,
   max_latency_multiple: Nat,
+  at: ByteSize,
 ) -> RankSymmetryStanding {
   if expected.length() == 0 {
     RankSymmetryUnread {
@@ -565,33 +573,32 @@ fn qualify_rank_symmetry(
         Present { value: _ } => RankSymmetryUnread {
           because: "an expected rank has no independent curve; nccl-tests group output is not a per-rank producer" as NonEmptyStr,
         }
-        Absent => {
-    match first_unread_rank(ranks: ranks) {
-      Present { value: r } => match rank_curve_unread_reason(curve: r.curve) {
-        Present { value: b } => RankSymmetryUnread { because: b }
-        Absent => RankSymmetryUnread {
-          because: "rank curve unread without a reason" as NonEmptyStr,
-        }
-      }
-      Absent => match first_rank_without_latency(ranks: ranks) {
-        Present { value: _ } => RankSymmetryUnread {
-          because: "a rank produced no latency sample; missing latency is unread, not a floor" as NonEmptyStr,
-        }
-        Absent => match min_rank_latency(ranks: ranks) {
-          Absent => RankSymmetryUnread {
-            because: "no rank produced a latency sample" as NonEmptyStr,
+        Absent => match first_unread_rank(ranks: ranks) {
+          Present { value: r } => match rank_curve_unread_reason(curve: r.curve) {
+            Present { value: b } => RankSymmetryUnread { because: b }
+            Absent => RankSymmetryUnread {
+              because: "rank curve unread without a reason" as NonEmptyStr,
+            }
           }
-          Present { value: floor } => match first_degraded_rank(
-            floor: floor,
-            max_latency_multiple: max_latency_multiple,
-            ranks: ranks,
-          ) {
-            Present { value: degraded } => RankSymmetryFallsShort { degraded: degraded }
-            Absent => RankSymmetryAgrees { rank_count: ranks.length() }
+          Absent => match first_rank_without_latency(at: at, ranks: ranks) {
+            Present { value: _ } => RankSymmetryUnread {
+              because: "a rank produced no latency sample at the advertised message size; missing latency is unread, not a floor" as NonEmptyStr,
+            }
+            Absent => match min_rank_latency(at: at, ranks: ranks) {
+              Absent => RankSymmetryUnread {
+                because: "no rank produced a latency sample at the advertised message size" as NonEmptyStr,
+              }
+              Present { value: floor } => match first_degraded_rank(
+                floor: floor,
+                max_latency_multiple: max_latency_multiple,
+                at: at,
+                ranks: ranks,
+              ) {
+                Present { value: degraded } => RankSymmetryFallsShort { degraded: degraded }
+                Absent => RankSymmetryAgrees { rank_count: expected.length() }
+              }
+            }
           }
-        }
-      }
-      }
         }
       }
     }
@@ -653,11 +660,18 @@ fn qualify_collective_group(
       at: advertised.bandwidth_message_bytes,
       reading: measured.collective,
     ),
+    all_to_all_latency: qualify_collective_latency(
+      ceiling: advertised.latency_ceiling,
+      at: advertised.latency_message_bytes,
+      reading: measured.all_to_all,
+    ),
     rank_symmetry: qualify_rank_symmetry(
       expected: advertised.expected_ranks,
       ranks: measured.ranks,
       max_latency_multiple: advertised.rank_symmetry_max_latency_multiple,
+      at: advertised.latency_message_bytes,
     ),
+    host_registered_ib_fallback: measured.host_registered_ib_fallback,
   }
 }
 
@@ -745,6 +759,27 @@ fn symmetry_refusal(s: RankSymmetryStanding) -> List<QualificationRefusal> {
   }
 }
 
+fn all_to_all_refusal(s: CollectiveLatencyStanding) -> List<QualificationRefusal> {
+  match s {
+    CollectiveLatencyAgrees { ceiling: _, measured: _ } => []
+    CollectiveLatencyFallsShort { ceiling: _, measured: _ } =>
+      [AllToAllLatencyDidNotHold { standing: s }]
+    CollectiveLatencyUnread { ceiling: _, because: _ } =>
+      [AllToAllLatencyDidNotHold { standing: s }]
+  }
+}
+
+fn ib_fallback_refusal(s: HostRegisteredIbFallbackStanding) -> List<QualificationRefusal> {
+  match s {
+    HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
+      measured_with: _,
+      serving_revisions_not_censused: _,
+    } => []
+    HostRegisteredIbFallbackUnread { because: _ } =>
+      [HostRegisteredIbFallbackDidNotHold { standing: s }]
+  }
+}
+
 fn gpu_direct_refusal(s: GpuDirectRdmaQualification) -> List<QualificationRefusal> {
   match s {
     GpuDirectRdmaRecorded { capability: _ } => []
@@ -766,10 +801,16 @@ fn qualification_refusals(receipt: NodeQualificationReceipt) -> List<Qualificati
             latency_refusal(s: receipt.group.collective_latency),
             concat(
               bandwidth_refusal(s: receipt.group.collective_bandwidth),
-              concat(
-                symmetry_refusal(s: receipt.group.rank_symmetry),
-                gpu_direct_refusal(s: receipt.host.gpu_direct_rdma),
-              ),
+                concat(
+                  symmetry_refusal(s: receipt.group.rank_symmetry),
+                  concat(
+                    gpu_direct_refusal(s: receipt.host.gpu_direct_rdma),
+                    concat(
+                      all_to_all_refusal(s: receipt.group.all_to_all_latency),
+                      ib_fallback_refusal(s: receipt.group.host_registered_ib_fallback),
+                    ),
+                  ),
+                ),
             ),
           ),
         ),

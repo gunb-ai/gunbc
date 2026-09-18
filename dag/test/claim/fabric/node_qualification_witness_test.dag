@@ -30,6 +30,7 @@ import product.fabric.node_qualification {
   CollectivePrimitiveSameRuntime,
   HostRegisteredIbFallbackUnread, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
   HostRegisteredIbFallbackStanding,
+  NcclLibraryVersion, ServingNcclIdentity,
   AcceleratorCountAgrees, AcceleratorCountFallsShort, AcceleratorCountUnread,
   RailLinkModeAgrees, RailLinkModeDiffers, RailLinkModeUnread,
   NicPcieFallsShort, NicPcieUnread, NicPcieAgrees, NicPcieOfferUngrounded,
@@ -118,8 +119,31 @@ fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
   }
 }
 
+fn fx_all_to_all_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
+  CollectiveCurveRead {
+    samples: samples,
+    instrument: NcclTestsAllToAllPerf,
+    size_semantics: TotalBufferSplitPerPeer { rank_count: 2 },
+    small_message_shape: SmallMessageShapeUncharacterized,
+    engine_buffer_mode: EngineBufferModeUnestablished,
+    per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
+    primitive_attribution: CollectivePrimitiveAttributionUnestablished,
+    window: WindowStandingUnread { because: "fixture window" as NonEmptyStr },
+  }
+}
+
 fn fx_all_to_all_unread() -> CollectiveCurveReading {
   CollectiveCurveUnread { because: "fixture has no all-to-all curve" as NonEmptyStr }
+}
+
+fn fx_ib_ok() -> HostRegisteredIbFallbackStanding {
+  HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
+    measured_with: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+    serving_revisions_not_censused: ServingNcclIdentity {
+      torch_built_against: NcclLibraryVersion { major: 2, minor: 29, patch: 7 },
+      loaded_runtime: NcclLibraryVersion { major: 2, minor: 30, patch: 7 },
+    },
+  }
 }
 
 fn fx_ib_fallback_unread() -> HostRegisteredIbFallbackStanding {
@@ -137,8 +161,8 @@ fn fx_measured_all_agree() -> MeasuredNodeDelivery {
     },
     group: CollectiveGroupMeasured {
       collective: fx_curve(samples: [fx_sample()]),
-      all_to_all: fx_all_to_all_unread(),
-      host_registered_ib_fallback: fx_ib_fallback_unread(),
+      all_to_all: fx_all_to_all_curve(samples: [fx_sample()]),
+      host_registered_ib_fallback: fx_ib_ok(),
       ranks: [
         RankCollectiveReading {
           rank: "rank-0" as HostIdentity,
@@ -339,8 +363,8 @@ fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDel
     },
     group: CollectiveGroupMeasured {
       collective: fx_curve(samples: [fx_sample()]),
-      all_to_all: fx_all_to_all_unread(),
-      host_registered_ib_fallback: fx_ib_fallback_unread(),
+      all_to_all: fx_all_to_all_curve(samples: [fx_sample()]),
+      host_registered_ib_fallback: fx_ib_ok(),
       ranks: ranks,
     },
   }
@@ -372,7 +396,7 @@ test fn a_slow_rank_listed_first_is_still_degraded() -> Bool {
     ranks: [
     fx_rank(id: "rank-slow", sample: fx_slow_sample()),
     fx_rank(id: "rank-fast", sample: fx_sample()),
-  ], max_latency_multiple: 2) {
+  ], max_latency_multiple: 2, at: byte_size(count: 8)) {
     RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
     RankSymmetryAgrees { rank_count: _ } => false
     RankSymmetryUnread { because: _ } => false
@@ -570,5 +594,47 @@ test fn claiming_group_b_delivery_on_an_offer_is_refused() -> Bool {
   ) {
     Present { value: r } => r.length() > 0
     Absent => false
+  }
+}
+
+test fn a_partly_missing_expected_rank_is_unread_not_agrees() -> Bool {
+  match qualify_rank_symmetry(
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity, "rank-2" as HostIdentity, "rank-3" as HostIdentity],
+    ranks: [
+      fx_rank(id: "rank-0", sample: fx_sample()),
+      fx_rank(id: "rank-1", sample: fx_sample()),
+    ],
+    max_latency_multiple: 2,
+    at: byte_size(count: 8),
+  ) {
+    RankSymmetryUnread { because: _ } => true
+    RankSymmetryAgrees { rank_count: _ } => false
+    RankSymmetryFallsShort { degraded: _ } => false
+  }
+}
+
+test fn rank_symmetry_compares_the_advertised_size_not_each_curve_head() -> Bool {
+  match qualify_rank_symmetry(
+    expected: ["rank-fast" as HostIdentity, "rank-other" as HostIdentity],
+    ranks: [
+      fx_rank(id: "rank-fast", sample: fx_sample()),
+      RankCollectiveReading {
+        rank: "rank-other" as HostIdentity,
+        curve: fx_curve(samples: [
+          CollectiveSample {
+            message_bytes: byte_size(count: 1048576),
+            bus_bandwidth: bandwidth(count: 200),
+            in_place_latency: nanosecond(count: 4494060),
+            out_of_place_latency: nanosecond(count: 4494060),
+          },
+        ]),
+      },
+    ],
+    max_latency_multiple: 2,
+    at: byte_size(count: 8),
+  ) {
+    RankSymmetryUnread { because: _ } => true
+    RankSymmetryFallsShort { degraded: _ } => false
+    RankSymmetryAgrees { rank_count: _ } => false
   }
 }
