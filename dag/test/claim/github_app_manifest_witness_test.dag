@@ -36,9 +36,9 @@ import extdeps.github.app {
   AppPrivateToOwner,
   app_visibility_wire_bool,
   GitHubWebhookEvent,
-  InstallationEvent,
-  InstallationRepositoriesEvent,
-  PushEvent,
+  WebhookInstallation,
+  WebhookInstallationRepositories,
+  WebhookPush,
   webhook_event_wire_name,
   webhook_event_from_wire,
   permission_access_wire_name,
@@ -50,7 +50,6 @@ import extdeps.github.app {
   ManifestAdmitted,
   ManifestDuplicatePermission,
   ManifestDuplicateEvent,
-  ManifestFieldUnrenderable,
   admit_app_manifest,
   AppManifestRendered,
   AppManifestNotRenderable,
@@ -198,10 +197,10 @@ test fn w_manifest_renders_every_declared_permission_at_its_wire_name() -> Bool 
   match render_app_manifest(m: census_app_manifest) {
     AppManifestNotRenderable { admission: _ } => false
     AppManifestRendered { document: d } =>
-      string_contains(s: d, pattern: "\"default_permissions\":{")
-        && string_contains(s: d, pattern: "\"metadata\":\"read\"")
-        && string_contains(s: d, pattern: "\"pull_requests\":\"read\"")
-        && string_contains(s: d, pattern: "\"workflows\":\"read\"")
+      string_contains(s: d, pattern: "\"default_permissions\": {")
+        && string_contains(s: d, pattern: "\"metadata\": \"read\"")
+        && string_contains(s: d, pattern: "\"pull_requests\": \"read\"")
+        && string_contains(s: d, pattern: "\"workflows\": \"read\"")
         && !string_contains(s: d, pattern: "\"administration\"")
         && !string_contains(s: d, pattern: "\"write\"")
   }
@@ -211,11 +210,11 @@ test fn w_manifest_renders_hook_events_visibility_and_redirect() -> Bool {
   match render_app_manifest(m: census_app_manifest) {
     AppManifestNotRenderable { admission: _ } => false
     AppManifestRendered { document: d } =>
-      string_contains(s: d, pattern: "\"name\":\"gunbc-global-census\"")
-        && string_contains(s: d, pattern: "\"hook_attributes\":{\"url\":\"https://github.com/gunb-ai/gunbc/blob/main/DESIGN.md\",\"active\":false}")
-        && string_contains(s: d, pattern: "\"default_events\":[\"installation\",\"installation_repositories\"]")
-        && string_contains(s: d, pattern: "\"public\":true")
-        && string_contains(s: d, pattern: "\"redirect_url\":\"https://gunb.ai/github-app-manifest-return\"")
+      string_contains(s: d, pattern: "\"name\": \"gunbc-global-census\"")
+        && string_contains(s: d, pattern: "\"hook_attributes\": {\"url\": \"https://github.com/gunb-ai/gunbc/blob/main/DESIGN.md\", \"active\": false}")
+        && string_contains(s: d, pattern: "\"default_events\": [\"installation\", \"installation_repositories\"]")
+        && string_contains(s: d, pattern: "\"public\": true")
+        && string_contains(s: d, pattern: "\"redirect_url\": \"https://gunb.ai/github-app-manifest-return\"")
         && !string_contains(s: d, pattern: "\"setup_url\"")
   }
 }
@@ -279,34 +278,17 @@ test fn w_manifest_refuses_a_duplicated_permission_axis() -> Bool {
     ManifestDuplicatePermission { axis: a } => a == ContentsAxis
     ManifestAdmitted { manifest: _ } => false
     ManifestDuplicateEvent { event: _ } => false
-    ManifestFieldUnrenderable { field: _, value: _ } => false
   }
 }
 
 test fn w_manifest_refuses_a_duplicated_event() -> Bool {
-  match admit_app_manifest(m: manifest_with_events(events: [InstallationEvent, PushEvent, InstallationEvent])) {
-    ManifestDuplicateEvent { event: e } => e == InstallationEvent
+  match admit_app_manifest(m: manifest_with_events(events: [WebhookInstallation, WebhookPush, WebhookInstallation])) {
+    ManifestDuplicateEvent { event: e } => e == WebhookInstallation
     ManifestAdmitted { manifest: _ } => false
     ManifestDuplicatePermission { axis: _ } => false
-    ManifestFieldUnrenderable { field: _, value: _ } => false
   }
 }
 
-// A NAME CARRYING A QUOTE WOULD RENDER A DIFFERENT MANIFEST THAN THE ONE DECLARED. This is the red
-// that makes manifest_text_is_renderable a wall rather than decoration: without it the document below
-// would carry an injected default_permissions object and GitHub would create the App it described.
-test fn w_manifest_refuses_an_unrenderable_name_rather_than_escaping_it() -> Bool {
-  match render_app_manifest(m: manifest_with_name(name: "evil\",\"public\":true,\"x\":\"" as NonEmptyStr)) {
-    AppManifestRendered { document: _ } => false
-    AppManifestNotRenderable { admission: a } =>
-      match a {
-        ManifestFieldUnrenderable { field: f, value: _ } => (f as String) == "name"
-        ManifestAdmitted { manifest: _ } => false
-        ManifestDuplicatePermission { axis: _ } => false
-        ManifestDuplicateEvent { event: _ } => false
-      }
-  }
-}
 
 fn manifest_with_redirect(uri: Uri?) -> GitHubAppManifest {
   GitHubAppManifest {
@@ -325,21 +307,33 @@ fn manifest_with_redirect(uri: Uri?) -> GitHubAppManifest {
   }
 }
 
-// AN OPTIONAL FIELD IS STILL A RENDERED FIELD. redirect_url and setup_url are Optional and are
-// written into the document when present, so the renderability admission has to reach them; an
-// earlier cut checked only the required URLs and this claim is the red that fixed it.
-test fn w_an_unrenderable_optional_url_is_refused_too() -> Bool {
+
+// THE ESCAPER IS THE WALL, NOT A REFUSAL. A name carrying a quote must not be able to close the
+// string and inject members - if it could, the document GitHub reads would be a different manifest
+// than the one declared, and it would create the App that document describes. extdeps.languages.json.emit
+// is cited to RFC 8259 and escapes, so the injected text survives as DATA inside the name. This claim
+// is the red for that: it fails if the serializer is swapped for naive concatenation, and it fails if
+// the injected `"public":false` reaches the document as a member.
+test fn w_a_quote_in_a_manifest_field_is_escaped_not_injected() -> Bool {
+  match render_app_manifest(m: manifest_with_name(name: "evil\",\"public\":false,\"x\":\"" as NonEmptyStr)) {
+    AppManifestNotRenderable { admission: _ } => false
+    AppManifestRendered { document: d } =>
+      string_contains(s: d, pattern: "\\\"public\\\":false")
+        && string_contains(s: d, pattern: "\"public\": true")
+        && !string_contains(s: d, pattern: "\"public\": false")
+  }
+}
+
+// AN OPTIONAL FIELD IS A RENDERED FIELD AND GOES THROUGH THE SAME ESCAPER. redirect_url and setup_url
+// are written into the document when present, so they are not a second encoding path.
+test fn w_an_optional_url_is_escaped_on_the_same_path() -> Bool {
   match render_app_manifest(m: manifest_with_redirect(
-    uri: Present { value: Uri { scheme: Https, locator: "gunb.ai/x\",\"public\":true" as NonEmptyStr } },
+    uri: Present { value: Uri { scheme: Https, locator: "gunb.ai/x\",\"public\":false" as NonEmptyStr } },
   )) {
-    AppManifestRendered { document: _ } => false
-    AppManifestNotRenderable { admission: a } =>
-      match a {
-        ManifestFieldUnrenderable { field: f, value: _ } => (f as String) == "redirect_url"
-        ManifestAdmitted { manifest: _ } => false
-        ManifestDuplicatePermission { axis: _ } => false
-        ManifestDuplicateEvent { event: _ } => false
-      }
+    AppManifestNotRenderable { admission: _ } => false
+    AppManifestRendered { document: d } =>
+      string_contains(s: d, pattern: "\\\"public\\\":false")
+        && !string_contains(s: d, pattern: "\"public\": false")
   }
 }
 
@@ -368,7 +362,7 @@ test fn w_registration_instruction_carries_the_url_and_the_manifest() -> Bool {
     RegistrationInstructionUnavailable { reason: _ } => false
     RegistrationInstructionReady { intervention: i } =>
       string_contains(s: i.instruction as String, pattern: "?state=nonce-1")
-        && string_contains(s: i.instruction as String, pattern: "\"default_permissions\":{")
+        && string_contains(s: i.instruction as String, pattern: "\"default_permissions\": {")
         && ((i.subject as String) == (census_app_name as String))
   }
 }
@@ -440,17 +434,17 @@ test fn w_permission_agreement_is_directional() -> Bool {
 }
 
 test fn w_webhook_event_round_trips_and_refuses_an_unmodeled_event() -> Bool {
-  match webhook_event_from_wire(name: webhook_event_wire_name(event: InstallationRepositoriesEvent) as String) {
+  match webhook_event_from_wire(name: webhook_event_wire_name(event: WebhookInstallationRepositories) as String) {
     Absent => false
     Present { value: v } =>
-      (v == InstallationRepositoriesEvent)
+      (v == WebhookInstallationRepositories)
         && match webhook_event_from_wire(name: "package") { Absent => true  Present { value: _ } => false }
   }
 }
 
 test fn w_event_agreement_flags_a_missing_subscription() -> Bool {
   match event_agreement(declared: census_app_default_events, observed: ["installation"]) {
-    EventNotSubscribed { event: e } => e == InstallationRepositoriesEvent
+    EventNotSubscribed { event: e } => e == WebhookInstallationRepositories
     EventsAgree => false
   }
 }
@@ -918,7 +912,7 @@ test fn w_installation_token_request_renders_its_narrowings_and_names_its_endpoi
     permissions: PermissionNarrowingOmitted,
   }
   (installation_token_request_body(request: narrowed)
-     == "{\"repositories\":[\"gunbc\"],\"permissions\":{\"contents\":\"read\"}}")
+     == "{\"repositories\": [\"gunbc\"], \"permissions\": {\"contents\": \"read\"}}")
     && (installation_token_request_body(request: omitted) == "{}")
     && (installation_token_request_url(request: omitted)
           == "https://api.github.com/app/installations/77/access_tokens")

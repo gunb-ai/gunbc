@@ -19,6 +19,17 @@ import extdeps.uri {
 import extdeps.crypto.hash { HashAlgorithm, Sha256, Sha512 }
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  json_kv,
+  json_bool,
+  json_int,
+  json_string,
+  json_array,
+  json_object,
+  serialize_json,
+}
 import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
 import extdeps.transports.rest { RestOutcome }
 import v2.std.algebra { fold_list }
@@ -690,40 +701,50 @@ fn observed_permissions_from_wire_map(m: Map<String, String>) -> ObservedPermiss
 // manifest, so the write side is closed by construction, while the read side stays List<NonEmptyStr>
 // on GitHubAppInstallation as it already did. The partiality is a declared frontier row below, not
 // a silent subset.
+//
+// IT OVERLAPS extdeps.github.actions_token GitHubWorkflowEvent AND THAT IS A DECLARED DIVERGENCE,
+// NOT AN OVERSIGHT (DESIGN 3b: a deliberate departure with its reason beside it is the admitted
+// middle value; an unstated one is the red). That type answers WHICH EVENT TRIGGERED A WORKFLOW RUN
+// and its members include workflow_dispatch, merge_group and schedule -- which are workflow triggers
+// an App cannot subscribe to at all -- while this one answers WHICH EVENTS AN APP SUBSCRIBES TO. The
+// two sets intersect at push and pull_request because GitHub draws both from one catalogue, so the
+// arms here are spelled Webhook* rather than *Event: the same upstream name under two different
+// questions is exactly where a bare cross-module reference becomes ambiguous, and it did -- three
+// arms collided by name before this spelling. The consolidation question is the frontier row below.
 type GitHubWebhookEvent
-  = InstallationEvent
-  | InstallationRepositoriesEvent
-  | InstallationTargetEvent
-  | MetaEvent
-  | PushEvent
-  | PullRequestEvent
-  | CheckRunEvent
-  | CheckSuiteEvent
-  | WorkflowRunEvent
-  | WorkflowJobEvent
-  | RepositoryEvent
-  | PublicEvent
+  = WebhookInstallation
+  | WebhookInstallationRepositories
+  | WebhookInstallationTarget
+  | WebhookMeta
+  | WebhookPush
+  | WebhookPullRequest
+  | WebhookCheckRun
+  | WebhookCheckSuite
+  | WebhookWorkflowRun
+  | WebhookWorkflowJob
+  | WebhookRepository
+  | WebhookPublic
 
 data all_modeled_webhook_events: List<GitHubWebhookEvent> = [
-  InstallationEvent, InstallationRepositoriesEvent, InstallationTargetEvent, MetaEvent,
-  PushEvent, PullRequestEvent, CheckRunEvent, CheckSuiteEvent, WorkflowRunEvent,
-  WorkflowJobEvent, RepositoryEvent, PublicEvent
+  WebhookInstallation, WebhookInstallationRepositories, WebhookInstallationTarget, WebhookMeta,
+  WebhookPush, WebhookPullRequest, WebhookCheckRun, WebhookCheckSuite, WebhookWorkflowRun,
+  WebhookWorkflowJob, WebhookRepository, WebhookPublic
 ]
 
 fn webhook_event_wire_name(event: GitHubWebhookEvent) -> NonEmptyStr {
   match event {
-    InstallationEvent => "installation"
-    InstallationRepositoriesEvent => "installation_repositories"
-    InstallationTargetEvent => "installation_target"
-    MetaEvent => "meta"
-    PushEvent => "push"
-    PullRequestEvent => "pull_request"
-    CheckRunEvent => "check_run"
-    CheckSuiteEvent => "check_suite"
-    WorkflowRunEvent => "workflow_run"
-    WorkflowJobEvent => "workflow_job"
-    RepositoryEvent => "repository"
-    PublicEvent => "public"
+    WebhookInstallation => "installation"
+    WebhookInstallationRepositories => "installation_repositories"
+    WebhookInstallationTarget => "installation_target"
+    WebhookMeta => "meta"
+    WebhookPush => "push"
+    WebhookPullRequest => "pull_request"
+    WebhookCheckRun => "check_run"
+    WebhookCheckSuite => "check_suite"
+    WebhookWorkflowRun => "workflow_run"
+    WebhookWorkflowJob => "workflow_job"
+    WebhookRepository => "repository"
+    WebhookPublic => "public"
   }
 }
 
@@ -814,61 +835,7 @@ type GitHubAppManifestAdmission
   = ManifestAdmitted { manifest: GitHubAppManifest }
   | ManifestDuplicatePermission { axis: GitHubPermissionAxis }
   | ManifestDuplicateEvent { event: GitHubWebhookEvent }
-  | ManifestFieldUnrenderable { field: NonEmptyStr, value: String }
 
-// A MANIFEST FIELD THAT CANNOT BE RENDERED IS REFUSED, NOT ESCAPED. This module renders the manifest
-// as JSON below without a string escaper, so a value carrying a quote or a backslash would produce a
-// document GitHub reads as a different manifest than the one declared - the fabricated-plausible-output
-// arm of DESIGN 5. Writing an escaper here would be a second authority for JSON string encoding
-// beside std.serialization; refusing is total, decidable, and costs nothing, because no App name,
-// URL or description we declare contains either character.
-fn manifest_text_is_renderable(value: String) -> Bool {
-  !string_contains(s: value, pattern: "\"") && !string_contains(s: value, pattern: "\\")
-}
-
-fn manifest_uri_renderable_refusal(field: NonEmptyStr, uri: Uri) -> GitHubAppManifestAdmission? {
-  if manifest_text_is_renderable(value: (uri_wire(uri: uri) as String)) {
-    none
-  } else {
-    Present { value: ManifestFieldUnrenderable { field: field, value: (uri_wire(uri: uri) as String) } }
-  }
-}
-
-fn manifest_optional_uri_refusal(field: NonEmptyStr, uri: Uri?) -> List<GitHubAppManifestAdmission?> {
-  match uri {
-    Absent => []
-    Present { value: u } => [manifest_uri_renderable_refusal(field: field, uri: u)]
-  }
-}
-
-fn first_unrenderable_manifest_field(m: GitHubAppManifest) -> GitHubAppManifestAdmission? {
-  if !manifest_text_is_renderable(value: m.name as String) {
-    Present { value: ManifestFieldUnrenderable { field: "name" as NonEmptyStr, value: m.name as String } }
-  } else if !manifest_text_is_renderable(value: m.description) {
-    Present { value: ManifestFieldUnrenderable { field: "description" as NonEmptyStr, value: m.description } }
-  } else {
-    fold_list(
-      xs: concat(
-        concat(
-          [manifest_uri_renderable_refusal(field: "url" as NonEmptyStr, uri: m.url),
-           manifest_uri_renderable_refusal(field: "hook_attributes.url" as NonEmptyStr, uri: m.hook_attributes.url)],
-          concat(
-            manifest_optional_uri_refusal(field: "redirect_url" as NonEmptyStr, uri: m.redirect_url),
-            manifest_optional_uri_refusal(field: "setup_url" as NonEmptyStr, uri: m.setup_url)
-          )
-        ),
-        map(m.callback_urls, u => manifest_uri_renderable_refusal(field: "callback_urls" as NonEmptyStr, uri: u))
-      ),
-      empty: none,
-      cons: fn(found, candidate) {
-        match found {
-          Present { value: v } => Present { value: v }
-          Absent => candidate
-        }
-      }
-    )
-  }
-}
 
 fn admit_app_manifest(m: GitHubAppManifest) -> GitHubAppManifestAdmission {
   match first_duplicated_permission(perms: m.default_permissions) {
@@ -876,11 +843,7 @@ fn admit_app_manifest(m: GitHubAppManifest) -> GitHubAppManifestAdmission {
     Absent =>
       match first_duplicated_event(events: m.default_events) {
         Present { value: e } => ManifestDuplicateEvent { event: e }
-        Absent =>
-          match first_unrenderable_manifest_field(m: m) {
-            Present { value: refusal } => refusal
-            Absent => ManifestAdmitted { manifest: m }
-          }
+        Absent => ManifestAdmitted { manifest: m }
       }
   }
 }
@@ -889,77 +852,68 @@ fn admit_app_manifest(m: GitHubAppManifest) -> GitHubAppManifestAdmission {
 // FIELD from the owner's browser at a settings page, because creating an App is an act of the
 // account's owner and nothing else may perform it. So the wire artifact this module produces is a
 // JSON DOCUMENT handed to that human, not a REST body - which is why there is no manifest operation
-// on any service below, and why default_permissions renders as a JSON object here rather than
+// on any service below, and why default_permissions is built as an object here rather than
 // travelling as a Map through a transport that would have to build one.
 //
-// EVERY RENDERED VALUE HAS PASSED admit_app_manifest. The renderer takes the admission's payload
-// rather than a bare GitHubAppManifest so a caller cannot reach it with an unrenderable field; that
-// is the construction wall the refusal arm exists to stand behind (DESIGN 5).
-fn json_string(value: String) -> String {
-  concat("\"", concat(value, "\""))
-}
-
-fn json_bool(value: Bool) -> String {
-  if value { "true" } else { "false" }
-}
-
-fn json_member(key: String, rendered: String) -> String {
-  concat(json_string(value: key), concat(":", rendered))
-}
-
-fn json_object(members: List<String>) -> String {
-  concat("{", concat(join(members, ","), "}"))
-}
-
-fn json_array(elements: List<String>) -> String {
-  concat("[", concat(join(elements, ","), "]"))
-}
-
-fn manifest_permission_member(p: GitHubAppPermission) -> String {
-  json_member(
+// IT IS BUILT AS A JsonValue AND SERIALIZED BY extdeps.languages.json.emit, WHICH IS CITED TO RFC
+// 8259 AND ESCAPES. An earlier cut of this module hand-rolled five string helpers - json_string,
+// json_bool, json_member, json_object, json_array - and refused any value carrying a quote or a
+// backslash, on the reasoning that writing an escaper here would fork the JSON authority. The
+// reasoning was right and the conclusion was wrong in both directions: the fork was the five helpers
+// themselves (that module already declares those exact names, which is how the collision surfaced),
+// and refusing a legal character the real emitter handles correctly is DESIGN 4d over-prohibition -
+// forbidding more of the world than the evidence supports, and paid for by every future App name
+// with an apostrophe-adjacent character in it. serialize_json is the single authority; a value that
+// needs escaping gets escaped.
+fn manifest_permission_kv(p: GitHubAppPermission) -> JsonKeyValue {
+  json_kv(
     key: permission_axis_wire_name(axis: p.name) as String,
-    rendered: json_string(value: permission_access_wire_name(access: p.access) as String),
+    value: json_string(s: permission_access_wire_name(access: p.access) as String),
   )
 }
 
-fn manifest_optional_uri_member(key: String, uri: Uri?) -> List<String> {
+fn manifest_optional_uri_kv(key: String, uri: Uri?) -> List<JsonKeyValue> {
   match uri {
     Absent => []
-    Present { value: u } => [json_member(key: key, rendered: json_string(value: uri_wire(uri: u) as String))]
+    Present { value: u } => [json_kv(key: key, value: json_string(s: uri_wire(uri: u) as String))]
   }
 }
 
-fn app_manifest_json_document(admitted: GitHubAppManifest) -> String {
+fn app_manifest_json_value(admitted: GitHubAppManifest) -> JsonValue {
   json_object(members: concat(
     concat(
       [
-        json_member(key: "name", rendered: json_string(value: admitted.name as String)),
-        json_member(key: "url", rendered: json_string(value: uri_wire(uri: admitted.url) as String)),
-        json_member(key: "description", rendered: json_string(value: admitted.description)),
-        json_member(key: "public", rendered: json_bool(value: app_visibility_wire_bool(v: admitted.public))),
-        json_member(key: "request_oauth_on_install", rendered: json_bool(value: admitted.request_oauth_on_install)),
-        json_member(key: "setup_on_update", rendered: json_bool(value: admitted.setup_on_update)),
-        json_member(key: "hook_attributes", rendered: json_object(members: [
-          json_member(key: "url", rendered: json_string(value: uri_wire(uri: admitted.hook_attributes.url) as String)),
-          json_member(key: "active", rendered: json_bool(value: admitted.hook_attributes.active)),
+        json_kv(key: "name", value: json_string(s: admitted.name as String)),
+        json_kv(key: "url", value: json_string(s: uri_wire(uri: admitted.url) as String)),
+        json_kv(key: "description", value: json_string(s: admitted.description)),
+        json_kv(key: "public", value: json_bool(b: app_visibility_wire_bool(v: admitted.public))),
+        json_kv(key: "request_oauth_on_install", value: json_bool(b: admitted.request_oauth_on_install)),
+        json_kv(key: "setup_on_update", value: json_bool(b: admitted.setup_on_update)),
+        json_kv(key: "hook_attributes", value: json_object(members: [
+          json_kv(key: "url", value: json_string(s: uri_wire(uri: admitted.hook_attributes.url) as String)),
+          json_kv(key: "active", value: json_bool(b: admitted.hook_attributes.active)),
         ])),
-        json_member(key: "callback_urls", rendered: json_array(elements: map(
+        json_kv(key: "callback_urls", value: json_array(elements: map(
           admitted.callback_urls,
-          u => json_string(value: uri_wire(uri: u) as String)
+          u => json_string(s: uri_wire(uri: u) as String)
         ))),
-        json_member(key: "default_events", rendered: json_array(elements: map(
+        json_kv(key: "default_events", value: json_array(elements: map(
           admitted.default_events,
-          e => json_string(value: webhook_event_wire_name(event: e) as String)
+          e => json_string(s: webhook_event_wire_name(event: e) as String)
         ))),
-        json_member(key: "default_permissions", rendered: json_object(members: map(
+        json_kv(key: "default_permissions", value: json_object(members: map(
           admitted.default_permissions,
-          p => manifest_permission_member(p: p)
+          p => manifest_permission_kv(p: p)
         ))),
       ],
-      manifest_optional_uri_member(key: "redirect_url", uri: admitted.redirect_url)
+      manifest_optional_uri_kv(key: "redirect_url", uri: admitted.redirect_url)
     ),
-    manifest_optional_uri_member(key: "setup_url", uri: admitted.setup_url)
+    manifest_optional_uri_kv(key: "setup_url", uri: admitted.setup_url)
   ))
+}
+
+fn app_manifest_json_document(admitted: GitHubAppManifest) -> String {
+  serialize_json(v: app_manifest_json_value(admitted: admitted))
 }
 
 type RenderedAppManifest
@@ -974,8 +928,6 @@ fn render_app_manifest(m: GitHubAppManifest) -> RenderedAppManifest {
       AppManifestNotRenderable { admission: ManifestDuplicatePermission { axis: a } }
     ManifestDuplicateEvent { event: e } =>
       AppManifestNotRenderable { admission: ManifestDuplicateEvent { event: e } }
-    ManifestFieldUnrenderable { field: f, value: v } =>
-      AppManifestNotRenderable { admission: ManifestFieldUnrenderable { field: f, value: v } }
   }
 }
 
@@ -1292,37 +1244,37 @@ fn installation_token_request_url(request: GitHubInstallationTokenRequest) -> St
   github_app_installation_access_token_url(installation_id: request.installation_id.value)
 }
 
-fn installation_token_repository_members(narrowing: GitHubInstallationRepositoryNarrowing) -> List<String> {
+fn installation_token_repository_members(narrowing: GitHubInstallationRepositoryNarrowing) -> List<JsonKeyValue> {
   match narrowing {
     RepositoryNarrowingOmitted => []
     SelectedRepositoryNames { names: ns } =>
-      [json_member(key: "repositories", rendered: json_array(elements: map(ns, n => json_string(value: n as String))))]
+      [json_kv(key: "repositories", value: json_array(elements: map(ns, n => json_string(s: n as String))))]
     SelectedRepositoryIds { ids: ids } =>
-      [json_member(key: "repository_ids", rendered: json_array(elements: map(ids, i => to_string(i.value))))]
+      [json_kv(key: "repository_ids", value: json_array(elements: map(ids, i => json_int(n: i.value))))]
   }
 }
 
-fn installation_token_permission_members(narrowing: GitHubInstallationPermissionNarrowing) -> List<String> {
+fn installation_token_permission_members(narrowing: GitHubInstallationPermissionNarrowing) -> List<JsonKeyValue> {
   match narrowing {
     PermissionNarrowingOmitted => []
     SelectedPermissions { permissions: ps } =>
-      [json_member(key: "permissions", rendered: json_object(members: map(ps, p => manifest_permission_member(p: p))))]
+      [json_kv(key: "permissions", value: json_object(members: map(ps, p => manifest_permission_kv(p: p))))]
   }
 }
 
 fn installation_token_request_body(request: GitHubInstallationTokenRequest) -> String {
-  json_object(members: concat(
+  serialize_json(v: json_object(members: concat(
     installation_token_repository_members(narrowing: request.repositories),
     installation_token_permission_members(narrowing: request.permissions)
-  ))
+  )))
 }
 
 data modeled_webhook_event_vocabulary_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.github.app", decl_name: "GitHubWebhookEvent"),
-    reason: "GitHubWebhookEvent spells twelve of the events webhook_events_citation documents, chosen because they are the ones an App-acquisition and census manifest can subscribe to; the write side is closed by construction (an unmodeled event cannot be rendered into a manifest) and the read side stays List<NonEmptyStr> on GitHubAppInstallation, so the partiality costs expressiveness rather than safety",
+    reason: "TWO FACTS, ONE ROW, because they retire together. FIRST, partiality: GitHubWebhookEvent spells twelve of the events webhook_events_citation documents, chosen because they are the ones an App-acquisition and census manifest can subscribe to; the write side is closed by construction (an unmodeled event cannot be rendered into a manifest) and the read side stays List<NonEmptyStr> on GitHubAppInstallation, so the partiality costs expressiveness rather than safety. SECOND, overlap: extdeps.github.actions_token GitHubWorkflowEvent independently spells push and pull_request for a different question (which event triggered a workflow run), so one upstream catalogue currently has two partial cuts in this corpus",
     dissolution: unbound_dissolution(
-      description: "dissolves one arm at a time as a consumer needs an event this coproduct cannot spell; a consumer that declares an event in a manifest and finds no arm for it adds that arm with its wire name from webhook_events_citation. Transcribing the whole documented catalogue with no consumer would be the dangling modeling DESIGN 3c refuses"
+      description: "dissolves when ONE cited carrier for GitHub's webhook-event catalogue exists and BOTH consumers derive from it -- this module's manifest default_events and extdeps.github.actions_token GitHubWorkflowEvent's push/pull_request arms -- so that adding an event is one row rather than two. Adding an arm to THIS type alone does not fire it, and neither does a witness that the fold exists. Until then a consumer that declares an event this coproduct cannot spell adds that arm with its wire name from webhook_events_citation; transcribing the whole documented catalogue with no consumer would be the dangling modeling DESIGN 3c refuses"
     )
   )
 ]

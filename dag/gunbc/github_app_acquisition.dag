@@ -45,8 +45,8 @@ import extdeps.github.app {
   GitHubAppHookAttributes,
   AppPublic,
   GitHubWebhookEvent,
-  InstallationEvent,
-  InstallationRepositoriesEvent,
+  WebhookInstallation,
+  WebhookInstallationRepositories,
   webhook_event_wire_name,
   webhook_event_from_wire,
   GitHubAppRegistrationTarget,
@@ -121,8 +121,8 @@ data census_app_permissions: List<GitHubAppPermission> = [
 // because no receiver exists yet: the manifest schema REQUIRES a hook URL, so the switch is what
 // carries "nothing listens here" honestly rather than an omitted field.
 data census_app_default_events: List<GitHubWebhookEvent> = [
-  InstallationEvent,
-  InstallationRepositoriesEvent
+  WebhookInstallation,
+  WebhookInstallationRepositories
 ]
 
 // THE NAME IS THE IDENTITY, AND IT IS A CONSTANT. GitHub App names are unique across GitHub, so a
