@@ -52,8 +52,10 @@ import product.fabric.candidate_field {
   FieldRouteNotModeled, FieldRouteAmbiguous, FieldRouteFactsNameAnotherRoute,
   FieldUseRefused, FieldDispatchInputsNameAnotherOffer, FieldPermitNamesAnotherOffer,
   FieldPermitNamesAnotherRoute, FieldPermitNamesAnotherWork, FieldPermitNamesAnotherDemand,
+  FieldNodeNotQualified,
   assemble_candidate_field,
 }
+import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -366,7 +368,7 @@ fn s_inputs(key: OfferKey) -> DispatchInputs<NonEmptyStr> {
 }
 
 fn s_request(key: OfferKey, route: ProviderRoute, micros: Nat) -> FieldRequest<NonEmptyStr> {
-  FieldRequest { offer: s_offer(key: key, route: route, micros: micros), dispatch: s_inputs(key: key) }
+  FieldRequest { offer: s_offer(key: key, route: route, micros: micros), dispatch: s_inputs(key: key), delivery: OfferDoesNotClaimNodeDelivery }
 }
 
 // THE ROSTER, CHEAPEST FIRST. Roster order is also the StableRosterOrder tie policy's order, so
@@ -505,6 +507,7 @@ fn s_exclusion_tag(c: FieldExclusionCause<NonEmptyStr>) -> String {
     FieldPermitNamesAnotherRoute => "permit-names-another-route"
     FieldPermitNamesAnotherWork { permit_work: _, subject_work: _ } => "permit-names-another-work"
     FieldPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
+    FieldNodeNotQualified { refusals: _ } => "node-not-qualified"
   }
 }
 

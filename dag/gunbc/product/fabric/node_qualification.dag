@@ -1,19 +1,15 @@
 module product.fabric.node_qualification
 
-import std.types { Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, Bandwidth, bandwidth_count, Nanosecond, nanosecond_count }
-import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 import product.placement_supply { HostIdentity }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.storage.types { PcieLink }
-import extdeps.nvidia.cuda_device_attribute {
-  CudaDeviceAttributeReading, GpuDirectRdmaStanding,
-  GpuDirectRdmaSupported, GpuDirectRdmaUnsupported,
-  GpuDirectRdmaQueryFailed, GpuDirectRdmaUnread,
-  gpu_direct_rdma_standing,
+import extdeps.nvidia.gpu_direct_rdma {
+  GpuDirectRdmaCapability,
+  GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet,
+  GpuDirectRdmaCapabilityUnread,
 }
 
 // A NODE QUALIFICATION RECEIPT BINDS WHAT THE FABRIC WAS TOLD TO WHAT WAS READ ON THE NODE.
@@ -110,6 +106,11 @@ type PerLayerAllReduceCountStanding
   = PerLayerAllReduceCount { count: Nat }
   | PerLayerAllReduceCountUnestablished
 
+type CollectiveWindowStanding
+  = WindowIsolated
+  | WindowSharedWithDeclaredTraffic
+  | WindowStandingUnread { because: NonEmptyStr }
+
 type CollectiveCurveReading
   = CollectiveCurveRead {
       samples: List<CollectiveSample>,
@@ -119,6 +120,7 @@ type CollectiveCurveReading
       engine_buffer_mode: EngineBufferModeStanding,
       per_layer_all_reduce_count: PerLayerAllReduceCountStanding,
       primitive_attribution: CollectivePrimitiveAttribution,
+      window: CollectiveWindowStanding,
     }
   | CollectiveCurveUnread { because: NonEmptyStr }
 
@@ -143,17 +145,14 @@ type AdvertisedPcie {
   provenance: PcieAdvertisementProvenance
 }
 
-type GpuDirectRdmaExpectation
-  = GpuDirectRdmaExpectedSupported
-  | GpuDirectRdmaExpectedUnsupported
-
 // ONE HOST. Accelerator count and memory here are that host's, not the serving group's.
+// GPUDirect capability is not an advertised service floor: it is a measured platform fact
+// (extdeps.nvidia.gpu_direct_rdma). A GB10 answering 0 is recorded, not a delivery shortfall.
 type HostAdvertisedDelivery {
   accelerator_count: Nat
   usable_memory: ByteSize
   rail_link_mode: LinkMode
   nic_pcie: AdvertisedPcie
-  gpu_direct_rdma_expected: GpuDirectRdmaExpectation
 }
 
 type HostMeasuredDelivery {
@@ -161,7 +160,7 @@ type HostMeasuredDelivery {
   usable_memory: ByteSizeReading
   rail_link_mode: LinkModeReading
   nic_pcie: PcieLinkReading
-  gpu_direct_rdma: CudaDeviceAttributeReading
+  gpu_direct_rdma: GpuDirectRdmaCapability
 }
 
 // THE SERVING GROUP / COLLECTIVE SUBJECT. A four-rank curve does not inhabit a HostIdentity.
@@ -233,9 +232,8 @@ type RankSymmetryStanding
   | RankSymmetryUnread { because: NonEmptyStr }
 
 type GpuDirectRdmaQualification
-  = GpuDirectRdmaAgrees { standing: GpuDirectRdmaStanding }
-  | GpuDirectRdmaFallsShort { expected: GpuDirectRdmaExpectation, standing: GpuDirectRdmaStanding }
-  | GpuDirectRdmaEvidenceMissing { standing: GpuDirectRdmaStanding }
+  = GpuDirectRdmaRecorded { capability: GpuDirectRdmaCapability }
+  | GpuDirectRdmaEvidenceMissing { capability: GpuDirectRdmaCapability }
 
 type HostQualificationReceipt {
   node: HostIdentity
@@ -374,6 +372,7 @@ fn qualify_collective_latency(
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
+      window: _,
     } =>
       match sample_at_message_bytes(samples: samples, want: at) {
         Absent => CollectiveLatencyUnread {
@@ -408,6 +407,7 @@ fn qualify_collective_bandwidth(
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
+      window: _,
     } =>
       match sample_at_message_bytes(samples: samples, want: at) {
         Absent => CollectiveBandwidthUnread {
@@ -434,6 +434,7 @@ fn rank_curve_unread_reason(curve: CollectiveCurveReading) -> NonEmptyStr? {
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
+      window: _,
     } => none
   }
 }
@@ -456,6 +457,7 @@ fn rank_first_latency(curve: CollectiveCurveReading) -> Nat? {
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
+      window: _,
     } =>
       match samples.first() {
         Absent => none
@@ -516,15 +518,54 @@ fn first_degraded_rank(
   }
 }
 
+fn host_eq(a: HostIdentity, b: HostIdentity) -> Bool {
+  (a == b)
+}
+
+fn rank_named(ranks: List<RankCollectiveReading>, want: HostIdentity) -> RankCollectiveReading? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => if host_eq(a: r.rank, b: want) {
+      Present { value: r }
+    } else {
+      rank_named(ranks: ranks.skip(n: 1), want: want)
+    }
+  }
+}
+
+fn first_missing_expected_rank(
+  expected: List<HostIdentity>,
+  ranks: List<RankCollectiveReading>,
+) -> HostIdentity? {
+  match expected.first() {
+    Absent => none
+    Present { value: h } => match rank_named(ranks: ranks, want: h) {
+      Absent => Present { value: h }
+      Present { value: _ } => first_missing_expected_rank(expected: expected.skip(n: 1), ranks: ranks)
+    }
+  }
+}
+
 fn qualify_rank_symmetry(
+  expected: List<HostIdentity>,
   ranks: List<RankCollectiveReading>,
   max_latency_multiple: Nat,
 ) -> RankSymmetryStanding {
-  if ranks.length() == 0 {
+  if expected.length() == 0 {
     RankSymmetryUnread {
-      because: "no per-rank collective curve was supplied; a missing rank is unread, not symmetric" as NonEmptyStr,
+      because: "the group advertisement named no expected ranks; symmetry is unread without a roster" as NonEmptyStr,
     }
   } else {
+    if ranks.length() == 0 {
+      RankSymmetryUnread {
+        because: "no per-rank collective curve was supplied; a missing rank is unread, not symmetric" as NonEmptyStr,
+      }
+    } else {
+      match first_missing_expected_rank(expected: expected, ranks: ranks) {
+        Present { value: _ } => RankSymmetryUnread {
+          because: "an expected rank has no independent curve; nccl-tests group output is not a per-rank producer" as NonEmptyStr,
+        }
+        Absent => {
     match first_unread_rank(ranks: ranks) {
       Present { value: r } => match rank_curve_unread_reason(curve: r.curve) {
         Present { value: b } => RankSymmetryUnread { because: b }
@@ -550,26 +591,21 @@ fn qualify_rank_symmetry(
           }
         }
       }
+      }
+        }
+      }
     }
   }
 }
 
-fn qualify_gpu_direct_rdma(
-  expected: GpuDirectRdmaExpectation,
-  reading: CudaDeviceAttributeReading,
-) -> GpuDirectRdmaQualification {
-  let standing = gpu_direct_rdma_standing(reading: reading)
-  match standing {
-    GpuDirectRdmaUnread { because: _ } => GpuDirectRdmaEvidenceMissing { standing: standing }
-    GpuDirectRdmaQueryFailed { error: _ } => GpuDirectRdmaEvidenceMissing { standing: standing }
-    GpuDirectRdmaSupported => match expected {
-      GpuDirectRdmaExpectedSupported => GpuDirectRdmaAgrees { standing: standing }
-      GpuDirectRdmaExpectedUnsupported => GpuDirectRdmaFallsShort { expected: expected, standing: standing }
-    }
-    GpuDirectRdmaUnsupported => match expected {
-      GpuDirectRdmaExpectedSupported => GpuDirectRdmaFallsShort { expected: expected, standing: standing }
-      GpuDirectRdmaExpectedUnsupported => GpuDirectRdmaAgrees { standing: standing }
-    }
+fn qualify_gpu_direct_rdma(capability: GpuDirectRdmaCapability) -> GpuDirectRdmaQualification {
+  match capability {
+    GpuDirectRdmaCapabilityUnread { cause: _ } =>
+      GpuDirectRdmaEvidenceMissing { capability: capability }
+    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } =>
+      GpuDirectRdmaRecorded { capability: capability }
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } =>
+      GpuDirectRdmaRecorded { capability: capability }
   }
 }
 
@@ -597,10 +633,7 @@ fn qualify_host(
       advertised: advertised.nic_pcie,
       reading: measured.nic_pcie,
     ),
-    gpu_direct_rdma: qualify_gpu_direct_rdma(
-      expected: advertised.gpu_direct_rdma_expected,
-      reading: measured.gpu_direct_rdma,
-    ),
+    gpu_direct_rdma: qualify_gpu_direct_rdma(capability: measured.gpu_direct_rdma),
   }
 }
 
@@ -621,6 +654,7 @@ fn qualify_collective_group(
       reading: measured.collective,
     ),
     rank_symmetry: qualify_rank_symmetry(
+      expected: advertised.expected_ranks,
       ranks: measured.ranks,
       max_latency_multiple: advertised.rank_symmetry_max_latency_multiple,
     ),
@@ -713,10 +747,8 @@ fn symmetry_refusal(s: RankSymmetryStanding) -> List<QualificationRefusal> {
 
 fn gpu_direct_refusal(s: GpuDirectRdmaQualification) -> List<QualificationRefusal> {
   match s {
-    GpuDirectRdmaAgrees { standing: _ } => []
-    GpuDirectRdmaFallsShort { expected: _, standing: _ } =>
-      [GpuDirectRdmaDidNotHold { standing: s }]
-    GpuDirectRdmaEvidenceMissing { standing: _ } =>
+    GpuDirectRdmaRecorded { capability: _ } => []
+    GpuDirectRdmaEvidenceMissing { capability: _ } =>
       [GpuDirectRdmaDidNotHold { standing: s }]
   }
 }
@@ -755,16 +787,19 @@ fn admit_qualified_node(receipt: NodeQualificationReceipt) -> NodeQualificationA
   }
 }
 
-// CANDIDATE-FIELD WIRING IS OWED AND NOT LANDED HERE. assemble_candidate_field currently admits
-// on route correspondence, readiness and provider-use only; an unqualified node can still be
-// ranked. Binding a receipt onto FieldRequest would exclude every existing fixture that has no
-// live measurement, which is correct fail-closed AND a cutover of every ranking witness in the
-// same change. That cutover is the consumer this frontier names.
-data candidate_field_qualification_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(
-    module_path: "product.fabric.candidate_field",
-    decl_name: "assemble_candidate_field",
-  ),
-  reason: "This change is vocabulary-plus-live-receipt, not a cutover of product.fabric.selection. assemble_candidate_field still ranks SupplierOffer rows with no qualification receipt.",
-  dissolution: unbound_dissolution(description: "FieldRequest carries a HostQualificationReceipt and a CollectiveGroupReceipt projected from the same offer identity that select_supply already ranks. field_entry excludes NodeNotQualified by name. A ranking witness whose delivery is unread is excluded rather than admitted. A second AdvertisedNodeOffer that is not a projection of SupplierOffer is not the dissolution."),
-)
+// THE QUALIFIED PROJECTION OF AN EXISTING OFFER. Delivery floors that a VM catalog never claimed
+// are OfferDoesNotClaimNodeDelivery. A Spark/rail offer that claims delivery must carry the
+// admission; assemble_candidate_field excludes NodeNotQualified by name.
+type OfferDeliveryClaim
+  = OfferDoesNotClaimNodeDelivery
+  | OfferClaimsNodeDelivery { admission: NodeQualificationAdmission }
+
+fn claimed_delivery_refusals(claim: OfferDeliveryClaim) -> List<QualificationRefusal>? {
+  match claim {
+    OfferDoesNotClaimNodeDelivery => none
+    OfferClaimsNodeDelivery { admission: a } => match a {
+      NodeQualified { receipt: _ } => none
+      NodeNotQualified { receipt: _, refusals: r } => Present { value: r }
+    }
+  }
+}

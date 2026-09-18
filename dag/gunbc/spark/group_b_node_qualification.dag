@@ -8,15 +8,15 @@ import gunbc.fleet_intent_network {
 }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_50gbase_cr2 }
 import extdeps.storage.types { PcieLink, Gen5 }
-import extdeps.nvidia.cuda_device_attribute {
-  CudaDevAttrGpuDirectRdmaSupported, CudaAttributeRead,
+import extdeps.nvidia.cuda_driver { CudaQuerySucceeded }
+import extdeps.nvidia.gpu_direct_rdma {
+  gpu_direct_rdma_capability,
 }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery,
   HostAdvertisedDelivery, HostMeasuredDelivery,
   CollectiveGroupAdvertised, CollectiveGroupMeasured,
   AdvertisedPcie, DgxSparkConnectX7PerPortAttachment,
-  GpuDirectRdmaExpectedUnsupported,
   CountUnread, ByteSizeUnread, LinkModeRead, PcieLinkRead,
   CollectiveCurveRead, CollectiveSample, NcclTestsAllReducePerf, NcclTestsAllToAllPerf,
   SmallMessageStepThenPlateau, SmallMessageShapeUncharacterized,
@@ -25,7 +25,7 @@ import product.fabric.node_qualification {
   CollectivePrimitiveAttribution, CollectivePrimitiveMeasuredOnDifferentRuntime,
   NcclLibraryVersion, ServingNcclIdentity,
   HostRegisteredIbFallbackStanding, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
-  EthtoolLinkModes, LspciLnkSta,
+  EthtoolLinkModes, LspciLnkSta, WindowSharedWithDeclaredTraffic,
   NodeQualificationAdmission, qualify_node, admit_qualified_node,
 }
 
@@ -33,9 +33,8 @@ import product.fabric.node_qualification {
 //
 // A Spark host is one GB10, one rail, one ConnectX-7 per-port attachment. Four of those hosts
 // are the serving group that ran the 4-rank collective. Those are not one HostIdentity.
-// gpu_direct_rdma_expected is Unsupported because that is the GB10 device capability (a
-// succeeding cudaDeviceGetAttribute of 0), not a service floor invented so the node can fail it.
-// The advertised PCIe is the Spark platform per-port attachment, not a discrete ConnectX-7 SKU.
+// GPUDirect is a measured platform fact (succeeding query 0 → DeviceUnsupported), not an
+// advertised service floor. The advertised PCIe is the Spark platform per-port attachment.
 
 data group_b_fabric_node: HostIdentity = operator_host_srv9
 
@@ -130,7 +129,6 @@ data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
     usable_memory: gibibyte_to_byte_size(g: gibibyte(count: 121)),
     rail_link_mode: ieee_100gbase_cr2,
     nic_pcie: advertised_spark_connectx7_per_port,
-    gpu_direct_rdma_expected: GpuDirectRdmaExpectedUnsupported,
   },
   group: CollectiveGroupAdvertised {
     expected_ranks: group_b_expected_ranks,
@@ -158,10 +156,11 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
       link: PcieLink { generation: Gen5, lane_count: 4 },
       instrument: LspciLnkSta,
     },
-    gpu_direct_rdma: CudaAttributeRead {
-      attribute: CudaDevAttrGpuDirectRdmaSupported,
-      value: 0,
-    },
+    gpu_direct_rdma: gpu_direct_rdma_capability(
+      platform: "GB10" as NonEmptyStr,
+      device_api: CudaQuerySucceeded { value: 0 },
+      dma_buf: CudaQuerySucceeded { value: 0 },
+    ),
   },
   group: CollectiveGroupMeasured {
     collective: CollectiveCurveRead {
@@ -172,6 +171,7 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
       engine_buffer_mode: EngineBufferModeUnestablished,
       per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
       primitive_attribution: group_b_primitive_attribution,
+      window: WindowSharedWithDeclaredTraffic,
     },
     all_to_all: CollectiveCurveRead {
       samples: group_b_all_to_all_half_curve(),
@@ -181,6 +181,7 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
       engine_buffer_mode: EngineBufferModeUnestablished,
       per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
       primitive_attribution: group_b_primitive_attribution,
+      window: WindowSharedWithDeclaredTraffic,
     },
     host_registered_ib_fallback: group_b_host_registered_ib_fallback,
     ranks: [],

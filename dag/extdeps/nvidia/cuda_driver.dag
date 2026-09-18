@@ -1,0 +1,206 @@
+module extdeps.nvidia.cuda_driver
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.nat { Nat }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.python { PythonProgramText, python_run_program_argv }
+
+// ── ASKING THE DEVICE WHAT IT CAN DO, AS A MODELLED QUERY RATHER THAN A ONE-LINER ─────────────
+//
+// WHY THIS MODULE EXISTS. The capability that decides whether a disabled GPUDirect path is a defect
+// or a supported state is a CUDA DEVICE ATTRIBUTE, and the first time this repository needed it the
+// query was typed into a shell as `python3 -c` with ctypes and its answer read by eye. That answer
+// then settled a live investigation. A fact that decides something is a producer, and a producer
+// that lives in one operator's scrollback cannot be re-derived, cannot be cited, and cannot go red
+// when the platform changes underneath it (DESIGN section 5, section 6).
+//
+// THE DRIVER API IS THE AUTHORITY AND ITS NUMBERING IS ITS OWN. `cuDeviceGetAttribute` takes an
+// attribute ORDINAL, so the ordinals are carried here as upstream facts rather than re-derived: an
+// ordinal that drifts silently reads a different attribute and returns a confident wrong answer.
+data cuda_driver_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html"
+  }
+}
+
+// THE ATTRIBUTES THIS REPOSITORY ASKS FOR, each as a named member rather than a bare number at a
+// call site. Adding one is a row here; asking for one by literal ordinal elsewhere is the second
+// authority this closes.
+type CudaDeviceAttribute
+  = GpuDirectRdmaSupportedAttribute
+  | DmaBufSupportedAttribute
+
+fn cuda_device_attribute_ordinal(a: CudaDeviceAttribute) -> Int {
+  match a {
+    GpuDirectRdmaSupportedAttribute => 116
+    DmaBufSupportedAttribute => 124
+  }
+}
+
+fn cuda_device_attribute_name(a: CudaDeviceAttribute) -> NonEmptyStr {
+  match a {
+    GpuDirectRdmaSupportedAttribute => "CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_SUPPORTED" as NonEmptyStr
+    DmaBufSupportedAttribute => "CU_DEVICE_ATTRIBUTE_DMA_BUF_SUPPORTED" as NonEmptyStr
+  }
+}
+
+// ── A RESULT CODE IS NOT A VALUE, AND THIS IS THE DISTINCTION THE WHOLE MODULE PROTECTS ───────
+//
+// `cuDeviceGetAttribute` returns a CUresult AND writes an int. A caller that reads only the int
+// cannot tell "the device says no" from "the query never ran", and those demand opposite conclusions:
+// the first is a fact about the platform, the second is a fact about the probe. Every arm below
+// keeps them apart, and the value is only interpreted when the result code says the query succeeded.
+type CudaQueryOutcome
+  = CudaQuerySucceeded { value: Int }
+  | CudaQueryFailed { result_code: Int }
+  | CudaQueryUnparsed { cause: NonEmptyStr }
+
+data cuda_result_success: Int = 0
+
+// ── THE PROGRAM THAT ASKS, CARRIED AS THE SECOND MEDIUM IT IS ─────────────────────────────────
+//
+// It is a `PythonProgramText` because extdeps.python already names that boundary honestly: what is
+// inside is Python and nothing on this side parses it. Its dissolution trigger is that module's --
+// a Python emission target under extdeps/languages -- and it is not restated here.
+//
+// THE OUTPUT SHAPE IS PART OF THE CONTRACT, so the reader below and the program agree by
+// construction rather than by an author remembering: one line per attribute, `<ordinal> <cuInit> <cuDeviceGet> <cuDeviceGetAttribute> <value>`.
+//
+// THE WHOLE ACQUISITION CHAIN REPORTS, NOT JUST THE LAST CALL. An earlier revision ran cuInit and
+// cuDeviceGet and threw their CUresults away, keeping only the attribute query's -- so a failed
+// initialisation or a failed device selection could be followed by an attribute-shaped line whose
+// value field was whatever the uninitialised output buffer held. The reader would then have parsed
+// well-formed fields and minted a reading from a chain that never ran (review, 2026-09-18).
+//
+// THE REPLY CARRIES FIVE FIELDS FOR THAT REASON: ordinal, init result, device-get result, attribute
+// result, then the value. The value is interpretable only when all three results are success, and
+// the reader below enforces that rather than trusting the last one.
+fn cuda_device_attribute_program(a: CudaDeviceAttribute) -> PythonProgramText {
+  join([
+    "import ctypes;",
+    "cu=ctypes.CDLL('libcuda.so.1');",
+    "ri=cu.cuInit(0);",
+    "d=ctypes.c_int();rd=cu.cuDeviceGet(ctypes.byref(d),0);",
+    "v=ctypes.c_int(-1);ra=cu.cuDeviceGetAttribute(ctypes.byref(v),",
+    to_string(cuda_device_attribute_ordinal(a: a)),
+    ",d);",
+    "print(",
+    to_string(cuda_device_attribute_ordinal(a: a)),
+    ",ri,rd,ra,v.value)",
+  ], "") as PythonProgramText
+}
+
+fn cuda_device_attribute_argv(a: CudaDeviceAttribute) -> List<String> {
+  python_run_program_argv(program: cuda_device_attribute_program(a: a))
+}
+
+// ── READING THE ANSWER BACK ───────────────────────────────────────────────────────────────────
+//
+// FIVE FIELDS OR NOTHING. A line that does not carry the ordinal, all three results and the value is unparsed --
+// never a zero, because a zero is what an unsupported device says and a truncated line must not be
+// able to impersonate it.
+//
+// AND THE ORDINAL IS CHECKED against the attribute the caller asked for, so a reply that answered a
+// different question is refused rather than attributed to this one.
+fn cuda_attribute_outcome(a: CudaDeviceAttribute, stdout: String) -> CudaQueryOutcome {
+  let fields = split(s: trim(s: stdout), delimiter: " ")
+  if count(fields) != 5 {
+    CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " is not the five fields <ordinal> <cuInit> <cuDeviceGet> <cuDeviceGetAttribute> <value>: ", trim(s: stdout)], "") as NonEmptyStr }
+  } else {
+    match parse_nat_fields(fields: fields) {
+      Absent => CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " carries a field that is not a number: ", trim(s: stdout)], "") as NonEmptyStr }
+      Present { value: parsed } =>
+        if parsed.ordinal != cuda_device_attribute_ordinal(a: a) {
+          CudaQueryUnparsed { cause: join([
+            "the reply answers attribute ", to_string(parsed.ordinal), " and this query asked for ",
+            to_string(cuda_device_attribute_ordinal(a: a)), " (", cuda_device_attribute_name(a: a) as String, ")",
+          ], "") as NonEmptyStr }
+        } else {
+          if parsed.init_result != cuda_result_success {
+            CudaQueryFailed { result_code: parsed.init_result }
+          } else {
+            if parsed.device_result != cuda_result_success {
+              CudaQueryFailed { result_code: parsed.device_result }
+            } else {
+              if parsed.result_code != cuda_result_success {
+                CudaQueryFailed { result_code: parsed.result_code }
+              } else {
+                CudaQuerySucceeded { value: parsed.value }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+
+type CudaAttributeFields sole_constructor {
+  ordinal: Int
+  init_result: Int
+  device_result: Int
+  result_code: Int
+  value: Int
+}
+
+fn parse_nat_fields(fields: List<String>) -> CudaAttributeFields? {
+  match cuda_reply_int_at(fields: fields, index: 0) {
+    Absent => none
+    Present { value: ordinal } =>
+      match cuda_reply_int_at(fields: fields, index: 1) {
+        Absent => none
+        Present { value: ri } =>
+          match cuda_reply_int_at(fields: fields, index: 2) {
+            Absent => none
+            Present { value: rd } =>
+              match cuda_reply_int_at(fields: fields, index: 3) {
+                Absent => none
+                Present { value: ra } =>
+                  match cuda_reply_int_at(fields: fields, index: 4) {
+                    Absent => none
+                    Present { value: v } =>
+                      Present { value: CudaAttributeFields { ordinal: ordinal, init_result: ri, device_result: rd, result_code: ra, value: v } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A FIELD IS A NON-NEGATIVE NUMBER OR IT IS NOT A FIELD. `parse_int` is what this corpus has, so the
+// negative is refused here rather than clamped -- the same guard `extdeps.languages.json.parse`
+// applies at its own unsigned boundary, and for the same reason: a clamp turns an impossible reply
+// into a plausible one.
+fn cuda_reply_int_at(fields: List<String>, index: Int) -> Int? {
+  match cuda_reply_field_at(fields: fields, index: index) {
+    Absent => none
+    Present { value: raw } =>
+      match parse_int(s: raw) {
+        Absent => none
+        Present { value: n } => if n < 0 { none } else { Present { value: n } }
+      }
+  }
+}
+
+// THE NAME IS SPECIFIC ON PURPOSE. A bare `nth_field` resolves corpus-wide and bound to
+// extdeps.standards.rfc_8288's list helper, whose shape is (xs, n) -> String and whose out-of-range
+// answer is the empty string. That is a weaker contract than this reader needs -- an absent field
+// and an empty field are different facts here -- and a Web Linking helper reached from a CUDA module
+// would be a layer inversion besides. The resolver refused the call rather than binding it silently,
+// which is the fail-closed behaviour working; the repair is a name that says whose helper it is.
+fn cuda_reply_field_at(fields: List<String>, index: Int) -> String? {
+  fold(fields, init: CudaFieldAcc { seen: 0, found: none }, f: (acc, f) =>
+    if acc.seen == index {
+      CudaFieldAcc { seen: acc.seen + 1, found: Present { value: f } }
+    } else {
+      CudaFieldAcc { seen: acc.seen + 1, found: acc.found }
+    }).found
+}
+
+type CudaFieldAcc sole_constructor {
+  seen: Int
+  found: String?
+}

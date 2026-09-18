@@ -22,6 +22,9 @@ import product.fabric.selection {
   PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork,
   PermitNamesAnotherDemand,
 }
+import product.fabric.node_qualification {
+  OfferDeliveryClaim, QualificationRefusal, claimed_delivery_refusals,
+}
 
 // THE CANDIDATE FIELD IS ASSEMBLED BEFORE ANY PRICE EXISTS, AND THIS MODULE'S IMPORT LIST IS THE
 // PROOF RATHER THAN A PROMISE.
@@ -87,6 +90,7 @@ import product.fabric.selection {
 type FieldRequest<P> {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
+  delivery: OfferDeliveryClaim
 }
 
 // ONE ARM PER PRODUCER, which is why there is no single NotAdmitted arm. Each of these is reached
@@ -112,6 +116,7 @@ type FieldExclusionCause<P>
       permit_demand: FabricIdentity<P, DemandKey>,
       subject_demand: FabricIdentity<P, DemandKey>,
     }
+  | FieldNodeNotQualified { refusals: List<QualificationRefusal> }
 
 type FieldExclusion<P> {
   offer: FabricIdentity<P, OfferKey>
@@ -179,13 +184,30 @@ fn field_entry<P>(
             offer: request.offer.id,
             cause: FieldRouteExerciseExpired { route: r, latest_valid_through: v, at: t },
           )
-        RouteReady { exercise: _ } => field_entry_admitted(
+        RouteReady { exercise: _ } => field_entry_delivery(
           sanctions: sanctions, active: active, scope: scope,
           decision_receipt: decision_receipt, facts: facts, request: request)
-        RouteAdmittedForItsOwnExercise { route: _ } => field_entry_admitted(
+        RouteAdmittedForItsOwnExercise { route: _ } => field_entry_delivery(
           sanctions: sanctions, active: active, scope: scope,
           decision_receipt: decision_receipt, facts: facts, request: request)
       }
+  }
+}
+
+fn field_entry_delivery<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  request: FieldRequest<P>,
+) -> FieldEntry<P> {
+  match claimed_delivery_refusals(claim: request.delivery) {
+    Absent => field_entry_admitted(
+      sanctions: sanctions, active: active, scope: scope,
+      decision_receipt: decision_receipt, facts: facts, request: request)
+    Present { value: r } =>
+      excluded_entry(offer: request.offer.id, cause: FieldNodeNotQualified { refusals: r })
   }
 }
 
