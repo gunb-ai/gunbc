@@ -213,24 +213,24 @@ test fn production_route_bare_param_type_in_field_fixture_is_present_holds() -> 
   site_spelling_count(path: consumer_field_bare_local_path, needle: local_param_marker_bare) > 0
 }
 
-test fn production_route_bare_field_type_site_is_missing_today_holds() -> Bool {
-  site_spelling_count(path: consumer_field_bare_local_path, needle: local_field_only_bare) == 0
+test fn production_route_bare_field_type_site_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_field_bare_local_path, needle: local_field_only_bare) > 0
 }
 
 test fn production_tree_field_fixture_param_type_atom_is_present_holds() -> Bool {
   tree_atom_count(path: consumer_field_bare_local_path, needle: local_param_marker_sym) > 0
 }
 
-test fn production_tree_field_fixture_wrapper_name_unfindable_today_holds() -> Bool {
-  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_sym)
+test fn production_tree_field_fixture_wrapper_name_survives_today_holds() -> Bool {
+  !tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_sym)
 }
 
-test fn production_tree_field_fixture_field_name_unfindable_today_holds() -> Bool {
-  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_field_name_sym)
+test fn production_tree_field_fixture_field_name_survives_today_holds() -> Bool {
+  !tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_field_name_sym)
 }
 
-test fn production_tree_field_fixture_field_type_unfindable_today_holds() -> Bool {
-  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_field_only_sym)
+test fn production_tree_field_fixture_field_type_survives_today_holds() -> Bool {
+  !tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_field_only_sym)
 }
 
 test fn production_route_callee_with_no_arguments_is_missing_today_holds() -> Bool {

@@ -393,7 +393,10 @@ test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool 
 // this fixture shows qualification is not what is doing the work -- a BARE field type is missing
 // too. A type-position claim that does not say WHICH type position is therefore too coarse: the
 // same bare name reaches from a parameter and does not reach from a field.
-test fn a_bare_field_type_is_absent_from_the_denominator_today() -> Bool {
-  !sites_mention(sites: fixture_sites(), spelling: "Xl0FieldOnly")
+// Residual reconstruct keeps the field_decl_block unit, so a bare field type
+// is in the tree the collector walks. Parameter type still reaches (control).
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
+test fn a_bare_field_type_survives_in_the_denominator_today() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "Xl0FieldOnly")
     && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }

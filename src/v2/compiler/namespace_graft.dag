@@ -126,7 +126,18 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
   }
 }
 
+fn namespace_graft_is_partitioned_decl_unit(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      (id == ^dag_surface_type_decl) || (id == ^dag_surface_data_decl)
+    Absent => false
+  }
+}
+
 fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
+  if namespace_graft_is_partitioned_decl_unit(node: edge.target) {
+    acc
+  } else {
   match edge.label {
     Named { name: sym } =>
       if namespace_graft_is_metadata_edge(name: sym) {
@@ -149,12 +160,17 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
         list_snoc_item(xs: acc, item: edge)
       }
   }
+  }
 }
 
 fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
-  fold(node.children, init: [], f: fn(acc, edge) {
-    namespace_graft_collect_body_edge(acc: acc, edge: edge)
-  })
+  if namespace_graft_is_partitioned_decl_unit(node: node) {
+    []
+  } else {
+    fold(node.children, init: [], f: fn(acc, edge) {
+      namespace_graft_collect_body_edge(acc: acc, edge: edge)
+    })
+  }
 }
 
 fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> List<Symbol> {
