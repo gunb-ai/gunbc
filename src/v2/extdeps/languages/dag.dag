@@ -3058,9 +3058,9 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
 }
 
 fn dag_node_is_float_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_float_literal
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_float_literal
+    Absent => false
   }
 }
 
