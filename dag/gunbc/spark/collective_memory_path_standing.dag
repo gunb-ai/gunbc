@@ -7,7 +7,7 @@ import extdeps.nvidia.nccl {
 }
 import extdeps.nvidia.gpu_direct_rdma {
   GpuDirectRdmaCapability, GpuDirectRdmaDevicePrerequisiteMet, GpuDirectRdmaDeviceUnsupported,
-  GpuDirectRdmaCapabilityUnread, gpu_direct_rdma_capability_wire,
+  GpuDirectRdmaCapabilityUnread,
 }
 
 // ── A DISABLED GPUDIRECT PATH IS A DEFECT OR A SUPPORTED STATE, AND ONLY THE JOIN KNOWS WHICH ──

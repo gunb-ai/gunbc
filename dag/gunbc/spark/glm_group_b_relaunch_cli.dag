@@ -16,7 +16,6 @@ import gunbc.spark.collective_memory_path_standing {
   DesiredCollectiveMemoryPath, DirectRegistrationWhereDevicePermits,
 }
 import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
-import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability }
 import gunbc.spark.serving_rank_observe {
   RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, rank_nccl_memory_path_receipt,
   RankNcclReceiptReading, RankNcclReceiptBuilt, RankNcclReceiptLogUnread, RankNcclReceiptLogFromAnotherSubject,
@@ -24,7 +23,6 @@ import gunbc.spark.serving_rank_observe {
   observed_rank_incarnation_text, rank_gpu_direct_capability, rank_nccl_memory_path_reading, rank_nccl_gpu_direct_devices,
 }
 import extdeps.nvidia.nccl {
-  nccl_gpu_memory_path_of_text,
   NcclRoceGidSelection, NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
   nccl_realized_transport_wire,
 }
@@ -399,7 +397,6 @@ fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankS
             nccl: nccl,
           ) }
       }
-      let memory_lines = match memory_path { Absent => [] as List<String>, Present { value: r } => [rank_memory_path_text(r: r)] }
       let startup = match rank_startup_facet(ctx: ctx, subject: pinned, container: c, log: log) {
         RankStartupRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
         RankStartupObserved { reading: sr } => RankFacet {
@@ -418,7 +415,7 @@ fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankS
       }
       RankReport {
         subject: subject,
-        lines: concat(shape.lines, concat(transport.lines, concat(memory_lines, concat(startup.lines, [rank_standing_text(s: joined_standing(shape: shape, transport: transport))])))),
+        lines: concat(shape.lines, concat(transport.lines, concat(startup.lines, [rank_standing_text(s: joined_standing(shape: shape, transport: transport))]))),
         standing: joined_standing(shape: shape, transport: transport),
         memory_path: memory_path,
       }
@@ -426,6 +423,16 @@ fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankS
 
 data glm_group_b_observe_attempt_raw: String = "glm-group-b-serving-observe"
 data glm_group_b_observe_receipt_path: String = "target/glm-group-b-serving-observation.txt"
+
+// THE RECEIPT READS THE TYPED FACET, NOT A COPY OF ITS TEXT. The memory-path reading is carried on
+// RankReport as a value and rendered here from that field, so the observation receipt is its consumer;
+// an absent reading (no log captured) renders nothing rather than a guessed line.
+fn rank_report_memory_path_lines(r: RankReport) -> List<String> {
+  match r.memory_path {
+    Absent => [] as List<String>
+    Present { value: m } => [rank_memory_path_text(r: m)]
+  }
+}
 
 // AN EMPTY SUBJECT ROSTER REFUSES BEFORE A CREDENTIAL IS MATERIALIZED, and the check is here rather
 // than after the reads for the same reason the transaction's is before its capture phase: at zero
@@ -450,7 +457,7 @@ fn glm_group_b_observe_wet() -> ProcessExit
       join(["glm group b serving observation at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n"], ""),
       join(map(reports, r => join([
         observed_rank_subject_text(s: r.subject), "\n",
-        join(map(r.lines, l => join(["  ", l], "")), "\n"), "\n",
+        join(map(concat(r.lines, rank_report_memory_path_lines(r: r)), l => join(["  ", l], "")), "\n"), "\n",
       ], "")), ""),
     ], "")
     let w = Filesystem.Write(path: glm_group_b_observe_receipt_path, content: body)

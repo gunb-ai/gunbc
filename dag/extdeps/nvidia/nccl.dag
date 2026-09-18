@@ -724,13 +724,6 @@ fn nccl_gpu_memory_path_of_line(line: NcclLogLine) -> NcclGpuDirectLineReading {
   }
 }
 
-fn nccl_gpu_memory_path_wire(p: NcclGpuMemoryPath) -> NonEmptyStr {
-  match p {
-    NcclGpuDirectEnabled { read_from: _ } => "gpu-direct-enabled" as NonEmptyStr
-    NcclGpuDirectDisabled { read_from: _ } => "gpu-direct-disabled" as NonEmptyStr
-  }
-}
-
 // WHICH LOCAL DEVICES ANNOUNCED A MEMORY PATH. Each GDR line's emitter carries NCCL's local CUDA
 // device index (the `[n]` in `host:pid:tid [n]`), so a consumer that joins this reading against a
 // device-capability query can require that the lines came from the device that was queried, rather

@@ -149,15 +149,3 @@ fn gpu_direct_rdma_capability(
       }
   }
 }
-
-fn gpu_direct_rdma_capability_wire(c: GpuDirectRdmaCapability) -> NonEmptyStr {
-  match c {
-    GpuDirectRdmaDevicePrerequisiteMet { dma_buf: d, capability_receipt: _ } =>
-      match d {
-        BoolRead { value: v } => if v { "device-prerequisite-met-with-dma-buf" as NonEmptyStr } else { "device-prerequisite-met" as NonEmptyStr }
-        BoolUnread { cause: _ } => "device-prerequisite-met-dma-buf-unread" as NonEmptyStr
-      }
-    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } => "device-unsupported" as NonEmptyStr
-    GpuDirectRdmaCapabilityUnread { cause: _ } => "unread" as NonEmptyStr
-  }
-}
