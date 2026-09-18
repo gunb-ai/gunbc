@@ -1,0 +1,123 @@
+module v2.test.claim.parse.test_marker_channel
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DESIGN SECTION 4c OBLIGATION, READ AT ONE INTERFACE: the `test` marker is captured on a
+// channel disjoint from the semantic tree. So a `test fn` and a plain `fn` of the same name must
+// DIFFER in v2.compiler.test_marker_capture and be IDENTICAL in the semantic projection, which is
+// v2.compiler.normalize's tree read through content_hash (occurrence ids are not hashed, so the
+// comparison is over structure alone). Both halves run the real producers -- tokenize, parse_module,
+// normalize -- because the claim is about what those producers emit, not about a designed tree.
+//
+// The equality half is vacuous if both sides refuse or both collapse to one constant, so the
+// hash-differs control below must stay red-capable: renaming the declaration moves the hash.
+
+fn test_marker_parsed(src: String, file: Symbol) -> Outcome<ParseArtifact> {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: file, rules: lm.lex) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } => parse_module(tokens: ts, grammar: lm.grammar)
+  }
+}
+
+fn test_marker_capture_of(src: String, file: Symbol) -> Outcome<TestMarkerChannel> {
+  match test_marker_parsed(src: src, file: file) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: artifact, diagnostics: _ } => test_marker_capture(artifact: artifact)
+  }
+}
+
+fn test_marker_marks_only(src: String, file: Symbol, name: Symbol) -> Bool {
+  match test_marker_capture_of(src: src, file: file) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: channel, diagnostics: _ } =>
+      (test_marker_channel_count(channel: channel) == 1)
+        && test_marker_channel_marks(channel: channel, name: name)
+  }
+}
+
+fn test_marker_refusal_reason(src: String, file: Symbol) -> String {
+  match test_marker_capture_of(src: src, file: file) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+  }
+}
+
+fn test_marker_semantic_hash(src: String, file: Symbol) -> Optional<Hash> {
+  match test_marker_parsed(src: src, file: file) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: artifact, diagnostics: _ } =>
+      match normalize(parse_tree: artifact.tree) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: normalized, diagnostics: _ } =>
+          Present { value: content_hash(n: normalized.root) }
+      }
+  }
+}
+
+data marked_fn_source: String = "module m.t\n\ntest fn witness_holds() -> Bool {\n  true\n}\n"
+
+data plain_fn_source: String = "module m.t\n\nfn witness_holds() -> Bool {\n  true\n}\n"
+
+data renamed_plain_fn_source: String = "module m.t\n\nfn other_holds() -> Bool {\n  true\n}\n"
+
+data marked_data_source: String = "module m.t\n\ntest data witness_value: Bool = true\n"
+
+data mixed_source: String = "module m.t\n\nfn serving() -> Bool {\n  true\n}\n\ntest fn witness_holds() -> Bool {\n  true\n}\n"
+
+data non_test_marker_source: String = "module m.t\n\nprobe fn witness_holds() -> Bool {\n  true\n}\n"
+
+// TREATMENT: the marker survives lowering's erasure, keyed by the declared member.
+test fn test_fn_marker_is_captured_holds() -> Bool {
+  test_marker_marks_only(src: marked_fn_source, file: ^test_marker_fn_subject, name: ^witness_holds)
+}
+
+// The second authored form the marker admits.
+test fn test_data_marker_is_captured_holds() -> Bool {
+  test_marker_marks_only(src: marked_data_source, file: ^test_marker_data_subject, name: ^witness_value)
+}
+
+// CONTROL: a module mixing serving and test code marks exactly the test declaration.
+test fn only_the_marked_declaration_is_captured_holds() -> Bool {
+  test_marker_marks_only(src: mixed_source, file: ^test_marker_mixed_subject, name: ^witness_holds)
+}
+
+// CONTROL: an unmarked fn is absent from the channel.
+test fn plain_fn_is_not_captured_holds() -> Bool {
+  match test_marker_capture_of(src: plain_fn_source, file: ^test_marker_plain_subject) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: channel, diagnostics: _ } => test_marker_channel_count(channel: channel) == 0
+  }
+}
+
+// STANDING RED: an identifier in marker position that is not `test` is refused, never recorded as a
+// marker and never skipped.
+test fn non_test_marker_is_refused_holds() -> Bool {
+  test_marker_refusal_reason(src: non_test_marker_source, file: ^test_marker_non_test_subject)
+    == "test_marker_reason_marker_not_test"
+}
+
+// THE 4c EQUALITY: marking a declaration leaves the semantic projection unchanged.
+test fn marked_and_plain_fn_share_one_semantic_projection_holds() -> Bool {
+  match test_marker_semantic_hash(src: marked_fn_source, file: ^test_marker_fn_subject) {
+    Absent => false
+    Present { value: marked } =>
+      match test_marker_semantic_hash(src: plain_fn_source, file: ^test_marker_plain_subject) {
+        Absent => false
+        Present { value: plain } => marked == plain
+      }
+  }
+}
+
+// CONTROL for the equality: the projection does discriminate declarations, so its agreement above
+// is a reading and not a constant.
+test fn renamed_fn_moves_the_semantic_projection_holds() -> Bool {
+  match test_marker_semantic_hash(src: plain_fn_source, file: ^test_marker_plain_subject) {
+    Absent => false
+    Present { value: plain } =>
+      match test_marker_semantic_hash(src: renamed_plain_fn_source, file: ^test_marker_renamed_subject) {
+        Absent => false
+        Present { value: renamed } => !(plain == renamed)
+      }
+  }
+}
