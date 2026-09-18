@@ -11,7 +11,6 @@ import extdeps.storage.types { PcieLink, Gen5 }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
 import product.fabric.node_qualification {
-  AdvertisedNodeOffer, MeasuredNodeDelivery,
   HostAdvertisedDelivery, HostMeasuredDelivery,
   CollectiveGroupAdvertised, CollectiveGroupMeasured,
   AdvertisedSparkConnectX7PerPort, CollectiveProtocol, CollectiveObservationIdentity, AdvertisedPcie,
@@ -152,75 +151,73 @@ data group_b_all_to_all_observation: CollectiveObservationIdentity = CollectiveO
   provenance: SuppliedHistoricalDemonstration,
 }
 
-data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
-  host: HostAdvertisedDelivery {
-    accelerator_count: 1,
-    usable_memory: gibibyte_to_byte_size(g: gibibyte(count: 121)),
-    rail_link_mode: ieee_100gbase_cr2,
-    nic_pcie: AdvertisedSparkConnectX7PerPort,
-    gpu_direct_platform: spark_gb10_platform,
+data group_b_host_advertised: HostAdvertisedDelivery = HostAdvertisedDelivery {
+  accelerator_count: 1,
+  usable_memory: gibibyte_to_byte_size(g: gibibyte(count: 121)),
+  rail_link_mode: ieee_100gbase_cr2,
+  nic_pcie: AdvertisedSparkConnectX7PerPort,
+  gpu_direct_platform: spark_gb10_platform,
+}
+
+data group_b_group_advertised: CollectiveGroupAdvertised = CollectiveGroupAdvertised {
+  expected_ranks: group_b_expected_ranks,
+  latency_ceiling: nanosecond(count: 100000),
+  latency_message_bytes: byte_size(count: 8192),
+  all_reduce_protocol: group_b_all_reduce_protocol,
+  bandwidth_floor: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 10000000000),
+  bandwidth_message_bytes: byte_size(count: 8192),
+  all_to_all_latency_ceiling: nanosecond(count: 100000),
+  all_to_all_message_bytes: byte_size(count: 8192),
+  all_to_all_protocol: group_b_all_to_all_protocol,
+}
+
+data group_b_host_measured: HostMeasuredDelivery = HostMeasuredDelivery {
+  accelerator_count: CountUnread {
+    because: "cudaGetDeviceCount was not executed for this receipt; serving process presence is not a device-count reading" as NonEmptyStr,
   },
-  group: CollectiveGroupAdvertised {
-    expected_ranks: group_b_expected_ranks,
-    latency_ceiling: nanosecond(count: 100000),
-    latency_message_bytes: byte_size(count: 8192),
-    all_reduce_protocol: group_b_all_reduce_protocol,
-    bandwidth_floor: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 10000000000),
-    bandwidth_message_bytes: byte_size(count: 8192),
-    all_to_all_latency_ceiling: nanosecond(count: 100000),
-    all_to_all_message_bytes: byte_size(count: 8192),
-    all_to_all_protocol: group_b_all_to_all_protocol,
+  usable_memory: ByteSizeUnread {
+    because: "a succeeding CUDA/torch memory query was not executed for this receipt; NVML unsupported-on-unified is not a zero-byte reading" as NonEmptyStr,
+  },
+  rail_link_mode: LinkModeRead {
+    mode: ieee_50gbase_cr2,
+    instrument: EthtoolLinkModes,
+  },
+  nic_pcie: PcieLinkRead {
+    link: PcieLink { generation: Gen5, lane_count: 4 },
+    instrument: LspciLnkSta,
+  },
+  gpu_direct: GpuDirectReceiptUnread {
+    because: "observe_rank_gpu_direct_capability was not executed for this historical demonstration; a catalog GB10 row is not a RankGpuDirectCapabilityReceipt" as NonEmptyStr,
   },
 }
 
-data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
-  host: HostMeasuredDelivery {
-    accelerator_count: CountUnread {
-      because: "cudaGetDeviceCount was not executed for this receipt; serving process presence is not a device-count reading" as NonEmptyStr,
-    },
-    usable_memory: ByteSizeUnread {
-      because: "a succeeding CUDA/torch memory query was not executed for this receipt; NVML unsupported-on-unified is not a zero-byte reading" as NonEmptyStr,
-    },
-    rail_link_mode: LinkModeRead {
-      mode: ieee_50gbase_cr2,
-      instrument: EthtoolLinkModes,
-    },
-    nic_pcie: PcieLinkRead {
-      link: PcieLink { generation: Gen5, lane_count: 4 },
-      instrument: LspciLnkSta,
-    },
-    gpu_direct: GpuDirectReceiptUnread {
-      because: "observe_rank_gpu_direct_capability was not executed for this historical demonstration; a catalog GB10 row is not a RankGpuDirectCapabilityReceipt" as NonEmptyStr,
-    },
+data group_b_group_measured: CollectiveGroupMeasured = CollectiveGroupMeasured {
+  collective: CollectiveCurveRead {
+    observation: group_b_all_reduce_observation,
+    small_message_shape: SmallMessageStepThenPlateau { step_at: byte_size(count: 16384) },
+    engine_buffer_mode: EngineBufferModeUnestablished,
+    per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
+    primitive_attribution: group_b_primitive_attribution,
+    window: WindowSharedWithDeclaredTraffic,
   },
-  group: CollectiveGroupMeasured {
-    collective: CollectiveCurveRead {
-      observation: group_b_all_reduce_observation,
-      small_message_shape: SmallMessageStepThenPlateau { step_at: byte_size(count: 16384) },
-      engine_buffer_mode: EngineBufferModeUnestablished,
-      per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
-      primitive_attribution: group_b_primitive_attribution,
-      window: WindowSharedWithDeclaredTraffic,
-    },
-    all_to_all: CollectiveCurveRead {
-      observation: group_b_all_to_all_observation,
-      small_message_shape: SmallMessageShapeUncharacterized,
-      engine_buffer_mode: EngineBufferModeUnestablished,
-      per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
-      primitive_attribution: group_b_primitive_attribution,
-      window: WindowSharedWithDeclaredTraffic,
-    },
-    host_registered_ib_fallback: group_b_host_registered_ib_fallback,
-    ranks: [],
+  all_to_all: CollectiveCurveRead {
+    observation: group_b_all_to_all_observation,
+    small_message_shape: SmallMessageShapeUncharacterized,
+    engine_buffer_mode: EngineBufferModeUnestablished,
+    per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
+    primitive_attribution: group_b_primitive_attribution,
+    window: WindowSharedWithDeclaredTraffic,
   },
+  host_registered_ib_fallback: group_b_host_registered_ib_fallback,
+  ranks: [],
 }
 
 fn group_b_host_admission() -> HostQualificationAdmission {
   admit_qualified_host(
     receipt: qualify_host(
       node: group_b_fabric_node,
-      advertised: group_b_advertised.host,
-      measured: group_b_measured.host,
+      advertised: group_b_host_advertised,
+      measured: group_b_host_measured,
     ),
   )
 }
@@ -234,8 +231,8 @@ fn group_b_group_admission() -> GroupQualificationAdmission<NonEmptyStr> {
   admit_qualified_group(
     receipt: qualify_collective_group(
       offer: group_b_claimed_offer,
-      advertised: group_b_advertised.group,
-      measured: group_b_measured.group,
+      advertised: group_b_group_advertised,
+      measured: group_b_group_measured,
       host_admissions: [],
     ),
   )

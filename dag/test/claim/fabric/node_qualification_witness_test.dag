@@ -17,7 +17,7 @@ import gunbc.spark.serving_rank_observe {
   RankGpuDirectCapabilityReceipt, ObservedRankIncarnation, container_incarnation_id, ProbeReplied,
 }
 import product.fabric.node_qualification {
-  AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
+  CollectiveSample, RankCollectiveReading,
   CollectiveCurveReading, CollectiveProtocol, CollectiveObservationIdentity,
   NcclTestsDtypeUnread, DtypeAgrees, DtypeDiffers, DtypeUnread,
   protocol_eq, dtype_join,
@@ -69,7 +69,7 @@ import product.fabric.node_qualification {
   SuppliedHistoricalDemonstration, supplied_historical_curve_unread,
 }
 import gunbc.spark.group_b_node_qualification {
-  group_b_group_admission, group_b_host_admission, group_b_measured,
+  group_b_group_admission, group_b_host_admission, group_b_group_measured,
   group_b_delivery_claim,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -163,7 +163,7 @@ fn fx_offer_b() -> FabricIdentity<NonEmptyStr, OfferKey> {
 fn fx_positive_group_receipt<P>(offer: FabricIdentity<P, OfferKey>) -> CollectiveGroupReceipt<P> {
   CollectiveGroupReceipt {
     offer: offer,
-    advertised: fx_advertised().group,
+    advertised: fx_advertised_group(),
     host_roster: GroupHostRosterComplete { rank_count: 2 },
     collective_latency: CollectiveLatencyUnread {
       ceiling: nanosecond(count: 1000),
@@ -186,26 +186,27 @@ fn fx_positive_group_receipt<P>(offer: FabricIdentity<P, OfferKey>) -> Collectiv
   }
 }
 
-fn fx_advertised() -> AdvertisedNodeOffer {
-  AdvertisedNodeOffer {
-    host: HostAdvertisedDelivery {
-      accelerator_count: 4,
-      usable_memory: byte_size(count: 1000),
-      rail_link_mode: ieee_100gbase_cr2,
-      nic_pcie: AdvertisedSparkConnectX7PerPort,
-      gpu_direct_platform: spark_gb10_platform,
-    },
-    group: CollectiveGroupAdvertised {
-      expected_ranks: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
-      latency_ceiling: nanosecond(count: 1000),
-      latency_message_bytes: byte_size(count: 8),
-      all_reduce_protocol: fx_all_reduce_protocol(),
-      bandwidth_floor: bandwidth(count: 100),
-      bandwidth_message_bytes: byte_size(count: 8),
-      all_to_all_latency_ceiling: nanosecond(count: 1000),
-      all_to_all_message_bytes: byte_size(count: 8),
-      all_to_all_protocol: fx_all_to_all_protocol(),
-    },
+fn fx_advertised_host() -> HostAdvertisedDelivery {
+  HostAdvertisedDelivery {
+    accelerator_count: 4,
+    usable_memory: byte_size(count: 1000),
+    rail_link_mode: ieee_100gbase_cr2,
+    nic_pcie: AdvertisedSparkConnectX7PerPort,
+    gpu_direct_platform: spark_gb10_platform,
+  }
+}
+
+fn fx_advertised_group() -> CollectiveGroupAdvertised {
+  CollectiveGroupAdvertised {
+    expected_ranks: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+    latency_ceiling: nanosecond(count: 1000),
+    latency_message_bytes: byte_size(count: 8),
+    all_reduce_protocol: fx_all_reduce_protocol(),
+    bandwidth_floor: bandwidth(count: 100),
+    bandwidth_message_bytes: byte_size(count: 8),
+    all_to_all_latency_ceiling: nanosecond(count: 1000),
+    all_to_all_message_bytes: byte_size(count: 8),
+    all_to_all_protocol: fx_all_to_all_protocol(),
   }
 }
 
@@ -264,34 +265,31 @@ fn fx_ib_fallback_unread() -> HostRegisteredIbFallbackStanding {
   HostRegisteredIbFallbackUnread { because: "fixture has no IB fallback census" as NonEmptyStr }
 }
 
-fn fx_measured_all_agree() -> MeasuredNodeDelivery {
-  MeasuredNodeDelivery {
-    host: fx_agreeing_host_measured(host: fx_node),
-    group: CollectiveGroupMeasured {
-      collective: fx_curve(samples: [fx_sample()]),
-      all_to_all: fx_all_to_all_curve(samples: [fx_sample()]),
-      host_registered_ib_fallback: fx_ib_ok(),
-      ranks: [
-        RankCollectiveReading {
-          rank: "rank-0" as HostIdentity,
-          curve: fx_curve(samples: [fx_sample()]),
-          producer: RankLocalCollectiveCurve,
-        },
-        RankCollectiveReading {
-          rank: "rank-1" as HostIdentity,
-          curve: fx_curve(samples: [fx_sample()]),
-          producer: RankLocalCollectiveCurve,
-        },
-      ],
-    },
+fn fx_measured_group_all_agree() -> CollectiveGroupMeasured {
+  CollectiveGroupMeasured {
+    collective: fx_curve(samples: [fx_sample()]),
+    all_to_all: fx_all_to_all_curve(samples: [fx_sample()]),
+    host_registered_ib_fallback: fx_ib_ok(),
+    ranks: [
+      RankCollectiveReading {
+        rank: "rank-0" as HostIdentity,
+        curve: fx_curve(samples: [fx_sample()]),
+        producer: RankLocalCollectiveCurve,
+      },
+      RankCollectiveReading {
+        rank: "rank-1" as HostIdentity,
+        curve: fx_curve(samples: [fx_sample()]),
+        producer: RankLocalCollectiveCurve,
+      },
+    ],
   }
 }
 
 test fn a_fully_read_agreeing_node_is_qualified() -> Bool {
-  match fx_admit_host(m: fx_measured_all_agree()) {
+  match fx_admit_host(m: fx_agreeing_host_measured(host: fx_node)) {
     HostQualified { receipt: _ } => true
     HostNotQualified { receipt: _, refusals: _ } => false
-  } && match fx_admit_group(m: fx_measured_all_agree()) {
+  } && match fx_admit_group(g: fx_measured_group_all_agree()) {
     GroupQualified { receipt: _ } => false
     GroupNotQualified { receipt: r, refusals: _ } =>
       symmetry_because(s: r.rank_symmetry, want: rank_symmetry_unread_awaits_rank_local_receipt)
@@ -311,14 +309,14 @@ fn fx_pair_hosts() -> List<HostQualificationAdmission> {
     admit_qualified_host(
       receipt: qualify_host(
         node: "rank-0" as HostIdentity,
-        advertised: fx_advertised().host,
+        advertised: fx_advertised_host(),
         measured: fx_agreeing_host_measured(host: "rank-0" as HostIdentity),
       ),
     ),
     admit_qualified_host(
       receipt: qualify_host(
         node: "rank-1" as HostIdentity,
-        advertised: fx_advertised().host,
+        advertised: fx_advertised_host(),
         measured: fx_agreeing_host_measured(host: "rank-1" as HostIdentity),
       ),
     ),
@@ -340,87 +338,67 @@ fn fx_pair_unqualified_hosts() -> List<HostQualificationAdmission> {
     admit_qualified_host(
       receipt: qualify_host(
         node: "rank-0" as HostIdentity,
-        advertised: fx_advertised().host,
+        advertised: fx_advertised_host(),
         measured: fx_unqualified_host_measured(host: "rank-0" as HostIdentity),
       ),
     ),
     admit_qualified_host(
       receipt: qualify_host(
         node: "rank-1" as HostIdentity,
-        advertised: fx_advertised().host,
+        advertised: fx_advertised_host(),
         measured: fx_unqualified_host_measured(host: "rank-1" as HostIdentity),
       ),
     ),
   ]
 }
 
-fn fx_admit_host(m: MeasuredNodeDelivery) -> HostQualificationAdmission {
+fn fx_admit_host(m: HostMeasuredDelivery) -> HostQualificationAdmission {
   admit_qualified_host(
-    receipt: qualify_host(node: fx_node, advertised: fx_advertised().host, measured: m.host),
+    receipt: qualify_host(node: fx_node, advertised: fx_advertised_host(), measured: m),
   )
 }
 
-fn fx_admit_group(m: MeasuredNodeDelivery) -> GroupQualificationAdmission<NonEmptyStr> {
+fn fx_admit_group(g: CollectiveGroupMeasured) -> GroupQualificationAdmission<NonEmptyStr> {
   admit_qualified_group(
     receipt: qualify_collective_group(
       offer: fx_offer_a(),
-      advertised: fx_advertised().group,
-      measured: m.group,
+      advertised: fx_advertised_group(),
+      measured: g,
       host_admissions: fx_pair_hosts(),
     ),
   )
 }
 
 fn fx_admit_group_for(
-  advertised: AdvertisedNodeOffer,
-  m: MeasuredNodeDelivery,
+  advertised: CollectiveGroupAdvertised,
+  measured: CollectiveGroupMeasured,
   hosts: List<HostQualificationAdmission>,
 ) -> GroupQualificationAdmission<NonEmptyStr> {
   admit_qualified_group(
     receipt: qualify_collective_group(
       offer: fx_offer_a(),
-      advertised: advertised.group,
-      measured: m.group,
+      advertised: advertised,
+      measured: measured,
       host_admissions: hosts,
     ),
   )
 }
 
-fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDelivery {
-  MeasuredNodeDelivery {
-    host: HostMeasuredDelivery {
-      accelerator_count: CountRead { count: 4 },
-      usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
-      rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
-      nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
-      gpu_direct: fx_gdr_unsupported_reading(host: fx_node),
-    },
-    group: CollectiveGroupMeasured {
-      collective: fx_curve(samples: [fx_sample()]),
-      all_to_all: fx_all_to_all_curve(samples: [fx_sample()]),
-      host_registered_ib_fallback: fx_ib_ok(),
-      ranks: ranks,
-    },
-  }
-}
-
 test fn unread_evidence_is_not_qualification() -> Bool {
-  let unread = MeasuredNodeDelivery {
-    host: HostMeasuredDelivery {
-      accelerator_count: CountUnread { because: "cudaGetDeviceCount not run" as NonEmptyStr },
-      usable_memory: ByteSizeUnread { because: "memory query not run" as NonEmptyStr },
-      rail_link_mode: LinkModeUnread { because: "ethtool not run" as NonEmptyStr },
-      nic_pcie: PcieLinkUnread { because: "lspci not run" as NonEmptyStr },
-      gpu_direct: fx_gdr_unread(),
-    },
-    group: CollectiveGroupMeasured {
-      collective: CollectiveCurveUnread { because: "nccl-tests not run" as NonEmptyStr },
-      all_to_all: CollectiveCurveUnread { because: "alltoall_perf not run" as NonEmptyStr },
-      host_registered_ib_fallback: fx_ib_fallback_unread(),
-      ranks: [],
-    },
+  let unread_host = HostMeasuredDelivery {
+    accelerator_count: CountUnread { because: "cudaGetDeviceCount not run" as NonEmptyStr },
+    usable_memory: ByteSizeUnread { because: "memory query not run" as NonEmptyStr },
+    rail_link_mode: LinkModeUnread { because: "ethtool not run" as NonEmptyStr },
+    nic_pcie: PcieLinkUnread { because: "lspci not run" as NonEmptyStr },
+    gpu_direct: fx_gdr_unread(),
   }
-  match fx_admit_host(m: unread) {
+  let unread_group = CollectiveGroupMeasured {
+    collective: CollectiveCurveUnread { because: "nccl-tests not run" as NonEmptyStr },
+    all_to_all: CollectiveCurveUnread { because: "alltoall_perf not run" as NonEmptyStr },
+    host_registered_ib_fallback: fx_ib_fallback_unread(),
+    ranks: [],
+  }
+  match fx_admit_host(m: unread_host) {
     HostNotQualified { receipt: r, refusals: refusals } =>
       refusals.length() > 0
         && match r.accelerators {
@@ -429,7 +407,7 @@ test fn unread_evidence_is_not_qualification() -> Bool {
           AcceleratorCountFallsShort { advertised: _, measured: _ } => false
         }
     HostQualified { receipt: _ } => false
-  } && match fx_admit_group(m: unread) {
+  } && match fx_admit_group(g: unread_group) {
     GroupNotQualified { receipt: r, refusals: refusals } =>
       refusals.length() > 0
         && match r.collective_latency {
@@ -510,7 +488,7 @@ test fn group_b_live_receipt_is_not_qualified() -> Bool {
 }
 
 test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
-  match group_b_measured.group.collective {
+  match group_b_group_measured.collective {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
       observation: proto,
@@ -558,7 +536,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
               CollectivePrimitiveAttributionUnestablished => false
               CollectivePrimitiveSameRuntime { nccl: _ } => false
             }
-            && match group_b_measured.group.host_registered_ib_fallback {
+            && match group_b_group_measured.host_registered_ib_fallback {
               HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
                 measured_with: fb,
                 serving_revisions_not_censused: _,
@@ -571,7 +549,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
 }
 
 test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
-  match group_b_measured.group.collective {
+  match group_b_group_measured.collective {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
       observation: ar_proto,
@@ -580,7 +558,7 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
       window: _,
-    } => match group_b_measured.group.all_to_all {
+    } => match group_b_group_measured.all_to_all {
       CollectiveCurveUnread { because: _ } => false
       CollectiveCurveRead {
         observation: a2a_proto,
@@ -668,13 +646,13 @@ test fn a_partly_missing_expected_rank_is_unread_not_agrees() -> Bool {
 
 test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
   match fx_admit_group_for(
-    advertised: fx_advertised(),
-    m: fx_measured_all_agree(),
+    advertised: fx_advertised_group(),
+    measured: fx_measured_group_all_agree(),
     hosts: [
       admit_qualified_host(
         receipt: qualify_host(
           node: "rank-0" as HostIdentity,
-          advertised: fx_advertised().host,
+          advertised: fx_advertised_host(),
           measured: fx_agreeing_host_measured(host: "rank-0" as HostIdentity),
         ),
       ),
@@ -691,8 +669,8 @@ test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
 
 test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> Bool {
   match fx_admit_group_for(
-    advertised: fx_advertised(),
-    m: fx_measured_all_agree(),
+    advertised: fx_advertised_group(),
+    measured: fx_measured_group_all_agree(),
     hosts: fx_pair_unqualified_hosts(),
   ) {
     GroupQualified { receipt: _ } => false
@@ -707,20 +685,20 @@ test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> B
 
 test fn failing_host_receipts_wrapped_as_host_qualified_do_not_complete_the_roster() -> Bool {
   match fx_admit_group_for(
-    advertised: fx_advertised(),
-    m: fx_measured_all_agree(),
+    advertised: fx_advertised_group(),
+    measured: fx_measured_group_all_agree(),
     hosts: [
       HostQualified {
         receipt: qualify_host(
           node: "rank-0" as HostIdentity,
-          advertised: fx_advertised().host,
+          advertised: fx_advertised_host(),
           measured: fx_unqualified_host_measured(host: "rank-0" as HostIdentity),
         ),
       },
       HostQualified {
         receipt: qualify_host(
           node: "rank-1" as HostIdentity,
-          advertised: fx_advertised().host,
+          advertised: fx_advertised_host(),
           measured: fx_unqualified_host_measured(host: "rank-1" as HostIdentity),
         ),
       },
@@ -811,17 +789,14 @@ test fn all_to_all_is_not_scored_on_all_reduce_protocol() -> Bool {
 }
 
 test fn ib_cited_only_on_nccl_tests_does_not_qualify() -> Bool {
-  let measured = fx_measured_all_agree()
-  let ib_gap = MeasuredNodeDelivery {
-    host: measured.host,
-    group: CollectiveGroupMeasured {
-      collective: measured.group.collective,
-      all_to_all: measured.group.all_to_all,
-      host_registered_ib_fallback: fx_ib_measured_only(),
-      ranks: measured.group.ranks,
-    },
+  let measured = fx_measured_group_all_agree()
+  let ib_gap = CollectiveGroupMeasured {
+    collective: measured.collective,
+    all_to_all: measured.all_to_all,
+    host_registered_ib_fallback: fx_ib_measured_only(),
+    ranks: measured.ranks,
   }
-  match fx_admit_group(m: ib_gap) {
+  match fx_admit_group(g: ib_gap) {
     GroupQualified { receipt: _ } => false
     GroupNotQualified { receipt: r, refusals: refusals } =>
       match r.host_registered_ib_fallback {
@@ -930,7 +905,7 @@ test fn a_failing_group_receipt_wrapped_as_group_qualified_is_refused() -> Bool 
 test fn a_failing_host_receipt_wrapped_as_host_qualified_is_refused() -> Bool {
   let unread = qualify_host(
     node: fx_node,
-    advertised: fx_advertised().host,
+    advertised: fx_advertised_host(),
     measured: HostMeasuredDelivery {
       accelerator_count: CountUnread { because: "not run" as NonEmptyStr },
       usable_memory: ByteSizeUnread { because: "not run" as NonEmptyStr },
@@ -1015,15 +990,12 @@ test fn a_gb10_zero_capability_receipt_is_device_unsupported() -> Bool {
 
 test fn an_unread_gpu_direct_receipt_is_not_host_qualification() -> Bool {
   match fx_admit_host(
-    m: MeasuredNodeDelivery {
-      host: HostMeasuredDelivery {
-        accelerator_count: CountRead { count: 4 },
-        usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
-        rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
-        nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
-        gpu_direct: fx_gdr_unread(),
-      },
-      group: fx_measured_all_agree().group,
+    m: HostMeasuredDelivery {
+      accelerator_count: CountRead { count: 4 },
+      usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
+      rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
+      nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
+      gpu_direct: fx_gdr_unread(),
     },
   ) {
     HostQualified { receipt: _ } => false
@@ -1042,7 +1014,7 @@ test fn a_gdr_receipt_from_another_host_does_not_qualify() -> Bool {
   match admit_qualified_host(
     receipt: qualify_host(
       node: fx_node_b,
-      advertised: fx_advertised().host,
+      advertised: fx_advertised_host(),
       measured: fx_agreeing_host_measured(host: fx_node),
     ),
   ) {
@@ -1064,18 +1036,18 @@ test fn a_gdr_receipt_from_another_host_does_not_qualify() -> Bool {
 test fn a_gdr_receipt_from_another_host_wrapped_as_host_qualified_does_not_complete_the_roster() -> Bool {
   let mismatched = qualify_host(
     node: "rank-0" as HostIdentity,
-    advertised: fx_advertised().host,
+    advertised: fx_advertised_host(),
     measured: fx_agreeing_host_measured(host: fx_node),
   )
   match fx_admit_group_for(
-    advertised: fx_advertised(),
-    m: fx_measured_all_agree(),
+    advertised: fx_advertised_group(),
+    measured: fx_measured_group_all_agree(),
     hosts: [
       HostQualified { receipt: mismatched },
       HostQualified {
         receipt: qualify_host(
           node: "rank-1" as HostIdentity,
-          advertised: fx_advertised().host,
+          advertised: fx_advertised_host(),
           measured: fx_agreeing_host_measured(host: "rank-1" as HostIdentity),
         ),
       },

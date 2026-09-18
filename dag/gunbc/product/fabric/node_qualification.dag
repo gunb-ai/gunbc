@@ -189,14 +189,10 @@ fn advertised_spark_connectx7_per_port_link() -> PcieLink {
   PcieLink { generation: Gen5, lane_count: 4 }
 }
 
-fn host_eq(a: HostIdentity, b: HostIdentity) -> Bool {
-  (a as String) == (b as String)
-}
-
 fn first_host_not_in(want: List<HostIdentity>, have: List<HostIdentity>) -> HostIdentity? {
   match want.first() {
     Absent => none
-    Present { value: h } => match first(filter(have, x => host_eq(a: x, b: h))) {
+    Present { value: h } => match first(filter(have, x => host_identity_eq(a: x, b: h))) {
       Absent => Present { value: h }
       Present { value: _ } => first_host_not_in(want: want.skip(n: 1), have: have)
     }
@@ -296,17 +292,6 @@ type CollectiveGroupMeasured {
   all_to_all: CollectiveCurveReading
   host_registered_ib_fallback: HostRegisteredIbFallbackStanding
   ranks: List<RankCollectiveReading>
-}
-
-// Compatibility names for witnesses that still speak "offer"/"delivery" as the pair of subjects.
-type AdvertisedNodeOffer {
-  host: HostAdvertisedDelivery
-  group: CollectiveGroupAdvertised
-}
-
-type MeasuredNodeDelivery {
-  host: HostMeasuredDelivery
-  group: CollectiveGroupMeasured
 }
 
 // ── THREE-VALUED STANDINGS. No constructor maps unread onto agreement. ─────────────────────────
@@ -719,7 +704,7 @@ fn join_attributions(
 }
 
 fn rank_named(ranks: List<RankCollectiveReading>, want: HostIdentity) -> RankCollectiveReading? {
-  first(filter(ranks, r => host_eq(a: r.rank, b: want)))
+  first(filter(ranks, r => host_identity_eq(a: r.rank, b: want)))
 }
 
 fn first_missing_expected_rank(
@@ -746,7 +731,7 @@ fn first_duplicate_host(seen: List<HostIdentity>, rest: List<HostIdentity>) -> H
 }
 
 fn rank_named_hosts(hosts: List<HostIdentity>, want: HostIdentity) -> HostIdentity? {
-  first(filter(hosts, h => host_eq(a: h, b: want)))
+  first(filter(hosts, h => host_identity_eq(a: h, b: want)))
 }
 
 fn first_extra_measured_rank(expected: List<HostIdentity>, ranks: List<RankCollectiveReading>) -> HostIdentity? {
@@ -822,7 +807,7 @@ fn first_host_receipt_missing(expected: List<HostIdentity>, receipts: List<HostQ
 }
 
 fn host_receipt_named(receipts: List<HostQualificationReceipt>, want: HostIdentity) -> HostQualificationReceipt? {
-  first(filter(receipts, r => host_eq(a: r.node, b: want)))
+  first(filter(receipts, r => host_identity_eq(a: r.node, b: want)))
 }
 
 fn first_extra_host_receipt(expected: List<HostIdentity>, receipts: List<HostQualificationReceipt>) -> HostIdentity? {
