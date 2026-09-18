@@ -323,11 +323,17 @@ fn namespace_graft_unit_captured(unit: Node) -> Node? {
   parse_production_captured_child_optional(node: unit)
 }
 
-// Record field_decl_block is not Named-rehomed here (body_lower_type_decl / #11582).
-// The unit is a residual: body_edges_for_graft reconstructs it beside any sibling
-// Named edge so a nonempty combined cannot delete it.
+// Record form is the type_decl choice arm that is a field_decl_block without
+// type_alias_rhs (`type Rec { … }`). Variant field_decl_block lives under
+// type_alias_rhs (`type Box = Leaf | Node { … }`, `type Foo = Bar {}`) and is
+// Named-rehomed here. Record residual reconstruct stays until body_lower_type_decl / #11582.
+fn namespace_graft_type_decl_is_record_form(unit: Node) -> Bool {
+  parse_subtree_has_production(root: unit, emitted: ^dag_surface_field_decl_block)
+    && !parse_subtree_has_production(root: unit, emitted: ^dag_surface_type_alias_rhs)
+}
+
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
-  if parse_subtree_has_production(root: unit, emitted: ^dag_surface_field_decl_block) {
+  if namespace_graft_type_decl_is_record_form(unit: unit) {
     optional_absent()
   } else {
     match namespace_graft_type_decl_name(unit: unit) {
