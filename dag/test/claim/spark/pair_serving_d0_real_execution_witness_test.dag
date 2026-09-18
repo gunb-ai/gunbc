@@ -13,20 +13,26 @@ import std.effect_grant { Write, NamespacePosition, CodeNameTree }
 import gunbc.harness.harness_seat { SeatAuthorityGate, SeatAuthorityUngoverned, SeatAuthorityAdmits, SeatAuthorityRefuses, harness_seat_authority_gate }
 import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
-import gunbc.spark.serving_incarnation_observe { UnitInstalled }
-import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.spark.serving_incarnation_observe { UnitInstalled, UnitNotInstalled }
+import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
+import gunbc.spark.vllm_serving_launch { vllm_serving_launch, endpoint_incarnation_observation }
+import gunbc.spark.pair_incumbent_identity {
+  DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization,
+  ObservedRankUnit, observed_pair_realization_of, ObservedPairRealizationRead, pair_realization_agreement,
+}
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_authority {
-  SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
   pair_serving_authority_for, pair_serving_successor_may_launch, pair_serving_may_finish,
 }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
-  AuthorityTransitionAppended, pair_serving_authority_transition,
+  AuthorityTransitionAppended, pair_serving_authority_transition, authority_eq,
 }
 import gunbc.spark.pair_serving_d0 {
-  D0Subject, RankOccupancyReading, IncumbentDidNotAnswer, D0Observation,
-  D0Outcome, D0Settled, D0Refused, D0Decision, D0DecidedSuspend, DeclaredOccupantDrifted, d0_transaction, d0_held_lease,
+  D0Subject, RankOccupancyReading, IncumbentDidNotAnswer, IncumbentAnswered, D0Observation,
+  D0Outcome, D0Settled, D0Refused, D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, DeclaredOccupantDrifted, d0_transaction, d0_held_lease,
   AdmittedD0Grant, D0GrantAdmitted, admit_d0_grant, d0_intent_hash, d0_authorized_action,
 }
 
@@ -233,6 +239,94 @@ test fn a_rerun_resumes_its_own_pending_state_and_refuses_anothers_by_real_execu
           }
           }
         }
+      }
+    })
+  })
+}
+
+// An observation whose head rank has NO pair unit installed: unread, so the transaction fences.
+fn w_observe_uninstalled(group: FabricGroup) -> D0Observation {
+  let base = w_observe(group: group)
+  D0Observation {
+    group: group, incumbent: base.incumbent,
+    ranks: map(base.ranks, r => if (r.unit_name as String) == "gunbc-spark-pair-head.service" { RankOccupancyReading { host: r.host, unit_name: r.unit_name, occupancy: UnitNotInstalled } } else { r }),
+  }
+}
+
+// An observation where the enrolled route ANSWERS with exactly the declared realization on every
+// rank: restoration is shown safe, and the authority returns to the resting Active state unchanged.
+fn w_observe_live_declared(group: FabricGroup) -> D0Observation {
+  match declared_pair_realization(group: group) {
+    DeclaredPairRealizationUnavailable { group: _, obligation: _ } => w_observe(group: group)
+    DeclaredPairRealizationKeyed { declared: d } => {
+      let head = endpoint_incarnation_observation(
+        endpoint: vllm_endpoint_process_launch(group: group, endpoint: "http://10.0.0.5:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
+        launch: vllm_serving_launch(group: group, head: d.head.host, systemd_invocation: "inv" as NonEmptyStr, container_id: "c" as NonEmptyStr, executable_digest: d.head.digest, unit_digest: d.head.digest, started_at: 1),
+        receipt: "test.claim.spark.pair_serving_d0_real_execution fixture" as ObservationReceiptRef,
+      )
+      let workers = map(d.workers, w => ObservedRankUnit { host: w.host, unit_name: w.unit_name, systemd_invocation: "inv" as NonEmptyStr, unit_digest: w.digest })
+      let agreement = pair_realization_agreement(
+        declared: DeclaredPairRealizationKeyed { declared: d },
+        observed: ObservedPairRealizationRead { observed: observed_pair_realization_of(group: group, head: head, workers: workers, receipt: "test.claim.spark.pair_serving_d0_real_execution fixture" as ObservationReceiptRef) },
+      )
+      D0Observation { group: group, incumbent: IncumbentAnswered { agreement: agreement }, ranks: w_observe(group: group).ranks }
+    }
+  }
+}
+
+fn read_authority_at(c: CurrentAuthority, expected: PairServingGroupAuthority, generation: Int) -> Bool {
+  match c {
+    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: gr, entry_state: es } =>
+      g == generation && authority_eq(a: a, b: expected)
+        && (match gr { Absent => true  Present { value: _ } => false })
+        && (match es { Present { value: _ } => true  Absent => false })
+    CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
+  }
+}
+
+// THE OTHER TWO TERMINALS ARE REACHED. An unread rank fences: the authority lands on FencedRefusal
+// at generation 2 with no grant and the receipt digest on the event, and the seat gate refuses. A
+// live declared incumbent restores: the authority lands back on the resting Active state,
+// unchanged (no keyed mint), at generation 2, and the seat gate admits again.
+test fn a_fence_and_a_restore_each_reach_their_terminal_by_real_execution() -> Bool {
+  with_hash(scenario: fn(h) {
+    with_temp_dir(scenario: fn(dir) {
+      let layout = witness_layout(dir: dir)
+      match pair_serving_authority_for(group: FabricGroupA) {
+        Absent => false
+        Present { value: resting } =>
+      match w_admitted(successor: h, tx: "tx-fence" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+        Absent => false
+        Present { value: fence_grant } =>
+      match w_admitted(successor: h, tx: "tx-restore" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+        Absent => false
+        Present { value: restore_grant } =>
+          witness_remote_ready(dir: dir)
+            && (match d0_transaction(layout: layout, group: FabricGroupA, admitted: fence_grant, transaction: "tx-fence" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z", observe: fn(g) { w_observe_uninstalled(group: g) }) {
+                  D0Settled { decision: D0DecidedFence { next: _, cause: _ }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
+                  _ => false
+                })
+            && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000) {
+                  CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: _, disposition_authority: _ }, head: _, generation: g, grant: Absent, entry_state: Present { value: _ } } => g == 2
+                  _ => false
+                })
+            && seat_gate_is(g: harness_seat_authority_gate(layout: layout, group: FabricGroupA, now: 1000), admits: false)
+            && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000) {
+                  CurrentAuthorityRead { authority: fenced, head: _, generation: _, grant: _, entry_state: _ } =>
+                    match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: fenced, next: resting, transaction: "tx-operator-restore" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                      AuthorityTransitionAppended { id: _, generation: g3, next: _ } => g3 == 3
+                      _ => false
+                    }
+                  _ => false
+                })
+            && (match d0_transaction(layout: layout, group: FabricGroupA, admitted: restore_grant, transaction: "tx-restore" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { w_observe_live_declared(group: g) }) {
+                  D0Settled { decision: D0DecidedRestore { next: _, key: _ }, generation: g5, receipt_path: _, entry_state: _ } => g5 == 5
+                  _ => false
+                })
+            && read_authority_at(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1002), expected: resting, generation: 5)
+            && seat_gate_is(g: harness_seat_authority_gate(layout: layout, group: FabricGroupA, now: 1002), admits: true)
+      }
+      }
       }
     })
   })

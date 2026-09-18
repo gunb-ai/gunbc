@@ -8,7 +8,7 @@ import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpe
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitNotActive }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
 import gunbc.spark.vllm_serving_launch { vllm_serving_launch, endpoint_incarnation_observation }
@@ -317,13 +317,16 @@ test fn no_authorization_resolves_today_so_the_entry_cannot_admit() -> Bool {
   }
 }
 
+fn admit(auth: ScopedAuthorization<D0Subject>, group: FabricGroup, at: String) -> D0GrantAdmission {
+  admit_d0_grant(authorization: auth, escalation_id: "auth-w" as NonEmptyStr, group: group, transaction: t_tx, executor: "witness" as NonEmptyStr, at: at)
+}
+
 // A grant is admitted only under std.scoped_authorization's whole decision: its own group; the
 // WRITE scope over the authority (a read scope does not authorize the mutation); the transaction
 // as its attempt; the intent hash over the exact operation; and before expiry.
 test fn a_grant_is_admitted_only_over_the_exact_operation() -> Bool {
   with_digests(scenario: fn(a, b, c) {
     let good_intent = d0_intent_hash(subject: t_subject(successor: c), group: FabricGroupA, transaction: t_tx)
-    let admit = fn(auth, group, at) { admit_d0_grant(authorization: auth, escalation_id: "auth-w" as NonEmptyStr, group: group, transaction: t_tx, executor: "witness" as NonEmptyStr, at: at) }
     (match admit(t_good_authorization(successor: c), FabricGroupA, "2026-09-18T12:00:00Z") { D0GrantAdmitted { admitted: _ } => true  _ => false })
       && (match admit(t_good_authorization(successor: c), FabricGroupB, "2026-09-18T12:00:00Z") { D0GrantForAnotherGroup { granted: _ } => true  _ => false })
       && (match admit(t_authorization(successor: c, scope_verb_write: false, attempt: t_tx, intent: good_intent, expires_at: "2026-09-19T00:00:00Z"), FabricGroupA, "2026-09-18T12:00:00Z") { D0GrantRefused { cause: AuthorizationScopeNotGranted { required: _, granted: _ } } => true  _ => false })

@@ -933,6 +933,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_executor_identity_reason,
     dissolution: excl_local_repo_wet_executor_identity_dissolve},
   WitnessExclusionRow {
+    pattern: "spark_pair_serving_apply_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_executor_identity_reason,
+    dissolution: excl_local_repo_wet_executor_identity_dissolve},
+  WitnessExclusionRow {
     pattern: "devboot_text_blob_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,

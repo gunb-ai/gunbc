@@ -617,8 +617,17 @@ fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, active:
     D0Refused { cause: join(["the entry-state receipt could not be written before settling, so the authority was not moved: ", wr.error], "") }
   } else {
     let digest = entry_state_digest(body: body)
-    let term = lease_grant(reference: transaction, fence: lease_fence_of(admitting_event: admitting, generation: pending_generation), granted_at: at, policy: d0_lease_policy(subject: admitted.grant.subject))
-    match pair_serving_authority_transition(layout: layout, group: group, expected: pending, next: d0_decision_next(d: decision), transaction: transaction, grant: Present { value: term }, entry_state: Present { value: digest }, actor: executor, at: at) {
+    // THE GRANT RIDES ONLY INTO THE LEASED TERMINAL. A restore to Active and a fence hold no lease,
+    // and the log refuses a grant carried into a state with none -- so those two terminals write
+    // the transition without one, and only the suspension carries the term minted from the
+    // admitting write. An earlier shape carried it on every arm and could reach neither.
+    let term = match decision {
+      D0DecidedSuspend { next: _, reconciliation: _ } =>
+        Present { value: lease_grant(reference: transaction, fence: lease_fence_of(admitting_event: admitting, generation: pending_generation), granted_at: at, policy: d0_lease_policy(subject: admitted.grant.subject)) }
+      D0DecidedRestore { next: _, key: _ } => none
+      D0DecidedFence { next: _, cause: _ } => none
+    }
+    match pair_serving_authority_transition(layout: layout, group: group, expected: pending, next: d0_decision_next(d: decision), transaction: transaction, grant: term, entry_state: Present { value: digest }, actor: executor, at: at) {
       AuthorityTransitionAppended { id: _, generation: g, next: _ } => D0Settled { decision: decision, generation: g, receipt_path: path, entry_state: digest }
       AuthorityTransitionStale { expected: e, current: c } => D0Refused { cause: join(["the settling write did not land; the authority is as the log says: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c })], "") }
       AuthorityTransitionRefused { group: gr, step: st, reason: why } => D0Refused { cause: join(["the settling write did not land: ", transition_text(t: AuthorityTransitionRefused { group: gr, step: st, reason: why })], "") }
