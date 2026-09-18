@@ -75,6 +75,43 @@ fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
   )
 }
 
+// THE IDENTITY HAS A HISTORY, AND MODELLING ONLY ITS CURRENT SPELLING IS WHAT MINTED A DUPLICATE.
+// gunbc#11485 moved the marker from appProperties to properties, and the query above was rewritten
+// to match. It was rewritten as though the field NAME were the whole identity relation -- but the
+// relation a converge actually needs is "is this the review sheet", and a file created before that
+// change answers yes while matching no query the new spelling can build. The next converge searched,
+// found nothing, and minted a second spreadsheet beside a live one holding real data. The sheet was
+// recovered by hand; nothing in the model would have recovered it.
+//
+// So a superseded location is not history to be deleted with the migration -- it is part of the
+// identity until every file bearing it has been migrated, and this repository cannot observe that
+// it has. The row therefore has no dissolution trigger dated to a release; its trigger is a census
+// establishing that no file carries the old field, which is a fact about a drive rather than about
+// this corpus.
+//
+// ONE SUPERSEDED FIELD, NOT A LIST, AND THE REASON IS DESIGN SECTION 4d RATHER THAN CONVENIENCE. A
+// general chain of prior spellings would forbid more than the evidence supports and would cost one
+// search per generation on a path whose steady state is already the common case. There has been
+// exactly one move. A second one adds a row here and widens this fold, and the shape it should take
+// is a decision to make when there is a second one to look at.
+data review_sheet_superseded_marker_property_field: NonEmptyStr = "appProperties"
+
+fn review_sheet_superseded_search_query(marker_value: NonEmptyStr) -> String {
+  join(
+    [
+      review_sheet_superseded_marker_property_field as String,
+      " has { key='",
+      review_sheet_marker_property_key as String,
+      "' and value='",
+      marker_value as String,
+      "' } and mimeType='",
+      google_sheet_mime_type as String,
+      "' and trashed=false",
+    ],
+    "",
+  )
+}
+
 // ---------------------------------------------------------------------------------------------
 // MEMBERSHIP
 // ---------------------------------------------------------------------------------------------
@@ -310,6 +347,30 @@ type SpreadsheetCreatePlan {
   marker_property_value: NonEmptyStr
 }
 
+// ADOPTING A SUPERSEDED-MARKED FILE IS A WRITE, SO IT IS A PLAN AND NOT A QUIET Noop. The file is
+// already the review sheet and nothing about it changes except where its identity is recorded --
+// but a converge that returned Noop here would leave the next run to make the same discovery and
+// the same extra search forever, and a run under observe-only would silently adopt a file it was
+// not authorized to touch.
+type SpreadsheetMarkerMigrationPlan {
+  file_id: NonEmptyStr
+  marker_property_value: NonEmptyStr
+}
+
+type SpreadsheetPlan
+  = SpreadsheetCreate { create: SpreadsheetCreatePlan }
+  | SpreadsheetMigrateMarker { migrate: SpreadsheetMarkerMigrationPlan }
+
+// THE SUPERSEDED SEARCH IS CONDITIONAL, AND ITS NOT-CONSULTED STATE IS WRITTEN DOWN RATHER THAN
+// INFERRED. When the current search finds the sheet the identity is settled and the second call is
+// pure cost, so the steady state -- which is every run after the first -- issues exactly the one
+// files.list it issued before this change. The arm below exists so that "we did not look" can never
+// arrive at the decision wearing the same shape as "we looked and found nothing": the create arm is
+// unreachable from SupersededNotConsulted, so a caller that skips the read cannot mint a file.
+type SupersededSearchReading
+  = SupersededNotConsulted
+  | SupersededRead { observation: ReviewSpreadsheetObservation }
+
 // incompleteSearch true is its own arm, and this is the subtle one: Drive answering "I could not
 // search everything" alongside an empty list is NOT an observation of absence. Folding it to
 // absent is how a converge mints a duplicate of a file it simply failed to look for.
@@ -358,13 +419,20 @@ fn spreadsheet_from_files(files: List<DriveFile>) -> ReviewSpreadsheetObservatio
   }
 }
 
+// THE ONE STRUCTURAL CHANGE: A CREATE NOW REQUIRES ABSENCE ESTABLISHED ACROSS THE WHOLE IDENTITY,
+// NOT ACROSS ITS CURRENT SPELLING. Every refusing arm of the superseded read refuses the converge
+// rather than falling through to a create, because an unreadable, incomplete or paged search of the
+// old field is precisely the state that cannot tell a migrated drive from an unmigrated one -- and
+// answering "create" there is the bug this whole change exists to close, repeated one generation
+// later. DESIGN section 5: a failure arm must refuse, never widen.
 fn ensure_review_spreadsheet(
   policy: EnsurePolicy,
   observed: ReviewSpreadsheetObservation,
+  superseded: SupersededSearchReading,
   drive_id: NonEmptyStr,
   sheet_name: NonEmptyStr,
   marker_value: NonEmptyStr,
-) -> UpsertDecision<SpreadsheetCreatePlan> {
+) -> UpsertDecision<SpreadsheetPlan> {
   match observed {
     SheetObservedOne { file_id: _ } => Noop
     SheetSearchUnreadable { reason: r } => Refuse { reason: r }
@@ -400,21 +468,115 @@ fn ensure_review_spreadsheet(
         ) as NonEmptyStr,
       }
     SheetAbsent =>
-      match policy {
-        EnsureObserveOnly =>
+      decide_over_superseded_marker(
+        policy: policy,
+        superseded: superseded,
+        drive_id: drive_id,
+        sheet_name: sheet_name,
+        marker_value: marker_value,
+      )
+  }
+}
+
+fn decide_over_superseded_marker(
+  policy: EnsurePolicy,
+  superseded: SupersededSearchReading,
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetPlan> {
+  match superseded {
+    SupersededNotConsulted =>
+      Refuse {
+        reason: join(
+          [
+            "the current marker found no review sheet in ",
+            drive_id as String,
+            " and the superseded marker was never searched; absence under one spelling of an identity that has two is not absence, and it may not authorize a create",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    SupersededRead { observation: o } =>
+      match o {
+        SheetObservedOne { file_id: id } =>
+          match policy {
+            EnsureObserveOnly =>
+              Refuse {
+                reason: join(
+                  [
+                    "the review sheet in ",
+                    drive_id as String,
+                    " (",
+                    id as String,
+                    ") carries only the superseded marker and policy is observe-only; adopting it means writing the current marker onto it",
+                  ],
+                  "",
+                ) as NonEmptyStr,
+              }
+            EnsureMayApply =>
+              Apply {
+                plan: SpreadsheetMigrateMarker {
+                  migrate: SpreadsheetMarkerMigrationPlan {
+                    file_id: id,
+                    marker_property_value: marker_value,
+                  }
+                }
+              }
+          }
+        SheetDuplicated { file_ids: ids } =>
           Refuse {
             reason: join(
-              ["no review spreadsheet in ", drive_id as String, " and policy is observe-only"],
+              [
+                "two or more files in ",
+                drive_id as String,
+                " carry the SUPERSEDED review-sheet marker (",
+                join(ids, ", "),
+                ") and none carries the current one; this is the shape a marker move mints when it runs twice, and only an operator can say which lineage is real",
+              ],
               "",
             ) as NonEmptyStr,
           }
-        EnsureMayApply =>
-          Apply {
-            plan: SpreadsheetCreatePlan {
-              drive_id: drive_id,
-              name: sheet_name,
-              marker_property_value: marker_value,
-            }
+        SheetSearchUnreadable { reason: r } =>
+          Refuse {
+            reason: join(
+              ["the superseded-marker search for ", drive_id as String, " could not be read, so absence is not established: ", r as String],
+              "",
+            ) as NonEmptyStr,
+          }
+        SheetSearchIncomplete =>
+          Refuse {
+            reason: join(
+              ["Drive reported incompleteSearch for the superseded marker in ", drive_id as String, "; an unfinished search that returned nothing may not authorize a create"],
+              "",
+            ) as NonEmptyStr,
+          }
+        SheetPageIncomplete { next_page_token: _ } =>
+          Refuse {
+            reason: join(
+              ["the superseded-marker listing for ", drive_id as String, " is one page of several; exactly-none on this page does not establish exactly-none in the drive"],
+              "",
+            ) as NonEmptyStr,
+          }
+        SheetAbsent =>
+          match policy {
+            EnsureObserveOnly =>
+              Refuse {
+                reason: join(
+                  ["no review spreadsheet in ", drive_id as String, " under either marker and policy is observe-only"],
+                  "",
+                ) as NonEmptyStr,
+              }
+            EnsureMayApply =>
+              Apply {
+                plan: SpreadsheetCreate {
+                  create: SpreadsheetCreatePlan {
+                    drive_id: drive_id,
+                    name: sheet_name,
+                    marker_property_value: marker_value,
+                  }
+                }
+              }
           }
       }
   }

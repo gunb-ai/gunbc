@@ -25,9 +25,17 @@ import gunbc.review_sheet_drive_converge {
   SheetPageIncomplete,
   SheetSearchUnreadable,
   SpreadsheetCreatePlan,
+  SpreadsheetMarkerMigrationPlan,
+  SpreadsheetPlan,
+  SpreadsheetCreate,
+  SpreadsheetMigrateMarker,
+  SupersededSearchReading,
+  SupersededNotConsulted,
+  SupersededRead,
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
+  review_sheet_superseded_search_query,
 }
 
 // THE HARDER AMBIGUITY, AND THE REASON THE KEY IS CHOSEN BEFORE THE CALL. A lost answer from
@@ -45,15 +53,21 @@ type SpreadsheetConvergeOutcome
   = SpreadsheetAdopted { file_id: NonEmptyStr }
   | SpreadsheetCreatedAndVerified { file_id: NonEmptyStr }
   | SpreadsheetCreateUnverified { cause: NonEmptyStr }
+  | SpreadsheetMarkerMigratedAndVerified { file_id: NonEmptyStr }
+  | SpreadsheetMarkerMigrationUnverified { cause: NonEmptyStr }
   | SpreadsheetConvergeRefused { cause: NonEmptyStr }
 
+// THE QUERY IS A PARAMETER NOW, BECAUSE TWO QUESTIONS SHARE ONE READ. Both the current-marker and
+// the superseded-marker searches are files.list over one drive differing only in the q string, and
+// every arm of the outcome classification below is identical for the two. Forking this function per
+// marker generation would duplicate five refusal arms to vary one argument.
 fn read_spreadsheet(
   drive_id: NonEmptyStr,
-  marker_value: NonEmptyStr,
+  query: String,
 ) -> ReviewSpreadsheetObservation uses net: Network {
   let read = drive.Files.ListFiles(
     drive_id: drive_id as String,
-    query: review_sheet_search_query(marker_value: marker_value),
+    query: query,
   )
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
     RestExchangeSucceeded => spreadsheet_from_file_list(list: read.list)
@@ -86,7 +100,7 @@ fn verify_created_spreadsheet(
   marker_value: NonEmptyStr,
   create_detail: NonEmptyStr,
 ) -> SpreadsheetConvergeOutcome uses net: Network {
-  match read_spreadsheet(drive_id: drive_id, marker_value: marker_value) {
+  match read_spreadsheet(drive_id: drive_id, query: review_sheet_search_query(marker_value: marker_value)) {
     SheetObservedOne { file_id: id } => SpreadsheetCreatedAndVerified { file_id: id }
     SheetAbsent =>
       SpreadsheetCreateUnverified {
@@ -154,23 +168,168 @@ fn perform_spreadsheet_create(
   }
 }
 
+// THE READBACK IS A SEARCH, NOT THE PATCH'S OWN ANSWER, AND IT ASSERTS THE ID RATHER THAN A COUNT.
+// files.update answering 200 establishes that Drive accepted a write; it does not establish that a
+// search on the current marker now reaches this file, which is the only property the migration
+// exists to produce. So the verification re-asks the ORIGINAL question -- the current-marker query
+// that found nothing before the write -- and requires the answer to be the file we patched.
+//
+// EXACTLY-ONE IS NOT ENOUGH HERE and the difference is not pedantic: a concurrent create elsewhere
+// would also answer exactly-one, and adopting it would hand this converge a different spreadsheet
+// than the one holding the operator's data -- the original defect with the roles reversed. The id
+// comparison is what makes the readback about this actuation rather than about the drive.
+fn verify_marker_migration(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+  expected_file_id: NonEmptyStr,
+  migration_detail: NonEmptyStr,
+) -> SpreadsheetConvergeOutcome uses net: Network {
+  match read_spreadsheet(drive_id: drive_id, query: review_sheet_search_query(marker_value: marker_value)) {
+    SheetObservedOne { file_id: id } =>
+      if (id as String) == (expected_file_id as String) {
+        SpreadsheetMarkerMigratedAndVerified { file_id: id }
+      } else {
+        SpreadsheetConvergeRefused {
+          cause: join(
+            [
+              migration_detail as String,
+              ", and the current marker now reaches ",
+              id as String,
+              " rather than the file it was written onto (",
+              expected_file_id as String,
+              "); another file answers for this identity and only an operator can say which is real",
+            ],
+            "",
+          ) as NonEmptyStr
+        }
+      }
+    SheetAbsent =>
+      SpreadsheetMarkerMigrationUnverified {
+        cause: join(
+          [migration_detail as String, ", and no file carries the current marker afterwards; the write did not take and was not refused"],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetDuplicated { file_ids: ids } =>
+      SpreadsheetConvergeRefused {
+        cause: join(
+          [migration_detail as String, ", and two or more files now carry the current marker (", join(ids, ", "), "); a second lineage exists and only an operator can say which is real"],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetSearchIncomplete =>
+      SpreadsheetMarkerMigrationUnverified {
+        cause: join([migration_detail as String, ", and the verifying search was incomplete, so the migration may not be reported as done"], "") as NonEmptyStr
+      }
+    SheetPageIncomplete { next_page_token: _ } =>
+      SpreadsheetMarkerMigrationUnverified {
+        cause: join([migration_detail as String, ", and the verifying search returned one page of a longer list; a page is not the list"], "") as NonEmptyStr
+      }
+    SheetSearchUnreadable { reason: r } =>
+      SpreadsheetMarkerMigrationUnverified {
+        cause: join([migration_detail as String, ", and the verifying read could not settle it: ", r as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// AN AMBIGUOUS COMMIT VERIFIES RATHER THAN REFUSES, FOR THE SAME REASON THE CREATE PATH DOES: the
+// question after a lost answer is not what the call said but what the drive now holds. Unlike the
+// create path this write is IDEMPOTENT -- writing one properties key twice leaves the same file in
+// the same state -- so a lost answer here cannot have minted anything, and re-reading settles it.
+fn perform_marker_migration(
+  drive_id: NonEmptyStr,
+  plan: SpreadsheetMarkerMigrationPlan,
+) -> SpreadsheetConvergeOutcome uses net: Network {
+  let patched = drive.Files.UpdateFileProperties(
+    file_id: plan.file_id as String,
+    marker_property_value: plan.marker_property_value as String,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: patched.outcome }) {
+    RestExchangeSucceeded =>
+      verify_marker_migration(
+        drive_id: drive_id,
+        marker_value: plan.marker_property_value,
+        expected_file_id: plan.file_id,
+        migration_detail: join(["files.update answered success for ", plan.file_id as String], "") as NonEmptyStr,
+      )
+    RestExchangeCommitAmbiguous { detail } =>
+      verify_marker_migration(
+        drive_id: drive_id,
+        marker_value: plan.marker_property_value,
+        expected_file_id: plan.file_id,
+        migration_detail: join(["files.update left the write ambiguous for ", plan.file_id as String, " (", detail, ")"], "") as NonEmptyStr,
+      )
+    RestExchangeStatusRefused { status, body } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.update refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.update never reached Drive: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.update answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// THE SECOND SEARCH IS ISSUED ONLY WHERE ITS ANSWER CAN CHANGE THE DECISION, WHICH IS ALSO WHERE IT
+// IS SAFE TO SKIP IT. An adopted sheet settles the identity, so the steady state -- every run after
+// the first -- issues exactly the one files.list it issued before this change, and the refusing arms
+// have already refused for a reason that a superseded-marker file could not repair.
+fn read_superseded_marker(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+  observed: ReviewSpreadsheetObservation,
+) -> SupersededSearchReading uses net: Network {
+  match observed {
+    SheetAbsent =>
+      SupersededRead {
+        observation: read_spreadsheet(
+          drive_id: drive_id,
+          query: review_sheet_superseded_search_query(marker_value: marker_value),
+        )
+      }
+    SheetObservedOne { file_id: _ } => SupersededNotConsulted
+    SheetDuplicated { file_ids: _ } => SupersededNotConsulted
+    SheetSearchIncomplete => SupersededNotConsulted
+    SheetPageIncomplete { next_page_token: _ } => SupersededNotConsulted
+    SheetSearchUnreadable { reason: _ } => SupersededNotConsulted
+  }
+}
+
 fn converge_review_spreadsheet(
   drive_id: NonEmptyStr,
   sheet_name: NonEmptyStr,
   marker_value: NonEmptyStr,
   policy: EnsurePolicy,
 ) -> SpreadsheetConvergeOutcome uses net: Network {
-  let observed = read_spreadsheet(drive_id: drive_id, marker_value: marker_value)
+  let observed = read_spreadsheet(
+    drive_id: drive_id,
+    query: review_sheet_search_query(marker_value: marker_value),
+  )
+  let superseded = read_superseded_marker(
+    drive_id: drive_id,
+    marker_value: marker_value,
+    observed: observed,
+  )
   match ensure_review_spreadsheet(
     policy: policy,
     observed: observed,
+    superseded: superseded,
     drive_id: drive_id,
     sheet_name: sheet_name,
     marker_value: marker_value,
   ) {
     Noop => spreadsheet_noop_outcome(observed: observed)
     Refuse { reason: r } => SpreadsheetConvergeRefused { cause: r }
-    Apply { plan: p } => perform_spreadsheet_create(plan: p)
+    Apply { plan: p } =>
+      match p {
+        SpreadsheetCreate { create: c } => perform_spreadsheet_create(plan: c)
+        SpreadsheetMigrateMarker { migrate: m } =>
+          perform_marker_migration(drive_id: drive_id, plan: m)
+      }
   }
 }
 
@@ -202,6 +361,10 @@ fn spreadsheet_noop_outcome(observed: ReviewSpreadsheetObservation) -> Spreadshe
 
 fn spreadsheet_outcome_text(o: SpreadsheetConvergeOutcome) -> String {
   match o {
+    SpreadsheetMarkerMigratedAndVerified { file_id: id } =>
+      join(["adopted sheet ", id as String, " and migrated it from the superseded marker to the current one"], "")
+    SpreadsheetMarkerMigrationUnverified { cause: c } =>
+      join(["marker migration UNVERIFIED: ", c as String], "")
     SpreadsheetAdopted { file_id: id } => join(["adopted existing sheet ", id as String], "")
     SpreadsheetCreatedAndVerified { file_id: id } =>
       join(["created and verified by readback: ", id as String], "")

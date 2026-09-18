@@ -55,6 +55,8 @@ import gunbc.review_sheet_spreadsheet_actuator {
   SpreadsheetConvergeOutcome,
   SpreadsheetAdopted,
   SpreadsheetCreatedAndVerified,
+  SpreadsheetMarkerMigratedAndVerified,
+  SpreadsheetMarkerMigrationUnverified,
   SpreadsheetCreateUnverified,
   SpreadsheetConvergeRefused,
   converge_review_spreadsheet,
@@ -215,6 +217,8 @@ fn spreadsheet_is_converged(o: SpreadsheetConvergeOutcome) -> Bool {
   match o {
     SpreadsheetAdopted { file_id: _ } => true
     SpreadsheetCreatedAndVerified { file_id: _ } => true
+    SpreadsheetMarkerMigratedAndVerified { file_id: _ } => true
+    SpreadsheetMarkerMigrationUnverified { cause: _ } => false
     SpreadsheetCreateUnverified { cause: _ } => false
     SpreadsheetConvergeRefused { cause: _ } => false
   }
@@ -359,6 +363,8 @@ fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposit
   match o {
     SpreadsheetAdopted { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
     SpreadsheetCreatedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
+    SpreadsheetMarkerMigratedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
+    SpreadsheetMarkerMigrationUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
   }

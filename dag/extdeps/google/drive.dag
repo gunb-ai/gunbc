@@ -398,6 +398,25 @@ service drive.Permissions {
 // where test.claim.review_sheet_transport_pin_witness search_query_carries_the_declared_property_key
 // reads the query BUILT from the declaration and therefore ties the declaration to the search. The
 // write side has no such tie and is asserted by a human reading two lines.
+//
+// THE MARKER IS WRITABLE AFTER CREATION, AND THAT IS NOT A CONVENIENCE -- IT IS THE ONLY WAY
+// BACK TO A FILE WHOSE MARKER MOVED. gunbc#11485 changed the review sheet's identity field from
+// appProperties to properties for a credential-visibility reason that was correct, and a file
+// already carrying the old field became unfindable by the new search: the next converge observed
+// absence and minted a second spreadsheet beside the first. Recovering from that needs a write
+// that ADDS the current field to an existing file, which files.create cannot do and no read can
+// substitute for.
+//
+// PATCH RATHER THAN PUT, BECAUSE THE SEMANTICS ARE THE SAFETY PROPERTY. files.update with PATCH
+// merges the named fields; the properties map itself merges by key, so writing one key leaves
+// every other property on the file untouched. A PUT would replace the resource and silently drop
+// properties this repository does not know about and did not write.
+//
+// THE SUPERSEDED FIELD IS NOT CLEARED HERE, and that is deliberate rather than unfinished. A file
+// carrying BOTH markers is found by either search and is adoptable by both, so leaving the old
+// one is the state that fails safe while any reader of the old field may still exist. Clearing it
+// is a second write with its own readback and belongs to whatever establishes that no such reader
+// remains.
 service drive.Files {
   config {
     endpoint: drive_api_base
@@ -423,6 +442,31 @@ service drive.Files {
     }
     response {
       200 => DriveFileList
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+
+  operation UpdateFileProperties {
+    input {
+      file_id: String
+      marker_property_value: String
+    }
+    output { file_id: String from "id", outcome: RestOutcome }
+    transport rest {
+      method: PATCH,
+      path: "/files/\{file_id\}",
+      query: { supportsAllDrives: "true", fields: "id" },
+      body: {
+        properties: { gunbcReviewSheet: marker_property_value }
+      }
+    }
+    response {
+      200 => DriveFile
       400 => DriveError
       401 => DriveError
       403 => DriveError
