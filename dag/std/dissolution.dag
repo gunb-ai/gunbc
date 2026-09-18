@@ -12,9 +12,12 @@ import std.types { NonEmptyStr }
 //
 // It is the wrong shape for the retirement this corpus overwhelmingly records. Measured
 // on this tree, the `dissolve-on:` marker names the SUBJECT — the declaration that must
-// GO AWAY — not a carrier that must arrive: `sol_console_send`, `configfs_op_line`,
+// GO AWAY — not a carrier that must arrive: `sol_console_send`,
 // `nbd_server_config_text`, `fleet_converge_apply_shell` and their kin are all live
-// declarations whose disappearance IS the retirement. With only the forward shape
+// declarations whose disappearance IS the retirement. (`configfs_op_line` stood in this list
+// until its retirement FIRED on 2026-09-18 with the shell-typed-invocation first slice; a fired
+// trigger's ref naming an absent declaration is the mechanism working, not a broken citation.)
+// With only the forward shape
 // available, an author had exactly two moves: bind forward to a symbol nobody has
 // declared, which `gunbc.runner_spec_from_offer` refuses by name as the DESIGN §3
 // fabricated-citation class, or write the condition into a description string. The

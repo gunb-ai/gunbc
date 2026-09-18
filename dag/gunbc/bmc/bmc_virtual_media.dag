@@ -14,9 +14,10 @@ import extdeps.linux.usb_gadget {
   UsbGadget,
   MassStorageLun,
   ConfigfsOp,
+  ConfigfsOpCommand,
   usb_gadget_setup_ops,
-  usb_gadget_setup_script,
-  usb_gadget_teardown_script,
+  usb_gadget_setup_commands,
+  configfs_commands_render_text,
 }
 import extdeps.bmc.virtual_media {
   VirtualMediaIntent,
@@ -135,10 +136,16 @@ fn srv4_vm_gadget_setup_ops() -> List<ConfigfsOp> {
   usb_gadget_setup_ops(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 
-fn srv4_vm_gadget_setup_script() -> String {
-  usb_gadget_setup_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+fn srv4_vm_gadget_setup_commands() -> List<ConfigfsOpCommand> {
+  usb_gadget_setup_commands(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 
-fn srv4_vm_gadget_teardown_script() -> String {
-  usb_gadget_teardown_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+// The described form's rendering of the srv4 setup: one quoted-argv line per built command, no
+// shell control words, and an empty text if any op refused (a refusal produces no shell). This
+// replaces the deleted srv4_vm_gadget_setup_script, whose `set -e` prefix and `2>/dev/null || true`
+// suffixes were exactly what the shell-typed-invocation oracle refuses on. A write's value is not
+// in this text — the value rides stdin (dd of=PATH) and lives on the typed op, which the srv4
+// gadget witnesses read directly.
+fn srv4_vm_gadget_setup_rendered() -> String {
+  configfs_commands_render_text(commands: srv4_vm_gadget_setup_commands())
 }
