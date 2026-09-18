@@ -1,0 +1,84 @@
+module extdeps.cargo_config
+
+import std.types { Bool, String, List, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.toml.types {
+  TomlValue, TomlKeyValue, TomlEntry, TomlTable,
+  TomlString, TomlInteger, TomlBool, TomlInlineTable,
+  toml_strings
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/reference/config.html"
+  }
+}
+
+// CARGO'S CONFIGURATION FILE IS CARGO'S INTERFACE, so its table names, key names and value shapes
+// are declared here beside the rest of the cargo model rather than at the consumer that happens to
+// write one. A consumer supplies POLICY -- how many jobs, which lint arguments, which environment
+// variables -- and receives typed TOML nodes; it never spells `[build]`, `rustflags` or the
+// `{ value, force }` inline-table shape, which are facts about cargo and would otherwise be
+// re-coined at every writer (DESIGN section 3: interface, realization and policy are three facts).
+//
+// SCOPE, stated so absence is not read as a claim: `[build]` jobs/rustflags and `[env]` are what
+// this repository's committed configuration uses. Cargo's config schema is far larger, and the
+// rest is added as rows when a consumer needs one.
+
+data cargo_config_build_table: String = "build"
+data cargo_config_env_table: String = "env"
+data cargo_config_jobs_key: String = "jobs"
+data cargo_config_rustflags_key: String = "rustflags"
+data cargo_config_env_value_key: String = "value"
+data cargo_config_env_force_key: String = "force"
+
+// `[env]` rows carry the FORCE flag because the distinction is cargo's, not the caller's: an
+// unforced row is a default the surrounding environment overrides, a forced one wins over it.
+// Modeling it as a field keeps that choice visible at the call site instead of hidden in a string.
+type CargoConfigEnvVar {
+  name: String
+  value: String
+  force: Bool
+}
+
+fn cargo_config_jobs_value(count: Int) -> TomlValue {
+  TomlInteger { value: count }
+}
+
+// The rustflags array, rendered from the caller's own list of rustc arguments. Cargo reads this
+// key as a LIST -- the space-joined RUSTFLAGS environment variable is the other channel, with the
+// same meaning and a different spelling -- so the list shape belongs here, at cargo's boundary.
+fn cargo_config_rustflags_value(flags: List<String>) -> TomlValue {
+  toml_strings(values: flags)
+}
+
+fn cargo_config_env_value(var: CargoConfigEnvVar) -> TomlValue {
+  TomlInlineTable {
+    entries: [
+      TomlKeyValue { key: cargo_config_env_value_key, value: TomlString { value: var.value } },
+      TomlKeyValue { key: cargo_config_env_force_key, value: TomlBool { value: var.force } }
+    ]
+  }
+}
+
+fn cargo_config_env_entry(var: CargoConfigEnvVar) -> TomlEntry {
+  TomlEntry {
+    leading_comments: [],
+    pair: TomlKeyValue { key: var.name, value: cargo_config_env_value(var: var) },
+    trailing_comment: none
+  }
+}
+
+fn cargo_config_build_section(entries: List<TomlEntry>, leading_comments: List<String>) -> TomlTable {
+  TomlTable {
+    name: Present { value: cargo_config_build_table },
+    leading_comments: leading_comments,
+    entries: entries
+  }
+}
+
+fn cargo_config_env_section(entries: List<TomlEntry>) -> TomlTable {
+  TomlTable { name: Present { value: cargo_config_env_table }, leading_comments: [], entries: entries }
+}

@@ -1,0 +1,125 @@
+module test.claim.toml_emission
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.toml.types {
+  TomlDocument, TomlTable, TomlEntry, TomlKeyValue,
+  TomlString, TomlInteger, TomlBool, TomlArray, TomlInlineTable,
+  toml_entry, toml_entry_noted, toml_entry_trailing, toml_strings
+}
+import extdeps.languages.toml.emit { serialize_toml, toml_render_value, toml_escape_basic_string }
+import extdeps.cargo_config {
+  CargoConfigEnvVar,
+  cargo_config_rustflags_value, cargo_config_jobs_value, cargo_config_env_value,
+  cargo_config_build_table, cargo_config_env_table, cargo_config_rustflags_key
+}
+import gunbc.repo_self_warning_policy { repo_self_warning_denial }
+import gunbc.cargo_config_emit { expected_cargo_config_toml }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SERIALIZER IS THE ONLY PLACE TOML PUNCTUATION EXISTS, so these claims are about the medium
+// at that one boundary: each value kind the corpus writes, and the escaping rule whose ORDER is
+// the part that can be silently wrong. Each supplies its input rather than computing it, and the
+// inhabitance claim beneath them is `the_repository_config_is_rendered_by_this_serializer`, which
+// runs the real projection end to end.
+
+test fn every_modeled_value_kind_renders() -> Bool {
+  (toml_render_value(v: TomlString { value: "warnings" }) == "\"warnings\"")
+    && (toml_render_value(v: TomlInteger { value: 2 }) == "2")
+    && (toml_render_value(v: TomlBool { value: false }) == "false")
+    && (toml_render_value(v: TomlBool { value: true }) == "true")
+    && (toml_render_value(v: toml_strings(values: ["-D", "warnings"])) == "[\"-D\", \"warnings\"]")
+    && (toml_render_value(v: TomlArray { elements: [] }) == "[]")
+    && (toml_render_value(v: TomlInlineTable { entries: [
+         TomlKeyValue { key: "value", value: TomlString { value: "1" } },
+         TomlKeyValue { key: "force", value: TomlBool { value: false } }
+       ] }) == "{ value = \"1\", force = false }")
+}
+
+// THE ORDER OF THE TWO REPLACEMENTS IS THE WHOLE CLAIM. Escaping the quote first and the backslash
+// second turns `"` into `\\"` -- a backslash followed by an unescaped terminator -- so a string
+// carrying both characters is the input that discriminates a correct implementation from the
+// plausible wrong one. A test over a quote alone passes under either order and establishes nothing.
+test fn basic_string_escaping_handles_quote_and_backslash_together() -> Bool {
+  (toml_escape_basic_string(s: "a\"b") == "a\\\"b")
+    && (toml_escape_basic_string(s: "a\\b") == "a\\\\b")
+    && (toml_escape_basic_string(s: "a\\\"b") == "a\\\\\\\"b")
+    && (toml_render_value(v: TomlString { value: "a\"b" }) == "\"a\\\"b\"")
+}
+
+test fn comments_and_tables_render_at_their_declared_positions() -> Bool {
+  let doc = TomlDocument {
+    preamble_comments: ["top"],
+    tables: [
+      TomlTable {
+        name: Present { value: "build" },
+        leading_comments: [],
+        entries: [
+          toml_entry_trailing(key: "jobs", value: TomlInteger { value: 2 }, trailing_comment: "why"),
+          toml_entry_noted(key: "flag", value: TomlBool { value: true }, leading_comments: ["note"])
+        ]
+      },
+      TomlTable {
+        name: Present { value: "env" },
+        leading_comments: [],
+        entries: [toml_entry(key: "K", value: TomlString { value: "v" })]
+      }
+    ]
+  }
+  serialize_toml(doc: doc) ==
+    "# top\n\n[build]\njobs = 2  # why\n# note\nflag = true\n\n[env]\nK = \"v\"\n"
+}
+
+// A document with no preamble must not open on a blank line: the separator is emitted BECAUSE a
+// preamble exists, not unconditionally.
+test fn a_document_without_a_preamble_opens_on_its_first_table() -> Bool {
+  serialize_toml(doc: TomlDocument {
+    preamble_comments: [],
+    tables: [TomlTable {
+      name: Present { value: "build" },
+      leading_comments: [],
+      entries: [toml_entry(key: "jobs", value: TomlInteger { value: 1 })]
+    }]
+  }) == "[build]\njobs = 1\n"
+}
+
+// CARGO'S SHAPES, asserted at cargo's boundary rather than through the file: the rustflags key is a
+// LIST of rustc arguments and an `[env]` row is an inline table carrying value and force. These are
+// the facts a consumer would otherwise re-coin as text.
+test fn cargo_config_renders_cargos_own_value_shapes() -> Bool {
+  (toml_render_value(v: cargo_config_jobs_value(count: 4)) == "4")
+    && (toml_render_value(v: cargo_config_rustflags_value(flags: ["-D", "warnings"]))
+        == "[\"-D\", \"warnings\"]")
+    && (toml_render_value(v: cargo_config_env_value(var: CargoConfigEnvVar {
+         name: "RUST_MIN_STACK", value: "16777216", force: false
+       })) == "{ value = \"16777216\", force = false }")
+    && (cargo_config_build_table == "build")
+    && (cargo_config_env_table == "env")
+    && (cargo_config_rustflags_key == "rustflags")
+}
+
+// THE RUSTFLAGS VALUE FOLLOWS ITS INPUT rather than being a constant that happens to agree with the
+// policy row today. A renderer that ignored its argument and returned the repository's own denial
+// would pass every claim above; this is the one it fails.
+test fn the_rustflags_value_follows_the_flags_it_is_given() -> Bool {
+  (toml_render_value(v: cargo_config_rustflags_value(flags: ["-A", "dead_code"]))
+     == "[\"-A\", \"dead_code\"]")
+    && (toml_render_value(v: cargo_config_rustflags_value(flags: [])) == "[]")
+}
+
+// INHABITANCE: the real projection, run for real, carrying the real policy row. The claims above
+// supply their inputs at one boundary; this one asserts that the repository's own configuration is
+// produced by THIS serializer from THAT row, so deleting the derivation cannot leave them green.
+// Byte identity against the committed file is adjudicated by the generated-artifact drift gate,
+// which owns comparing an emitted projection to its committed bytes; this claim owns the ROUTE.
+test fn the_repository_config_is_rendered_by_this_serializer() -> Bool {
+  let rendered = expected_cargo_config_toml()
+  let denial_line = concat(
+    concat(cargo_config_rustflags_key, " = "),
+    toml_render_value(v: cargo_config_rustflags_value(flags: repo_self_warning_denial))
+  )
+  string_contains(s: rendered, pattern: denial_line)
+    && string_contains(s: rendered, pattern: "[build]\n")
+    && string_contains(s: rendered, pattern: "[env]\n")
+    && string_contains(s: rendered, pattern: "RUST_MIN_STACK = { value = \"16777216\", force = false }")
+}

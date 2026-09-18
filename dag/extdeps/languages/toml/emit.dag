@@ -1,0 +1,103 @@
+module extdeps.languages.toml.emit
+
+import std.types { Bool, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.toml.types {
+  TomlValue, TomlKeyValue, TomlEntry, TomlTable, TomlDocument,
+  TomlString, TomlInteger, TomlBool, TomlArray, TomlInlineTable
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "toml.io/en/v1.0.0"
+  }
+}
+
+// THE ONLY PLACE TOML PUNCTUATION IS SPELLED. Every consumer builds a document of typed nodes and
+// hands it here; the quotes, brackets, `=`, `#` and newlines exist once, in this fold, so a
+// consumer cannot get the medium subtly wrong and no second rendering can disagree with this one.
+
+// TOML basic strings take backslash escapes, and the two that can occur in any value this
+// repository writes are the quote and the backslash itself. ORDER IS LOAD-BEARING: the backslash
+// is replaced FIRST, because doing it second would re-escape the backslashes that escaping the
+// quote just introduced, turning `"` into `\\"` -- a string that parses as a backslash followed by
+// a terminator rather than as a quote.
+fn toml_escape_basic_string(s: String) -> String {
+  replace(s: replace(s: s, from: "\\", to: "\\\\"), from: "\"", to: "\\\"")
+}
+
+fn toml_render_value(v: TomlValue) -> String {
+  match v {
+    TomlString { value } => concat("\"", concat(toml_escape_basic_string(s: value), "\""))
+    TomlInteger { value } => value as String
+    TomlBool { value } => if value { "true" } else { "false" }
+    TomlArray { elements } =>
+      concat("[", concat(elements |> map(toml_render_value) |> join(separator: ", "), "]"))
+    TomlInlineTable { entries } =>
+      concat("{ ", concat(entries |> map(toml_render_pair) |> join(separator: ", "), " }"))
+  }
+}
+
+fn toml_render_pair(kv: TomlKeyValue) -> String {
+  concat(kv.key, concat(" = ", toml_render_value(v: kv.value)))
+}
+
+fn toml_render_comment(text: String) -> String {
+  concat("# ", concat(text, "\n"))
+}
+
+fn toml_render_comments(texts: List<String>) -> String {
+  texts |> map(toml_render_comment) |> join(separator: "")
+}
+
+fn toml_render_entry(e: TomlEntry) -> String {
+  concat(
+    toml_render_comments(texts: e.leading_comments),
+    concat(
+      toml_render_pair(kv: e.pair),
+      concat(
+        match e.trailing_comment {
+          Present { value: c } => concat("  # ", c)
+          Absent => ""
+        },
+        "\n"
+      )
+    )
+  )
+}
+
+fn toml_render_table_header(name: String?) -> String {
+  match name {
+    Present { value: n } => concat("[", concat(n, "]\n"))
+    Absent => ""
+  }
+}
+
+fn toml_render_table(t: TomlTable) -> String {
+  concat(
+    toml_render_comments(texts: t.leading_comments),
+    concat(
+      toml_render_table_header(name: t.name),
+      t.entries |> map(toml_render_entry) |> join(separator: "")
+    )
+  )
+}
+
+// Tables are separated by one blank line, which is the conventional shape of every committed TOML
+// file in this repository. The separator is BETWEEN tables rather than after each one, so the
+// document ends with exactly one newline -- the trailing-blank-line difference is a real byte
+// difference that a drift gate would report forever.
+// The preamble is separated from the first table by a blank line, the same separator tables take
+// between themselves -- and it is emitted only when there IS a preamble, so a document without one
+// does not open on an empty line.
+fn serialize_toml(doc: TomlDocument) -> String {
+  concat(
+    concat(
+      toml_render_comments(texts: doc.preamble_comments),
+      if (doc.preamble_comments |> count) == 0 { "" } else { "\n" }
+    ),
+    doc.tables |> map(toml_render_table) |> join(separator: "\n")
+  )
+}
