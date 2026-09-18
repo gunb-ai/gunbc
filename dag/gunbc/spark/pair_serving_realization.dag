@@ -237,6 +237,12 @@ fn spark_pair_ray_worker_argv(head: FabricLaneObserved, self: FabricLaneObserved
 // arm. What remains here is the set the plan does not own: the variables naming the leg netdev for
 // non-NCCL users (TP_SOCKET_IFNAME, MN_IF_NAME, the OMPI include), the rail address, and the two
 // engine settings the operator ruled.
+//
+// THE LAST ROW DECLARES THE USAGE-STATS REPORTER OFF, spelled from the same extdeps.vllm.usage_stats
+// row the route's telemetry reading folds, so the declaration and the reading share one authority.
+// The declaration alone admits nothing -- the route is discharged by the READING of the answering
+// container's effective environment (gunbc.spark.first_party_serving
+// spark_serving_usage_stats_standing); this assignment is what makes that reading come out disabled.
 fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignment> {
   let ifname = lane.leg_netdev as String
   let rail_ip = render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String
@@ -248,12 +254,6 @@ fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignmen
     DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: rail_ip },
     DockerEnvAssignment { name: "RAY_memory_monitor_refresh_ms" as NonEmptyStr, value: to_string(millisecond_count(m: first_pair_ray_head.memory_monitor_refresh)) },
     DockerEnvAssignment { name: "VLLM_ALLOW_LONG_MAX_MODEL_LEN" as NonEmptyStr, value: "1" },
-    // THE USAGE-STATS REPORTER IS DECLARED OFF, spelled from the same extdeps.vllm.usage_stats row
-    // the route's telemetry reading folds, so the declaration and the reading share one authority.
-    // The declaration alone admits nothing -- the route is discharged by the READING of the
-    // answering container's effective environment (gunbc.spark.first_party_serving
-    // spark_serving_usage_stats_standing); this assignment is what makes that reading come out
-    // disabled.
     DockerEnvAssignment {
       name: vllm_usage_stats_no_usage_stats_term.variable,
       value: vllm_usage_stats_no_usage_stats_term.disabling_value as String,

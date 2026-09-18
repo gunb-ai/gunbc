@@ -2,7 +2,7 @@ module gunbc.harness.harness_seat
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
-import std.measure { Measure, Count, One, money_amount_micro }
+import std.measure { Measure, Count, One, money_amount_micro, second }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
@@ -1165,6 +1165,12 @@ fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBi
   }
 }
 
+// THE DURATION HANDED TO select_supply IS A Second, WRAPPED AT THE SEAM. LeasePolicy carries its
+// bound as a bare Nat (capacity's vocabulary); GrantDuration carries a Second (a Measure). An
+// earlier spelling passed the bare count into EstimatedGrantDuration's seconds field, which no
+// consumer rejected until select_supply's pricing fold read it as a Measure and the interpreter
+// refused a field access on an Int -- first reached 2026-09-18, when the serving route's admission
+// first passed in production and this fold ran for real.
 fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation) -> PlacementRound {
   match acc.done {
     Present { value: _ } => acc
@@ -1175,7 +1181,7 @@ fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, re
       match select_supply(
         requirements: subject.work.requirements,
         candidates: map(collected.candidates, c => c.offer),
-        duration: EstimatedGrantDuration { seconds: policy.maximum_duration_seconds },
+        duration: EstimatedGrantDuration { seconds: second(count: policy.maximum_duration_seconds) },
         maximum_buy_order: money_amount_micro(count: 0),
         budget_currency: Usd,
         delay_valuation: serving_delay_valuation,

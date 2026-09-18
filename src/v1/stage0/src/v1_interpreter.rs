@@ -5947,7 +5947,19 @@ fn call_function(
     });
     let result = call_function_guarded(ctx, fn_node, args, env, depth);
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
-    result
+    // A located TypeError carries its raise site but no route back up the call chain, which made
+    // a production-path defect (harness_probe_cli, 2026-09-18) expensive to attribute. Append each
+    // frame as the error unwinds, bounded so a deep chain cannot grow the message without limit.
+    match result {
+        Err(InterpError::TypeError { msg })
+            if msg.contains(" [at ") && msg.matches(" <- ").count() < 12 =>
+        {
+            Err(InterpError::TypeError {
+                msg: format!("{} <- {}", msg, fn_node.name),
+            })
+        }
+        other => other,
+    }
 }
 
 fn call_function_guarded(
@@ -10131,8 +10143,21 @@ fn eval_field_access(
             Value::Null => Ok(Value::Null),
             _ => Ok(base_val),
         },
-        Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx),
-        _ => extract_field(&base_val, &field_name, env, ctx),
+        Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
+            .map_err(|e| locate_field_access_error(e, node)),
+        _ => extract_field(&base_val, &field_name, env, ctx)
+            .map_err(|e| locate_field_access_error(e, node)),
+    }
+}
+
+// A field-access TypeError named no location, which made a production-path defect
+// (harness_probe_cli, 2026-09-18) unlocatable without a bisect scaffold. Attach the span.
+fn locate_field_access_error(e: InterpError, node: &Rc<Node>) -> InterpError {
+    match e {
+        InterpError::TypeError { msg } => InterpError::TypeError {
+            msg: format!("{} [at {} byte {}]", msg, node.span.file, node.span.start),
+        },
+        other => other,
     }
 }
 

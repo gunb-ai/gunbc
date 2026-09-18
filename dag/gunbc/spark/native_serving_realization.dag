@@ -175,6 +175,11 @@ fn glm_native_transport_plan(lane: FabricLaneObserved) -> CollectiveTransportPla
 // transport lines and drops the per-collective traffic -- and the transport verdict lines are what
 // the apply's readback gate greps for. The device mapping, capability, memlock and env are the
 // plan's projections, spelled through extdeps.docker.cli 's shared word shapes.
+// THE USAGE-STATS REPORTER IS DECLARED OFF in the environment below, spelled by
+// extdeps.vllm.usage_stats vllm_usage_stats_disable_assignment_wire -- the same row the route's
+// telemetry reading folds, so declaration and reading share one authority. The declaration alone
+// admits nothing; the reading of the answering container's effective environment discharges the
+// route (gunbc.spark.first_party_serving spark_serving_usage_stats_standing).
 fn glm_native_container_argv(lane: FabricLaneObserved, rank: Nat, ranks: Nat, master: Ipv4Address) -> List<String> {
   let plan = glm_native_transport_plan(lane: lane)
   concat(concat(concat([
@@ -194,9 +199,6 @@ fn glm_native_container_argv(lane: FabricLaneObserved, rank: Nat, ranks: Nat, ma
     [
       "-e", "NCCL_DEBUG=INFO",
       "-e", "NCCL_DEBUG_SUBSYS=INIT,NET",
-      // THE USAGE-STATS REPORTER IS DECLARED OFF, spelled from the same extdeps.vllm.usage_stats
-      // row the route's telemetry reading folds (see the pair route's env for the full note); the
-      // reading of the answering container's effective environment is what discharges the route.
       "-e", vllm_usage_stats_disable_assignment_wire(),
       "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String], ""),
       "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
