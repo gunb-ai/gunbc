@@ -417,3 +417,33 @@ test fn wet_acceptance_subject_is_unbound_and_not_mt_collins_now() -> Bool {
       }
   }
 }
+
+test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
+  let frozen = DeclarationRef {
+    module_path: "gunbc.bmc_netboot_serve",
+    decl_name: "srv4_bmc_netboot_serve_plan",
+    field: WholeDeclaration,
+  }
+  let fleet = FleetBootServiceEstablished {
+    receipt: FleetBootServiceReceipt {
+      https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
+      origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
+      signing_key_identity: "boot-manifest-key-0",
+      observation: frozen,
+      observed_at: 1788000000000,
+    },
+  }
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet,
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootServingInfrastructure)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+  }
+}
