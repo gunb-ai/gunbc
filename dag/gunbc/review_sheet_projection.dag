@@ -1523,18 +1523,17 @@ fn ci_prospect_sheet_schema() -> ReviewSheetSchema {
 
 // OPEN OBLIGATION, RE-HOMED OFF THE DELETED PUBLIC BUYER SCHEMA PAIR. gunbc-private
 // strategy.buyer_review_projection already derives the sheet schema from the roster; the public
-// hardcoded Listing/operator pair was a DESIGN section 3 fork and is gone. gunbc-private
-// strategy.buyer_review_converge already calls review_sheet_ensure with review_sheet_projection_of
-// and consumes the decision, but only from its own witness, never from a production entry.
-// The remaining gap is that production inhabitance. The bind is review_sheet_ensure: a public
-// FrontierRow cannot validly cite a private declaration. live_sheets_transport_frontier is the
-// transport scaffold, not this consumption obligation.
+// hardcoded Listing/operator pair was a DESIGN section 3 fork and is gone. The remaining gap is a
+// production inhabitance of the TYPED public seam: review_sheet_ensure_assess then
+// review_sheet_ensure_decide, not the prose-flattening compatibility wrapper. A public FrontierRow
+// cannot cite a private declaration; the bind is review_sheet_ensure_assess. live_sheets_transport_frontier
+// is the transport scaffold on review_sheet_ensure, not this consumption obligation.
 data buyer_review_ensure_projection_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_sheets", decl_name: "review_sheet_ensure"),
-    reason: "gunbc-private strategy.buyer_review_converge calls review_sheet_ensure with the roster-derived projection from strategy.buyer_review_projection review_sheet_projection_of and consumes the decision, but only from its own witness, never from a production entry; a production route that reads the live buyer sheet, runs that composition, and writes the plan back does not exist yet; the buyer roster is private, so that production caller cannot live in this repository's public modules",
+    ref: decl_ref(module_path: "gunbc.review_sheet_sheets", decl_name: "review_sheet_ensure_assess"),
+    reason: "no production entry yet reads the live buyer sheet whole-tab, preserves the private roster-derived projection outcome structurally, nests ReviewSheetEnsureAssessment via gunbc.review_sheet_sheets review_sheet_ensure_assess, applies policy once via review_sheet_ensure_decide, and lowers only the admitted write plan to BatchUpdateValues; the buyer roster is private, so that production caller cannot live in this repository's public modules",
     dissolution: unbound_dissolution(
-      description: "dissolves when a production entry reads the live buyer sheet (whole-tab GetValues), runs gunbc-private strategy.buyer_review_converge (review_sheet_ensure supplied with review_sheet_projection_of, rows keyed by Browse itemId), and writes the resulting plan back (BatchUpdateValues), with the ensure decision consumed on that production route; a witness that classify_review_sheet or a projection fold exists, or that strategy.buyer_review_converge exists or is itself witnessed, does not fire this"
+      description: "dissolves when a production entry reads the live buyer sheet (whole-tab GetValues), preserves the private projection outcome structurally, nests ReviewSheetEnsureAssessment via gunbc.review_sheet_sheets review_sheet_ensure_assess (rows keyed by Browse itemId), applies policy once via review_sheet_ensure_decide, and lowers only the admitted write plan to BatchUpdateValues, with the decision consumed on that production route; a witness that classify_review_sheet or a projection fold exists, or that the composition exists or is itself witnessed, does not fire this; strategy.buyer_review_converge in its current prose-returning form (the transitional wrapper that flattens refusals into UpsertDecision prose) does not fire this either"
     )
   )
 ]
