@@ -384,7 +384,7 @@ test fn legacy_bios_x86_ticket_projects_its_published_dhcp_class() -> Bool {
   }
 }
 
-fn census_contains_frontier_subject(row: FrontierRow) -> Bool {
+fn broker_census_has_frontier_subject(row: FrontierRow) -> Bool {
   any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
 }
 
@@ -393,5 +393,5 @@ test fn broker_frontier_rows_well_formed() -> Bool {
 }
 
 test fn broker_frontier_rows_are_in_the_census() -> Bool {
-  all(network_boot_manifest_broker_frontier_rows, row => census_contains_frontier_subject(row: row))
+  all(network_boot_manifest_broker_frontier_rows, row => broker_census_has_frontier_subject(row: row))
 }

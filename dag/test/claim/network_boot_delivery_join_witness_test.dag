@@ -1612,7 +1612,7 @@ test fn single_bundle_digest_mismatch_names_the_member() -> Bool {
   }
 }
 
-fn census_contains_frontier_subject(row: FrontierRow) -> Bool {
+fn join_census_has_frontier_subject(row: FrontierRow) -> Bool {
   any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
 }
 
@@ -1621,5 +1621,5 @@ test fn join_frontier_rows_well_formed() -> Bool {
 }
 
 test fn join_frontier_rows_are_in_the_census() -> Bool {
-  all(network_boot_delivery_frontier_rows, row => census_contains_frontier_subject(row: row))
+  all(network_boot_delivery_frontier_rows, row => join_census_has_frontier_subject(row: row))
 }
