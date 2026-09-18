@@ -9,6 +9,8 @@ import gunbc.machine_intake_subject {
   UnitKeyRefused,
   UnitKeyStanding,
 }
+import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.ampere.mt_jade_getting_started_guide.chassis {
   GsgRearManagementEthernet,
   mt_jade_gsg_bmc_ethernet_port,
@@ -30,3 +32,12 @@ data mtjade1_unit_key_standing: UnitKeyStanding = UnitKeyRefused {
 }
 
 data mtjade1_bmc_ethernet: GsgRearManagementEthernet = mt_jade_gsg_bmc_ethernet_port
+
+// Locus is reserved and off the accessor roster until the secret exists. Mint after a wet
+// ProbeServiceRoot blob binds FamilyObserved, then the first rotation — not before.
+type JadeManagedBmcSecretStanding
+  = SecretLocusReservedNotOnAccessorRoster { ref: SecretRef }
+
+data mtjade1_managed_bmc_secret_standing: JadeManagedBmcSecretStanding = SecretLocusReservedNotOnAccessorRoster {
+  ref: mtjade1_bmc_gunbc_secret_ref,
+}

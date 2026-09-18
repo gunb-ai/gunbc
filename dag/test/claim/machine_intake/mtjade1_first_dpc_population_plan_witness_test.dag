@@ -12,8 +12,11 @@ import gunbc.machine_intake_mtjade1_first_dpc_population_plan {
   UniformDualDieRdimm,
   UniformMonolithicRdimm,
   jade_channel_slot,
+  CrossChannel1r2rLookupFailed,
+  CrossChannel1r2rSettled,
+  CrossChannel1r2rUndetermined,
   jade_first_dpc_admits_die_stacking,
-  jade_first_dpc_cross_channel_1r_2r_is_undetermined,
+  jade_first_dpc_cross_channel_1r_2r,
   jade_first_dpc_dimm_count,
   jade_first_dpc_empty_slot_labels,
   jade_first_dpc_preferred_class,
@@ -56,11 +59,15 @@ test fn w_jade_first_dpc_names_master_and_slave_channel_ends() -> Bool {
 
 test fn w_jade_first_dpc_does_not_engage_same_channel_mixing_and_refuses_1r_2r_tbd() -> Bool {
   jade_first_dpc_same_channel_mixing_is_engaged() == false
-    && jade_first_dpc_cross_channel_1r_2r_is_undetermined()
+    && match jade_first_dpc_cross_channel_1r_2r() {
+      CrossChannel1r2rUndetermined => true
+      CrossChannel1r2rSettled { support: _ } => false
+      CrossChannel1r2rLookupFailed { cause: _ } => false
+    }
 }
 
 test fn w_jade_first_dpc_modules_are_uniform_and_ddp_is_a_class_not_a_bogus_2rx4() -> Bool {
-  match jade_first_dpc_preferred_class() {
+  match jade_first_dpc_preferred_class {
     UniformMonolithicRdimm => true
     UniformDualDieRdimm => false
     MixedModuleClassRefused { cause: _ } => false

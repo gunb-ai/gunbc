@@ -3,7 +3,9 @@ module test.claim.mtjade1_access_witness
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake_mtjade1_access_observation {
+  SecretLocusReservedNotOnAccessorRoster,
   mtjade1_bmc_ethernet,
+  mtjade1_managed_bmc_secret_standing,
   mtjade1_unit_key_standing,
 }
 import gunbc.machine_intake_subject {
@@ -19,7 +21,7 @@ import extdeps.ampere.mt_jade_getting_started_guide.chassis {
   mt_jade_gsg_bmc_ethernet_phy,
 }
 import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
-import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref, mtjade1_bmc_gunbc_secret_ref }
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -55,7 +57,10 @@ test fn w_bmc_only_bind_without_serials_is_absent_not_a_fabricated_key() -> Bool
 }
 
 test fn w_mtjade1_bmc_secret_locus_is_not_the_collins_secret() -> Bool {
-  (mtjade1_bmc_gunbc_secret_ref.secret as String) == "bmc-mtjade1-gunbc"
-    && (mtcollins1_bmc_gunbc_secret_ref.secret as String) == "bmc-mtcollins1-gunbc"
-    && (mtjade1_bmc_gunbc_secret_ref.secret as String) != (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+  match mtjade1_managed_bmc_secret_standing {
+    SecretLocusReservedNotOnAccessorRoster { ref: r } =>
+      (r.secret as String) == "bmc-mtjade1-gunbc"
+        && (mtcollins1_bmc_gunbc_secret_ref.secret as String) == "bmc-mtcollins1-gunbc"
+        && (r.secret as String) != (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+  }
 }

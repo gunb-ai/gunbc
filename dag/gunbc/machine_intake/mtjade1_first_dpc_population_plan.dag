@@ -33,6 +33,7 @@ import extdeps.ocp.mt_jade.memory_mixing {
   MixedDimmSupportAmbiguous,
   MixedDimmSupportResolved,
   MixedDimmSupportUnmodelled,
+  MtJadeMixedDimmSupport,
   mt_jade_mixed_dimm_support,
 }
 import extdeps.ocp.mt_jade.platform { MasterSocket, ProcessorSocketRole, SlaveSocket }
@@ -120,18 +121,29 @@ fn jade_first_dpc_same_channel_mixing_is_engaged() -> Bool {
   dimms_per_channel_count(topology: OneDimmPerChannel) > 1
 }
 
-fn jade_first_dpc_cross_channel_1r_2r_is_undetermined() -> Bool {
+type JadeCrossChannel1r2rStanding
+  = CrossChannel1r2rUndetermined
+  | CrossChannel1r2rSettled { support: MtJadeMixedDimmSupport }
+  | CrossChannel1r2rLookupFailed { cause: NonEmptyStr }
+
+fn jade_first_dpc_cross_channel_1r_2r() -> JadeCrossChannel1r2rStanding {
   match mt_jade_mixed_dimm_support(placement: DifferentChannel, axis: Mixing1rAnd2r) {
     MixedDimmSupportResolved { cell: c } => match c.support {
-      MixingUndetermined => true
-      MixingSupported => false
-      MixingNotSupported => false
-      MixingNotPreferred => false
+      MixingUndetermined => CrossChannel1r2rUndetermined
+      MixingSupported => CrossChannel1r2rSettled { support: MixingSupported }
+      MixingNotSupported => CrossChannel1r2rSettled { support: MixingNotSupported }
+      MixingNotPreferred => CrossChannel1r2rSettled { support: MixingNotPreferred }
     }
-    MixedDimmSupportUnmodelled { query: _ } => false
-    MixedDimmSupportAmbiguous { query: _ } => false
+    MixedDimmSupportUnmodelled { query: _ } => CrossChannel1r2rLookupFailed {
+      cause: "Table 3 has no cell for DifferentChannel x Mixing1rAnd2r.",
+    }
+    MixedDimmSupportAmbiguous { query: _ } => CrossChannel1r2rLookupFailed {
+      cause: "Table 3 cell for DifferentChannel x Mixing1rAnd2r is ambiguous.",
+    }
   }
 }
+
+data jade_first_dpc_preferred_class: JadeFirstDpcModuleClass = UniformMonolithicRdimm
 
 // Dual-die 2DRx4 (extdeps.memory.micron MTA36ADS2G72PZ-2G1A1) is DualDiePackage, not a bogus
 // 2Rx4. Mixing it with monolithic parts on Collins produced CHANNEL Mismatch Byte 6 even though
@@ -149,8 +161,4 @@ fn jade_first_dpc_admits_die_stacking(stacking: DramDieStacking, uniform: Bool) 
       }
     }
   }
-}
-
-fn jade_first_dpc_preferred_class() -> JadeFirstDpcModuleClass {
-  UniformMonolithicRdimm
 }
