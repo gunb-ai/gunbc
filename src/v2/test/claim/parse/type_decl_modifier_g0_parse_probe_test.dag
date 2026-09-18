@@ -38,6 +38,8 @@ data unmodified_alias_source: String = "module m\ntype T = Int\n"
 data nominal_opaque_alias_source: String = "module m\ntype T nominal_opaque = Int\n"
 data sole_constructor_record_source: String = "module m\ntype T sole_constructor { x: Int }\n"
 data unknown_modifier_red_source: String = "module m\ntype T not_a_modifier = Int\n"
+data modifier_spelling_as_data_name_source: String = "module m\ndata sole_constructor: Int = 1\n"
+data modifier_spelling_as_caret_source: String = "module m\nfn f() -> Int { ^sole_constructor }\n"
 
 test fn unmodified_type_alias_still_parses_holds() -> Bool {
   parse_outcome(src: unmodified_alias_source) == "ACCEPTED"
@@ -53,4 +55,12 @@ test fn sole_constructor_type_record_still_parses_holds() -> Bool {
 
 test fn unknown_type_decl_modifier_still_refuses_holds() -> Bool {
   parse_outcome(src: unknown_modifier_red_source) == "parse_g0_tokens_remain"
+}
+
+test fn sole_constructor_as_a_data_name_still_parses_holds() -> Bool {
+  parse_outcome(src: modifier_spelling_as_data_name_source) == "ACCEPTED"
+}
+
+test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
+  parse_outcome(src: modifier_spelling_as_caret_source) == "ACCEPTED"
 }
