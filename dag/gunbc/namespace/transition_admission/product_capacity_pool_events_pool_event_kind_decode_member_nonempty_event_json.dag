@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.product_capacity_pool_events_pool_event_kind_decode_member_nonempty_event_json
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data product_capacity_pool_events_pool_event_kind_decode_member_nonempty_event_json: TransitionAdmission = TransitionAdmission {
+  label: "Cut D 2a: the chain-envelope JSON codec moves to product.capacity.event_json; pool_events consumes member_nonempty from there" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("product.capacity.pool_events", "pool_event_kind_decode"),
+    spelling: "member_nonempty" as NonEmptyStr,
+    expected_candidates: [decl_ref("product.capacity.event_json", "member_nonempty")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11550 as UInt32,
+}

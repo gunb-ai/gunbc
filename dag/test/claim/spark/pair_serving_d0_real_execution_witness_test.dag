@@ -1,0 +1,191 @@
+module test.claim.spark.pair_serving_d0_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, FilePath, List }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitWorktreeAt }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.scoped_authorization { OperatorGrant, AuthorizationScope, AttemptIdentity, AuthorizedAction }
+import std.effect_grant { Read, NamespacePosition, CodeNameTree }
+import product.capacity.lease { LeasePolicy, FencedResource }
+import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.serving_incarnation_observe { UnitInstalled }
+import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.pair_serving_authority {
+  SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
+  pair_serving_authority_for, pair_serving_successor_may_launch, pair_serving_may_finish,
+}
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
+  AuthorityTransitionAppended, pair_serving_authority_transition,
+}
+import gunbc.spark.pair_serving_d0 {
+  D0Subject, RankOccupancyReading, IncumbentDidNotAnswer, D0Observation,
+  D0Outcome, D0Settled, D0Refused, D0Decision, D0DecidedSuspend, DeclaredOccupantDrifted, d0_transaction, d0_held_lease,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EXACT PRODUCTION TWO-WRITE ROUTE, BY REAL EXECUTION against a bare remote in a temporary
+// directory. The pure decision has its own witness and the generic compare-and-set its own; what
+// neither establishes is their COMPOSITION, which is where the first shape of this transaction
+// failed: it wrote the pending state without a grant, read it back with a derived observation,
+// and could never settle. So this file drives d0_transaction itself -- the same fn the wet entry
+// calls -- with a fixture grant and a supplied observer, and asserts what the redesign requires:
+//   resting Active → first write → pending read back → readings → second write
+//   → SuspendedForAuthorizedSuccessor at generation 2, naming the entry-state receipt
+//   crash after the first write → a rerun under the SAME transaction settles from pending
+//   a rerun under ANOTHER transaction is refused and moves nothing
+//   the lease expires → the successor may not start, may finish, and a cleanup transition
+//     still appends against the state as read, so the chain folds to generation 3
+
+fn with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn witness_layout(dir: FilePath) -> EventLogLayout {
+  event_log_layout(root: dir, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
+}
+
+fn witness_remote_ready(dir: FilePath) -> Bool {
+  git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: join([dir as String, "/remote.git"], "") as FilePath).exit_code == 0
+}
+
+fn with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
+  match sha256_hex_digest(hex: "3333333333333333333333333333333333333333333333333333333333333333") {
+    Absent => false
+    Present { value: d } => scenario(Sha256Hash(d))
+  }
+}
+
+// A fixture grant over Group A: a keyed successor, the reserved baseline, a 1000-second term.
+fn w_grant(successor: ContentHash) -> OperatorGrant<D0Subject> {
+  OperatorGrant {
+    escalation_id: "esc-d0-witness" as NonEmptyStr,
+    subject: D0Subject { group: FabricGroupA, successor: successor, cleanup: QuiescentReservedBaseline, policy: LeasePolicy { maximum_duration_seconds: 1000, release_law: FencedResource } },
+    scopes: [AuthorizationScope { verb: Read, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_d0"] }, action: "suspend" as AuthorizedAction }],
+    purpose: "witness d0" as NonEmptyStr,
+    attempt: "d0-witness-attempt" as AttemptIdentity,
+    intent_hash: content_hash_of_value(value: "d0-witness" as NonEmptyStr),
+    granted_by: "witness" as NonEmptyStr,
+    granted_at: "2026-09-18T00:00:00Z",
+    expires_at: "2026-09-19T00:00:00Z",
+  }
+}
+
+// The expected readings: nothing answers on the route, every declared rank has our unit
+// installed and inactive -- the drifted-eligible case. Digests are the PRODUCTION declaration's,
+// so reconciliation is against what Group A really declares.
+fn w_observe(group: FabricGroup) -> D0Observation {
+  let ranks = match declared_pair_realization(group: group) {
+    DeclaredPairRealizationUnavailable { group: _, obligation: _ } => [] as List<RankOccupancyReading>
+    DeclaredPairRealizationKeyed { declared: d } =>
+      concat(
+        [RankOccupancyReading { host: d.head.host, unit_name: d.head.unit_name, occupancy: UnitInstalled { active: false, unit_digest: d.head.digest } }],
+        map(d.workers, w => RankOccupancyReading { host: w.host, unit_name: w.unit_name, occupancy: UnitInstalled { active: false, unit_digest: w.digest } }),
+      )
+  }
+  D0Observation { group: group, incumbent: IncumbentDidNotAnswer { receipt: "witness: the route did not answer" as NonEmptyStr }, ranks: ranks }
+}
+
+fn hashes_equal(l: ContentHash, r: ContentHash) -> Bool {
+  match compare_content_hash(left: l, right: r) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+fn read_is_suspended_at(c: CurrentAuthority, generation: Int, entry_state: ContentHash, launch: Bool) -> Bool {
+  match c {
+    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: gr, entry_state: es } =>
+      g == generation
+        && (match a { SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: _, lease: _, cleanup: QuiescentReservedBaseline } => (au as String) == "esc-d0-witness"  _ => false })
+        && (match gr { Present { value: _ } => true  Absent => false })
+        && (match es { Present { value: h } => hashes_equal(l: h, r: entry_state)  Absent => false })
+        && pair_serving_successor_may_launch(a: a) == launch
+        && pair_serving_may_finish(a: a)
+    CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
+  }
+}
+
+fn settled_eligible(o: D0Outcome) -> ContentHash? {
+  match o {
+    D0Settled { decision: D0DecidedSuspend { next: _, reconciliation: DeclaredOccupantDrifted { drifted: ds } }, generation: g, receipt_path: _, entry_state: es } =>
+      if length(ds) == 4 && g == 2 { Present { value: es } } else { none }
+    _ => none
+  }
+}
+
+// THE WHOLE ROUTE, then expiry, then cleanup.
+test fn the_production_route_settles_and_the_lease_governs_launch_by_real_execution() -> Bool {
+  with_hash(scenario: fn(h) {
+    with_temp_dir(scenario: fn(dir) {
+      let layout = witness_layout(dir: dir)
+      witness_remote_ready(dir: dir)
+        && (match settled_eligible(o: d0_transaction(layout: layout, group: FabricGroupA, grant: w_grant(successor: h), transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z", observe: fn(g) { w_observe(group: g) })) {
+              Absent => false
+              Present { value: es } =>
+                read_is_suspended_at(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000), generation: 2, entry_state: es, launch: true)
+                  && read_is_suspended_at(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500), generation: 2, entry_state: es, launch: false)
+                  && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500) {
+                        CurrentAuthorityRead { authority: expired, head: _, generation: _, grant: _, entry_state: _ } =>
+                          match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: expired, next: FencedRefusal { group: FabricGroupA, cause: "witness cleanup" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, transaction: "tx-d0" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 2500) {
+                            AuthorityTransitionAppended { id: _, generation: g3, next: _ } =>
+                              g3 == 3 && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2600) {
+                                CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: _, disposition_authority: _ }, head: _, generation: g4, grant: _, entry_state: _ } => g4 == 3
+                                _ => false
+                              })
+                            _ => false
+                          }
+                        CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
+                      })
+            })
+    })
+  })
+}
+
+// CRASH AFTER THE FIRST WRITE. The pending state is written by the production transition under
+// tx-d0 (exactly what d0_transaction writes first), the process is gone; a rerun under tx-d0
+// settles from pending at generation 2, and a rerun under tx-other is refused with nothing moved.
+test fn a_rerun_resumes_its_own_pending_state_and_refuses_anothers_by_real_execution() -> Bool {
+  with_hash(scenario: fn(h) {
+    with_temp_dir(scenario: fn(dir) {
+      let layout = witness_layout(dir: dir)
+      match pair_serving_authority_for(group: FabricGroupA) {
+        Absent => false
+        Present { value: resting } => {
+          let pending = SuspensionPendingReconciliation {
+            group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr,
+            lease: d0_held_lease(group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 1),
+          }
+          witness_remote_ready(dir: dir)
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: pending, transaction: "tx-d0" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
+                  AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1
+                  _ => false
+                })
+            && (match d0_transaction(layout: layout, group: FabricGroupA, grant: w_grant(successor: h), transaction: "tx-other" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1001, now: "2026-09-18T00:00:01Z", observe: fn(g) { w_observe(group: g) }) {
+                  D0Refused { cause: _ } => true
+                  D0Settled { decision: _, generation: _, receipt_path: _, entry_state: _ } => false
+                })
+            && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001) {
+                  CurrentAuthorityRead { authority: SuspensionPendingReconciliation { group: _, transaction: t, lease: _ }, head: _, generation: g1, grant: _, entry_state: _ } => (t as String) == "tx-d0" && g1 == 1
+                  _ => false
+                })
+            && (match settled_eligible(o: d0_transaction(layout: layout, group: FabricGroupA, grant: w_grant(successor: h), transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { w_observe(group: g) })) {
+                  Absent => false
+                  Present { value: es } => read_is_suspended_at(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1002), generation: 2, entry_state: es, launch: true)
+                })
+        }
+      }
+    })
+  })
+}

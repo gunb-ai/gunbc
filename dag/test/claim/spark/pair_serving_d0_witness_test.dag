@@ -8,7 +8,7 @@ import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpe
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitNotActive }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
 import gunbc.spark.vllm_serving_launch { vllm_serving_launch, endpoint_incarnation_observation }
@@ -20,13 +20,19 @@ import gunbc.spark.pair_incumbent_identity {
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspendedForAuthorizedSuccessor, FencedRefusal,
-  PairRealizationKeyed, PairRealizationUnestablished, pair_serving_apply_admits, pair_serving_successor_may_launch,
+  PairRealizationKeyed, pair_serving_apply_admits, pair_serving_successor_may_launch,
 }
+import std.scoped_authorization { OperatorGrant, AuthorizationScope, AttemptIdentity, AuthorizedAction }
+import std.effect_grant { Read, NamespacePosition, CodeNameTree }
+import std.content_hash { content_hash_of_value }
+import product.capacity.lease { LeasePolicy, FencedResource }
 import gunbc.spark.pair_serving_d0 {
-  RankOccupancyReading, IncumbentReading, IncumbentAnswered, IncumbentSilent, IncumbentRouteUnread, D0Observation,
+  D0Subject, RankOccupancyReading, IncumbentReading, IncumbentAnswered, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation,
   OccupancyReconciliation, DeclaredOccupantObserved, DeclaredOccupantDrifted, OccupancyUnread, reconcile_occupancy,
-  D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, D0Cause, D0IncumbentLive, D0OccupancyUnread, D0DeclarationUnavailable,
+  D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, D0Cause, D0IncumbentLive, D0IncumbentUnidentified, D0OccupancyUnread, D0DeclarationUnavailable,
   d0_decide, d0_decision_is_eligible,
+  D0AuthorizationStanding, D0Authorized, D0AuthorizationUnestablished, resolve_d0_authorization,
+  D0GrantAdmission, D0GrantAdmitted, D0GrantForAnotherGroup, D0GrantExpired, admit_d0_grant,
 }
 
 // THE DECISION AND THE RECONCILIATION, OVER SUPPLIED READINGS. Every branch of the redesign's D0
@@ -85,19 +91,31 @@ fn t_lease(h: ContentHash) -> HeldLease {
   held_lease(epoch: LeaseEpoch { lease_key: "tx-w" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected)
 }
 
+fn t_grant(successor: ContentHash) -> OperatorGrant<D0Subject> {
+  OperatorGrant {
+    escalation_id: "auth-w" as NonEmptyStr,
+    subject: D0Subject { group: FabricGroupA, successor: successor, cleanup: QuiescentReservedBaseline, policy: LeasePolicy { maximum_duration_seconds: 1000, release_law: FencedResource } },
+    scopes: [AuthorizationScope { verb: Read, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_d0"] }, action: "suspend" as AuthorizedAction }],
+    purpose: "witness d0" as NonEmptyStr,
+    attempt: "d0-witness-attempt" as AttemptIdentity,
+    intent_hash: content_hash_of_value(value: "d0-witness" as NonEmptyStr),
+    granted_by: "witness" as NonEmptyStr,
+    granted_at: "2026-09-18T00:00:00Z",
+    expires_at: "2026-09-19T00:00:00Z",
+  }
+}
+
 fn t_decide(declared: DeclaredPairRealization, incumbent: IncumbentReading, ranks: List<RankOccupancyReading>, h: ContentHash) -> D0Decision {
   d0_decide(
     declared: DeclaredPairRealizationKeyed { declared: declared },
     observation: D0Observation { group: FabricGroupA, incumbent: incumbent, ranks: ranks },
     lease: t_lease(h: h),
-    authorization: "auth-w" as NonEmptyStr,
-    candidate: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
-    cleanup: QuiescentReservedBaseline,
+    grant: t_grant(successor: h),
   )
 }
 
 fn silent() -> IncumbentReading {
-  IncumbentSilent { obligation: "the metrics endpoint did not answer" as NonEmptyStr }
+  IncumbentDidNotAnswer { receipt: "the metrics endpoint did not answer within the front-door bound" as NonEmptyStr }
 }
 
 fn hashes_equal(l: ContentHash, r: ContentHash) -> Bool {
@@ -130,8 +148,8 @@ test fn installed_but_inactive_ranks_are_drifted_and_eligible() -> Bool {
        _ => false
      })
     && (match t_decide(declared: t_declared(head: a, worker: b), incumbent: silent(), ranks: ranks, h: c) {
-          D0DecidedSuspend { next: SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: _, lease: _, cleanup: QuiescentReservedBaseline }, reconciliation: DeclaredOccupantDrifted { drifted: ds } } =>
-            (au as String) == "auth-w" && length(ds) == 4
+          D0DecidedSuspend { next: SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: PairRealizationKeyed { key: k }, lease: _, cleanup: QuiescentReservedBaseline }, reconciliation: DeclaredOccupantDrifted { drifted: ds } } =>
+            (au as String) == "auth-w" && length(ds) == 4 && hashes_equal(l: k, r: c)
           _ => false
         })
   })
@@ -244,13 +262,44 @@ test fn an_unread_route_fences_before_reconciling() -> Bool {
   })
 }
 
+// RED -- the route ANSWERED but the document named no launch: an incumbent may be live and could
+// not be identified. That is not silence, and it fences before the ranks are consulted --
+// whatever the ranks would have reconciled to.
+test fn an_answering_but_unidentified_incumbent_fences() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match t_decide(declared: t_declared(head: a, worker: b), incumbent: IncumbentAnsweredUnread { cause: "the served metrics carried no process start-time series" as NonEmptyStr }, ranks: t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
+      D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentUnidentified { cause: _ } } => true
+      _ => false
+    }
+  })
+}
+
+// THE ENTRY IS NON-ADMITTING TODAY BY CONSTRUCTION: no authorization id resolves to a grant, so
+// the wet entry refuses before its first write. This is the wall's executed red; the positive
+// route is driven by the real-execution witness with a fixture grant.
+test fn no_authorization_resolves_today_so_the_entry_cannot_admit() -> Bool {
+  match resolve_d0_authorization(group: FabricGroupA, authorization: "esc-anything") {
+    D0AuthorizationUnestablished { obligation: _ } => true
+    D0Authorized { grant: _ } => false
+  }
+}
+
+// A grant is admitted only for its own group and before its expiry.
+test fn a_grant_is_admitted_only_for_its_group_and_before_expiry() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    (match admit_d0_grant(grant: t_grant(successor: c), group: FabricGroupA, at: "2026-09-18T12:00:00Z") { D0GrantAdmitted => true  _ => false })
+      && (match admit_d0_grant(grant: t_grant(successor: c), group: FabricGroupB, at: "2026-09-18T12:00:00Z") { D0GrantForAnotherGroup { granted: _ } => true  _ => false })
+      && (match admit_d0_grant(grant: t_grant(successor: c), group: FabricGroupA, at: "2026-09-20T00:00:00Z") { D0GrantExpired { expires_at: _ } => true  _ => false })
+  })
+}
+
 // A declaration that could not be keyed fences: there is nothing to reconcile against.
 test fn an_unavailable_declaration_fences() -> Bool {
   with_digests(scenario: fn(a, b, c) {
     match d0_decide(
       declared: DeclaredPairRealizationUnavailable { group: FabricGroupA, obligation: "witness" as NonEmptyStr },
       observation: D0Observation { group: FabricGroupA, incumbent: silent(), ranks: [] as List<RankOccupancyReading> },
-      lease: t_lease(h: c), authorization: "auth-w" as NonEmptyStr, candidate: PairRealizationUnestablished { obligation: "w" as NonEmptyStr }, cleanup: QuiescentReservedBaseline,
+      lease: t_lease(h: c), grant: t_grant(successor: c),
     ) {
       D0DecidedFence { next: _, cause: D0DeclarationUnavailable { obligation: _ } } => true
       _ => false

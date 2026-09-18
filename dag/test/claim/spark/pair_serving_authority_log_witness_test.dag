@@ -61,7 +61,7 @@ fn w_event(previous: PairServingGroupAuthority, next: PairServingGroupAuthority,
     parent: parent,
     recorded_at: 1000,
     actor: "witness" as NonEmptyStr,
-    payload: AuthorityTransitioned { previous: previous, next: next, transaction: "tx-1" as NonEmptyStr, grant: none },
+    payload: AuthorityTransitioned { previous: previous, next: next, transaction: "tx-1" as NonEmptyStr, grant: none, entry_state: none },
   }
 }
 
@@ -71,7 +71,7 @@ fn round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAuthor
     EventUndecodable { reason: _ } => false
     EventDecoded { event: back } =>
       match back.payload {
-        AuthorityTransitioned { previous: p, next: n, transaction: t, grant: _ } =>
+        AuthorityTransitioned { previous: p, next: n, transaction: t, grant: _, entry_state: _ } =>
           authority_eq(a: p, b: previous) && authority_eq(a: n, b: next) && (t as String) == "tx-1"
             && back.recorded_at == 1000 && (back.partition as String) == (pair_authority_partition(group: FabricGroupA) as String)
       }
@@ -89,17 +89,23 @@ test fn every_authority_arm_round_trips_through_the_wire() -> Bool {
   })
 }
 
-// RED -- two arms that differ only in a field the wire must carry are not equal on the wire.
-test fn the_wire_distinguishes_arms_and_fields() -> Bool {
+// The wire distinguishes every arm and every identity field -- and does NOT distinguish the
+// lease's observed state, which is a fact about the reading instant rather than about the
+// authority: one pending state read while its lease runs and again after it expires is ONE state,
+// or the settling transition could never name the state it leaves.
+test fn the_wire_distinguishes_arms_and_fields_but_not_the_lease_observation() -> Bool {
   with_hash(scenario: fn(h) {
     let arms = w_all_arms(h: h)
     let live = w_lease(h: h, inaccessible: false)
     let dead = w_lease(h: h, inaccessible: true)
     length(arms) == 6
       && !any(arms, a => any(arms, b => (authority_wire(a: a) != authority_wire(a: b)) && authority_eq(a: a, b: b)))
-      && !authority_eq(
+      && authority_eq(
            a: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: live },
            b: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: dead })
+      && !authority_eq(
+           a: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: live },
+           b: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-2" as NonEmptyStr, lease: live })
       && !authority_eq(a: w_active_unestablished(), b: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } })
   })
 }
@@ -131,11 +137,11 @@ test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
     let fenced = FencedRefusal { group: FabricGroupA, cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr }
     let chain = [env(id: "e1", e: w_event(previous: resting, next: pending, parent: none)), env(id: "e2", e: w_event(previous: pending, next: fenced, parent: Present { value: "e1" as EventId }))]
     (match authority_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) {
-       AuthorityFolded { current: c, generation: g, grant: _ } => g == 0 && authority_eq(a: c, b: resting)
+       AuthorityFolded { current: c, generation: g, grant: _, entry_state: _ } => g == 0 && authority_eq(a: c, b: resting)
        AuthorityFoldRefused { at_event: _, reason: _ } => false
      })
     && (match authority_fold(resting: resting, oldest_first: chain) {
-          AuthorityFolded { current: c, generation: g, grant: _ } => g == 2 && authority_eq(a: c, b: fenced)
+          AuthorityFolded { current: c, generation: g, grant: _, entry_state: _ } => g == 2 && authority_eq(a: c, b: fenced)
           AuthorityFoldRefused { at_event: _, reason: _ } => false
         })
   })
@@ -151,7 +157,7 @@ test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -
     let chain = [env(id: "e1", e: w_event(previous: pending, next: fenced, parent: none))]
     match authority_fold(resting: resting, oldest_first: chain) {
       AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"
-      AuthorityFolded { current: _, generation: _, grant: _ } => false
+      AuthorityFolded { current: _, generation: _, grant: _, entry_state: _ } => false
     }
   })
 }
@@ -163,7 +169,7 @@ test fn a_transition_to_another_groups_authority_refuses() -> Bool {
     let elsewhere = ReleasedToFleet { group: FabricGroupB, release_receipt: h }
     match authority_fold(resting: resting, oldest_first: [env(id: "e1", e: w_event(previous: resting, next: elsewhere, parent: none))]) {
       AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"
-      AuthorityFolded { current: _, generation: _, grant: _ } => false
+      AuthorityFolded { current: _, generation: _, grant: _, entry_state: _ } => false
     }
   })
 }
