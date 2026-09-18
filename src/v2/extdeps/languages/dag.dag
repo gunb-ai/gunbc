@@ -166,6 +166,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import std.algebra { Empty }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
@@ -3055,6 +3056,13 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
+fn dag_node_is_float_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_float_literal
+    _ => false
+  }
+}
+
 // Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects
 // this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding
 // (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals
@@ -3142,10 +3150,8 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenc
   }
 }
 
-// Lexeme capture, not IEEE decode. Int literals inhabit DecimalMagnitude; floats do not yet.
-// The lexer already matched `digits '.' digits`, so the source text is the value until a
-// float-magnitude home exists. Identity stays `dag_token_float_literal` so 1.8 and 2.5 are not
-// the same class-stamped atom.
+// Lexeme capture, not IEEE decode. Identity stays `dag_token_float_literal` so 1.8 and 2.5
+// are not the same class-stamped atom. Magnitude home is the dissolve-on below, not this string.
 fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_float_literal } },
@@ -3162,6 +3168,8 @@ fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurre
     occurrence_id: occurrence_id
   }
 }
+
+data dag_float_literal_magnitude_home_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: dag_float_literal_node_from_lexeme interned-lexeme child. NEXT-RUNG TRIGGER: a float-magnitude home (the analogue of DecimalMagnitude / dag_int_literal_node_from_magnitude) that parse, resolve, eval-literal shape, and body_lower consume; retire the lexeme field then. Not IEEE decode as a second authority beside that home.")
 
 fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge {

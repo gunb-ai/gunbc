@@ -1,9 +1,21 @@
 module v2.test.parse.weather_g0_prefix_parse_probe
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.compiler.parse { parse_module }
+import v2.compiler.resolve {
+  Namespace,
+  ResolveContext,
+  empty_canonical_symbol_set,
+  resolve_node,
+  scope_from_namespace
+}
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag {
+  dag_float_literal_node_from_lexeme,
+  dag_language_model
+}
+import v2.std.collection { empty_map }
 import v2.std.compilers.lexing { TokenStream, symbol_intern_lexeme }
 import v2.std.diagnostic {
   Accepted,
@@ -19,8 +31,16 @@ import v2.std.language_model { LanguageModel }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_module, lens_verdict_diagnostic_locus_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, canonicalize_node_strip_provenance, content_hash }
+import v2.std.node {
+  Node,
+  TypeNode,
+  canonicalize_node_strip_provenance,
+  content_hash
+}
 import v2.std.optional { Absent, Optional, Present }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.resolution_policy { NamespaceOnlyY }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -140,6 +160,49 @@ test fn trailing_dot_float_still_refuses_holds() -> Bool {
   match parses(src: trailing_dot_red_source) {
     true => false
     false => true
+  }
+}
+
+fn float_literal_resolve_ctx() -> ResolveContext {
+  let namespace = Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: empty_symbol_index(),
+    module_qn: qualified_name_from_dotted_string(dotted: "m")
+  }
+  ResolveContext {
+    scope: scope_from_namespace(namespace: namespace),
+    namespace: namespace,
+    policy: NamespaceOnlyY,
+    position: qualified_name_from_dotted_string(dotted: "m"),
+    lm: probe_cached_lm,
+    under_module_root: false
+  }
+}
+
+data float_literal_resolve_probe: Node = dag_float_literal_node_from_lexeme(
+  lexeme: "1.8",
+  occurrence_id: OccurrenceSynthetic
+)
+
+data int_literal_resolve_probe: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+// Discriminates unbound_symbol misattribution: a parsed float is not a name.
+test fn float_literal_resolve_refuses_as_not_lowered_holds() -> Bool {
+  match resolve_node(ctx: float_literal_resolve_ctx(), n: float_literal_resolve_probe) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^float_literal_not_lowered
+  }
+}
+
+test fn int_literal_atom_still_resolves_holds() -> Bool {
+  match resolve_node(ctx: float_literal_resolve_ctx(), n: int_literal_resolve_probe) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
