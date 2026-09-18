@@ -29,6 +29,9 @@ import gunbc.site_uefi_arm64_pxe_edge {
   BootNetworkProbeUnobserved,
   BootNetworkReachabilityObservation,
   BootNetworkReachabilityAxis,
+  BootNetworkReachabilityDeficit,
+  BootNetworkAxisProbeFailed,
+  BootNetworkAxisUnobserved,
   BootNetworkDns,
   BootNetworkDefaultRoute,
   BootNetworkGlobalHttps,
@@ -102,7 +105,7 @@ fn arm64_request(mac: NonEmptyStr) -> EdgeClientRequest {
   EdgeClientRequest { mac: mac, arch_code: 11 }
 }
 
-fn not_established_with(admission: SiteEdgeClientAdmission, expected: List<BootNetworkReachabilityAxis>) -> Bool {
+fn not_established_with(admission: SiteEdgeClientAdmission, expected: List<BootNetworkReachabilityDeficit>) -> Bool {
   match admission {
     SiteEdgeNotEstablished { standing: _, unreachable: u } => u == expected
     SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
@@ -167,17 +170,17 @@ test fn unknown_architecture_gets_no_boot_even_when_known() -> Bool {
 
 test fn dns_failure_alone_unestablishes_the_edge() -> Bool {
   let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: failed(), route: ok(), https: ok()))
-  not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkDns])
+  not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisProbeFailed { axis: BootNetworkDns, observation: obs, observed_at: 1788000000000 }])
 }
 
 test fn missing_default_route_alone_unestablishes_the_edge() -> Bool {
   let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: BootNetworkProbeUnobserved, https: ok()))
-  not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkDefaultRoute])
+  not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisUnobserved { axis: BootNetworkDefaultRoute }])
 }
 
 test fn failed_https_fetch_alone_unestablishes_the_edge() -> Bool {
   let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: failed()))
-  not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkGlobalHttps])
+  not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisProbeFailed { axis: BootNetworkGlobalHttps, observation: obs, observed_at: 1788000000000 }])
 }
 
 test fn offer_with_other_filename_is_refused_with_the_offered_name() -> Bool {
@@ -279,4 +282,10 @@ test fn an_edge_admitting_no_arm64_refuses_the_client_architecture() -> Bool {
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
   }
+}
+
+// A PROBE THAT FAILED AND A PROBE NOBODY RAN ARE DIFFERENT DEFICITS on the same axis.
+test fn an_unprobed_dns_axis_is_unobserved_not_failed() -> Bool {
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: BootNetworkProbeUnobserved, route: ok(), https: ok()))
+  not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisUnobserved { axis: BootNetworkDns }])
 }

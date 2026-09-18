@@ -115,11 +115,22 @@ fn probe_succeeded(probe: BootNetworkProbe) -> Bool {
   }
 }
 
-fn reachability_axis_missing(probe: BootNetworkProbe, axis: BootNetworkReachabilityAxis) -> List<BootNetworkReachabilityAxis> {
-  if probe_succeeded(probe: probe) { [] } else { [axis] }
+// A DEFICIT CARRIES ITS CAUSE: a probe that ran and failed keeps the observation that established the
+// failure, and an axis nobody probed says so. "Not observed" is a missing reading, not the deduced
+// fact "unreachable", so the two are never reported as one.
+type BootNetworkReachabilityDeficit
+  = BootNetworkAxisProbeFailed { axis: BootNetworkReachabilityAxis, observation: DeclarationRef, observed_at: EpochMs }
+  | BootNetworkAxisUnobserved { axis: BootNetworkReachabilityAxis }
+
+fn reachability_axis_missing(probe: BootNetworkProbe, axis: BootNetworkReachabilityAxis) -> List<BootNetworkReachabilityDeficit> {
+  match probe {
+    BootNetworkProbeSucceeded { observation: _, observed_at: _ } => []
+    BootNetworkProbeFailed { observation: o, observed_at: t } => [BootNetworkAxisProbeFailed { axis: axis, observation: o, observed_at: t }]
+    BootNetworkProbeUnobserved => [BootNetworkAxisUnobserved { axis: axis }]
+  }
 }
 
-fn boot_network_reachability_missing(obs: BootNetworkReachabilityObservation) -> List<BootNetworkReachabilityAxis> {
+fn boot_network_reachability_missing(obs: BootNetworkReachabilityObservation) -> List<BootNetworkReachabilityDeficit> {
   concat(
     concat(
       reachability_axis_missing(probe: obs.dns_resolution, axis: BootNetworkDns),
@@ -182,7 +193,7 @@ type SiteEdgeClientAdmission
   | SiteEdgeClientArchitectureNotAdmitted { architecture: Architecture }
   | SiteEdgeChainloaderMismatch { client: Architecture, chainloader: Architecture }
   | SiteEdgeDiscoveryRefused { refusal: SiteDiscoveryRefusal }
-  | SiteEdgeNotEstablished { standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityAxis> }
+  | SiteEdgeNotEstablished { standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityDeficit> }
 
 fn client_is_known(roster: SiteEdgeRoster, mac: NonEmptyStr) -> Bool {
   roster.known_client_macs |> any(m => m as String == mac as String)
@@ -223,7 +234,7 @@ fn site_edge_client_admission(roster: SiteEdgeRoster, request: EdgeClientRequest
   }
 }
 
-fn site_edge_admission_of_standing(standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityAxis>) -> SiteEdgeClientAdmission {
+fn site_edge_admission_of_standing(standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityDeficit>) -> SiteEdgeClientAdmission {
   match standing {
     SitePxeEdgeEstablished { receipt: _ } => SiteEdgeClientAdmitted { standing: standing }
     SitePxeEdgeUnestablished => SiteEdgeNotEstablished { standing: standing, unreachable: unreachable }
