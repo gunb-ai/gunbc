@@ -177,9 +177,12 @@ fn namespace_graft_production_emitted_identity_optional(production: GrammarProdu
   node_atom_identity_optional(node: production.emitted)
 }
 
-fn namespace_graft_emitted_identity_for_production_name(name: Symbol) -> Symbol? {
+fn namespace_graft_emitted_identity_for_production_name(
+  productions: List<GrammarProduction>,
+  name: Symbol
+) -> Symbol? {
   fold_list(
-    xs: dag_grammar_root().productions,
+    xs: productions,
     empty: optional_absent(),
     cons: fn(acc, production) {
       match acc {
@@ -194,12 +197,17 @@ fn namespace_graft_emitted_identity_for_production_name(name: Symbol) -> Symbol?
   )
 }
 
-fn namespace_graft_top_level_item_alternative_emitted_ids() -> List<Symbol> {
+fn namespace_graft_top_level_item_alternative_emitted_ids(
+  productions: List<GrammarProduction>
+) -> List<Symbol> {
   fold_list(
     xs: namespace_graft_grammar_expr_nonterminal_productions(expr: dag_grammar_top_level_item_expr()),
     empty: [],
     cons: fn(acc, production_name) {
-      match namespace_graft_emitted_identity_for_production_name(name: production_name) {
+      match namespace_graft_emitted_identity_for_production_name(
+        productions: productions,
+        name: production_name
+      ) {
         Present { value: emitted } => list_snoc_item(xs: acc, item: emitted)
         Absent => acc
       }
@@ -217,10 +225,10 @@ fn namespace_graft_id_is_top_level_item_unit(id: Symbol, unit_ids: List<Symbol>)
   )
 }
 
-fn namespace_graft_collect_unit_nodes(node: Node) -> List<Node> {
+fn namespace_graft_collect_unit_nodes(node: Node, productions: List<GrammarProduction>) -> List<Node> {
   namespace_graft_collect_unit_nodes_against(
     node: node,
-    unit_ids: namespace_graft_top_level_item_alternative_emitted_ids()
+    unit_ids: namespace_graft_top_level_item_alternative_emitted_ids(productions: productions)
   )
 }
 
@@ -306,9 +314,12 @@ fn namespace_graft_kw_then_ident(captured: Node) -> Symbol? {
   }
 }
 
-fn namespace_graft_symbol_is_grammar_machinery(sym: Symbol) -> Bool {
+fn namespace_graft_symbol_is_grammar_machinery(
+  productions: List<GrammarProduction>,
+  sym: Symbol
+) -> Bool {
   fold_list(
-    xs: dag_grammar_root().productions,
+    xs: productions,
     empty: false,
     cons: fn(found, production) {
       if found {
@@ -323,8 +334,9 @@ fn namespace_graft_symbol_is_grammar_machinery(sym: Symbol) -> Bool {
   )
 }
 
-fn namespace_graft_is_machinery_symbol(sym: Symbol) -> Bool {
-  dag_lex_token_symbol(sym: sym) || namespace_graft_symbol_is_grammar_machinery(sym: sym)
+fn namespace_graft_is_machinery_symbol(productions: List<GrammarProduction>, sym: Symbol) -> Bool {
+  dag_lex_token_symbol(sym: sym)
+    || namespace_graft_symbol_is_grammar_machinery(productions: productions, sym: sym)
 }
 
 fn namespace_graft_type_decl_target(captured: Node) -> Node {
@@ -440,10 +452,6 @@ fn namespace_graft_residual_type_decl_units(units: List<Node>) -> List<Node> {
   })
 }
 
-fn namespace_graft_decl_edges_from_node(node: Node) -> List<Edge> {
-  namespace_graft_named_edges_from_units(units: namespace_graft_collect_unit_nodes(node: node))
-}
-
 // Flattening to Named declaration edges is what symbol_index_fill consumes. A fn_decl
 // arrives already rehomed by body_lower_fn_decl_to_arrow; type_decl and data_decl did
 // not, so flatten was empty for a type-only module (reconstruct kept raw shells —
@@ -463,14 +471,17 @@ fn namespace_graft_is_declaration_target(node: Node) -> Bool {
   }
 }
 
-fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
+fn namespace_graft_keep_flattened_member_edge(
+  productions: List<GrammarProduction>,
+  edge: Edge
+) -> Bool {
   match edge.label {
     Named { name: sym } =>
       if namespace_graft_parse_projection_edge(name: sym) {
         false
       } else if namespace_graft_is_metadata_edge(name: sym) {
         false
-      } else if namespace_graft_is_machinery_symbol(sym: sym) {
+      } else if namespace_graft_is_machinery_symbol(productions: productions, sym: sym) {
         false
       } else {
         namespace_graft_is_declaration_target(node: edge.target)
@@ -479,9 +490,12 @@ fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   }
 }
 
-fn namespace_graft_flattened_member_edges(edges: List<Edge>) -> List<Edge> {
+fn namespace_graft_flattened_member_edges(
+  productions: List<GrammarProduction>,
+  edges: List<Edge>
+) -> List<Edge> {
   fold(edges, init: [], f: fn(acc, edge) {
-    if namespace_graft_keep_flattened_member_edge(edge: edge) {
+    if namespace_graft_keep_flattened_member_edge(productions: productions, edge: edge) {
       list_snoc_item(xs: acc, item: edge)
     } else {
       acc
@@ -491,9 +505,11 @@ fn namespace_graft_flattened_member_edges(edges: List<Edge>) -> List<Edge> {
 
 fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
   let working = namespace_graft_unwrap_module_working_root(root: root)
-  let units = namespace_graft_collect_unit_nodes(node: working)
-  let from_decls = namespace_graft_decl_edges_from_node(node: working)
+  let productions = dag_grammar_root().productions
+  let units = namespace_graft_collect_unit_nodes(node: working, productions: productions)
+  let from_decls = namespace_graft_named_edges_from_units(units: units)
   let flattened = namespace_graft_flattened_member_edges(
+    productions: productions,
     edges: namespace_graft_collect_body_edges_from_node(node: working)
   )
   let combined = concat(from_decls, flattened)
