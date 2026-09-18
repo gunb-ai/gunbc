@@ -1413,8 +1413,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/lens/non_fold_residue_test.dag",
       check_fns: [
         "non_fold_residue_no_unrostered_or_stale",
-        "non_fold_residue_synthetic_unrostered_red_holds",
-        "non_fold_residue_wildcard_red_fixture_holds"
+        "non_fold_residue_synthetic_unrostered_red_control_holds",
+        "non_fold_residue_wildcard_red_fixture_control_holds"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1485,7 +1485,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "witness_recompute_fixture_carries_recompute_verdict",
         "witness_door_insert_refused_for_recompute_table",
         "witness_door_lookup_refused_for_recompute_table",
-        "parse_table_memo_door_order_independent",
         "parse_table_memo_bypass_store_reds",
         "witness_memoize_carrier_allows_store",
         "witness_content_key_subject_stable"
@@ -1875,10 +1874,22 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag",
+      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution_test.dag",
       check_fns: [
-        "wave1_gate1_d_ingested_bind_executes_witness_holds",
-        "wave1_gate1_d_ingested_loop_executes_witness_holds"
+        "bind_census_ingested_executes_holds",
+        "bind_census_ingested_wrong_value_red_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [FalsifierCadenceJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution_test.dag",
+      check_fns: [
+        "loop_census_ingested_executes_holds",
+        "loop_census_ingested_wrong_value_red_holds"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared

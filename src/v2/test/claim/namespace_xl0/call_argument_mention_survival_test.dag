@@ -244,10 +244,10 @@ test fn a_call_argument_mention_is_absent_from_the_denominator_today() -> Bool {
   !sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
 }
 
-// MEASURED DEFICIENCY 2: the CALLEE name of a call does not reach the collector either, so the
-// erasure is of the whole call expression rather than of its arguments alone.
-test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
-  !sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
+// The brace-body call lowering repair keeps the callee in the normalized tree, so the collector
+// now sees it. The argument-only miss above is a separate class and stays asserted-absent.
+test fn a_callee_name_reaches_the_denominator_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
 }
 
 // WHAT "Bool REACHES THE COLLECTOR" ACTUALLY MEASURES, AND IT IS NOT WHAT ITS FIRST NAME CLAIMED.
