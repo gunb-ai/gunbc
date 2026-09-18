@@ -37,12 +37,14 @@ import gunbc.doc_graph_roots { hand_authored_doc_declaration_refs }
 
 data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1_maintenance_standing", decl_name: "v1_seed_standing")
 
+data required_gate_prefixes_ref: DeclarationRef = decl_ref(module_path: "v2.workflow.required_floor", decl_name: "required_gate_prefixes")
+
 fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
 }
 
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
-  [v1_maintenance_standing_ref]
+  [v1_maintenance_standing_ref, required_gate_prefixes_ref]
 }
 
 // ONE POPULATION, TWO SOURCES, AND THE UNION IS THE POINT. The cited-symbol lens already had a
