@@ -1,0 +1,283 @@
+module gunbc.auth.approval_device_redemption
+
+import std.types { NonEmptyStr, String, Timestamp, Int }
+import std.logic { Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.crypto.signature { VerifyingKey, SignatureBytes }
+import extdeps.apple.apns {
+  ApnsSendOutcome, ApnsAccepted, ApnsRefused, ApnsUnreached, ApnsUndecodable,
+  ApnsEnvironment, ApnsTopic, ApnsDeviceToken, ApnsRefusalClass,
+  ApnsBadRequest, ApnsAuthenticationRefused, ApnsBadPath, ApnsBadMethod, ApnsTokenUnregistered,
+  ApnsPayloadTooLarge, ApnsTooManyRequests, ApnsServerError, ApnsServiceUnavailable, ApnsStatusUnlisted,
+}
+import extdeps.apple.app_attest { AttestKeyId }
+import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
+import extdeps.android.key_attestation { AndroidAttestationChain }
+import gunbc.auth.approval_capability { ProposedDecision, proposed_decision_name, signing_field_separator }
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+
+// ── What this module is ──────────────────────────────────────────────────────────────────────
+// The protocol between the roadmap server and the operator's phone for redeeming an approval with
+// a device-bound, biometric-gated signature. ONE protocol, platform realizations beside it: iOS is
+// built (extdeps.apple.*); Android is modeled at every platform point and realized by nothing yet
+// (android_realization_frontier). Push is one peripheral here -- it only wakes the app.
+//
+// WHY A DEVICE SIGNATURE. The loopback deployment cannot attribute Tailscale-User-Login to the proxy
+// (gunbc.auth.approval_decision_store approval_identity_attribution_frontier), so a capability-only
+// redemption records the capability's bearer. A signature under an enrolled key the enclave (or
+// Keystore) releases only on the operator's biometric attributes the decision to that enrolment
+// without trusting anything on the socket. On the device route the signature is REQUIRED: a route
+// that still admitted the capability alone would leave anonymous approval standing beside it.
+
+type MobilePlatform
+  = MobileIos
+  | MobileAndroid
+
+// ── Identity evidence a redemption carries ───────────────────────────────────────────────────
+// Named by MECHANISM. The two Legacy arms are what the existing /approve route admits today; they
+// exist exactly as long as that route and the ntfy loop do, and are deleted at cutover
+// (approval_device_cutover_frontier). The device route admits only EnrolledDeviceProof.
+type RedemptionIdentityEvidence
+  = EnrolledDeviceProof {
+      enrollment_id: NonEmptyStr
+      operator_login: NonEmptyStr
+      platform: MobilePlatform
+      decision_key: VerifyingKey
+    }
+  | LegacyTailnetProxyHeader { presented_login: NonEmptyStr }
+  | LegacyCapabilityBearer { residual: NonEmptyStr }
+
+fn identity_evidence_names_a_person(e: RedemptionIdentityEvidence) -> Bool {
+  match e {
+    EnrolledDeviceProof { enrollment_id: _, operator_login: _, platform: _, decision_key: _ } => true
+    LegacyTailnetProxyHeader { presented_login: _ } => true
+    LegacyCapabilityBearer { residual: _ } => false
+  }
+}
+
+// ── Enrolment ────────────────────────────────────────────────────────────────────────────────
+// The operator's explicit act on one phone, admitted by a ONE-TIME CODE the dashboard shows. The
+// operator login is DERIVED BY THE SERVER from the code's issuance, never supplied by the app: the
+// code was issued to a login, so redeeming it enrols a key for that login and no other.
+//
+// THE RESIDUAL, stated rather than claimed away: the dashboard binds loopback behind tailscale
+// serve, so no off-tailnet caller can reach the code-issuing route, but an on-host process under
+// another POSIX user can. The code's authority is therefore "whoever could reach the dashboard on
+// srv1 within the code's lifetime", the same boundary approval_identity_attribution_frontier names.
+data enrolment_code_residual_note: NonEmptyStr = "The one-time enrolment code is reachable only through the dashboard, which binds loopback behind tailscale serve: off-tailnet callers are excluded, on-host POSIX users are not. A short lifetime and single use bound the exposure; peer attribution at the serve boundary (approval_identity_attribution_frontier) is what would close it."
+
+data approval_enrolment_protocol: NonEmptyStr = "gunbc.approval-enrolment.v1" as NonEmptyStr
+
+type EnrolmentChallenge {
+  challenge_id: NonEmptyStr
+  code: NonEmptyStr
+  issued_to_login: NonEmptyStr
+  issued_at: Timestamp
+  expires_at: Timestamp
+}
+
+// Push registration is SEPARATE from enrolment: a token rotates (reinstall, restore, APNs 410)
+// without changing who is enrolled or which key decides, and revoking an enrolment must end its
+// authority whatever push tokens still exist.
+type PushRegistration
+  = ApnsRegistration { environment: ApnsEnvironment, topic: ApnsTopic, token: ApnsDeviceToken }
+  | FcmRegistration { project: FcmProjectId, token: FcmRegistrationToken }
+
+// What establishes the decision key belongs to a genuine app instance on genuine hardware. iOS: an
+// App Attest attestation whose clientDataHash is SHA-256 of enrolment_transcript (the App Attest key
+// is not the decision key -- extdeps.apple.app_attest). Android: a Keystore attestation chain for
+// the decision key itself, whose attestation challenge is the same transcript.
+type PlatformEnrollmentEvidence
+  = IosAppAttestBoundDecisionKey { attest_key_id: AttestKeyId, attestation_b64: NonEmptyStr }
+  | AndroidAttestedDecisionKey { chain: AndroidAttestationChain }
+
+fn platform_of_evidence(e: PlatformEnrollmentEvidence) -> MobilePlatform {
+  match e {
+    IosAppAttestBoundDecisionKey { attest_key_id: _, attestation_b64: _ } => MobileIos
+    AndroidAttestedDecisionKey { chain: _ } => MobileAndroid
+  }
+}
+
+type EnrollmentStanding
+  = EnrollmentActive
+  | EnrollmentRevoked { revoked_at: Timestamp, reason: NonEmptyStr }
+
+type DeviceEnrollment {
+  enrollment_id: NonEmptyStr
+  operator_login: NonEmptyStr
+  decision_key: VerifyingKey
+  evidence: PlatformEnrollmentEvidence
+  standing: EnrollmentStanding
+}
+
+// The bytes the platform attestation commits to. ONE rendering, joined by the capability's unit
+// separator so no field can forge a boundary. It binds the server's challenge (so a replayed
+// attestation cannot enrol under a fresh code) to the decision key (so a leaked code cannot enrol a
+// key the app did not attest alongside it). The login is not here: the server derives it from the
+// challenge, and an app-supplied login would be a claim nobody checks.
+fn enrolment_transcript(challenge: EnrolmentChallenge, decision_key: VerifyingKey, platform: MobilePlatform) -> NonEmptyStr {
+  join(
+    [
+      approval_enrolment_protocol as String,
+      challenge.challenge_id as String,
+      challenge.code as String,
+      platform_wire(p: platform) as String,
+      decision_key.point_b64url as String,
+    ],
+    signing_field_separator,
+  ) as NonEmptyStr
+}
+
+fn platform_wire(p: MobilePlatform) -> NonEmptyStr {
+  match p {
+    MobileIos => "ios" as NonEmptyStr
+    MobileAndroid => "android" as NonEmptyStr
+  }
+}
+
+// ── The push ─────────────────────────────────────────────────────────────────────────────────
+// THE PUSH WAKES; IT DOES NOT CARRY WHAT IS DECIDED. It holds one opaque, non-authorizing locator.
+// The app fetches the pending request from the roadmap server over the tailnet, displays THAT, and
+// signs over it. Two reasons, each sufficient: the approve/deny capabilities are bearer credentials
+// that must not transit or rest at APNs or FCM; and anything rendered from the payload is a second
+// copy of the request that can drift from the revision being authorized. The alert text is generic
+// ("Approval requested") because a lock screen shows it. Push is an accelerator: the app also lists
+// pending approvals on open, so a lost push costs latency, never a decision.
+type ApprovalPushHint {
+  notification_id: NonEmptyStr
+}
+
+// ── Redemption ───────────────────────────────────────────────────────────────────────────────
+// The server issues a fresh challenge with every fetched request; the device signs over it, the
+// exact stored request it displayed, the chosen verb and the exact capability it redeems. The
+// server owns decided_at -- a client clock can neither backdate a decision nor extend an expiry.
+data approval_redemption_protocol: NonEmptyStr = "gunbc.approval-redemption.v1" as NonEmptyStr
+
+type RedemptionChallenge {
+  challenge_id: NonEmptyStr
+  nonce: NonEmptyStr
+  expires_at: Timestamp
+}
+
+// stored_request_text is gunbc.auth.approval_decision_store stored_request_json of the record the
+// app displayed, byte for byte; capability_text is approval_capability_signing_input of the
+// capability selected. Both are the existing canonical renderings, so the device signs no third
+// spelling of either -- and when the stored request gains its typed target
+// (approval_target_frontier) the signature covers it with no change here.
+type DeviceRedemptionSigningInput {
+  audience: NonEmptyStr
+  enrollment_id: NonEmptyStr
+  challenge: RedemptionChallenge
+  escalation_id: NonEmptyStr
+  request_revision: NonEmptyStr
+  stored_request_text: NonEmptyStr
+  decision: ProposedDecision
+  capability_text: NonEmptyStr
+  capability_tag: NonEmptyStr
+}
+
+fn device_redemption_signing_input(i: DeviceRedemptionSigningInput) -> NonEmptyStr {
+  join(
+    [
+      approval_redemption_protocol as String,
+      i.audience as String,
+      i.enrollment_id as String,
+      i.challenge.challenge_id as String,
+      i.challenge.nonce as String,
+      i.escalation_id as String,
+      i.request_revision as String,
+      i.stored_request_text as String,
+      proposed_decision_name(d: i.decision) as String,
+      i.capability_text as String,
+      i.capability_tag as String,
+    ],
+    signing_field_separator,
+  ) as NonEmptyStr
+}
+
+// Per-redemption platform proof beside the decision signature. iOS re-establishes the app instance
+// with an App Attest assertion over the same signing input (its counter refuses replay). Android's
+// Keystore attestation already bound the decision key at enrolment, so the signature is the proof.
+type PlatformRedemptionProof
+  = IosAppAttestAssertion { assertion_b64: NonEmptyStr }
+  | AndroidDecisionKeyOnly
+
+type SignedRedemption {
+  signing_input: DeviceRedemptionSigningInput
+  signature: SignatureBytes
+  platform_proof: PlatformRedemptionProof
+}
+
+// ── Push provider outcome ────────────────────────────────────────────────────────────────────
+// Named for what a provider can establish: it ACCEPTED the message. Not delivered, not displayed,
+// not read, never consent. retryable is Apple's reading of its own status, not a policy here.
+type PushProvider
+  = ProviderApns
+  | ProviderFcm
+
+type PushProviderOutcome
+  = PushProviderAccepted { provider: PushProvider, receipt: NonEmptyStr }
+  | PushProviderRefused { provider: PushProvider, status: Int, detail: String, retryable: Bool }
+  | PushRegistrationInvalid { provider: PushProvider, detail: String }
+  | PushProviderUnreached { provider: PushProvider, cause: String }
+  | PushProviderUndecodable { provider: PushProvider, status: Int, cause: String }
+
+fn apns_refusal_retryable(c: ApnsRefusalClass) -> Bool {
+  match c {
+    ApnsBadRequest => false
+    ApnsAuthenticationRefused => false
+    ApnsBadPath => false
+    ApnsBadMethod => false
+    ApnsTokenUnregistered => false
+    ApnsPayloadTooLarge => false
+    ApnsTooManyRequests => true
+    ApnsServerError => true
+    ApnsServiceUnavailable => true
+    ApnsStatusUnlisted { status: _ } => false
+  }
+}
+
+// APNs 410 is the one refusal that is a REGISTRATION fact: the token is dead and will never work,
+// so the remedy is re-registration, not retry.
+fn push_outcome_of_apns(o: ApnsSendOutcome) -> PushProviderOutcome {
+  match o {
+    ApnsAccepted { apns_id } => PushProviderAccepted { provider: ProviderApns, receipt: apns_id }
+    ApnsRefused { status, class, reason } =>
+      match class {
+        ApnsTokenUnregistered => PushRegistrationInvalid { provider: ProviderApns, detail: reason }
+        _ => PushProviderRefused { provider: ProviderApns, status: status, detail: reason, retryable: apns_refusal_retryable(c: class) }
+      }
+    ApnsUnreached { cause } => PushProviderUnreached { provider: ProviderApns, cause: cause }
+    ApnsUndecodable { status, cause } => PushProviderUndecodable { provider: ProviderApns, status: status, cause: cause }
+  }
+}
+
+// ── The provider key ─────────────────────────────────────────────────────────────────────────
+// The .p8 APNs auth key lives in Secret Manager, pinned. It is NOT yet a row in
+// gunbc.auth.fleet_secret_accessor_roster: that fold stops at the first refusal, so a row for a
+// secret that does not exist yet would red every accessor converge. The row lands with the key.
+data approval_apns_auth_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "approval-apns-auth-key"),
+  version: "1",
+)
+
+// ── Frontiers ────────────────────────────────────────────────────────────────────────────────
+data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: an operator-only enrolment-challenge issuer on the dashboard, POST enrolment verifying PlatformEnrollmentEvidence over enrolment_transcript, a pending-approvals list and fetch that issue a RedemptionChallenge, and a device redemption route that REQUIRES a verified SignedRedemption under an active DeviceEnrollment before committing through the existing decision CAS with server-owned decided_at -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login",
+)
+
+data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a host primitive binding RustCrypto p256 ECDSA verification behind extdeps.crypto.signature signature_verification_from_implementation, and an App Attest attestation and assertion verifier (CBOR decode, X.509 chain to the pinned Apple App Attestation Root CA, counter) behind extdeps.apple.app_attest -- SUFFICIENT FOR the device routes to mint SignatureVerified and AttestationVerified from real bytes",
+)
+
+data approval_target_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.auth.approval_decision_store StoredApprovalRequest gains a typed ApprovalTarget (authority, subject, operator sentence derived from the subject) rendered by stored_request_json, landed after the Mt. Collins first boot releases the store -- and carries the access lifetime (gunbc.auth.access_request AccessLifetime) distinct from the link's expires_at -- SUFFICIENT FOR the app to show the host and what is granted for how long from the one stored record, never the link expiry in its place, and for the device signature to cover both",
+)
+
+data approval_device_cutover_frontier: DissolutionCondition = unbound_dissolution(
+  description: "one real approval decided on the enrolled phone reads back from the store with decided_by naming the login, after which ONE change routes file_and_notify to APNs, deletes the ntfy publish, the bearer-only /approve route and the two Legacy arms of RedemptionIdentityEvidence together -- SUFFICIENT FOR no admitted redemption to lack an attributable principal",
+)
+
+data android_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "an Android client that generates the decision key in Keystore with per-operation biometric authorization, submits its attestation chain over enrolment_transcript, registers with FCM, and redeems with SignedRedemption, plus the server's Android key-attestation verifier and FCM publish -- SUFFICIENT FOR an approval decided on a physical Android device to read back with decided_by naming the enrolled login",
+)

@@ -1,0 +1,153 @@
+module test.claim.approval_device_redemption_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp }
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.apple.apns {
+  ApnsStatusUnlisted,
+  apns_send_outcome_of, apns_refusal_class,
+}
+import extdeps.crypto.signature {
+  VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
+  SignatureVerified, SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed,
+  signature_verification_from_implementation,
+}
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
+import gunbc.auth.approval_device_redemption {
+  DeviceRedemptionSigningInput, RedemptionChallenge, EnrolmentChallenge, MobileIos, MobileAndroid,
+  PushProviderAccepted, PushProviderRefused, PushRegistrationInvalid, PushProviderUnreached, PushProviderUndecodable,
+  push_outcome_of_apns, device_redemption_signing_input, enrolment_transcript,
+}
+
+data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
+data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
+data sig: SignatureBytes = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "SIG" }
+
+fn redemption_input(verb_approve: Bool, enrollment: NonEmptyStr, nonce: NonEmptyStr, request_text: NonEmptyStr, tag: NonEmptyStr) -> NonEmptyStr {
+  device_redemption_signing_input(i: DeviceRedemptionSigningInput {
+    audience: "srv1.tailecbe08.ts.net",
+    enrollment_id: enrollment,
+    challenge: RedemptionChallenge { challenge_id: "c1", nonce: nonce, expires_at: "2026-09-18T12:05:00Z" as Timestamp },
+    escalation_id: "esc-1",
+    request_revision: "r1",
+    stored_request_text: request_text,
+    decision: if verb_approve { ProposeApprove } else { ProposeDeny },
+    capability_text: "cap",
+    capability_tag: tag,
+  })
+}
+
+data base_input: NonEmptyStr = redemption_input(verb_approve: true, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T")
+
+data enrol_challenge: EnrolmentChallenge = EnrolmentChallenge {
+  challenge_id: "ec1", code: "482913", issued_to_login: "operator",
+  issued_at: "2026-09-18T12:00:00Z" as Timestamp, expires_at: "2026-09-18T12:10:00Z" as Timestamp,
+}
+
+// 410 IS THE ONE STATUS THAT IS NOT A RETRY: the enrolment's token is dead. It must surface as its
+// own arm, not as a generic refusal the notifier would retry forever.
+test fn witness_apns_410_becomes_registration_invalid() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestStatusRefused { status: 410, body: "{\"reason\":\"Unregistered\"}" }, apns_id: "")) {
+    PushRegistrationInvalid { provider: _, detail } => detail != ""
+    PushProviderAccepted { provider: _, receipt: _ } => false
+    PushProviderRefused { provider: _, status: _, detail: _, retryable: _ } => false
+    PushProviderUnreached { provider: _, cause: _ } => false
+    PushProviderUndecodable { provider: _, status: _, cause: _ } => false
+  }
+}
+
+test fn witness_apns_429_stays_a_refusal_carrying_its_status() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestStatusRefused { status: 429, body: "{\"reason\":\"TooManyRequests\"}" }, apns_id: "")) {
+    PushProviderRefused { provider: _, status, detail: _, retryable } => status == 429 && retryable
+    PushRegistrationInvalid { provider: _, detail: _ } => false
+    PushProviderAccepted { provider: _, receipt: _ } => false
+    PushProviderUnreached { provider: _, cause: _ } => false
+    PushProviderUndecodable { provider: _, status: _, cause: _ } => false
+  }
+}
+
+test fn witness_apns_ok_carries_apns_id() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestOk, apns_id: "id-7")) {
+    PushProviderAccepted { provider: _, receipt: message_id } => message_id as String == "id-7"
+    PushProviderRefused { provider: _, status: _, detail: _, retryable: _ } => false
+    PushRegistrationInvalid { provider: _, detail: _ } => false
+    PushProviderUnreached { provider: _, cause: _ } => false
+    PushProviderUndecodable { provider: _, status: _, cause: _ } => false
+  }
+}
+
+test fn witness_apns_transport_refusal_has_no_status() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestTransportRefused { cause: "connect refused" }, apns_id: "")) {
+    PushProviderUnreached { provider: _, cause } => cause == "connect refused"
+    PushProviderAccepted { provider: _, receipt: _ } => false
+    PushProviderRefused { provider: _, status: _, detail: _, retryable: _ } => false
+    PushRegistrationInvalid { provider: _, detail: _ } => false
+    PushProviderUndecodable { provider: _, status: _, cause: _ } => false
+  }
+}
+
+test fn witness_apns_unlisted_status_is_not_misclassified() -> Bool {
+  match apns_refusal_class(status: 418) {
+    ApnsStatusUnlisted { status } => status == 418
+    _ => false
+  }
+}
+
+// The signing input discriminates on every field an attacker would try to swap.
+test fn witness_signing_input_binds_the_verb() -> Bool {
+  base_input != redemption_input(verb_approve: false, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T")
+}
+
+test fn witness_signing_input_binds_the_enrollment() -> Bool {
+  base_input != redemption_input(verb_approve: true, enrollment: "e2", nonce: "n1", request_text: "req", tag: "T")
+}
+
+test fn witness_signing_input_binds_the_server_challenge() -> Bool {
+  base_input != redemption_input(verb_approve: true, enrollment: "e1", nonce: "n2", request_text: "req", tag: "T")
+}
+
+test fn witness_signing_input_binds_the_displayed_request() -> Bool {
+  base_input != redemption_input(verb_approve: true, enrollment: "e1", nonce: "n1", request_text: "req-revised", tag: "T")
+}
+
+test fn witness_signing_input_binds_the_capability_tag() -> Bool {
+  base_input != redemption_input(verb_approve: true, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T2")
+}
+
+test fn witness_enrolment_transcript_binds_the_decision_key() -> Bool {
+  enrolment_transcript(challenge: enrol_challenge, decision_key: key_a, platform: MobileIos) != enrolment_transcript(challenge: enrol_challenge, decision_key: key_b, platform: MobileIos)
+}
+
+test fn witness_enrolment_transcript_binds_the_platform() -> Bool {
+  enrolment_transcript(challenge: enrol_challenge, decision_key: key_a, platform: MobileIos) != enrolment_transcript(challenge: enrol_challenge, decision_key: key_a, platform: MobileAndroid)
+}
+
+// The seam refuses on encoding facts BEFORE consulting the implementation's verdict: a true verdict
+// over a malformed signature must not mint SignatureVerified.
+test fn witness_malformed_signature_refuses_despite_a_true_verdict() -> Bool {
+  match signature_verification_from_implementation(key: key_a, key_octets: 65, signature: sig, signature_octets: 71, message: "m", implementation_verified: true) {
+    SignatureMalformed { octets_declared, octets_expected } => octets_declared == 71 && octets_expected == 64
+    _ => false
+  }
+}
+
+test fn witness_malformed_key_refuses_despite_a_true_verdict() -> Bool {
+  match signature_verification_from_implementation(key: key_a, key_octets: 33, signature: sig, signature_octets: 64, message: "m", implementation_verified: true) {
+    VerifyingKeyMalformed { octets_declared, octets_expected: _ } => octets_declared == 33
+    _ => false
+  }
+}
+
+test fn witness_well_formed_true_verdict_names_its_message() -> Bool {
+  match signature_verification_from_implementation(key: key_a, key_octets: 65, signature: sig, signature_octets: 64, message: "m", implementation_verified: true) {
+    SignatureVerified { verified } => verified.message as String == "m"
+    _ => false
+  }
+}
+
+test fn witness_false_verdict_is_invalid() -> Bool {
+  match signature_verification_from_implementation(key: key_a, key_octets: 65, signature: sig, signature_octets: 64, message: "m", implementation_verified: false) {
+    SignatureInvalid { suite: _ } => true
+    _ => false
+  }
+}

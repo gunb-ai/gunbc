@@ -1,0 +1,77 @@
+module extdeps.apple.app_attest
+
+import std.types { NonEmptyStr, String, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// DeviceCheck DCAppAttestService, and Apple's server-side validation procedure for its attestation
+// objects. Cited pages: "Establishing your app's integrity", "Validating apps that connect to your
+// server", "DCAppAttestService".
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server"
+  }
+}
+
+// ── What an attestation establishes, and what it does not ────────────────────────────────────
+// App Attest generates its OWN P-256 key in the Secure Enclave (generateKey), separate from any
+// CryptoKit key, and Apple certifies that key as belonging to a genuine instance of the app with a
+// named team id and bundle id on genuine Apple hardware. Two things it does NOT give:
+//
+//   * It cannot be gated by biometrics -- DCAppAttestService exposes no access-control policy -- so
+//     it proves the APP, not the operator. The decision-signing key is the CryptoKit enclave key
+//     under extdeps.apple.secure_enclave BiometryCurrentSet.
+//   * It certifies nothing about any other key. The link from the attested app to the decision key
+//     is made by the enrolment protocol: the clientDataHash the app attests over commits to the
+//     decision key and the one-time enrolment code (gunbc.auth.approval_push).
+data attestation_proves_the_app_not_the_person_note: NonEmptyStr = "An App Attest attestation certifies a Secure Enclave key belonging to a genuine instance of one team id + bundle id on Apple hardware. It carries no biometric gate and says nothing about other keys; binding it to the biometric-gated decision key is the enrolment protocol's job, through the clientDataHash."
+
+type AttestKeyId = NonEmptyStr where brand("AttestKeyId")
+
+// Two environments by entitlement (com.apple.developer.devicecheck.appattest-environment), visible
+// to the server as the authenticator data's AAGUID: "appattestdevelop" or "appattest" followed by
+// seven zero bytes. TestFlight and App Store builds attest in production.
+type AppAttestEnvironment
+  = AppAttestDevelopment
+  | AppAttestProduction
+
+// ── Validation, in Apple's order ─────────────────────────────────────────────────────────────
+// The attestation object is CBOR { fmt: "apple-appattest", attStmt: { x5c, receipt }, authData }.
+// Apple lists the checks; each failure is its own refusal because each is a different incident.
+//
+//   1. x5c chains to the Apple App Attestation Root CA
+//   2. nonce = SHA256(authData || clientDataHash)
+//   3. nonce equals the credential certificate extension OID 1.2.840.113635.100.8.2
+//   4. SHA256(credential public key) equals the key id
+//   5. authData RP ID hash equals SHA256(<team id>.<bundle id>)
+//   6. authData counter is 0
+//   7. AAGUID names the expected environment
+//   8. authData credential id equals the key id
+type AttestationRefusal
+  = AttestationFormatUnexpected { declared: String }
+  | AttestationChainUntrusted { detail: String }
+  | AttestationNonceMismatch
+  | AttestationKeyIdMismatch { declared: AttestKeyId }
+  | AttestationAppIdMismatch { expected_app_id: NonEmptyStr }
+  | AttestationCounterNonZero { counter: Int }
+  | AttestationEnvironmentUnexpected { expected: AppAttestEnvironment }
+  | AttestationCredentialIdMismatch { declared: AttestKeyId }
+  | AttestationUndecodable { cause: String }
+
+data apple_app_attest_root_ca_note: NonEmptyStr = "The trust anchor is Apple's App Attestation Root CA, published at www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem. It is pinned by the verifier's configuration, never taken from the attestation's own x5c."
+
+data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
+
+// The app id the RP ID hash commits to is "<team id>.<bundle id>".
+fn app_attest_app_id(team_id: NonEmptyStr, bundle_id: NonEmptyStr) -> NonEmptyStr {
+  join([team_id as String, bundle_id as String], ".") as NonEmptyStr
+}
+
+// Success names the attested key and the clientDataHash it was attested over, so a verified
+// attestation cannot be paired afterwards with a different enrolment's client data.
+type AttestationVerification
+  = AttestationVerified { key_id: AttestKeyId, client_data_hash_hex: NonEmptyStr, environment: AppAttestEnvironment }
+  | AttestationRefused { cause: AttestationRefusal }
+
+data app_attest_unavailable_in_simulator_note: NonEmptyStr = "DCAppAttestService.isSupported is false in the Simulator and on devices without a Secure Enclave; the app must refuse enrolment there rather than enrolling without an attestation."
