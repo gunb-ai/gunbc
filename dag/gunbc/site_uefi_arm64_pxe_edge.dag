@@ -3,6 +3,7 @@ module gunbc.site_uefi_arm64_pxe_edge
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef }
 import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import product.placement_supply { SiteIdentity }
 import extdeps.firmware.ipxe { ipxe_chainloading_authority, ipxe_arm64_efi_snponly, ipxe_build_target_path }
 import extdeps.formats.dnsmasq {
@@ -256,13 +257,13 @@ data site_edge_arm64_tag: String = "efi-arm64"
 
 data site_edge_known_tag: String = "onboarding-known"
 
-fn site_edge_proxy_dhcp_directives(network_address: NonEmptyStr, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>, tftp_root: NonEmptyStr) -> List<DnsmasqDirective> {
+fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>, tftp_root: NonEmptyStr) -> List<DnsmasqDirective> {
   concat(
     [
       DnsmasqComment { text: join(["gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only: iPXE ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String, " per ", ipxe_chainloading_authority.uri.locator], "") },
       DnsmasqPort { value: 0 },
       DnsmasqLogDhcp,
-      DnsmasqDhcpRangeProxy { network_address: network_address as String },
+      DnsmasqDhcpRangeProxy { network_address: render_ipv4_address(addr: network_address) as String },
       DnsmasqDhcpMatchSet { tag: site_edge_arm64_tag, option: "option:client-arch", value: to_string(uefi_arm64_client_arch_code) },
     ],
     concat(
@@ -278,7 +279,7 @@ fn site_edge_proxy_dhcp_directives(network_address: NonEmptyStr, filename: NonEm
 
 // CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to
 // srv4 as the edge daemon's config.
-fn site_edge_proxy_dhcp_config(network_address: NonEmptyStr, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>, tftp_root: NonEmptyStr) -> String {
+fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>, tftp_root: NonEmptyStr) -> String {
   serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, filename: filename, known_client_macs: known_client_macs, tftp_root: tftp_root))
 }
 
