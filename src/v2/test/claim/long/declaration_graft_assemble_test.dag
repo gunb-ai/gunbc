@@ -143,15 +143,6 @@ test fn declaration_graft_match_variants_accepts() -> Bool {
   declaration_graft_assemble_accepts(src: src_f)
 }
 
-fn declaration_graft_assemble_reason(src: String) -> String {
-  match declaration_graft_assemble_for(src: src) {
-    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
-  }
-}
-
-data src_g_type_only: String = "module p\n\ntype Box { n: Int }\n"
-
 test fn declaration_graft_record_type_only_accepts() -> Bool {
   declaration_graft_assemble_accepts(src: src_g_type_only)
 }
