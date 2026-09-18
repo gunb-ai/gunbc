@@ -361,49 +361,59 @@ fn namespace_graft_data_decl_named_edge(unit: Node) -> Edge? {
   }
 }
 
-fn namespace_graft_named_edge_from_unit(unit: Node) -> Edge? {
-  match parse_production_emitted_identity_optional(node: unit) {
-    Present { value: id } =>
-      match id == ^dag_surface_type_decl {
-        true => namespace_graft_type_decl_named_edge(unit: unit)
-        false =>
-          match id == ^dag_surface_data_decl {
-            true => namespace_graft_data_decl_named_edge(unit: unit)
-            false => optional_absent()
+type NamespaceGraftDeclPartition {
+  named_edges: List<Edge>
+  residual_units: List<Node>
+}
+
+fn namespace_graft_partition_from_named_opt(
+  acc: NamespaceGraftDeclPartition,
+  unit: Node,
+  named: Edge?
+) -> NamespaceGraftDeclPartition {
+  match named {
+    Present { value: edge } =>
+      NamespaceGraftDeclPartition {
+        named_edges: list_snoc_item(xs: acc.named_edges, item: edge),
+        residual_units: acc.residual_units
+      }
+    Absent =>
+      NamespaceGraftDeclPartition {
+        named_edges: acc.named_edges,
+        residual_units: list_snoc_item(xs: acc.residual_units, item: unit)
+      }
+  }
+}
+
+fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDeclPartition {
+  fold(
+    units,
+    init: NamespaceGraftDeclPartition { named_edges: [], residual_units: [] },
+    f: fn(acc, unit) {
+      match parse_production_emitted_identity_optional(node: unit) {
+        Present { value: id } =>
+          match id == ^dag_surface_type_decl {
+            true =>
+              namespace_graft_partition_from_named_opt(
+                acc: acc,
+                unit: unit,
+                named: namespace_graft_type_decl_named_edge(unit: unit)
+              )
+            false =>
+              match id == ^dag_surface_data_decl {
+                true =>
+                  namespace_graft_partition_from_named_opt(
+                    acc: acc,
+                    unit: unit,
+                    named: namespace_graft_data_decl_named_edge(unit: unit)
+                  )
+                false => acc
+              }
           }
+        Absent => acc
       }
-    Absent => optional_absent()
-  }
-}
-
-fn namespace_graft_named_edges_from_units(units: List<Node>) -> List<Edge> {
-  fold(units, init: [], f: fn(acc, unit) {
-    match namespace_graft_named_edge_from_unit(unit: unit) {
-      Present { value: edge } => list_snoc_item(xs: acc, item: edge)
-      Absent => acc
     }
-  })
-}
-
-fn namespace_graft_is_type_or_data_decl_unit(unit: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: unit) {
-    Present { value: id } =>
-      (id == ^dag_surface_type_decl) || (id == ^dag_surface_data_decl)
-    Absent => false
-  }
-}
-
-fn namespace_graft_residual_decl_units(units: List<Node>) -> List<Node> {
-  fold(units, init: [], f: fn(acc, unit) {
-    if namespace_graft_is_type_or_data_decl_unit(unit: unit) {
-      match namespace_graft_named_edge_from_unit(unit: unit) {
-        Present { value: _ } => acc
-        Absent => list_snoc_item(xs: acc, item: unit)
-      }
-    } else {
-      acc
-    }
-  })
+  )
 }
 
 // Flatten keeps Named members that are not parse machinery. A Conj that still
@@ -483,7 +493,8 @@ fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   let productions = dag_grammar_root().productions
   let units = namespace_graft_collect_unit_nodes(node: working, productions: productions)
-  let from_decls = namespace_graft_named_edges_from_units(units: units)
+  let partitioned = namespace_graft_partition_decl_units(units: units)
+  let from_decls = partitioned.named_edges
   let flattened = namespace_graft_flatten_minus_decl_names(
     from_decls: from_decls,
     flattened: namespace_graft_flattened_member_edges(
@@ -492,7 +503,7 @@ fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
     )
   )
   let combined = concat(from_decls, flattened)
-  let residuals = namespace_graft_residual_decl_units(units: units)
+  let residuals = partitioned.residual_units
   if count(combined) == 0 {
     if count(units) == 0 {
       []
