@@ -657,8 +657,19 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.docs_projection_gate_test",
     "test.claim.if_join_pool_binding_witness_test",
     "test.claim.runner_slot_provision",
+    "test.claim.action_use_admission_witness",
   ]
 }
+
+// THE REALIZED-WORKFLOW ACTION-USE CENSUS IS ADMITTED AT EXACT MODULE GRAIN. Its
+// every_realized_workflow_action_use_is_modeled_and_executed_exactly row is the only route that
+// admits hand-authored .github/workflows files, which no generator sees, and
+// gunbc.recurring_failure_mode.provider_substituted_action_runtime cites it as the executing wall.
+// Outside the gate it would disposition DeclinedOutsideRequiredGate, and changed-witness selection
+// fires only on edits to the witness's own test fns -- so a tag or node20 pin reintroduced into a
+// hand-authored workflow would merge unrefused. The module reads only committed checkout files and
+// its controls run in milliseconds, so admitting its siblings with it costs nothing.
+data required_gate_action_use_census_note: String = "test.claim.action_use_admission_witness is admitted to the required gate because its realized-workflow census is the only executing refusal for a provider-substituted or unresolved action use in a hand-authored .github/workflows file (gunb-ai/gunbc#11587, review 67562)"
 
 // THE ALLOCATION-TO-DEPLOY SEAM IS ADMITTED AT MODULE GRAIN, AND THE ROW THAT FORCED IT IS
 // `no_deploy_row_out_commits_the_memory_budget`.
