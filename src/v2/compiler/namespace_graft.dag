@@ -333,16 +333,16 @@ fn namespace_graft_subtree_has_disj(n: Node) -> Bool {
   }
 }
 
-// Record form is `type Rec { … }`: a field_decl_block that is not a coproduct
-// variant. Graft runs after sugar, which replaces type_alias_rhs with Disj for
-// two-or-more variants while leaving field_decl_block under those Named edges.
-// Single-variant `type Foo = Bar {}` keeps type_alias_rhs. Either discriminator
-// means Named-rehome here; residual reconstruct stays for records until
-// body_lower_type_decl / #11582.
+// Record form is `type Rec { … }`, which has a field_decl_block and no `=`.
+// Coproducts keep `=` (`type Box = Leaf | Cell { … }`, `type Foo = Bar {}`).
+// After sugar, two-or-more variants are Disj with the variant field_decl_block
+// still underneath; `type_alias_rhs` presence is not a discriminator because
+// the unchosen choice arm can still sit in the record tree. Residual reconstruct
+// stays for records until body_lower_type_decl / #11582.
 fn namespace_graft_type_decl_is_record_form(unit: Node) -> Bool {
   parse_subtree_has_production(root: unit, emitted: ^dag_surface_field_decl_block)
     && !namespace_graft_subtree_has_disj(n: unit)
-    && !parse_subtree_has_production(root: unit, emitted: ^dag_surface_type_alias_rhs)
+    && !namespace_graft_subtree_contains_atom(n: unit, sym: ^dag_token_eq)
 }
 
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {

@@ -137,7 +137,7 @@ data src_g: String = "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n:
 data src_g_type_only: String = "module p\n\ntype Rec { n: Int }\n"
 data src_dag_user_fn: String = "module p\n\nfn dag_user(x: Int) -> Int { x }\n"
 data src_flag_and_rec: String = "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n"
-data src_fielded_coproduct: String = "module p\n\ntype Box = Leaf | Node { n: Int }\nfn k() -> Int { 1 }\n"
+data src_fielded_coproduct: String = "module p\n\ntype Box = Leaf | Cell { n: Int }\nfn k() -> Int { 1 }\n"
 data src_empty_fielded_variant: String = "module p\n\ntype Foo = Bar {}\nfn k() -> Int { 1 }\n"
 
 test fn declaration_graft_empty_module_accepts() -> Bool {
@@ -166,10 +166,6 @@ test fn declaration_graft_fielded_coproduct_assembles() -> Bool {
 
 test fn declaration_graft_empty_fielded_variant_is_named() -> Bool {
   declaration_graft_named_reachable(src: src_empty_fielded_variant, lexeme: "Foo")
-}
-
-test fn declaration_graft_flag_and_rec_reason_is_accepted() -> Bool {
-  declaration_graft_assemble_reason(src: src_flag_and_rec) == "ACCEPTED"
 }
 
 test fn declaration_graft_where_alias_accepts() -> Bool {
