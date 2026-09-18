@@ -1,14 +1,22 @@
 module gunbc.network_boot_delivery
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
 import extdeps.toolchain.types { Architecture, Aarch64, architecture_is_aarch64 }
-import extdeps.provisioning.dhcp_client_arch { UefiArm64, dhcp_processor_architecture_code }
+import extdeps.provisioning.dhcp_client_arch {
+  DhcpProcessorArchitecture,
+  UefiArm64,
+  UefiX86_64,
+  BiosX86,
+  HttpBootX86_64,
+  HttpBootArm64,
+}
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
+import gunbc.network_boot_predecessor_census { observation_cannot_establish_network_boot }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
 // namespace ruling). Its four evidence axes have independent producers — client firmware mode,
@@ -163,7 +171,7 @@ fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Archite
 // requires a TFTP root this service does not serve.
 type ObservedDhcpPxeClient {
   vendor_class: NonEmptyStr
-  arch_code: Int
+  arch: DhcpProcessorArchitecture
 }
 
 type ObservedClientBootModeReceipt {
@@ -178,7 +186,13 @@ type ObservedClientBootModeStanding
   | ClientBootModeUnobserved
 
 fn observed_client_is_uefi_arm64(client: ObservedDhcpPxeClient) -> Bool {
-  client.arch_code == dhcp_processor_architecture_code(a: UefiArm64)
+  match client.arch {
+    UefiArm64 => true
+    UefiX86_64 => false
+    BiosX86 => false
+    HttpBootX86_64 => false
+    HttpBootArm64 => false
+  }
 }
 
 type NetworkBootBootControlReceipt {
@@ -291,6 +305,35 @@ fn boot_artifacts_axis_present(manifest: SignedBootManifestStanding, digest: Con
   }
 }
 
+type JoinObservationStanding
+  = JoinObservationsEstablishing
+  | JoinObservationNotEstablishing { axis: NetworkBootRequirement }
+
+fn join_observation_standing(
+  boot_source: DeclarationRef,
+  client: DeclarationRef,
+  serving: DeclarationRef,
+  artifacts: DeclarationRef,
+) -> JoinObservationStanding {
+  if observation_cannot_establish_network_boot(obs: boot_source) {
+    JoinObservationNotEstablishing { axis: NetworkBootBootSourceOverride }
+  } else {
+    if observation_cannot_establish_network_boot(obs: client) {
+      JoinObservationNotEstablishing { axis: NetworkBootClientBootMode }
+    } else {
+      if observation_cannot_establish_network_boot(obs: serving) {
+        JoinObservationNotEstablishing { axis: NetworkBootServingInfrastructure }
+      } else {
+        if observation_cannot_establish_network_boot(obs: artifacts) {
+          JoinObservationNotEstablishing { axis: NetworkBootBootArtifacts }
+        } else {
+          JoinObservationsEstablishing
+        }
+      }
+    }
+  }
+}
+
 fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRef, observed_at: EpochMs) -> NetworkBootRequirementEvidence {
   NetworkBootRequirementEvidence {
     requirement: requirement,
@@ -299,6 +342,9 @@ fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRe
   }
 }
 
+// 0WET stays unbound this slice: operator 2026-09-18 named Mt. Jade (arriving,
+// barebones) as first candidate and Mt. Collins after CD as fallback. No UnitKey
+// is minted here.
 fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliveryStanding {
   let serving_ok = serving_axis_present(fleet: inputs.fleet, site: inputs.site)
   let client_ok = client_axis_present(client: inputs.client, target: inputs.target)
@@ -333,51 +379,30 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                       match inputs.manifest {
                         SignedBootManifestAbsent => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
                         SignedBootManifestIdentified { identity: _, observation: manifest_obs, observed_at: manifest_at } =>
-                          NetworkBootDeliveryEstablished {
-                            evidence: NetworkBootDeliveryEstablishment {
-                              target: inputs.target,
-                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
-                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
-                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
-                              boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
-                              artifact_digest: inputs.artifact_digest,
-                            },
+                          match join_observation_standing(
+                            boot_source: control.observation,
+                            client: client.observation,
+                            serving: fleet.observation,
+                            artifacts: manifest_obs,
+                          ) {
+                            JoinObservationsEstablishing =>
+                              NetworkBootDeliveryEstablished {
+                                evidence: NetworkBootDeliveryEstablishment {
+                                  target: inputs.target,
+                                  boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
+                                  client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
+                                  serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
+                                  boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
+                                  artifact_digest: inputs.artifact_digest,
+                                },
+                              }
+                            JoinObservationNotEstablishing { axis: axis } =>
+                              NetworkBootDeliveryUnestablished { missing: [axis] }
                           }
                       }
                   }
               }
           }
-      }
-  }
-}
-
-// 0WET subject is a PARAMETER, not a UnitKey. Operator 2026-09-18: not Mt. Collins until its
-// CD boot lands; no other ARM64 unit was named, so the first candidate is Mt. Jade (arriving,
-// barebones, no drives) and Mt. Collins post-CD is the fallback. Minting a fleet key here
-// would fabricate an identity the operator did not bind.
-type WetAcceptanceCandidate
-  = MtJadeArrivingBarebones
-  | MtCollinsAfterCdBoot
-
-type WetAcceptanceSubjectStanding
-  = WetAcceptanceSubjectUnbound {
-      proposed_first: WetAcceptanceCandidate
-      fallback: WetAcceptanceCandidate
-    }
-
-fn wet_acceptance_subject() -> WetAcceptanceSubjectStanding {
-  WetAcceptanceSubjectUnbound {
-    proposed_first: MtJadeArrivingBarebones,
-    fallback: MtCollinsAfterCdBoot,
-  }
-}
-
-fn wet_acceptance_binds_mt_collins_now(standing: WetAcceptanceSubjectStanding) -> Bool {
-  match standing {
-    WetAcceptanceSubjectUnbound { proposed_first: first, fallback: _ } =>
-      match first {
-        MtCollinsAfterCdBoot => true
-        MtJadeArrivingBarebones => false
       }
   }
 }
