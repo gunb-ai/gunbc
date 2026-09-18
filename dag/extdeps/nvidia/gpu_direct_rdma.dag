@@ -6,6 +6,43 @@ import extdeps.nvidia.cuda_driver {
   CudaQueryOutcome, CudaQuerySucceeded, CudaQueryFailed, CudaQueryUnparsed,
   cuda_device_attribute_name, cuda_acquisition_stage_call,
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// WHAT NVIDIA SAYS, AND WHAT THIS MODULE ADDS. The CUdevice_attribute enumeration documents 116 as
+// "Device supports GPUDirect RDMA APIs, like nvidia_p2p_get_pages" and 124 as "Device supports buffer
+// sharing with dma_buf mechanism" -- which is the source for reading 116 as API support rather than a
+// named registration mechanism. The enumeration does NOT state a value domain; reading these as
+// yes/no attributes whose only admissible answers are 0 and 1, and refusing anything else as unread,
+// is this module's policy, not NVIDIA's text. The GPUDirect RDMA guide is the second citation for
+// what device support does not cover (the NIC, kernel and topology sides no CUDA attribute reports).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html"
+  }
+}
+
+data gpu_direct_rdma_guide_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/gpudirect-rdma/index.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.gpu_direct_rdma",
+      decl_name: "GpuDirectRdmaCapability",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [gpu_direct_rdma_guide_authority]
+}
+
 
 // ── WHAT EACH ATTRIBUTE ESTABLISHES, AND WHAT IT DOES NOT ─────────────────────────────────────
 //
@@ -42,7 +79,7 @@ type GpuDirectRdmaCapability
       cause: NonEmptyStr
     }
 
-// THE DOCUMENTED VALUES ARE 0 AND 1 AND NOTHING ELSE. An earlier revision read "any positive integer"
+// THE ADMITTED VALUES ARE 0 AND 1 AND NOTHING ELSE -- this module's reading, stated above. An earlier revision read "any positive integer"
 // as supported, so an unexpected 2 -- which would mean the query answered something this model does
 // not understand -- became a confident yes. An undocumented value is UNREAD, not true.
 type BoolReading

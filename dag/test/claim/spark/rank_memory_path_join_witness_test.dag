@@ -1,68 +1,109 @@
 module test.claim.spark.rank_memory_path_join_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10 }
-import extdeps.nvidia.cuda_driver { CudaQuerySucceeded }
-import extdeps.nvidia.gpu_direct_rdma { gpu_direct_rdma_capability }
-import extdeps.nvidia.nccl { NcclMemoryPathAgreed, NcclGpuDirectDisabled }
 import gunbc.spark.serving_rank_observe {
-  ObservedRankSubject, observed_rank_subject,
-  RankGpuDirectCapabilityReceipt, RankCudaAttributeReading, RankNcclMemoryPathReceipt,
+  ContainerIncarnationId, container_incarnation_id, ObservedRankIncarnation,
+  RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, RankProbeReply, ProbeReplied,
 }
 import gunbc.spark.glm_group_b_relaunch_cli {
-  RankMemoryPathReading, RankMemoryPathRead, RankMemoryPathProvenanceMismatch, rank_memory_path_reading,
+  RankMemoryPathReading, RankMemoryPathRead, RankMemoryPathProvenanceMismatch,
+  RankMemoryPathDeviceMismatch, RankMemoryPathLogNotFromIncarnation, rank_memory_path_reading,
 }
+import gunbc.spark.collective_memory_path_standing { MemoryPathStagedAsPlatformRequires }
 
-// ── THE JOIN REFUSES EVIDENCE FROM TWO SUBJECTS ────────────────────────────────────────────────
+// ── THE JOIN REFUSES EVIDENCE THAT DOES NOT DESCRIBE ONE DEVICE ───────────────────────────────
 //
-// The live route addresses one pinned container for every leg, so it never produces a mismatched
-// pair; that is exactly why the refusal has to be exercised with SUPPLIED receipts. Two incarnations
-// of one container name on one host differ only by id, and that is the red: a stop and recreate
-// between the capability read and the log capture.
+// The live route addresses one pinned incarnation for every leg, so it never produces a mismatched
+// pair; that is why each refusal is exercised with SUPPLIED receipts. The receipts carry raw evidence
+// only -- the probe's replies and the captured log -- so the conclusions the join acts on are derived
+// here exactly as they are on the live route.
 
-fn capability_from(s: ObservedRankSubject) -> RankGpuDirectCapabilityReceipt {
+data id_a: String = "0f3a9c1d2e4b"
+data id_b: String = "7b2e5a90c813"
+
+fn incarnation(host: HostIdentity, id: String, rank: Nat) -> ObservedRankIncarnation? {
+  match container_incarnation_id(id: id) {
+    Absent => none
+    Present { value: cid } => Present { value: ObservedRankIncarnation { host: host, container: cid, node_rank: rank } }
+  }
+}
+
+fn capability_from(i: ObservedRankIncarnation) -> RankGpuDirectCapabilityReceipt {
   RankGpuDirectCapabilityReceipt {
-    from: s,
-    device_api: RankCudaAttributeReading { reply: "116 0 0 0 0", outcome: CudaQuerySucceeded { value: 0 } },
-    dma_buf: RankCudaAttributeReading { reply: "124 0 0 0 0", outcome: CudaQuerySucceeded { value: 0 } },
-    capability: gpu_direct_rdma_capability(
-      platform: "GB10" as NonEmptyStr,
-      device_api: CudaQuerySucceeded { value: 0 },
-      dma_buf: CudaQuerySucceeded { value: 0 },
-    ),
+    from: i,
+    device_ordinal: 0,
+    device_api: ProbeReplied { stdout: "116 0 0 0 0" },
+    dma_buf: ProbeReplied { stdout: "124 0 0 0 0" },
   }
 }
 
-fn nccl_from(s: ObservedRankSubject) -> RankNcclMemoryPathReceipt {
+fn nccl_from(i: ObservedRankIncarnation, device: String) -> RankNcclMemoryPathReceipt {
   RankNcclMemoryPathReceipt {
-    from: s,
-    reading: NcclMemoryPathAgreed { path: NcclGpuDirectDisabled { read_from: "NET/IB : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'" as NonEmptyStr }, readings: 1 },
+    from: i,
+    captured: join(["spark-0c75:385:385 [", device, "] NCCL INFO NET/IB : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'"], ""),
   }
 }
 
-data incarnation_a: ObservedRankSubject = observed_rank_subject(host: operator_host_srv9, container: "0f3a9c1d2e4b" as NonEmptyStr)
-data incarnation_b: ObservedRankSubject = observed_rank_subject(host: operator_host_srv9, container: "7b2e5a90c813" as NonEmptyStr)
-data other_host_same_id: ObservedRankSubject = observed_rank_subject(host: operator_host_srv10, container: "0f3a9c1d2e4b" as NonEmptyStr)
-
-test fn a_capability_and_a_log_from_different_incarnations_refuse() -> Bool {
-  match rank_memory_path_reading(capability: capability_from(s: incarnation_a), nccl: nccl_from(s: incarnation_b)) {
-    RankMemoryPathProvenanceMismatch { capability_from: _, nccl_from: _ } => true
-    RankMemoryPathRead { facet: _ } => false
+fn joined(cap: ObservedRankIncarnation?, log: ObservedRankIncarnation?, device: String) -> RankMemoryPathReading? {
+  match cap {
+    Absent => none
+    Present { value: c } =>
+      match log {
+        Absent => none
+        Present { value: l } => Present { value: rank_memory_path_reading(capability: capability_from(i: c), nccl: nccl_from(i: l, device: device)) }
+      }
   }
 }
 
-test fn a_capability_and_a_log_from_different_hosts_refuse() -> Bool {
-  match rank_memory_path_reading(capability: capability_from(s: incarnation_a), nccl: nccl_from(s: other_host_same_id)) {
-    RankMemoryPathProvenanceMismatch { capability_from: _, nccl_from: _ } => true
-    RankMemoryPathRead { facet: _ } => false
+fn is_provenance_mismatch(r: RankMemoryPathReading?) -> Bool {
+  match r {
+    Present { value: RankMemoryPathProvenanceMismatch { capability_from: _, nccl_from: _ } } => true
+    _ => false
   }
 }
 
-// THE GREEN CONTROL: the same two receipts from one subject join, so the reds above are refusing on
-// provenance alone and not on anything else in the fixture.
-test fn a_capability_and_a_log_from_one_incarnation_join() -> Bool {
-  match rank_memory_path_reading(capability: capability_from(s: incarnation_a), nccl: nccl_from(s: incarnation_a)) {
-    RankMemoryPathRead { facet: _ } => true
-    RankMemoryPathProvenanceMismatch { capability_from: _, nccl_from: _ } => false
+test fn two_incarnations_on_one_host_refuse() -> Bool {
+  is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_b, rank: 0), device: "0"))
+}
+
+test fn one_incarnation_attributed_to_two_node_ranks_refuses() -> Bool {
+  is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 1), device: "0"))
+}
+
+test fn one_id_on_two_hosts_refuses() -> Bool {
+  is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv10, id: id_a, rank: 0), device: "0"))
+}
+
+// THE NCCL LINES CAME FROM LOCAL DEVICE 1 AND THE PROBE ASKED DEVICE 0.
+test fn lines_from_a_device_the_probe_did_not_ask_refuse() -> Bool {
+  match joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 0), device: "1") {
+    Present { value: RankMemoryPathDeviceMismatch { probed: p, announced: _ } } => p == 0
+    _ => false
+  }
+}
+
+// A CONTAINER NAME IS NOT AN INCARNATION ID, so the mutable name cannot be put on both sides of the
+// join to satisfy it across a recreate.
+test fn a_container_name_is_not_an_incarnation_id() -> Bool {
+  match container_incarnation_id(id: "glm-native-tp4") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE GREEN CONTROL, and the derivation it rests on: one incarnation, the probed device, and a raw
+// probe reply of 0 derive the platform-supported staged standing -- there is no stored capability
+// that could say otherwise.
+test fn one_incarnation_and_the_probed_device_join_and_derive_from_the_raw_reply() -> Bool {
+  match joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 0), device: "0") {
+    Present { value: RankMemoryPathRead { facet: f } } =>
+      match f.standing {
+        MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => true
+        _ => false
+      }
+    _ => false
   }
 }

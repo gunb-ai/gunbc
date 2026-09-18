@@ -18,7 +18,10 @@ import gunbc.spark.collective_memory_path_standing {
 import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
 import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability }
 import gunbc.spark.serving_rank_observe {
-  RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, rank_nccl_memory_path_receipt, observed_rank_subjects_agree,
+  RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, rank_nccl_memory_path_receipt,
+  RankNcclReceiptReading, RankNcclReceiptBuilt, RankNcclReceiptLogUnread, RankNcclReceiptLogFromAnotherSubject,
+  ObservedRankIncarnation, observed_rank_incarnation, incarnation_leg_subject, observed_rank_incarnations_agree,
+  observed_rank_incarnation_text, rank_gpu_direct_capability, rank_nccl_memory_path_reading, rank_nccl_gpu_direct_devices,
 }
 import extdeps.nvidia.nccl {
   nccl_gpu_memory_path_of_text,
@@ -193,17 +196,21 @@ type RankStanding
 // exit, which reports rather than qualifies. Absent when the log that carries the GDR lines could not
 // be captured or the transport itself was unread.
 type RankMemoryPathFacet sole_constructor {
-  from: ObservedRankSubject
+  from: ObservedRankIncarnation
   standing: CollectiveMemoryPathStanding
   defect: MemoryPathDefectStanding
 }
 
-// A CAPABILITY AND AN NCCL READING FROM DIFFERENT SUBJECTS ARE NOT A STANDING. The join compares the
-// two receipts' subjects -- host and container incarnation -- and refuses by name when they differ,
-// rather than stamping one side's identity onto a result built partly from the other.
+// A CAPABILITY AND AN NCCL READING THAT DO NOT DESCRIBE THE SAME DEVICE ARE NOT A STANDING. The join
+// refuses by name when the two receipts' incarnations differ (host, container id or node rank), when
+// the NCCL lines were emitted by a local device other than the one the CUDA probe asked about, or when
+// the log was captured from a subject other than the incarnation -- rather than stamping one side's
+// identity onto a result built partly from the other.
 type RankMemoryPathReading
   = RankMemoryPathRead { facet: RankMemoryPathFacet }
-  | RankMemoryPathProvenanceMismatch { capability_from: ObservedRankSubject, nccl_from: ObservedRankSubject }
+  | RankMemoryPathProvenanceMismatch { capability_from: ObservedRankIncarnation, nccl_from: ObservedRankIncarnation }
+  | RankMemoryPathDeviceMismatch { probed: Int, announced: List<Nat> }
+  | RankMemoryPathLogNotFromIncarnation { log_from: ObservedRankSubject }
 
 type RankReport sole_constructor {
   subject: ObservedRankSubject
@@ -285,22 +292,34 @@ fn rank_startup_facet(
 data glm_group_b_desired_memory_path: DesiredCollectiveMemoryPath = DirectRegistrationWhereDevicePermits
 
 fn rank_memory_path_reading(capability: RankGpuDirectCapabilityReceipt, nccl: RankNcclMemoryPathReceipt) -> RankMemoryPathReading {
-  if observed_rank_subjects_agree(a: capability.from, b: nccl.from) {
-    let standing = collective_memory_path_standing(capability: capability.capability, observed: nccl.reading)
-    RankMemoryPathRead { facet: RankMemoryPathFacet {
-      from: capability.from,
-      standing: standing,
-      defect: memory_path_defect_standing(policy: glm_group_b_desired_memory_path, s: standing),
-    } }
-  } else {
+  if !observed_rank_incarnations_agree(a: capability.from, b: nccl.from) {
     RankMemoryPathProvenanceMismatch { capability_from: capability.from, nccl_from: nccl.from }
+  } else {
+    let announced = rank_nccl_gpu_direct_devices(r: nccl)
+    if any(announced, d => to_string(d) != to_string(capability.device_ordinal)) {
+      RankMemoryPathDeviceMismatch { probed: capability.device_ordinal, announced: announced }
+    } else {
+      let standing = collective_memory_path_standing(
+        capability: rank_gpu_direct_capability(platform: spark_gb10_platform, r: capability),
+        observed: rank_nccl_memory_path_reading(r: nccl),
+      )
+      RankMemoryPathRead { facet: RankMemoryPathFacet {
+        from: capability.from,
+        standing: standing,
+        defect: memory_path_defect_standing(policy: glm_group_b_desired_memory_path, s: standing),
+      } }
+    }
   }
 }
 
 fn rank_memory_path_text(r: RankMemoryPathReading) -> String {
   match r {
     RankMemoryPathProvenanceMismatch { capability_from: c, nccl_from: n } =>
-      join(["PROVENANCE MISMATCH: the capability was read from ", observed_rank_subject_text(s: c), " and the NCCL lines from ", observed_rank_subject_text(s: n), ", so no memory-path standing is drawn"], "")
+      join(["PROVENANCE MISMATCH: the capability was read from ", observed_rank_incarnation_text(i: c), " and the NCCL lines from ", observed_rank_incarnation_text(i: n), ", so no memory-path standing is drawn"], "")
+    RankMemoryPathDeviceMismatch { probed: p, announced: ds } =>
+      join(["DEVICE MISMATCH: the CUDA probe asked device ", to_string(p), " and GPU Direct RDMA lines came from device(s) ", join(map(ds, d => to_string(d)), ","), ", so no memory-path standing is drawn"], "")
+    RankMemoryPathLogNotFromIncarnation { log_from: f } =>
+      join(["PROVENANCE MISMATCH: the log was captured from ", observed_rank_subject_text(s: f), ", not from the inspected incarnation"], "")
     RankMemoryPathRead { facet: f } =>
       match f.defect {
         DefectEstablished { cause: c } => join(["DEFECT: ", c as String], "")
@@ -330,15 +349,14 @@ fn observe_rank_report(
         memory_path: none,
       }
     RankInspected { subject: _, container: c } =>
-      if (c.id as String) == "" {
-        RankReport {
+      match observed_rank_incarnation(subject: subject, c: c) {
+        Absent => RankReport {
           subject: subject,
-          lines: ["the inspected container reports no id, so no later leg can be pinned to this incarnation"],
-          standing: RankNotFullyRead { what: "the container's incarnation id was not read" as NonEmptyStr },
+          lines: ["the inspected container reports no container id or no node rank, so no later leg can be pinned to this incarnation"],
+          standing: RankNotFullyRead { what: "the container's incarnation was not read" as NonEmptyStr },
           memory_path: none,
         }
-      } else {
-        observe_rank_incarnation(ctx: ctx, subject: subject, c: c)
+        Present { value: incarnation } => observe_rank_incarnation(ctx: ctx, subject: subject, c: c, incarnation: incarnation)
       }
   }
 }
@@ -346,10 +364,10 @@ fn observe_rank_report(
 // EVERY LEG AFTER THE INSPECTION ADDRESSES THE INSPECTED INCARNATION BY ITS IMMUTABLE ID. The log,
 // the revision readback and both CUDA queries go through `pinned`, so they cannot straddle a stop and
 // recreate: a new container under the same name has a different id, and the pinned legs refuse on it.
-fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankSubject, c: ContainerInspect) -> RankReport
+fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankSubject, c: ContainerInspect, incarnation: ObservedRankIncarnation) -> RankReport
   uses net: Network
 {
-  let pinned = observed_rank_subject(host: subject.host, container: c.id as NonEmptyStr)
+  let pinned = incarnation_leg_subject(i: incarnation)
       let shape = match observed_verbs_shape(subject: subject, container: c) {
         Absent => RankFacet { lines: ["the container's own argv does not name a rank, so this reading has nothing to bind to"], complete: false }
         Present { value: sh } => RankFacet { lines: [verbs_shape_text(s: sh)], complete: verbs_shape_is_complete(s: sh) }
@@ -372,11 +390,12 @@ fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankS
             }
           }
       }
-      let memory_path = match rank_nccl_memory_path_receipt(log: log) {
-        Absent => none
-        Present { value: nccl } =>
+      let memory_path = match rank_nccl_memory_path_receipt(incarnation: incarnation, log: log) {
+        RankNcclReceiptLogUnread => none
+        RankNcclReceiptLogFromAnotherSubject { log_from: f } => Present { value: RankMemoryPathLogNotFromIncarnation { log_from: f } }
+        RankNcclReceiptBuilt { receipt: nccl } =>
           Present { value: rank_memory_path_reading(
-            capability: observe_rank_gpu_direct_capability(ctx: ctx, subject: pinned, platform: spark_gb10_platform),
+            capability: observe_rank_gpu_direct_capability(ctx: ctx, incarnation: incarnation),
             nccl: nccl,
           ) }
       }

@@ -668,9 +668,9 @@ fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
 // the line establishes that direct GPU-memory RDMA was DISABLED for the named HCA, not how many host
 // stages the transfer then takes. On a unified-memory SoC that difference is not academic.
 //
-// THE GRAMMAR IS NCCL'S OWN FORMAT STRING, NOT AN INFERENCE FROM ONE SPELLING. NVIDIA/nccl
-// src/graph/topo.cc (master at v2.32.3-1, read 2026-09-18) emits
-//   INFO(NCCL_NET, "NET/%s : GPU Direct RDMA %s for HCA %d '%s'", ..., gdrSupport ? "Enabled" : "Disabled", ...)
+// THE GRAMMAR IS NCCL'S OWN FORMAT STRING, AT THE RELEASE THIS MODULE MODELS. NVIDIA/nccl v2.30.4-1
+// (nccl_semantics_release, the runtime the Spark images load) src/graph/topo.cc emits
+//   INFO(NCCL_NET,"NET/%s : GPU Direct RDMA %s for HCA %d '%s'", ..., gdrSupport ? "Enabled" : "Disabled", ...)
 // so the state token is exactly `Enabled` or `Disabled` and is followed by ` for `. Every `Disabled`
 // instance in this repository comes from real Group B output; the `Enabled` form is grounded in that
 // format string, not yet in a capture from this fleet.
@@ -729,6 +729,20 @@ fn nccl_gpu_memory_path_wire(p: NcclGpuMemoryPath) -> NonEmptyStr {
     NcclGpuDirectEnabled { read_from: _ } => "gpu-direct-enabled" as NonEmptyStr
     NcclGpuDirectDisabled { read_from: _ } => "gpu-direct-disabled" as NonEmptyStr
   }
+}
+
+// WHICH LOCAL DEVICES ANNOUNCED A MEMORY PATH. Each GDR line's emitter carries NCCL's local CUDA
+// device index (the `[n]` in `host:pid:tid [n]`), so a consumer that joins this reading against a
+// device-capability query can require that the lines came from the device that was queried, rather
+// than assuming one visible GPU per container.
+fn nccl_gpu_direct_line_devices(captured_text: String) -> List<Nat> {
+  flat_map(nccl_log_lines(text: captured_text), l =>
+    match nccl_gpu_memory_path_of_line(line: l) {
+      NcclNotAGpuDirectLine => [] as List<Nat>
+      NcclGpuDirectLineUnreadable { cause: _ } => [l.emitter.local_device]
+      NcclGpuDirectLineEnabled { read_from: _ } => [l.emitter.local_device]
+      NcclGpuDirectLineDisabled { read_from: _ } => [l.emitter.local_device]
+    })
 }
 
 // ── THE MEMORY PATH OVER A WHOLE CAPTURE, NOT ONE LINE ────────────────────────────────────────

@@ -3,7 +3,8 @@ module extdeps.nvidia.cuda_driver
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.nat { Nat }
 import std.algebra { trim }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.python { PythonProgramText, python_run_program_argv }
 
@@ -19,12 +20,36 @@ import extdeps.python { PythonProgramText, python_run_program_argv }
 // THE DRIVER API IS THE AUTHORITY AND ITS NUMBERING IS ITS OWN. `cuDeviceGetAttribute` takes an
 // attribute ORDINAL, so the ordinals are carried here as upstream facts rather than re-derived: an
 // ordinal that drifts silently reads a different attribute and returns a confident wrong answer.
-data cuda_driver_api_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html"
   }
 }
+
+data cuda_device_attribute_enum_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.cuda_driver",
+      decl_name: "CudaDeviceAttribute",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [cuda_device_attribute_enum_authority]
+}
+
+// THE PROBE ASKS ABOUT ONE DEVICE, AND WHICH ONE IS A ROW, NOT A LITERAL IN THE PROGRAM. The receipt
+// that carries a reply carries this ordinal beside it, so a consumer can require that the device it
+// joins against is the device that was asked (side-chat review of #11560, 2026-09-18).
+data cuda_probe_device_ordinal: Int = 0
 
 // THE ATTRIBUTES THIS REPOSITORY ASKS FOR, each as a named member rather than a bare number at a
 // call site. Adding one is a row here; asking for one by literal ordinal elsewhere is the second
@@ -100,7 +125,9 @@ fn cuda_device_attribute_program(a: CudaDeviceAttribute) -> PythonProgramText {
     "import ctypes;",
     "cu=ctypes.CDLL('libcuda.so.1');",
     "ri=cu.cuInit(0);",
-    "d=ctypes.c_int();rd=cu.cuDeviceGet(ctypes.byref(d),0);",
+    "d=ctypes.c_int();rd=cu.cuDeviceGet(ctypes.byref(d),",
+    to_string(cuda_probe_device_ordinal),
+    ");",
     "v=ctypes.c_int(-1);ra=cu.cuDeviceGetAttribute(ctypes.byref(v),",
     to_string(cuda_device_attribute_ordinal(a: a)),
     ",d);",
