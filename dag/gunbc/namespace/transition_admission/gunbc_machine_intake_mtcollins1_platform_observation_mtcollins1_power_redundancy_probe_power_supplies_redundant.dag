@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_machine_intake_mtcollins1_platform_observation_mtcollins1_power_redundancy_probe_power_supplies_redundant
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_machine_intake_mtcollins1_platform_observation_mtcollins1_power_redundancy_probe_power_supplies_redundant: TransitionAdmission = TransitionAdmission {
+  label: "gunbc#11529 hoist OnboardNetworkController and PowerSupplyStanding onto shared homes" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.machine_intake_mtcollins1_platform_observation", "mtcollins1_power_redundancy_probe"),
+    spelling: "power_supplies_redundant" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.machine_intake_power_supply", "power_supplies_redundant")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11529 as UInt32,
+}
