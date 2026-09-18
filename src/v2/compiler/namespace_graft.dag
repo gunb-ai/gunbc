@@ -416,7 +416,10 @@ fn namespace_graft_residual_decl_units(units: List<Node>) -> List<Node> {
 // Named containment first; reconstruct remains only when nothing first-class
 // survived (import-only and the lost-forest refusal still sit on that empty path).
 // Flatten keeps an existing Named member when its target subtree holds an Arrow
-// (fn) or Disj (coproduct). A bare Conj is not a declaration (records stay residual).
+// (fn) or Disj (coproduct), or when the target itself is a Conj that is not a
+// record field_decl_block (where-alias / lowered type body). Records stay off
+// this path via the type_decl Named skip plus this Conj carve-out — dropping
+// every Conj refused where-aliases and graft-shape (required-floor 6ec06e9).
 fn namespace_graft_keep_flattened_member_edge(
   productions: List<GrammarProduction>,
   edge: Edge
@@ -430,21 +433,32 @@ fn namespace_graft_keep_flattened_member_edge(
       } else if namespace_graft_is_machinery_symbol(productions: productions, sym: sym) {
         false
       } else {
-        fold(
-          node_subtree_nodes(root: edge.target),
-          init: false,
-          f: fn(found, n) {
-            if found {
-              true
-            } else {
-              match n.kind {
-                TypeNode { connective: Arrow } => true
-                TypeNode { connective: Disj } => true
-                _ => false
-              }
+        match edge.target.kind {
+          TypeNode { connective: Conj } =>
+            match parse_subtree_locate_production(
+              root: edge.target,
+              emitted: ^dag_surface_field_decl_block
+            ) {
+              Present { value: _ } => false
+              Absent => true
             }
-          }
-        )
+          _ =>
+            fold(
+              node_subtree_nodes(root: edge.target),
+              init: false,
+              f: fn(found, n) {
+                if found {
+                  true
+                } else {
+                  match n.kind {
+                    TypeNode { connective: Arrow } => true
+                    TypeNode { connective: Disj } => true
+                    _ => false
+                  }
+                }
+              }
+            )
+        }
       }
     Positional => false
   }
