@@ -449,24 +449,36 @@ fn namespace_graft_collect_field_edges(node: Node) -> List<Edge> {
   )
 }
 
+fn namespace_graft_record_payload(field_edges: List<Edge>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: field_edges
+        )
+      }
+    ]
+  )
+}
+
 fn namespace_graft_type_decl_target(captured: Node) -> Node {
   match namespace_graft_find_disj(node: captured) {
     Present { value: disj } => disj
     Absent =>
       match namespace_graft_find_emitted(node: captured, emitted: ^dag_surface_field_decl_block) {
         Present { value: block } =>
-          node_synthetic(
-            kind: TypeNode { connective: Cardinality },
-            children: namespace_graft_collect_field_edges(node: block)
+          namespace_graft_record_payload(
+            field_edges: namespace_graft_collect_field_edges(node: block)
           )
         Absent =>
           match list_tail(xs: namespace_graft_collect_user_atom_idents(node: captured)) {
-            TailAbsent =>
-              node_synthetic(kind: TypeNode { connective: Cardinality }, children: [])
+            TailAbsent => namespace_graft_record_payload(field_edges: [])
             TailFound { tail: _ } =>
-              node_synthetic(
-                kind: TypeNode { connective: Cardinality },
-                children: namespace_graft_collect_field_edges(node: captured)
+              namespace_graft_record_payload(
+                field_edges: namespace_graft_collect_field_edges(node: captured)
               )
           }
       }
@@ -571,9 +583,8 @@ fn namespace_graft_bind_pending_field_block(
                 xs: acc.edges,
                 item: Edge {
                   label: Named { name: type_name },
-                  target: node_synthetic(
-                    kind: TypeNode { connective: Cardinality },
-                    children: namespace_graft_collect_field_edges(node: block)
+                  target: namespace_graft_record_payload(
+                    field_edges: namespace_graft_collect_field_edges(node: block)
                   )
                 }
               )
