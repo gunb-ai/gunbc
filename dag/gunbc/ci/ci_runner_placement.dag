@@ -11,6 +11,9 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation {
+  host_runner_memory_envelope_resolution,
+  RunnerMemoryEnvelopeDerived,
+  RunnerMemoryEnvelopeUnestablished,
   CoresPerSlotResolved,
   CoresPerSlotUnresolved,
   gunbc_runner_slot_desired,
@@ -214,7 +217,7 @@ type HostRunnerDeploymentRefusal
   | CompilePoolUnavailable { cause: String }
   | HostAllocationOversubscribedOnHost { cause: String }
   | HostAllocationUnchargeableOnHost { cause: String }
-  | ZeroRunnerWidth
+  | ZeroRunnerWidth { cause: String }
   | JobserverCitationAbsent { cause: String }
   | HostCpuAllocationUnchargeable { cause: String }
   | RunnerCoreRatioUnresolved { cause: String }
@@ -510,7 +513,7 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     CompilePoolUnavailable { cause: t } => concat("compile_pool_unavailable ", t)
     HostAllocationOversubscribedOnHost { cause: t } => concat("host_allocation_oversubscribed ", t)
     HostAllocationUnchargeableOnHost { cause: t } => concat("host_allocation_unchargeable ", t)
-    ZeroRunnerWidth => "zero_runner_width"
+    ZeroRunnerWidth { cause: _ } => "zero_runner_width"
     JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
     RunnerCoreRatioUnresolved { cause: t } => concat("runner_core_ratio_unresolved ", t)
@@ -518,11 +521,31 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
   }
 }
 
+// THE ZERO-WIDTH REFUSAL NOW CARRIES WHY, AND THAT IS WHAT MAKES THE ENVELOPE'S CAUSES A CONSUMED
+// DECLARATION (review 67875, DESIGN 3c). gunbc.runner_slot_allocation
+// host_runner_memory_envelope_resolution constructs four distinct located causes for a host whose
+// envelope cannot be derived, and until this arm read them every one of them was written and never
+// looked at: the Int shim flattened the refusal to zero, the zero arrived here, and this function
+// reported a bare ZeroRunnerWidth that could not say whether the host had no memory or had never
+// been measured. Operationally those are opposite instructions -- one is a capacity fact, the other
+// is a reading somebody owes -- and the refusal was unable to tell an operator which.
+//
+// ZeroRunnerWidth IS THE ONLY VARIANT IN THIS COPRODUCT THAT CARRIED NO CAUSE, which is the tell
+// that the fact was being dropped rather than that it did not exist. It now matches its siblings.
 fn admit_or_refuse_zero_width(dep: RunnerHostDeployment, host_id: HostIdentity) -> HostRunnerDeploymentStanding {
   if dep.runner_count == 0 {
-    refuse_host(host: host_id, cause: ZeroRunnerWidth)
+    refuse_host(host: host_id, cause: ZeroRunnerWidth { cause: zero_width_cause(host: host_id) })
   } else {
     HostRunnerDeploymentDerived { deployment: dep }
+  }
+}
+
+fn zero_width_cause(host: HostIdentity) -> String {
+  match host_runner_memory_envelope_resolution(host: host) {
+    RunnerMemoryEnvelopeUnestablished { cause: why } =>
+      concat("runner memory envelope is unestablished on this host: ", why)
+    RunnerMemoryEnvelopeDerived { bytes: _ } =>
+      "runner memory envelope derives on this host, so a zero width came from the derived envelope being smaller than one slot rather than from an unestablished input"
   }
 }
 
