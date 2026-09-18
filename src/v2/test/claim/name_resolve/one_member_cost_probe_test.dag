@@ -14,6 +14,7 @@ import v2.extdeps.languages.dag {
   dag_canonical_symbols,
   dag_grammar_atom,
   dag_language_model,
+  dag_language_model_surface_empty_prelude,
   dag_named_edge
 }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -206,8 +207,26 @@ test fn one_member_missing_subject_still_refuses() -> Bool {
   })
 }
 
+test fn empty_prelude_service_atom_still_refuses() -> Bool {
+  probe_with_export_roots(export_sym: ^dag_c3_surface_sugar_service, f: fn(roots) {
+    match resolve_with_admission(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: roots,
+      admission: Admission {
+        subject: ResolutionSubject { name: probe_one_member_qn() },
+        imports: Empty
+      }
+    ) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    }
+  })
+}
+
 test fn language_model_construction_does_not_fill_canonical_map() -> Bool {
-  dag_language_model().language_identity == ^dag_language_model_surface_id
+  let lm = dag_language_model()
+  (lm.language_identity == ^dag_language_model_surface_id)
+    && !lm.canonical_symbols.member(^dag_surface_module_header)
 }
 
 data probe_front_end_source: String = "module probe.one_member\n"
