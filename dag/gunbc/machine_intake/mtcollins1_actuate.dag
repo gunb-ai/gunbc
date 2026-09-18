@@ -17,7 +17,6 @@ import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secur
 import gunbc.machine_intake_oob_boot_handoff {
   BootControlIssued,
   BootHandoffNotAdmitted,
-  BootParam5Expected,
   BootSelectionFlagInvalid,
   BootSelectionNotApplied,
   BootSelectionFirmwareMismatch,
@@ -27,6 +26,12 @@ import gunbc.machine_intake_oob_boot_handoff {
   OobBootHandoffOutcome,
   PowerCycleRefused,
   oob_boot_handoff,
+}
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootCdrom,
+  IpmiBootPxe,
+  IpmiBootSelection,
+  aarch64_uefi_once_boot_selection,
 }
 
 // THE POLICY LAYER FOR ONE HOST, and it is a separate module from the arm on purpose. The arm takes
@@ -39,14 +44,11 @@ import gunbc.machine_intake_oob_boot_handoff {
 // around a parameterized probe. It is NOT a per-host fork of the arm: everything host-specific here
 // is a value, and a second host is a second wrapper over the identical operation, never a second
 // operation. The one argument is the credential path, for the reason given on mtcollins1_password_file.
-data mtcollins1_boot_device: NonEmptyStr = "pxe"
+data mtcollins1_netboot_selection: IpmiBootSelection =
+  aarch64_uefi_once_boot_selection(device: IpmiBootPxe)
 
-// WHAT ipmitool RENDERS WHEN THE OVERRIDE TOOK. `chassis bootparam get 5` prints a "Boot Device
-// Selector : Force PXE" line, and the wire word sent to `chassis bootdev` is "pxe" — two different
-// vocabularies for one fact, so the expected text is supplied here rather than guessed inside the
-// arm. A mapping guessed there would be a second, undeclared authority on IPMI's boot device names.
-// Measured on this unit 2026-09-05.
-data mtcollins1_boot_readback_rendering: NonEmptyStr = "Force PXE"
+data mtcollins1_cdrom_selection: IpmiBootSelection =
+  aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
 
 // A CYCLE AND NOT A RESET, because the unit's own SEL is the evidence that a cycle takes effect
 // here: driving `chassis power cycle` produced "Power Unit — Power cycle | Asserted" and "System
@@ -131,9 +133,7 @@ fn mtcollins1_drive_handoff(
   label: NonEmptyStr,
   password_file_raw: String,
   capability_row: BmcFirmwareReleaseCapabilityRow,
-  device: NonEmptyStr,
-  boot_options: String,
-  expected: BootParam5Expected,
+  selection: IpmiBootSelection,
 ) -> ProcessExit
   uses net: std.resources.Network
 {
@@ -152,9 +152,7 @@ fn mtcollins1_drive_handoff(
               capability_row: capability_row,
               username: username,
               password_file: pw,
-              device: device,
-              boot_options: boot_options,
-              expected: expected,
+              selection: selection,
               power_action: mtcollins1_power_action,
             ),
           )
@@ -169,9 +167,7 @@ fn mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
     label: "mtcollins1 handoff",
     password_file_raw: password_file_raw,
     capability_row: mtcollins1_capability_row,
-    device: mtcollins1_boot_device,
-    boot_options: "",
-    expected: mtcollins1_pxe_param5_expected,
+    selection: mtcollins1_netboot_selection,
   )
 }
 
@@ -188,41 +184,6 @@ fn mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
 // removable media. The DHCP capture in gunbc.machine_intake_mtcollins1_netboot_client_observation
 // records the other half — the host asks for a boot file over PXE and nothing on the segment
 // answers — so today this is the only delivery route that reaches this machine at all.
-data mtcollins1_cdrom_device: NonEmptyStr = "cdrom"
-
-// Measured, not guessed: `chassis bootdev cdrom` followed by `chassis bootparam get 5` renders
-// "Boot Device Selector : Force Boot from CD/DVD". The netboot route's rendering is "Force PXE",
-// a different string for the same field, which is exactly why the arm takes the expected text from
-// its caller rather than deriving it from the device word.
-data mtcollins1_cdrom_readback_rendering: NonEmptyStr = "Force Boot from CD/DVD"
-
-data mtcollins1_param5_flag_valid: NonEmptyStr = "Boot Flag Valid"
-
-data mtcollins1_param5_oneshot: NonEmptyStr = "Options apply to only next boot"
-
-data mtcollins1_param5_legacy: NonEmptyStr = "BIOS PC Compatible (legacy)"
-
-data mtcollins1_param5_efi: NonEmptyStr = "BIOS EFI boot"
-
-data mtcollins1_cdrom_boot_options: NonEmptyStr = "efiboot"
-
-// PXE sends boot_options empty, so the firmware axis here is the unit default
-// ("BIOS PC Compatible (legacy)"), not a requested boot type. The selector is
-// the Force PXE rendering measured on this unit.
-data mtcollins1_pxe_param5_expected: BootParam5Expected = BootParam5Expected {
-  flag_valid: mtcollins1_param5_flag_valid,
-  persistence: mtcollins1_param5_oneshot,
-  firmware: mtcollins1_param5_legacy,
-  selector: mtcollins1_boot_readback_rendering,
-}
-
-// CDROM requests options=efiboot; the firmware axis is that request, not a default.
-data mtcollins1_cdrom_param5_expected: BootParam5Expected = BootParam5Expected {
-  flag_valid: mtcollins1_param5_flag_valid,
-  persistence: mtcollins1_param5_oneshot,
-  firmware: mtcollins1_param5_efi,
-  selector: mtcollins1_cdrom_readback_rendering,
-}
 
 fn mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
   uses net: std.resources.Network
@@ -231,9 +192,7 @@ fn mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
     label: "mtcollins1 cdrom handoff",
     password_file_raw: password_file_raw,
     capability_row: mtcollins1_capability_row,
-    device: mtcollins1_cdrom_device,
-    boot_options: mtcollins1_cdrom_boot_options as String,
-    expected: mtcollins1_cdrom_param5_expected,
+    selection: mtcollins1_cdrom_selection,
   )
 }
 
@@ -273,8 +232,6 @@ fn mtcollins1_denied_admission_control(password_file_raw: String) -> ProcessExit
     label: "mtcollins1 denied-admission control",
     password_file_raw: password_file_raw,
     capability_row: mtcollins1_mismatched_capability_row,
-    device: mtcollins1_boot_device,
-    boot_options: "",
-    expected: mtcollins1_pxe_param5_expected,
+    selection: mtcollins1_netboot_selection,
   )
 }

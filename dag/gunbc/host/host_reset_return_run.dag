@@ -462,9 +462,7 @@ fn host_reset_return_issue_and_watch(
     capability_row: candidate.capability_row,
     username: candidate.username,
     password_file: password_file,
-    device: candidate.boot_device,
-    boot_options: candidate.boot_options,
-    expected: candidate.expected,
+    selection: candidate.boot_selection,
     power_action: candidate.power_action,
   )
   let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)

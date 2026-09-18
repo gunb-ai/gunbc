@@ -5,20 +5,18 @@ import product.placement_supply { HostIdentity }
 import extdeps.bmc.access_profile { BmcAccessObservation }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.machine_intake_oob_boot_handoff {
-  BootParam5Expected,
   OobBootHandoffAdmission,
   oob_boot_handoff_admission,
   oob_handoff_is_admitted,
 }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_access_observation,
   mtcollins1_capability_row,
 }
 import gunbc.machine_intake_mtcollins1_actuate {
   mtcollins1_bmc_username,
-  mtcollins1_cdrom_boot_options,
-  mtcollins1_cdrom_device,
-  mtcollins1_cdrom_param5_expected,
+  mtcollins1_cdrom_selection,
   mtcollins1_power_action,
 }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
@@ -55,9 +53,7 @@ type ResetSubjectCandidate {
   observation: BmcAccessObservation
   capability_row: BmcFirmwareReleaseCapabilityRow
   username: NonEmptyStr
-  boot_device: NonEmptyStr
-  boot_options: String
-  expected: BootParam5Expected
+  boot_selection: IpmiBootSelection
   power_action: NonEmptyStr
 }
 
@@ -80,9 +76,7 @@ fn reset_subject_candidates() -> List<ResetSubjectCandidate> {
           observation: mtcollins1_access_observation,
           capability_row: mtcollins1_capability_row,
           username: username,
-          boot_device: mtcollins1_cdrom_device,
-          boot_options: mtcollins1_cdrom_boot_options as String,
-          expected: mtcollins1_cdrom_param5_expected,
+          boot_selection: mtcollins1_cdrom_selection,
           power_action: mtcollins1_power_action,
         },
       ]

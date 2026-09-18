@@ -2,6 +2,7 @@ module gunbc.machine_intake_oob_boot_handoff
 
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessRoute,
@@ -124,13 +125,6 @@ type OobBootHandoffOutcome
   | PowerCycleRefused { selected: NonEmptyStr }
   | BootHandoffNotAdmitted { admission: OobBootHandoffAdmission }
 
-type BootParam5Expected {
-  flag_valid: NonEmptyStr
-  persistence: NonEmptyStr
-  firmware: NonEmptyStr
-  selector: NonEmptyStr
-}
-
 type BootReadbackVerdict
   = BootReadbackConfirmed
   | BootReadbackFlagInvalid
@@ -140,16 +134,16 @@ type BootReadbackVerdict
 
 data ipmi_boot_flag_invalid_rendering: NonEmptyStr = "Boot Flag Invalid"
 
-fn boot_readback_verdict(readback: String, expected: BootParam5Expected) -> BootReadbackVerdict {
+fn boot_readback_verdict(readback: String, selection: IpmiBootSelection) -> BootReadbackVerdict {
   if readback |> contains(ipmi_boot_flag_invalid_rendering as String) {
     BootReadbackFlagInvalid
-  } else if !(readback |> contains(expected.flag_valid as String)) {
+  } else if !(readback |> contains(selection.expected_flag_rendering as String)) {
     BootReadbackFlagInvalid
-  } else if !(readback |> contains(expected.persistence as String)) {
+  } else if !(readback |> contains(selection.expected_persistence_rendering as String)) {
     BootReadbackNotOneShot
-  } else if !(readback |> contains(expected.firmware as String)) {
+  } else if !(readback |> contains(selection.expected_mode_rendering as String)) {
     BootReadbackFirmwareMismatch
-  } else if readback |> contains(expected.selector as String) {
+  } else if readback |> contains(selection.expected_device_rendering as String) {
     BootReadbackConfirmed
   } else {
     BootReadbackSelectorAbsent
@@ -194,9 +188,7 @@ fn oob_boot_handoff(
   capability_row: BmcFirmwareReleaseCapabilityRow,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
-  device: NonEmptyStr,
-  boot_options: String,
-  expected: BootParam5Expected,
+  selection: IpmiBootSelection,
   power_action: NonEmptyStr,
 ) -> OobBootHandoffOutcome
   uses net: std.resources.Network
@@ -206,23 +198,14 @@ fn oob_boot_handoff(
     return BootHandoffNotAdmitted { admission: admission }
   }
   let bmc_host = observation.endpoint.host
+  let device = selection.device_wire
 
-  set = if boot_options == "" {
-    diagnostic.ipmi.Tool.ChassisBootDev(
-      bmc_host: bmc_host,
-      username: username,
-      password_file: password_file,
-      device: device,
-    )
-  } else {
-    diagnostic.ipmi.Tool.ChassisBootDevWithOptions(
-      bmc_host: bmc_host,
-      username: username,
-      password_file: password_file,
-      device: device,
-      options: boot_options as NonEmptyStr,
-    )
-  }
+  set = diagnostic.ipmi.BootSelection.Set(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    selection: selection,
+  )
   if set.success == false {
     return BootSelectionRefused
   }
@@ -237,7 +220,7 @@ fn oob_boot_handoff(
     return BootSelectionUnverifiable { requested: device, readback: readback.stdout }
   }
 
-  return match boot_readback_verdict(readback: readback.stdout, expected: expected) {
+  return match boot_readback_verdict(readback: readback.stdout, selection: selection) {
     BootReadbackFlagInvalid => BootSelectionFlagInvalid { requested: device, readback: readback.stdout }
     BootReadbackNotOneShot => BootSelectionNotOneShot { requested: device, readback: readback.stdout }
     BootReadbackFirmwareMismatch => BootSelectionFirmwareMismatch { requested: device, readback: readback.stdout }

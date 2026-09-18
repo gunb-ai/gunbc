@@ -25,29 +25,16 @@ import gunbc.auth.approval_request_client {
 }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name, mtcollins1_boot_export_dir }
 import gunbc.machine_intake_mtcollins1_boot_image_fetch { mtcollins1_boot_image_sha256 }
-import gunbc.machine_intake_mtcollins1_actuate {
-  mtcollins1_cdrom_device, mtcollins1_cdrom_readback_rendering, mtcollins1_power_action,
-}
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.fleet_intent_network { operator_host_srv2 }
-
-type FirmwareBootMode
-  = FirmwareEfi
-  | FirmwareLegacy
-
-type BootPersistence
-  = BootOneShot
-  | BootPersistent
-
-type BootMediaKind
-  = BootMediaCd
-  | BootMediaPxe
-
-type MtCollins1BootSelection {
-  firmware: FirmwareBootMode
-  persistence: BootPersistence
-  media: BootMediaKind
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootCdrom,
+  IpmiBootSelection,
+  aarch64_uefi_once_boot_selection,
+  ipmi_boot_selection_label,
 }
+import extdeps.toolchain.types { architecture_diagnostic_name }
 
 type MtCollins1BootSubject {
   machine: NonEmptyStr
@@ -56,18 +43,15 @@ type MtCollins1BootSubject {
   image_sha256: NonEmptyStr
   export_host: NonEmptyStr
   export_dir: NonEmptyStr
-  selection: MtCollins1BootSelection
+  selection: IpmiBootSelection
   power_action: NonEmptyStr
   execution_revision: NonEmptyStr
 }
 
 data mtcollins1_boot_machine: NonEmptyStr = "mtcollins1"
 
-data mtcollins1_boot_selection: MtCollins1BootSelection = MtCollins1BootSelection {
-  firmware: FirmwareEfi,
-  persistence: BootOneShot,
-  media: BootMediaCd,
-}
+data mtcollins1_boot_selection: IpmiBootSelection =
+  aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
 
 fn mtcollins1_boot_subject(execution_revision: NonEmptyStr) -> MtCollins1BootSubject {
   MtCollins1BootSubject {
@@ -80,27 +64,6 @@ fn mtcollins1_boot_subject(execution_revision: NonEmptyStr) -> MtCollins1BootSub
     selection: mtcollins1_boot_selection,
     power_action: mtcollins1_power_action,
     execution_revision: execution_revision,
-  }
-}
-
-fn firmware_boot_mode_wire(m: FirmwareBootMode) -> String {
-  match m {
-    FirmwareEfi => "efi"
-    FirmwareLegacy => "legacy"
-  }
-}
-
-fn boot_persistence_wire(p: BootPersistence) -> String {
-  match p {
-    BootOneShot => "oneshot"
-    BootPersistent => "persistent"
-  }
-}
-
-fn boot_media_kind_wire(m: BootMediaKind) -> String {
-  match m {
-    BootMediaCd => mtcollins1_cdrom_device as String
-    BootMediaPxe => "pxe"
   }
 }
 
@@ -152,9 +115,8 @@ fn mtcollins1_boot_intent_hash(subject: MtCollins1BootSubject) -> ContentHash {
       subject.image_sha256 as String,
       subject.export_host as String,
       subject.export_dir as String,
-      firmware_boot_mode_wire(m: subject.selection.firmware),
-      boot_persistence_wire(p: subject.selection.persistence),
-      boot_media_kind_wire(m: subject.selection.media),
+      architecture_diagnostic_name(arch: subject.selection.architecture) as String,
+      ipmi_boot_selection_label(selection: subject.selection) as String,
       subject.power_action as String,
       subject.execution_revision as String,
     ], "|") as NonEmptyStr,

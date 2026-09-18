@@ -274,6 +274,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/cpu/ampere_altra_platform_hw_design/platform.dag",
   "dag/extdeps/bmc/aspeed_ast2500.dag",
   "dag/extdeps/bmc/ipmi_channel.dag",
+  "dag/extdeps/bmc/ipmi_boot_selection.dag",
   "dag/extdeps/ocp/mt_mitchell/platform.dag",
   "dag/extdeps/cpu_attachment/ilm4926.dag",
   "dag/extdeps/ssh/client_options.dag",

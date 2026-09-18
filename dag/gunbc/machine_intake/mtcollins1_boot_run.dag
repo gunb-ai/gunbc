@@ -328,6 +328,77 @@ fn mtcollins1_sol_activate_held(
   }
 }
 
+fn mtcollins1_boot_terminal_tick_budget() -> Int {
+  (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
+    / (second_count(s: mtcollins1_boot_poll_cadence) as Int)
+}
+
+fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject) -> Bool {
+  string_contains(s: capture, pattern: concat("GUNBC-HOST-CAPTURE ", subject.machine as String))
+    && string_contains(s: capture, pattern: " end ")
+    && string_contains(s: capture, pattern: "----SECTION nproc----")
+    && string_contains(s: capture, pattern: "\n160\n")
+    && string_contains(s: capture, pattern: "ghes_edac")
+    && string_contains(s: capture, pattern: "24.04.3")
+}
+
+fn mtcollins1_boot_await_capture_terminal(
+  remaining: Int,
+  capture_path: String,
+  subject: MtCollins1BootSubject,
+) -> ProcessExit {
+  if remaining <= 0 {
+    exit_failure(reason: "mtcollins1 boot: timed out waiting for the host-capture terminal in SOL; capture preserved; claim will abort, not complete")
+  } else {
+    let capture = Filesystem.Read(path: capture_path)
+    if capture.success && mtcollins1_boot_terminal_observed(capture: capture.content, subject: subject) {
+      ExitSuccess
+    } else {
+      let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+      mtcollins1_boot_await_capture_terminal(
+        remaining: remaining - 1,
+        capture_path: capture_path,
+        subject: subject,
+      )
+    }
+  }
+}
+
+fn mtcollins1_boot_release_sol(password_file: String) -> Bool
+  uses net: std.resources.Network
+{
+  match mtcollins1_bmc_username {
+    Absent => false
+    Present { value: user } =>
+      mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+  }
+}
+
+fn mtcollins1_boot_settle_from_fresh_clock(
+  outcome: ProcessExit,
+  escalation_id: NonEmptyStr,
+  attempt: AttemptIdentity,
+  held_at: CasGeneration,
+) -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
+    Absent =>
+      mtcollins1_unterminated_claim_exit(
+        outcome: exit_failure(reason: "mtcollins1 boot: clock unreadable at the terminal; refusing to stamp completion or abort with the pre-actuation instant"),
+        detail: "clock unreadable at claim terminal",
+      )
+    Present { value: at } =>
+      mtcollins1_settle_boot_claim(
+        outcome: outcome,
+        escalation_id: escalation_id,
+        attempt: attempt,
+        held_at: held_at,
+        at: at,
+      )
+  }
+}
+
 fn mtcollins1_boot_after_gate(
   gate: MtCollins1BootGate,
   request: AuthorizationRequest<MtCollins1BootSubject>,
@@ -356,38 +427,33 @@ fn mtcollins1_boot_after_gate(
                 ClaimHeld { state: _, generation: held_at } =>
                   match mtcollins1_sol_acquire_after_grant(password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
                     ExitFailure { code: _, reason: r } =>
-                      mtcollins1_settle_boot_claim(
+                      mtcollins1_boot_settle_from_fresh_clock(
                         outcome: exit_failure(reason: r),
                         escalation_id: g.escalation_id,
                         attempt: g.attempt,
                         held_at: held_at,
-                        at: at,
                       )
                     ExitSuccess => {
-                      let actuated = match mtcollins1_attach_diskless_image(authorization: auth, password_file: password_file, attempt: attempt) {
+                      let issued = match mtcollins1_attach_diskless_image(authorization: auth, password_file: password_file, attempt: attempt) {
                         ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
                         other => other
                       }
-                      match mtcollins1_bmc_username {
-                        Present { value: user } => {
-                          let _released = mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
-                          mtcollins1_settle_boot_claim(
-                            outcome: actuated,
-                            escalation_id: g.escalation_id,
-                            attempt: g.attempt,
-                            held_at: held_at,
-                            at: at,
+                      let observed = match issued {
+                        ExitSuccess =>
+                          mtcollins1_boot_await_capture_terminal(
+                            remaining: mtcollins1_boot_terminal_tick_budget(),
+                            capture_path: sol_capture_path,
+                            subject: request.subject,
                           )
-                        }
-                        Absent =>
-                          mtcollins1_settle_boot_claim(
-                            outcome: actuated,
-                            escalation_id: g.escalation_id,
-                            attempt: g.attempt,
-                            held_at: held_at,
-                            at: at,
-                          )
+                        other => other
                       }
+                      let _released = mtcollins1_boot_release_sol(password_file: password_file)
+                      mtcollins1_boot_settle_from_fresh_clock(
+                        outcome: observed,
+                        escalation_id: g.escalation_id,
+                        attempt: g.attempt,
+                        held_at: held_at,
+                      )
                     }
                   }
               }

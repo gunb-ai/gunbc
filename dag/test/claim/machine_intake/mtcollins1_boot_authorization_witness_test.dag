@@ -11,6 +11,8 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
 import gunbc.auth.approval_request_client { PollStillPending, PollExpired, PollDenied, PollNotFiled, PollUnreadable, PollApproved }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -24,6 +26,11 @@ test fn request_is_destructive_and_names_the_diskless_image() -> Bool {
     && r.subject.image_name == mtcollins1_diskless_image_name
     && r.subject.machine as String == "mtcollins1"
     && r.subject.execution_revision as String == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    && r.subject.selection.architecture == Aarch64
+    && r.subject.selection.firmware_mode == IpmiBootEfi
+    && r.subject.selection.persistence == IpmiBootOnce
+    && r.subject.selection.device == IpmiBootCdrom
+    && (ipmi_boot_selection_label(selection: r.subject.selection) as String) == "cdrom/efi/once"
     && r.scopes.length() == mtcollins1_boot_required_scopes.length()
     && r.escalation_id as String == "esc-mtc1-1"
 }
