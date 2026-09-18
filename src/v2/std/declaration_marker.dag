@@ -3,12 +3,16 @@ module v2.std.declaration_marker
 import v2.std.collection { List }
 import v2.std.node { Symbol }
 
-// The authored `test` marker is source data of the DESIGN section 4c kind: it segregates test code
-// from serving code, and it may not alter any semantic occurrence identity, semantic graph,
-// resolution result or hash. So it rides this channel, beside the semantic tree and disjoint from
-// it, exactly as the annotation channel rides beside AuthoredParseArtifact.semantic. v1 carries the
-// same fact as v1.std.core DeclarationMarker on the Node itself; v2's Node has no field for it, and
-// a structural child edge would change the content hash of every test declaration.
+// The authored `test` marker segregates test code from serving code (owner ruling 2026-09-16/17), and
+// name resolution CONSUMES it: a reference to a marked declaration is refused there. What it must not
+// touch is the semantic tree -- a marked declaration's semantic graph and content hash are identical
+// to an unmarked one's -- so it rides this channel beside the tree rather than as a child edge. It
+// borrows the SHAPE of the DESIGN section 4c annotation channel (captured beside the semantic result,
+// as annotations ride beside AuthoredParseArtifact.semantic), not its non-interference rule: 4c
+// governs `//` prose, which may alter nothing downstream, while `test` is a declaration marker whose
+// whole purpose is a refusal. v1 carries the same fact as v1.std.core DeclarationMarker on the Node
+// itself; v2's Node has no field for it, and a structural child edge would change the content hash of
+// every test declaration.
 //
 // Only marked declarations are rows. Absence is the unmarked arm, and it is decidable because the
 // capture that produces this channel reads every top-level item of the module it is handed.
