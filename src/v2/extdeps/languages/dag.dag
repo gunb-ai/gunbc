@@ -4629,25 +4629,33 @@ fn parse_subtree_has_production(root: Node, emitted: Symbol) -> Bool {
   }
 }
 
-fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
+fn dag_surface_kw_then_ident_node_from_captured(captured: Node) -> Outcome<Node> {
   match find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
-    Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: after_kw, diagnostics: _ } =>
       match find_named_child(root: after_kw, name: ^grammar_sequence_left_node_projection) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: ident_node, diagnostics: _ } =>
-          match dag_binding_branded_atom_identity(node: ident_node) {
-            Present { value: binding } => Present { value: binding }
-            Absent =>
-              match node_atom_identity_optional(node: ident_node) {
-                Present { value: sym } =>
-                  if dag_lex_token_symbol(sym: sym) {
-                    optional_absent()
-                  } else {
-                    optional_present(value: sym)
-                  }
-                Absent => optional_absent()
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: ident_node, diagnostics: diags } =>
+          Accepted { value: ident_node, diagnostics: diags }
+      }
+  }
+}
+
+fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
+  match dag_surface_kw_then_ident_node_from_captured(captured: captured) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ident_node, diagnostics: _ } =>
+      match dag_binding_branded_atom_identity(node: ident_node) {
+        Present { value: binding } => Present { value: binding }
+        Absent =>
+          match node_atom_identity_optional(node: ident_node) {
+            Present { value: sym } =>
+              if dag_lex_token_symbol(sym: sym) {
+                optional_absent()
+              } else {
+                optional_present(value: sym)
               }
+            Absent => optional_absent()
           }
       }
   }
@@ -4933,14 +4941,10 @@ data alias_binding_row_not_alias_decl: Symbol = ^alias_binding_row_not_alias_dec
 fn alias_binding_row_binding_from_decl(decl: Node, module_root: Node) -> Outcome<Symbol> {
   match parse_production_captured_child_optional(node: decl) {
     Present { value: captured } =>
-      match find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
+      match dag_surface_kw_then_ident_node_from_captured(captured: captured) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: after_kw, diagnostics: _ } =>
-          match find_named_child(root: after_kw, name: ^grammar_sequence_left_node_projection) {
-            Rejected { diagnostics: d } => Rejected { diagnostics: d }
-            Accepted { value: ident_node, diagnostics: _ } =>
-              parse_qn_lexeme_segment(sym_node: ident_node, root: module_root)
-          }
+        Accepted { value: ident_node, diagnostics: _ } =>
+          parse_qn_lexeme_segment(sym_node: ident_node, root: module_root)
       }
     Absent =>
       match find_named_child(root: decl, name: ^dag_surface_alias_decl_binding) {
