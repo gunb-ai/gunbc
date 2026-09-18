@@ -1,5 +1,6 @@
 module v2.std.declaration_marker
 
+import v2.std.algebra { contains, length }
 import v2.std.collection { List }
 import v2.std.node { Symbol }
 
@@ -29,9 +30,9 @@ type TestMarkerChannel {
 }
 
 fn test_marker_channel_marks(channel: TestMarkerChannel, name: Symbol) -> Bool {
-  fold(channel.marked, init: false, f: fn(acc, row) { acc || (row.name == name) })
+  contains(xs: channel.marked, item: TestMarkedDeclaration { name: name }, eq: fn(a, b) { a.name == b.name })
 }
 
 fn test_marker_channel_count(channel: TestMarkerChannel) -> Int {
-  std.types.list_length(items: channel.marked)
+  length(xs: channel.marked)
 }

@@ -2067,6 +2067,14 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
 // member node: it rides its own channel beside the semantic tree (the DESIGN section 4c shape),
 // v2.compiler.test_marker_capture over the same parse tree, so the semantic member stays identical
 // to a plain fn's.
+//
+// TWO PRODUCERS OF TEST-NESS STAND TODAY, AND THIS SAYS SO RATHER THAN DROPPING ONE. The floor's
+// witness universe is still derived by v2.workflow.floor_discovery_source_authority
+// discover_floor_rows_for_source, a line scan for `test fn ` / `test data ` over source text that
+// deliberately neither parses nor resolves (v2.workflow.floor_naming_hygiene names it a second
+// parser). The capture above is the compiler's. Converging the floor's enumeration onto the
+// captured channel is a declared frontier, not done here: it has to keep discovery from paying a
+// parse of every file, which is a floor-cost question of its own.
 fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
