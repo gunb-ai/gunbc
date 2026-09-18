@@ -166,6 +166,16 @@ fn bucket_purpose_admission(purpose: BucketPurpose) -> OriginAdmission {
   }
 }
 
+// EVERY ADMITTED POPULATION IS WRITE-ONCE, so the PUT is create-only for each: a content-addressed
+// object or a manifest slot is never legitimately overwritten, and a digest-keyed boot artifact is
+// its digest. A future population that may be replaced must say so here, not at the call site.
+fn origin_admission_is_create_only(admission: OriginAdmission) -> Bool {
+  match admission {
+    FabricCommitManifestsAndContentAddressedOutputs {} => true
+    DigestKeyedBootArtifacts {} => true
+  }
+}
+
 // PUBLIC READ IS A PROPERTY OF THE PURPOSE, decided by an exhaustive match so a new purpose must
 // state it. Only the boot origin is ever attached to a custom domain.
 fn bucket_purpose_admits_public_read(purpose: BucketPurpose) -> Bool {

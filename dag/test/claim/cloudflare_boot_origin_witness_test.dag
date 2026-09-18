@@ -41,7 +41,7 @@ import gunbc.cloudflare.boot_origin {
   BootReadbackAt,
   BootReadbackRefusedR2Dev,
   BootReadbackRefusedNotHttps,
-  BootReadbackRefusedNonCanonicalHost,
+  BootReadbackRefusedNotAHostName,
   classify_boot_readback,
   BootReadbackServed,
   BootReadbackUnserved,
@@ -140,7 +140,7 @@ test fn readback_addresses_the_receipt_custom_domain() -> Bool {
     BootReadbackAt { url: u } => (u.locator as String) == join(["boot-origin.example.test/sha256/", digest_a_hex], "")
     BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
     BootReadbackRefusedNotHttps {} => false
-    BootReadbackRefusedNonCanonicalHost { locator: _ } => false
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
   }
 }
 
@@ -149,7 +149,7 @@ test fn readback_refuses_r2_dev() -> Bool {
     BootReadbackAt { url: _ } => false
     BootReadbackRefusedR2Dev { locator: _, ground: g } => (g.fact.decl_name as String) == "r2_custom_domain_reading"
     BootReadbackRefusedNotHttps {} => false
-    BootReadbackRefusedNonCanonicalHost { locator: _ } => false
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
   }
 }
 
@@ -174,7 +174,7 @@ test fn readback_confirms_only_the_published_digest() -> Bool {
 
 test fn hostname_is_unallocated_until_the_operator_records_it() -> Bool {
   match boot_origin_hostname_standing() {
-    BootOriginHostnameAllocated { zone: _, fqdn: _ } => false
+    BootOriginHostnameAllocated { fqdn: _ } => false
     BootOriginHostnameUnallocated { intervention: _ } => true
   }
 }
@@ -208,7 +208,7 @@ test fn readback_refuses_plain_http() -> Bool {
     BootReadbackAt { url: _ } => false
     BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
     BootReadbackRefusedNotHttps {} => true
-    BootReadbackRefusedNonCanonicalHost { locator: _ } => false
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
   }
 }
 
@@ -226,20 +226,29 @@ test fn public_bucket_refuses_secret_material() -> Bool {
     && !refuses_secret(candidate: CandidateBootArtifact { object: kernel_a() })
 }
 
-fn refuses_non_canonical(locator: NonEmptyStr) -> Bool {
+fn refuses_non_host(locator: NonEmptyStr) -> Bool {
   match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: locator)), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
     BootReadbackAt { url: _ } => false
     BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
     BootReadbackRefusedNotHttps {} => false
-    BootReadbackRefusedNonCanonicalHost { locator: _ } => true
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => true
   }
 }
 
-// review 67763: case and port spellings of r2.dev, and a trailing slash, must not reach BootReadbackAt.
-test fn readback_refuses_non_canonical_host_spellings() -> Bool {
-  refuses_non_canonical(locator: "pub-0123.R2.dev")
-    && refuses_non_canonical(locator: "pub-0123.r2.dev:443")
-    && refuses_non_canonical(locator: "pub-0123.r2.dev:443/")
-    && refuses_non_canonical(locator: "boot-origin.example.test/")
-    && !refuses_non_canonical(locator: "boot-origin.example.test")
+// review 67763: a port or a trailing slash is not a host name and must not reach BootReadbackAt.
+test fn readback_refuses_locators_that_are_not_host_names() -> Bool {
+  refuses_non_host(locator: "pub-0123.r2.dev:443")
+    && refuses_non_host(locator: "pub-0123.r2.dev:443/")
+    && refuses_non_host(locator: "boot-origin.example.test/")
+    && !refuses_non_host(locator: "boot-origin.example.test")
+}
+
+// review 67763: host names are case-insensitive, so an uppercase r2.dev is still r2.dev.
+test fn readback_refuses_r2_dev_in_any_case() -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: "pub-0123.R2.Dev")), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: _ } => false
+    BootReadbackRefusedR2Dev { locator: _, ground: _ } => true
+    BootReadbackRefusedNotHttps {} => false
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
+  }
 }

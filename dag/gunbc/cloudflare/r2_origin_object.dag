@@ -39,6 +39,8 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialStanding,
   OriginCredentialPinned,
   OriginCredentialUnminted,
+  bucket_purpose_admission,
+  origin_admission_is_create_only,
 }
 import gunbc.cloudflare.r2_s3_netrc {
   R2S3NetrcPlaced,
@@ -187,6 +189,7 @@ type OriginTarget
       locator: R2ObjectLocator
       access_key_id: NonEmptyStr
       token_value: SecretRef
+      create_only: Bool
     }
   | OriginTargetRefused { cause: NonEmptyStr }
 
@@ -254,6 +257,7 @@ fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> Origin
                 },
                 access_key_id: access_key_id,
                 token_value: token_value,
+                create_only: origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: bucket.purpose)),
               }
           }
       }
@@ -296,7 +300,7 @@ fn put_origin_object(
     OriginTransportPresent =>
   match resolve_origin_target(direction: OriginWrite, key: key) {
     OriginTargetRefused { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } =>
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: create_only } =>
       match place_r2_s3_netrc(
         host: r2_s3_endpoint_host(endpoint: locator.endpoint) as NonEmptyStr,
         access_key_id: access_key_id,
@@ -313,7 +317,7 @@ fn put_origin_object(
               local_path: local_path as String,
               netrc_path: netrc_binding_path(binding: binding),
               sigv4_region: r2_s3_sigv4_region,
-              create_only: true,
+              create_only: create_only,
             ),
             transport: LocalExec,
           )
@@ -375,7 +379,7 @@ fn fetch_origin_object(
     OriginTransportPresent =>
   match resolve_origin_target(direction: OriginRead, key: key) {
     OriginTargetRefused { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } => {
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: _ } => {
       let staging = shell.Mktemp.Dir()
       if staging.success == false {
         OriginFetchUnavailable { key: key, cause: "no private directory could be minted to stage the origin's bytes, so nothing was fetched" }
