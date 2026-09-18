@@ -5,6 +5,7 @@ import std.algebra { trim }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256_digest_content_hash }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_digest_from_line }
@@ -30,7 +31,6 @@ import extdeps.systemd.unit_file {
   systemd_system_unit_directory,
 }
 import product.placement_supply { HostIdentity }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name }

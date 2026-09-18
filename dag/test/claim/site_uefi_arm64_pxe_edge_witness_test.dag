@@ -1,12 +1,12 @@
 module test.claim.site_uefi_arm64_pxe_edge_witness
 
+import extdeps.network.ipv4 { ipv4_address }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import product.placement_supply { SiteIdentity }
-import extdeps.network.ipv4 { ipv4_address }
 import extdeps.provisioning.network_boot { ProxyDhcp }
 import gunbc.network_boot_delivery {
   SitePxeEdgeEstablished,
