@@ -606,6 +606,11 @@ fn transition_text(t: AuthorityTransition) -> String {
 // THE SETTLE: readings taken under the pending state, decided, the receipt written and digested,
 // then ONE compare-and-set naming the receipt. The exit is decided from the transition ARM, never
 // from its rendered text.
+//
+// THE GRANT RIDES ONLY INTO THE LEASED TERMINAL. A restore to Active and a fence hold no lease,
+// and the log refuses a grant carried into a state with none -- so those two terminals write the
+// transition without one, and only the suspension carries the term minted from the admitting
+// write. An earlier shape carried it on every arm and could reach neither.
 fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, active: PairServingGroupAuthority, lease: HeldLease, admitted: AdmittedD0Grant, admitting: EventId, pending_generation: Nat, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, declared: DeclaredPairRealizationStanding, observation: D0Observation) -> D0Outcome {
   let group = observation.group
   let decision = d0_decide(declared: declared, observation: observation, active: active, lease: lease, admitted: admitted)
@@ -617,10 +622,6 @@ fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, active:
     D0Refused { cause: join(["the entry-state receipt could not be written before settling, so the authority was not moved: ", wr.error], "") }
   } else {
     let digest = entry_state_digest(body: body)
-    // THE GRANT RIDES ONLY INTO THE LEASED TERMINAL. A restore to Active and a fence hold no lease,
-    // and the log refuses a grant carried into a state with none -- so those two terminals write
-    // the transition without one, and only the suspension carries the term minted from the
-    // admitting write. An earlier shape carried it on every arm and could reach neither.
     let term = match decision {
       D0DecidedSuspend { next: _, reconciliation: _ } =>
         Present { value: lease_grant(reference: transaction, fence: lease_fence_of(admitting_event: admitting, generation: pending_generation), granted_at: at, policy: d0_lease_policy(subject: admitted.grant.subject)) }
