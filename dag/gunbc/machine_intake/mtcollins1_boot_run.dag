@@ -570,7 +570,7 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
         SubmissionMacKeyNotHex { key_id: k } =>
           exit_failure(reason: concat("mtcollins1 boot: submission MAC key is not hex: ", k as String))
         SubmissionMacReady { tag_hex: tag } => {
-          let tmp = actions_variable_trimmed(name: "RUNNER_TEMP" as NonEmptyStr)
+          let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
           if tmp == "" {
             return exit_failure(reason: "mtcollins1 boot: RUNNER_TEMP is unset; cannot write the submit body")
           }

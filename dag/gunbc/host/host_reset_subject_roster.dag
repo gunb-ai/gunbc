@@ -42,9 +42,9 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 // and there is no second place to edit.
 // THE PER-HOST RESET POLICY TRAVELS WITH THE ROSTER ROW, and that is the layer it belongs to rather
 // than an accident of convenience. gunbc.machine_intake_oob_boot_handoff takes the boot device, the
-// expected read-back rendering and the power action as PARAMETERS precisely because which of them a
-// workflow picks is business policy, and its own note says so; this roster is the workflow-layer
-// authority that picks them for a reset.
+// boot options, the parameter-5 expectation and the power action as PARAMETERS precisely because
+// which of them a workflow picks is business policy, and its own note says so; this roster is the
+// workflow-layer authority that picks them for a reset.
 //
 // THE VALUES ARE IMPORTED, NEVER RE-SPELLED. gunbc.machine_intake_mtcollins1_actuate already carries
 // the device word, the boot-options word, the four-axis parameter-5 expectation, and the cycle verb
