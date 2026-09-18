@@ -1,0 +1,139 @@
+module gunbc.network_boot_predecessor_census
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.firmware.ipxe { extdeps_external_authority_anchor }
+import extdeps.cloudflare.r2 { r2_custom_domain_reading }
+import extdeps.formats.dnsmasq { dnsmasq_protocol }
+import extdeps.provisioning.network_boot { network_uefi_bootloader_artifact }
+import extdeps.toolchain.types { Aarch64 }
+import gunbc.bmc_netboot_serve { srv4_bmc_netboot_serve_plan }
+import gunbc.os_install { srv3_pxe_network_boot_chain }
+import gunbc.cloudflare.r2_origin { fabric_durable_origin_standing, FabricDurableOrigin, allocated_bucket_name, DurableOriginAllocated, DurableOriginUnallocated }
+import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_pxe_vendor_class, mtcollins1_pxe_arch_code }
+
+// Predecessor census for the HTTPS fleet boot authority. Each row is a typed disposition:
+// consume as a cited shape, freeze as not-fleet, or keep as the only measured client fact.
+// This module does not delete those roots; deletion is a later cut when the join holds wet.
+type NetworkBootPredecessorDisposition
+  = FrozenMachineLocalNotFleetAuthority
+  | AuthoredPlanNotEstablishment
+  | KeepMeasuredClientFactUnextended
+  | DurableOriginNotBootOrigin
+  | SiteAdapterMayConsumeFormat
+  | HttpBootConstructorBesideNotInstead
+  | CitedUpstreamShape
+
+type NetworkBootPredecessorRow {
+  subject: DeclarationRef
+  disposition: NetworkBootPredecessorDisposition
+}
+
+fn network_boot_predecessor_census() -> List<NetworkBootPredecessorRow> {
+  [
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "gunbc.bmc_netboot_serve", decl_name: "srv4_bmc_netboot_serve_plan"),
+      disposition: FrozenMachineLocalNotFleetAuthority,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "gunbc.os_install", decl_name: "srv3_pxe_network_boot_chain"),
+      disposition: AuthoredPlanNotEstablishment,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_netboot_client_observation", decl_name: "mtcollins1_pxe_vendor_class"),
+      disposition: KeepMeasuredClientFactUnextended,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_durable_origin_standing"),
+      disposition: DurableOriginNotBootOrigin,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "extdeps.formats.dnsmasq", decl_name: "dnsmasq_protocol"),
+      disposition: SiteAdapterMayConsumeFormat,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "extdeps.firmware.uefi_http_boot", decl_name: "extdeps_external_authority_anchor"),
+      disposition: HttpBootConstructorBesideNotInstead,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "extdeps.firmware.ipxe", decl_name: "extdeps_external_authority_anchor"),
+      disposition: CitedUpstreamShape,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_custom_domain_reading"),
+      disposition: DurableOriginNotBootOrigin,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "gunbc.spark.dgx_pxe_boot", decl_name: "SparkUefiPxeConfiguration"),
+      disposition: FrozenMachineLocalNotFleetAuthority,
+    },
+    NetworkBootPredecessorRow {
+      subject: decl_ref(module_path: "extdeps.provisioning.network_boot", decl_name: "network_uefi_bootloader_artifact"),
+      disposition: AuthoredPlanNotEstablishment,
+    },
+  ]
+}
+
+fn predecessor_row_matches(row: NetworkBootPredecessorRow, module_path: String, decl_name: String) -> Bool {
+  (row.subject.module_path as String) == module_path && (row.subject.decl_name as String) == decl_name
+}
+
+fn predecessor_disposition_of(module_path: String, decl_name: String) -> NetworkBootPredecessorDisposition? {
+  fold(
+    network_boot_predecessor_census(),
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if predecessor_row_matches(row: row, module_path: module_path, decl_name: decl_name) {
+            some(row.disposition)
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn srv4_plan_is_machine_local() -> NonEmptyStr {
+  srv4_bmc_netboot_serve_plan.bmc_host
+}
+
+fn srv3_chain_is_authored_plan() -> NonEmptyStr {
+  srv3_pxe_network_boot_chain.image_http_root.locator
+}
+
+fn mtcollins1_measured_vendor_class() -> NonEmptyStr {
+  mtcollins1_pxe_vendor_class
+}
+
+fn mtcollins1_measured_arch_code() -> Int {
+  mtcollins1_pxe_arch_code
+}
+
+fn durable_origin_bucket_name() -> NonEmptyStr? {
+  allocated_bucket_name(purpose: FabricDurableOrigin {})
+}
+
+fn durable_origin_is_allocated() -> Bool {
+  match fabric_durable_origin_standing() {
+    DurableOriginAllocated { bucket: _ } => true
+    DurableOriginUnallocated { purpose: _ } => false
+  }
+}
+
+fn r2_custom_domain_is_production_hostname_shape() -> NonEmptyStr {
+  r2_custom_domain_reading
+}
+
+fn dnsmasq_format_indent_unit() -> String {
+  dnsmasq_protocol.indent_unit
+}
+
+fn grubnet_aa64_filename() -> NonEmptyStr? {
+  network_uefi_bootloader_artifact(arch: Aarch64)
+}
+
+fn ipxe_docs_locator() -> NonEmptyStr {
+  extdeps_external_authority_anchor.uri.locator
+}
