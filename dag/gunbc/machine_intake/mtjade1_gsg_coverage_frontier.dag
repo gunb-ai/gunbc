@@ -1,0 +1,74 @@
+module gunbc.machine_intake_mtjade1_gsg_coverage_frontier
+
+import std.types { List, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+
+// COVERAGE STATE FOR THE MT. JADE GSG ROWS, HOMED DOWNSTREAM OF THE DOCUMENT IT IS ABOUT.
+//
+// Two rules put this file here rather than beside the rows. DESIGN §4c: a dissolution condition
+// belongs in a typed carrier, because no Accepted program can read an annotation — an earlier
+// revision carried these consumers and triggers as a // block, so nothing in the closure could
+// read the trigger that gates the rows a fan realizer must not consume (review 67963). And DESIGN
+// §3 external upstream decomposition: an extdeps module may not store consumer coverage state,
+// and a missing observation is a coverage obligation DOWNSTREAM, never a property authored inside
+// the upstream module. Whether this repository has built a consumer for a figure Ampere printed
+// is a fact about this repository.
+//
+// Every row is UNBOUND on purpose. std.dissolution's own note names the trap: binding forward to
+// a symbol nobody has declared is the DESIGN §3 fabricated-citation class. The #11529 folds are
+// on another branch and the wet-probe row does not exist at all, so neither is a DeclarationRef
+// this closure can name, and dissolution_status reports DissolutionUnbound rather than a promise.
+
+fn gsg_chassis_decl(name: String) -> DeclarationRef {
+  decl_ref(module_path: "extdeps.ampere.mt_jade_getting_started_guide.chassis", decl_name: name)
+}
+
+data mtjade1_gsg_coverage_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_carton_power_cable_count"),
+    reason: "Table 5 carton quantity, transcribed and read by nothing. A claim comparing it to the same literal is a change detector: both sides are authored in this tree, so no edit to the subject can make it red (DESIGN §5).",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the Mt. Jade / SV328R physical class-facts lane (#11529) binding carton and accessory inventory from the cited packing list. TRIGGER: a production fold outside test.claim reads this row and joins it to an observed carton contents row. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing the count, nor by restating the figure in a second module."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_carton_rail_kit_count"),
+    reason: "Table 5 rail-kit quantity, same shape and same lane as the power-cable count.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: #11529 carton and accessory inventory. TRIGGER: a production fold joins this count to an observed rail-kit row. SUFFICIENT FOR deleting this row. NOT satisfied by a witness import."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_rear_psu_count"),
+    reason: "Table 6 rear PSU count, read by nothing. PowerSupplyStanding exists on the #11529 branch and carries Watt and RevolutionsPerMinute, but not in this closure.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: PowerSupplyStanding in the #11529 lane. TRIGGER: a PSU observation for this unit binds Watt and RevolutionsPerMinute for each supply, making this count a cardinality check over real rows rather than a standalone figure. SUFFICIENT FOR deleting this row. NOT satisfied by declaring PowerSupplyStanding without an observation to count."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_chassis_fan_count"),
+    reason: "Table 6 chassis fan count, read by nothing. The fan standing carries FirstPostFanCapture, which is AwaitingFirstPostWithDimms and has no per-fan readings to count yet.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: FirstPostFanCapture in gunbc.machine_intake_mtjade1_fan_standing. TRIGGER: AwaitingFirstPostWithDimms becomes FirstPostFanCaptured with per-fan readings, and a fold counts them against this figure. SUFFICIENT FOR deleting this row. NOT satisfied by the first POST alone if the capture records a finding without per-fan rows."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_minimum_bmc_firmware_family"),
+    reason: "THE GSG'S MINIMUM FAMILY IS NOT THIS UNIT'S FAMILY, AND THAT IS WHY IT HAS NO CONSUMER. Review 67954 and the parent lane both proposed wiring it into gunbc.machine_intake_bmc_first_contact_standing; that consumer may not be written. BmcFirmwareFamilyStanding is two arms and deliberately no function from a document to an installed family (review 67792), so reading this row as a stand-in for an observed family is the exact fork that module exists to prevent.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer selected by jade_fan_policy_convergence, which dispatches on an OBSERVED family. TRIGGER: a wet probe binds FamilyObserved for this unit, at which point this row becomes the minimum an observed family is compared AGAINST rather than a substitute for one. SUFFICIENT FOR deleting this row. NOT satisfied by any document read, and explicitly NOT by a fold that mints a family from Redfish presence or from this figure."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_without_1p_bmc_image_fan_duty"),
+    reason: "Appendix E's documented 100% duty without the 1P BMC image. Blocked on the same trigger as the minimum family and for the same reason: it describes a MegaRAC-package behaviour, and this unit's package is unobserved.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer selected by jade_fan_policy_convergence. TRIGGER: a wet probe binds FamilyObserved, so the realizer can decide whether this documented duty applies to the package actually installed. SUFFICIENT FOR deleting this row. NOT satisfied by a percent_count claim over the figure, which is the literal-copy shape this roster exists to record."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_inlet_connector_face"),
+    reason: "Recorded as GsgUnstated: the document does not name the IEC inlet or cord face. The only value a claim could inspect is the row's own prose.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the #11529 physical class-facts lane binding inlet face and cord from a cited datasheet. TRIGGER: that cited read lands and the topic becomes a stated value, at which point this row is REPLACED by the measure rather than asserted. SUFFICIENT FOR deleting this row. NOT satisfied by citing a datasheet without binding the value."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_chassis_weight"),
+    reason: "Recorded as GsgUnstated: this GSG prints no chassis or system mass.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the #11529 lane binding chassis mass from a cited datasheet as a Gram measure. TRIGGER: that cited read lands. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_bmc_ethernet_phy"),
+    reason: "Recorded as GsgUnstated: Table 6 names the BMC Ethernet port and not its PHY or controller SKU.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: an OnboardNetworkController row in the #11529 lane, or a host-side lspci/ethtool census of this unit. TRIGGER: either binds a cited controller SKU. SUFFICIENT FOR deleting this row. NOT satisfied by inferring the PHY from the platform's standard configuration, which the GSG itself says custom-shipped systems may differ from."),
+  ),
+]

@@ -17,29 +17,16 @@ data mt_jade_gsg_chassis_model_scope: ExternalModelScope = mt_jade_gsg_model_sco
 // WHAT TABLE 5 AND FIGURE 10 / TABLE 6 STATE. What they do not state is recorded as
 // UnstatedByThisDocument rather than inferred from Collins, Wiwynn SV328R, or IEC catalogues.
 //
-// EVERY ROW IN THIS MODULE IS A DECLARED COVERAGE FRONTIER, STATED AND UNSTATED ALIKE (review
-// 67954). A transcribed figure has no fold today, and a claim that reads the row and compares it
-// to the same literal is a change detector, not a reading: both sides come from this tree, so
-// automating the update collapses it to measure() == measure() (DESIGN §5). The figures ARE
-// grounded — the GSG, Issue 1.00, digest f6528f70 — but the ground is the document, which no
-// claim here executes; provenance is claimed once, by the citation-read receipt, not once per row.
-// So each row names its consumer and its retiring trigger instead of carrying a literal-copy
-// witness (DESIGN §3c):
+// WHY THESE FIGURES CARRY NO CLAIM OVER THEIR OWN VALUES -- rationale only; the coverage state
+// itself is NOT here. A claim reading a row and comparing it to the same literal is a change
+// detector, because both sides are authored in this tree. The figures ARE grounded in the GSG,
+// Issue 1.00, digest f6528f70, but the ground is the DOCUMENT and no claim in this corpus
+// executes it; provenance is claimed once by the citation-read receipt, not once per row.
 //
-//   carton_power_cable_count, carton_rail_kit_count -> the Mt. Jade / SV328R physical class-facts
-//     lane (#11529). Retired when that lane binds carton and accessory inventory from the cited
-//     packing list, at which point the count is joined to an observation rather than standing alone.
-//   rear_psu_count -> PowerSupplyStanding in the same lane. Retired when a PSU observation for this
-//     unit binds Watt and RevolutionsPerMinute, making the count a cardinality check on real rows.
-//   chassis_fan_count -> FirstPostFanCapture in gunbc.machine_intake_mtjade1_fan_standing. Retired
-//     when AwaitingFirstPostWithDimms becomes FirstPostFanCaptured and per-fan readings exist to
-//     count.
-//   minimum_bmc_firmware_family, without_1p_bmc_image_fan_duty -> the fan realizer selected by
-//     jade_fan_policy_convergence. BOTH ARE BLOCKED ON THE SAME TRIGGER and neither may be consumed
-//     before it: a wet probe binding FamilyObserved. Until then there is no function from a
-//     document to an installed family, which is exactly what bmc_first_contact_standing refuses
-//     (review 67792), so consuming the GSG minimum to stand in for an observed family would be the
-//     fork that module exists to prevent.
+// Which consumer each row waits on, and what retires it, is a fact about THIS REPOSITORY rather
+// than about Ampere's document, so DESIGN section 3 homes it downstream and section 4c requires a
+// typed carrier a fold can read: gunbc.machine_intake_mtjade1_gsg_coverage_frontier
+// mtjade1_gsg_coverage_frontier_rows, one std.roster_frontier FrontierRow per declaration below.
 
 type GsgUnstated {
   topic: NonEmptyStr
@@ -55,13 +42,9 @@ data mt_jade_gsg_chassis_fan_count: Nat = 6
 
 data mt_jade_gsg_minimum_bmc_firmware_family: BmcFirmwareFamily = AmiMegaRac
 
-// THE UNSTATED ROWS, under the same frontier rule as the stated ones above. The row records that
-// THIS document does not state the topic, so the only thing a claim could assert about it is its
-// own prose. The named later consumer is the Mt. Jade / SV328R physical class-facts lane (#11529), which binds inlet
-// face, cord and chassis mass from a cited datasheet; the trigger that retires each row is that
-// cited read landing, at which point the topic becomes a stated measure and the row is replaced
-// rather than asserted. mt_jade_gsg_rail_kit_part_number is the exception: the observation module
-// carries it BY IDENTITY, so it has a consumer and a red today.
+// The unstated rows record that THIS document does not state the topic. They are inferred from
+// nothing -- not from Collins, Wiwynn SV328R, or IEC catalogues -- and mt_jade_gsg_rail_kit_part_number
+// is the one with a consumer today, carried by identity in the intake observation module.
 data mt_jade_gsg_inlet_connector_face: GsgUnstated = GsgUnstated {
   topic: "IEC inlet / cord face (C13, C14, or other). Table 5 and Table 12 name Power cable quantity 2 and do not name the connector.",
 }
