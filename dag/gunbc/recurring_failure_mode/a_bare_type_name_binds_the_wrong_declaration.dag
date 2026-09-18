@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_bare_type_name_binds_the_wrong_declaration
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_bare_type_name_binds_the_wrong_declaration: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_bare_type_name_binds_the_wrong_declaration" as NonEmptyStr,
+
+  receipts: [
+    "a bare type name binds the wrong declaration: two modules declare the same TYPE NAME with materially different meanings -- DESIGN section 3's meaning fork, the dual of nicknaming -- and a parameter or field typed with that bare name binds the other module's declaration. Nothing refuses. A value constructed with one variant is then READ as a different variant, so a total, exhaustive match returns an arm the value does not inhabit, and every consumer downstream reasons from a verdict that is the opposite of the truth.",
+
+    "SPECIMEN, found 2026-09-18. std.observation declares `type ObservationProducer = CoordinatorProducer | OrdinaryWorkerProducer | ScopedWorkerProducer` -- who produces an observation. gunbc.auth.github_apps declares `type ObservationProducer = ObservationProducerAbsent | ObservationProducerBound` -- whether a required observation has a bound producer. Disjoint constructor sets, one name. gunbc.auth.github_apps operator_packet_or_producer_binding takes `observation: ObservationProducer`, and that bare name bound the wrong declaration.",
+
+    "THE ISOLATING PROBE, because the symptom named nothing useful. One value, one let, read twice in the same claim: `let p = ObservationProducerBound { bound: ... }`. A DIRECT match on p reads ObservationProducerBound (PASS). Passing that same p into operator_packet_or_producer_binding takes its ObservationProducerAbsent arm (FAIL). The only construction of BindObservationProducer in the corpus is inside that arm, so the machine action the fold returned could only have come from a value being read as a variant it was not constructed as.",
+
+    "THE HARM WAS THREE WITNESSES ASSERTING THE OPPOSITE OF WHAT THEY READ AS, on main, silently. test.claim.github_app_registry_witness witness_bound_producer_yields_the_operator_packet, witness_key_generation_is_operator_work_only_after_discovery_fails and witness_producer_binding_is_per_app_not_module_wide all concern WHO OWNS THE NEXT ACTION on a GitHub App credential -- machine or operator. The last is the executing evidence for a DESIGN section 4b(1) annotation in gunbc.auth.github_apps stating that producer binding travels per-App rather than module-wide, so that annotation's claim was unwitnessed while appearing witnessed. The same fold is consumed in production by gunbc.fleet.app_control_plane_converge.",
+
+    "THE REPAIR IS A RENAME AT THE FORK, not at the symptom: gunbc.auth.github_apps ObservationProducer becomes ObservationProducerBinding, which is also the truer name -- its constructors are Absent and Bound, a binding STANDING, where std.observation's are producer identities. Five type-position uses. After it: the three claims PASS, the module goes 42/4 to 45/1 (the remaining failure is pre-existing on current main and confirmed by control), toolchain_coherence 6/6, recorded_observation_envelope 20/20 on the std side, and app_control_plane_converge compiles.",
+
+    "ATTAINABLE CEILING: structurally impossible, and the machinery is already half built. The required floor PRINTS `[floor-bare-name-ambiguity-name] name=<n> scopes=<k> kinds=<kind> claimants=<modules>` -- it already computes exactly the set this class lives in. It reports and does not refuse, which is DESIGN section 4b's inert lens: the observation exists, nothing gates on it. NEXT-RUNG TRIGGER: a bare name with two or more claimants of the same KIND refuses at resolution unless the reference is qualified, with a discriminating red (two modules declaring one type name, a consumer referencing it bare) executing on the acceptance path. A report that lists ambiguity without refusing does not retire this row.",
+
+    "RECOGNITION RULE, AND THE REASON IT IS HARD: the symptom is a total match returning an impossible arm, which reads as a compiler defect and sends the reader looking at the substrate rather than at the namespace. Three hypotheses were falsified before the right one: that the fork caused it (dismissed on the WRONG PREMISE that bare-name resolution is import-scoped -- gunbc.auth.github_apps does not import std.observation, and the collision bit anyway), a third declaration elsewhere, and a shadowed fixture. The cheap discriminator is the one-value-two-readings probe above; the cheap PREVENTION is to read the floor's bare-name-ambiguity report for the names a failing module uses.",
+  ],
+
+  evidence: [],
+}
