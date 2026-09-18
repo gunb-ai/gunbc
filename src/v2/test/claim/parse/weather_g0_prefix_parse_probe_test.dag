@@ -4,7 +4,6 @@ import std.algebra { Cons, Empty }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { List }
 import v2.std.compilers.lexing { TokenStream, symbol_intern_lexeme }
 import v2.std.diagnostic {
   Accepted,
