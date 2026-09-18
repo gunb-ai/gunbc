@@ -1,0 +1,56 @@
+module v2.test.parse.type_decl_modifier_g0_parse_probe
+
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.language_model { LanguageModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SH-2: posix_effective_principal.dag stopped at leftover `nominal_opaque` because G0's
+// dag_grammar_type_decl_expr had no slot between the type name and `=` / field block.
+// v1.compiler.parse drop_leading_type_modifier / type_body_tokens_after_modifiers drops
+// exactly those two ident spellings, in that order. The treatment is the smallest alias
+// that carries `nominal_opaque`; the standing red is an unknown ident in that slot, which
+// v1 also leaves for the body parser to refuse.
+
+data probe_cached_lm: LanguageModel = dag_language_model()
+
+fn parse_outcome(src: String) -> String {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } =>
+          symbol_lexeme(sym: fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason }))
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+      }
+  }
+}
+
+data unmodified_alias_source: String = "module m\ntype T = Int\n"
+data nominal_opaque_alias_source: String = "module m\ntype T nominal_opaque = Int\n"
+data sole_constructor_record_source: String = "module m\ntype T sole_constructor { x: Int }\n"
+data unknown_modifier_red_source: String = "module m\ntype T not_a_modifier = Int\n"
+
+test fn unmodified_type_alias_still_parses_holds() -> Bool {
+  parse_outcome(src: unmodified_alias_source) == "ACCEPTED"
+}
+
+test fn nominal_opaque_type_alias_parses_holds() -> Bool {
+  parse_outcome(src: nominal_opaque_alias_source) == "ACCEPTED"
+}
+
+test fn sole_constructor_type_record_still_parses_holds() -> Bool {
+  parse_outcome(src: sole_constructor_record_source) == "ACCEPTED"
+}
+
+test fn unknown_type_decl_modifier_still_refuses_holds() -> Bool {
+  parse_outcome(src: unknown_modifier_red_source) == "parse_g0_tokens_remain"
+}

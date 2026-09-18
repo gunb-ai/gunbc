@@ -564,6 +564,8 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_where, text: "where"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_as, text: "as"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_return, text: "return"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_nominal_opaque, text: "nominal_opaque"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_sole_constructor, text: "sole_constructor"),
       dag_literal_lex_rule(token_class: ^dag_token_arrow, text: "->"),
       dag_literal_lex_rule(token_class: ^dag_token_fat_arrow, text: "=>"),
       dag_literal_lex_rule(token_class: ^dag_token_eq_eq, text: "=="),
@@ -893,7 +895,9 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
     ^dag_token_kw_false,
     ^dag_token_kw_where,
     ^dag_token_kw_as,
-    ^dag_token_kw_return
+    ^dag_token_kw_return,
+    ^dag_token_kw_nominal_opaque,
+    ^dag_token_kw_sole_constructor
   ]
 }
 
@@ -1645,6 +1649,23 @@ fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
   )
 }
 
+// v1.compiler.parse type_body_tokens_after_modifiers drops at most two leading idents after
+// the type name and optional generics: first `nominal_opaque`, then `sole_constructor`
+// (drop_leading_type_modifier). G0 has no ident-text match, so the closed set is encoded as
+// keyword tokens rather than an optional ident — an optional ident would accept any word in
+// that slot and widen past v1. Order is the same two optional drops: reversed or unknown
+// spellings remain tokens-remain refusals.
+fn dag_grammar_type_decl_modifiers_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_optional(
+      element: dag_grammar_terminal(token_class: ^dag_token_kw_nominal_opaque)
+    ),
+    right: dag_grammar_optional(
+      element: dag_grammar_terminal(token_class: ^dag_token_kw_sole_constructor)
+    )
+  )
+}
+
 fn dag_grammar_type_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_type),
@@ -1652,12 +1673,15 @@ fn dag_grammar_type_decl_expr() -> GrammarExpr {
       left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
       right: dag_grammar_sequence(
         left: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_generic_params)),
-        right: dag_grammar_optional(
-          element: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_field_decl_block),
-            right: dag_grammar_sequence(
-              left: dag_grammar_terminal(token_class: ^dag_token_eq),
-              right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs)
+        right: dag_grammar_sequence(
+          left: dag_grammar_type_decl_modifiers_expr(),
+          right: dag_grammar_optional(
+            element: dag_grammar_choice(
+              left: dag_grammar_nonterminal(production: ^dag_production_field_decl_block),
+              right: dag_grammar_sequence(
+                left: dag_grammar_terminal(token_class: ^dag_token_eq),
+                right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs)
+              )
             )
           )
         )
