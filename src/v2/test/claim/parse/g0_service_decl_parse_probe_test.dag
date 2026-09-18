@@ -1,0 +1,89 @@
+module v2.test.parse.g0_service_decl_parse_probe
+
+import v2.compiler.parse { ParseArtifact, parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.language_model { LanguageModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { well_formed }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SH-3: G0 had no service production. v1 parse_service_def expects keyword
+// `service`, then a dotted name, then a brace body of operations (and optional
+// transport/config). The first native fatal was leftover token `service` at
+// dag/extdeps/access/posix_effective_principal_read_op.dag. The family is the
+// nest below; service-level `config` and the v2-inline operation form remain
+// v1-admitted remainder. Parsing is not lowering
+// (dissolve-on ^service_family_body_lowering).
+
+data probe_cached_lm: LanguageModel = dag_language_model()
+
+fn parse_src(src: String) -> Outcome<ParseArtifact> {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } => parse_module(tokens: ts, grammar: lm.grammar)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn parses(src: String) -> Bool {
+  match parse_src(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn smallest_service_parsed() -> Outcome<ParseArtifact> {
+  parse_src(src: smallest_service_source)
+}
+
+fn refuses(src: String) -> Bool {
+  match parses(src: src) {
+    true => false
+    false => true
+  }
+}
+
+data fn_control_source: String = "module m\nfn f() -> Int { 1 }\n"
+
+data smallest_service_source: String = "module m\nservice S {\n  operation Op {\n    input { x: Int }\n    output { y: Int from \"y\" }\n    readonly\n    transport shell { argv: [\"a\"] }\n  }\n}\n"
+
+data missing_name_red_source: String = "module m\nservice {\n  operation Op { input { x: Int } }\n}\n"
+
+data missing_brace_red_source: String = "module m\nservice S\nfn f() -> Int { 1 }\n"
+
+data unknown_modifier_red_source: String = "module m\nservice S {\n  operation Op {\n    input { x: Int }\n    volatile\n    transport shell { argv: [\"x\"] }\n  }\n}\n"
+
+test fn fn_control_still_parses_holds() -> Bool {
+  parses(src: fn_control_source)
+}
+
+test fn smallest_service_parses_holds() -> Bool {
+  match smallest_service_parsed() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn smallest_service_tree_is_well_formed_holds() -> Bool {
+  match smallest_service_parsed() {
+    Accepted { value: a, diagnostics: _ } => well_formed(n: a.tree)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn service_without_name_still_refuses_holds() -> Bool {
+  refuses(src: missing_name_red_source)
+}
+
+test fn service_without_brace_still_refuses_holds() -> Bool {
+  refuses(src: missing_brace_red_source)
+}
+
+test fn unknown_operation_modifier_still_refuses_holds() -> Bool {
+  refuses(src: unknown_modifier_red_source)
+}
