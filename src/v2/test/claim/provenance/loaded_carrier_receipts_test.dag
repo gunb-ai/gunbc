@@ -270,12 +270,15 @@ test fn a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_hol
 // obsoletes while the discriminating evidence STAYS ENROLLED, and an
 // expecting-red probe that greens flips to a permanent regression control rather
 // than retiring. The obligation is carried by that clause, not by this comment.
+// THIS ROW GOES RED WHEN RECORD REHOME LANDS (body_lower_type_decl / gunbc#11582
+// follow-up), not when flatten-drop closed for coproduct/alias. Graft still
+// returns Absent on dag_surface_field_decl_block; CrossFileMarker is that shape.
 test fn a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds() -> Bool {
   let fn_is_indexed = lcr_indexed(dotted: "lcr.producer.producer_anchor")
-  let type_is_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker")
+  let type_is_not_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker") == false
   let fn_is_named_once = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^producer_anchor) == 1
-  let type_is_named_once = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^CrossFileMarker) == 1
-  fn_is_indexed && type_is_indexed && fn_is_named_once && type_is_named_once
+  let type_is_named_never = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^CrossFileMarker) == 0
+  fn_is_indexed && type_is_not_indexed && fn_is_named_once && type_is_named_never
 }
 
 // RECEIPT 3 -- CARRIER SHAPE, measured on the same inline load: function bodies

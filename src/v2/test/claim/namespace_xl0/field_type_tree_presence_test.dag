@@ -113,21 +113,24 @@ test fn control_a_parameter_type_name_is_an_atom_in_the_tree_holds() -> Bool {
   atom_present(lexeme: "Xl0UserType")
 }
 
-// CONTROL, CORRECTED: a type DECLARATION name is an edge label, not an atom. After declaration
-// grafting it is a Named containment edge, which this search reaches.
+// CONTROL, CORRECTED: a type DECLARATION name is an edge label, not an atom. Asserting it as an
+// atom was an error and its red said nothing about the tree. Flatten-drop rehomes coproduct/alias,
+// not field_decl_block; Xl0Wrapper is still absent (same standing RED as body_lower_type_decl).
 test fn the_record_type_declaration_is_absent_from_the_tree_today() -> Bool {
-  present_anywhere(lexeme: "Xl0Wrapper")
+  !present_anywhere(lexeme: "Xl0Wrapper")
 }
 
-// THESE THREE WERE ABSENCE MEASUREMENTS OF THE GRAFT DROP. Declaration grafting rehomes the
-// record onto Named containment (wrapper label, field label, field-type atom-or-label), so they
-// stay enrolled as presence controls (DESIGN 4b(4)).
+// WHAT WAS MEASURED: the fixture contains `type Xl0Wrapper { fld: Xl0FieldOnly }`, ingest ACCEPTS,
+// and Xl0UserType is an atom as a parameter type. The record name, field name, and field type are
+// all absent from atoms and edge labels. Graft skips units that carry dag_surface_field_decl_block
+// (namespace_graft_type_decl_named_edge). These stay absence measurements until the body-lowering
+// follow-up after gunbc#11582.
 test fn the_bare_field_type_is_absent_from_the_tree_today() -> Bool {
-  present_anywhere(lexeme: "Xl0FieldOnly")
+  !present_anywhere(lexeme: "Xl0FieldOnly")
 }
 
 // The field NAME itself, as a third data point: if `fld` is a label but its TYPE is nowhere, the
 // declaration survived and only the type reference inside it was dropped.
 test fn the_field_name_is_absent_from_the_tree_today() -> Bool {
-  present_anywhere(lexeme: "fld")
+  !present_anywhere(lexeme: "fld")
 }
