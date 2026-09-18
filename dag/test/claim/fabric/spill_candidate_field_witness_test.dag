@@ -2,12 +2,11 @@ module test.claim.fabric.spill_candidate_field_witness
 
 import std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.nat { Nat }
 import std.types { NonEmptyStr, String, List, EpochSecs }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import std.measure {
-  MoneyRate, MoneyPerSecond, money_amount_micro,
+  MoneyRate, MoneyPerSecond, MoneyAmountMicro, money_amount_micro,
   Second, second,
   HardwareThreadCount, hardware_thread_count,
 }
@@ -326,11 +325,11 @@ fn s_requirements() -> ExecutionRequirements {
   }
 }
 
-fn s_hourly(micros: Nat) -> OfferQuote {
-  QuotedPerHour(MoneyRate { amount: money_amount_micro(count: micros), currency: Usd })
+fn s_hourly(amount: MoneyAmountMicro) -> OfferQuote {
+  QuotedPerHour(MoneyRate { amount: amount, currency: Usd })
 }
 
-fn s_offer(key: OfferKey, route: ProviderRoute, micros: Nat) -> SupplierOffer<NonEmptyStr> {
+fn s_offer(key: OfferKey, route: ProviderRoute, amount: MoneyAmountMicro) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: key },
     executor: "gunbc",
@@ -341,7 +340,7 @@ fn s_offer(key: OfferKey, route: ProviderRoute, micros: Nat) -> SupplierOffer<No
     isolation: s_isolation(),
     quantity_bound: 1,
     ready_at: "2026-09-13T00:00:00Z",
-    quote: s_hourly(micros: micros),
+    quote: s_hourly(amount: amount),
     billing_quantum: second(count: 3600),
     evidence: ObservedSupply {
       observed_at: "2026-09-13T00:00:00Z",
@@ -371,19 +370,19 @@ fn s_inputs(key: OfferKey) -> DispatchInputs<NonEmptyStr> {
 fn s_request_with_delivery(
   key: OfferKey,
   route: ProviderRoute,
-  micros: Nat,
+  amount: MoneyAmountMicro,
   delivery: OfferDeliveryClaim,
 ) -> FieldRequest<NonEmptyStr> {
   FieldRequest {
-    offer: s_offer(key: key, route: route, micros: micros),
+    offer: s_offer(key: key, route: route, amount: amount),
     dispatch: s_inputs(key: key),
     delivery: delivery,
   }
 }
 
-fn s_request(key: OfferKey, route: ProviderRoute, micros: Nat) -> FieldRequest<NonEmptyStr> {
+fn s_request(key: OfferKey, route: ProviderRoute, amount: MoneyAmountMicro) -> FieldRequest<NonEmptyStr> {
   s_request_with_delivery(
-    key: key, route: route, micros: micros, delivery: OfferDoesNotClaimNodeDelivery,
+    key: key, route: route, amount: amount, delivery: OfferDoesNotClaimNodeDelivery,
   )
 }
 
@@ -392,10 +391,10 @@ fn s_request(key: OfferKey, route: ProviderRoute, micros: Nat) -> FieldRequest<N
 // would win both on price and on order, and no tie-break accident could disguise the failure.
 fn s_requests() -> List<FieldRequest<NonEmptyStr>> {
   [
-    s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), micros: 1000),
-    s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), micros: 2000),
-    s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), micros: 3000),
-    s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000),
+    s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), amount: money_amount_micro(count: 1000)),
+    s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), amount: money_amount_micro(count: 2000)),
+    s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), amount: money_amount_micro(count: 3000)),
+    s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000)),
   ]
 }
 
@@ -553,7 +552,7 @@ test fn w_an_offer_claiming_unqualified_node_delivery_is_excluded() -> Bool {
       s_request_with_delivery(
         key: "spill-hetzner-cax41",
         route: s_hetzner_route(),
-        micros: 4000,
+        amount: money_amount_micro(count: 4000),
         delivery: group_b_delivery_claim,
       ),
     ],
@@ -621,7 +620,7 @@ test fn w_the_unmodeled_offers_change_nothing_at_all() -> Bool {
     == s_selected_key(s: s_select(candidates: s_field(
          routes: s_modeled_routes(),
          sanctions: [s_sanction(route: s_hetzner_route())],
-         requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+         requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
        ).admitted))
 }
 
@@ -633,9 +632,9 @@ test fn w_a_field_of_unread_routes_selects_nothing() -> Bool {
     routes: s_modeled_routes(),
     sanctions: [s_sanction(route: s_hetzner_route())],
     requests: [
-      s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), micros: 1000),
-      s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), micros: 2000),
-      s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), micros: 3000),
+      s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), amount: money_amount_micro(count: 1000)),
+      s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), amount: money_amount_micro(count: 2000)),
+      s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), amount: money_amount_micro(count: 3000)),
     ],
   ).admitted)) == "none"
 }
@@ -654,7 +653,7 @@ test fn w_facts_for_a_sibling_region_do_not_admit_the_offer() -> Bool {
         },
       ],
       sanctions: [s_sanction(route: s_hetzner_sibling_route())],
-      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
     ),
     tag: "facts-name-another-route",
   ) == ["spill-hetzner-cax41"]
@@ -696,7 +695,7 @@ fn s_two_reading_field(first: ProviderRouteFacts, second: ProviderRouteFacts) ->
       OfferRouteRow { offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }, facts: second },
     ],
     sanctions: [s_sanction(route: s_hetzner_route())],
-    requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+    requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
   )
 }
 
@@ -740,7 +739,7 @@ test fn w_two_rows_for_one_offer_refuse_rather_than_taking_the_first() -> Bool {
         },
       ],
       sanctions: [s_sanction(route: s_hetzner_route()), s_sanction(route: s_hetzner_sibling_route())],
-      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
     ),
     tag: "route-ambiguous",
   ) == ["spill-hetzner-cax41"]
@@ -756,7 +755,7 @@ test fn w_a_read_but_unsanctioned_route_refuses_as_a_use_refusal() -> Bool {
     field: s_field(
       routes: s_modeled_routes(),
       sanctions: [],
-      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
     ),
     tag: "use-refused",
   ) == ["spill-hetzner-cax41"]
