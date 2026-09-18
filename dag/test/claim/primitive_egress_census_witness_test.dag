@@ -168,12 +168,14 @@ test fn w_refused_entry_refuses_the_census() -> Bool {
   match census_standing(c: c) { CensusRefused { cause: _ } => true  CensusHeld => false  CensusDidNotHold { cause: _ } => false }
 }
 
-// 6. THE SAME-LEAF DECOY, ON THE REAL PRODUCER. The fixture declares its own `length` and calls
+// 6. THE SAME-LEAF DECOY, ON THE REAL PRODUCER. The fixture declares its own `scan_to_eol` (a
+// registry + contract + bridge spelling that no other module reads bare, so the decoy cannot
+// ambiguate or rebind a bare read anywhere in the prepared corpus -- `length` did, 48 sites) and calls
 // it bare and through an import: the resolver binds both to the declaration, so neither is a
 // primitive edge. The free call `count(..)`, the method form `|> count` and the aliased `map_has`
 // ARE primitive edges, and the census joins them to `length` and `map_contains_key`.
 fn decoy_pool_census() -> PrimitiveCallEdgeCensus {
-  compile_dag_primitive_call_edges([], ["dag/test/fixture/primitive_egress_decoy"])
+  compile_dag_primitive_call_edges([], ["dag/test/fixture/primitive_egress_decoy"], [])
 }
 
 fn callee_names_primitive(e: PrimitiveCallEdge, name: String) -> Bool {
@@ -196,7 +198,8 @@ test fn w_decoy_declaration_is_not_a_primitive_edge_on_the_real_producer() -> Bo
       count(resolved) == 2
         && count(refused) == 0
         && count(from_decoy_callers) == 0
-        && count(count_edges) == 3
+        && count(count_edges) == 2
+        && count(edges |> filter(fn(e) { callee_names_primitive(e: e, name: "scan_to_eol") })) == 0
         && count(map_has_edges) == 1
         && (count_edges |> all(fn(e) { primitive_identity_eq(left: canonical_join(surface: none, spelling: "count", form: FreeForm).identity, right: primitive_identity_slug(name: "length")) }))
         && primitive_identity_eq(left: canonical_join(surface: none, spelling: "map_has", form: FreeForm).identity, right: primitive_identity_slug(name: "map_contains_key"))

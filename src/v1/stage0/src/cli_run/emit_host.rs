@@ -1388,6 +1388,7 @@ fn primitive_call_edges_from_module(
 pub fn compile_dag_primitive_call_edges(
     exclude_substrings: &[String],
     pool_roots: &[String],
+    entry_prefixes: &[String],
 ) -> crate::cli_run::PrimitiveCallEdgeCensus {
     use crate::cli_run::{PrimitiveCallEdgeCensus, PrimitiveCallEntryRefusal};
     if pool_roots.is_empty() || pool_roots.iter().any(|r| r.trim().is_empty()) {
@@ -1416,6 +1417,9 @@ pub fn compile_dag_primitive_call_edges(
         .iter()
         .map(|file| rel_path_for_layer_import(file))
         .filter(|rel| !is_excluded_import_path(rel, exclude_substrings))
+        .filter(|rel| {
+            entry_prefixes.is_empty() || entry_prefixes.iter().any(|p| rel.starts_with(p.as_str()))
+        })
         .collect();
     entries.sort();
     entries.dedup();
@@ -1431,7 +1435,19 @@ pub fn compile_dag_primitive_call_edges(
     let mut entries_refused = Vec::new();
     let mut edges = Vec::new();
     let mut walked_modules: HashSet<String> = HashSet::new();
-    for entry in entries {
+    let total_entries = entries.len();
+    let walk_started = std::time::Instant::now();
+    for (ordinal, entry) in entries.into_iter().enumerate() {
+        if ordinal % 25 == 0 {
+            eprintln!(
+                "[primitive-call-edges] entry {}/{} ({} edges so far, {}s): {}",
+                ordinal + 1,
+                total_entries,
+                edges.len(),
+                walk_started.elapsed().as_secs(),
+                entry
+            );
+        }
         match crate::cli_run::resolve_entry_with_index(&index, &entry) {
             Ok((graph, _)) => {
                 let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(

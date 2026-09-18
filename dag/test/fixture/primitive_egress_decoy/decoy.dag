@@ -1,11 +1,11 @@
 module test.fixture.primitive_egress_decoy.decoy
 
-fn length(xs: List<Int>) -> Int {
-  count(xs)
+fn scan_to_eol(s: String, start: Int) -> Int {
+  start
 }
 
 fn decoy_caller() -> Int {
-  length(xs: [1, 2])
+  scan_to_eol(s: "ab", start: 1)
 }
 
 fn free_call_consumer() -> Int {

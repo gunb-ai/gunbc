@@ -1307,6 +1307,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     }),
+    }), Rc::new(BuiltinParam {
+        name: "entry_prefixes".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
     })]),
         returns: type_variable_node("primitive_call_edge_census_result".to_string()),
     }));

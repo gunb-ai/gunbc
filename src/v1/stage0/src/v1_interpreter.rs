@@ -20904,8 +20904,9 @@ macro_rules! v1_builtin_arms {
             arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
                 let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
                 let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
                 Ok(Some(primitive_call_edge_census_value(
-                    crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots),
+                    crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
                     $ctx,
                 )))
             },

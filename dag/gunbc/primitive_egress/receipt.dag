@@ -162,7 +162,7 @@ fn standing_label(s: CensusStanding) -> String {
   }
 }
 
-fn census_receipt_lines(c: PrimitiveCensus, entries_resolved: Int, roster_missing: List<String>, roster_extra: List<String>) -> List<String> {
+fn census_receipt_lines(c: PrimitiveCensus, scope: String, entries_resolved: Int, roster_missing: List<String>, roster_extra: List<String>) -> List<String> {
   let populations = [
     population_line(name: "expected_identities", members: names(ss: c.standings)),
     population_line(name: "exactly_one_disposition", members: names(ss: exactly_one_disposition(c: c))),
@@ -195,6 +195,7 @@ fn census_receipt_lines(c: PrimitiveCensus, entries_resolved: Int, roster_missin
   let summary = serialize_json(v: json_object(members: [
     json_kv(key: "census", value: json_string(s: "primitive-egress-census")),
     json_kv(key: "standing", value: json_string(s: standing_label(s: census_standing(c: c)))),
+    json_kv(key: "scope", value: json_string(s: scope)),
     json_kv(key: "entries_resolved", value: json_int(n: entries_resolved)),
     json_kv(key: "identities", value: json_int(n: count(c.standings))),
     json_kv(key: "service_operation_sites", value: json_int(n: c.consumer_fold.service_sites)),

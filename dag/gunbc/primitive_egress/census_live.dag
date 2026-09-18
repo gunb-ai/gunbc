@@ -69,54 +69,97 @@ fn hand_roster_rows_absent_from_registry() -> List<String> {
   builtin_registry_surface_names() |> filter(fn(r) { !(keys |> any(k => k == r)) })
 }
 
-// THE CONSUMER POPULATION, in two resolver runs because src/v1 and src/v2 cannot share one
-// prepared subject (gunbc.ci_layer_roots non_executing_witness_module_prefixes: twelve
+// THE CONSUMER POPULATION, in up to three resolver walks because src/v1 and src/v2 cannot share
+// one prepared subject (gunbc.ci_layer_roots non_executing_witness_module_prefixes: twelve
 // last-segment collisions rebind silently under one pool). The admitted corpus is resolved as
-// dag ∪ src/v2 -- the witness layer roots -- and the seed's own .dag as src/v1 against dag,
-// with dag's entries excluded from the second walk so no module is counted twice.
+// dag ∪ src/v2 -- the witness layer roots -- walked as two entry prefixes (src/v2, then dag), and
+// the seed's own .dag as src/v1 against dag; no module is counted twice because every walk names
+// its own entry prefix.
+//
+// WHY THE SCOPE IS A PARAMETER. One whole-corpus walk is an hours-long, ~19 GiB process
+// (measured 2026-09-18) that a shared session host reclaims before it finishes. A scope names
+// WHICH entry prefixes the consumer walk covers, and the receipt carries it, so a bounded run is
+// an honest projection -- "v2-reached identities first" is the program's own order -- and never
+// reports an unwalked layer's identities as unused: a finding that depends on consumers is only
+// rendered against the walked scope.
 data admitted_corpus_pool_roots: List<String> = ["dag", "src/v2"]
 data seed_pool_roots: List<String> = ["dag", "src/v1"]
-data seed_pool_exclusions: List<String> = ["dag/"]
 
 // Fixture subtrees hold programs authored to REFUSE (planted reds, parse probes); they are not
 // consumers and resolving them refuses by design. Everything else under the pool is admitted, and
 // a refusal there is a census refusal, never a silent omission.
 data admitted_corpus_exclusions: List<String> = ["/fixture/", "/fixtures/", "/probe/", "/parsecheck", "/manual/", "/retirement/", "/ctl/"]
 
-fn admitted_corpus_edge_census() -> PrimitiveCallEdgeCensus {
-  compile_dag_primitive_call_edges(admitted_corpus_exclusions, admitted_corpus_pool_roots)
+type CensusScope
+  = FullCorpus
+  | V2EntriesOnly
+  | DagEntriesOnly
+  | SeedEntriesOnly
+
+fn scope_label(scope: CensusScope) -> String {
+  match scope {
+    FullCorpus => "full-corpus"
+    V2EntriesOnly => "src/v2-entries"
+    DagEntriesOnly => "dag-entries"
+    SeedEntriesOnly => "src/v1-entries"
+  }
 }
 
-fn seed_edge_census() -> PrimitiveCallEdgeCensus {
-  compile_dag_primitive_call_edges(seed_pool_exclusions, seed_pool_roots)
+fn v2_entries_census() -> PrimitiveCallEdgeCensus {
+  compile_dag_primitive_call_edges(admitted_corpus_exclusions, admitted_corpus_pool_roots, ["src/v2/"])
+}
+
+fn dag_entries_census() -> PrimitiveCallEdgeCensus {
+  compile_dag_primitive_call_edges(admitted_corpus_exclusions, admitted_corpus_pool_roots, ["dag/"])
+}
+
+fn seed_entries_census() -> PrimitiveCallEdgeCensus {
+  compile_dag_primitive_call_edges(admitted_corpus_exclusions, seed_pool_roots, ["src/v1/"])
 }
 
 type LiveEdges
   = LiveEdgesRefused { cause: NonEmptyStr }
   | LiveEdgesObserved { edges: List<PrimitiveCallEdge>, entries_refused: List<PrimitiveCallEntryRefusal>, entries_resolved: Int }
 
-fn merge_edge_census(a: PrimitiveCallEdgeCensus, b: PrimitiveCallEdgeCensus) -> LiveEdges {
+fn edges_of(label: String, c: PrimitiveCallEdgeCensus) -> LiveEdges {
+  match c {
+    PrimitiveCallEdgeCensusRefused { cause: cause } => LiveEdgesRefused { cause: concat(label, ": ", cause) as NonEmptyStr }
+    PrimitiveCallEdgeCensusObserved { entries_resolved: r, entries_refused: f, edges: e } =>
+      LiveEdgesObserved { edges: e, entries_refused: f, entries_resolved: count(r) }
+  }
+}
+
+fn merge_live_edges(a: LiveEdges, b: LiveEdges) -> LiveEdges {
   match a {
-    PrimitiveCallEdgeCensusRefused { cause: c } => LiveEdgesRefused { cause: concat("admitted corpus: ", c) as NonEmptyStr }
-    PrimitiveCallEdgeCensusObserved { entries_resolved: ra, entries_refused: fa, edges: ea } =>
+    LiveEdgesRefused { cause: c } => LiveEdgesRefused { cause: c }
+    LiveEdgesObserved { edges: ea, entries_refused: fa, entries_resolved: ra } =>
       match b {
-        PrimitiveCallEdgeCensusRefused { cause: c } => LiveEdgesRefused { cause: concat("seed corpus: ", c) as NonEmptyStr }
-        PrimitiveCallEdgeCensusObserved { entries_resolved: rb, entries_refused: fb, edges: eb } =>
-          LiveEdgesObserved { edges: concat(ea, eb), entries_refused: concat(fa, fb), entries_resolved: count(ra) + count(rb) }
+        LiveEdgesRefused { cause: c } => LiveEdgesRefused { cause: c }
+        LiveEdgesObserved { edges: eb, entries_refused: fb, entries_resolved: rb } =>
+          LiveEdgesObserved { edges: concat(ea, eb), entries_refused: concat(fa, fb), entries_resolved: ra + rb }
       }
   }
 }
 
-fn live_edges() -> LiveEdges {
-  merge_edge_census(a: admitted_corpus_edge_census(), b: seed_edge_census())
+fn live_edges(scope: CensusScope) -> LiveEdges {
+  match scope {
+    V2EntriesOnly => edges_of(label: "src/v2 entries", c: v2_entries_census())
+    DagEntriesOnly => edges_of(label: "dag entries", c: dag_entries_census())
+    SeedEntriesOnly => edges_of(label: "src/v1 entries", c: seed_entries_census())
+    FullCorpus =>
+      merge_live_edges(
+        a: merge_live_edges(a: edges_of(label: "src/v2 entries", c: v2_entries_census()), b: edges_of(label: "dag entries", c: dag_entries_census())),
+        b: edges_of(label: "src/v1 entries", c: seed_entries_census())
+      )
+  }
 }
 
 type LiveCensus
   = LiveCensusRefused { cause: NonEmptyStr }
   | LiveCensusObserved { census: PrimitiveCensus, entries_resolved: Int }
 
-fn live_census() -> LiveCensus {
-  match live_edges() {
+fn live_census(scope: CensusScope) -> LiveCensus {
+  match live_edges(scope: scope) {
     LiveEdgesRefused { cause: c } => LiveCensusRefused { cause: c }
     LiveEdgesObserved { edges: edges, entries_refused: refused, entries_resolved: n } =>
       LiveCensusObserved {
@@ -133,8 +176,8 @@ fn live_census() -> LiveCensus {
   }
 }
 
-fn live_census_standing() -> CensusStanding {
-  match live_census() {
+fn live_census_standing(scope: CensusScope) -> CensusStanding {
+  match live_census(scope: scope) {
     LiveCensusRefused { cause: c } => CensusRefused { cause: c }
     LiveCensusObserved { census: c, entries_resolved: _ } => census_standing(c: c)
   }
@@ -146,12 +189,12 @@ fn live_census_standing() -> CensusStanding {
 // receipt is rendered from a list the receipt also prints. A CliWireResponse rather than a bare
 // ProcessExit because a ProcessExit can print only through a failure reason, and the receipt is
 // the product on success too (gunbc.cli_wire).
-fn primitive_egress_census_exit() -> CliWireResponse {
-  match live_census() {
+fn census_wire(scope: CensusScope) -> CliWireResponse {
+  match live_census(scope: scope) {
     LiveCensusRefused { cause: c } =>
       CliWirePrintable { bytes: concat("primitive-egress-census: refused: ", c as String, "\n"), exit: ExitFailure { code: 2, reason: c as String } }
     LiveCensusObserved { census: c, entries_resolved: n } => {
-      let lines = census_receipt_lines(c: c, entries_resolved: n, roster_missing: registry_roster_missing_from_hand_roster(), roster_extra: hand_roster_rows_absent_from_registry())
+      let lines = census_receipt_lines(c: c, scope: scope_label(scope: scope), entries_resolved: n, roster_missing: registry_roster_missing_from_hand_roster(), roster_extra: hand_roster_rows_absent_from_registry())
       let bytes = concat(lines |> join(separator: "\n"), "\n")
       match census_standing(c: c) {
         CensusHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
@@ -162,10 +205,20 @@ fn primitive_egress_census_exit() -> CliWireResponse {
   }
 }
 
-fn primitive_egress_census_receipt() -> String {
-  match live_census() {
-    LiveCensusRefused { cause: c } => concat("{\"census\":\"refused\",\"cause\":", c as String, "}")
-    LiveCensusObserved { census: c, entries_resolved: n } =>
-      census_receipt_lines(c: c, entries_resolved: n, roster_missing: registry_roster_missing_from_hand_roster(), roster_extra: hand_roster_rows_absent_from_registry()) |> join(separator: "\n")
-  }
+fn primitive_egress_census_exit() -> CliWireResponse {
+  census_wire(scope: FullCorpus)
+}
+
+// The bounded projections, each its own entry so a run can be sized to the host: the receipt's
+// `scope` line says which entries were walked.
+fn primitive_egress_census_v2_exit() -> CliWireResponse {
+  census_wire(scope: V2EntriesOnly)
+}
+
+fn primitive_egress_census_dag_exit() -> CliWireResponse {
+  census_wire(scope: DagEntriesOnly)
+}
+
+fn primitive_egress_census_seed_exit() -> CliWireResponse {
+  census_wire(scope: SeedEntriesOnly)
 }
