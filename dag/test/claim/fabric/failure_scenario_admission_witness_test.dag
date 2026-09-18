@@ -21,6 +21,7 @@ import product.fabric.failure_scenario_admission {
   FailureScenarioAdmission, FailureScenariosSurvived, FailureScenariosRefused,
   FailureScenarioRefusal, NoFailureScenariosDeclared, OfferFailureDomainsUndeclared,
   OfferFailureDomainsAmbiguous, OfferSharedAcrossDemands, ScenarioNotSurvived, OfferSupplyUnobserved,
+  ScenarioNamesUnknownOffer,
   admit_failure_scenarios,
 }
 
@@ -179,6 +180,7 @@ fn tag(x: FailureScenarioRefusal<NonEmptyStr>) -> String {
     OfferFailureDomainsAmbiguous { offer: o } => join(["ambiguous:", (o.key as NonEmptyStr)], "")
     OfferSharedAcrossDemands { offer: o } => join(["shared:", (o.key as NonEmptyStr)], "")
     OfferSupplyUnobserved { offer: o, obligation: _ } => join(["unobserved:", (o.key as NonEmptyStr)], "")
+    ScenarioNamesUnknownOffer { scenario: _, offer: o } => join(["unknown-offer:", (o.key as NonEmptyStr)], "")
     ScenarioNotSurvived { shortfall: s } => join(["short:", s.scenario.decl_name], "")
   }
 }
@@ -201,6 +203,7 @@ fn shortfall_numbers(a: FailureScenarioAdmission<NonEmptyStr>) -> List<Int> {
         OfferFailureDomainsAmbiguous { offer: _ } => []
         OfferSharedAcrossDemands { offer: _ } => []
         OfferSupplyUnobserved { offer: _, obligation: _ } => []
+        ScenarioNamesUnknownOffer { scenario: _, offer: _ } => []
       })
   }
 }
@@ -298,4 +301,14 @@ test fn w_a_named_offer_and_a_lost_domain_compose() -> Bool {
   }
   let a = admit(offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(), scenarios: [mixed])
   tags(a: a) == ["short:fsa_scenario_node_and_cloud_x"] && shortfall_numbers(a: a) == [10, 20]
+}
+
+// A SCENARIO THAT NAMES AN OFFER NOBODY HOLDS APPLIES NO LOSS, so the survival it would report is
+// vacuous: a misspelled host reads as "this failure is absorbed" while the failure never happened.
+// It refuses instead, and the red is the spelling: "owned-node-3" does not exist.
+test fn w_a_scenario_naming_an_offer_nobody_holds_refuses() -> Bool {
+  tags(a: admit(
+    offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(),
+    scenarios: [losing_offers(name: "fsa_scenario_two_nodes", keys: ["owned-node-1", "owned-node-3"])]))
+    == ["unknown-offer:owned-node-3"]
 }

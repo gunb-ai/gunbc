@@ -82,6 +82,7 @@ type FailureScenarioRefusal<P>
   | OfferFailureDomainsAmbiguous { offer: FabricIdentity<P, OfferKey> }
   | OfferSharedAcrossDemands { offer: FabricIdentity<P, OfferKey> }
   | OfferSupplyUnobserved { offer: FabricIdentity<P, OfferKey>, obligation: DeclarationRef }
+  | ScenarioNamesUnknownOffer { scenario: DeclarationRef, offer: FabricIdentity<P, OfferKey> }
   | ScenarioNotSurvived { shortfall: ScenarioShortfall<P> }
 
 type FailureScenarioAdmission<P>
@@ -182,6 +183,21 @@ type DemandSupply<P> {
   eligible: List<SupplierOffer<P>>
 }
 
+// EVERY NAMED OFFER MUST BE IN THE ROSTER, checked before any scenario is evaluated. This is the
+// structural twin of the undeclared-domain refusal: both close the arm where a scenario silently
+// applies less loss than it names.
+fn unknown_offer_refusals<P>(
+  offers: List<SupplierOffer<P>>,
+  scenario: FailureScenario<P>,
+) -> List<FailureScenarioRefusal<P>> {
+  flat_map(scenario.lost_offers, named =>
+    if count(filter(offers, o => fabric_identity_eq(left: o.id, right: named))) == 0 {
+      [ScenarioNamesUnknownOffer { scenario: scenario.scenario, offer: named }]
+    } else {
+      []
+    })
+}
+
 fn scenario_refusals<P>(
   roster: List<OfferFailureDomains<P>>,
   supply: DemandSupply<P>,
@@ -228,7 +244,10 @@ fn admit_failure_scenarios<P>(
     concat(
       concat(
         flat_map(offers, o => domain_refusals(roster: domains, offer: o)),
-        flat_map(offers, o => evidence_refusals(offer: o)),
+        concat(
+          flat_map(offers, o => evidence_refusals(offer: o)),
+          flat_map(scenarios, sc => unknown_offer_refusals(offers: offers, scenario: sc)),
+        ),
       ),
       sharing_refusals(offers: offers, supplies: supplies),
     ),
