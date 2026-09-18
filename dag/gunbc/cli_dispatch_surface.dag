@@ -509,11 +509,15 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
-          field: "function",
+          field: "functions",
           long: "function",
-          value: CliTextValue { text_default: Present { value: "main" } },
-          arity: CliRequired,
-          doc: ["Entry function to execute (default: \"main\")"],
+          value: CliTextValue { text_default: none },
+          arity: CliRepeated,
+          doc: [
+            "Entry function to execute, repeatable: every named function runs in ONE process over",
+            "ONE load of the entry's closure, in the order given. Absent, an ordinary run executes",
+            "`main`; a --claim-run executes every `test fn` the entry module declares."
+          ],
           emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {

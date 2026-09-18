@@ -532,13 +532,13 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files)".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
-    field: "function".to_string(),
+    field: "functions".to_string(),
     long: "function".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: Some("main".to_string()),
+    text_default: std::option::Option::None,
 }),
-    arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["Entry function to execute (default: \"main\")".to_string()]),
+    arity: CliOptionArity::CliRepeated,
+    doc: Rc::new(vec!["Entry function to execute, repeatable: every named function runs in ONE process over".to_string(), "ONE load of the entry's closure, in the order given. Absent, an ordinary run executes".to_string(), "`main`; a --claim-run executes every `test fn` the entry module declares.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
