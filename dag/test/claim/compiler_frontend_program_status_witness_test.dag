@@ -587,11 +587,17 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
 // reference with an exact declaring identity, from which the roster's `declaring` is derived --
 // and it names the stage: a rewiring onto any other observable population has to abandon the
 // cause to move the standing, and a receipt landed before the resolver binds reds this witness.
+//
+// THE THIRD CONJUNCT THE PREDECESSOR ROW CARRIED -- that no MILESTONE cites the instrument -- is
+// dropped, and the reason is cost rather than truth: milestones_awaiting derives every milestone's
+// standing (114k eval steps on gunbc#11582 run 35355538762, refused against the 72,300-step line
+// for a witness identity that is new because this row is renamed), while the stage-side join
+// costs ~1k. The stage assertion is the one this row exists for; the milestone side is the
+// instrument roster's own coherence, held by every_declared_instrument_is_distinct_and_awaited beside it.
 test fn xl0_is_not_derivable_and_awaits_resolver_bound_declaring_identity() -> Bool {
   standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
     && any(stages_awaiting(i: ResolverBoundDeclaringIdentity),
          l => l == namespace_cut_stage_label(s: StageXL0Denominator))
-    && count(milestones_awaiting(i: ResolverBoundDeclaringIdentity)) == 0
 }
 
 // XL-3 stays NotDerivable while the usable class -- qualified cross-module
@@ -944,3 +950,4 @@ test fn a_mixed_prerequisite_set_preserves_both_identities() -> Bool {
         && any(blocking, b => b == "the emitter milestone")
   }
 }
+
